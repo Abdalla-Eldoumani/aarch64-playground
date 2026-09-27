@@ -1,8 +1,8 @@
 // Decides which check.yml jobs a pull request needs from the files it
-// changes. The workflow pipes `git diff --name-only -z` in on stdin; pushes
-// and the weekly run pass --all instead and test everything. Prints one
-// `name=true|false` line per job group and appends the same lines to
-// $GITHUB_OUTPUT when the runner sets it.
+// changes. .github/actions/changed-paths pipes `git diff --name-only -z` in
+// on stdin; pushes and the weekly run pass --all instead and test
+// everything. Prints one `name=true|false` line per job group and appends
+// the same lines to $GITHUB_OUTPUT when the runner sets it.
 
 // Each file gets the class of the first rule it matches. A file no rule
 // matches counts as a workflow change, so a new kind of file runs every job
@@ -21,8 +21,8 @@ const RULES = [
   ["docs", /^(docs\/|tools\/|\.github\/|[^/]*\.md$|LICENSE$|CITATION\.cff$|\.gitignore$)/],
 ];
 
-// What the wasm bundles are built from; check.yml's wasm cache key hashes
-// the same files.
+// What the wasm bundles are built from; the wasm-bundles action's cache key
+// hashes the same files.
 const WASM_INPUTS = /^emulator\/(src\/|Cargo\.toml$|Cargo\.lock$)/;
 
 // Files outside emulator/ that the Rust tests read.
