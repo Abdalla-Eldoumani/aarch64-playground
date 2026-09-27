@@ -1,8 +1,8 @@
 {
   "title": "Post-test loops",
   "slug": "post-test-loop",
-  "order": 8,
-  "summary": "How to build a do-while loop, where the body always runs at least once.",
+  "order": 12,
+  "summary": "How to build a do-while loop, where the body runs once before the first test, and when that changes what a loop prints.",
   "tags": [
     "loops",
     "post-test loop"
@@ -11,63 +11,111 @@
     {
       "type": "callout",
       "variant": "prereq",
-      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n\n- [Printing a variable from .data](/learn/printing-defined-variables)\n\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)\n\n- [Pre-test loops](/learn/pretest-loop)"
+      "markdown": "Read these first:\n\n- [Printing a string with printf](/learn/printing-strings-hello-world)\n- [Printing a variable from .data](/learn/printing-defined-variables)\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)\n- [Pre-test loops](/learn/pretest-loop)"
     },
     {
-        "type": "prose",
-        "markdown": " Unlike a pre-test loop, where the condition is checked before the loop body executes, a post-test loop executes the loop body first and checks the condition afterward. This means that even if the condition is initially false, the loop body will still execute once. This lesson builds one in Assembly."
+      "type": "prose",
+      "markdown": "Unlike a pre-test loop, where the condition is checked before the loop body runs, a post-test loop runs the loop body first and checks the condition afterward. This means that even if the condition is false from the start, the loop body still runs once. This lesson builds one in assembly and then runs it beside a pre-test loop so the difference shows."
     },
     {
-        "type": "prose",
-        "markdown" : "## What a post-test loop is\n\nA `post-test` loop is a type of loop in which the loop condition is evaluated after each iteration, including the first. The body therefore runs at least once, even when the condition is false from the start. \n\nThe implementation of this type of loop in high-level programming languages such as C is commonly achieved using a `do-while` loop, in which the loop condition is evaluated after each iteration of the loop body. The following code demonstrates an example of a `post-test` loop implemented in C."
+      "type": "prose",
+      "markdown": "## What a post-test loop is\n\nA post-test loop is a type of loop in which the loop condition is checked after each pass through the body, including the first. The body therefore runs at least once, even when the condition is false from the start.\n\nIn C, a post-test loop is written as a `do-while` loop, which checks its condition after each pass through the loop body. The following C code starts `i` at 6, already past the limit of 5:"
     },
     {
-        "type": "code",
-        "language": "c",
-        "source": "#include <stdio.h>\n\nint main() {\n    // do-while loop implementation\n    // Printing the numbers 1 to 5\n    printf(\"Post-test loop implementation\\n\");\n    int i = 1;\n    do {\n        printf(\"%d\\n\", i);\n        i++;\n    } while (i <= 5);\n\n    printf(\"Loop finished\\n\");\n\n    return 0;\n}"
+      "type": "code",
+      "language": "c",
+      "source": "#include <stdio.h>\n\nint main() {\n    // do-while loop implementation\n    // i starts past the limit, yet the body runs once\n    printf(\"Post-test loop implementation\\n\");\n    int i = 6;\n    do {\n        printf(\"%d\\n\", i);\n        i++;\n    } while (i <= 5);\n\n    printf(\"Loop finished\\n\");\n\n    return 0;\n}"
     },
     {
-        "type": "prose",
-        "markdown": "The loop above prints the numbers 1 to 5."
+      "type": "prose",
+      "markdown": "The loop above prints `6` once. The test `i <= 5` is false the first time it is checked, but by then the body has already run. The same loop written as a `while` loop, which tests first, prints nothing between its two lines. When `i` starts at 1, the two kinds of loop print the same numbers, 1 to 5: they only differ when the condition is false on the very first check."
     },
     {
-        "type": "callout",
-        "variant": "note",
-        "markdown": "The term `post-conditional` loop refers to a `post-test` loop. The two terms are interchangeable."
+      "type": "callout",
+      "variant": "note",
+      "markdown": "The term post-conditional loop refers to a post-test loop. The two terms are interchangeable."
     },
     {
-        "type" : "prose",
-        "markdown": "## The logic behind it\nThe underlying logic is:"
+      "type": "prose",
+      "markdown": "## The logic behind it\nThe underlying logic is:"
     },
     {
-        "type": "code",
-        "language": "c",
-        "source": "// Pseudocode\n\nPRINT \"Post-test loop implementation\\n\"\nDECLARE i AS INTEGER\ni = 1\nPRINT i\ni = i + 1\nIF i <= 5 THEN\n    JUMP BACK TO PRINT i\n\nPRINT \"Loop Finished\""
+      "type": "code",
+      "language": "text",
+      "source": "PRINT \"Post-test loop implementation\"\nDECLARE i AS INTEGER\ni = 6\nPRINT i\ni = i + 1\nIF i <= 5 THEN\n    JUMP BACK TO PRINT i\n\nPRINT \"Loop finished\""
     },
     {
-        "type": "prose",
-        "markdown": "The difference from a pre-test loop is when the condition is checked: here the body runs first.\n\nThe pre-test version opens with a branch to the loop condition. Remove that branch and execution falls straight into the body."
+      "type": "prose",
+      "markdown": "The difference from a pre-test loop is when the condition is checked: here the body runs first.\n\nThe pre-test version opens with a branch to the loop condition. Remove that branch and execution falls straight into the body."
     },
     {
-        "type": "prose",
-        "markdown": "## The assembly implementation\nThe above C code and pseudocode can be implemented in Assembly as follows:"
+      "type": "prose",
+      "markdown": "## The assembly implementation\nThe C code and pseudocode above can be written in assembly as follows:"
     },
     {
-        "type": "code",
-        "language": "asm",
-        "source": "// Pseudo-ops and directives\n...\n// string1 = \"Post-test loop implementation\\n\"\n// string2 = \"%d\\n\"\n// string3 = \"Loop finished\\n\"\n\nmain:\n    // Program prologue\n    ...\n    // Printing the \"Post-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n\n    // no branch to the condition, so the body runs first\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // pass i to printf\n    bl printf\n    add x20, x20, 1\n\nloopcond:\n    cmp x20, 5\n    b.le loopbody           // keep looping while i <= 5\n    ldr x0, =string3\n    bl printf\n\n    // program epilogue."
+      "type": "code",
+      "language": "asm",
+      "source": "        ldr     x0, =fmt_head\n        bl      printf\n\n        mov     i_r, 6                          // i = 6: the test is false from the start\n        // no branch to the test, so the body runs first\n\nloopbody:\n        ldr     x0, =fmt_i\n        mov     w1, i_r                         // pass i to printf\n        bl      printf\n        add     i_r, i_r, 1                     // i = i + 1\n\nloopcond:\n        cmp     i_r, 5\n        b.le    loopbody                        // go again while i <= 5\n\n        ldr     x0, =fmt_done\n        bl      printf"
     },
     {
-        "type": "prose",
-        "markdown": "The instructions match the pre-test version: initialise the loop variable, run the body, increment, check the condition. Only the opening branch is gone, so the body runs before the first check."
+      "type": "prose",
+      "markdown": "The instructions match the pre-test version: set the loop variable, run the body, add one, check the condition. Only the opening `b loopcond` is gone, so nothing is tested until the body has run once. With `i` at 6, the body prints 6, `i` becomes 7, the check 7 <= 5 fails, and the loop ends after one pass."
     },
     {
-        "type": "prose",
-        "markdown": "## The whole program\nThe following code demonstrates the complete process of implementing a `post-test` loop in Assembly, including the pseudo-ops, program prologue, and epilogue."
+      "type": "prose",
+      "markdown": "## The whole program\nThe following code is the complete post-test loop program, including the data section, the prologue, and the epilogue. It prints `Post-test loop implementation`, then `6`, then `Loop finished`. Change the 6 to 1 and it prints the numbers 1 to 5, exactly as the pre-test loop does."
     },
     {
-        "type": "editor",
-        "starter": ".data\n    string1: .string \"Post-test loop implementation\\n\"\n    string2: .string \"%d\\n\"\n    string3: .string \"Loop finished\\n\"\n\n.text\n    .balign 4\n    .global main\n\nmain:\n    // program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // Printing the \"Post-test loop implementation\" String\n    ldr x0, =string1\n    bl printf\n\n    // Initialising the Loop variable (i)\n    mov x20, 1\n\n    // no branch to the condition, so the body runs first\n\nloopbody:\n    ldr x0, =string2        // loading the format string\n    mov x1, x20             // pass i to printf\n    bl printf\n    add x20, x20, 1\n\nloopcond:\n    cmp x20, 5\n    b.le loopbody           // keep looping while i <= 5\n    ldr x0, =string3\n    bl printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"    
+      "type": "editor",
+      "starter": "// The body prints i first, then the test i <= 5 decides whether to go again\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(i_r, w19)\n\n.data\nfmt_head:       .string \"Post-test loop implementation\\n\"\nfmt_i:          .string \"%d\\n\"\nfmt_done:       .string \"Loop finished\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_head\n        bl      printf\n\n        mov     i_r, 6                          // i = 6: the test is false from the start\n        // no branch to the test, so the body runs first\n\nloopbody:\n        ldr     x0, =fmt_i\n        mov     w1, i_r                         // pass i to printf\n        bl      printf\n        add     i_r, i_r, 1                     // i = i + 1\n\nloopcond:\n        cmp     i_r, 5\n        b.le    loopbody                        // go again while i <= 5\n\n        ldr     x0, =fmt_done\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "Post-test loop implementation\n6\nLoop finished\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`main` changes `w19` without saving it first, a shortcut these lessons take only in `main`. A subroutine you write yourself must save any of `x19` to `x28` it changes and restore them before it returns, as [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions) shows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Side by side\n\nThe program below runs both kinds of loop from the same start value, one after the other, and labels each line of output. Both loops count up while the counter is at most `LIMIT`. With `START` set to 6, the pre-test loop's line stays empty and the post-test loop's line shows its one extra pass:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "pre-test:\npost-test: 6"
+    },
+    {
+      "type": "prose",
+      "markdown": "Set `START` to 1 and both lines read `1 2 3 4 5`. Set it to 5 and both read `5`. Only a start past the limit tells the two loops apart."
+    },
+    {
+      "type": "editor",
+      "starter": "// A pre-test loop and a post-test loop run from the same start value\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(i_r, w19)\n\ndefine(START, 6)                                // try 1, then 5, then 6\ndefine(LIMIT, 5)\n\n.data\nfmt_pre:        .string \"pre-test:\"\nfmt_post:       .string \"post-test:\"\nfmt_i:          .string \" %d\"\nfmt_nl:         .string \"\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // pre-test loop: jump to the test before the first pass\n        ldr     x0, =fmt_pre\n        bl      printf\n        mov     i_r, START\n        b       pre_test\npre_body:\n        ldr     x0, =fmt_i\n        mov     w1, i_r\n        bl      printf\n        add     i_r, i_r, 1\npre_test:\n        cmp     i_r, LIMIT\n        b.le    pre_body\n        ldr     x0, =fmt_nl\n        bl      printf\n\n        // post-test loop: fall straight into the body\n        ldr     x0, =fmt_post\n        bl      printf\n        mov     i_r, START\npost_body:\n        ldr     x0, =fmt_i\n        mov     w1, i_r\n        bl      printf\n        add     i_r, i_r, 1\npost_test:\n        cmp     i_r, LIMIT\n        b.le    post_body\n        ldr     x0, =fmt_nl\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "pre-test:\npost-test: 6\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Pick a post-test loop only when the body must run at least once, such as showing a menu before the first choice is read. For counting, a pre-test loop is the safer choice: a `do-while` loop that should have run zero times still runs once, and that extra pass is easy to miss."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. A program must show a menu once and keep showing it while the user picks 9. Which kind of loop fits?\n2. In the side-by-side program, what does each line print when `START` is 4?\n3. What one change turns the program in [Pre-test loops](/learn/pretest-loop) into the post-test loop on this page, apart from the start value?\n4. A `do-while` loop starts `i` at 10 and repeats while `i < 3`. How many times does its body run?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. A post-test loop, because the menu must appear at least once.\n2. `pre-test: 4 5` and `post-test: 4 5`.\n3. Deleting `b loopcond`, the jump to the test before the first pass.\n4. Once: the body runs, and then the first check, `i < 3`, fails."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [Reverse the digits](/practice/reverse-the-digits): peel digits off a number until none are left.\n- [The multiplication table](/practice/the-multiplication-table): one loop inside another.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): a counting loop with an else-if chain inside it."
     }
   ]
 }
