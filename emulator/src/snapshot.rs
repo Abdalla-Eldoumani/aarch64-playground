@@ -49,6 +49,9 @@ pub struct Snapshot {
     /// strtok's saved cursor, restored so a stepped-back tokenizing loop
     /// hands out the same token again.
     pub strtok_save: u64,
+    /// qsort/bsearch calls in flight, restored so a stepped-back sort
+    /// resumes from the same comparison.
+    pub callbacks: crate::hosted::callback::CallbackState,
     /// Display counters: bytes appended to stdout / stderr up to this
     /// frame. The buffers themselves stay where they are (see the module
     /// note); these let the host trim its own transcript instead.
@@ -141,6 +144,7 @@ mod tests {
             term: crate::cpu::TermState::default(),
             heap: crate::hosted::heap::HeapState::default(),
             strtok_save: 0,
+            callbacks: Default::default(),
             stdout_seen: 0,
             stderr_seen: 0,
         }
