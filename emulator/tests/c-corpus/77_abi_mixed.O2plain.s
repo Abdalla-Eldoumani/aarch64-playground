@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mkbig
 mkbig:
 	mul	x1, x0, x0
@@ -11,7 +11,7 @@ mkbig:
 	stp	x2, x0, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mkbig2
 mkbig2:
 	adrp	x1, .LANCHOR0
@@ -24,7 +24,7 @@ mkbig2:
 	str	q30, [x8]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	rot90
 rot90:
 	fmov	d31, d0
@@ -32,7 +32,7 @@ rot90:
 	fmov	d1, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	conj2
 conj2:
 	fneg	d1, d1
@@ -52,7 +52,7 @@ conj2:
 	.string	"k4 %g %g %g %c %ld %ld %ld %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	kitchen
 kitchen:
 	stp	x29, x30, [sp, -240]!
@@ -190,7 +190,7 @@ kitchen:
 	.string	" = %.1f\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	vmix
 vmix:
 	stp	x29, x30, [sp, -288]!
@@ -228,7 +228,7 @@ vmix:
 	adrp	x21, .LC11
 	add	x21, x21, :lo12:.LC11
 	b	.L37
-	.align 2
+	.p2align 2,,3
 .L45:
 	cmp	w1, 100
 	beq	.L12
@@ -254,7 +254,7 @@ vmix:
 	add	x0, x0, :lo12:.LC14
 	fadd	d15, d2, d15
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L15:
 	ldrb	w1, [x19, 1]!
 	cbz	w1, .L44
@@ -285,7 +285,7 @@ vmix:
 	bl	printf
 	ldrb	w1, [x19, 1]!
 	cbnz	w1, .L37
-	.align 5
+	.p2align 5,,15
 .L44:
 	ldr	x21, [sp, 32]
 .L9:
@@ -298,7 +298,7 @@ vmix:
 	ldp	d14, d15, [sp, 48]
 	ldp	x29, x30, [sp], 288
 	ret
-	.align 2
+	.p2align 2,,3
 .L13:
 	ldr	w1, [sp, 92]
 	ldr	x0, [sp, 64]
@@ -321,7 +321,7 @@ vmix:
 	fadd	d15, d15, d4
 	bl	printf
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L10:
 	ldr	w1, [sp, 92]
 	ldr	x0, [sp, 64]
@@ -339,7 +339,7 @@ vmix:
 	fsub	d15, d15, d17
 	bl	printf
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L12:
 	ldr	w1, [sp, 92]
 	ldr	x0, [sp, 64]
@@ -356,7 +356,7 @@ vmix:
 	fmov	d0, d5
 	bl	printf
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L16:
 	ldr	w1, [sp, 88]
 	ldr	x0, [sp, 64]
@@ -372,7 +372,7 @@ vmix:
 	fmadd	d15, d15, d14, d16
 	bl	printf
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L43:
 	add	w2, w1, 8
 	str	w2, [sp, 88]
@@ -381,7 +381,7 @@ vmix:
 	ldr	x0, [sp, 72]
 	add	x0, x0, w1, sxtw
 	b	.L36
-	.align 2
+	.p2align 2,,3
 .L48:
 	add	w2, w1, 8
 	str	w2, [sp, 88]
@@ -390,7 +390,7 @@ vmix:
 	ldr	x0, [sp, 72]
 	add	x0, x0, w1, sxtw
 	b	.L21
-	.align 2
+	.p2align 2,,3
 .L47:
 	add	w2, w1, 16
 	str	w2, [sp, 92]
@@ -399,7 +399,7 @@ vmix:
 	ldr	x0, [sp, 80]
 	add	x0, x0, w1, sxtw
 	b	.L24
-	.align 2
+	.p2align 2,,3
 .L25:
 	add	w2, w1, 32
 	str	w2, [sp, 92]
@@ -410,7 +410,7 @@ vmix:
 	add	x1, x0, w1, sxtw
 	ldr	d17, [x1, 16]
 	b	.L26
-	.align 2
+	.p2align 2,,3
 .L28:
 	add	w2, w1, 48
 	str	w2, [sp, 92]
@@ -422,7 +422,7 @@ vmix:
 	ldr	s1, [x1, 16]
 	ldr	s4, [x1, 32]
 	b	.L29
-	.align 2
+	.p2align 2,,3
 .L46:
 	add	w2, w1, 16
 	str	w2, [sp, 88]
@@ -431,12 +431,12 @@ vmix:
 	ldr	x0, [sp, 72]
 	add	x0, x0, w1, sxtw
 	b	.L33
-	.align 2
+	.p2align 2,,3
 .L38:
 	movi	d15, #0
 	b	.L9
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	cpowi
 cpowi:
 	cbnz	w0, .L59
@@ -444,7 +444,7 @@ cpowi:
 	movi	d1, #0
 	fmov	d0, d31
 	ret
-	.align 2
+	.p2align 2,,3
 .L59:
 	stp	x29, x30, [sp, -48]!
 	mov	w1, w0
@@ -492,7 +492,7 @@ cpowi:
 	.string	"(1+i)^%d = %g %g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #352
@@ -708,18 +708,18 @@ main:
 	.section .rodata
 	.align	4
 .LC16:
-	.quad	4598175219545276416
-	.quad	4620693217682128896
+	.xword	4598175219545276416
+	.xword	4620693217682128896
 	.align	4
 .LC25:
-	.quad	4607182418800017408
-	.quad	4607182418800017408
+	.xword	4607182418800017408
+	.xword	4607182418800017408
 	.section .rodata
 	.align	4
 	.LANCHOR0:
 .LC3:
-	.quad	1
-	.quad	-1
+	.xword	1
+	.xword	-1
 .LC17:
 	.word	1
 	.word	-2
@@ -742,9 +742,9 @@ knob:
 	.word	2
 	.zero	12
 makers:
-	.quad	mkbig
-	.quad	mkbig2
+	.xword	mkbig
+	.xword	mkbig2
 turns:
-	.quad	rot90
-	.quad	conj2
+	.xword	rot90
+	.xword	conj2
 
