@@ -117,6 +117,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   LSR: { summary: "Logical shift right (unsigned)." },
   ASR: { summary: "Arithmetic shift right (sign-extending)." },
   ROR: { summary: "Rotate right: bits leaving the bottom re-enter at the top." },
+  EXTR: {
+    summary: "Extract a register-width field from the pair Rn:Rm, starting at bit lsb.",
+    details: ["The low bits come from `Rm` and the high ones from `Rn`. With `Rn` and `Rm` the same register it is `ROR`."],
+    example: "extr x0, x1, x2, 12",
+  },
   SBFX: { summary: "Extract a bitfield and sign-extend it." },
   UBFX: {
     summary: "Unsigned bitfield extract: Rd = (Rn >> lsb) & ((1 << width) - 1).",
@@ -165,7 +170,10 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   UMULH: { summary: "Xd = the top 64 bits of the unsigned 128-bit product Xn * Xm.", example: "umulh x0, x1, x2" },
   UDIV: { summary: "Unsigned divide; divide-by-zero writes 0." },
   SDIV: { summary: "Signed divide; divide-by-zero writes 0." },
-  NEG: { summary: "Rd = -Rn (alias for `SUB Rd, ZR, Rn`)." },
+  NEG: {
+    summary: "Rd = -Rn (alias for `SUB Rd, ZR, Rn`).",
+    details: ["Takes a shifted operand too: `neg w0, w1, lsl 1` is `-(w1 << 1)`."],
+  },
   NEGS: { summary: "Rd = -Rn and sets NZCV (alias for `SUBS Rd, ZR, Rn`).", example: "negs x0, x1" },
   MVN: { summary: "Rd = ~Rn (alias for `ORN Rd, ZR, Rn`)." },
   ORN: {
@@ -214,6 +222,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     summary: "Load word, sign-extend to Xt.",
     details: ["Takes the same pre/post-index writeback and unscaled negative offsets as `LDR`. GCC walks an int array with `ldrsw x0, [x1], 4`."],
   },
+  LDPSW: {
+    summary: "Load a pair of words, each sign-extended to 64 bits.",
+    details: ["X targets only; the offset scales by 4."],
+    example: "ldpsw x3, x4, [x5, 8]",
+  },
   LDP: {
     summary: "Load pair: `LDP Xt1, Xt2, [Xn, #imm]`, or the FP file with D/S registers.",
     details: ["Offset is scaled by register size (8 for X and D, 4 for W and S)."],
@@ -253,6 +266,11 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
       "Hosted syscall numbers: 63 read, 64 write, 93 exit, 56 openat, 57 close, 62 lseek.",
       "`SVC #N` with `N != 0` halts the CPU.",
     ],
+  },
+  BRK: {
+    summary: "Breakpoint trap: stops the program, as it does on the servers.",
+    details: ["GCC plants one where it proved the code can only fault, such as a use of a pointer that is NULL on that path."],
+    example: "brk #1000",
   },
   NOP: { summary: "Do nothing; PC advances." },
   FMOV: {
@@ -329,6 +347,12 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
     details: ["Unordered (NaN) sets C and V; `<` sets N; `==` sets Z."],
   },
   FCMPE: { summary: "Signaling FCMP; sets the same flags here (no FP exceptions are raised).", example: "fcmpe d0, d1" },
+  FCCMP: {
+    summary: "FP conditional compare: FCMP Fn, Fm when cond holds, else NZCV = #nzcv.",
+    details: ["The FP `CCMP`. GCC builds `&&` and `||` chains of float compares out of it."],
+    example: "fccmp d0, d1, 4, lt",
+  },
+  FCCMPE: { summary: "Signaling FCCMP; sets the same flags here (no FP exceptions are raised).", example: "fccmpe s0, s1, 0, gt" },
   FCVT: {
     summary: "Convert between the float views: `FCVT Dd, Sn` widens exactly, `FCVT Sd, Dn` narrows with rounding.",
     details: [
