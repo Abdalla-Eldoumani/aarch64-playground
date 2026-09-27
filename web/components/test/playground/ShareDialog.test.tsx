@@ -69,12 +69,25 @@ describe("ShareDialog", () => {
     expect(writeText).toHaveBeenCalledWith(urlValue());
   });
 
-  it("falls back to copy when the platform has no navigator.share", async () => {
-    const writeText = stubClipboard();
+  it("offers copy alone when the platform has no share sheet", () => {
     renderDialog();
     expect("share" in navigator).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "share" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    // A share button there could only copy: two buttons, one action.
+    expect(screen.queryByRole("button", { name: "share" })).toBeNull();
+    expect(screen.getByRole("button", { name: "copy link" })).toBeTruthy();
+  });
+
+  it("hands the URL to the platform share sheet where there is one", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "share", { configurable: true, value: share });
+    try {
+      renderDialog();
+      fireEvent.click(screen.getByRole("button", { name: "share" }));
+      await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+      expect(share.mock.calls[0][0].url).toBe(urlValue());
+    } finally {
+      Reflect.deleteProperty(window.navigator, "share");
+    }
   });
 
   it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
@@ -110,10 +123,6 @@ describe("ShareDialog over the fragment cap", () => {
     expect(alert.textContent).toContain("too large to share as a link");
     expect(alert.textContent).toContain(".json");
     expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty(
-      "disabled",
-      true,
-    );
-    expect(screen.getByRole("button", { name: "share" })).toHaveProperty(
       "disabled",
       true,
     );
