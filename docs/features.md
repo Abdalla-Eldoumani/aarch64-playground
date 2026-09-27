@@ -34,6 +34,8 @@ reference).
 | Register-file teaching diagrams (x/w and d/s views) | `web/components/diagrams/RegisterFileDiagram.tsx`, `FpRegisterFileDiagram.tsx` |
 | AAPCS64 register-file rail (with the fp convention) | `web/components/diagrams/AapcsRail.tsx` |
 | Link preview card (og/twitter image) | `web/lib/content/site.ts::SHARE_CARD_IMAGE`, `web/public/og.png`, per-route metadata under `web/app/` |
+| Search metadata (a title and snippet per page from its content file, JSON-LD per route type, sitemap dates from `lastUpdated`) | `web/lib/content/seo.ts`, `web/app/sitemap.ts`, `web/app/robots.ts` |
+| Site summary for language models (`/llms.txt`) | `web/public/llms.txt` |
 | Content schemas + author JSON | `web/lib/content/lesson-schema.ts`, `exercise-schema.ts`, `web/content/` |
 | Index projections (the rows the index pages need, with bodies, prompts and starters dropped before they cross to the client) | `web/lib/content/lesson-schema.ts::LessonIndexRow`, `exercise-schema.ts::ExerciseIndexRow`, `lessons.ts::loadLessonIndex`, `exercises.ts::loadExerciseIndex` |
 
