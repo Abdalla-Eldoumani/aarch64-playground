@@ -210,6 +210,16 @@ describe("LessonArticle", () => {
     expect(hrefs).toContain(`#${slugify("Second Heading")}`);
   });
 
+  it("numbers the contents from 1, the way the figures are numbered", () => {
+    render(<LessonArticle lesson={fullLesson} sheetNumber="4.2" />);
+    const nav = screen.getByRole("navigation", { name: /on this page/i });
+    const labels = within(nav)
+      .getAllByRole("link")
+      .map((a) => (a.textContent ?? "").trim());
+    expect(labels[0].startsWith("4.2.1")).toBe(true);
+    expect(labels[1].startsWith("4.2.2")).toBe(true);
+  });
+
   it("forwards an in-cap author stdin to the embed", () => {
     const lesson: Lesson = {
       title: "Stdin",
