@@ -8,7 +8,6 @@ import {
   type ExpectedRegister,
   type Tutorial,
 } from "@/lib/content/tutorials";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { Select } from "@/components/ui/Select";
 
 export interface TutorialRunnerProps {
@@ -72,11 +71,16 @@ function ExpectedRegisterCheck({
 }
 
 /**
- * Modal that walks the student through a tutorial, one step at a time.
+ * A panel that walks the student through a tutorial, one step at a time.
  * Each tutorial backs a real source file under `/examples/cpsc355/`; the
  * runner can fetch it on demand and hand it to the editor with the
  * tutorial's prefilled args/stdin so the student can step alongside the
  * prose.
+ *
+ * It is not modal. A step says "step, then watch x19", so the run controls
+ * and the registers have to stay live under it: the full-screen overlay it
+ * used to be caught every tap. It docks to the lower right from sm up and
+ * under the phone bar on a phone, clear of the run controls either way.
  */
 export function TutorialRunner({
   open,
@@ -88,7 +92,15 @@ export function TutorialRunner({
   const [progress, setProgress] = useState(() => loadProgress());
   const [loadError, setLoadError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(open, ref, onClose);
+
+  // Opening moves focus into the panel and closing hands it back, as a
+  // dialog does; no trap, since the playground around it stays usable.
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => previouslyFocused?.focus?.();
+  }, [open]);
 
   useEffect(() => saveProgress(progress), [progress]);
 
@@ -120,17 +132,17 @@ export function TutorialRunner({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3"
+      ref={ref}
       role="dialog"
-      aria-modal="true"
+      aria-modal="false"
       aria-label="guided tutorial"
-      onClick={onClose}
+      // Escape inside the panel closes it; the editor keeps its own Escape.
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+      className="fixed inset-x-2 top-[calc(3rem+var(--safe-top))] z-50 flex max-h-[45dvh] flex-col rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl sm:inset-x-auto sm:bottom-20 sm:right-4 sm:top-auto sm:max-h-[60vh] sm:w-[28rem]"
     >
-      <div
-        ref={ref}
-        className="w-full max-w-2xl max-h-[80vh] rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="flex flex-1 min-h-0 flex-col">
         <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
           <Select
             value={activeId}
@@ -141,21 +153,21 @@ export function TutorialRunner({
             ]}
             onSelect={(id) => setActiveId(id)}
           />
-          <span className="text-[11px] text-[var(--text-secondary)]">
+          <span className="whitespace-nowrap text-[11px] [@media(pointer:coarse)]:text-[12px] text-[var(--text-secondary)]">
             step {stepIndex + 1} / {tutorial.steps.length}
           </span>
           <div className="flex-1" />
           <button
             type="button"
             onClick={loadSource}
-            className="text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            className="touch-target text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             load source
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1"
           >
             close
           </button>
@@ -196,7 +208,7 @@ export function TutorialRunner({
             type="button"
             onClick={() => setStep(stepIndex - 1)}
             disabled={stepIndex === 0}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 rounded px-2 py-1"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 rounded px-2 py-1"
           >
             back
           </button>
@@ -205,7 +217,7 @@ export function TutorialRunner({
             type="button"
             onClick={() => setStep(stepIndex + 1)}
             disabled={stepIndex === tutorial.steps.length - 1}
-            className="text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:opacity-40 px-2 py-1"
+            className="touch-target text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:opacity-40 px-2 py-1"
           >
             next
           </button>
