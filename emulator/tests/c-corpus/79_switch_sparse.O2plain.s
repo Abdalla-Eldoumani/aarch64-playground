@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 punct_kind:
 	sub	w0, w0, #33
 	cmp	w0, 63
@@ -25,12 +25,12 @@ punct_kind:
 	csel	w0, wzr, w0, eq
 .L1:
 	ret
-	.align 2
+	.p2align 2,,3
 .L3:
 	mov	w0, 0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 key64:
 	mov	x2, 9223372036854775807
 	cmp	x0, x2
@@ -50,7 +50,7 @@ key64:
 .L8:
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L10:
 	mov	x3, 47806
 	mov	w1, 7
@@ -68,7 +68,7 @@ key64:
 	csel	w1, w1, wzr, eq
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L11:
 	mov	x1, 1099511627776
 	cmp	x0, x1
@@ -76,7 +76,7 @@ key64:
 	lsl	w1, w1, 2
 	mov	w0, w1
 	ret
-	.align 2
+	.p2align 2,,3
 .L12:
 	mov	w1, 5
 	mov	w0, w1
@@ -123,7 +123,7 @@ key64:
 	.string	" %d:%d"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -147,7 +147,7 @@ main:
 	add	x0, x0, :lo12:.LC0
 	stp	x27, x28, [sp, 80]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L21:
 	mov	x21, -1
 	mov	x28, 2147483648
@@ -176,7 +176,7 @@ main:
 	bne	.L98
 	mov	w0, 1
 	mov	w1, w0
-	.align 5
+	.p2align 5,,15
 .L23:
 	lsl	w2, w23, 5
 	sub	w23, w2, w23
@@ -205,7 +205,7 @@ main:
 	mov	w24, 50003
 	bl	printf
 	b	.L58
-	.align 2
+	.p2align 2,,3
 .L142:
 	cmp	w0, 6
 	beq	.L31
@@ -219,7 +219,7 @@ main:
 	add	w1, w1, 52
 	cmp	w0, 2
 	bne	.L44
-	.align 5
+	.p2align 5,,15
 .L37:
 	mov	x0, x20
 	add	x21, x21, 1
@@ -264,7 +264,7 @@ main:
 	adrp	x0, .LC4
 	add	x0, x0, :lo12:.LC4
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L59:
 	mov	w0, w21
 	bl	punct_kind
@@ -296,7 +296,7 @@ main:
 	adrp	x0, .LC6
 	add	x0, x0, :lo12:.LC6
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L60:
 	ldr	x4, [x24], 8
 	add	x4, x23, x4
@@ -325,7 +325,7 @@ main:
 	mov	x25, 2147483648
 	bl	printf
 	b	.L66
-	.align 2
+	.p2align 2,,3
 .L146:
 	sub	x1, x0, #1
 	cmn	x0, #4095
@@ -340,7 +340,7 @@ main:
 	mov	w2, 0
 	mov	w1, 2
 	mov	w3, 0
-	.align 5
+	.p2align 5,,15
 .L61:
 	mov	x0, x21
 	add	x26, x26, 8
@@ -381,7 +381,7 @@ main:
 	adrp	x0, .LC9
 	add	x0, x0, :lo12:.LC9
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L79:
 	add	w0, w24, w19
 	cmp	w0, 127
@@ -410,7 +410,7 @@ main:
 	sub	w0, w0, #131
 	lsr	x0, x22, x0
 	tbnz	x0, 0, .L71
-	.align 5
+	.p2align 5,,15
 .L72:
 	add	w24, w24, 1
 	cmp	w24, 211
@@ -427,7 +427,7 @@ main:
 	mov	w20, 0
 	bl	printf
 	b	.L83
-	.align 2
+	.p2align 2,,3
 .L149:
 	cmn	w0, #100
 	beq	.L115
@@ -436,7 +436,7 @@ main:
 	mov	w2, 1
 	cmn	w0, #128
 	bne	.L82
-	.align 5
+	.p2align 5,,15
 .L80:
 	mov	w1, w20
 	mov	x0, x21
@@ -470,7 +470,7 @@ main:
 	ldp	x27, x28, [sp, 80]
 	ldp	x29, x30, [sp], 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L24:
 	cmp	w0, w25
 	beq	.L93
@@ -485,7 +485,7 @@ main:
 	mov	w0, 8
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L46:
 	add	w1, w26, 563
 	cmp	w0, w24
@@ -498,7 +498,7 @@ main:
 	add	w0, w27, 572
 	csel	w1, w1, w0, eq
 	b	.L37
-	.align 2
+	.p2align 2,,3
 .L32:
 	cmp	w0, 1000
 	beq	.L40
@@ -512,7 +512,7 @@ main:
 	mul	w1, w21, w1
 	add	w1, w1, 238
 	b	.L37
-	.align 2
+	.p2align 2,,3
 .L25:
 	cmn	w0, #1
 	beq	.L91
@@ -520,7 +520,7 @@ main:
 	mov	w0, 6
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L26:
 	mov	w1, 2147418112
 	cmp	w0, w1
@@ -531,7 +531,7 @@ main:
 	mov	w0, 13
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L48:
 	cmp	w0, 1006
 	beq	.L51
@@ -542,7 +542,7 @@ main:
 .L44:
 	mov	w1, -1
 	b	.L37
-	.align 2
+	.p2align 2,,3
 .L34:
 	cmp	w0, 4
 	add	w0, w21, w21, lsl 1
@@ -550,57 +550,57 @@ main:
 	add	w0, w0, 135
 	csel	w1, w28, w0, eq
 	b	.L37
-	.align 2
+	.p2align 2,,3
 .L86:
 	mov	w0, 7
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L98:
 	mov	w0, 0
 	mov	w1, 0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L97:
 	mov	w0, 12
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L87:
 	mov	w0, 4
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L95:
 	mov	w0, 10
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L94:
 	mov	w0, 9
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L93:
 	mov	w0, 11
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L91:
 	mov	w0, 5
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L89:
 	mov	w0, 3
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L88:
 	mov	w0, 2
 	mov	w1, w0
 	b	.L23
-	.align 2
+	.p2align 2,,3
 .L62:
 	cmn	x1, #1
 	beq	.L103
@@ -623,7 +623,7 @@ main:
 	mov	w1, 0
 	mov	w3, 9
 	b	.L61
-	.align 2
+	.p2align 2,,3
 .L68:
 	sub	w0, w0, #67
 	lsr	x0, x21, x0
@@ -632,23 +632,23 @@ main:
 	cmp	w24, 211
 	bne	.L79
 	b	.L154
-	.align 2
+	.p2align 2,,3
 .L116:
 	mov	w2, 3
 	b	.L80
-	.align 2
+	.p2align 2,,3
 .L115:
 	mov	w2, 2
 	b	.L80
-	.align 2
+	.p2align 2,,3
 .L114:
 	mov	w2, 4
 	b	.L80
-	.align 2
+	.p2align 2,,3
 .L118:
 	mov	w2, 5
 	b	.L80
-	.align 2
+	.p2align 2,,3
 .L76:
 	mov	w1, w24
 	mov	x0, x20
@@ -657,7 +657,7 @@ main:
 	cmp	w24, 211
 	bne	.L79
 	b	.L154
-	.align 2
+	.p2align 2,,3
 .L73:
 	sub	w0, w0, #193
 	cmp	w0, 6
@@ -668,7 +668,7 @@ main:
 	cmp	w24, 211
 	bne	.L79
 	b	.L154
-	.align 2
+	.p2align 2,,3
 .L54:
 	cmp	w0, 1048576
 	bne	.L44
@@ -806,19 +806,19 @@ main:
 	.align	4
 	.LANCHOR1:
 k32.3:
-	.quad	-2147483648
-	.quad	-65536
-	.quad	-4097
-	.quad	-4096
-	.quad	-1
-	.quad	0
-	.quad	4095
-	.quad	4096
-	.quad	65535
-	.quad	65536
-	.quad	74565
-	.quad	2147418112
-	.quad	2147483647
+	.xword	-2147483648
+	.xword	-65536
+	.xword	-4097
+	.xword	-4096
+	.xword	-1
+	.xword	0
+	.xword	4095
+	.xword	4096
+	.xword	65535
+	.xword	65536
+	.xword	74565
+	.xword	2147418112
+	.xword	2147483647
 	.zero	8
 kc.2:
 	.word	0
@@ -841,27 +841,27 @@ kc.2:
 	.word	-1
 	.zero	8
 k64.1:
-	.quad	0
-	.quad	4294967295
-	.quad	4294967296
-	.quad	1099511627776
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	-2401053089206453570
-	.quad	-1
-	.quad	8589934591
-	.quad	-2401053092612145152
-	.quad	3405691582
+	.xword	0
+	.xword	4294967295
+	.xword	4294967296
+	.xword	1099511627776
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	-2401053089206453570
+	.xword	-1
+	.xword	8589934591
+	.xword	-2401053092612145152
+	.xword	3405691582
 	.zero	8
 s64.0:
-	.quad	-9223372036854775808
-	.quad	-4294967296
-	.quad	-4096
-	.quad	-1
-	.quad	2147483648
-	.quad	9223372036854775807
-	.quad	2147483647
-	.quad	-2147483648
+	.xword	-9223372036854775808
+	.xword	-4294967296
+	.xword	-4096
+	.xword	-1
+	.xword	2147483648
+	.xword	9223372036854775807
+	.xword	2147483647
+	.xword	-2147483648
 	.bss
 	.align	2
 	.LANCHOR0:
