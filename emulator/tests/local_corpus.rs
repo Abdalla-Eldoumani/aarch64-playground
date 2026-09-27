@@ -173,9 +173,9 @@ fn every_local_corpus_program_links_and_runs() {
 /// program's folder defines a function by that name.
 fn function_from_c_neighbour(path: &Path, link_error: &str) -> Option<String> {
     let name = link_error
-        .split("no label named `")
+        .split("undefined reference to `")
         .nth(1)?
-        .split('`')
+        .split('\'')
         .next()?;
     let call = format!("{name}(");
     // A text match, not a C parser: loose, but this check only runs locally.
