@@ -37,10 +37,13 @@ pub const HOSTED_LIBC_NAMES: &[&str] = &[
     "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
     "__ctype_toupper_loc", "__ctype_tolower_loc",
     // FILE*-level stdio
-    "fopen", "fprintf", "fgets", "fputs", "fclose",
+    "fopen", "fprintf", "fgets", "fputs", "fclose", "putc", "fputc", "getc",
+    "fwrite",
+    // sorting and searching with the program's comparator
+    "qsort", "bsearch",
     // libm
     "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor",
-    "fabs", "fmod",
+    "fabs", "fmod", "sincos",
 ];
 
 /// Decide whether the source uses the hosted cpsc 355 feature set
