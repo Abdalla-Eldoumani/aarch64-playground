@@ -4,9 +4,10 @@
   "order": 19,
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "Print the four-by-four multiplication table, rows of `row * col` padded into neat columns.\n\nThe shape is two nested loops: an outer loop over rows, an inner loop over columns, a `mul` in the middle, and a newline after each row. The cell format `%4lld` right-aligns every product into a four-character column so the table lines up.\n\n`printf` may overwrite the scratch registers, so both counters belong in the aliased callee-saved registers, not in `x9`.\n\n## what is checked\n\n- four rows of four aligned products\n- the program exits cleanly\n- the products come from `mul` inside the loops",
-  "starter": "// print a four-by-four multiplication table\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(row_r, x19)\ndefine(col_r, x20)\ndefine(cell_r, x21)\n\n        .data\nfmt_cell:   .string \"%4lld\"\nfmt_nl:     .string \"\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // TODO: two nested loops, rows and columns each running 1 to\n        // 4. Print row * col with fmt_cell for every column, then\n        // print fmt_nl at the end of each row. Keep both counters in\n        // the aliased callee-saved registers: printf owns the scratch\n        // ones while it runs.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Print the `n`-by-`n` multiplication table, rows of `row * col` padded into neat columns. The starter reads `n`.\n\nThe shape is two nested loops: an outer loop over rows, an inner loop over columns, a `mul` in the middle, and a newline after each row. The cell format `%4lld` right-aligns every product into a four-character column so the table lines up.\n\n`printf` may overwrite the scratch registers, so both counters belong in the aliased callee-saved registers, not in `x9`.\n\n## what is checked\n\n- four rows of four aligned products for the `4` in the stdin box\n- the program exits cleanly\n- the products come from `mul` inside the loops\n- the same holds for other sizes you do not see, down to a one-by-one table",
+  "starter": "// print an n-by-n multiplication table\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(row_r, x19)\ndefine(col_r, x20)\ndefine(cell_r, x21)\ndefine(n_r, x22)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_cell:   .string \"%4lld\"\nfmt_eol:     .string \"\\n\"\n\n        .bss\n        .balign 8\nn_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the table's size\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n\n        // TODO: two nested loops, rows and columns each running 1 to\n        // n. Print row * col with fmt_cell for every column, then\n        // print fmt_eol at the end of each row. Keep both counters in\n        // the aliased callee-saved registers: printf owns the scratch\n        // ones while it runs.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "4\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -29,5 +30,29 @@
         "mnemonic": "cmp"
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1\n",
+      "stdout": "   1\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "3\n",
+      "stdout": "   1   2   3\n   2   4   6\n   3   6   9\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "10\n",
+      "stdout": "   1   2   3   4   5   6   7   8   9  10\n   2   4   6   8  10  12  14  16  18  20\n   3   6   9  12  15  18  21  24  27  30\n   4   8  12  16  20  24  28  32  36  40\n   5  10  15  20  25  30  35  40  45  50\n   6  12  18  24  30  36  42  48  54  60\n   7  14  21  28  35  42  49  56  63  70\n   8  16  24  32  40  48  56  64  72  80\n   9  18  27  36  45  54  63  72  81  90\n  10  20  30  40  50  60  70  80  90 100\n",
+      "exitCode": 0
+    }
+  ]
 }
