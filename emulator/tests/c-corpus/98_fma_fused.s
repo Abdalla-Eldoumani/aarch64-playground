@@ -586,8 +586,8 @@ main:
 	str	wzr, [sp, 160]
 	b	.L36
 .L37:
-	adrp	x0, coef__0
-	add	x0, x0, :lo12:coef__0
+	adrp	x0, coef.0
+	add	x0, x0, :lo12:coef.0
 	ldrsw	x1, [sp, 160]
 	ldr	d31, [x0, x1, lsl 3]
 	fmov	d2, d31
@@ -597,8 +597,8 @@ main:
 	str	d0, [sp, 168]
 	ldr	d31, [sp, 136]
 	fcvt	s30, d31
-	adrp	x0, coef__0
-	add	x0, x0, :lo12:coef__0
+	adrp	x0, coef.0
+	add	x0, x0, :lo12:coef.0
 	ldrsw	x1, [sp, 160]
 	ldr	d31, [x0, x1, lsl 3]
 	fcvt	s31, d31
@@ -759,7 +759,7 @@ main:
 	ret
 	.section .rodata
 	.align	3
-coef__0:
+coef.0:
 	.word	436314138
 	.word	1059717536
 	.word	381774871
