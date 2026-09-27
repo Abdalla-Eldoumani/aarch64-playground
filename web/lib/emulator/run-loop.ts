@@ -22,7 +22,7 @@ export const CHUNK_STEPS = 10_000;
  * chunks at full speed against a stuck CPU.
  */
 export const NO_PROGRESS_ERROR =
-  "the emulator made no progress and was stopped. this is a playground bug: press 'copy diagnostic bundle' and open an issue with what it copies";
+  "the emulator made no progress and was stopped. this is a playground bug: press 'diagnostic bundle', copy the report, and open an issue with it";
 
 /**
  * The machine the loop drives plus the two facts only the host knows:
