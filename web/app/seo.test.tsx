@@ -119,6 +119,8 @@ describe("per-page titles and snippets", () => {
       expect(description.length, `${route}: ${description}`).toBeGreaterThanOrEqual(50);
       expect(description.length, `${route}: ${description}`).toBeLessThanOrEqual(DESCRIPTION_MAX);
       expect(description, route).not.toMatch(/\u2014|checked by running your program against|tuned for/);
+      // A starter's register alias (sum_r) is a name a searcher has not met.
+      expect(description, route).not.toMatch(/\b[a-z]+_r\b/);
       expect(seen.get(description), `${route} shares its snippet with ${seen.get(description)}`).toBeUndefined();
       seen.set(description, route);
     }
