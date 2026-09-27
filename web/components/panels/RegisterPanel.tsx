@@ -22,7 +22,6 @@ import {
 } from "@/lib/emulator/register-format";
 import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
-import { Select } from "@/components/ui/Select";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
 import { DRegisterRow } from "@/components/panels/DRegisterRow";
@@ -85,36 +84,23 @@ const VIEW_HELP: Record<RegView, string> = {
   v: "v0–v31 are the full 128-bit vector registers, and q0–q31 is the same 128 bits named as a scalar.",
 };
 
-/** The lane arrangements the v view reads a register in, named the way the
- *  source spells them (`v1.16b`). The first four are the old lane widths, so
- *  a stored width still parses. */
+/** The lane arrangements the v view reads a register in: the four integer
+ *  widths by their ISA letter, then the two float ones by their C names. The
+ *  ids are what storage holds, so a width stored before the float ones
+ *  existed still parses. Cells, not a popover: a listbox opened in the short
+ *  register pane was clipped by it. */
 const ARRANGEMENTS = {
-  b: { width: "b", float: false, label: "16b" },
-  h: { width: "h", float: false, label: "8h" },
-  s: { width: "s", float: false, label: "4s" },
-  d: { width: "d", float: false, label: "2d" },
-  sf: { width: "s", float: true, label: "4s float" },
-  df: { width: "d", float: true, label: "2d float" },
-} as const satisfies Record<string, LaneArrangement & { label: string }>;
+  b: { width: "b", float: false, label: "b", help: "8-bit lanes" },
+  h: { width: "h", float: false, label: "h", help: "16-bit lanes" },
+  s: { width: "s", float: false, label: "s", help: "32-bit lanes" },
+  d: { width: "d", float: false, label: "d", help: "64-bit lanes" },
+  sf: { width: "s", float: true, label: "float", help: "32-bit float lanes" },
+  df: { width: "d", float: true, label: "double", help: "64-bit float lanes" },
+} as const satisfies Record<string, LaneArrangement & { label: string; help: string }>;
 
 type ArrangementId = keyof typeof ARRANGEMENTS;
 
-const ARRANGEMENT_GROUPS = [
-  {
-    label: "integer lanes",
-    options: (["b", "h", "s", "d"] as const).map((id) => ({
-      value: id,
-      label: ARRANGEMENTS[id].label,
-    })),
-  },
-  {
-    label: "float lanes",
-    options: (["sf", "df"] as const).map((id) => ({
-      value: id,
-      label: ARRANGEMENTS[id].label,
-    })),
-  },
-];
+const ARRANGEMENT_IDS = Object.keys(ARRANGEMENTS) as ArrangementId[];
 
 function isArrangementId(raw: string | null): raw is ArrangementId {
   return raw != null && Object.hasOwn(ARRANGEMENTS, raw);
@@ -190,14 +176,13 @@ function parseView(raw: string | null): RegView | null {
  *  lanes by default: two halves is the reading closest to the d-view the
  *  student came from. The state is a reducer so the stored value can arrive
  *  from an effect, the same reason the pulse ids below are one. */
-function usePersistedArrangement(): [ArrangementId, (next: string) => void] {
+function usePersistedArrangement(): [ArrangementId, (next: ArrangementId) => void] {
   const [value, apply] = useReducer((_prev: ArrangementId, next: ArrangementId) => next, "d");
   useEffect(() => {
     const stored = safeGetItem(LANE_KEY);
     if (isArrangementId(stored)) apply(stored);
   }, []);
-  const set = useCallback((next: string) => {
-    if (!isArrangementId(next)) return;
+  const set = useCallback((next: ArrangementId) => {
     apply(next);
     safeSetItem(LANE_KEY, next);
   }, []);
@@ -705,14 +690,24 @@ export function RegisterPanel({
               ? formatToggle("fp value format", !hexMode, (dec) => setHexMode(!dec))
               : formatToggle("vector value format", vDec, setVDec)}
           {view === "v" ? (
-            <Select
-              size="xs"
-              ariaLabel="lane arrangement"
-              placeholder={arrangement.label}
-              value={arrangementId}
-              groups={ARRANGEMENT_GROUPS}
-              onSelect={setArrangementId}
-            />
+            <div role="group" aria-label="lane arrangement" className={groupShell}>
+              {ARRANGEMENT_IDS.map((id, i) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={arrangementId === id}
+                  onClick={() => setArrangementId(id)}
+                  className={`${segmentCell} ${touchTall} ${
+                    i > 0 ? "border-l border-[var(--border)]" : ""
+                  } ${arrangementId === id ? toggleOn : restCell}`}
+                >
+                  <span aria-hidden="true">{ARRANGEMENTS[id].label}</span>
+                  <span className="sr-only">
+                    {ARRANGEMENTS[id].label}, {ARRANGEMENTS[id].help}
+                  </span>
+                </button>
+              ))}
+            </div>
           ) : null}
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
