@@ -44,7 +44,7 @@
 	.string	"neg %u %lu %u\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #208
@@ -58,7 +58,7 @@ main:
 	add	x21, x21, :lo12:.LC4
 	mov	w20, 0
 	str	x23, [sp, 80]
-	.align 5
+	.p2align 5,,15
 .L8:
 	sbfiz	x0, x20, 3, 32
 	add	w20, w20, 1
@@ -82,7 +82,7 @@ main:
 	add	x21, x19, 80
 	add	x22, x22, :lo12:.LC5
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L18:
 	sbfiz	x0, x20, 4, 32
 	add	w20, w20, 1
@@ -255,7 +255,7 @@ main:
 	movk	w1, 0x811c, lsl 16
 	mov	w2, 116
 	movk	w4, 0x100, lsl 16
-	.align 5
+	.p2align 5,,15
 .L43:
 	eor	w1, w2, w1
 	ldrb	w2, [x0, 1]!
@@ -278,7 +278,7 @@ main:
 	movk	x1, 0xcbf2, lsl 48
 	mov	x0, 106
 	movk	x4, 0x100, lsl 32
-	.align 5
+	.p2align 5,,15
 .L44:
 	eor	x1, x0, x1
 	ldrb	w0, [x2, 1]!
@@ -306,7 +306,7 @@ main:
 	movk	x6, 0x5851, lsl 48
 	movk	x5, 0x1405, lsl 48
 	movk	w4, 0x41c6, lsl 16
-	.align 5
+	.p2align 5,,15
 .L45:
 	madd	x1, x1, x6, x5
 	subs	w0, w0, #1
@@ -335,13 +335,13 @@ main:
 	.align	3
 	.LANCHOR1:
 .LC0:
-	.quad	-1
-	.quad	-1
-	.quad	5
+	.xword	-1
+	.xword	-1
+	.xword	5
 .LC1:
-	.quad	1
-	.quad	0
-	.quad	7
+	.xword	1
+	.xword	0
+	.xword	7
 	.data
 	.align	4
 	.LANCHOR0:
@@ -366,22 +366,22 @@ ip:
 	.word	-2147483648
 	.zero	8
 lp:
-	.quad	9223372036854775807
-	.quad	1
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	-9223372036854775808
-	.quad	-9223372036854775808
-	.quad	3037000499
-	.quad	3037000499
-	.quad	3037000500
-	.quad	3037000500
-	.quad	-4294967296
-	.quad	2147483648
-	.quad	4294967296
-	.quad	2147483648
-	.quad	0
-	.quad	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	1
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	-9223372036854775808
+	.xword	-9223372036854775808
+	.xword	3037000499
+	.xword	3037000499
+	.xword	3037000500
+	.xword	3037000500
+	.xword	-4294967296
+	.xword	2147483648
+	.xword	4294967296
+	.xword	2147483648
+	.xword	0
+	.xword	-9223372036854775808
 up:
 	.word	-1
 	.word	1
@@ -395,14 +395,14 @@ up:
 	.word	2
 	.zero	8
 ulp:
-	.quad	-1
-	.quad	1
-	.quad	0
-	.quad	1
-	.quad	4294967296
-	.quad	4294967296
-	.quad	4294967295
-	.quad	4294967297
-	.quad	-9223372036854775808
-	.quad	2
+	.xword	-1
+	.xword	1
+	.xword	0
+	.xword	1
+	.xword	4294967296
+	.xword	4294967296
+	.xword	4294967295
+	.xword	4294967297
+	.xword	-9223372036854775808
+	.xword	2
 
