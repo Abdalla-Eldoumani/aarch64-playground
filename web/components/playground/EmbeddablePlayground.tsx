@@ -155,7 +155,8 @@ export type EmbeddablePlaygroundProps = {
   /** Check only applies in checker chrome. */
   showCheck?: boolean;
   /** Embed/checker only: an args box in the control band, seeded from
-   *  `startArgs`, for a program that reads its command line. */
+   *  `startArgs`, for a program that reads its command line. Run and step
+   *  use what it holds; Check always uses `startArgs`. */
   showArgs?: boolean;
   onStateChange?: (state: EmbeddableState) => void;
   /** Every editor buffer value, including the first. The practice checker
@@ -676,17 +677,20 @@ function EmbeddableCore({
   // then snapshot; an unchanged program that already ran to its end is checked
   // as-is. The run loop is bounded by the emulator's own step ceiling; the
   // wall-clock poll is only a safety net, and reads the live hub through emuRef
-  // so a per-render new hub identity is always observed.
+  // so a per-render new hub identity is always observed. Check grades the
+  // authored args, never the box: the expected output was written for them,
+  // and the box is there to try others with Run.
+  const checkKey = `${startArgs ?? ""}\n${source}`;
   const checkEmbed = useCallback(async () => {
     // A run that stopped short of its end (parked on a read, paused, faulted)
     // is not a result to grade, so it runs again from the top like a stale one.
     if (
       emu.instructions.length === 0 ||
-      lastRunSourceRef.current !== runKey ||
+      lastRunSourceRef.current !== checkKey ||
       !emuRef.current.isHalted
     ) {
-      lastRunSourceRef.current = runKey;
-      const ok = await emu.assemble(source, parseArgs(argsText));
+      lastRunSourceRef.current = checkKey;
+      const ok = await emu.assemble(source, parseArgs(startArgs ?? ""));
       // A failed assemble must not reach the grader (mirroring runEmbed):
       // grading the stale machine marked structural checks green against
       // source that never built. The editor markers and the error banner
@@ -706,7 +710,7 @@ function EmbeddableCore({
       } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
     }
     onCheck?.(currentState());
-  }, [emu, source, argsText, runKey, onCheck, currentState, applySeeds]);
+  }, [emu, source, startArgs, checkKey, onCheck, currentState, applySeeds]);
 
   // Stable handle identity; every method reads through a latest-value ref so
   // the object never needs rebuilding (no re-registration churn).
