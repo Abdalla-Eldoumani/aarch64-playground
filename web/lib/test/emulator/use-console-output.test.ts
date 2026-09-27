@@ -290,3 +290,19 @@ describe("useConsoleOutput preserved history", () => {
     );
   });
 });
+
+describe("notes", () => {
+  it("accumulate in order, keep the newest 64, and go with the scrollback", () => {
+    const { result } = mount();
+    act(() => result.current.appendNotes(["first", "second"]));
+    expect(result.current.notes).toEqual(["first", "second"]);
+    // 70 more: the list keeps 64, so the oldest six of 72 drop.
+    const more = Array.from({ length: 70 }, (_, i) => `n${i}`);
+    act(() => result.current.appendNotes(more));
+    expect(result.current.notes).toHaveLength(64);
+    expect(result.current.notes[0]).toBe("n6");
+    expect(result.current.notes[63]).toBe("n69");
+    act(() => result.current.clearScrollback());
+    expect(result.current.notes).toEqual([]);
+  });
+});
