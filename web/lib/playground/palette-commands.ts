@@ -13,6 +13,8 @@ export type PaletteDeps = {
   /** Machine is parked on a read; step / back / run cannot pass it. */
   blocked: boolean;
   programLoaded: boolean;
+  /** A run is in progress, which is the only time pause does anything. */
+  isRunning: boolean;
   canStepBack: boolean;
   /** The composite launch has a pane to land in (full chrome, terminal mode). */
   launchable: boolean;
@@ -128,21 +130,23 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "pause",
       label: "Pause",
-      description: "stop a run that is in progress",
+      description: deps.isRunning
+        ? "stop the run in progress"
+        : "(nothing is running)",
       shortcut: "F5",
       run: () => deps.pause(),
     },
     {
       id: "reset",
       label: "Reset",
-      description: "clear state, keep breakpoints",
+      description: "start the program over, keeping breakpoints",
       shortcut: "Shift+F5",
       run: () => deps.reset(),
     },
     {
       id: "share",
       label: "Share link",
-      description: "copy a compressed URL",
+      description: "open a link to this program that you can copy or send",
       run: () => deps.openShare(),
     },
     {
@@ -160,7 +164,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "toggle-theme",
       label: "Toggle theme",
-      description: "switch between dark and light palettes",
+      description: "cycle through dark, light, and high contrast",
       run: () => deps.toggleTheme(),
     },
     {
