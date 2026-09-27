@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 twist:
 	sxtw	x4, w1
 	mov	x2, 4800
@@ -10,7 +10,7 @@ twist:
 	stp	x29, x30, [sp, -16]!
 	mov	x5, 4792
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L2:
 	sub	x3, x5, x1
 	ldr	x2, [x1]
@@ -34,13 +34,13 @@ twist:
 	.string	"%s: sum=%lld first=%lld last=%lld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show:
 	mov	x2, 4800
 	mov	x3, x1
 	add	x5, x1, x2
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldr	x4, [x3], 8
 	add	x2, x2, x4
@@ -53,7 +53,7 @@ show:
 	add	x0, x0, :lo12:.LC0
 	b	printf
 	.align	2
-	.align 5
+	.p2align 5,,15
 frame_600k:
 	sub	sp, sp, #2000
 	mov	x2, 10176
@@ -67,7 +67,7 @@ frame_600k:
 	add	x1, sp, 16
 	mov	w0, 0
 	mov	x2, x1
-	.align 5
+	.p2align 5,,15
 .L10:
 	asr	w3, w0, 12
 	add	w0, w0, 4096
@@ -82,7 +82,7 @@ frame_600k:
 	add	x3, x3, 2626
 	strb	w0, [x2]
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L11:
 	lsl	x2, x0, 3
 	sub	x0, x2, x0
@@ -130,7 +130,7 @@ frame_600k:
 	.string	"b3"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #1136
@@ -152,7 +152,7 @@ main:
 	add	w0, w19, 7
 	add	x1, x2, 1
 	add	x3, x2, x17
-	.align 5
+	.p2align 5,,15
 .L16:
 	strb	w0, [x1], 13
 	add	w0, w0, 91
@@ -173,7 +173,7 @@ main:
 	add	w0, w0, 9
 	strb	w0, [x1]
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L17:
 	lsl	x0, x1, 5
 	sub	x1, x0, x1
@@ -201,7 +201,7 @@ main:
 	mov	x0, x2
 	add	x4, x2, x10
 	movk	x1, 0xfffe, lsl 16
-	.align 5
+	.p2align 5,,15
 .L18:
 	str	x1, [x0]
 	add	x0, x0, 776
@@ -221,7 +221,7 @@ main:
 	sdiv	x4, x4, x5
 	mov	x1, 0
 	str	x4, [x0]
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldr	x0, [x2], 56
 	eor	x0, x0, x1, lsr 3
@@ -248,7 +248,7 @@ main:
 	mov	x2, x0
 	mov	w1, 0
 	mov	w4, 18000
-	.align 5
+	.p2align 5,,15
 .L20:
 	eor	w3, w19, w1
 	add	w1, w1, 1000
@@ -259,7 +259,7 @@ main:
 	add	x3, sp, 90112
 	mov	x1, 0
 	add	x3, x3, 1136
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldr	w2, [x0]
 	add	x1, x1, x1, lsl 1
@@ -285,7 +285,7 @@ main:
 	mov	x4, 1
 	and	x2, x2, 255
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L25:
 	mov	w3, w0
 	sub	w0, w0, #1
@@ -354,7 +354,7 @@ main:
 	str	x19, [x0]
 	add	x0, sp, x18
 	add	x3, x0, x30
-	.align 5
+	.p2align 5,,15
 .L23:
 	ldr	x2, [x0]
 	add	x0, x0, 3992
@@ -376,7 +376,7 @@ main:
 	mov	x8, 4800
 	add	x0, x19, x8
 	ldr	q30, [x1, :lo12:.LC11]
-	.align 5
+	.p2align 5,,15
 .L26:
 	add	v0.4s, v31.4s, v30.4s
 	add	v31.4s, v31.4s, v29.4s
