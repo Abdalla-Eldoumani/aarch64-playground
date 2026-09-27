@@ -143,7 +143,9 @@ export function TutorialRunner({
       className="fixed inset-x-2 top-[calc(3rem+var(--safe-top))] z-50 flex max-h-[45dvh] flex-col rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl sm:inset-x-auto sm:bottom-20 sm:right-4 sm:top-auto sm:max-h-[60vh] sm:w-[28rem]"
     >
       <div className="flex flex-1 min-h-0 flex-col">
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
+        {/* Under sm the picker takes a row of its own: in one row with the
+            step count and both buttons, close ran past a 320px screen. */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
           <Select
             value={activeId}
             placeholder="tutorial..."
@@ -152,6 +154,7 @@ export function TutorialRunner({
               { options: TUTORIALS.map((t) => ({ value: t.id, label: t.title })) },
             ]}
             onSelect={(id) => setActiveId(id)}
+            className="basis-full sm:basis-auto min-w-0"
           />
           <span className="whitespace-nowrap text-[11px] [@media(pointer:coarse)]:text-[12px] text-[var(--text-secondary)]">
             step {stepIndex + 1} / {tutorial.steps.length}
