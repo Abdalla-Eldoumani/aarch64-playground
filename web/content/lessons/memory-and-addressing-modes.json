@@ -2,6 +2,7 @@
   "title": "Memory: loads, stores, and addressing modes",
   "slug": "memory-and-addressing-modes",
   "order": 17,
+  "lastUpdated": "2026-09-27",
   "summary": "Load and store 1, 2, 4 and 8 bytes with the right extension, and reach memory through offsets, index registers, and pointers that move themselves.",
   "tags": [
     "memory and the stack"
