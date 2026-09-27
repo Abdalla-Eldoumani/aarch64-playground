@@ -19,7 +19,7 @@ skip:
 	ret
 	.align	2
 	.align 5
-oops__isra__0:
+oops.isra.0:
 	adrp	x2, .LANCHOR0
 	add	x1, x2, :lo12:.LANCHOR0
 	ldr	x3, [x1, 8]
@@ -75,7 +75,7 @@ ipow:
 .L21:
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
-	bl	oops__isra__0
+	bl	oops.isra.0
 	mov	x0, 0
 .L39:
 	ldp	x29, x30, [sp], 16
@@ -84,7 +84,7 @@ ipow:
 .L11:
 	adrp	x0, .LC0
 	add	x0, x0, :lo12:.LC0
-	bl	oops__isra__0
+	bl	oops.isra.0
 	mov	x0, 0
 	b	.L39
 	.align	2
@@ -141,7 +141,7 @@ unary:
 	adrp	x0, .LC1
 	mov	x19, 0
 	add	x0, x0, :lo12:.LC1
-	bl	oops__isra__0
+	bl	oops.isra.0
 	b	.L56
 	.align 2
 .L55:
@@ -227,7 +227,7 @@ product:
 .L64:
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
-	bl	oops__isra__0
+	bl	oops.isra.0
 .L60:
 	mov	x19, 0
 	mov	x0, x19
@@ -241,7 +241,7 @@ product:
 	mov	x19, 0
 	adrp	x0, .LC2
 	add	x0, x0, :lo12:.LC2
-	bl	oops__isra__0
+	bl	oops.isra.0
 	ldr	x23, [sp, 48]
 	mov	x0, x19
 	ldp	x19, x20, [sp, 16]
@@ -299,7 +299,7 @@ sum:
 	mov	x19, 0
 	adrp	x0, .LC1
 	add	x0, x0, :lo12:.LC1
-	bl	oops__isra__0
+	bl	oops.isra.0
 	ldr	x21, [sp, 32]
 	mov	x0, x19
 	ldp	x19, x20, [sp, 16]
@@ -359,7 +359,7 @@ cond:
 	beq	.L104
 	adrp	x0, .LC3
 	add	x0, x0, :lo12:.LC3
-	bl	oops__isra__0
+	bl	oops.isra.0
 	b	.L105
 .L104:
 	add	x0, x0, 1
@@ -419,7 +419,7 @@ atom:
 	adrp	x0, .LC6
 	str	x3, [x7, :lo12:.LANCHOR0]
 	add	x0, x0, :lo12:.LC6
-	bl	oops__isra__0
+	bl	oops.isra.0
 .L111:
 	mov	x0, 0
 .L109:
@@ -454,12 +454,12 @@ atom:
 .L119:
 	adrp	x0, .LC5
 	add	x0, x0, :lo12:.LC5
-	bl	oops__isra__0
+	bl	oops.isra.0
 	b	.L111
 .L123:
 	adrp	x0, .LC4
 	add	x0, x0, :lo12:.LC4
-	bl	oops__isra__0
+	bl	oops.isra.0
 	b	.L111
 	.section .rodata
 	.align	3
@@ -519,7 +519,7 @@ run:
 .L135:
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
-	bl	oops__isra__0
+	bl	oops.isra.0
 	ldr	x3, [x19, 8]
 	cbz	x3, .L126
 	b	.L125
