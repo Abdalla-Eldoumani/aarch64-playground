@@ -961,7 +961,7 @@ main:
 }
 
 // GAS's other sized data spellings: `.4byte` is `.word`, and `.8byte` and
-// `.xword` (the one gcc writes for pointer tables) are `.quad`, with label
+// `.xword` (the one AArch64 gcc writes for every 8-byte value) are `.quad`, with label
 // expressions as well as numbers.
 #[test]
 fn sized_data_directives_match_their_named_twins() {
