@@ -2,6 +2,7 @@
   "title": "Binary broadcast",
   "slug": "binary-broadcast",
   "order": 28,
+  "lastUpdated": "2026-09-27",
   "topic": "bitwise",
   "difficulty": "core",
   "prompt": "Print a byte the way the machine sees it: eight binary digits, so `99` prints as `01100011`. The starter reads the value, from 0 to 255.\n\nThere is no `%b` in printf, so print the digits one at a time. For each bit position from 7 down to 0, shift the value right by that many places, mask everything but the lowest bit with `and`, and print the surviving digit. One newline at the end.\n\n## what is checked\n\n- the eight binary digits on one line\n- the program exits cleanly\n- each digit is extracted with shifts and masks (`lsr` and `and`, no preformatted string)\n- the same holds for other values you do not see, 0 and 255 among them",
