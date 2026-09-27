@@ -11,7 +11,7 @@
 	.string	"%d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!
@@ -58,7 +58,7 @@ rc:
 	.align	3
 	.LANCHOR0:
 lit:
-	.quad	.LC0
+	.xword	.LC0
 	.bss
 	.align	3
 	.LANCHOR2:
