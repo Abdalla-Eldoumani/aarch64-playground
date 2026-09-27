@@ -639,7 +639,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `.byte`       | One byte.                                             |
 | `.hword` / `.short` / `.2byte` | Two bytes little-endian.             |
 | `.word` / `.4byte` | Four bytes little-endian.                        |
-| `.quad` / `.dword` / `.xword` / `.8byte` | Eight bytes little-endian. Course files write `.dword`; GCC output writes `.quad`, and `.xword` for tables of addresses. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
+| `.quad` / `.dword` / `.xword` / `.8byte` | Eight bytes little-endian. Course files write `.dword`; AArch64 GCC writes `.xword` for every 8-byte value, numbers and addresses alike; `.quad` is the name the GAS manual gives. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
 | `.double`     | IEEE 754 double (use `0r3.14` literal form).          |
 | `.float`      | IEEE 754 float.                                       |
 | `.string` / `.asciz` | Null-terminated string.                        |
@@ -669,7 +669,7 @@ An address in the unmapped first page faults here exactly as it does for
 
 ## GCC output compatibility
 
-The code AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) are in the table above.
+Most of what AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) are in the table above.
 
 A whole `-S` file still needs these edits before it assembles:
 
