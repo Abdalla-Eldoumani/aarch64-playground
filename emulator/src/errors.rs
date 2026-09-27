@@ -147,28 +147,16 @@ impl fmt::Display for EmuError {
                      after `ldr x19, =arr` overwrites the pointer)"
                 )
             }
+            // "Bus error" is what the servers' shell prints for SIGBUS, the
+            // signal this fault raises there; the fix is stated here once.
             Self::SpAlignmentFault { sp, at_call } => {
-                if *at_call {
-                    write!(
-                        f,
-                        "stopped: sp is 0x{sp:x} at this call, which is not a multiple of \
-                         16. AAPCS64 requires sp on a 16-byte boundary at every bl, and on \
-                         Linux the routine you called faults the first time it touches the \
-                         stack (a bus error on the servers). Round the frame up: \
-                         `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom \
-                         `alloc = -(16 + locals) & -16`"
-                    )
-                } else {
-                    write!(
-                        f,
-                        "stopped: sp is 0x{sp:x}, which is not a multiple of 16. On Linux \
-                         every load or store through sp faults when sp is off the 16-byte \
-                         boundary (a bus error on the servers); the line that broke it is \
-                         above this one. Round the frame up: `sub sp, sp, 32` instead of \
-                         `sub sp, sp, 24`, or the course idiom \
-                         `alloc = -(16 + locals) & -16`"
-                    )
-                }
+                let place = if *at_call { " at this call" } else { "" };
+                write!(
+                    f,
+                    "Bus error\nsp is 0x{sp:x}{place}, which is not a multiple of 16: \
+                     round the frame size above it up to a multiple of 16 (32 instead \
+                     of 24), or size it with `alloc = -(16 + locals) & -16`"
+                )
             }
             Self::RuntimeError { message } => write!(f, "{message}"),
         }
