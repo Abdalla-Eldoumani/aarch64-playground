@@ -2,6 +2,7 @@
   "title": "Tic-tac-toe judge",
   "slug": "tic-tac-toe-judge",
   "order": 32,
+  "lastUpdated": "2026-09-27",
   "topic": "arrays",
   "difficulty": "core",
   "prompt": "The starter reads a tic-tac-toe board into `board` as one line of nine characters, row by row: `X`, `O`, or `.` for an empty cell. The input `XOX.OX.O.` is this board:\n\n```text\nX O X\n. O X\n. O .\n```\n\nPrint `X wins` or `O wins` when a row, a column, or a diagonal holds three of the same mark. When no line is complete, print `keep playing` if any cell is still empty, or `draw` if the board is full.\n\nThe board is a two-dimensional array stored one row after another (row-major order), one byte per cell, so the cell in row r, column c is the byte at `board + r * 3 + c`. The boards come from real games, so at most one player has a complete line.\n\n## what is checked\n\n- one line with the verdict\n- the program exits cleanly\n- cells are read from memory one byte at a time (`ldrb` present)\n- your program also runs on boards you do not see: wins along a row, a column and each diagonal, a full board with a winner, a full board without one, and an empty board",
