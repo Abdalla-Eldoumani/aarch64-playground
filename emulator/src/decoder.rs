@@ -81,6 +81,8 @@ impl MemSize {
 pub enum LdStPairOp {
     Ldp,
     Stp,
+    /// Two words, each sign-extended into an X register.
+    Ldpsw,
 }
 
 /// Which of the three shapes a structure load or store takes.
@@ -338,6 +340,20 @@ pub const FP_UNARY_OPS: &[(&str, u8, FpUnaryOp)] = &[
     ("fabs", 0b000001, FpUnaryOp::Fabs),
     ("fneg", 0b000010, FpUnaryOp::Fneg),
     ("fsqrt", 0b000011, FpUnaryOp::Fsqrt),
+];
+
+/// The scalar roundings `frintn d0, d1` and friends, which sit in the same
+/// 1-source class as FNEG rather than among the SIMD-scalar words. They
+/// decode onto the vector rows' lane function, so one rounding rule (and
+/// one NaN rule) serves both forms.
+pub const FP_ROUND_OPS: &[(u8, SimdFpMiscOp)] = &[
+    (0b001000, SimdFpMiscOp::Frintn),
+    (0b001001, SimdFpMiscOp::Frintp),
+    (0b001010, SimdFpMiscOp::Frintm),
+    (0b001011, SimdFpMiscOp::Frintz),
+    (0b001100, SimdFpMiscOp::Frinta),
+    (0b001110, SimdFpMiscOp::Frintx),
+    (0b001111, SimdFpMiscOp::Frinti),
 ];
 
 /// FP-to-integer rounding mode and signedness. The letter pairs read the
@@ -2080,6 +2096,16 @@ pub enum Instruction {
         rm: u8,
         shift: ShiftType,
     },
+    /// EXTR: the pair Rn:Rm shifted right by `lsb`, keeping the low
+    /// register's worth (gcc's funnel shift). `ror Rd, Rn, #k` is the
+    /// Rn == Rm case and decodes as the ORR-with-ROR form instead.
+    Extr {
+        sf: bool,
+        rd: u8,
+        rn: u8,
+        rm: u8,
+        lsb: u8,
+    },
     /// ADD/SUB/ADDS/SUBS with EXTENDED register operand (bit 21 = 1):
     /// the only register form that reaches SP: Rn = 31 reads SP, and
     /// Rd = 31 writes SP for the non-flag-setting ops. Rm = 31 stays XZR.
@@ -2581,6 +2607,21 @@ pub enum Instruction {
         fm: u8,
         single: bool,
     },
+    /// FCMP Fn, #0.0: the compare against zero, which names no Fm.
+    FpCompareZero {
+        fn_: u8,
+        single: bool,
+    },
+    /// FCCMP Fn, Fm, #nzcv, cond: FCMP when cond holds, the literal flags
+    /// otherwise, as CCMP. FCCMPE lands here too: it differs only in an
+    /// exception a quiet NaN raises, and the emulator raises none.
+    FpCondCompare {
+        fn_: u8,
+        fm: u8,
+        nzcv: u8,
+        cond: Condition,
+        single: bool,
+    },
     /// FNEG / FABS Fd, Fn: sign flip / sign clear.
     FpUnary {
         op: FpUnaryOp,
@@ -2652,6 +2693,11 @@ pub enum Instruction {
     Nop,
     /// SVC supervisor call: `svc #0` enters the syscall dispatcher; any other immediate halts.
     Svc {
+        imm16: u16,
+    },
+    /// BRK: a breakpoint trap. gcc plants `brk #1000` on a path it proved
+    /// can only fault, and Linux stops the program there with SIGTRAP.
+    Brk {
         imm16: u16,
     },
 }
@@ -2887,6 +2933,12 @@ pub fn decode(instr: u32) -> Result<Instruction, EmuError> {
     if (instr & 0xFFE0_001F) == 0xD400_0001 {
         let imm16 = bits(instr, 20, 5) as u16;
         return Ok(Instruction::Svc { imm16 });
+    }
+
+    // BRK: 1101_0100 001i_iiii iiii_iiii iii0_0000
+    if (instr & 0xFFE0_001F) == 0xD420_0000 {
+        let imm16 = bits(instr, 20, 5) as u16;
+        return Ok(Instruction::Brk { imm16 });
     }
 
     let op0 = bits(instr, 28, 25);
@@ -3429,9 +3481,14 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         return Ok(Instruction::FpBinary { op: *op, fd: rd, fn_: rn, fm: rm, single });
     }
 
-    // FCSEL: bits 11:10 = 11. The 01 neighbour is FCCMP/FCCMPE, which is
-    // out of scope and must keep falling through to the reject at the
-    // bottom rather than being folded in here.
+    // FCCMP / FCCMPE: bits 11:10 = 01, the signalling form in bit 4.
+    if bits(instr, 11, 10) == 0b01 {
+        let cond = Condition::from_u8(bits(instr, 15, 12) as u8)?;
+        let nzcv = bits(instr, 3, 0) as u8;
+        return Ok(Instruction::FpCondCompare { fn_: rn, fm: rm, nzcv, cond, single });
+    }
+
+    // FCSEL: bits 11:10 = 11.
     if bits(instr, 11, 10) == 0b11 {
         let cond = Condition::from_u8(bits(instr, 15, 12) as u8)?;
         return Ok(Instruction::FpCondSel { fd: rd, fn_: rn, fm: rm, cond, single });
@@ -3446,6 +3503,17 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
         if let Some((_, _, op)) = FP_UNARY_OPS.iter().find(|(_, code, _)| u32::from(*code) == opcode)
         {
             return Ok(Instruction::FpUnary { op: *op, fd: rd, fn_: rn, single });
+        }
+        if let Some((_, op)) = FP_ROUND_OPS.iter().find(|(code, _)| u32::from(*code) == opcode) {
+            return Ok(Instruction::SimdFpTwoMisc {
+                op: *op,
+                esize: if single { 4 } else { 8 },
+                q: false,
+                scalar: true,
+                fbits: 0,
+                rn,
+                rd,
+            });
         }
         match opcode {
             0b000000 => return Ok(Instruction::FpMoveReg { fd: rd, fn_: rn, single }),
@@ -3480,6 +3548,10 @@ fn decode_fp_group(instr: u32) -> Result<Instruction, EmuError> {
     // no FP exceptions, so both set the same flags.
     if bits(instr, 15, 10) == 0b001000 && matches!(bits(instr, 4, 0), 0b00000 | 0b10000) {
         return Ok(Instruction::FpCompare { fn_: rn, fm: rm, single });
+    }
+    // opc bit 3 is the compare against #0.0, whose Rm field is zero.
+    if bits(instr, 15, 10) == 0b001000 && rm == 0 && matches!(bits(instr, 4, 0), 0b01000 | 0b11000) {
+        return Ok(Instruction::FpCompareZero { fn_: rn, single });
     }
 
     // FMOV between the register files: rmode 00, opcode 110 (FP -> GP) or
@@ -3537,8 +3609,7 @@ fn decode_dp_imm_group(instr: u32) -> Result<Instruction, EmuError> {
 /// shift aliases in `decode_bitfield`, it lowers onto the executor's
 /// ORR-with-shifted-register path, since `ORR Rd, ZR, Rn, ROR #shift` is
 /// bit-for-bit the same operation. A general EXTR (two different sources)
-/// has no equivalent there and stays unknown; the assembler never emits
-/// one, and executing a wrong instruction would be worse than refusing.
+/// is its own instruction.
 fn decode_extract(instr: u32) -> Result<Instruction, EmuError> {
     let sf = bit(instr, 31) == 1;
     let n = bit(instr, 22) == 1;
@@ -3553,7 +3624,7 @@ fn decode_extract(instr: u32) -> Result<Instruction, EmuError> {
         return Err(EmuError::UnknownInstruction(instr));
     }
     if rm != rn {
-        return Err(EmuError::UnknownInstruction(instr));
+        return Ok(Instruction::Extr { sf, rd, rn, rm, lsb: imms });
     }
 
     Ok(Instruction::LogReg {
@@ -3934,6 +4005,8 @@ pub fn format(instr: &Instruction) -> Option<String> {
                 (LdStPairOp::Stp, false) => "stp",
                 (LdStPairOp::Ldp, true) => "ldnp",
                 (LdStPairOp::Stp, true) => "stnp",
+                // Integer only; the SIMD&FP decode never builds it.
+                (LdStPairOp::Ldpsw, _) => "ldpsw",
             };
             let reg = fp_reg_letter(*size);
             let address = address_text(*rn, &LdStOffset::Immediate(i64::from(*imm7)), *mode);
@@ -4461,10 +4534,19 @@ fn decode_ldst_pair(instr: u32) -> Result<Instruction, EmuError> {
         return Err(EmuError::UnknownInstruction(instr));
     }
 
-    let sf = opc == 0b10; // 10 = 64-bit, 00 = 32-bit
+    // opc 01 with L set is LDPSW; its store half and opc 11 are not base
+    // instructions, and decoding either as a word pair would run the
+    // wrong thing quietly.
+    let op = match (opc, op) {
+        (0b01, LdStPairOp::Ldp) => LdStPairOp::Ldpsw,
+        (0b01, _) | (0b11, _) => return Err(EmuError::UnknownInstruction(instr)),
+        _ => op,
+    };
+    let sf = opc != 0b00; // 10 = 64-bit, 00 = 32-bit, LDPSW writes X
 
-    // imm7 is signed, scaled by access size (4 for 32-bit, 8 for 64-bit)
-    let scale = if sf { 8 } else { 4 };
+    // imm7 is signed, scaled by the access size: 8 for an X pair, 4 for a
+    // W pair and for LDPSW's two words
+    let scale = if opc == 0b10 { 8 } else { 4 };
     let signed_imm = sign_extend(imm7, 7) as i16 * scale;
 
     Ok(Instruction::LdStPair {
