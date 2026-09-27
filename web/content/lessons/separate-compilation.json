@@ -1,0 +1,141 @@
+{
+  "title": "Splitting a program across files",
+  "slug": "separate-compilation",
+  "order": 25,
+  "summary": "Split a program into files, share labels between them with .global, and build it so the linker can join the pieces, C files included.",
+  "tags": [
+    "external data",
+    "subroutines"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [External data: .data, .bss, and .text](/learn/external-data)\n- [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions)"
+    },
+    {
+      "type": "prose",
+      "markdown": "Every program so far has lived in one file. Larger programs are split up, one file per job: each file stays short enough to read, a helper written once can serve the next program too, and two people can edit different files at the same time.\n\nYou have used a second file all along without seeing it. `printf` is not in your program. It lives in the C library, and `bl printf` works because a tool called the *linker* finds it there and connects your call to it. This lesson does the same with a file you write yourself."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Source files, object files, and the linker\n\nOn the server a program is built in stages, and each file goes through the first two on its own:\n\n1. `m4` expands the `define` names in one `.asm` file and writes a `.s` file.\n2. The assembler turns one `.s` file into an *object file* (a `.o` file): the machine code for that one file. Any label the file uses but does not contain is left as a gap, with the label's name written next to it.\n3. The *linker* joins every object file, plus the C library, into one program. It gives each label its final address and fills each gap by finding the name in another file.\n\n`gcc` runs the assembler and the linker for you. Given several files, it makes an object file from each and links them together."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Sharing a name with .global\n\nA label is private to its file unless the file exports it. `.global name` exports a label: the assembler lists the name in the object file, where the linker can match it against the gaps in other files. That is why every program has said `.global main`. The start-up code in the C library calls `main`, and it can only reach a label that is exported.\n\nThe file that uses the name declares nothing. In a file with no `clamp:` label, `bl clamp` is not an error to the assembler; it is a gap for the linker to fill.\n\nHere is a helper file, `clamp.asm`, that exports three names: a function, `clamp`, and two pieces of data, a table of sensor readings and the number of entries in it."
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "// clamp.asm: one function and one table, both exported with .global\n\n.data\n        .balign 4\n        .global readings\nreadings:   .word   -12, 37, 105, 88, 250\n        .global nreadings\nnreadings:  .word   5\n\n.text\n// clamp(w0 = v, w1 = lo, w2 = hi) -> w0 = v held inside lo..hi\n// Calls nothing and uses only w0 to w2, so it needs no frame\n        .balign 4\n        .global clamp\nclamp:\n        cmp     w0, w1\n        b.ge    cl_not_low\n        mov     w0, w1                      // below the range: answer lo\ncl_not_low:\n        cmp     w0, w2\n        b.le    cl_done\n        mov     w0, w2                      // above the range: answer hi\ncl_done:\n        ret\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "`clamp` takes a value and a range in `w0`, `w1`, and `w2`, and returns in `w0` the value moved inside the range. It calls nothing and changes no callee-saved register, so it needs no frame.\n\nThe file has no `define` lines because it uses no aliases. On the server `m4` reads each file by itself, so a helper that writes `fp` and `lr` needs its own `define(fp, x29)` and `define(lr, x30)` at the top: the ones in `main.asm` mean nothing to it."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Running the pair\n\n`main.asm` walks the table, calls `clamp` on each reading with the range 0 to 100, and prints the reading before and after. The editor holds both files one after the other, joined the way the playground joins files: everything above the line `// ---- clamp.asm ----` is `main.asm`, and everything below it is `clamp.asm`."
+    },
+    {
+      "type": "editor",
+      "starter": "// main.asm: hold each sensor reading inside 0..100 and print both values\n// readings, nreadings, and clamp are not in this file: clamp.asm exports them\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(table_r, x19)\ndefine(n_r, w20)\ndefine(i_r, w21)\ndefine(raw_r, w22)\n\ndefine(LOW, 0)\ndefine(HIGH, 100)\n\nsave_s = 16\nalloc = -(16 + 32) & -16\ndealloc = -alloc\n\n.data\nfmt_row:    .string \"reading %d: %4d becomes %3d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        stp     x19, x20, [fp, save_s]      // main changes x19 to x22, so it\n        stp     x21, x22, [fp, save_s + 16] // saves them for whoever called it\n\n        ldr     table_r, =readings          // a label from the other file\n        ldr     x9, =nreadings\n        ldr     n_r, [x9]\n        mov     i_r, 0\n        b       mn_test\nmn_loop:\n        ldr     raw_r, [table_r, i_r, SXTW 2]\n        mov     w0, raw_r\n        mov     w1, LOW\n        mov     w2, HIGH\n        bl      clamp                       // so is this one\n\n        mov     w3, w0                      // the answer, before x0 is reused\n        ldr     x0, =fmt_row\n        mov     w1, i_r\n        mov     w2, raw_r\n        bl      printf\n\n        add     i_r, i_r, 1\nmn_test:\n        cmp     i_r, n_r\n        b.lt    mn_loop\n\n        mov     w0, 0\n        ldp     x19, x20, [fp, save_s]\n        ldp     x21, x22, [fp, save_s + 16]\n        ldp     fp, lr, [sp], dealloc\n        ret\n// ---- clamp.asm ----\n// clamp.asm: one function and one table, both exported with .global\n\n.data\n        .balign 4\n        .global readings\nreadings:   .word   -12, 37, 105, 88, 250\n        .global nreadings\nnreadings:  .word   5\n\n.text\n// clamp(w0 = v, w1 = lo, w2 = hi) -> w0 = v held inside lo..hi\n// Calls nothing and uses only w0 to w2, so it needs no frame\n        .balign 4\n        .global clamp\nclamp:\n        cmp     w0, w1\n        b.ge    cl_not_low\n        mov     w0, w1                      // below the range: answer lo\ncl_not_low:\n        cmp     w0, w2\n        b.le    cl_done\n        mov     w0, w2                      // above the range: answer hi\ncl_done:\n        ret\n",
+      "expectedOutput": {
+        "stdout": "reading 0:  -12 becomes   0\nreading 1:   37 becomes  37\nreading 2:  105 becomes 100\nreading 3:   88 becomes  88\nreading 4:  250 becomes 100\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "It prints five lines. The readings already inside the range keep their value, -12 becomes 0, and 105 and 250 both become 100:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "reading 0:  -12 becomes   0\nreading 1:   37 becomes  37\nreading 2:  105 becomes 100\nreading 3:   88 becomes  88\nreading 4:  250 becomes 100\n"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "In the full [playground](/playground) you can keep the two files apart. Type `clamp.asm` into the small file-name box above the editor, press **+**, and move everything below the marker line into the new tab. Before it assembles, the playground joins its tabs in order, with the same marker line between them."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Building it on the server\n\nOn the server the two files stay apart. Run `m4` on each, then name both on the `gcc` line. The first group below builds and links in one command. The second makes each object file with `gcc -c` (make the object file, do not link) and then links them, which is how a large program avoids rebuilding the files that did not change."
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "$ m4 main.asm > main.s\n$ m4 clamp.asm > clamp.s\n$ gcc main.s clamp.s -o sensors     # assemble both files and link them\n$ ./sensors\n\n$ gcc -c main.s                     # main.o: clamp and readings are still gaps\n$ gcc -c clamp.s                    # clamp.o: exports clamp, readings, nreadings\n$ gcc main.o clamp.o -o sensors     # the linker fills the gaps\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Now delete the line `.global clamp` from `clamp.asm` and build again with the second group. `clamp.o` still contains the function, but the name is no longer exported, so the linker cannot fill the gap in `main.o` and stops with a message like this one:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "/usr/bin/ld.bfd: main.o: in function `mn_loop':\n(.text+0x34): undefined reference to `clamp'\ncollect2: error: ld returned 1 exit status\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The first line names the file and the nearest label before the call, and `0x34` is the call's distance in bytes from the start of `main.o`'s code. The fix goes in the file that defines the label, which is missing its `.global`, never in the file that uses it."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The playground joins every file into one before it assembles, so there a label is visible everywhere whether or not it is exported, and a missing `.global` in a helper goes unnoticed. Only the server's linker checks. Before you hand in a program split across files, build it on the server with every file named on the `gcc` line."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Calling assembly from C\n\nC and assembly follow the same calling convention, so each can call the other. A C file calls an assembly function like any other function. It needs a *prototype*, a line that gives the function's name, argument types, and result type without a body, and the linker finds the body in `clamp.o`. The C compiler puts the three arguments in `w0`, `w1`, and `w2` and reads the answer from `w0`, exactly where `clamp` expects them and leaves it."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "// report.c: C code that calls clamp, which is written in assembly\n#include <stdio.h>\n\nint clamp(int v, int lo, int hi);      // the body is in clamp.asm\n\nint main(void)\n{\n    int volume[] = { -3, 7, 15 };\n\n    for (int i = 0; i < 3; i++)\n        printf(\"%d is set to %d\\n\", volume[i], clamp(volume[i], 0, 10));\n    return 0;\n}\n"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "$ m4 clamp.asm > clamp.s\n$ gcc report.c clamp.s -o report\n$ ./report\n-3 is set to 0\n7 is set to 7\n15 is set to 10\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Calling C from assembly\n\nThe other direction needs nothing new: `bl is_leap` reaches a C function the same way `bl printf` does. The C function follows the same rules as `printf`. It takes its argument in `w0`, returns in `w0`, and may change `x0` to `x18`, so the loop in `years.asm` keeps its values in `x19` to `x21` and saves them first."
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "// leap.c: a C function that years.asm calls\nint is_leap(int year)\n{\n    // every fourth year, except centuries, except every fourth century\n    return (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;\n}\n"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "// years.asm: ask a C function about four years and print each answer\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(list_r, x19)\ndefine(k_r, w20)\ndefine(year_r, w21)\n\nsave_s = 16\nalloc = -(16 + 32) & -16\ndealloc = -alloc\n\n.data\nfmt_leap:   .string \"is_leap(%d) = %d\\n\"\n        .balign 4\nyears:      .word   1900, 2000, 2024, 2026\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        stp     x19, x20, [fp, save_s]\n        str     x21, [fp, save_s + 16]\n\n        ldr     list_r, =years\n        mov     k_r, 0\n        b       yr_test\nyr_loop:\n        ldr     year_r, [list_r, k_r, SXTW 2]\n        mov     w0, year_r\n        bl      is_leap                     // written in C, in leap.c\n\n        mov     w2, w0\n        ldr     x0, =fmt_leap\n        mov     w1, year_r\n        bl      printf\n\n        add     k_r, k_r, 1\nyr_test:\n        cmp     k_r, 4\n        b.lt    yr_loop\n\n        mov     w0, 0\n        ldp     x19, x20, [fp, save_s]\n        ldr     x21, [fp, save_s + 16]\n        ldp     fp, lr, [sp], dealloc\n        ret\n"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "$ m4 years.asm > years.s\n$ gcc years.s leap.c -o years\n$ ./years\nis_leap(1900) = 0\nis_leap(2000) = 1\nis_leap(2024) = 1\nis_leap(2026) = 0\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The playground runs assembly only, so these two programs are shown here rather than run: build them on the server with the commands above."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. A file says `bl area` and has no `area:` label. Does the assembler reject it?\n2. `stats.asm` defines `mean:` without `.global mean`, and `main.asm` calls `mean`. Which build step fails on the server, and which file do you fix?\n3. Why does a helper file that uses `fp` and `lr` need its own `define` lines?\n4. A C file calls `int clamp(int v, int lo, int hi)`. Which registers carry the three arguments and the result?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. No. The assembler leaves a gap named `area` in the object file; only the linker reports a name it cannot find.\n2. The link step fails with an undefined reference to `mean`. Add `.global mean` to `stats.asm`, the file that defines it.\n3. On the server `m4` reads each file on its own, so aliases defined in `main.asm` do not exist while it reads the helper.\n4. `w0`, `w1`, and `w2` carry the arguments and `w0` the result. C uses the same calling convention as your assembly."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Fill in the blank: external data (core)](/practice/blanks-external-data): how to export a label.\n- [Quiz: external data (core)](/practice/quiz-inter-external-data): the sections these files keep their data in."
+    }
+  ]
+}
