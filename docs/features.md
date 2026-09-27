@@ -46,7 +46,7 @@ reference).
 | Monaco editor with three themes | `web/components/playground/Editor.tsx` |
 | Lazy editor (module-scope `next/dynamic`, so only an editable surface pulls Monaco; the chunk import waits on the web fonts so the swap cannot move the editor after it mounts) | `web/components/playground/lazy-editor.tsx`, `fonts-settled.ts` |
 | Vendored editor runtime (editor-only entry + its worker, same-origin, lazy chunk) | `web/components/playground/Editor.tsx::loadMonaco`, the `monaco-editor` dependency in `web/package.json`, `web/types/monaco-edcore.d.ts` |
-| Mobile fallback editor (textarea) | `web/components/playground/Editor.tsx::FallbackEditor` |
+| Touch editor (a native textarea over coloured code, with line numbers, breakpoints, and the current-line band; every touch screen, and windows under 480px) | `web/components/playground/TouchEditor.tsx` |
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
 | Context-aware completion provider | `web/lib/asm/asm-completion.ts` |
 | Per-mnemonic Monaco hover docs | `web/lib/asm/instruction-docs.ts`, `error-explain.ts` |
@@ -94,7 +94,9 @@ reference).
 | Feature | Lives in |
 | --- | --- |
 | Resizable nested panels (lg+) | `web/components/playground/ResizableLayout.tsx` |
-| Bottom tab strip (< md) | `web/components/playground/MobileLayout.tsx` |
+| Phone playground (under 768px wide, or under 500px tall): code, registers, console, and more tabs under the run controls; on its side, code left and the chosen view right | `web/components/playground/PhoneLayout.tsx` |
+| Phone menu sheet (import and export, recents, args, the tools, and the site links) | `web/components/playground/MoreSheet.tsx`, `PlaygroundHeaderBand.tsx` |
+| Phone run status line (finished, exit code, steps) with a peek at the registers the last step wrote | `web/components/playground/RunStatus.tsx` |
 | Mobile nav drawer (< md) | `web/components/chrome/MobileNavDrawer.tsx` |
 | Layout persistence | `web/lib/hooks/use-layout-persistence.ts` |
 | Three-way theme cycle | `web/lib/hooks/use-theme.ts`, `web/components/chrome/ThemeControl.tsx` |
@@ -158,6 +160,7 @@ reference).
 | Service worker (cache-first / network-first split) | `web/public/sw.js` |
 | SW registration (idempotent) | `web/lib/playground/register-sw.ts`, `web/components/chrome/RegisterSW.tsx` |
 | Online / offline badge | `web/components/chrome/OfflineBadge.tsx` |
+| Add to Home Screen tip (iOS Safari only, dismissible, on the content pages) | `web/components/chrome/InstallHint.tsx` |
 
 ## Notifications
 
