@@ -1,0 +1,176 @@
+{
+  "title": "Binary arithmetic: flags, carries, and wide numbers",
+  "slug": "binary-arithmetic-and-flags",
+  "order": 16,
+  "summary": "Predict the N, Z, C and V flags after an add or a subtract, pick a signed or an unsigned branch, and add numbers wider than 64 bits.",
+  "tags": [
+    "binary arithmetic",
+    "branching"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)\n- [Binary, hex, and octal: one number, many spellings](/learn/binary-hex-and-octal)\n- [Shifts, sign extension, and bitfields](/learn/shifts-and-bitfields)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A register holds a fixed number of bits: 32 in a `w` register, 64 in an `x` register. Every add and subtract has to fit its answer into those bits, and sometimes the true answer does not fit. The processor never stops to complain. It keeps the bits that fit and records four facts about the result in the *condition flags*, four single bits named N, Z, C and V that the conditional branches read.\n\nThis lesson covers what each flag means, which branches read which flags, and how the carry flag lets a program add numbers too wide for any one register."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Adding in binary\n\nBinary addition works column by column from the right, the same as decimal addition, except that a column is full at 2 instead of 10. 1 + 1 is 10 in binary: write 0 and carry 1 into the next column. Here is 109 + 167 worked in 8 bits:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "    0110 1101      109\n  + 1010 0111    + 167\n  -----------    -----\n  1 0001 0100      276\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The answer needs 9 bits, and an 8-bit register has room for 8. The extra 1 on the left, the *carry out*, is dropped, and the register keeps `0001 0100`, which is 20. That is 276 - 256: the count went past the largest 8-bit value, 255, and started again from 0, the way a car's odometer rolls from 99999 to 00000. Keeping only the low n bits of every answer is called arithmetic *modulo 2^n*. A `w` register works modulo 2^32 and an `x` register modulo 2^64."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Subtraction is addition\n\nThe processor has no separate circuit for subtracting. To work out a - b it adds a to the negation of b, and the negation of b in two's complement is b with every bit flipped, plus 1. Here is 5 - 7 in 8 bits:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "  7              0000 0111\n  flip the bits  1111 1000\n  add 1          1111 1001    this is -7\n\n    0000 0101      5\n  + 1111 1001     -7\n  -----------\n    1111 1110     -2 read as signed, 254 read as unsigned\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "No carry comes out of the top bit here, and that is how the processor knows a *borrow* was needed: 5 is smaller than 7, so the subtraction had to take from a column that is not there. Work out 7 - 5 the same way and a carry does come out of the top bit, because no borrow was needed. So after a subtraction, a carry of 1 means \"no borrow\" and a carry of 0 means \"borrow\"."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The four flags\n\n| flag | name | set to 1 when |\n|---|---|---|\n| N | negative | the top bit of the result is 1, so the result reads as negative when treated as signed |\n| Z | zero | every bit of the result is 0 |\n| C | carry | an add carried a 1 out of the top bit, or a subtract needed no borrow |\n| V | overflow | the signed answer does not fit, so the result has the wrong sign; for an add, two values with the same sign gave a result with the other sign |\n\nAmong the arithmetic and logic instructions, only the ones that end in `s` write the flags: `adds`, `subs`, `ands`, `negs`, `adcs` and `sbcs`. `cmp a, b` is a `subs` that throws its result away and keeps only the flags, `cmn a, b` does the same with `adds`, and `tst a, b` does the same with `ands`. A plain `add` or `sub` leaves the flags exactly as they were."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "C and V ask different questions about the same bits. C asks whether the answer fits when every value is read as unsigned, 0 to 2^32 - 1 for a `w` register. V asks whether it fits when every value is read as signed, -2^31 to 2^31 - 1. One operation can set either flag, both, or neither."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Watching the flags change\n\nThe program below does four 32-bit operations picked to sit at the edges of the register, and prints each result in hex beside its four flags. It reads the flags with `cset`, which writes 1 to a register when a condition holds and 0 when it does not. `cset w3, mi` gives 1 when N is set (`mi` is short for minus), `eq` checks Z, `cs` checks C, and `vs` checks V. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "operation         result      N Z C V\n0x7fffffff + 1    0x80000000  1 0 0 1\n0xffffffff + 1    0x00000000  0 1 1 0\n5 - 5             0x00000000  0 1 1 0\n3 - 7             0xfffffffc  1 0 0 0\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Row by row:\n\n- `0x7fffffff + 1`: two positive values gave `0x80000000`, whose top bit is 1. Read as signed, that is the most negative `int`, so the true answer did not fit: V = 1 and N = 1. No carry came out of bit 31, so C = 0.\n- `0xffffffff + 1`: every column carries, the carry falls off the top, and the result is 0, so Z = 1 and C = 1. Read as signed this is -1 + 1 = 0, which fits, so V = 0.\n- `5 - 5`: the result is 0, so Z = 1, and no borrow was needed, so C = 1.\n- `3 - 7`: the result is `0xfffffffc`, which is -4, so N = 1. A borrow was needed, so C = 0, and -4 fits, so V = 0.\n\nChange one operand, predict all four flags, then run it to check."
+    },
+    {
+      "type": "editor",
+      "starter": "// Add and subtract at the edges of a 32-bit register, then print\n// each result beside the four flags it left behind\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_head:   .string \"operation         result      N Z C V\\n\"\nfmt_row:    .string \"%-16s  0x%08x  %d %d %d %d\\n\"\nop_1:       .string \"0x7fffffff + 1\"\nop_2:       .string \"0xffffffff + 1\"\nop_3:       .string \"5 - 5\"\nop_4:       .string \"3 - 7\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_head\n        bl      printf\n\n        mov     w9, 0x7fffffff              // the largest positive int\n        adds    w2, w9, 1                   // result lands in printf's third argument\n        ldr     x0, =fmt_row                // ldr and cset leave the flags alone\n        ldr     x1, =op_1\n        cset    w3, mi                      // N: 1 when the top bit is 1\n        cset    w4, eq                      // Z: 1 when the result is 0\n        cset    w5, cs                      // C: 1 when a carry left bit 31\n        cset    w6, vs                      // V: 1 when the signed answer did not fit\n        bl      printf\n\n        mov     w9, 0xffffffff              // every bit set\n        adds    w2, w9, 1\n        ldr     x0, =fmt_row\n        ldr     x1, =op_2\n        cset    w3, mi\n        cset    w4, eq\n        cset    w5, cs\n        cset    w6, vs\n        bl      printf\n\n        mov     w9, 5\n        subs    w2, w9, 5\n        ldr     x0, =fmt_row\n        ldr     x1, =op_3\n        cset    w3, mi\n        cset    w4, eq\n        cset    w5, cs\n        cset    w6, vs\n        bl      printf\n\n        mov     w9, 3\n        subs    w2, w9, 7\n        ldr     x0, =fmt_row\n        ldr     x1, =op_4\n        cset    w3, mi\n        cset    w4, eq\n        cset    w5, cs\n        cset    w6, vs\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "operation         result      N Z C V\n0x7fffffff + 1    0x80000000  1 0 0 1\n0xffffffff + 1    0x00000000  0 1 1 0\n5 - 5             0x00000000  0 1 1 0\n3 - 7             0xfffffffc  1 0 0 0\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "markdown": "The `ldr` and `cset` lines between `adds` and `bl printf` never touch the flags, so all four `cset` lines read the same result. A call is different: `printf`, like any function, is free to change the flags, so read them before the call, never after."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Signed and unsigned conditions\n\n`cmp a, b` works out a - b and sets all four flags. It does not know whether you mean the bits as signed or unsigned, and it does not need to: the branch that follows makes that choice. The bit pattern `0xffffffff` is 4294967295 read as unsigned and -1 read as signed. Signed conditions read N and V, unsigned conditions read C and Z:\n\n| to branch when | signed | unsigned |\n|---|---|---|\n| a < b | `b.lt` (less than) | `b.lo` (lower) |\n| a <= b | `b.le` (less or equal) | `b.ls` (lower or same) |\n| a > b | `b.gt` (greater than) | `b.hi` (higher) |\n| a >= b | `b.ge` (greater or equal) | `b.hs` (higher or same) |\n\n`b.eq` and `b.ne` read Z alone, so they work for both kinds. `b.hs` and `b.lo` have second names, `b.cs` (carry set) and `b.cc` (carry clear), because after a compare they test C and nothing else."
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below compares -1 with 1 twice, once with `b.lt` and once with `b.lo`. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "signed:   -1 is less than 1\nunsigned: 4294967295 is not lower than 1\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// One bit pattern read two ways: compare -1 with 1 as signed, then as unsigned\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_r, w19)\ndefine(b_r, w20)\n\n.data\nfmt_lt:     .string \"signed:   %d is less than %d\\n\"\nfmt_ge:     .string \"signed:   %d is not less than %d\\n\"\nfmt_lo:     .string \"unsigned: %u is lower than %u\\n\"\nfmt_hs:     .string \"unsigned: %u is not lower than %u\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, -1                     // the bit pattern 0xffffffff\n        mov     b_r, 1\n\n        cmp     a_r, b_r\n        b.lt    s_less                      // lt reads N and V: a signed test\n        ldr     x0, =fmt_ge\n        b       s_print\ns_less:\n        ldr     x0, =fmt_lt\ns_print:\n        mov     w1, a_r\n        mov     w2, b_r\n        bl      printf\n\n        cmp     a_r, b_r                    // printf may change the flags, so compare again\n        b.lo    u_lower                     // lo reads C: an unsigned test\n        ldr     x0, =fmt_hs\n        b       u_print\nu_lower:\n        ldr     x0, =fmt_lo\nu_print:\n        mov     w1, a_r\n        mov     w2, b_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "signed:   -1 is less than 1\nunsigned: 4294967295 is not lower than 1\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Same compare, same flags, opposite answers. Pick the condition that matches what the number means: a count, a size or an address is unsigned, and a value that can drop below zero is signed."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`a_r` and `b_r` live in `w19` and `w20` because `printf` may change `x0` to `x18` and the flags. `main` uses them without saving them first, as course programs do. A subroutine you write must save any of `x19` to `x28` it changes and put them back before it returns."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Numbers wider than a register\n\nA 128-bit number fits in two `x` registers: a high half and a low half. Adding two of them is column addition again, with columns 64 bits wide. First add the low halves with `adds`, which leaves the carry out of bit 63 in C. Then add the high halves with `adc` (add with carry), which adds C in as one extra 1.\n\nSubtraction has the same pair: `subs` on the low halves, then `sbc` (subtract with carry) on the high halves, which takes away one more when the low halves needed a borrow. For numbers longer than two registers, each middle step uses `adcs` or `sbcs`, which take the carry in and also set a new one for the next step.\n\nThe program below adds two 128-bit numbers and prints them laid out like a sum on paper, high half first:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "  0000000000000001 ffffffffffffffff\n+ 0000000000000002 0000000000000003\n= 0000000000000004 0000000000000002\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Add two 128-bit numbers, each kept as a high and a low 64-bit half\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(a_hi, x9)\ndefine(a_lo, x10)\ndefine(b_hi, x11)\ndefine(b_lo, x12)\ndefine(s_hi, x13)\ndefine(s_lo, x14)\n\n.data\nfmt_sum:    .string \"  %016lx %016lx\\n+ %016lx %016lx\\n= %016lx %016lx\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_hi, 1\n        mov     a_lo, -1                    // every bit of the low half set\n        mov     b_hi, 2\n        mov     b_lo, 3\n\n        adds    s_lo, a_lo, b_lo            // low halves first: C keeps the carry out of bit 63\n        adc     s_hi, a_hi, b_hi            // high halves plus that carry\n\n        ldr     x0, =fmt_sum\n        mov     x1, a_hi\n        mov     x2, a_lo\n        mov     x3, b_hi\n        mov     x4, b_lo\n        mov     x5, s_hi\n        mov     x6, s_lo\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "  0000000000000001 ffffffffffffffff\n+ 0000000000000002 0000000000000003\n= 0000000000000004 0000000000000002\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The low halves, `0xffffffffffffffff + 3`, give 2 with a carry out, and `adc` turns the high halves' 1 + 2 into 4. Change `adc` to `add` and run it again: the high half reads 3, so the sum is short by exactly 2^64."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Multiplying with shifts and adds\n\nLong multiplication is simpler in binary than in decimal because each digit of the multiplier is 0 or 1. A 0 digit adds nothing. A 1 digit at bit position k adds the multiplicand shifted left k places, which is the multiplicand times 2^k. 11 is `1011` in binary, so 13 x 11 works out like this:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "        1101      13\n      x 1011      11\n      ------\n        1101      bit 0 is 1: add 13\n       1101       bit 1 is 1: add 13 shifted left 1 = 26\n      0000        bit 2 is 0: add nothing\n     1101         bit 3 is 1: add 13 shifted left 3 = 104\n    --------\n    10001111      143\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below does the same steps. `tst` checks the lowest bit of the multiplier, `lsl` moves the multiplicand one place left, and `lsr` brings the next multiplier bit down to bit 0. The loop stops once no 1 bits are left. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "bit 0 is 1, product = 13\nbit 1 is 1, product = 39\nbit 2 is 0, product = 39\nbit 3 is 1, product = 143\n13 x 11 = 143\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Multiply without mul: for each 1 bit in the multiplier, add the\n// multiplicand shifted left to that bit's place\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(mcand_r, w19)\ndefine(mplier_r, w20)\ndefine(prod_r, w21)\ndefine(bit_r, w22)\n\ndefine(MULTIPLICAND, 13)\ndefine(MULTIPLIER, 11)\n\n.data\nfmt_step:   .string \"bit %d is %d, product = %d\\n\"\nfmt_done:   .string \"%d x %d = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     mcand_r, MULTIPLICAND\n        mov     mplier_r, MULTIPLIER\n        mov     prod_r, 0\n        mov     bit_r, 0\n        b       step_test\nstep_loop:\n        tst     mplier_r, 1                 // look at the multiplier's lowest bit\n        b.eq    step_show                   // a 0 bit adds nothing\n        add     prod_r, prod_r, mcand_r\nstep_show:\n        ldr     x0, =fmt_step\n        mov     w1, bit_r\n        and     w2, mplier_r, 1\n        mov     w3, prod_r\n        bl      printf\n\n        lsl     mcand_r, mcand_r, 1         // the next bit is worth twice as much\n        lsr     mplier_r, mplier_r, 1       // bring the next bit down to bit 0\n        add     bit_r, bit_r, 1\nstep_test:\n        cmp     mplier_r, 0                 // stop once no 1 bits are left\n        b.ne    step_loop\n\n        ldr     x0, =fmt_done\n        mov     w1, MULTIPLICAND\n        mov     w2, MULTIPLIER\n        mov     w3, prod_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "bit 0 is 1, product = 13\nbit 1 is 1, product = 39\nbit 2 is 0, product = 39\nbit 3 is 1, product = 143\n13 x 11 = 143\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "`mul` does this work in hardware in one instruction. The shift-and-add view still explains two things you will meet. First, the product of two n-bit numbers can need 2n bits, so a 32-bit product that might be large is worked out in `x` registers after widening both inputs with `sxtw`. Second, multiplying by a power of two is a single `lsl`. Division runs the same idea backward, as binary long division that subtracts the divisor wherever it fits; `sdiv` and `udiv` do it in hardware."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. `w1` and `w2` both hold `0x80000000`. After `adds w0, w1, w2`, what are N, Z, C and V?\n2. `w0` holds `0xfffffffe` and `w1` holds 2. After `cmp w0, w1`, is `b.gt` taken? Is `b.hi` taken?\n3. Which instruction adds the high halves of two 128-bit numbers, and what does it add besides them?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. The result is 0, so N = 0 and Z = 1. A carry came out of bit 31, so C = 1. Two negative values gave a result that is not negative, so V = 1.\n2. Read as signed, `0xfffffffe` is -2, which is not greater than 2, so `b.gt` is not taken. Read as unsigned, it is 4294967294, which is higher than 2, so `b.hi` is taken.\n3. `adc`. It also adds the C flag, the carry left over from adding the low halves with `adds`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: binary arithmetic (intro)](/practice/quiz-basic-binary-arithmetic), then [core](/practice/quiz-inter-binary-arithmetic) and [challenge](/practice/quiz-advance-binary-arithmetic): wraparound, subtraction by negation, carries, and the flags.\n- [Fill in the blank: binary arithmetic (core)](/practice/blanks-binary-arithmetic): pick the mnemonic or unsigned condition each line needs, `adds` and `adc` included.\n- [Predict: binary arithmetic (challenge)](/practice/predict-binary-arithmetic): trace wraparound and a carry passed from one add to the next."
+    }
+  ]
+}
