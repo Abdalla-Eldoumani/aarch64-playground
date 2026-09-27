@@ -147,22 +147,22 @@ s_even:
 	.section .rodata
 	.align	3
 dops:
-	.quad	r_floor
-	.quad	r_ceil
-	.quad	r_trunc
-	.quad	r_round
-	.quad	r_rint
-	.quad	r_nearby
-	.quad	r_even
+	.xword	r_floor
+	.xword	r_ceil
+	.xword	r_trunc
+	.xword	r_round
+	.xword	r_rint
+	.xword	r_nearby
+	.xword	r_even
 	.align	3
 fops:
-	.quad	s_floor
-	.quad	s_ceil
-	.quad	s_trunc
-	.quad	s_round
-	.quad	s_rint
-	.quad	s_nearby
-	.quad	s_even
+	.xword	s_floor
+	.xword	s_ceil
+	.xword	s_trunc
+	.xword	s_round
+	.xword	s_rint
+	.xword	s_nearby
+	.xword	s_even
 	.text
 	.align	2
 l_floor:
@@ -275,8 +275,8 @@ dv:
 	.word	-1048576
 	.align	3
 nanbits:
-	.quad	9221120237041090561
-	.quad	-4503599627370495
+	.xword	9221120237041090561
+	.xword	-4503599627370495
 	.align	3
 fv:
 	.word	1056964608
