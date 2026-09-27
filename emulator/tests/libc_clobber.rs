@@ -5,12 +5,14 @@
 //! program that keeps a value in x9 across a call prints garbage there.
 //! These tests pin the same behaviour here: what gets overwritten, what
 //! survives (the return value and the callee-saved registers), and the
-//! one note a program earns by reading a register a call left.
+//! one note a program earns by using a register or the flags a call left.
+//! Saving a register to memory or copying it into another is not a use:
+//! the note waits for the read that is, and then names the copy.
 
 use aarch64_emulator::clobber_note_lines;
 use aarch64_emulator::cpu::{Cpu, READ_BY_CALL, READ_BY_INSTRUCTION, READ_BY_MAIN_RETURN};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
-use aarch64_emulator::registers::{CLOBBER_NZCV, CLOBBER_PATTERN};
+use aarch64_emulator::registers::{CLOBBER_NZCV, CLOBBER_PATTERN, FLAGS_CODE};
 
 /// Assemble, load, and run to the end. Returns the machine and the flat
 /// `[addr, line, ...]` map the web layer resolves note lines through.
@@ -25,7 +27,8 @@ fn run(src: &str) -> (Cpu, Vec<u32>) {
 }
 
 /// The notes as the web receives them: one `[register, read_by,
-/// call_line, read_line]` row each, `xN` as N and `dN` as 32 + N.
+/// call_line, read_line]` row each, `xN` as N, the flags as 31, and `dN`
+/// as 32 + N.
 fn notes(cpu: &mut Cpu, map: &[u32]) -> Vec<[u32; 4]> {
     let mut rows = cpu.take_clobber_notes();
     clobber_note_lines(&mut rows, map);
@@ -131,7 +134,7 @@ fn callee_saved_registers_and_the_return_value_survive() {
 }
 
 /// strlen answers in x0; atof answers in d0 and leaves x0 to the pattern,
-/// which the `mov x20, x0` on line 19 then reads.
+/// which the `mov x20, x0` on line 19 copies and line 20 uses.
 const RETURN_REGISTERS: &str = r#"define(fp, x29)
 define(lr, x30)
 
@@ -151,6 +154,7 @@ main:
         bl      atof
         fmov    d8, d0
         mov     x20, x0
+        add     x21, x20, 1
         mov     w0, 0
         ldp     fp, lr, [sp], 16
         ret
@@ -162,7 +166,8 @@ fn x0_survives_an_int_return_and_d0_survives_a_double_return() {
     assert_eq!(cpu.regs.read_gpr(19, true), 3, "strlen's length");
     assert_eq!(cpu.regs.read_fpr_f64(8), 2.5, "atof's double");
     assert_eq!(cpu.regs.read_gpr(20, true), CLOBBER_PATTERN, "atof returns nothing in x0");
-    // x0 read on line 19 after the atof call on line 17.
+    // The copy on line 19 is the read of x0 the note names, once line 20
+    // uses the value; the atof call is on line 17.
     assert_eq!(notes(&mut cpu, &map), vec![[0, READ_BY_INSTRUCTION, 17, 19]]);
 }
 
@@ -225,7 +230,7 @@ fn a_register_panel_read_between_steps_is_not_the_programs_read() {
     assert!(cpu.take_clobber_notes().is_empty());
 }
 
-/// After puts: d3 read through its D view (a note), v9 read whole (vector
+/// After puts: d3 used through its D view (a note), v9 read whole (vector
 /// reads are not tracked), d8 read (callee-saved, no note).
 const VECTOR_READS: &str = r#"define(fp, x29)
 define(lr, x30)
@@ -242,7 +247,7 @@ main:
         fmov    d8, 1.5
         ldr     x0, =msg_m
         bl      puts
-        fmov    d4, d3
+        fadd    d4, d3, d8
         mov     v5.16b, v9.16b
         fmov    d6, d8
         mov     w0, 0
@@ -320,4 +325,122 @@ fn a_call_parked_on_input_clobbers_nothing_until_it_returns() {
     cpu.run_until_break(100_000).expect("runs");
     assert_eq!(cpu.exit_code(), Some(41));
     assert_eq!(cpu.regs.read_gpr(1, true), CLOBBER_PATTERN, "clobbered once scanf returned");
+}
+
+/// Compare, print, branch: x19 is 6, so the cmp on line 15 clears Z, but
+/// puts (line 17) overwrites the flags before the b.eq on line 18 reads
+/// them. The b.ne on line 25 reads flags a fresh compare set. On the
+/// course server the b.eq fell through and the program exited 1.
+const FLAGS_ACROSS_PUTS: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+msg_m:  .string "checked"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        mov     x19, 6
+        cmp     x19, 5
+        ldr     x0, =msg_m
+        bl      puts
+        b.eq    same
+        mov     w20, 1
+        b       done
+same:
+        mov     w20, 2
+done:
+        cmp     x19, 5
+        b.ne    out
+        mov     w20, 3
+out:
+        mov     w0, w20
+        ldp     x19, x20, [sp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+
+#[test]
+fn a_branch_on_flags_a_call_left_is_noted() {
+    let (mut cpu, map) = run(FLAGS_ACROSS_PUTS);
+    // The pattern's Z is set, so the stale b.eq is taken; the fresh b.ne too.
+    assert_eq!(cpu.exit_code(), Some(2));
+    assert_eq!(notes(&mut cpu, &map), vec![[FLAGS_CODE.into(), READ_BY_INSTRUCTION, 17, 18]]);
+}
+
+/// After puts (line 15), line 16 saves x2 and x3 and line 17 restores
+/// them, line 18 copies w4 into x19 and line 19 copies that on, and d2
+/// and d3 are copied and saved the same way. None of it uses a value.
+const PASSED_ALONG_NEVER_USED: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+msg_m:  .string "hi"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        ldr     x0, =msg_m
+        bl      puts
+        stp     x2, x3, [sp, -16]!
+        ldp     x2, x3, [sp], 16
+        mov     w19, w4
+        mov     x20, x19
+        fmov    d9, d2
+        str     d3, [sp, -16]!
+        ldr     d3, [sp], 16
+        mov     w0, 0
+        ldp     x19, x20, [sp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+
+#[test]
+fn saving_or_copying_what_a_call_left_is_not_noted() {
+    let (mut cpu, map) = run(PASSED_ALONG_NEVER_USED);
+    assert_eq!(cpu.exit_code(), Some(0));
+    assert!(notes(&mut cpu, &map).is_empty());
+}
+
+/// x9 is copied into the callee-saved x19 on line 17 after the puts on
+/// line 16. The second puts leaves x19 alone, so it still carries the
+/// first call's leftovers when line 20 uses it.
+const COPIED_THEN_USED: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+msg_m:  .string "hi"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        mov     x9, 7
+        ldr     x0, =msg_m
+        bl      puts
+        mov     x19, x9
+        ldr     x0, =msg_m
+        bl      puts
+        add     x20, x19, 1
+        mov     w0, 0
+        ldp     x19, x20, [sp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+
+#[test]
+fn a_copy_is_noted_at_the_copy_once_the_value_is_used() {
+    let (mut cpu, map) = run(COPIED_THEN_USED);
+    assert_eq!(notes(&mut cpu, &map), vec![[9, READ_BY_INSTRUCTION, 16, 17]]);
 }
