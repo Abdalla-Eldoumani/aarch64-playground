@@ -743,8 +743,11 @@ function compare(p, pg, sv) {
 
 const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, 160);
 
-// Text placed inside one cell of a markdown table row.
-const markdownCell = (s) => s.replace(/\|/g, "\\|");
+// Text placed inside one cell of a markdown table row. Backslashes are
+// doubled first so one in the text cannot cancel the escape a pipe gets, and
+// a line break would end the row.
+const markdownCell = (s) =>
+  s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r\n?|\n/g, " ");
 
 // The diagnosis behind each row that came back `differs` when the sweep was
 // last read by hand. A row with no entry here prints as undiagnosed, which is
@@ -814,7 +817,7 @@ function report(programs, pgAll, svAll, machine) {
     lines.push("| program | source | verdict | note |");
     lines.push("| --- | --- | --- | --- |");
     for (const row of rows) {
-      lines.push(`| ${row.p.id} | ${row.p.source} | ${row.verdict} | ${markdownCell(row.note)} |`);
+      lines.push(`| ${markdownCell(row.p.id)} | ${markdownCell(row.p.source)} | ${row.verdict} | ${markdownCell(row.note)} |`);
     }
     const diffs = rows.filter((r) => r.verdict === "differs");
     if (diffs.length > 0) {
