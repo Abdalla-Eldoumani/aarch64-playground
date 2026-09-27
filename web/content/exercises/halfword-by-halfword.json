@@ -2,6 +2,7 @@
   "title": "Halfword by halfword",
   "slug": "halfword-by-halfword",
   "order": 5,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "intro",
   "prompt": "A locker's 64-bit code is `0xbeefcafef00dffff`. Build it in `code_r`; the starter then adds a number `n` read from input and prints the code, `n`, and the sum.\n\nOne `mov` can only place a 16-bit piece of a number, a **halfword**, into a register. `movz` writes one halfword and clears every other bit. `movk` writes one halfword and keeps the other bits as they were (the k is for keep). Add `lsl 16`, `lsl 32` or `lsl 48` to pick which halfword. The code splits into four:\n\n| bits | halfword |\n|---|---|\n| 63 to 48 | `0xbeef` |\n| 47 to 32 | `0xcafe` |\n| 31 to 16 | `0xf00d` |\n| 15 to 0 | `0xffff` |\n\nStart with one `movz`, then add three `movk`. Try an input of `1`: the low halfword rolls over from `0xffff` to `0x0000` and carries into the next one, because the four pieces are one number.\n\n## what is checked\n\n- with input `0` the line reads `0xbeefcafef00dffff + 0 = 0xbeefcafef00dffff`\n- the program exits cleanly\n- the code is built with `movz` and `movk`, not written as one number\n- the program also runs on inputs you do not see, so it has to work for any input, not only this one",
