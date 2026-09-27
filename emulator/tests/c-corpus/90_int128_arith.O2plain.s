@@ -8,7 +8,7 @@
 	.string	"%09u"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 print_u128:
 	fmov	d31, x1
 	extr	x2, x1, x0, 32
@@ -54,7 +54,7 @@ print_u128:
 	cbz	w3, .L14
 	mov	w20, w21
 	b	.L3
-	.align 2
+	.p2align 2,,3
 .L14:
 	adrp	x0, .LC0
 	add	x0, x0, :lo12:.LC0
@@ -168,7 +168,7 @@ print_u128:
 	.string	"mix = "
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -224]!
@@ -182,7 +182,7 @@ main:
 	stp	x23, x24, [sp, 48]
 	stp	x25, x26, [sp, 64]
 	stp	x27, x28, [sp, 80]
-	.align 5
+	.p2align 5,,15
 .L21:
 	umulh	x0, x19, x3
 	madd	x0, x20, x3, x0
@@ -210,7 +210,7 @@ main:
 	mov	x0, 0
 	mov	x1, 0
 	b	.L24
-	.align 2
+	.p2align 2,,3
 .L47:
 	sub	w0, w19, #185
 	cmp	w0, 1
@@ -415,11 +415,11 @@ main:
 	stp	xzr, xzr, [sp, 160]
 	stp	x0, x1, [sp, 208]
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L31:
 	add	x0, sp, 128
 	ldp	x8, x5, [x9]
-	.align 5
+	.p2align 5,,15
 .L36:
 	add	w1, w1, w1, lsl 1
 	ldp	x7, x3, [x0]
@@ -517,17 +517,17 @@ main:
 	ldp	x27, x28, [sp, 80]
 	ldp	x29, x30, [sp], 224
 	ret
-	.align 2
+	.p2align 2,,3
 .L50:
 	cmp	x7, x8
 	bhi	.L34
 	b	.L35
-	.align 2
+	.p2align 2,,3
 .L49:
 	cmp	x7, x8
 	bhi	.L32
 	b	.L33
-	.align 2
+	.p2align 2,,3
 .L48:
 	mov	w0, 45
 	bl	putchar
@@ -575,21 +575,21 @@ main:
 	.section .rodata
 	.align	4
 .LC26:
-	.quad	0
-	.quad	68719476736
+	.xword	0
+	.xword	68719476736
 	.data
 	.align	4
 	.LANCHOR0:
 sv:
-	.quad	-9223372036854775808
-	.quad	9223372036854775807
-	.quad	-1
-	.quad	3
-	.quad	-5
+	.xword	-9223372036854775808
+	.xword	9223372036854775807
+	.xword	-1
+	.xword	3
+	.xword	-5
 	.zero	8
 hv:
-	.quad	81985529216486895
-	.quad	-81985529216486896
-	.quad	1229782938247303441
-	.quad	2459565876494606882
+	.xword	81985529216486895
+	.xword	-81985529216486896
+	.xword	1229782938247303441
+	.xword	2459565876494606882
 
