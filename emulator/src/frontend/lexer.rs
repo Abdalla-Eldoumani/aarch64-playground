@@ -481,7 +481,7 @@ fn is_float_body(b: u8) -> bool {
     matches!(b, b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-')
 }
 
-fn parse_int(text: &str) -> Option<i64> {
+pub(crate) fn parse_int(text: &str) -> Option<i64> {
     // Strip internal underscores: `0x0040_0000` is the course spelling.
     let clean: String = text.chars().filter(|c| *c != '_').collect();
     let s = clean.as_str();
@@ -512,7 +512,7 @@ fn parse_int(text: &str) -> Option<i64> {
 /// Message for an integer literal the lexer cannot read. A leading zero
 /// means octal, so `018` is not decimal 18: naming the rule saves the
 /// student from reading it as a typo in the emulator.
-fn integer_error(text: &str) -> String {
+pub(crate) fn integer_error(text: &str) -> String {
     let clean: String = text.chars().filter(|c| *c != '_').collect();
     let radix_prefixed = ["0x", "0X", "0b", "0B"]
         .iter()
