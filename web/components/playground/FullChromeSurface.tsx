@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
-import { useBreakpoint } from "@/lib/hooks/use-breakpoint";
+import { useBreakpoint, usePhoneShape } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
@@ -202,7 +202,12 @@ export function FullChromeSurface({
 }: FullChromeSurfaceProps) {
   const toast = useToast();
   const bp = useBreakpoint();
+  const phone = usePhoneShape();
   const [activeTab, setActiveTab] = useState<RightTab>("memory");
+  // The view the phone layout has on screen; the desktop tab state above
+  // says nothing about a phone.
+  const [phonePane, setPhonePane] = useState("code");
+  const shownPane = phone ? phonePane : activeTab;
   // Mirrors the palette's converter action into the phone layout, where the
   // desktop tab state has nothing to show.
   const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
@@ -325,7 +330,7 @@ export function FullChromeSurface({
     blocked: emu.blocked,
     stdout: emu.stdout,
     launchModeRef,
-    terminalTabActive: activeTab === "term",
+    terminalTabActive: shownPane === "term",
     requestPane,
   });
   // The one-action interactive launch: assemble, then hand the pane over.
@@ -892,10 +897,23 @@ export function FullChromeSurface({
   // console resets it.
   const outputLength = emu.stdout.length + emu.stderr.length;
   const [seenOutput, setSeenOutput] = useState(0);
-  if (seenOutput !== outputLength && (activeTab === "console" || outputLength < seenOutput)) {
+  if (seenOutput !== outputLength && (shownPane === "console" || outputLength < seenOutput)) {
     setSeenOutput(outputLength);
   }
-  const consoleUnread = activeTab !== "console" && outputLength > seenOutput;
+  const consoleUnread = shownPane !== "console" && outputLength > seenOutput;
+
+  // A run that stops because the program finished brings the console
+  // forward on a phone, where the code view gave no sign the run was over. A
+  // stop at a breakpoint, a pause, or a read leaves the view alone, and so
+  // does a finish reached by stepping. The halt lands a beat before the run
+  // flag drops, so both are read at the drop.
+  const [wasRunning, setWasRunning] = useState(emu.isRunning);
+  if (wasRunning !== emu.isRunning) {
+    setWasRunning(emu.isRunning);
+    if (phone && wasRunning && emu.isHalted && outputLength > 0) {
+      setPaneRequest((prev) => ({ pane: "console", nonce: (prev?.nonce ?? 0) + 1 }));
+    }
+  }
 
   const rightTabs = (
     <RightTabs
@@ -920,9 +938,34 @@ export function FullChromeSurface({
       userAgent: navigator.userAgent,
     });
 
+  const controls = (
+    <Controls
+      onAssemble={assembleWithHistory}
+      onStep={emu.step}
+      onStepBack={emu.stepBack}
+      canStepBack={emu.canStepBack}
+      onRun={handleRun}
+      onPause={emu.pause}
+      onReset={restartProgram}
+      isRunning={emu.isRunning}
+      isAssembling={emu.isAssembling}
+      isHalted={emu.isHalted}
+      programLoaded={emu.programLoaded}
+      // Terminal mode's run press on a cold load assembles and starts the
+      // session, so the button must be reachable by mouse, or the one-action
+      // launch exists only for the keyboard.
+      runAssemblesFirst={launchable}
+      blocked={emu.blocked}
+      error={controlsError}
+      stepCount={emu.stepCount}
+      compact={phone !== null}
+    />
+  );
+
   return (
     <>
       <PlaygroundHeaderBand
+        compact={phone !== null}
         onLoadProgram={loadProgramWithConfirm}
         source={source}
         files={extraFiles}
@@ -952,13 +995,13 @@ export function FullChromeSurface({
       {shareBanner && (
         <div
           role="status"
-          className="px-4 py-1 text-[11px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
+          className="px-4 py-1 text-[11px] [@media(pointer:coarse)]:text-[12px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
         >
           <span>loaded a shared program from the URL</span>
           <button
             type="button"
             onClick={() => setShareBanner(false)}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[11px] px-1"
+            className="touch-target text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[11px] px-1 [@media(pointer:coarse)]:text-[12px]"
           >
             dismiss
           </button>
@@ -967,34 +1010,29 @@ export function FullChromeSurface({
 
       <FullLayout
         breakpoint={bp}
+        phone={phone}
         editor={editorBlock}
         disassembly={disasmBlock}
         registers={regsBlock}
         rightTabs={rightTabs}
         panes={panes}
         consoleBlocked={emu.blocked}
+        consoleUnread={consoleUnread}
         paneRequest={paneRequest ?? undefined}
-      />
-
-      <Controls
-        onAssemble={assembleWithHistory}
-        onStep={emu.step}
-        onStepBack={emu.stepBack}
-        canStepBack={emu.canStepBack}
-        onRun={handleRun}
-        onPause={emu.pause}
-        onReset={restartProgram}
-        isRunning={emu.isRunning}
-        isAssembling={emu.isAssembling}
-        isHalted={emu.isHalted}
-        programLoaded={emu.programLoaded}
-        // Terminal mode's run press on a cold load assembles and starts the
-        // session, so the button must be reachable by mouse, or the one-action
-        // launch exists only for the keyboard.
-        runAssemblesFirst={launchable}
-        blocked={emu.blocked}
-        error={controlsError}
-        stepCount={emu.stepCount}
+        onPaneShown={setPhonePane}
+        runStatus={{
+          programLoaded: emu.programLoaded,
+          isRunning: emu.isRunning,
+          isHalted: emu.isHalted,
+          blocked: emu.blocked,
+          exitCode: emu.exitCode,
+          stepCount: emu.stepCount,
+          failed: controlsError != null,
+          registers: emu.registers,
+          sp: emu.sp,
+          changedRegs: emu.changedRegs,
+        }}
+        controls={controls}
       />
 
       <TutorialRunner
