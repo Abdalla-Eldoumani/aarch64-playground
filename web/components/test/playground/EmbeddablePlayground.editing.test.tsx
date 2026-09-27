@@ -138,6 +138,63 @@ describe("Ctrl+Enter", () => {
     await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
     expect(hub.assemble).toHaveBeenCalledTimes(1);
   });
+
+  function mountEmbed(hub: EmulatorState, readOnly = false) {
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SOURCE} readOnly={readOnly} />,
+    );
+    // Embed chrome waits for the first press before it starts the machine.
+    act(() => {
+      fireEvent.mouseDown(container.firstChild as Element);
+    });
+  }
+
+  it("assembles and then runs from the embed editor, which lessons and exercises use", async () => {
+    const hub = makeHub();
+    mountEmbed(hub);
+    await act(async () => {
+      editorProps.current!.onRunShortcut!();
+    });
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(hub.assemble).mock.invocationCallOrder[0]).toBeLessThan(
+      vi.mocked(hub.run).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("lets the embed's run press continue that run instead of starting it over", async () => {
+    // Stopped at a breakpoint after the chord: the program is loaded.
+    const hub = makeHub({
+      instructions: [{ address: 0x400000, hex: "0xd2800020", text: "mov x0, #1" }],
+    });
+    mountEmbed(hub);
+    await act(async () => {
+      editorProps.current!.onRunShortcut!();
+    });
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText("run"));
+    });
+    expect(hub.run).toHaveBeenCalledTimes(2);
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run from the embed editor after a failed assemble", async () => {
+    const hub = makeHub({ assemble: vi.fn(async () => false) });
+    mountEmbed(hub);
+    await act(async () => {
+      editorProps.current!.onRunShortcut!();
+    });
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.run).not.toHaveBeenCalled();
+  });
+
+  it("leaves a read-only embed's chord to the editor", () => {
+    mountEmbed(makeHub(), true);
+    expect(editorProps.current!.onRunShortcut).toBeUndefined();
+  });
 });
 
 describe("reset", () => {
