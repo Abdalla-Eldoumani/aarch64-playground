@@ -1,0 +1,114 @@
+{
+  "title": "Anatomy of an assembly file",
+  "slug": "anatomy-of-a-program",
+  "order": 3,
+  "summary": "Read a course program line by line: labels, opcodes, operands, comments, directives, m4 names, and the two build steps.",
+  "tags": [
+    "armv8 basics"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read this first:\n\n- [System architecture: what is inside the box](/learn/inside-the-computer)"
+    },
+    {
+      "type": "prose",
+      "markdown": "An assembly program looks dense the first time you open one, but it is made of only a handful of kinds of line. Once you can name each kind, you can read any program in the course from top to bottom. This lesson takes one short program apart, shows what the m4 step does to it, and ends with the trap m4 sets for a careless name."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The four fields of a statement\n\nA line that holds an instruction is called a *statement*. It has up to four fields, always in this order:\n\n- A **label** names the address of the line, so other code can refer to it. It starts at the left margin and ends with a colon.\n- The **opcode**, also called the *mnemonic*, names the operation: `add`, `ldr`, `bl`.\n- The **operands** are what the operation works on: registers, constants or labels, separated by commas. On AArch64 the destination comes first.\n- A **comment** starts with `//` and runs to the end of the line. The assembler ignores it."
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "label:  opcode  operands                    // comment\ntop:    add     total_r, total_r, 2         // total_r = total_r + 2\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Most lines use only some of the fields. A label can sit on a line by itself, and then it names the instruction on the next line. Course programs indent every instruction by 8 spaces and line the operands up in a column, so the opcodes and the operand lists read as two straight tracks.\n\nThe `2` above is an *immediate*: a constant written straight into the instruction. Course programs write it bare. Other ARM material writes `#2`, which means the same thing."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Directives talk to the assembler\n\nAn opcode that starts with a dot, such as `.data` or `.string`, is a *directive*, also called a *pseudo-op*. It is an instruction to the assembler, not to the CPU, and it produces no machine instruction of its own. These are the ones every course program uses:\n\n| Directive | What it tells the assembler |\n|---|---|\n| `.data` | what follows is data the program can read and change |\n| `.text` | what follows is code |\n| `.string \"...\"` | put these characters in memory, followed by a zero byte |\n| `.word 30` | put this number in memory as a 4-byte word |\n| `.balign 4` | skip ahead to the next address that is a multiple of 4 |\n| `.global main` | make the name `main` visible outside this file |\n\n`.data` and `.text` switch between *sections*: separate areas of the finished program, one for data and one for code. A file can switch back and forth, and the assembler gathers each section's pieces together.\n\n`.global main` matters: the C library code that starts your program looks for a function called `main`, and it can find it only if the name is global.\n\nA line such as `size = 8` is also for the assembler. It gives a number a name that later lines can use in its place. The stack lessons use this for frame sizes."
+    },
+    {
+      "type": "prose",
+      "markdown": "## m4 names\n\nCourse programs are written in `.asm` files, and each one passes through a tool called *m4* before the assembler sees it. m4 is a *macro processor*: it copies the file through, replacing every name defined with `define(name, text)` by its text. It knows nothing about assembly; it only swaps words.\n\nCourse programs use it for two things:\n\n- **Register aliases.** `define(total_r, w19)` lets the program write `total_r` instead of `w19`, so each register's job is in its name. The `_r` ending marks the name as a register. `fp` (the *frame pointer*) and `lr` (the *link register*, which holds the address to return to), the usual names for `x29` and `x30`, are defined the same way, first in every file.\n- **Named constants.** `define(START, 40)` gives a number a name. Constants are written in capitals.\n\nm4 reads the file from top to bottom, so a name works only on the lines after its `define`. That is why the defines sit at the very top."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The two build steps\n\nBuilding a course program takes two commands, and a third runs it:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "m4 total.asm > total.s      # step 1: m4 swaps the names; total.s is plain assembly\ngcc total.s -o total        # step 2: gcc assembles it and links in the C library\n./total                     # run the program\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The `>` sends m4's output into the file `total.s` instead of onto the screen. On an AArch64 Linux machine, such as the ARM servers you log in to for the course, `gcc` then turns the `.s` file into machine code and *links* it: joins it with the C library, which supplies `printf` and the start-up code that calls `main`. When you press run on this site, the playground does both steps for you."
+    },
+    {
+      "type": "prose",
+      "markdown": "## One program, line by line\n\nThe program below uses every kind of line at least once. Run it: it prints `total = 42`. Then read it from the top with the notes that follow."
+    },
+    {
+      "type": "editor",
+      "starter": "// Adds two to a starting value and prints the total.\n// Every kind of line a course program uses appears here at least once.\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(total_r, w19)\n\ndefine(START, 40)\n\n.data\nfmt_total:  .string \"total = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!          // save fp and lr\n        mov     fp, sp\n\n        mov     total_r, START              // total_r = 40\n        add     total_r, total_r, 2         // total_r = 42\n\n        mov     w1, total_r                 // argument 2: the number for %d\n        ldr     x0, =fmt_total              // argument 1: the format string\n        bl      printf\n\n        mov     w0, 0                       // main returns 0: success\n        ldp     fp, lr, [sp], 16            // restore fp and lr\n        ret\n",
+      "expectedOutput": {
+        "stdout": "total = 42\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "- The first two lines are comments that say what the program does. Every course file starts this way.\n- The `define` lines create the names `fp`, `lr`, `total_r` and `START`.\n- `.data` starts the data section, and `fmt_total:` labels a format string in it. A *format string* is the text `printf` prints, with `%d` marking where a number goes.\n- `.text` starts the code. `.balign 4` moves the next instruction to an address divisible by 4, where every instruction has to sit, and `.global main` makes `main` visible to the C library.\n- `main:` labels the first instruction of `main`, where your own code starts once the C library's start-up code calls it.\n- `stp` and `mov fp, sp` are the *prologue*. They save `fp` and `lr`, which `main` must restore before it returns, and mark where its stack space starts. `ldp` and `ret` at the bottom are the *epilogue*: they put those registers back and return. Every function has this shape, and [The stack and the frame pointer](/learn/stack-and-frame-pointer) explains it.\n- `mov w0, 0` just before the epilogue sets the value `main` returns. 0 tells whoever ran the program that it succeeded.\n- In between is the work: two instructions make 42, and three more hand the format string and the number to `printf`."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`main` uses `w19` here without saving it first. Course programs do this in `main`. Any other function you write must save the registers it uses from `x19` to `x28` and put them back before it returns, because its caller may be keeping values there."
+    },
+    {
+      "type": "prose",
+      "markdown": "## What m4 hands to the assembler\n\nHere is the body of the same program after step 1. Every name has been replaced by its text. m4 even rewrote the names inside the comments, because it does not know what a comment is; the assembler skips comments, so no harm is done. The `define` lines themselves turn into empty lines at the top of the file."
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "main:\n        stp     x29, x30, [sp, -16]!          // save x29 and x30\n        mov     x29, sp\n\n        mov     w19, 40              // w19 = 40\n        add     w19, w19, 2         // w19 = 42\n\n        mov     w1, w19                 // argument 2: the number for %d\n        ldr     x0, =fmt_total              // argument 1: the format string\n        bl      printf\n\n        mov     w0, 0                       // main returns 0: success\n        ldp     x29, x30, [sp], 16            // restore x29 and x30\n        ret\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## The trap: a name inside a string\n\nBecause m4 swaps every matching word, it also swaps words inside strings. The program below names its register `laps` and prints a message that contains the word `laps`. Run it: instead of `laps = 3` it prints\n\n```\nw19 = 3\n```\n\nbecause m4 turned the string into `\"w19 = %d\\n\"` before the assembler saw it. m4 matches whole words only, so the label `fmt_laps` is safe; the lone word `laps` inside the quotes is not.\n\nTo fix it, rename the alias to `laps_r` in the `define` line and in the two lines that use it, and run again. The string no longer holds a defined name, and the program prints `laps = 3`."
+    },
+    {
+      "type": "editor",
+      "starter": "// Prints how many laps are left. The alias name also appears in the message.\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(laps, w19)\n\n.data\nfmt_laps:   .string \"laps = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     laps, 3\n        ldr     x0, =fmt_laps\n        mov     w1, laps\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "w19 = 3\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The same swap happens in labels and comments. A short, common word such as `sum`, `count` or `n` is likely to turn up somewhere else in the file; `sum_r`, `count_r` and `n_r` are not. The `_r` ending is there to keep register names out of the way."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. In `loop:  sub  n_r, n_r, 1  // one fewer`, name the label, the opcode, the operands and the comment.\n2. Does `.string` produce a machine instruction? What does it produce?\n3. Why must `main` be declared `.global`?\n4. Which command runs first when building `prog.asm`, and what file does it produce?\n5. A program has `define(max, w20)` and, further down, `fmt: .string \"max = %d\\n\"`. What does it print when `w20` holds 9?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. The label is `loop`, the opcode `sub`, the operands `n_r, n_r, 1`, and the comment `// one fewer`.\n2. No; it puts the string's bytes, and a zero byte after them, into memory.\n3. So the C library's start-up code, which lives in another file, can find `main` and call it.\n4. `m4 prog.asm > prog.s`, which produces the plain assembly file `prog.s`.\n5. `w20 = 9`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: ARMv8 assembly (intro)](/practice/quiz-basic-armv8) and [Fill in the blank: ARMv8 assembly (core)](/practice/blanks-armv8). Both also reach into the next few lessons, so come back to them after [Registers and immediates](/learn/registers-and-immediates)."
+    }
+  ]
+}
