@@ -8,6 +8,9 @@ interface ExampleLoaderProps {
   /** Receives the complete program payload: source plus any args, stdin,
    *  and VFS fixture files the example declares. */
   onLoad: (payload: HandoffPayload) => void;
+  /** Take the row's free width and truncate the label within it, for the
+   *  phone bar where the picker shares a 320px row with two buttons. */
+  fill?: boolean;
 }
 
 interface Example {
@@ -104,7 +107,7 @@ const GROUPS: ExampleGroup[] = [
   },
 ];
 
-export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
+export function ExampleLoader({ onLoad, fill = false }: ExampleLoaderProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const handleSelect = useCallback(
@@ -131,8 +134,9 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
   );
 
   return (
-    <div className="flex items-center gap-2">
+    <div className={fill ? "flex min-w-0 flex-1 items-center gap-2" : "flex items-center gap-2"}>
       <Select
+        className={fill ? "min-w-0 flex-1" : ""}
         placeholder="load example..."
         ariaLabel="load an example program"
         onSelect={(stem) => void handleSelect(stem)}
