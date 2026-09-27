@@ -2,6 +2,7 @@
   "title": "Binary arithmetic: flags, carries, and wide numbers",
   "slug": "binary-arithmetic-and-flags",
   "order": 16,
+  "lastUpdated": "2026-09-27",
   "summary": "Predict the N, Z, C and V flags after an add or a subtract, pick a signed or an unsigned branch, and add numbers wider than 64 bits.",
   "tags": [
     "binary arithmetic",
