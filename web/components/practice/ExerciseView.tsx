@@ -560,7 +560,9 @@ export function ExerciseView({
                   key={`hidden-${index}`}
                   className="flex items-start gap-3 border-b border-[var(--border)] px-4 py-2.5 last:border-b-0"
                 >
-                  <span className="mt-[3px]">
+                  {/* A flex box, not a line box, so the square centres on the
+                      first line of a detail that may wrap to several. */}
+                  <span className="mt-[2px] flex">
                     <CheckSquare pass={check.pass} />
                   </span>
                   <span className="min-w-0 break-words font-mono text-[13px] leading-snug text-[var(--text-primary)]">
