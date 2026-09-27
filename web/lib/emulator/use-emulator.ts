@@ -25,6 +25,7 @@ import { useConsoleOutput } from "@/lib/emulator/use-console-output";
 import { useCpuView } from "@/lib/emulator/use-cpu-view";
 import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
 import { parseArgs } from "@/lib/playground/args";
+import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
 
@@ -123,12 +124,13 @@ export function useEmulator(): EmulatorState {
     setOutputTap,
   } = useConsoleOutput(backendRef);
   const {
-    pushStdin,
+    pushStdin: pushStdinToBackend,
     closeStdin,
     setSnapshotsPaused,
     lint,
     uploadVfsFile,
     readVfsFile,
+    readMemory,
     deleteVfsFile,
     resolveLabel,
     m4Expand,
@@ -168,6 +170,19 @@ export function useEmulator(): EmulatorState {
   useEffect(() => {
     stepCountRef.current = stepCount;
   }, [stepCount]);
+
+  // Every stdin push lands here too, because the machine keeps only the input
+  // no read has consumed yet. Assemble and reset start it over with the
+  // machine; the cap bounds a long terminal session's keystrokes.
+  const stdinLogRef = useRef("");
+  const pushStdin = useCallback(
+    (s: string, interactive?: boolean) => {
+      stdinLogRef.current = (stdinLogRef.current + s).slice(-MAX_STDIN_BYTES);
+      pushStdinToBackend(s, interactive);
+    },
+    [pushStdinToBackend],
+  );
+  const stdinGiven = useCallback(() => stdinLogRef.current, []);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
     if (snap.frame > frameRef.current) {
@@ -321,6 +336,7 @@ export function useEmulator(): EmulatorState {
       sourceRef.current = source;
       workspaceRef.current = workspace;
       runBlockedRef.current = false;
+      stdinLogRef.current = "";
       if (surfaceErrors) {
         setError(null);
         setAssemblyErrors([]);
@@ -642,6 +658,7 @@ export function useEmulator(): EmulatorState {
     if (!backend) return;
     runningRef.current = false;
     runBlockedRef.current = false;
+    stdinLogRef.current = "";
     setIsRunning(false);
     setError(null);
     setAssemblyErrors([]);
@@ -678,6 +695,7 @@ export function useEmulator(): EmulatorState {
       const outcome = await assembleWith(params.source, argList, true);
       if (!outcome.success) return { success: false, stepped: 0 };
       if (params.stdin) {
+        stdinLogRef.current = params.stdin.slice(-MAX_STDIN_BYTES);
         await backend.pushStdin(params.stdin);
       }
       // The persisted count is untrusted (an imported bundle passes a
@@ -757,7 +775,9 @@ export function useEmulator(): EmulatorState {
       remapBreakpoints,
       getMemory,
       getMemoryMapped,
+      readMemory,
       pushStdin,
+      stdinGiven,
       resumeAfterInput,
       closeStdin,
       setSnapshotsPaused,
@@ -790,8 +810,8 @@ export function useEmulator(): EmulatorState {
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
-      getMemory, getMemoryMapped,
-      pushStdin, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
+      getMemory, getMemoryMapped, readMemory,
+      pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
     ],
