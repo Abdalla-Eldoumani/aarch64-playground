@@ -1,0 +1,5 @@
+$ gcc undefined-ldr-label.s -o program
+/usr/bin/ld.bfd: undefined-ldr-label.o: in function `main':
+(.text+0x28): undefined reference to `fmtt'
+collect2: error: ld returned 1 exit status
+[exit 1]
