@@ -46,7 +46,8 @@ const ShareDialog = dynamic(
 );
 
 const SHORTCUTS: Shortcut[] = [
-  { keys: "F6", description: "assemble (Ctrl+Enter does the same)" },
+  { keys: "F6", description: "assemble" },
+  { keys: "Ctrl+Enter", description: "assemble and run, from anywhere including the editor" },
   { keys: "F10", description: "step" },
   { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
   { keys: "F5", description: "run / pause" },
@@ -56,9 +57,25 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "Ctrl+S", description: "nothing to save: the buffer is written continuously" },
   { keys: "Ctrl+/", description: "toggle line comment" },
   { keys: "Shift+Alt+A", description: "toggle block comment" },
+  { keys: "Tab", description: "in the editor, indent or take the highlighted suggestion" },
+  { keys: "Esc, then Tab", description: "leave the editor and move to the next control" },
+  { keys: "Ctrl+M", description: "make Tab move focus out of the editor instead of indenting (press again to undo)" },
   { keys: "Ctrl+Wheel", description: "zoom the panel under the pointer" },
   { keys: "?", description: "show this help" },
 ];
+
+// A key typed into an editing surface belongs to that surface. Monaco's is a
+// textarea in some browsers and a plain focusable div (EditContext) in
+// others, so it is recognised by where it sits, not by its element type.
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  return (
+    target instanceof HTMLInputElement ||
+    target instanceof HTMLTextAreaElement ||
+    target.isContentEditable ||
+    target.closest(".monaco-editor") !== null
+  );
+}
 
 // `?embed=1` is a client-only URL flag. Reading it through useSyncExternalStore
 // keeps the first hydration render matching the server (chrome="full") and
@@ -287,17 +304,14 @@ export default function Home() {
         // The buffer autosaves continuously; intercept Ctrl+S so it does not
         // open the browser's save-page dialog. The help entry documents this.
         e.preventDefault();
-      } else if (
-        e.key === "?" &&
-        !(e.target instanceof HTMLInputElement) &&
-        !(e.target instanceof HTMLTextAreaElement) &&
-        !(e.target instanceof HTMLElement && e.target.isContentEditable)
-      ) {
+      } else if (e.key === "?" && !isTypingTarget(e.target)) {
         e.preventDefault();
         setHelpOpen((v) => !v);
       } else if (meta && e.key === "Enter") {
+        // Inside the editor Monaco takes this chord first and the editor
+        // calls the same action; this branch covers everywhere else.
         e.preventDefault();
-        playgroundRef.current?.assemble();
+        playgroundRef.current?.assembleAndRun();
       } else if (e.key === "F6") {
         e.preventDefault();
         playgroundRef.current?.assemble();
