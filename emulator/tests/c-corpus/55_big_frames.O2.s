@@ -288,7 +288,7 @@ deep8k:
 	ret
 	.align	2
 	.align 5
-far_args__constprop__0:
+far_args.constprop.0:
 	mov	x12, 40032
 	sub	sp, sp, x12
 	mov	x2, 40000
@@ -423,7 +423,7 @@ main:
 	mov	w1, 1000
 	mul	w0, w0, w1
 	sxtw	x0, w0
-	bl	far_args__constprop__0
+	bl	far_args.constprop.0
 	mov	x1, x0
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
