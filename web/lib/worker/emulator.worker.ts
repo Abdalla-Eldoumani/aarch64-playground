@@ -485,6 +485,9 @@ function snapshot(): StateSnapshot {
   };
   const stdoutSeen = emulatorSeen.stdout_seen?.();
   const stderrSeen = emulatorSeen.stderr_seen?.();
+  // Drained like stdout; absent on an older cached WASM.
+  const emulatorNotes = emulator as unknown as { take_clobber_notes?: () => Uint32Array };
+  const clobberNotes = emulatorNotes.take_clobber_notes?.();
   const exit = emulator.get_exit_code();
   return {
     frame,
@@ -504,6 +507,7 @@ function snapshot(): StateSnapshot {
     stderrDelta,
     ...(stdoutSeen != null ? { stdoutSeen } : {}),
     ...(stderrSeen != null ? { stderrSeen } : {}),
+    ...(clobberNotes?.length ? { clobberNotes: Array.from(clobberNotes) } : {}),
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
     wantsTerminal,
