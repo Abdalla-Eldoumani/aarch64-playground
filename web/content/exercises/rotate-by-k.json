@@ -2,6 +2,7 @@
   "title": "Rotate by k",
   "slug": "rotate-by-k",
   "order": 31,
+  "lastUpdated": "2026-09-27",
   "topic": "arrays",
   "difficulty": "core",
   "prompt": "The starter reads a number k, and `ring` in `.data` holds eight words. Rotate `ring` left by k places, in place, before the print loop shows it: rotating `10 20 30 40 50 60 70 80` left by 2 gives `30 40 50 60 70 80 10 20`.\n\nk can be larger than the array. Rotating by 8 puts every element back where it started, so only the remainder of k divided by 8 matters (`udiv` then `msub` gives it). A negative k is an error: print `k must be 0 or more` and return 1 from `main` instead of 0. The number `main` returns becomes the program's exit status, which is how a program tells whatever ran it that something went wrong.\n\n## what is checked\n\n- the line `rotated:` followed by the eight numbers in their new order\n- exit status 0, or the error line and exit status 1 for a negative k\n- the array is changed in memory (`str` present)\n- your program also runs on values of k you do not see: 0, 8, numbers larger than 8, and a negative number",
