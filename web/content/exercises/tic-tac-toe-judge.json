@@ -1,0 +1,74 @@
+{
+  "title": "Tic-tac-toe judge",
+  "slug": "tic-tac-toe-judge",
+  "order": 32,
+  "topic": "arrays",
+  "difficulty": "core",
+  "prompt": "The starter reads a tic-tac-toe board into `board` as one line of nine characters, row by row: `X`, `O`, or `.` for an empty cell. The input `XOX.OX.O.` is this board:\n\n```text\nX O X\n. O X\n. O .\n```\n\nPrint `X wins` or `O wins` when a row, a column, or a diagonal holds three of the same mark. When no line is complete, print `keep playing` if any cell is still empty, or `draw` if the board is full.\n\nThe board is a two-dimensional array stored one row after another (row-major order), one byte per cell, so the cell in row r, column c is the byte at `board + r * 3 + c`. The boards come from real games, so at most one player has a complete line.\n\n## what is checked\n\n- one line with the verdict\n- the program exits cleanly\n- cells are read from memory one byte at a time (`ldrb` present)\n- your program also runs on boards you do not see: wins along a row, a column and each diagonal, a full board with a winner, a full board without one, and an empty board",
+  "starter": "// read a tic-tac-toe board and say who won\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(board_r, x19)\n\n.data\nfmt_in:     .string \"%9s\"\nfmt_win:    .string \"%c wins\\n\"\nmsg_draw:   .string \"draw\\n\"\nmsg_open:   .string \"keep playing\\n\"\n\n.bss\n.align 4\nboard:      .skip 16                        // 9 cells row by row, then the zero byte\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the nine cells as one word\n        ldr     x1, =board\n        bl      scanf\n        ldr     board_r, =board\n\n        // TODO: the cell in row r, column c is the byte at\n        // board_r + r * 3 + c. Check the three rows, the three columns\n        // and the two diagonals. If a line holds three X or three O,\n        // print that mark with fmt_win. Otherwise print msg_open when\n        // any cell is still '.', or msg_draw when the board is full.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "XOX.OX.O.\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "O wins\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ldrb"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "XXXOO....\n",
+      "stdout": "X wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "XO.XO..OX\n",
+      "stdout": "O wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "OXXXO...O\n",
+      "stdout": "O wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": ".OXOX.X..\n",
+      "stdout": "X wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "XOXOXOXOX\n",
+      "stdout": "X wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "XOXXOOOXX\n",
+      "stdout": "draw\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": ".........\n",
+      "stdout": "keep playing\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "XX.OO....\n",
+      "stdout": "keep playing\n",
+      "exitCode": 0
+    }
+  ]
+}
