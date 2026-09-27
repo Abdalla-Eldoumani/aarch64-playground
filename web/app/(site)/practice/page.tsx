@@ -3,32 +3,14 @@ import { loadExerciseIndex } from "@/lib/content/exercises";
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { pageMetadata } from "@/lib/content/seo";
 
-const DESCRIPTION =
-  "AArch64 coding exercises checked by running your program, beside theory sets graded on the page.";
-
-export const metadata: Metadata = {
-  title: "practice",
-  description: DESCRIPTION,
-  alternates: { canonical: "/practice" },
-  // Open Graph and Twitter are not deep-merged across segments, so each route
-  // restates the full composed title and its own url instead of inheriting.
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "practice · cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/practice",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "practice · cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: "AArch64 exercises and quizzes",
+  description:
+    "Write AArch64 assembly that is checked by running it on hidden inputs, or test yourself with quizzes, fill-in-the-blank sets, and output predictions.",
+  path: "/practice",
+});
 
 // Server page: the server-only loader validates every exercise at build time and
 // the already-validated, order-sorted exercises are handed to the client index as
