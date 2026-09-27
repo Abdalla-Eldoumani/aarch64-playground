@@ -236,7 +236,7 @@ Drives Firefox through the live app to confirm CSP boots Monaco and the editor r
 `.github/workflows/check.yml` starts every job at once, and each one first
 checks which files changed (`.github/actions/changed-paths`, which runs
 `.github/scripts/classify-changes.js`). On a pull request, a job whose
-files did not change skips its remaining steps and passes: a docs change
+files did not change skips its remaining steps and passes: a docs-only change
 builds and tests nothing, a lesson or example change skips lint and
 typecheck, a change to `emulator/tests/` runs only the Rust jobs, and a
 change to a workflow, or to a file no rule names, runs everything. Pushes
