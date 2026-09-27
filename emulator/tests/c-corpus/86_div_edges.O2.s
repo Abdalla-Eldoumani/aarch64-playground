@@ -1,34 +1,34 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 sdiv_w:
 // 11 "programs/86_div_edges.c" 1
 	sdiv w0, w0, w1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 udiv_w:
 // 18 "programs/86_div_edges.c" 1
 	udiv w0, w0, w1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sdiv_x:
 // 25 "programs/86_div_edges.c" 1
 	sdiv x0, x0, x1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 udiv_x:
 // 32 "programs/86_div_edges.c" 1
 	udiv x0, x0, x1
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 srem_w:
 // 40 "programs/86_div_edges.c" 1
 	sdiv w2, w0, w1
@@ -36,7 +36,7 @@ srem_w:
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 srem_x:
 // 49 "programs/86_div_edges.c" 1
 	sdiv x2, x0, x1
@@ -44,7 +44,7 @@ srem_x:
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sdiv_w_seen_as_x:
 	mov	w2, w0
 // 60 "programs/86_div_edges.c" 1
@@ -82,7 +82,7 @@ sdiv_w_seen_as_x:
 	.string	"%d: d3 %d d7 %d d10 %d dm5 %d r10 %d rm3 %d u10 %u ur7 %u l %ld %ld %lu\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #128
@@ -106,7 +106,7 @@ main:
 	add	x26, x26, :lo12:.LC2
 	bl	printf
 	b	.L12
-	.align 2
+	.p2align 2,,3
 .L10:
 	mov	x0, x24
 	add	w22, w22, 1
@@ -161,7 +161,7 @@ main:
 	mov	w22, 0
 	bl	printf
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L13:
 	mov	x0, x25
 	add	w22, w22, 1
@@ -202,7 +202,7 @@ main:
 .L36:
 	mov	x3, -8
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L16:
 	mov	w1, w3
 	mov	w0, -2147483648
@@ -237,7 +237,7 @@ main:
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L17:
 	add	x0, x20, 256
 	mov	x10, 51719
@@ -332,22 +332,22 @@ w_pairs:
 	.word	-100
 	.word	7
 x_pairs:
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	-9223372036854775808
-	.quad	0
-	.quad	-9223372036854775808
-	.quad	3
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	-9
-	.quad	4
-	.quad	9
-	.quad	-4
-	.quad	-1
-	.quad	2
-	.quad	81985529216486895
-	.quad	4096
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	-9223372036854775808
+	.xword	0
+	.xword	-9223372036854775808
+	.xword	3
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	-9
+	.xword	4
+	.xword	9
+	.xword	-4
+	.xword	-1
+	.xword	2
+	.xword	81985529216486895
+	.xword	4096
 dividends:
 	.word	-2147483648
 	.word	-2147483647
