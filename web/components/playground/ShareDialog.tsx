@@ -98,7 +98,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             close
           </button>
@@ -107,7 +107,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
               type="button"
               onClick={share}
               disabled={oversize}
-              className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+              className="touch-target text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
             >
               share
             </button>
@@ -116,7 +116,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
             type="button"
             onClick={copy}
             disabled={oversize}
-            className={`text-xs rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+            className={`touch-target text-xs rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
               copied
                 ? "text-[var(--success)]"
                 : "text-[var(--cyan)] hover:underline"
