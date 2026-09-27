@@ -841,6 +841,7 @@ function EmbeddableCore({
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}
+            running={emu.isRunning}
           />
         }
         console={
