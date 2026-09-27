@@ -37,8 +37,8 @@ main:
 	cmp	x2, x3
 	bne	.L5
 	adrp	x0, .LC0+8
-	adrp	x6, g__0
-	add	x6, x6, :lo12:g__0
+	adrp	x6, g.0
+	add	x6, x6, :lo12:g.0
 	mov	x2, 4294967296
 	add	x7, x6, 397312
 	mov	x3, x6
@@ -89,6 +89,6 @@ main:
 	.quad	12884901890
 	.bss
 	.align	4
-g__0:
+g.0:
 	.zero	400000
 
