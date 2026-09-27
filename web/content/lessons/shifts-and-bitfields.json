@@ -102,7 +102,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Double, double, double](/practice/double-trouble): multiply by 8 with `lsl` instead of `mul`.\n- [Binary broadcast](/practice/binary-broadcast) and [Bit population census](/practice/bit-population-census): print a number in binary, and count its 1 bits, with `lsr` and `and`.\n- [Predict: binary logic (challenge)](/practice/predict-binary-logic): what `lsl`, `lsr`, `bic` and `sxtb` leave in a register.\n- [Fill in the blank: binary logic (core)](/practice/blanks-binary-logic) and [Quiz: binary logic (challenge)](/practice/quiz-advance-binary-logic): `asr` against `lsr`, `sxtb`, and the difference between `bfi`, `ubfiz` and `bfxil`."
+      "markdown": "## Practice\n\n- [Double, double, double](/practice/double-trouble): multiply by 8 with `lsl` instead of `mul`.\n- [Binary broadcast](/practice/binary-broadcast) and [Bit population census](/practice/bit-population-census): print a number in binary, and count its 1 bits, with `lsr` and `and`.\n- [Nibbles trade places](/practice/nibble-swap): swap the two hex digits of a byte with shifts and `orr`.\n- [Unpack the pixel](/practice/unpack-the-pixel): pull four 8-bit channels out of a word with `ubfx`, and trade two of them with `bfi`.\n- [Predict: binary logic (challenge)](/practice/predict-binary-logic): what `lsl`, `lsr`, `bic` and `sxtb` leave in a register.\n- [Fill in the blank: binary logic (core)](/practice/blanks-binary-logic) and [Quiz: binary logic (challenge)](/practice/quiz-advance-binary-logic): `asr` against `lsr`, `sxtb`, and the difference between `bfi`, `ubfiz` and `bfxil`."
     }
   ]
 }
