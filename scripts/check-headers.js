@@ -14,6 +14,24 @@
 
 const SITE = process.argv[2] || process.env.SITE || "https://aarch64-playground.com";
 
+// The host each source in a CSP names, from every directive. A keyword such
+// as 'self' or a bare scheme such as blob: names none.
+function cspHosts(policy) {
+  return policy
+    .split(";")
+    .flatMap((directive) => directive.trim().split(/\s+/).slice(1))
+    .filter((source) => !source.startsWith("'") && !/^[a-z][a-z0-9+.-]*:$/i.test(source))
+    .map((source) => source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/:]/)[0].toLowerCase());
+}
+
+// Whole-host comparison, so a look-alike such as cdn.jsdelivr.net.example.com
+// is not mistaken for the CDN, while a wildcard that covers it still counts.
+function allowsHost(policy, host) {
+  return cspHosts(policy).some(
+    (h) => h === host || h === "*" || (h.startsWith("*.") && host.endsWith(h.slice(1))),
+  );
+}
+
 const REQUIRED = {
   "x-content-type-options": (v) => v === "nosniff",
   "strict-transport-security": (v) => /max-age=\d/.test(v),
@@ -28,7 +46,7 @@ const REQUIRED = {
     /object-src 'none'/.test(v) &&
     // Monaco is vendored, so no third-party script origin may reappear, and
     // the dev-only eval allowance must never reach production.
-    !v.includes("cdn.jsdelivr.net") &&
+    !allowsHost(v, "cdn.jsdelivr.net") &&
     !/'unsafe-eval'/.test(v),
 };
 
