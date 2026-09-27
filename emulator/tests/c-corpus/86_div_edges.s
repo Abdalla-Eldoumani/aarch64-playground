@@ -139,22 +139,22 @@ w_pairs:
 	.word	7
 	.align	3
 x_pairs:
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	-9223372036854775808
-	.quad	0
-	.quad	-9223372036854775808
-	.quad	3
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	-9
-	.quad	4
-	.quad	9
-	.quad	-4
-	.quad	-1
-	.quad	2
-	.quad	81985529216486895
-	.quad	4096
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	-9223372036854775808
+	.xword	0
+	.xword	-9223372036854775808
+	.xword	3
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	-9
+	.xword	4
+	.xword	9
+	.xword	-4
+	.xword	-1
+	.xword	2
+	.xword	81985529216486895
+	.xword	4096
 	.align	3
 dividends:
 	.word	-2147483648
