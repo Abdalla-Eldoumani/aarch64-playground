@@ -494,9 +494,7 @@ const referenceSeeds: ReferenceSeed[] = [
     category: "Data processing",
     syntax: "mov xd, xn / mov xd, #imm / mov xd, sp / mov vd.T, vn.T",
     example: `mov     x9, 42                  // x9 = 42
-mov     x10, x9                 // copy: x10 = 42 too
-movi    v1.16b, #12
-mov     v3.16b, v1.16b          // every lane = 12`,
+mov     x10, x9                 // copy: x10 = 42 too`,
     gotchas: [
       "the immediate form only takes a value that fits one shifted 16-bit field; a wider constant needs a move-wide then keep sequence.",
     ],
@@ -531,10 +529,7 @@ movk    x9, 0xbeef, lsl 16      // keep the rest: x9 = 0xbeef1234`,
     example: `mov     x9, 6
 mov     x10, 7
 add     x11, x9, x10            // x11 = 13
-add     x12, x11, 100           // immediate form: x12 = 113
-movi    v1.16b, #12
-movi    v2.16b, #5
-add     v3.16b, v1.16b, v2.16b  // every lane = 0x11`,
+add     x12, x11, 100           // immediate form: x12 = 113`,
     encoding: encAddImm,
     encodedAsm: "add x19, x0, 8",
   },
@@ -550,10 +545,7 @@ adds    w10, w9, 7              // w10 = 12, and nzcv describes the sum`,
     category: "Data processing",
     syntax: "sub xd, xn, xm / sub xd, xn, #imm / sub vd.T, vn.T, vm.T",
     example: `mov     x9, 50
-sub     x10, x9, 8              // x10 = 42
-movi    v1.16b, #12
-movi    v2.16b, #5
-sub     v3.16b, v1.16b, v2.16b  // every lane = 7`,
+sub     x10, x9, 8              // x10 = 42`,
     encoding: encAddSubShifted,
     encodedAsm: "sub x19, x0, x1",
   },
@@ -617,10 +609,7 @@ sbcs    x11, x9, x10            // x11 = 5 - 3 - 0 = 2, and nzcv updated`,
     syntax: "mul xd, xn, xm / mul vd.T, vn.T, vm.T",
     example: `mov     x9, 6
 mov     x10, 7
-mul     x11, x9, x10            // x11 = 42
-movi    v1.16b, #12
-movi    v2.16b, #5
-mul     v3.8h, v1.8h, v2.8h     // every lane = 0x783c`,
+mul     x11, x9, x10            // x11 = 42`,
   },
   {
     mnemonic: "madd",
@@ -661,10 +650,7 @@ negs    x10, x9                 // x10 = -1 and n is set: subs from zero`,
     syntax: "smull xd, wn, wm / smull vd.8h, vn.8b, vm.8b",
     example: `mov     w9, -3
 mov     w10, 5
-smull   x11, w9, w10            // x11 = -15, exact in 64 bits
-movi    v1.16b, #12
-movi    v2.16b, #5
-smull   v3.8h, v1.8b, v2.8b     // every lane = 0x003c`,
+smull   x11, w9, w10            // x11 = -15, exact in 64 bits`,
   },
   {
     mnemonic: "umull",
@@ -672,10 +658,7 @@ smull   v3.8h, v1.8b, v2.8b     // every lane = 0x003c`,
     syntax: "umull xd, wn, wm / umull vd.8h, vn.8b, vm.8b",
     example: `mov     w9, 0xffffffff
 mov     w10, 2
-umull   x11, w9, w10            // x11 = 0x1fffffffe: no 32-bit wrap
-movi    v1.16b, #12
-movi    v2.16b, #5
-umull   v3.8h, v1.8b, v2.8b     // every lane = 0x003c`,
+umull   x11, w9, w10            // x11 = 0x1fffffffe: no 32-bit wrap`,
   },
   {
     mnemonic: "smulh",
@@ -774,19 +757,14 @@ sdiv    x11, x9, x10            // x11 = -8: truncation goes toward zero`,
     category: "Data processing",
     syntax: "neg xd, xm / neg vd.T, vn.T",
     example: `mov     x9, 7
-neg     x10, x9                 // x10 = -7
-movi    v1.16b, #12
-neg     v3.16b, v1.16b          // every lane = 0xf4`,
+neg     x10, x9                 // x10 = -7`,
   },
   {
     mnemonic: "and",
     category: "Data processing",
     syntax: "and xd, xn, xm / and xd, xn, #imm / and vd.T, vn.T, vm.T (8b / 16b)",
     example: `mov     w9, 0x2c
-and     w10, w9, 0xf            // keep the low nibble: w10 = 0xc
-movi    v1.16b, #12
-movi    v2.16b, #5
-and     v3.16b, v1.16b, v2.16b  // every lane = 4`,
+and     w10, w9, 0xf            // keep the low nibble: w10 = 0xc`,
   },
   {
     mnemonic: "ands",
@@ -801,10 +779,7 @@ ands    w10, w9, 1              // w10 = 0 and z is set: 6 is even`,
     syntax: "orr xd, xn, xm / orr vd.T, vn.T, vm.T (8b / 16b) / orr vd.T, #imm8",
     example: `mov     w9, 0xf0
 mov     w10, 0x0f
-orr     w11, w9, w10            // w11 = 0xff
-movi    v1.16b, #12
-movi    v2.16b, #5
-orr     v3.16b, v1.16b, v2.16b  // every lane = 13`,
+orr     w11, w9, w10            // w11 = 0xff`,
   },
   {
     mnemonic: "eor",
@@ -812,19 +787,14 @@ orr     v3.16b, v1.16b, v2.16b  // every lane = 13`,
     syntax: "eor xd, xn, xm / eor vd.T, vn.T, vm.T (8b / 16b)",
     example: `mov     w9, 0xff
 mov     w10, 0x0f
-eor     w11, w9, w10            // shared bits cancel: w11 = 0xf0
-movi    v1.16b, #12
-movi    v2.16b, #5
-eor     v3.16b, v1.16b, v2.16b  // every lane = 9`,
+eor     w11, w9, w10            // shared bits cancel: w11 = 0xf0`,
   },
   {
     mnemonic: "mvn",
     category: "Data processing",
     syntax: "mvn xd, xm / mvn vd.T, vn.T (8b / 16b)",
     example: `mov     w9, 0xf
-mvn     w10, w9                 // every bit flipped: w10 = 0xfffffff0
-movi    v1.16b, #12
-mvn     v3.16b, v1.16b          // every lane = 0xf3`,
+mvn     w10, w9                 // every bit flipped: w10 = 0xfffffff0`,
   },
   {
     mnemonic: "bic",
@@ -832,10 +802,7 @@ mvn     v3.16b, v1.16b          // every lane = 0xf3`,
     syntax: "bic xd, xn, xm / bic vd.T, vn.T, vm.T (8b / 16b) / bic vd.T, #imm8",
     example: `mov     w9, 0xff
 mov     w10, 0x0f
-bic     w11, w9, w10            // clear w10's bits out of w9: w11 = 0xf0
-movi    v1.16b, #12
-movi    v2.16b, #5
-bic     v3.16b, v1.16b, v2.16b  // every lane = 8`,
+bic     w11, w9, w10            // clear w10's bits out of w9: w11 = 0xf0`,
     gotchas: [
       "register form only: there is no bic with an immediate. clear a constant mask with `and` and the inverted bits instead.",
       "does not set flags; pair with `tst` when the cleared result drives a branch.",
@@ -847,10 +814,7 @@ bic     v3.16b, v1.16b, v2.16b  // every lane = 8`,
     syntax: "orn xd, xn, xm / orn vd.T, vn.T, vm.T (8b / 16b)",
     example: `mov     x1, 0
 mov     x2, 0xff
-orn     x0, x1, x2              // x0 = 0xffffffffffffff00
-movi    v1.16b, #12
-movi    v2.16b, #5
-orn     v3.16b, v1.16b, v2.16b  // every lane = 0xfe`,
+orn     x0, x1, x2              // x0 = 0xffffffffffffff00`,
   },
   {
     mnemonic: "eon",
@@ -868,9 +832,7 @@ eon     x0, x1, x2              // x0 = -1: equal inputs make xnor all-ones`,
 movk    w1, 0x0123, lsl 16      // w1 = 0x01234567
 clz     w0, w1                  // w0 = 7
 mov     x2, 0
-clz     x3, x2                  // x3 = 64: zero answers the full width
-movi    v1.16b, #12
-clz     v3.16b, v1.16b          // every lane = 4`,
+clz     x3, x2                  // x3 = 64: zero answers the full width`,
   },
   {
     mnemonic: "cls",
@@ -879,9 +841,7 @@ clz     v3.16b, v1.16b          // every lane = 4`,
     example: `mov     x1, -1
 cls     x0, x1                  // x0 = 63: 64 sign bits, minus the top one
 mov     x2, 0
-cls     x3, x2                  // x3 = 63 as well
-movi    v1.16b, #12
-cls     v3.16b, v1.16b          // every lane = 3`,
+cls     x3, x2                  // x3 = 63 as well`,
   },
   {
     mnemonic: "rbit",
@@ -889,9 +849,7 @@ cls     v3.16b, v1.16b          // every lane = 3`,
     syntax: "rbit xd, xn / rbit wd, wn / rbit vd.T, vn.T (8b / 16b)",
     example: `movz    w1, 0x4567
 movk    w1, 0x0123, lsl 16      // w1 = 0x01234567
-rbit    w0, w1                  // w0 = 0xe6a2c480
-movi    v1.16b, #12
-rbit    v3.16b, v1.16b          // every lane = 0x30`,
+rbit    w0, w1                  // w0 = 0xe6a2c480`,
   },
   {
     mnemonic: "rev",
@@ -910,9 +868,7 @@ rev     w0, w1                  // w0 = 0x67452301`,
     syntax: "rev16 xd, xn / rev16 wd, wn / rev16 vd.T, vn.T (8b / 16b)",
     example: `movz    w1, 0x4567
 movk    w1, 0x0123, lsl 16      // w1 = 0x01234567
-rev16   w0, w1                  // w0 = 0x23016745
-movi    v1.8h, #12, lsl #8
-rev16   v3.16b, v1.16b          // v3 = 12 0 repeating`,
+rev16   w0, w1                  // w0 = 0x23016745`,
   },
   {
     mnemonic: "rev32",
@@ -920,9 +876,7 @@ rev16   v3.16b, v1.16b          // v3 = 12 0 repeating`,
     syntax: "rev32 xd, xn / rev32 vd.T, vn.T (b and h lanes)",
     example: `mov     x1, 0xff
 rev32   x0, x1                  // x0 = 0xff000000
-rev     x2, x1                  // x2 = 0xff00000000000000: the same opcode, the other width
-movi    v1.4s, #12, lsl #24
-rev32   v3.16b, v1.16b          // v3 = 12 0 0 0 repeating`,
+rev     x2, x1                  // x2 = 0xff00000000000000: the same opcode, the other width`,
     gotchas: [
       "there is no `rev32 wd, wn`. the 32-bit byte-swap is `rev wd, wn`, which shares this opcode at the other width.",
     ],
@@ -1214,12 +1168,7 @@ cneg    x8, x6, eq              // condition false: x8 = 7`,
 mov     x9, 42
 str     x9, [sp, 8]
 ldr     x10, [sp, 8]            // x10 = 42
-add     sp, sp, 16
-movi    v1.16b, #12
-sub     sp, sp, #16
-str     q1, [sp]
-ldr     q3, [sp]                // q3 = 0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c
-add     sp, sp, #16`,
+add     sp, sp, 16`,
     gotchas: [
       "the `=label` form loads the symbol's address; read the value it points at with a second load.",
     ],
@@ -1234,12 +1183,7 @@ add     sp, sp, #16`,
 mov     w9, 7
 str     w9, [sp, 12]            // the register width picks the store size
 ldr     w10, [sp, 12]           // read back: w10 = 7
-add     sp, sp, 16
-movi    v1.16b, #12
-sub     sp, sp, #16
-str     q1, [sp]
-ldr     q3, [sp]                // every lane = 12
-add     sp, sp, #16`,
+add     sp, sp, 16`,
     encoding: encStrUoff,
     encodedAsm: "str x19, [x20, 16]",
   },
@@ -1290,13 +1234,7 @@ add     sp, sp, 16`,
     example: `mov     x9, 7
 mov     x10, 9
 stp     x9, x10, [sp, -16]!
-ldp     x11, x12, [sp], 16      // one instruction, two loads: 7 and 9
-movi    v1.16b, #12
-movi    v2.16b, #5
-sub     sp, sp, #32
-stp     q1, q2, [sp]
-ldp     q3, q4, [sp]            // q3 = 0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c
-add     sp, sp, #32`,
+ldp     x11, x12, [sp], 16      // one instruction, two loads: 7 and 9`,
   },
   {
     mnemonic: "stp",
@@ -1305,13 +1243,7 @@ add     sp, sp, #32`,
     example: `mov     x9, 1
 mov     x10, 2
 stp     x9, x10, [sp, -16]!     // push the pair; sp drops 16 first
-ldp     x11, x12, [sp], 16      // pop it back: x11 = 1, x12 = 2
-movi    v1.16b, #12
-movi    v2.16b, #5
-sub     sp, sp, #32
-stp     q1, q2, [sp]
-ldp     q3, q4, [sp]            // every lane = 12
-add     sp, sp, #32`,
+ldp     x11, x12, [sp], 16      // pop it back: x11 = 1, x12 = 2`,
     gotchas: [
       "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved fp registers.",
     ],
@@ -1514,8 +1446,7 @@ ret                             // back to the caller: exit code 7`,
     category: "Floating point",
     syntax: "fmov dd, dn / fmov dd, xn / fmov xd, dn / fmov dd, #imm / fmov vd.T, #imm / fmov vd.d[1], xn / fmov xd, vn.d[1]",
     example: `fmov    d16, 5.0                // one of the encodable immediates
-fcvtzs  x9, d16                 // x9 = 5: the double, made visible
-fmov    v3.4s, #2.0             // every lane = 2.0`,
+fcvtzs  x9, d16                 // x9 = 5: the double, made visible`,
     gotchas: [
       "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
       "the between-files forms (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
@@ -1528,10 +1459,7 @@ fmov    v3.4s, #2.0             // every lane = 2.0`,
     example: `fmov    d16, 1.5
 fmov    d17, 2.5
 fadd    d18, d16, d17           // d18 = 4.0
-fcvtzs  x9, d18                 // x9 = 4
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fadd    v3.4s, v1.4s, v2.4s     // every lane = 5.0`,
+fcvtzs  x9, d18                 // x9 = 4`,
   },
   {
     mnemonic: "fsub",
@@ -1540,10 +1468,7 @@ fadd    v3.4s, v1.4s, v2.4s     // every lane = 5.0`,
     example: `fmov    d16, 5.0
 fmov    d17, 1.5
 fsub    d18, d16, d17           // d18 = 3.5
-fcvtzs  x9, d18                 // x9 = 3: conversion truncates
-fmov    v1.4s, #5.0
-fmov    v2.4s, #3.0
-fsub    v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
+fcvtzs  x9, d18                 // x9 = 3: conversion truncates`,
   },
   {
     mnemonic: "fmul",
@@ -1552,10 +1477,7 @@ fsub    v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
     example: `fmov    d16, 2.5
 fmov    d17, 4.0
 fmul    d18, d16, d17           // d18 = 10.0
-fcvtzs  x9, d18                 // x9 = 10
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmul    v3.4s, v1.4s, v2.4s     // every lane = 6.0`,
+fcvtzs  x9, d18                 // x9 = 10`,
   },
   {
     mnemonic: "fdiv",
@@ -1564,10 +1486,7 @@ fmul    v3.4s, v1.4s, v2.4s     // every lane = 6.0`,
     example: `fmov    d16, 9.0
 fmov    d17, 2.0
 fdiv    d18, d16, d17           // d18 = 4.5
-fcvtzs  x9, d18                 // x9 = 4: the fraction is cut, not rounded
-fmov    v1.4s, #6.0
-fmov    v2.4s, #2.0
-fdiv    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
+fcvtzs  x9, d18                 // x9 = 4: the fraction is cut, not rounded`,
   },
   {
     mnemonic: "fneg",
@@ -1575,9 +1494,7 @@ fdiv    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
     syntax: "fneg dd, dn / fneg sd, sn / fneg vd.T, vn.T (2s, 4s, 2d)",
     example: `fmov    d16, 2.0
 fneg    d16, d16                // d16 = -2.0: only the sign bit changes
-fcvtzs  x9, d16                 // x9 = -2
-fmov    v1.4s, #2.0
-fneg    v3.4s, v1.4s            // every lane = -2.0`,
+fcvtzs  x9, d16                 // x9 = -2`,
     gotchas: [
       "the alternating-sign series idiom: `fneg sign, sign` each pass flips a running +1/-1 factor without a branch.",
     ],
@@ -1589,9 +1506,7 @@ fneg    v3.4s, v1.4s            // every lane = -2.0`,
     example: `fmov    d16, 3.0
 fneg    d16, d16                // d16 = -3.0
 fabs    d17, d16                // d17 = 3.0: distance from zero
-fcvtzs  x9, d17                 // x9 = 3
-fmov    v1.4s, #-2.0
-fabs    v3.4s, v1.4s            // every lane = 2.0`,
+fcvtzs  x9, d17                 // x9 = 3`,
     gotchas: [
       "the convergence-test idiom: take `fabs` of an error term before `fcmp` against the epsilon, so the loop exits on distance from zero, not direction.",
     ],
@@ -1602,9 +1517,7 @@ fabs    v3.4s, v1.4s            // every lane = 2.0`,
     syntax: "fsqrt dd, dn / fsqrt sd, sn / fsqrt vd.T, vn.T (2s, 4s, 2d)",
     example: `fmov    d16, 9.0
 fsqrt   d17, d16                // d17 = 3.0
-fcvtzs  x9, d17                 // x9 = 3
-fmov    v1.4s, #4.0
-fsqrt   v3.4s, v1.4s            // every lane = 2.0`,
+fcvtzs  x9, d17                 // x9 = 3`,
     gotchas: [
       "a negative operand gives NaN instead of an error, and NaN compares unordered: `fcmp` against it sets c and v, so a `b.lt` after it never takes. check the sign before taking the root.",
     ],
@@ -1647,9 +1560,7 @@ fcvtzs  x9, d1                  // x9 = 2`,
 scvtf   d16, x9                 // d16 = 7.0
 fcvtzs  x10, d16                // x10 = 7: round-tripped
 mov     x11, 6
-scvtf   d17, x11, 2             // d17 = 1.5: the fixed-point form divides by 4
-movi    v1.4s, #6
-scvtf   v3.4s, v1.4s            // every lane = 6.0`,
+scvtf   d17, x11, 2             // d17 = 1.5: the fixed-point form divides by 4`,
   },
   {
     mnemonic: "fcvtzs",
@@ -1658,9 +1569,7 @@ scvtf   v3.4s, v1.4s            // every lane = 6.0`,
     example: `fmov    d16, 1.9375             // the largest encodable mantissa
 fcvtzs  w9, d16                 // w9 = 1: toward zero, never rounding
 fmov    d17, 1.5
-fcvtzs  w10, d17, 2             // w10 = 6: the fixed-point form scales by 4 first
-fmov    v1.4s, #2.5
-fcvtzs  v3.4s, v1.4s            // every lane = 2`,
+fcvtzs  w10, d17, 2             // w10 = 6: the fixed-point form scales by 4 first`,
     gotchas: [
       "`fbits` runs 1 to 32 for a w destination and 1 to 64 for an x one; it is stored in the word as 64 minus that.",
     ],
@@ -1673,9 +1582,7 @@ fcvtzs  v3.4s, v1.4s            // every lane = 2`,
 fcvtns  w1, d0                  // w1 = 2: the tie goes to the even neighbor
 fcvtzs  w2, d0                  // w2 = 2 as well, but by truncation
 fmov    d3, 3.5
-fcvtns  w4, d3                  // w4 = 4: ties to even lands upward here
-fmov    v1.4s, #2.5
-fcvtns  v3.4s, v1.4s            // every lane = 2`,
+fcvtns  w4, d3                  // w4 = 4: ties to even lands upward here`,
   },
   {
     mnemonic: "fcvtnu",
@@ -1684,9 +1591,7 @@ fcvtns  v3.4s, v1.4s            // every lane = 2`,
     example: `fmov    d0, 2.5
 fcvtnu  w1, d0                  // w1 = 2
 fmov    d2, -2.5
-fcvtnu  w3, d2                  // w3 = 0: negatives saturate
-fmov    v1.4s, #2.5
-fcvtnu  v3.4s, v1.4s            // every lane = 2`,
+fcvtnu  w3, d2                  // w3 = 0: negatives saturate`,
   },
   {
     mnemonic: "fcvtzu",
@@ -1695,9 +1600,7 @@ fcvtnu  v3.4s, v1.4s            // every lane = 2`,
     example: `fmov    d0, 2.5
 fcvtzu  w1, d0                  // w1 = 2: the fraction is cut, not rounded
 fmov    d2, -1.5
-fcvtzu  w3, d2                  // w3 = 0: negatives saturate
-fmov    v1.4s, #2.5
-fcvtzu  v3.4s, v1.4s            // every lane = 2`,
+fcvtzu  w3, d2                  // w3 = 0: negatives saturate`,
   },
   {
     mnemonic: "fcvtas",
@@ -1707,18 +1610,14 @@ fcvtzu  v3.4s, v1.4s            // every lane = 2`,
 fcvtas  w1, d0                  // w1 = 3: the tie goes away from zero
 fcvtns  w2, d0                  // w2 = 2: the tie goes to the even neighbour
 fmov    d3, -2.5
-fcvtas  w4, d3                  // w4 = -3: away from zero in both directions
-fmov    v1.4s, #2.5
-fcvtas  v3.4s, v1.4s            // every lane = 3`,
+fcvtas  w4, d3                  // w4 = -3: away from zero in both directions`,
   },
   {
     mnemonic: "fcvtau",
     category: "Floating point",
     syntax: "fcvtau wd, dn / fcvtau xd, sn / fcvtau vd.T, vn.T / fcvtau sd, sn",
     example: `fmov    d0, 2.5
-fcvtau  w1, d0                  // w1 = 3
-fmov    v1.4s, #2.5
-fcvtau  v3.4s, v1.4s            // every lane = 3`,
+fcvtau  w1, d0                  // w1 = 3`,
   },
   {
     mnemonic: "fcvtms",
@@ -1726,18 +1625,14 @@ fcvtau  v3.4s, v1.4s            // every lane = 3`,
     syntax: "fcvtms wd, dn / fcvtms xd, sn / fcvtms vd.T, vn.T / fcvtms sd, sn",
     example: `fmov    d0, -0.5
 fcvtms  w1, d0                  // w1 = -1: floor, so it walks away from zero
-fcvtzs  w2, d0                  // w2 = 0: truncation walks toward it
-fmov    v1.4s, #2.5
-fcvtms  v3.4s, v1.4s            // every lane = 2`,
+fcvtzs  w2, d0                  // w2 = 0: truncation walks toward it`,
   },
   {
     mnemonic: "fcvtmu",
     category: "Floating point",
     syntax: "fcvtmu wd, dn / fcvtmu xd, sn / fcvtmu vd.T, vn.T / fcvtmu sd, sn",
     example: `fmov    d0, 2.5
-fcvtmu  w1, d0                  // w1 = 2
-fmov    v1.4s, #2.5
-fcvtmu  v3.4s, v1.4s            // every lane = 2`,
+fcvtmu  w1, d0                  // w1 = 2`,
   },
   {
     mnemonic: "fcvtps",
@@ -1746,18 +1641,14 @@ fcvtmu  v3.4s, v1.4s            // every lane = 2`,
     example: `fmov    d0, -0.5
 fcvtps  w1, d0                  // w1 = 0: ceiling
 fmov    d2, 2.5
-fcvtps  w3, d2                  // w3 = 3
-fmov    v1.4s, #2.5
-fcvtps  v3.4s, v1.4s            // every lane = 3`,
+fcvtps  w3, d2                  // w3 = 3`,
   },
   {
     mnemonic: "fcvtpu",
     category: "Floating point",
     syntax: "fcvtpu wd, dn / fcvtpu xd, sn / fcvtpu vd.T, vn.T / fcvtpu sd, sn",
     example: `fmov    d0, 2.5
-fcvtpu  w1, d0                  // w1 = 3
-fmov    v1.4s, #2.5
-fcvtpu  v3.4s, v1.4s            // every lane = 3`,
+fcvtpu  w1, d0                  // w1 = 3`,
   },
   {
     mnemonic: "ucvtf",
@@ -1765,9 +1656,7 @@ fcvtpu  v3.4s, v1.4s            // every lane = 3`,
     syntax: "ucvtf dd, xn / ucvtf sd, wn / ucvtf vd.T, vn.T{, #fbits} / ucvtf sd, sn",
     example: `mov     x0, -1
 scvtf   d0, x0                  // d0 = -1.0
-ucvtf   d1, x0                  // d1 = 1.8446744073709552e19: the same bits, read unsigned
-movi    v1.4s, #6
-ucvtf   v3.4s, v1.4s            // every lane = 6.0`,
+ucvtf   d1, x0                  // d1 = 1.8446744073709552e19: the same bits, read unsigned`,
   },
   {
     mnemonic: "fcsel",
@@ -1792,10 +1681,7 @@ fcvtzs  x9, d3                  // x9 = 1`,
     example: `fmov    d1, 3.0
 fmov    d2, 5.0
 fmax    d3, d1, d2              // d3 = 5.0
-fcvtzs  x9, d3                  // x9 = 5
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmax    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
+fcvtzs  x9, d3                  // x9 = 5`,
     gotchas: [
       "a nan operand makes the result nan. for the c `fmax()` behaviour, where the number wins, use `fmaxnm`.",
     ],
@@ -1807,10 +1693,7 @@ fmax    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
     example: `fmov    d1, 3.0
 fmov    d2, 5.0
 fmin    d4, d1, d2              // d4 = 3.0
-fcvtzs  x9, d4                  // x9 = 3
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmin    v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
+fcvtzs  x9, d4                  // x9 = 3`,
   },
   {
     mnemonic: "fmaxnm",
@@ -1822,10 +1705,7 @@ fsqrt   d1, d1                  // d1 = nan
 fmov    d2, 5.0
 fmaxnm  d3, d1, d2              // d3 = 5.0: the nan is ignored
 fmax    d4, d1, d2              // d4 = nan
-fcvtzs  x9, d3                  // x9 = 5
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmaxnm  v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
+fcvtzs  x9, d3                  // x9 = 5`,
   },
   {
     mnemonic: "fminnm",
@@ -1834,10 +1714,7 @@ fmaxnm  v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
     example: `fmov    d1, 3.0
 fmov    d2, 5.0
 fminnm  d3, d1, d2              // d3 = 3.0
-fcvtzs  x9, d3                  // x9 = 3
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fminnm  v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
+fcvtzs  x9, d3                  // x9 = 3`,
   },
   {
     mnemonic: "fnmul",
