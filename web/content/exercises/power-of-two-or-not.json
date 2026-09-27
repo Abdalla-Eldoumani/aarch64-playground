@@ -1,0 +1,70 @@
+{
+  "title": "Power of two, or not?",
+  "slug": "power-of-two-or-not",
+  "order": 22,
+  "topic": "bitwise",
+  "difficulty": "intro",
+  "prompt": "A power of two (1, 2, 4, 8, and so on) has exactly one bit set. Subtracting 1 clears that bit and sets every bit below it, so `n` and `n - 1` share no set bits and `n & (n - 1)` is zero. Any other positive number keeps its highest set bit through the subtraction, so the AND is not zero.\n\nThe starter reads a 64-bit number into `n_r` and always prints that it is not a power of two. Point `x0` at `fmt_yes` instead when `n_r` is a power of two: compute `n - 1` in a spare register and test the two with `tst`, which sets the flags from their AND.\n\nWatch zero and the negative numbers: the bit test alone gets one of each wrong.\n\n## what is checked\n\n- `64 is a power of two` for the sample input\n- the program exits cleanly\n- the bits are tested with `tst`\n- the right answer for other numbers, including 0, 1, a number wider than 32 bits, and negative numbers",
+  "starter": "// decide whether a number is a power of two\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\n\n.data\nfmt_num:    .string \"%ld\"\nfmt_yes:    .string \"%ld is a power of two\\n\"\nfmt_no:     .string \"%ld is not a power of two\\n\"\n\n.bss\n.balign 8\nn_m:        .skip 8\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_num                // read n into n_m\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n\n        ldr     x0, =fmt_no                 // placeholder: always says no\n\n        // TODO: point x0 at fmt_yes instead when n is a power of two.\n\n        mov     x1, n_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "64\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "64 is a power of two\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "tst"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "0 is not a power of two\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "1 is a power of two\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "96\n",
+      "stdout": "96 is not a power of two\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1099511627776\n",
+      "stdout": "1099511627776 is a power of two\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "4294967297\n",
+      "stdout": "4294967297 is not a power of two\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-8\n",
+      "stdout": "-8 is not a power of two\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-9223372036854775808\n",
+      "stdout": "-9223372036854775808 is not a power of two\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}
