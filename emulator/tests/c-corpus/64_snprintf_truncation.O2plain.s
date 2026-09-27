@@ -74,7 +74,7 @@
 	.string	"n=%d p=%d same=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #480
@@ -109,7 +109,7 @@ main:
 	adrp	x1, .LC3
 	str	q31, [x22, 32]
 	ldr	d15, [x1, :lo12:.LC3]
-	.align 5
+	.p2align 5,,15
 .L6:
 	ldp	x4, x2, [sp, 144]
 	fmov	d0, d15
@@ -128,7 +128,7 @@ main:
 	mov	w0, 34
 	bl	putc
 	b	.L4
-	.align 2
+	.p2align 2,,3
 .L28:
 	ldr	x1, [x21]
 	add	x28, x28, 1
@@ -175,7 +175,7 @@ main:
 	add	x20, x22, 16
 	add	x23, x23, :lo12:.LC6
 	ldr	d14, [x0, :lo12:.LC9]
-	.align 5
+	.p2align 5,,15
 .L11:
 	movi	v31.16b, 0x23
 	mov	x3, x28
@@ -196,7 +196,7 @@ main:
 	mov	w0, 34
 	bl	putc
 	b	.L10
-	.align 2
+	.p2align 2,,3
 .L30:
 	ldr	x1, [x21]
 	add	x24, x24, 1
@@ -252,7 +252,7 @@ main:
 	mov	w0, 34
 	bl	putc
 	b	.L14
-	.align 2
+	.p2align 2,,3
 .L32:
 	ldr	x1, [x21]
 	add	x25, x25, 1
@@ -287,7 +287,7 @@ main:
 	mov	w21, -100
 	adrp	x26, .LC0
 	b	.L16
-	.align 2
+	.p2align 2,,3
 .L33:
 	add	w21, w21, 37
 	add	w24, w24, 255
@@ -319,7 +319,7 @@ main:
 	mov	w20, 0
 	fmov	d15, 5.0e-1
 	mov	x26, 48
-	.align 5
+	.p2align 5,,15
 .L18:
 	scvtf	d0, w19
 	sxtw	x0, w20
