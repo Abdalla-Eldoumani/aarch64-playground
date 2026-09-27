@@ -61,7 +61,7 @@ From the repo root:
 node scripts/verify-corpus.js
 ```
 
-Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout and post-run VFS state. It then assembles every shipped example, fixture or not, so a program no fixture exercises still has to build; `is-prime` is skipped there because it is a leaf function with no entry point and ships without a caller. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
+Runs every CPSC 355 example that has a fixture under `web/public/examples/cpsc355/fixtures/` to completion, asserting stdout, exit status 0, and post-run VFS state. It then assembles every shipped example, fixture or not, so a program no fixture exercises still has to build. It loads a prebuilt node-target bundle rather than building one, so build that first from `emulator/`: `wasm-pack build --target nodejs --out-dir ../web/lib/wasm-node` (or point `WASM_DIR` at an existing build). Run it whenever you touch the assembler, executor, frontend pipeline, or the examples.
 
 ## The server-parity sweep
 
@@ -161,6 +161,25 @@ has the steps, where the tracked references came from, and the one
 recorded hardware-versus-qemu divergence. A weekly workflow
 (`corpus.yml`) regenerates everything and fails on drift, so a toolchain
 change is caught without a PR.
+
+## Error messages
+
+The mistakes students make most (no `main`, a `main` that is not
+`.global`, a misspelled label or mnemonic, a label defined twice, a
+forgotten `ldr x0, =fmt`, a stack frame that is not a multiple of 16)
+each have a program in `emulator/tests/error-parity/` beside the session
+the course server printed for it (`<case>.server.txt`: `gcc <case>.s -o
+program`, then `./program` when it built). The playground's message has
+to open with the server's own line (the assembler error, ld's undefined
+reference, or the shell's `Segmentation fault` / `Bus error`) and add
+one line saying what to change:
+
+```bash
+cargo test --manifest-path emulator/Cargo.toml --test error_parity
+```
+
+A new case is a new pair of files plus a one-line test naming it; a
+program left without a transcript fails the suite.
 
 ## Type and lint
 
