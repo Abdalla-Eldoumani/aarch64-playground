@@ -3,7 +3,8 @@
 import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
-import { lookupDocAt } from "@/lib/asm/instruction-docs";
+import { docKeyAt, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
+import { C_EQUIVALENTS } from "@/lib/asm/c-equivalents";
 import {
   MNEMONIC_ALTERNATION,
   REGISTER_PATTERN,
@@ -282,8 +283,9 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       // the table in lib/asm/instruction-docs, so this provider holds none of
       // it and the whole path is pinned without Monaco.
       const line = model.getLineContent(position.lineNumber);
-      const doc = lookupDocAt(line, word.word, word.startColumn);
-      if (!doc) return null;
+      const key = docKeyAt(line, word.word, word.startColumn);
+      if (key === undefined) return null;
+      const doc = INSTRUCTION_DOCS[key];
       const lines: string[] = [
         `**${word.word.toLowerCase()}** · ${doc.summary}`,
       ];
@@ -293,8 +295,11 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       if (doc.example) {
         lines.push("", "```", doc.example, "```");
       }
-      if (doc.cExample) {
-        lines.push("", `**c equivalent:** \`${doc.cExample}\``);
+      // The C runs to several lines, so it takes a fenced block of its own.
+      const c = C_EQUIVALENTS[key];
+      if (c) {
+        lines.push("", "**c equivalent:**", "```c", c.c, "```");
+        if (c.intrinsic) lines.push("", `intrinsic: \`${c.intrinsic}\``);
       }
       return {
         range: new monaco.Range(
