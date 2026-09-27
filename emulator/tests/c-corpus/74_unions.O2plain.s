@@ -1,13 +1,13 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	flipsign
 flipsign:
 	mov	x1, -9223372036854775808
 	add	x0, x0, x1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fvswap
 fvswap:
 	fmov	w1, s1
@@ -30,7 +30,7 @@ fvswap:
 	fmov	s1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	widemix
 widemix:
 	fmov	d30, x0
@@ -40,7 +40,7 @@ widemix:
 	fmov	x1, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	shout
 shout:
 	fmov	d31, x0
@@ -58,7 +58,7 @@ shout:
 	ret
 .L6:
 	add	x1, sp, 8
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldrb	w0, [x1]
 	cbz	w0, .L7
@@ -71,7 +71,7 @@ shout:
 	add	sp, sp, 16
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	next_up
 next_up:
 	fmov	w0, s0
@@ -79,14 +79,14 @@ next_up:
 	fmov	s0, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	num
 num:
 	mov	x1, x0
 	mov	x0, 0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	op
 op:
 	mov	w3, w1
@@ -96,7 +96,7 @@ op:
 	bfi	x1, x2, 32, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	eval
 eval:
 	stp	x29, x30, [sp, -48]!
@@ -131,14 +131,14 @@ eval:
 	bl	eval
 	mul	x22, x22, x0
 	b	.L19
-	.align 2
+	.p2align 2,,3
 .L21:
 	cmp	w0, 3
 	bne	.L18
 	ldr	w19, [x2, 8]
 	neg	x22, x22
 	b	.L19
-	.align 2
+	.p2align 2,,3
 .L29:
 	ldr	x0, [x2, 8]
 	madd	x21, x22, x0, x21
@@ -184,7 +184,7 @@ eval:
 	.string	"sizes %d %d %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -288]!
@@ -209,7 +209,7 @@ main:
 	add	x21, x0, :lo12:.LC1
 	str	d15, [sp, 56]
 	str	d31, [sp, 120]
-	.align 5
+	.p2align 5,,15
 .L32:
 	ldr	s0, [x19], 4
 	mov	x0, x21
@@ -241,7 +241,7 @@ main:
 	adrp	x0, .LC3
 	add	x21, x0, :lo12:.LC3
 	fmov	d0, 1.25e-1
-	.align 5
+	.p2align 5,,15
 .L33:
 	mov	x0, x21
 	mov	w1, 32
@@ -327,7 +327,7 @@ main:
 	movk	x0, 0x6f, lsl 32
 	str	x0, [sp, 88]
 	str	x0, [sp, 160]
-	.align 5
+	.p2align 5,,15
 .L37:
 	ldrb	w0, [x1]
 	cbz	w0, .L38
