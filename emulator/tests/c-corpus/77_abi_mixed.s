@@ -672,13 +672,13 @@ conj2:
 	.data
 	.align	3
 makers:
-	.quad	mkbig
-	.quad	mkbig2
+	.xword	mkbig
+	.xword	mkbig2
 	.global	turns
 	.align	3
 turns:
-	.quad	rot90
-	.quad	conj2
+	.xword	rot90
+	.xword	conj2
 	.text
 	.align	2
 	.global	cpowi
