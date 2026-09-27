@@ -1,75 +1,114 @@
 {
   "title": "Printing a string with printf",
   "slug": "printing-strings-hello-world",
-  "order": 3,
-  "summary": "How to store a string in .data, load its address, and hand it to printf.",
+  "order": 5,
+  "summary": "Store a string in .data, put its address in x0, and print it with printf.",
   "tags": [
     "printing"
   ],
   "body": [
     {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read this first:\n\n- [Registers and immediates](/learn/registers-and-immediates)"
+    },
+    {
       "type": "prose",
-      "markdown": "\nThis lesson prints a string to standard output in Assembly, which takes more work than a print statement in a high-level language. \n\nA high-level programming language provides built-in functions that allow programmers to easily display information on the standard output stream. The code below demonstrates this process in the C programming language using the `printf` function."
+      "markdown": "This lesson prints a string to standard output in assembly, which takes more work than a print statement in a high-level language. *Standard output* is the stream of text a program writes as it runs; in the playground it appears in the console.\n\nA high-level programming language provides built-in functions that allow programmers to easily display information on the standard output stream. The code below demonstrates this process in the C programming language using the `printf` function."
     },
     {
-        "type": "code",
-        "language": "c",
-        "source": "#include <stdio.h>\n\nint main() {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}"
+      "type": "code",
+      "language": "c",
+      "source": "#include <stdio.h>\n\nint main() {\n    printf(\"Hello, World!\\n\");\n    return 0;\n}"
     },
     {
-        "type": "prose",
-        "markdown": "The above code outputs the value passed to the printf function to the standard output stream. In this example, the string `\"Hello, World!\"` is passed as an argument to printf, causing it to be displayed on the screen. \n\n\nHowever, printing in Assembly is not as simple. Several additional steps must be performed before data can be displayed on the standard output."
+      "type": "prose",
+      "markdown": "The above code outputs the value passed to the `printf` function to the standard output stream. In this example, the string `\"Hello, World!\"` is passed as an argument to `printf`, causing it to be displayed on the screen.\n\nPrinting in assembly is not as simple. Several additional steps must be performed before data can be displayed on the standard output."
     },
     {
-        "type": "prose",
-        "markdown": "## The big picture\n\nPrinting in Assembly can be achieved by calling the C `printf` function. To display output on the standard output stream, the following steps must be performed:\n\n1. Store the string to a variable.\n2. Load the variable's address into the appropriate registers.\n3. Pass the address as an argument and call the `printf` function."    
+      "type": "prose",
+      "markdown": "## The big picture\n\nPrinting in assembly can be achieved by calling the same C `printf` function. The first thing `printf` receives is its *format string*: the text to print, which can also hold placeholders for values (the next lesson covers those). To display a string on the standard output stream, the following steps must be performed:\n\n1. Store the string in a variable.\n2. Load the variable's address into the first argument register, `x0`.\n3. Call the `printf` function."
     },
     {
-        "type": "prose",
-        "markdown": "## Storing the string\n\nThe first step in printing a string in Assembly is to store the string in a variable. This is done by using the `.data` directive to define a data section in the Assembly code. The string is then stored in a variable using the `.string` directive. The following code demonstrates this process:"
+      "type": "prose",
+      "markdown": "## Storing the string\n\nThe first step in printing a string in assembly is to store the string in a variable. In assembly, a *variable* is a label, a name followed by a colon, that marks where a value sits in memory. The `.data` directive starts the data section, the part of the program that holds values rather than instructions, and the `.string` directive stores the string there. The following code demonstrates this process:"
     },
     {
-        "type": "code",
-        "language": "asm",
-        "source": "    .data \n    message: .string \"Hello, World!\\n\""    },
-    {
-        "type": "prose",
-        "markdown": "In the above code, the string `\"Hello, World!\\n\"` is stored in a variable named `message`. The `.string` directive writes the characters followed by a null byte, which is how `printf` knows where the text ends."
+      "type": "code",
+      "language": "asm",
+      "source": ".data\ngreeting:    .string \"Hello, World!\\n\"\n"
     },
     {
-        "type": "prose",
-        "markdown": "## Loading the address\n\nThe next step in printing a string in Assembly is to load the variable's address into the appropriate registers. This is done using the `ldr` instruction, which loads the address of the variable into a register. The following code demonstrates this process:"
+      "type": "prose",
+      "markdown": "In the above code, the string `\"Hello, World!\\n\"` is stored in a variable named `greeting`. The `.string` directive writes the characters followed by a zero byte, which is how `printf` knows where the text ends. The `\\n` at the end is a single character, the newline, which moves any later output to a fresh line."
     },
     {
-        "type": "code",
-        "language": "asm",
-        "source": "// pseudo-ops and directives \nmain: \n    // program prologue\n    ..\n    ldr x0, =message\n    ..\n    // program epilogue"
+      "type": "prose",
+      "markdown": "## Loading the address\n\nThe next step in printing a string in assembly is to load the variable's address into the appropriate register. This is done using the `ldr` instruction with an `=` in front of the label. An address is 64 bits wide, too wide for any immediate, so the assembler stores it in a small table next to the code, called the *literal pool*, and `ldr` loads it from there. The following code demonstrates this process:"
     },
     {
-        "type": "prose",
-        "markdown": "The address goes in `x0` because `x0` is the first argument register, which is where `printf` looks for the format string. "
+      "type": "code",
+      "language": "asm",
+      "source": "        ldr     x0, =greeting                // x0 = address of greeting\n"
     },
     {
-        "type": "prose",
-        "markdown": "## Calling printf\n\nThe final step in printing a string in Assembly is to call the `printf` function. This is done using the `bl` instruction. The following code demonstrates this process:"
+      "type": "prose",
+      "markdown": "The address goes in `x0` because `x0` is the first argument register, which is where `printf` looks for the format string. `printf` receives the address of the string, not the characters themselves, and reads the characters from memory up to the zero byte."
     },
     {
-        "type": "code",
-        "language": "asm",
-        "source": "// pseudo-ops and directives\nmain: \n    //program prologue\n    ..\n    \n    ldr x0, =message \n    bl printf \n    ..\n    //program epilogue"
+      "type": "prose",
+      "markdown": "## Calling printf\n\nThe final step in printing a string in assembly is to call the `printf` function. This is done using the `bl` instruction, short for *branch with link*: it jumps to `printf` and stores the address of the next instruction in `lr` (`x30`), so `printf` knows where to come back to. The following code demonstrates this process:"
     },
     {
-        "type": "prose",
-        "markdown": "In the above code, the `printf` function from C is called using the `bl` instruction. The address of the `message` variable is passed as an argument to `printf`, causing it to be displayed on the standard output stream."
+      "type": "code",
+      "language": "asm",
+      "source": "        ldr     x0, =greeting\n        bl      printf\n"
     },
     {
-        "type": "prose",
-        "markdown": "## The whole program\n\nThe following code demonstrates the complete process of printing a string in Assembly:"
+      "type": "prose",
+      "markdown": "In the above code, the `printf` function from C is called using the `bl` instruction. The address of the `greeting` variable is passed as an argument to `printf`, causing it to be displayed on the standard output stream."
     },
     {
-        "type": "editor",
-        "language": "asm",
-        "starter": "    .data\n    message:    .string  \"Hello, World!\\n\"\n\n    .text\n    .balign 4\n    .global main\n\nmain:\n    // program prologue\n    stp     x29, x30, [sp, -16]!\n    mov     x29, sp\n\n    // printf(message)\n    ldr     x0, =message\n    bl      printf\n\n    // program epilogue\n    mov     x0, 0\n    ldp     x29, x30, [sp], 16\n    ret"    
+      "type": "prose",
+      "markdown": "## The whole program\n\nThe following program puts the three steps together. The two lines at the start of `main`, the *prologue*, save `fp` and `lr`, because `bl printf` overwrites `lr` and `main` still needs it to return. The `ldp` before `ret`, the *epilogue*, puts them back. The [stack lesson](/learn/stack-and-frame-pointer) explains both line by line. `mov w0, 0` sets the value `main` returns, which becomes the program's *exit status*: 0 means the run succeeded.\n\nRun it and the console shows `Hello, World!`."
+    },
+    {
+      "type": "editor",
+      "starter": "// Print one line of text with printf\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\ngreeting:    .string \"Hello, World!\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!          // prologue: save fp and lr\n        mov     fp, sp\n\n        ldr     x0, =greeting                // x0 = address of the string\n        bl      printf\n\n        mov     w0, 0                       // return 0: the run succeeded\n        ldp     fp, lr, [sp], 16            // epilogue: restore fp and lr\n        ret\n",
+      "expectedOutput": {
+        "stdout": "Hello, World!\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Because the string is a format string, `printf` treats a `%` in it as the start of a placeholder. To print a percent sign itself, write `%%`: the string `\"100%% done\\n\"` prints `100% done`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Two calls, one line\n\n`printf` prints exactly the characters it is given and adds nothing of its own, not even a newline. The program below prints two strings with two calls. The first string has no `\\n`, so the second call carries on along the same line, and the output is `Two calls, one line.`\n\nAdd `\\n` to the end of the first string and run it again: the output now spans two lines. Notice too that `x0` is loaded again before the second call. `printf` may change `x0`, so the first address is not still there."
+    },
+    {
+      "type": "editor",
+      "starter": "// printf adds no newline of its own: two calls, one line of output\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nmsg_first:  .string \"Two calls, \"\nmsg_second: .string \"one line.\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =msg_first              // ends without a newline\n        bl      printf\n\n        ldr     x0, =msg_second             // the newline comes here\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "Two calls, one line.\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. What does `.string` add after the characters you write, and why does `printf` need it?\n2. Which register holds the string's address when `printf` is called?\n3. One call prints `Loading...` and the next prints `done`, and the console shows `Loading...done`. What is missing?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. A zero byte; `printf` stops reading there.\n2. `x0`, the first argument register.\n3. A `\\n` at the end of the first string."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: ARMv8 assembly (core)](/practice/quiz-inter-armv8): asks what the argument registers are for.\n- [Warm up the registers](/practice/warm-up-the-registers): its starter ends with a `printf` call built the same way."
     }
   ]
 }
