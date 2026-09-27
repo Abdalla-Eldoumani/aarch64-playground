@@ -306,7 +306,7 @@ describe("errorHoverMarkdown", () => {
     expect(rest).toContain("*fix:* did you mean `mov` or `mvn`?");
   });
 
-  it("escapes ld's quoting when the explainer has nothing to add", () => {
+  it("escapes GAS's quoting when the explainer has nothing to add", () => {
     const message = "unknown mnemonic `frobnicate' -- `frobnicate x0'";
     const md = errorHoverMarkdown(message);
     expect(md).not.toMatch(unescapedBacktick);
