@@ -37,6 +37,11 @@ describe("bundle markdown", () => {
     expect(md).toContain("**last 64 stack bytes");
   });
 
+  it("lists the console notes", () => {
+    const md = bundleToMarkdown({ ...sample, notes: ["first note", "second note"] });
+    expect(md).toContain("**notes:**\n- first note\n- second note\n");
+  });
+
   it("skips empty optional sections so reports stay short", () => {
     const minimal: DiagnosticBundle = { source: "ret\n" };
     const md = bundleToMarkdown(minimal);
@@ -45,6 +50,7 @@ describe("bundle markdown", () => {
     expect(md).not.toContain("**stdout:**");
     expect(md).not.toContain("**stderr:**");
     expect(md).not.toContain("exit code");
+    expect(md).not.toContain("**notes:**");
     expect(md).not.toContain("last error");
     expect(md).not.toContain("registers:");
   });
