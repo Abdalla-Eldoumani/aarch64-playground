@@ -24,7 +24,7 @@ nonzero:
 	.text
 	.align	2
 	.align 5
-gap_stats__isra__0:
+gap_stats.isra.0:
 	cbz	w1, .L22
 	adrp	x6, .LANCHOR0
 	add	x1, x6, :lo12:.LANCHOR0
@@ -214,7 +214,7 @@ main:
 	ldrb	w1, [x26, x25]
 	cbnz	w1, .L33
 	sub	w0, w25, w0
-	bl	gap_stats__isra__0
+	bl	gap_stats.isra.0
 	umaddl	x28, w25, w25, x28
 	add	x27, x27, 1
 	mov	x0, x25
@@ -241,7 +241,7 @@ main:
 	bl	printf
 	mov	w0, 0
 	mov	w1, 1
-	bl	gap_stats__isra__0
+	bl	gap_stats.isra.0
 	mov	x0, 0
 	mov	x3, -1
 	mov	x2, 60817
@@ -430,7 +430,7 @@ limit:
 	.bss
 	.align	4
 	.LANCHOR0:
-counts__0:
+counts.0:
 	.zero	2000
 grid:
 	.zero	360000
