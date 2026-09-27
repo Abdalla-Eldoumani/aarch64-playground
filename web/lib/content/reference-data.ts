@@ -498,6 +498,26 @@ main:
         svc     0
 `;
 
+const runBrk = `// brk stops the program with a breakpoint trap; the branch goes around it
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x0, 1
+        cbnz    x0, safe        // taken, so the trap never runs
+        brk     #1000           // would stop here: Trace/breakpoint trap
+safe:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
 const referenceSeeds: ReferenceSeed[] = [
   // data processing
   {
@@ -766,7 +786,7 @@ sdiv    x11, x9, x10            // x11 = -8: truncation goes toward zero`,
   {
     mnemonic: "neg",
     category: "Data processing",
-    syntax: "neg xd, xm / neg vd.T, vn.T",
+    syntax: "neg xd, xm / neg xd, xm, lsl #k / neg vd.T, vn.T",
     example: `mov     x9, 7
 neg     x10, x9                 // x10 = -7`,
   },
@@ -920,6 +940,17 @@ asr     w10, w9, 2              // w10 = -8: asr copies the sign bit down`,
     syntax: "ror xd, xn, #imm",
     example: `mov     x9, 0xf
 ror     x10, x9, 4              // the low nibble wraps to the top`,
+  },
+  {
+    mnemonic: "extr",
+    category: "Data processing",
+    syntax: "extr xd, xn, xm, #lsb / extr wd, wn, wm, #lsb",
+    example: `mov     x9, 0xab
+mov     x10, 0x1200
+extr    x11, x9, x10, 8         // x11 = 0xab00000000000012: xm from bit 8, xn's low byte on top`,
+    gotchas: [
+      "with the same register twice it is `ror`: `extr x0, x1, x1, 4` and `ror x0, x1, 4` are one instruction.",
+    ],
   },
   {
     mnemonic: "sbfx",
@@ -1294,6 +1325,17 @@ add     sp, sp, 16`,
     ],
   },
   {
+    mnemonic: "ldpsw",
+    category: "Memory",
+    syntax: "ldpsw xt1, xt2, [xn, #imm] / [xn, #imm]! / [xn], #imm",
+    example: `sub     sp, sp, 16
+mov     w9, -5
+mov     w10, 7
+stp     w9, w10, [sp]
+ldpsw   x11, x12, [sp]          // x11 = -5 across all 64 bits, x12 = 7
+add     sp, sp, 16`,
+  },
+  {
     mnemonic: "ldur",
     category: "Memory",
     syntax: "ldur bt/ht/st/dt/qt, [xn, #imm]",
@@ -1449,6 +1491,16 @@ ret                             // back to the caller: exit code 7`,
     example: "svc 0",
     runnable: runSvc,
   },
+  {
+    mnemonic: "brk",
+    category: "System",
+    syntax: "brk #imm",
+    example: "brk #1000",
+    runnable: runBrk,
+    gotchas: [
+      "gcc plants one where it proved the code can only fault, such as a use of a pointer that is null on that path. reaching it stops the program with `Trace/breakpoint trap`, as on the servers.",
+    ],
+  },
 
   // floating point: each example lands its result in an integer register
   // through fcvtzs, so the value is visible in the register panel when run.
@@ -1536,7 +1588,7 @@ fcvtzs  x9, d17                 // x9 = 3`,
   {
     mnemonic: "fcmp",
     category: "Floating point",
-    syntax: "fcmp dn, dm / fcmp sn, sm",
+    syntax: "fcmp dn, dm / fcmp sn, sm / fcmp dn, #0.0",
     example: `fmov    d16, 1.5
 fmov    d17, 2.5
 fcmp    d16, d17                // same nzcv flags as integer cmp
@@ -1550,6 +1602,29 @@ cset    w9, lt                  // w9 = 1: d16 is below d17`,
 fmov    d17, 2.5
 fcmpe   d16, d17                // gcc's spelling for float < and >
 cset    w9, lt                  // w9 = 1`,
+  },
+  {
+    mnemonic: "fccmp",
+    category: "Floating point",
+    syntax: "fccmp dn, dm, #nzcv, cond / fccmp sn, sm, #nzcv, cond",
+    example: `fmov    d16, 1.5
+fmov    d17, 2.5
+fcmp    d16, d17
+fccmp   d17, d16, 0, lt         // the first test held, so compare again
+cset    w9, gt                  // w9 = 1: a < b && b > a, no branch taken`,
+    gotchas: [
+      "the untaken path writes the literal into nzcv, as `ccmp` does. a nan compares unordered (c and v set), so the literal decides what the chain does with one only when the first test failed.",
+    ],
+  },
+  {
+    mnemonic: "fccmpe",
+    category: "Floating point",
+    syntax: "fccmpe dn, dm, #nzcv, cond / fccmpe sn, sm, #nzcv, cond",
+    example: `fmov    d16, 1.5
+fmov    d17, 2.5
+fcmpe   d16, d17
+fccmpe  d16, d17, 4, lt         // lt held: compare again, z stays clear
+cset    w9, ne                  // w9 = 1`,
   },
   {
     mnemonic: "fcvt",
