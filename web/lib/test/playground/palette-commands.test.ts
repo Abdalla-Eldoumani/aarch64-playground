@@ -10,6 +10,7 @@ function makeDeps(overrides: Partial<PaletteDeps> = {}): PaletteDeps {
   return {
     blocked: false,
     programLoaded: true,
+    isRunning: false,
     canStepBack: true,
     launchable: false,
     source: "        mov x0, 1\n",
@@ -159,6 +160,30 @@ describe("the descriptions that carry the reason", () => {
     // rather than sending the student to assemble first.
     const cold = buildPaletteCommands(makeDeps({ launchable: true, programLoaded: false }));
     expect(row(cold, "run").description).toBe("assemble, then run it in the terminal tab");
+  });
+
+  it("says pause has nothing to stop unless a run is in progress", () => {
+    expect(row(buildPaletteCommands(makeDeps()), "pause").description).toBe(
+      "(nothing is running)",
+    );
+    expect(
+      row(buildPaletteCommands(makeDeps({ isRunning: true })), "pause").description,
+    ).toBe("stop the run in progress");
+  });
+
+  it("describes what the theme, share, and reset rows really do", () => {
+    const actions = buildPaletteCommands(makeDeps());
+    // Three themes, not two.
+    expect(row(actions, "toggle-theme").description).toBe(
+      "cycle through dark, light, and high contrast",
+    );
+    // The row opens the dialog; it copies nothing by itself.
+    expect(row(actions, "share").description).toBe(
+      "open a link to this program that you can copy or send",
+    );
+    expect(row(actions, "reset").description).toBe(
+      "start the program over, keeping breakpoints",
+    );
   });
 });
 
