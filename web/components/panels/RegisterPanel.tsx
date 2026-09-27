@@ -328,40 +328,46 @@ function usePulseIds(changed: ReadonlySet<number>): Map<number, number> {
   return pulses;
 }
 
-/** The nearest ancestor that actually scrolls, short of the page itself:
- *  a host that sizes the panel by its content leaves the scrolling to its
- *  own box, and the page is never ours to move. */
-function scrollParent(from: HTMLElement): HTMLElement | null {
+/** The host's pane: the nearest ancestor that can scroll, short of the page,
+ *  which is never ours to move. */
+function hostPane(from: HTMLElement): HTMLElement | null {
   const page = document.scrollingElement;
   for (let el = from.parentElement; el; el = el.parentElement) {
     if (el === page || el === document.body) return null;
     const { overflowY } = getComputedStyle(el);
-    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
-      return el;
-    }
+    if (overflowY === "auto" || overflowY === "scroll") return el;
   }
   return null;
 }
 
 /**
- * Scroll the box holding `rows` just far enough to show all of them, or the
- * first of them when they cannot all fit. Nothing moves when they are
- * already in view. Only the one box moves: `scrollIntoView` would also
- * scroll every ancestor, the page included.
+ * Scroll just far enough to show all of `rows`, or the first of them when
+ * they cannot all fit: inside the list's own box, then inside the host's
+ * pane when that pane is too short to show the list whole (a lesson frame on
+ * a phone). Nothing moves when they are already in view. `scrollIntoView`
+ * would also scroll the page.
  */
 function revealRows(body: HTMLElement, rows: readonly Element[], smooth: boolean): void {
-  const box = body.scrollHeight > body.clientHeight ? body : scrollParent(body);
-  if (!box || rows.length === 0) return;
-  const top = box.getBoundingClientRect().top + box.clientTop;
-  const bottom = top + box.clientHeight;
+  if (rows.length === 0) return;
   const rects = rows.map((row) => row.getBoundingClientRect());
-  const first = Math.min(...rects.map((r) => r.top));
-  const last = Math.max(...rects.map((r) => r.bottom));
-  // A pixel of slack: fractional layout can leave a fully shown row a
-  // hair outside the box.
-  if (first >= top - 1 && last <= bottom + 1) return;
-  const delta = first < top || last - first > bottom - top ? first - top : last - bottom;
-  box.scrollTo({ top: box.scrollTop + delta, behavior: smooth ? "smooth" : "auto" });
+  let first = Math.min(...rects.map((r) => r.top));
+  let last = Math.max(...rects.map((r) => r.bottom));
+  for (const box of [body, hostPane(body)]) {
+    if (!box || box.scrollHeight <= box.clientHeight) continue;
+    const top = box.getBoundingClientRect().top + box.clientTop;
+    const bottom = top + box.clientHeight;
+    // A pixel of slack: fractional layout can leave a fully shown row a
+    // hair outside the box.
+    if (first >= top - 1 && last <= bottom + 1) continue;
+    const delta = first < top || last - first > bottom - top ? first - top : last - bottom;
+    const from = box.scrollTop;
+    const target = Math.min(Math.max(from + delta, 0), box.scrollHeight - box.clientHeight);
+    box.scrollTo({ top: target, behavior: smooth ? "smooth" : "auto" });
+    // A smooth scroll has not moved the rows yet, so the pane works from
+    // where they will land.
+    first -= target - from;
+    last -= target - from;
+  }
 }
 
 function prefersReducedMotion(): boolean {
@@ -679,6 +685,8 @@ export function RegisterPanel({
         if (e.deltaY < 0) zoom.zoomIn();
         else zoom.zoomOut();
       }}
+      // A finger anywhere on the panel may be dragging the host's pane.
+      onTouchMove={markUserScroll}
     >
       {/* A container, so the first row can measure itself. Under 500px the
           kicker goes to screen readers only: beside it the lane cells wrapped
@@ -805,18 +813,20 @@ export function RegisterPanel({
       </p>
 
       {/* The panel's own scroll box: the header above stays put, and following
-          a write scrolls this and nothing else. It takes focus so the rows
-          can be scrolled from the keyboard. */}
+          a write scrolls this first. It takes focus so the rows can be
+          scrolled from the keyboard. It never shrinks under three rows (19px
+          each at 12px, plus its bottom padding): a lesson frame on a phone
+          gives the whole panel less height than the header, and the list
+          shrank to nothing; the frame's own pane scrolls instead. */}
       <div
         ref={bodyRef}
         role="region"
         aria-label="register values"
         tabIndex={0}
-        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        className="min-h-[calc(4.75em+0.5rem)] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
         onWheel={(e) => {
           if (!e.ctrlKey) markUserScroll();
         }}
-        onTouchMove={markUserScroll}
         onPointerDown={(e) => {
           // A press on the box itself is its scrollbar; a middle press
           // anywhere starts autoscroll.
