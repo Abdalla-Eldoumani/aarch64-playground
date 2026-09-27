@@ -2,28 +2,28 @@
 	.data
 	.align	3
 inputs:
-	.quad	0
-	.quad	1
-	.quad	-1
-	.quad	127
-	.quad	128
-	.quad	255
-	.quad	256
-	.quad	-128
-	.quad	-129
-	.quad	32767
-	.quad	32768
-	.quad	65535
-	.quad	65536
-	.quad	2147483647
-	.quad	2147483648
-	.quad	-2147483648
-	.quad	-2147483649
-	.quad	4294967295
-	.quad	4294967296
-	.quad	9223372036854775807
-	.quad	-9223372036854775808
-	.quad	1311768467463790320
+	.xword	0
+	.xword	1
+	.xword	-1
+	.xword	127
+	.xword	128
+	.xword	255
+	.xword	256
+	.xword	-128
+	.xword	-129
+	.xword	32767
+	.xword	32768
+	.xword	65535
+	.xword	65536
+	.xword	2147483647
+	.xword	2147483648
+	.xword	-2147483648
+	.xword	-2147483649
+	.xword	4294967295
+	.xword	4294967296
+	.xword	9223372036854775807
+	.xword	-9223372036854775808
+	.xword	1311768467463790320
 	.text
 	.align	2
 widen_sc:
