@@ -42,24 +42,38 @@ Metadata:
 - `tags`: optional list of strings for the index filter. A tag is
   lowercase, written with spaces rather than dashes, and names a concept
   a reader would search for instead of restating the title. The shipped
-  lessons use twelve between them: branching, conditionals, format
-  strings, frame pointer, immediates, loops, post-test loop, pre-test
-  loop, printing, registers, stack, variables. Reuse one of those unless
-  the lesson teaches something none of them names.
+  lessons use these between them: armv8 basics, arrays, binary
+  arithmetic, binary logic, bitwise, branching, command-line arguments,
+  conditionals, external data, floating point, format strings, frame
+  pointer, immediates, input and output, loops, memory and the stack,
+  post-test loop, pre-test loop, printing, registers, stack, strings,
+  subroutines, system architecture, variables. Most of them match a
+  practice topic. Reuse one of those unless the lesson teaches something
+  none of them names.
 
 `body` is an ordered, non-empty list of blocks. Each block's `type` selects
 its remaining fields:
 
 - `{ "type": "prose", "markdown": "..." }`: a passage of Markdown.
 - `{ "type": "code", "language": "asm", "source": "..." }`: a read-only
-  listing with a corner copy button. `language` is `asm`, `c`, or `text`; an
-  `asm` listing also gets a button to open it in the playground, while `c` and
-  `text` render without one since the emulator only runs assembly.
+  listing with a corner copy button. `language` is `asm`, `c`, or `text`. An
+  `asm` listing that is a whole program (it has a `main:` label) also gets a
+  button to open it in the playground. A fragment, and every `c` or `text`
+  listing, renders without one: a fragment alone fails to link, and the
+  emulator only runs assembly.
 - `{ "type": "callout", "variant": "note", "markdown": "..." }`: a
   highlighted aside. `variant` is `note`, `warning`, `pitfall`, or `prereq`.
-- `{ "type": "editor", "starter": "...", "args": "...", "stdin": "..." }`: an
-  inline editor the reader can run and change in place. Only `starter` is
-  required; `args` and `stdin` are optional.
+- `{ "type": "editor", "starter": "...", "args": "...", "stdin": "...",
+  "expectedOutput": { "stdout": "...", "exitCode": 0 } }`: an inline editor
+  the reader can run and change in place. Only `starter` is required.
+  `args` and `stdin` are optional. `expectedOutput` is optional in the
+  schema but every shipped editor carries one: `stdout` is exactly what the
+  program prints when it runs with the block's own `args` and `stdin`, byte
+  for byte, and `exitCode` (0 to 255) is the exit status, which can be left
+  out when the lesson never mentions it. A test runs every lesson program on
+  the emulator with its input closed after `stdin`, the way `./program <
+  file` runs on the servers, and fails when the output differs, so write the
+  value from a real run on the servers, never from memory.
 
 Blocks render top to bottom.
 
@@ -125,7 +139,11 @@ main:
     },
     {
       "type": "editor",
-      "starter": "// change the two values and run to watch the sum follow\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6\n        mov     b, 7\n        add     a, a, b\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "starter": "// change the two values and run to watch the sum follow\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6\n        mov     b, 7\n        add     a, a, b\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum = 13\n",
+        "exitCode": 0
+      }
     }
   ]
 }
