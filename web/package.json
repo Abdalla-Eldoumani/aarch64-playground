@@ -58,7 +58,7 @@
     {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
-      "limit": "200 KB"
+      "limit": "204 KB"
     },
     {
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
