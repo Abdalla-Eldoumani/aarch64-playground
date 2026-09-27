@@ -23,7 +23,7 @@
 	.string	"popcount total %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #176
@@ -128,7 +128,7 @@ main:
 	mov	w14, 61
 	mov	x13, -9223372036854775808
 	mov	x12, 1
-	.align 5
+	.p2align 5,,15
 .L18:
 	madd	x9, x9, x11, x10
 	lsr	x6, x9, x9
@@ -157,7 +157,7 @@ main:
 	add	x2, x2, x5
 	mov	w7, 0
 	mov	w5, 0
-	.align 5
+	.p2align 5,,15
 .L8:
 	lsr	x0, x6, x5
 	and	x0, x0, 15
@@ -173,7 +173,7 @@ main:
 	cinc	w5, w4, ne
 	mov	w0, 0
 	b	.L9
-	.align 2
+	.p2align 2,,3
 .L12:
 	ushr	v29.2d, v29.2d, 4
 	add	w0, w0, 4
@@ -189,7 +189,7 @@ main:
 	cbz	x4, .L12
 	lsr	x4, x13, x0
 	b	.L11
-	.align 2
+	.p2align 2,,3
 .L51:
 	add	w0, w0, 1
 	lsr	x4, x4, 1
@@ -204,7 +204,7 @@ main:
 	ldp	q27, q29, [x21, 16]
 	cinc	w5, w5, ne
 	b	.L13
-	.align 2
+	.p2align 2,,3
 .L16:
 	shl	v29.2d, v29.2d, 4
 	add	w0, w0, 4
@@ -220,7 +220,7 @@ main:
 	cbz	x4, .L16
 	lsl	x4, x12, x0
 	b	.L15
-	.align 2
+	.p2align 2,,3
 .L53:
 	add	w0, w0, 1
 	lsl	x4, x4, 1
@@ -239,7 +239,7 @@ main:
 	mov	w4, 0
 	addv	b31, v31.8b
 	fmov	w7, s31
-	.align 5
+	.p2align 5,,15
 .L17:
 	lsr	x0, x6, x19
 	and	x0, x0, 15
@@ -320,7 +320,7 @@ main:
 	bl	putchar
 	mov	w2, 1
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L24:
 	fmov	s31, w2
 	add	w2, w2, 1
@@ -342,19 +342,19 @@ main:
 	ldp	d14, d15, [sp, 96]
 	add	sp, sp, 176
 	ret
-	.align 2
+	.p2align 2,,3
 .L26:
 	mov	x0, 64
 	mov	x5, x0
 	mov	w18, w0
 	mov	w16, w0
 	b	.L7
-	.align 2
+	.p2align 2,,3
 .L52:
 	add	v27.4s, v27.4s, v25.4s
 	umov	w0, v27.s[3]
 	b	.L14
-	.align 2
+	.p2align 2,,3
 .L50:
 	add	v27.4s, v27.4s, v25.4s
 	umov	w0, v27.s[3]
@@ -371,45 +371,45 @@ main:
 	.align	4
 	.LANCHOR0:
 .LC1:
-	.quad	-9223372036854775808
-	.quad	4611686018427387904
+	.xword	-9223372036854775808
+	.xword	4611686018427387904
 .LC2:
 	.word	0
 	.word	1
 	.word	2
 	.word	3
 .LC3:
-	.quad	1
-	.quad	2
+	.xword	1
+	.xword	2
 nibble_bits:
 	.byte 0, 1, 1, 2, 1, 2, 2, 3, 1, 2, 2, 3, 2, 3, 3, 4
 .LC0:
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	1000
-	.quad	4096
-	.quad	4097
-	.quad	-9223372036854775808
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	1000
+	.xword	4096
+	.xword	4097
+	.xword	-9223372036854775808
 	.data
 	.align	4
 	.LANCHOR1:
 vals:
-	.quad	0
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	128
-	.quad	255
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	9223372036854775807
-	.quad	4294967295
-	.quad	-4294967296
-	.quad	81985529216486895
-	.quad	-81985529216486896
-	.quad	-9223372036854775807
-	.quad	4294967296
-	.quad	-6148914691236517206
-	.quad	2147483648
+	.xword	0
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	128
+	.xword	255
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	9223372036854775807
+	.xword	4294967295
+	.xword	-4294967296
+	.xword	81985529216486895
+	.xword	-81985529216486896
+	.xword	-9223372036854775807
+	.xword	4294967296
+	.xword	-6148914691236517206
+	.xword	2147483648
 
