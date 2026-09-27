@@ -24,6 +24,9 @@ function inst(over: Partial<ReferenceInstruction>): ReferenceInstruction {
     syntax: "add xd, xn, op2",
     summary: "add",
     example: "add x0, x0, 1",
+    cExample: "Rd = Rn + op2;",
+    setsFlags: false,
+    registerView: "x",
     ...over,
   };
 }
