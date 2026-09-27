@@ -184,8 +184,10 @@ export function PlaygroundHeaderBand({
     );
   }
 
+  // No top padding: the band sits flush under the site bar, which carries
+  // the top safe area.
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 pb-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
       <span className="hidden sm:inline font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
         aarch64-pg
       </span>
