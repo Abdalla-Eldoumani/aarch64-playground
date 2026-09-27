@@ -71,7 +71,7 @@
 	.string	"puts line"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -224]!
