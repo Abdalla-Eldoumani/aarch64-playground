@@ -201,6 +201,35 @@ describe("RegisterPanel auto-switch across three views", () => {
     expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
   });
 
+  // A call's leftovers: the pattern in both halves of v3, and in the top half
+  // of v9 above its unchanged low half.
+  const CLOBBERED = [...VECS];
+  CLOBBERED[3] = "0xdeadbeefdeadbeefdeadbeefdeadbeef";
+  CLOBBERED[9] = "0xdeadbeefdeadbeef0000000000000000";
+
+  it("does not follow what a library call leaves in the vector file", () => {
+    // Only x0 (the result) is the program's write: the x-file stays in view
+    // and the vector cell carries no dot.
+    const { rerender } = render(panel({}));
+    rerender(
+      panel({
+        vectorRegisters: CLOBBERED,
+        changedRegs: new Set([0]),
+        changedFpRegs: new Set([3, 9]),
+      }),
+    );
+    expect(screen.getByText("X0")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
+  });
+
+  it("stays on the x-file after a run whose only vector change was a call's", () => {
+    // A run's last snapshot names no written register, but the vector file
+    // differs from the one before the run.
+    const { rerender } = render(panel({}));
+    rerender(panel({ vectorRegisters: CLOBBERED }));
+    expect(screen.getByText("X0")).toBeTruthy();
+  });
+
   it("follows an integer-only write back out of the v-view", () => {
     const { rerender } = render(panel({}));
     rerender(
