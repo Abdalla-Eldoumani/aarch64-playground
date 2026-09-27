@@ -148,8 +148,10 @@ const TABLE_CLASS =
 // The table's font shorthand resets numeral spacing, so the cells set it.
 const TH_CLASS =
   "border border-[var(--border)] border-b-[color:var(--border-strong)] bg-[var(--bg-sunken)] px-3 py-2 align-bottom font-semibold tabular-nums";
+// A term in a cell is often the cell's whole content (a register column), so
+// no sentence sets its height; on a touch screen it gets a 44px target.
 const TD_CLASS =
-  "border border-[var(--border)] px-3 py-2 align-top tabular-nums";
+  "border border-[var(--border)] px-3 py-2 align-top tabular-nums [@media(pointer:coarse)]:[&>[role=note]]:min-h-[44px] [@media(pointer:coarse)]:[&>[role=note]]:min-w-[44px] [@media(pointer:coarse)]:[&>[role=note]]:items-center";
 const HOVER_WRAP_CLASS =
   "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
 // On a phone the card is fixed along the bottom edge instead of hanging off
