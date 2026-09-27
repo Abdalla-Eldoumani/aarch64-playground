@@ -155,23 +155,23 @@ ctz64:
 	.data
 	.align	3
 vals:
-	.quad	0
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	128
-	.quad	255
-	.quad	-9223372036854775808
-	.quad	-1
-	.quad	9223372036854775807
-	.quad	4294967295
-	.quad	-4294967296
-	.quad	81985529216486895
-	.quad	-81985529216486896
-	.quad	-9223372036854775807
-	.quad	4294967296
-	.quad	-6148914691236517206
-	.quad	2147483648
+	.xword	0
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	128
+	.xword	255
+	.xword	-9223372036854775808
+	.xword	-1
+	.xword	9223372036854775807
+	.xword	4294967295
+	.xword	-4294967296
+	.xword	81985529216486895
+	.xword	-81985529216486896
+	.xword	-9223372036854775807
+	.xword	4294967296
+	.xword	-6148914691236517206
+	.xword	2147483648
 	.section .rodata
 	.align	3
 .LC1:
@@ -565,12 +565,12 @@ main:
 	.section .rodata
 	.align	3
 .LC0:
-	.quad	1
-	.quad	2
-	.quad	3
-	.quad	1000
-	.quad	4096
-	.quad	4097
-	.quad	-9223372036854775808
+	.xword	1
+	.xword	2
+	.xword	3
+	.xword	1000
+	.xword	4096
+	.xword	4097
+	.xword	-9223372036854775808
 	.text
 
