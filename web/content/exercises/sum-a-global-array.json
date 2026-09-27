@@ -2,6 +2,7 @@
   "title": "Sum a global array",
   "slug": "sum-a-global-array",
   "order": 34,
+  "lastUpdated": "2026-09-27",
   "topic": "arrays",
   "difficulty": "core",
   "prompt": "A global array of scores lives in `.bss`, and the starter fills it from input: first the count, then that many scores. Add every element and print the total.\n\nThis is the course's array idiom in one loop: a base address in an `x` register, a word index in a `w` register, and the scaled-index load `ldr wX, [base, wI, sxtw 2]`, which sign-extends the index and shifts it left two bits to turn a word count into a byte offset.\n\n## what is checked\n\n- the total is printed on its own line\n- the program exits cleanly\n- elements are loaded with the scaled-index form (`sxtw` present, total not written in)\n- the same holds for other arrays you do not see, an empty one (count 0) and negative scores among them",
