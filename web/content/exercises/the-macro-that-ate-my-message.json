@@ -2,6 +2,7 @@
   "title": "The macro that ate my message",
   "slug": "the-macro-that-ate-my-message",
   "order": 4,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "intro",
   "prompt": "This program reads a ticket count and a price in cents, multiplies them, and prints the bill on one line. With the input `3 125` it should print:\n\n```\ncount = 3, price = 125, total = 375\n```\n\nRun it and read what it prints instead. The multiply is fine; the words in the message are what went wrong.\n\nm4 reads the whole file before the assembler does, and it replaces every whole word that matches a `define` name, even inside a quoted string. Fix the program so the message prints exactly as shown above, without changing the text between the quotes.\n\n## what is checked\n\n- with the input `3 125` the bill line matches word for word\n- the program returns 0\n- the checker also runs a few inputs you do not see, including a count of zero, a negative price, and a total too big for 32 bits",
