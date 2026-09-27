@@ -2,6 +2,7 @@
   "title": "Talking to the operating system: svc and files",
   "slug": "system-calls-and-files",
   "order": 27,
+  "lastUpdated": "2026-09-27",
   "summary": "Ask the operating system for input and output with svc: write and read without printf, then create, fill, and read back a file, checking every result.",
   "tags": [
     "input and output"
