@@ -345,10 +345,10 @@ main:
 	.section .rodata
 	.align	3
 	.LANCHOR0:
-utf8__0:
+utf8.0:
 	.byte 195, 169, 116, 195, 169, 0
 	.zero	2
-latin__1:
+latin.1:
 	.byte 99, 97, 102, 233, 32, 255, 254, 0
 	.bss
 	.align	4
