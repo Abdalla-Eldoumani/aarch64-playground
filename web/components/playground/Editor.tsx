@@ -337,7 +337,8 @@ interface EditorProps {
   /** Jump the editor to a line (an error the student should fix): the
    *  parent bumps the nonce so the same line can be requested twice. */
   focusRequest?: { line: number; nonce: number } | null;
-  /** Scroll the current line into view whenever it moves. The parent turns
+  /** Scroll the current line into view whenever it moves, by the nearest
+   *  scroll (a visible line stays put, never centred). The parent turns
    *  this off while a run is driving (the marker then moves many times a
    *  second) and before the first step (an assemble's entry marker must not
    *  scroll away from the line being edited). Turning it back on reveals the
@@ -538,12 +539,12 @@ export function Editor({
     editor.focus();
   }, [focusRequest]);
 
-  // Follow the pc: a step or a stop below the fold brings the line into view.
-  // Centred only when it is off screen, so stepping through visible code
-  // never scrolls. The cursor stays where the student left it.
+  // Follow the pc: a step or a stop below the fold brings the line into view
+  // by the nearest scroll, as the phone fallback does, so stepping through
+  // visible code never scrolls. The cursor stays where the student left it.
   useEffect(() => {
     if (currentLine == null || !followCurrentLine) return;
-    editorRef.current?.revealLineInCenterIfOutsideViewport(currentLine);
+    editorRef.current?.revealLine(currentLine);
   }, [currentLine, followCurrentLine]);
 
   const handleMount: OnMount = useCallback(
