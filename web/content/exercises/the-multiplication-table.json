@@ -2,6 +2,7 @@
   "title": "The multiplication table",
   "slug": "the-multiplication-table",
   "order": 19,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Print the `n`-by-`n` multiplication table, rows of `row * col` padded into neat columns. The starter reads `n`.\n\nThe shape is two nested loops: an outer loop over rows, an inner loop over columns, a `mul` in the middle, and a newline after each row. The cell format `%4lld` right-aligns every product into a four-character column so the table lines up.\n\n`printf` may overwrite the scratch registers, so both counters belong in the aliased callee-saved registers, not in `x9`.\n\n## what is checked\n\n- four rows of four aligned products for the `4` in the stdin box\n- the program exits cleanly\n- the products come from `mul` inside the loops\n- the same holds for other sizes you do not see, down to a one-by-one table",
