@@ -116,7 +116,7 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
       <button
         type="button"
         onClick={togglePlay}
-        className="text-[var(--cyan)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] rounded px-1"
+        className="touch-target text-[var(--cyan)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] rounded px-1"
         aria-label={playing ? "pause replay" : "play replay"}
       >
         {playing ? "pause" : "play"}
@@ -131,7 +131,7 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
         step={1}
         value={idx}
         onChange={onChange}
-        className="flex-1 accent-[var(--amber)]"
+        className="touch-target flex-1 accent-[var(--amber)]"
         aria-label="replay step slider"
         aria-valuetext={`step ${stepShown}, frame ${position}`}
       />
