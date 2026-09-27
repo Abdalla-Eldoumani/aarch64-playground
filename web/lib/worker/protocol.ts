@@ -236,6 +236,12 @@ export interface StateSnapshot {
    */
   externalCall?: ExternalCall | null;
   /**
+   * Caller-saved registers the program read after a library call overwrote
+   * them, since the previous snapshot: four numbers per note, worded by
+   * lib/emulator/clobber-note. Undefined on wasm builds that predate them.
+   */
+  clobberNotes?: number[];
+  /**
    * `(addr, len)` pairs of memory ranges written since the previous
    * snapshot. Drives memory-cell diff highlighting in the replay scrubber.
    * Flat array of `[addr, len, addr, len, ...]`.
