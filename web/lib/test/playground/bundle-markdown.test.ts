@@ -88,9 +88,17 @@ describe("bundle markdown", () => {
     expect(md).toContain("and not taken for: ne lo mi vs hi lt gt");
   });
 
-  it("accounts for every d and v register, one row per run of zeros", () => {
-    expect(md).toContain("d0 = 0\nd1  = 0x3ff8000000000000  1.5\nd2 to d31 = 0");
+  it("accounts for every d and v register, one row per run of equal values", () => {
+    expect(md).toContain("d0  = 0\nd1  = 0x3ff8000000000000  1.5\nd2 to d31 = 0");
     expect(md).toContain("v0 to v1 = 0\nv2  = 0x00000004000000030000000200000001  as 4s lanes 0 to 3: 1, 2, 3, 4\nv3 to v31 = 0");
+    const clobbered = bundleToMarkdown({
+      source: "ret\n",
+      registers: [ZERO],
+      fpRegisters: Array.from({ length: 32 }, (_, i) => (i >= 8 && i < 16 ? ZERO : "0xdeadbeefdeadbeef")),
+    });
+    expect(clobbered).toContain(
+      "d0 to d7 = 0xdeadbeefdeadbeef  -1.1885959257070704e+148\nd8 to d15 = 0\nd16 to d31 = 0xdeadbeefdeadbeef",
+    );
   });
 
   it("includes the stack, the data sections, the virtual files, and the versions", () => {
