@@ -85,8 +85,10 @@ const TRACE_STYLE = {
   backgroundColor: "color-mix(in srgb, var(--amber) 22%, transparent)",
 } as const;
 
+// On a touch screen a field never shrinks under 44px, the least a finger
+// hits; the row scrolls sideways instead.
 const FIELD_LI =
-  "flex min-w-0 flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
+  "flex min-w-0 [@media(pointer:coarse)]:min-w-[44px] flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
 // The amber destination cell: the 1px border rides an inset shadow so the
 // shared cell edges and the proportional widths stay untouched.
 const FIELD_LI_DEST =
