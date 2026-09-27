@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 lsort:
 	cbz	x0, .L27
 	ldr	x2, [x0, 8]
@@ -12,7 +12,7 @@ lsort:
 	stp	x19, x20, [sp, 16]
 	stp	x21, x22, [sp, 32]
 	b	.L3
-	.align 2
+	.p2align 2,,3
 .L33:
 	mov	x3, x19
 .L3:
@@ -35,7 +35,7 @@ lsort:
 	ccmp	x0, 0, 4, ne
 	beq	.L13
 	add	x21, sp, 48
-	.align 5
+	.p2align 5,,15
 .L10:
 	mov	x1, x20
 	mov	x0, x19
@@ -58,12 +58,12 @@ lsort:
 	mov	x21, x20
 	mov	x20, x0
 	b	.L10
-	.align 2
+	.p2align 2,,3
 .L32:
 	mov	x19, x3
 	mov	x3, x4
 	b	.L5
-	.align 2
+	.p2align 2,,3
 .L15:
 	mov	x1, x19
 	mov	x19, x20
@@ -75,7 +75,7 @@ lsort:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 64
 	ret
-	.align 2
+	.p2align 2,,3
 .L34:
 	mov	x0, x20
 	cbz	x20, .L16
@@ -86,13 +86,13 @@ lsort:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 64
 	ret
-	.align 2
+	.p2align 2,,3
 .L27:
 	ret
-	.align 2
+	.p2align 2,,3
 .L31:
 	ret
-	.align 2
+	.p2align 2,,3
 .L13:
 	mov	x1, x0
 	add	x19, sp, 48
@@ -100,7 +100,7 @@ lsort:
 	cbnz	x20, .L30
 	b	.L16
 	.align	2
-	.align 5
+	.p2align 5,,15
 asc:
 	ldr	w2, [x0]
 	ldr	w0, [x1]
@@ -108,7 +108,7 @@ asc:
 	cset	w0, lt
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 odd_first:
 	ldr	w2, [x0]
 	ldr	w0, [x1]
@@ -135,7 +135,7 @@ odd_first:
 	.string	" (len %d%s)\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -151,7 +151,7 @@ show:
 	add	x22, x22, :lo12:.LC11
 	mov	w21, 0
 	mov	w20, 0
-	.align 5
+	.p2align 5,,15
 .L40:
 	ldr	w1, [x19]
 	mov	x0, x22
@@ -183,7 +183,7 @@ show:
 	add	x2, x2, :lo12:.LC3
 	b	.L39
 	.align	2
-	.align 5
+	.p2align 5,,15
 insert_sorted:
 	stp	x29, x30, [sp, -64]!
 	mov	x29, sp
@@ -195,7 +195,7 @@ insert_sorted:
 	str	x0, [sp, 56]
 	cbnz	x0, .L46
 	b	.L47
-	.align 2
+	.p2align 2,,3
 .L48:
 	add	x21, x19, 8
 	ldr	x19, [x19, 8]
@@ -258,7 +258,7 @@ insert_sorted:
 	.string	" %s/%d"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #560
@@ -280,7 +280,7 @@ main:
 	movk	w23, 0x51eb, lsl 16
 	stp	x19, x20, [sp, 16]
 	mov	x20, 0
-	.align 5
+	.p2align 5,,15
 .L56:
 	madd	w27, w27, w25, w24
 	mov	x28, x20
@@ -304,7 +304,7 @@ main:
 	bl	show
 	mov	x1, 0
 	b	.L57
-	.align 2
+	.p2align 2,,3
 .L104:
 	mov	x20, x0
 .L57:
@@ -349,7 +349,7 @@ main:
 	movk	w22, 0x2aaa, lsl 16
 	mov	w21, 1431655765
 	b	.L61
-	.align 2
+	.p2align 2,,3
 .L59:
 	add	x20, x19, 8
 	ldr	x19, [x20]
@@ -378,7 +378,7 @@ main:
 	bl	lsort
 	str	x0, [sp, 120]
 	cbz	x0, .L106
-	.align 5
+	.p2align 5,,15
 .L63:
 	mov	x1, x0
 	ldr	x0, [x0, 8]
@@ -401,7 +401,7 @@ main:
 	mov	x1, x19
 	bl	show
 	cbz	x19, .L65
-	.align 5
+	.p2align 5,,15
 .L66:
 	mov	x0, x19
 	ldr	x19, [x19, 8]
@@ -416,7 +416,7 @@ main:
 .L67:
 	mov	w19, w22
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L68:
 	mov	x20, x0
 	mov	x0, 16
@@ -435,7 +435,7 @@ main:
 	sub	w1, w1, w2
 	cmp	w1, w22
 	bne	.L69
-	.align 5
+	.p2align 5,,15
 .L141:
 	str	x26, [x0, 8]
 	mov	x26, x0
@@ -458,7 +458,7 @@ main:
 	mov	x23, 8
 	mov	w27, 0
 	mov	x19, x28
-	.align 5
+	.p2align 5,,15
 .L73:
 	mov	x0, x23
 	bl	malloc
@@ -475,7 +475,7 @@ main:
 	mov	w27, 0
 	mov	w25, 1
 	mov	x28, 0
-	.align 5
+	.p2align 5,,15
 .L75:
 	ldp	w1, w2, [x0]
 	add	w27, w27, 1
@@ -489,7 +489,7 @@ main:
 .L74:
 	mov	x24, 7
 	mov	w23, 0
-	.align 5
+	.p2align 5,,15
 .L76:
 	ldr	x0, [x19], 8
 	ldrb	w3, [x0, x24]
@@ -508,7 +508,7 @@ main:
 	mov	w1, w22
 	bl	printf
 	cbz	x26, .L77
-	.align 5
+	.p2align 5,,15
 .L78:
 	mov	x0, x26
 	ldr	x26, [x26, 8]
@@ -524,7 +524,7 @@ main:
 	add	x19, sp, 136
 	stp	x19, x19, [sp, 136]
 	str	wzr, [sp, 152]
-	.align 5
+	.p2align 5,,15
 .L82:
 	tbnz	x22, 0, .L80
 	ldr	x21, [sp, 136]
@@ -546,7 +546,7 @@ main:
 	mov	w22, 21846
 	movk	w22, 0x5555, lsl 16
 	b	.L85
-	.align 2
+	.p2align 2,,3
 .L84:
 	cmp	x21, x19
 	beq	.L83
@@ -576,7 +576,7 @@ main:
 	beq	.L86
 	adrp	x22, .LC11
 	add	x22, x22, :lo12:.LC11
-	.align 5
+	.p2align 5,,15
 .L87:
 	ldr	w1, [x21, 16]
 	mov	x0, x22
@@ -593,7 +593,7 @@ main:
 	beq	.L88
 	adrp	x22, .LC11
 	add	x22, x22, :lo12:.LC11
-	.align 5
+	.p2align 5,,15
 .L89:
 	ldr	w1, [x21, 16]
 	mov	x0, x22
@@ -607,7 +607,7 @@ main:
 	ldr	x0, [sp, 144]
 	cmp	x0, x19
 	beq	.L90
-	.align 5
+	.p2align 5,,15
 .L91:
 	ldr	x1, [x0, 8]
 	str	x1, [sp, 144]
@@ -625,7 +625,7 @@ main:
 	mov	w21, 2
 	str	xzr, [x0, 8]
 	str	d31, [x0]
-	.align 5
+	.p2align 5,,15
 .L92:
 	mov	x22, x19
 	mov	x0, 16
@@ -645,7 +645,7 @@ main:
 	adrp	x0, .LC23
 	add	x0, x0, :lo12:.LC23
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L96:
 	ldr	x0, [x19, 8]
 	ldr	x19, [x0, 8]
@@ -677,7 +677,7 @@ main:
 	stp	q30, q29, [x0, 16]
 	str	xzr, [sp, 128]
 	str	q31, [x0, 48]
-	.align 5
+	.p2align 5,,15
 .L100:
 	ldr	x21, [x23]
 	mov	x0, x21
@@ -694,7 +694,7 @@ main:
 	bl	strcpy
 	cbnz	x20, .L97
 	b	.L98
-	.align 2
+	.p2align 2,,3
 .L99:
 	mov	x21, x20
 	ldr	x20, [x20]
@@ -717,7 +717,7 @@ main:
 	cbz	x20, .L101
 	adrp	x21, .LC27
 	add	x21, x21, :lo12:.LC27
-	.align 5
+	.p2align 5,,15
 .L102:
 	ldr	w2, [x20, 8]
 	mov	x19, x20
@@ -740,7 +740,7 @@ main:
 	ldp	x27, x28, [sp, 80]
 	add	sp, sp, 560
 	ret
-	.align 2
+	.p2align 2,,3
 .L80:
 	mov	x0, 24
 	bl	malloc
@@ -752,7 +752,7 @@ main:
 	str	x0, [x1]
 	str	x0, [sp, 144]
 	b	.L82
-	.align 2
+	.p2align 2,,3
 .L143:
 	ldr	w1, [x22]
 	mov	x0, x25
@@ -798,14 +798,14 @@ main:
 	.word	1
 	.word	-2
 .LC25:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
 	.data
 	.align	2
 	.LANCHOR0:
