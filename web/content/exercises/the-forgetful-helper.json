@@ -2,6 +2,7 @@
   "title": "The forgetful helper",
   "slug": "the-forgetful-helper",
   "order": 49,
+  "lastUpdated": "2026-09-27",
   "topic": "functions",
   "difficulty": "challenge",
   "prompt": "`main` reads a running total into `x19` and a bonus, asks a helper to double the bonus, and adds the result. With `100` and `20` the total should be 140. Run it: it prints 80.\n\nThe helper doubles correctly, but it uses `x19` as scratch. AAPCS64 makes `x19` through `x28` callee-saved: any function that changes them must put them back before it returns, because its caller is still counting on them. Scratch work belongs in `x9` through `x15`, which a caller must assume are gone after any `bl`.\n\nFix the helper so it does its scratch work in a scratch register and leaves `x19` alone.\n\n## what is checked\n\n- the correct total is printed\n- the program exits cleanly\n- the helper is still called (`bl` present), and `x19` no longer appears in `double_it`\n- the same holds for other totals and bonuses you do not see, zero and negative ones among them",
