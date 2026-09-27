@@ -183,6 +183,12 @@ pub fn execute(
             regs.write_gpr(*rd, *sf, result);
             Ok(ExecResult::Advance)
         }
+        Instruction::Extr { sf, rd, rn, rm, lsb } => {
+            let width = if *sf { 64 } else { 32 };
+            let pair = (u128::from(regs.read_gpr(*rn, *sf)) << width) | u128::from(regs.read_gpr(*rm, *sf));
+            regs.write_gpr(*rd, *sf, (pair >> lsb) as u64);
+            Ok(ExecResult::Advance)
+        }
         Instruction::MoveWide { op, sf, rd, imm16, hw } => {
             exec_move_wide(*op, *sf, *rd, *imm16, *hw, regs)
         }
@@ -396,7 +402,7 @@ pub fn execute(
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
                     // IEEE: a negative operand yields NaN, never a trap.
-                    FpUnaryOp::Fsqrt => default_nan_if_new(v.sqrt(), &[v]),
+                    FpUnaryOp::Fsqrt => f32::from_lane(fp_arith(v.sqrt(), &[v])),
                 };
                 regs.write_fpr_f32(*fd, result);
             } else {
@@ -404,21 +410,30 @@ pub fn execute(
                 let result = match op {
                     FpUnaryOp::Fneg => -v,
                     FpUnaryOp::Fabs => v.abs(),
-                    FpUnaryOp::Fsqrt => default_nan_if_new(v.sqrt(), &[v]),
+                    FpUnaryOp::Fsqrt => f64::from_lane(fp_arith(v.sqrt(), &[v])),
                 };
                 regs.write_fpr_f64(*fd, result);
             }
             Ok(ExecResult::Advance)
         }
         Instruction::FpCompare { fn_, fm, single } => {
-            // Widening f32 -> f64 is exact, so the single compare can
-            // share the double flag logic (NaN stays NaN, order holds).
-            let (a, b) = if *single {
-                (regs.read_fpr_f32(*fn_) as f64, regs.read_fpr_f32(*fm) as f64)
+            let flags = fp_compare_flags(regs, *fn_, Some(*fm), *single);
+            regs.set_nzcv(flags);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpCompareZero { fn_, single } => {
+            let flags = fp_compare_flags(regs, *fn_, None, *single);
+            regs.set_nzcv(flags);
+            Ok(ExecResult::Advance)
+        }
+        Instruction::FpCondCompare { fn_, fm, nzcv, cond, single } => {
+            // As CCMP, the false path writes the literal.
+            let flags = if regs.condition_holds(*cond) {
+                fp_compare_flags(regs, *fn_, Some(*fm), *single)
             } else {
-                (regs.read_fpr_f64(*fn_), regs.read_fpr_f64(*fm))
+                NzcvFlags::unpack(*nzcv)
             };
-            regs.nzcv = crate::fpu::fcmp_flags(a, b);
+            regs.set_nzcv(flags);
             Ok(ExecResult::Advance)
         }
         Instruction::FpToInt { op, rd, fn_, sf, single, fbits } => {
@@ -431,14 +446,16 @@ pub fn execute(
             exec_fp_mul_add(*op, *fd, *fn_, *fm, *fa, *single, regs)
         }
         Instruction::FpCvt { fd, fn_, widen } => {
+            // The lane conversions, which carry a NaN's sign and payload
+            // across the widths the way FPConvert does.
             if *widen {
                 // FCVT Dd, Sn: every f32 is exactly representable as f64.
-                let v = regs.read_fpr_f32(*fn_);
-                regs.write_fpr_f64(*fd, v as f64);
+                let bits = u64::from(regs.read_fpr_f32(*fn_).to_bits());
+                regs.write_fpr_f64(*fd, f64::from_bits(fp_widen_lane(8, bits)));
             } else {
                 // FCVT Sd, Dn: rounds to the nearest single.
-                let v = regs.read_fpr_f64(*fn_);
-                regs.write_fpr_f32(*fd, v as f32);
+                let bits = regs.read_fpr_f64(*fn_).to_bits();
+                regs.write_fpr_f32(*fd, f32::from_bits(fp_narrow_lane(false, 8, bits) as u32));
             }
             Ok(ExecResult::Advance)
         }
@@ -462,6 +479,14 @@ pub fn execute(
                 Ok(ExecResult::Halted)
             }
         }
+        // The first line is what the servers' shell prints for SIGTRAP.
+        Instruction::Brk { imm16 } => Err(EmuError::RuntimeError {
+            message: format!(
+                "Trace/breakpoint trap\n`brk #{imm16}` stops the program here, as it does on \
+                 the servers. gcc plants one where it proved the code can only fault, such \
+                 as a use of a pointer that is NULL on this path"
+            ),
+        }),
     }
 }
 
@@ -814,9 +839,9 @@ fn exec_ldst_pair(
         }
     };
 
-    let pair_size: u64 = if sf { 8 } else { 4 };
+    let pair_size: u64 = if sf && op != LdStPairOp::Ldpsw { 8 } else { 4 };
     let access = match op {
-        LdStPairOp::Ldp => crate::errors::MemAccess::Read,
+        LdStPairOp::Ldp | LdStPairOp::Ldpsw => crate::errors::MemAccess::Read,
         LdStPairOp::Stp => crate::errors::MemAccess::Write,
     };
     check_guest_address(address, access)?;
@@ -836,6 +861,12 @@ fn exec_ldst_pair(
             };
             regs.write_gpr(rt, sf, v1);
             regs.write_gpr(rt2, sf, v2);
+        }
+        LdStPairOp::Ldpsw => {
+            let v1 = mem.read_u32(address)? as i32 as i64 as u64;
+            let v2 = mem.read_u32(address + pair_size)? as i32 as i64 as u64;
+            regs.write_gpr(rt, true, v1);
+            regs.write_gpr(rt2, true, v2);
         }
         LdStPairOp::Stp => {
             let v1 = regs.read_gpr(rt, sf);
@@ -931,8 +962,9 @@ fn exec_fp_ldst_pair(
     let (address, writeback) = apply_index_mode(base, imm7 as i64, mode);
 
     let pair_size = u64::from(size.bytes());
+    // The SIMD&FP decode never builds LDPSW, so it reads as the plain load.
     let access = match op {
-        LdStPairOp::Ldp => crate::errors::MemAccess::Read,
+        LdStPairOp::Ldp | LdStPairOp::Ldpsw => crate::errors::MemAccess::Read,
         LdStPairOp::Stp => crate::errors::MemAccess::Write,
     };
     check_guest_address(address, access)?;
@@ -940,7 +972,7 @@ fn exec_fp_ldst_pair(
     let second = address.wrapping_add(pair_size);
 
     match op {
-        LdStPairOp::Ldp => match size {
+        LdStPairOp::Ldp | LdStPairOp::Ldpsw => match size {
             // Each element is a scalar destination, so the bits above the
             // loaded width go to zero, like the single-register load.
             MemSize::W => {
@@ -1310,7 +1342,7 @@ trait FpOperand:
     + std::ops::Div<Output = Self>
     + std::ops::Neg<Output = Self>
 {
-    /// The AArch64 default NaN's bit pattern. `default_nan_if_new`
+    /// The AArch64 default NaN's bit pattern. `default_nan_bits_if_new`
     /// rebuilds the value from these bits rather than from a float
     /// constant, because the optimizer is free to treat one NaN as
     /// interchangeable with another and hand back the host's own.
@@ -1513,15 +1545,11 @@ fn fp_min_num<T: FpOperand>(a: T, b: T) -> T {
 /// `nan`. A NaN that arrived in an OPERAND is left exactly as it is:
 /// FPCR.DN is clear here, so a quiet NaN propagates with its own sign and
 /// payload.
-fn default_nan_if_new<T: FpOperand>(result: T, sources: &[T]) -> T {
-    T::from_lane(default_nan_bits_if_new(result, sources))
-}
-
-/// The same rule answered as BITS, which is the form it is really about
-/// and the one every lane goes through. It cannot be expressed on the
-/// value alone: nothing stops the optimizer from handing back a
-/// different NaN when the answer is only "a NaN", and on an x86-64 host
-/// that is the sign-set one this rule exists to replace.
+///
+/// The rule is answered as BITS, the form it is really about: nothing
+/// stops the optimizer from handing back a different NaN when the answer
+/// is only "a NaN", and on an x86-64 host that is the sign-set one this
+/// rule exists to replace.
 fn default_nan_bits_if_new<T: FpOperand>(result: T, sources: &[T]) -> u64 {
     if result.is_nan() && !sources.iter().any(|s| s.is_nan()) {
         T::DEFAULT_NAN_BITS
@@ -2538,7 +2566,7 @@ fn exec_simd_by_element(
 //     comes back out of that lane quieted, sign and payload intact
 //     (FPCR.DN is clear). A signalling operand wins over a quiet one, and
 //     within a kind the earlier operand wins.
-//   - `default_nan_if_new` is the other half: a NaN this operation MADE
+//   - `default_nan_bits_if_new` is the other half: a NaN this operation MADE
 //     becomes the positive AArch64 default NaN.
 //   - FMAX and FMIN propagate an operand NaN; FMAXNM and FMINNM stand
 //     an infinity in a QUIET NaN's place and return the other operand,
@@ -2620,8 +2648,8 @@ fn simd_fp_same_lane<T: FpOperand>(op: SimdFpSameOp, a: T, b: T, d: T) -> u64 {
         // sum together. FMLS negates the first product operand, never the
         // result, and the destination lane is the addend and the FIRST
         // operand the NaN rule looks at.
-        SimdFpSameOp::Fmla => fp_arith(a.mul_add(b, d), &[d, a, b]),
-        SimdFpSameOp::Fmls => fp_arith((-a).mul_add(b, d), &[d, -a, b]),
+        SimdFpSameOp::Fmla => fp_fused(a, b, d),
+        SimdFpSameOp::Fmls => fp_fused(-a, b, d),
         SimdFpSameOp::Fmulx => fp_mulx(a, b),
         SimdFpSameOp::Fmax | SimdFpSameOp::Fmaxp => fp_max(a, b).to_bits(),
         SimdFpSameOp::Fmin | SimdFpSameOp::Fminp => fp_min(a, b).to_bits(),
@@ -2644,6 +2672,26 @@ fn fp_arith<T: FpOperand>(result: T, sources: &[T]) -> u64 {
         Some(nan) => nan.to_bits(),
         None => default_nan_bits_if_new(result, sources),
     }
+}
+
+/// The flags FCMP sets for Fn against Fm, or against +0.0 when `fm` is
+/// None. Widening f32 to f64 is exact, so the single compare shares the
+/// double flag logic (NaN stays NaN, order holds).
+fn fp_compare_flags(regs: &RegisterFile, fn_: u8, fm: Option<u8>, single: bool) -> NzcvFlags {
+    let read = |r: u8| if single { f64::from(regs.read_fpr_f32(r)) } else { regs.read_fpr_f64(r) };
+    crate::fpu::fcmp_flags(read(fn_), fm.map_or(0.0, read))
+}
+
+/// n * m + a with one rounding, and FPMulAdd's NaN rules: the addend is
+/// the first operand they look at, and a quiet NaN addend still gives the
+/// default NaN when the product is infinity times zero.
+fn fp_fused<T: FpOperand>(n: T, m: T, a: T) -> u64 {
+    let inf_times_zero =
+        (n.is_infinite() && m == T::ZERO) || (n == T::ZERO && m.is_infinite());
+    if a.is_nan() && !a.is_signalling() && inf_times_zero {
+        return T::DEFAULT_NAN_BITS;
+    }
+    fp_arith(n.mul_add(m, a), &[a, n, m])
 }
 
 /// The sign bit of a lane of `bytes`, which FABS clears and FNEG flips.
@@ -3068,15 +3116,16 @@ fn exec_fp_binary(
     if single {
         let a = regs.read_fpr_f32(fn_);
         let b = regs.read_fpr_f32(fm);
+        let arith = |value: f32| f32::from_lane(fp_arith(value, &[a, b]));
         let result = match op {
-            FpBinOp::Fadd => default_nan_if_new(a + b, &[a, b]),
-            FpBinOp::Fsub => default_nan_if_new(a - b, &[a, b]),
-            FpBinOp::Fmul => default_nan_if_new(a * b, &[a, b]),
-            FpBinOp::Fdiv => default_nan_if_new(a / b, &[a, b]),
+            FpBinOp::Fadd => arith(a + b),
+            FpBinOp::Fsub => arith(a - b),
+            FpBinOp::Fmul => arith(a * b),
+            FpBinOp::Fdiv => arith(a / b),
             // The sign flips on the PRODUCT, which is what makes
             // fnmul of +0.0 and 3.0 a -0.0 that (-a) * b never produces.
             // FPNeg runs after FPMul, so the product is normalized first.
-            FpBinOp::Fnmul => -default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fnmul => -arith(a * b),
             FpBinOp::Fmax => fp_max(a, b),
             FpBinOp::Fmin => fp_min(a, b),
             FpBinOp::Fmaxnm => fp_max_num(a, b),
@@ -3086,12 +3135,13 @@ fn exec_fp_binary(
     } else {
         let a = regs.read_fpr_f64(fn_);
         let b = regs.read_fpr_f64(fm);
+        let arith = |value: f64| f64::from_lane(fp_arith(value, &[a, b]));
         let result = match op {
-            FpBinOp::Fadd => default_nan_if_new(a + b, &[a, b]),
-            FpBinOp::Fsub => default_nan_if_new(a - b, &[a, b]),
-            FpBinOp::Fmul => default_nan_if_new(a * b, &[a, b]),
-            FpBinOp::Fdiv => default_nan_if_new(a / b, &[a, b]),
-            FpBinOp::Fnmul => -default_nan_if_new(a * b, &[a, b]),
+            FpBinOp::Fadd => arith(a + b),
+            FpBinOp::Fsub => arith(a - b),
+            FpBinOp::Fmul => arith(a * b),
+            FpBinOp::Fdiv => arith(a / b),
+            FpBinOp::Fnmul => -arith(a * b),
             FpBinOp::Fmax => fp_max(a, b),
             FpBinOp::Fmin => fp_min(a, b),
             FpBinOp::Fmaxnm => fp_max_num(a, b),
@@ -3124,14 +3174,14 @@ fn exec_fp_mul_add(
         let a = regs.read_fpr_f32(fa);
         let n = if neg_n { -n } else { n };
         let a = if neg_a { -a } else { a };
-        regs.write_fpr_f32(fd, default_nan_if_new(n.mul_add(m, a), &[n, m, a]));
+        regs.write_fpr_f32(fd, f32::from_lane(fp_fused(n, m, a)));
     } else {
         let n = regs.read_fpr_f64(fn_);
         let m = regs.read_fpr_f64(fm);
         let a = regs.read_fpr_f64(fa);
         let n = if neg_n { -n } else { n };
         let a = if neg_a { -a } else { a };
-        regs.write_fpr_f64(fd, default_nan_if_new(n.mul_add(m, a), &[n, m, a]));
+        regs.write_fpr_f64(fd, f64::from_lane(fp_fused(n, m, a)));
     }
     Ok(ExecResult::Advance)
 }
@@ -3211,23 +3261,24 @@ fn exec_fp_from_int(
     regs: &mut RegisterFile,
 ) -> Result<ExecResult, EmuError> {
     let raw = regs.read_gpr(rn, sf);
-    let mut value = match op {
-        FpFromIntOp::Scvtf => {
-            let i = if sf { raw as i64 } else { (raw as u32 as i32) as i64 };
-            i as f64
-        }
-        FpFromIntOp::Ucvtf => {
-            let u = if sf { raw } else { raw & 0xFFFF_FFFF };
-            u as f64
-        }
-    };
-    if fbits != 0 {
-        value /= 2f64.powi(i32::from(fbits));
-    }
+    // Straight to the destination width: a 64-bit integer rounded to a
+    // double and then to a single can land on a tie the integer never
+    // had. Scaling by a power of two afterwards is exact.
+    let signed = if sf { raw as i64 } else { (raw as u32 as i32) as i64 };
+    let unsigned = if sf { raw } else { raw & 0xFFFF_FFFF };
+    let scale = i32::from(fbits);
     if single {
-        regs.write_fpr_f32(fd, value as f32);
+        let value = match op {
+            FpFromIntOp::Scvtf => signed as f32,
+            FpFromIntOp::Ucvtf => unsigned as f32,
+        };
+        regs.write_fpr_f32(fd, value / 2f32.powi(scale));
     } else {
-        regs.write_fpr_f64(fd, value);
+        let value = match op {
+            FpFromIntOp::Scvtf => signed as f64,
+            FpFromIntOp::Ucvtf => unsigned as f64,
+        };
+        regs.write_fpr_f64(fd, value / 2f64.powi(scale));
     }
     Ok(ExecResult::Advance)
 }
