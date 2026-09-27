@@ -2,6 +2,7 @@
   "title": "Pick the bigger one",
   "slug": "pick-the-bigger-one",
   "order": 9,
+  "lastUpdated": "2026-09-27",
   "topic": "branching",
   "difficulty": "intro",
   "prompt": "Two contenders arrive on input, and the starter reads them into registers. Print the larger one.\n\nA clean pattern: assume one of them is the winner, then compare and replace the assumption only when the other is bigger. That way there is exactly one branch to reason about.\n\n## what is checked\n\n- the larger value is printed on its own line\n- the program exits cleanly\n- a comparison decides it\n- the same holds for other inputs you do not see: either one can be bigger, they can be equal, and they can be negative",
