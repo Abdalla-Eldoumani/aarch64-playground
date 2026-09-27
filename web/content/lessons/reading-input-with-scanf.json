@@ -2,6 +2,7 @@
   "title": "Reading numbers with scanf",
   "slug": "reading-input-with-scanf",
   "order": 9,
+  "lastUpdated": "2026-09-27",
   "summary": "Read numbers from the keyboard with scanf into .bss slots, then load them into registers to use them.",
   "tags": [
     "input and output",
