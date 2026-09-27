@@ -701,8 +701,13 @@ function EmbeddableCore({
           full.assembleAndRun();
           return;
         }
+        const assembled = sourceRef.current;
         void assembleRef.current().then((ok) => {
-          if (ok) emuRef.current.run();
+          if (!ok) return;
+          // Recorded as run, so the embed's run press continues from a
+          // breakpoint instead of assembling and starting over.
+          lastRunSourceRef.current = assembled;
+          emuRef.current.run();
         });
       },
       // Run, step, and back cannot pass a blocked read (the machine just
@@ -824,6 +829,7 @@ function EmbeddableCore({
               onCursorChange={setCursor}
               focusRequest={errorFocus}
               followCurrentLine={!emu.isRunning && emu.stepCount > 0}
+              onRunShortcut={readOnly ? undefined : handle.assembleAndRun}
               readOnly={readOnly}
             />
           )
