@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	cmul
 cmul:
 	fmov	w1, s1
@@ -32,7 +32,7 @@ cmul:
 	fmov	s1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	cross
 cross:
 	fmov	s31, s0
@@ -46,7 +46,7 @@ cross:
 	fnmsub	s2, s31, s4, s30
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	axpy
 axpy:
 	fmov	w2, s0
@@ -87,7 +87,7 @@ axpy:
 	fmov	s3, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	crowd
 crowd:
 	sub	sp, sp, #32
@@ -109,7 +109,7 @@ crowd:
 	fmadd	s0, s0, s31, s2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	crowd2
 crowd2:
 	fmov	w3, s7
@@ -150,7 +150,7 @@ crowd2:
 	fmadd	s0, s30, s0, s31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	blend
 blend:
 	fmov	w4, s0
@@ -192,7 +192,7 @@ blend:
 	fmov	s3, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	shift
 shift:
 	sub	sp, sp, #48
@@ -202,7 +202,7 @@ shift:
 	add	sp, sp, 48
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	twist
 twist:
 	adrp	x1, .LANCHOR0
@@ -223,7 +223,7 @@ twist:
 	add	sp, sp, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fimix
 fimix:
 	sbfx	x1, x0, 0, 32
@@ -247,7 +247,7 @@ fimix:
 	.string	" %.4f"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pf
 pf:
 	stp	x29, x30, [sp, -48]!
@@ -265,7 +265,7 @@ pf:
 	str	x21, [sp, 32]
 	adrp	x21, .LC6
 	add	x21, x21, :lo12:.LC6
-	.align 5
+	.p2align 5,,15
 .L19:
 	ldr	s0, [x19], 4
 	mov	x0, x21
@@ -285,7 +285,7 @@ pf:
 	.string	"%s %.4f %.4f %.4f\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pf3
 pf3:
 	fcvt	d2, s2
@@ -339,7 +339,7 @@ pf3:
 	.string	"sizes %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -256]!
@@ -442,7 +442,7 @@ main:
 	ldp	q30, q29, [x26, 16]
 	str	q31, [x25, 32]
 	stp	q30, q29, [x25]
-	.align 5
+	.p2align 5,,15
 .L28:
 	umull	x0, w22, w27
 	tst	x22, 1
@@ -459,7 +459,7 @@ main:
 	fmla	v30.4s, v28.4s, v31.s[0]
 	str	q30, [sp, 144]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L27:
 	ldr	s0, [x19], 4
 	mov	x0, x21
@@ -532,13 +532,13 @@ main:
 	beq	.L31
 	mov	x0, 3
 	b	.L32
-	.align 2
+	.p2align 2,,3
 .L31:
 	adrp	x1, .LC16
 	mov	x0, x23
 	add	x1, x1, :lo12:.LC16
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L33:
 	ldr	s0, [x20], 4
 	mov	x0, x21
@@ -577,7 +577,7 @@ main:
 	fmov	s31, 1.9e+1
 	str	s31, [sp, 192]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L35:
 	ldr	s0, [x19], 4
 	mov	x0, x21
@@ -604,7 +604,7 @@ main:
 	beq	.L45
 	scvtf	s13, w20
 	b	.L36
-	.align 2
+	.p2align 2,,3
 .L45:
 	mov	w2, 12
 	mov	w4, 8
