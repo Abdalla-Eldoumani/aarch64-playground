@@ -23,6 +23,7 @@ export function QuizBlock({
   hint,
   value,
   onValueChange,
+  locked,
   onAttempt,
 }: {
   question: string;
@@ -38,6 +39,9 @@ export function QuizBlock({
   value?: number | null;
   /** Fires on every pick so the sheet can persist it. */
   onValueChange?: (value: number | null) => void;
+  /** Opens answered when the sheet restored this question as already
+   *  checked and right; honoured only while the restored answer still is. */
+  locked?: boolean;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
@@ -53,6 +57,7 @@ export function QuizBlock({
   };
 
   const isCorrect = selected === correctAnswer;
+  const answered = submitted || (locked === true && isCorrect);
 
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
@@ -65,7 +70,7 @@ export function QuizBlock({
         {options.map((opt, i) => {
           const isSelected = selected === i;
           let tone: string;
-          if (submitted) {
+          if (answered) {
             if (isCorrect) {
               tone =
                 i === correctAnswer
@@ -86,7 +91,7 @@ export function QuizBlock({
             <button
               key={i}
               type="button"
-              disabled={submitted}
+              disabled={answered}
               onClick={() => select(i)}
               aria-pressed={isSelected}
               className={`rounded-[var(--radius-control)] border px-4 py-3 text-left text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${tone}`}
@@ -97,7 +102,7 @@ export function QuizBlock({
         })}
       </div>
 
-      {!submitted ? (
+      {!answered ? (
         <Button
           disabled={selected === null}
           onClick={() => {
