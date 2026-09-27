@@ -21,9 +21,13 @@ const BANNED_DIRECTIVES = [
   ".set", // same: assembler-level aliasing never appears in course files
 ];
 
-const bannedRe = new RegExp(
-  `(${BANNED_DIRECTIVES.map((d) => d.replace(/\./g, "\\.")).join("|")})\\b`,
-);
+/** Any of the names, read as literal text, ending at a word boundary. */
+function literalAlternation(names: readonly string[]): RegExp {
+  const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return new RegExp(`(${escaped.join("|")})\\b`);
+}
+
+const bannedRe = literalAlternation(BANNED_DIRECTIVES);
 
 function assertClean(file: string, raw: string): void {
   const hit = bannedRe.exec(raw);
@@ -47,6 +51,14 @@ function walk(dir: string, ext: string): string[] {
 const rel = (file: string): string => path.relative(process.cwd(), file);
 
 describe("authored programs stay inside the course directive vocabulary", () => {
+  it("reads each banned name as literal text, not regex syntax", () => {
+    const re = literalAlternation([".a+b", ".c\\d"]);
+    expect(re.test("x .a+b y")).toBe(true);
+    expect(re.test("x .aab y")).toBe(false);
+    expect(re.test("x .c\\d y")).toBe(true);
+    expect(re.test("x .c7 y")).toBe(false);
+  });
+
   it("lessons and exercises carry no banned directive", () => {
     const files = ["content/lessons", "content/exercises"].flatMap((dir) =>
       walk(path.join(process.cwd(), dir), ".json"),
