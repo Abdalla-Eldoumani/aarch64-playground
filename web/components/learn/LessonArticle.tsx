@@ -71,7 +71,7 @@ export function LessonArticle({
           className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 lg:border-0 lg:bg-transparent lg:p-0"
         >
           <summary className="cursor-pointer select-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] lg:list-none">
-            on this sheet
+            on this page
           </summary>
           <ul className="mt-3 flex flex-col lg:mt-0">
             {toc.map((entry, i) => (
@@ -163,7 +163,7 @@ export function LessonArticle({
                     <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                       figure {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
-                        runnable: step it and watch the registers
+                        try it: run it, or step one instruction at a time
                       </span>
                     </span>
                     <OpenInPlayground
