@@ -1,0 +1,173 @@
+{
+  "title": "Inside a float: IEEE 754",
+  "slug": "ieee-754",
+  "order": 29,
+  "summary": "Split a single or double into its sign, exponent, and fraction, convert between decimal and bits by hand, and spot zero, subnormals, infinity, and NaN.",
+  "tags": [
+    "floating point",
+    "binary arithmetic"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Binary, hex, and octal: one number, many spellings](/learn/binary-hex-and-octal)\n- [Floating point: the other register file](/learn/floating-point)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A general register holds whole numbers only. To store 6.75, or 0.1, or a number as large as 10^30, a program needs a format with a fractional part and a very wide range. That format is *floating point*: each value is stored as a sign, a power of two that sets its scale, and a fixed number of significant bits. Almost every processor, AArch64 included, lays those three parts out the way a standard called IEEE 754 defines, and the `s` and `d` registers from the [floating-point lesson](/learn/floating-point) hold their values in exactly this layout.\n\nThis lesson opens those registers up. By the end you can split a single or double into its sign, exponent and fraction, turn a decimal number into its bits and back, and tell zero, subnormal numbers, infinity and NaN apart from the bits alone."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Fractions in binary\n\nDigits after a binary point work like digits after a decimal point, except that each place is worth half of the one to its left: 1/2, 1/4, 1/8, 1/16, and so on. So `110.11` in binary is 4 + 2 + 1/2 + 1/4 = 6.75.\n\nTo turn a decimal fraction into binary, keep doubling it. Each doubling pushes one bit across the point: the whole-number part (0 or 1) is the next bit, and only what is left after the point carries on to the next row."
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "value   doubled   next bit\n0.75    1.5       1          keep 0.5\n0.5     1.0       1          nothing left, so 0.75 = 0.11\n\n0.1     0.2       0\n0.2     0.4       0\n0.4     0.8       0\n0.8     1.6       1          keep 0.6\n0.6     1.2       1          keep 0.2, a value already seen\n                             so 0.1 = 0.000110011001100... without end\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The bits of 0.1 never end, in the same way that 1/3 = 0.333... never ends in decimal. A float has room for only so many bits, so 0.1 is stored as the nearest value that fits, not as 0.1 itself. The programs below show exactly how near."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Fixed point, and why floats move the point\n\nOne simple way to store fractions is *fixed point*: agree that the binary point sits at a set place, say 8 bits from the right, and store the number times 2^8 as an ordinary integer. 6.75 becomes 6.75 x 256 = 1728. Integer instructions can add and compare these directly, which is why small devices with no floating-point hardware still use them. The catch is range: with the point fixed, the same 32 bits cannot hold both 0.0001 and ten billion.\n\nFloating point lets the point move. Any number other than zero can be written in binary scientific notation, as 1.something times a power of two:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "6.75      = 110.11 in binary    = 1.1011 x 2^2\n0.15625   = 0.00101 in binary   = 1.01   x 2^-3\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "Moving the point until exactly one 1 sits to its left is called *normalizing*. After normalizing, that leading digit is always 1, so the format does not spend a bit storing it; it is called the *hidden bit*. What is left to store is the sign, the power of two (the *exponent*), and the bits after the point (the *fraction*)."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The single-precision layout\n\nA single-precision float, the 32-bit kind that sits in an `s` register and that `.float` places in memory, splits its bits three ways:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "bit      31   30 ........ 23   22 ............................. 0\nfield    s    e (8 bits)       f (23 bits)\n\nvalue    1.f  x  2^(e - 127),  negated when s is 1\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "- `s`, the sign bit, is 0 for positive and 1 for negative. Flipping it negates the number and changes nothing else, which is all `fneg` does.\n- `e`, the exponent, is stored with a *bias*: the true power of two plus 127. The bias keeps the field between 0 and 255, so it needs no sign of its own. An `e` of 127 means 2^0, 130 means 2^3, and 124 means 2^-3.\n- `f`, the fraction, is the 23 bits after the point of the normalized number, padded with zeros on the right. The hidden 1 goes in front of them.\n\nEncoding -6.75:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "sign       negative                          s = 1\nbinary     6.75 = 110.11 = 1.1011 x 2^2\nexponent   2 + 127 = 129                     e = 10000001\nfraction   the bits after the point, 1011    f = 10110000000000000000000\n\n32 bits    1 10000001 10110000000000000000000\nby fours   1100 0000 1101 1000 0000 0000 0000 0000\nhex        c    0    d    8    0    0    0    0     = 0xc0d80000\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Decoding a word\n\nDecoding runs the same steps backwards: split the bits 1, 8 and 23; subtract 127 from `e`; put the hidden 1 in front of `f`; and move the point by the true exponent. The [IEEE 754 view of the base converter](/reference#converter-ieee754) shows the three fields of any word you type, which makes it a quick check for a hand decoding. For `0x42a50000`:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "binary     0100 0010 1010 0101 0000 0000 0000 0000\nsplit      0 | 10000101 | 01001010000000000000000\ns          0, so positive\ne          10000101 = 133, and 133 - 127 = 6\n1.f        1.0100101\nmove       1.0100101 x 2^6 = 1010010.1\nvalue      64 + 16 + 2 + 0.5 = 82.5\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Range and precision\n\n`e` values from 1 to 254 give ordinary numbers, so the true exponent runs from -126 to 127. The largest single is just under 2^128, about 3.4 x 10^38, and the smallest ordinary one is 2^-126, about 1.2 x 10^-38. The two leftover `e` values, 0 and 255, are kept for special cases, covered further down.\n\nPrecision is set by the fraction: 23 stored bits plus the hidden bit give 24 significant bits, about 7 decimal digits. Past that, even whole numbers go missing: 16,777,217 (2^24 + 1) has no single-precision form, and converting it with `scvtf` gives 16,777,216."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Taking floats apart in a program\n\nThe program below prints four single-precision values beside their bits and fields. Its helper, `show_float`, works in three steps:\n\n- `fmov bits_r, s0` (with `bits_r` standing for `w9`) copies the 32 bits of `s0` into a general register unchanged. It copies the pattern and does not convert the value: for 1.0 the integer it leaves is 1,065,353,216 (`0x3f800000`), not 1.\n- `ubfx` pulls out `s` (bit 31), `e` (bits 30 to 23) and `f` (bits 22 to 0), and `sub` takes the bias off `e`.\n- `fcvt d0, s0` widens the value to a double before the call, because `printf` always receives a floating-point argument as a double.\n\nRunning it prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "1            0x3f800000  s = 0  e = 127  e - 127 =    0  f = 0x000000\n-6.75        0xc0d80000  s = 1  e = 129  e - 127 =    2  f = 0x580000\n0.100000001  0x3dcccccd  s = 0  e = 123  e - 127 =   -4  f = 0x4ccccd\ninf          0x7f800000  s = 0  e = 255  e - 127 =  128  f = 0x000000\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Split four single-precision values into\n// their sign, exponent, and fraction fields\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(bits_r, w9)\n\n.data\n        .balign 4\none_m:      .float  0r1.0\nmixed_m:    .float  0r-6.75\ntenth_m:    .float  0r0.1\nfmt_parts:  .string \"%-12.9g 0x%08x  s = %d  e = %3d  e - 127 = %4d  f = 0x%06x\\n\"\n\n.text\n// show_float(s0 = value): print the value, its 32 bits, and its three fields\n        .balign 4\n        .global show_float\nshow_float:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        fmov    bits_r, s0                  // copy the bits, not the value\n        mov     w1, bits_r\n        ubfx    w2, bits_r, 31, 1           // s: bit 31\n        ubfx    w3, bits_r, 23, 8           // e: bits 30 to 23\n        sub     w4, w3, 127                 // remove the bias\n        ubfx    w5, bits_r, 0, 23           // f: bits 22 to 0\n        fcvt    d0, s0                      // printf takes a float as a double\n        ldr     x0, =fmt_parts\n        bl      printf\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x9, =one_m\n        ldr     s0, [x9]\n        bl      show_float\n\n        ldr     x9, =mixed_m\n        ldr     s0, [x9]\n        bl      show_float\n\n        ldr     x9, =tenth_m\n        ldr     s0, [x9]\n        bl      show_float\n\n        fmov    s1, 1.0\n        fmov    s2, wzr                     // all 32 bits zero: 0.0\n        fdiv    s0, s1, s2                  // 1.0 / 0.0\n        bl      show_float\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "1            0x3f800000  s = 0  e = 127  e - 127 =    0  f = 0x000000\n-6.75        0xc0d80000  s = 1  e = 129  e - 127 =    2  f = 0x580000\n0.100000001  0x3dcccccd  s = 0  e = 123  e - 127 =   -4  f = 0x4ccccd\ninf          0x7f800000  s = 0  e = 255  e - 127 =  128  f = 0x000000\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Reading the output:\n\n- 1.0 is 1.0 x 2^0, so `e` equals the bias and `f` is all zeros.\n- -6.75 matches the hand encoding above. `f` prints as `0x580000` because its 23 bits, `1011` and nineteen zeros, regroup in fours from the right as `101 1000 0000 0000 0000 0000`.\n- 0.1 is 1.6 x 2^-4. Its fraction is a pattern of bits that repeats without end (it shows as the run of `c` digits in `f`), so the last bit is rounded up, and `f` ends in `d` where the pattern alone would give `c`. Printed to nine significant digits, the stored value shows as 0.100000001.\n- 1.0 / 0.0 does not stop the program. It gives infinity, which has `e` = 255 and `f` = 0.\n\nChange `0r-6.75` to `0r82.5` and run again: the second line shows `0x42a50000`, the word decoded by hand above."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Zero, subnormals, infinity, and NaN\n\nThe two `e` values left out of ordinary numbers mark the special cases:\n\n| `e` | `f` | Meaning |\n|---|---|---|\n| 0 | 0 | zero; `s` gives +0 or -0 |\n| 0 | not 0 | subnormal: 0.f x 2^-126, with no hidden 1 |\n| 1 to 254 | any | normal: 1.f x 2^(e - 127) |\n| 255 | 0 | infinity; `s` gives plus or minus |\n| 255 | not 0 | NaN, short for \"not a number\" |\n\n- Zero has no leading 1 to hide, so it gets its own pattern: `e` and `f` all zeros. That leaves two zeros, +0 and -0, which `fcmp` reports as equal.\n- A *subnormal* number is smaller than the smallest normal one. With `e` = 0 the hidden bit becomes 0, so these values fill the gap between 2^-126 and zero, at the price of fewer significant bits. The smallest, `0x00000001`, is 2^-149, about 1.4 x 10^-45.\n- Infinity is the result when the true answer is too large to store, or when a nonzero number is divided by zero.\n- A *NaN* marks a result with no sensible value, such as 0.0 / 0.0 or infinity minus infinity; `0x7fc00000` is the NaN that AArch64 produces for these. A NaN compares unequal to everything, itself included: after `fcmp` with a NaN on either side, `b.eq` is not taken.\n\nThe program below reads each pattern's fields and names its kind. `main` keeps its pointer and its counter in `x19` and `x20` because they must survive every `printf` call, so it saves those two registers on entry and restores them before returning, as the [calling conventions lesson](/learn/calling-conventions) requires. Replace any word in the `.word` lists with a hex word of your own, such as one from a practice question, to classify it.\n\nRunning it prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "0x00000000  s = 0  e =   0  f = 0x000000  zero\n0x80000000  s = 1  e =   0  f = 0x000000  zero\n0x00000001  s = 0  e =   0  f = 0x000001  subnormal\n0x00800000  s = 0  e =   1  f = 0x000000  normal\n0x7f7fffff  s = 0  e = 254  f = 0x7fffff  normal\n0x7f800000  s = 0  e = 255  f = 0x000000  infinity\n0xff800000  s = 1  e = 255  f = 0x000000  infinity\n0x7fc00000  s = 0  e = 255  f = 0x400000  NaN\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Sort eight 32-bit patterns into the kinds of\n// single-precision value by reading their e and f fields\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(ptr_r, x19)\ndefine(left_r, w20)\ndefine(word_r, w9)\ndefine(e_r, w10)\ndefine(f_r, w11)\ndefine(kind_r, x12)\n\nalloc = -(16 + 16) & -16                    // fp and lr, then x19 and x20\ndealloc = -alloc\nsave_s = 16\n\n.data\n        .balign 4\npatterns:   .word   0x00000000, 0x80000000, 0x00000001, 0x00800000\n            .word   0x7f7fffff, 0x7f800000, 0xff800000, 0x7fc00000\nfmt_kind:   .string \"0x%08x  s = %d  e = %3d  f = 0x%06x  %s\\n\"\nkind_zero:  .string \"zero\"\nkind_sub:   .string \"subnormal\"\nkind_norm:  .string \"normal\"\nkind_inf:   .string \"infinity\"\nkind_nan:   .string \"NaN\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        stp     x19, x20, [fp, save_s]      // main uses x19 and x20, so it saves them\n\n        ldr     ptr_r, =patterns\n        mov     left_r, 8                   // eight patterns\n        b       cl_test\ncl_loop:\n        ldr     word_r, [ptr_r], 4          // next pattern, then step 4 bytes\n        ubfx    e_r, word_r, 23, 8\n        ubfx    f_r, word_r, 0, 23\n\n        cmp     e_r, 0\n        b.eq    cl_low\n        cmp     e_r, 255\n        b.eq    cl_high\n        ldr     kind_r, =kind_norm          // e from 1 to 254\n        b       cl_print\ncl_low:\n        ldr     kind_r, =kind_zero\n        cmp     f_r, 0\n        b.eq    cl_print\n        ldr     kind_r, =kind_sub\n        b       cl_print\ncl_high:\n        ldr     kind_r, =kind_inf\n        cmp     f_r, 0\n        b.eq    cl_print\n        ldr     kind_r, =kind_nan\ncl_print:\n        ldr     x0, =fmt_kind\n        mov     w1, word_r\n        ubfx    w2, word_r, 31, 1           // s\n        mov     w3, e_r\n        mov     w4, f_r\n        mov     x5, kind_r\n        bl      printf\n\n        sub     left_r, left_r, 1\ncl_test:\n        cmp     left_r, 0\n        b.gt    cl_loop\n\n        ldp     x19, x20, [fp, save_s]\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "0x00000000  s = 0  e =   0  f = 0x000000  zero\n0x80000000  s = 1  e =   0  f = 0x000000  zero\n0x00000001  s = 0  e =   0  f = 0x000001  subnormal\n0x00800000  s = 0  e =   1  f = 0x000000  normal\n0x7f7fffff  s = 0  e = 254  f = 0x7fffff  normal\n0x7f800000  s = 0  e = 255  f = 0x000000  infinity\n0xff800000  s = 1  e = 255  f = 0x000000  infinity\n0x7fc00000  s = 0  e = 255  f = 0x400000  NaN\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Double precision\n\nA double-precision float, the 64-bit kind in a `d` register and made by `.double`, follows the same rules with wider fields:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "bit      63   62 ........ 52   51 ............................. 0\nfield    s    e (11 bits)      f (52 bits)\n\nvalue    1.f  x  2^(e - 1023),  negated when s is 1\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The bias is 1023, the special cases are `e` = 0 and `e` = 2047, and 53 significant bits give about 16 decimal digits, over a range out to about 1.8 x 10^308. -6.75 as a double keeps the same sign and the same fraction bits `1011`; only the exponent field is wider, holding the true exponent 2 as 2 + 1023 = 1025:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "s e f      1 10000000001 1011 followed by 48 zeros\nby fours   1100 0000 0001 1011 0000 ... 0000\nhex        0xc01b000000000000\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below does the same split for doubles, with `x` registers and wider `ubfx` fields. It prints 17 significant digits, which is enough to tell any two doubles apart.\n\nRunning it prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "1  0x3ff0000000000000\n    s = 0  e = 1023  e - 1023 =     0  f = 0x0000000000000\n-6.75  0xc01b000000000000\n    s = 1  e = 1025  e - 1023 =     2  f = 0xb000000000000\n0.10000000000000001  0x3fb999999999999a\n    s = 0  e = 1019  e - 1023 =    -4  f = 0x999999999999a\n0.10000000149011612  0x3fb99999a0000000\n    s = 0  e = 1019  e - 1023 =    -4  f = 0x99999a0000000\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Split double-precision values into their\n// 1 sign bit, 11 exponent bits, and 52 fraction bits\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(bits_r, x9)\n\n.data\n        .balign 8\none_m:      .double 0r1.0\nmixed_m:    .double 0r-6.75\ntenth_m:    .double 0r0.1\n        .balign 4\ntenth_s_m:  .float  0r0.1\nfmt_parts:  .string \"%.17g  0x%016lx\\n    s = %ld  e = %4ld  e - 1023 = %5ld  f = 0x%013lx\\n\"\n\n.text\n// show_double(d0 = value): print the value, its 64 bits, and its three fields\n        .balign 4\n        .global show_double\nshow_double:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        fmov    bits_r, d0                  // copy the bits, not the value\n        mov     x1, bits_r\n        ubfx    x2, bits_r, 63, 1           // s: bit 63\n        ubfx    x3, bits_r, 52, 11          // e: bits 62 to 52\n        sub     x4, x3, 1023                // remove the bias\n        ubfx    x5, bits_r, 0, 52           // f: bits 51 to 0\n        ldr     x0, =fmt_parts\n        bl      printf\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x9, =one_m\n        ldr     d0, [x9]\n        bl      show_double\n\n        ldr     x9, =mixed_m\n        ldr     d0, [x9]\n        bl      show_double\n\n        ldr     x9, =tenth_m\n        ldr     d0, [x9]\n        bl      show_double\n\n        ldr     x9, =tenth_s_m\n        ldr     s0, [x9]\n        fcvt    d0, s0                      // widen the single 0.1 to a double\n        bl      show_double\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "1  0x3ff0000000000000\n    s = 0  e = 1023  e - 1023 =     0  f = 0x0000000000000\n-6.75  0xc01b000000000000\n    s = 1  e = 1025  e - 1023 =     2  f = 0xb000000000000\n0.10000000000000001  0x3fb999999999999a\n    s = 0  e = 1019  e - 1023 =    -4  f = 0x999999999999a\n0.10000000149011612  0x3fb99999a0000000\n    s = 0  e = 1019  e - 1023 =    -4  f = 0x99999a0000000\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The third and fourth values both started as 0.1. The double 0.1 is off by about 5.6 x 10^-18. The fourth line is the single 0.1 widened with `fcvt`, and it is off by about 1.5 x 10^-9, the single's own error. Widening only appends zero bits to the fraction (the single's `f`, `0x4ccccd`, moved left 29 places is `0x99999a0000000`), so the error comes along unchanged. Converting to a wider type never brings back bits that were already rounded away."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "The usual slips when decoding by hand: forgetting to subtract the bias (127 for a single, 1023 for a double); forgetting the hidden 1 in front of the fraction (it is there for every normal number and missing for subnormals); reading `f` as decimal digits, when they are binary digits after the point; and splitting a double 1, 8, 23 instead of 1, 11, 52. The matching slip in code is using `scvtf` or `fcvtzs` where `fmov` was meant: those two convert the value, while `fmov` between a general register and a floating-point register copies the bits."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. Decode `0xc1200000`.\n2. Encode 0.375 as a single-precision word.\n3. Name the kind of value each word holds: `0x80000000`, `0x7f800001`, `0x00400000`."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `s` is 1, `e` is 130 so the true exponent is 3, and 1.f is 1.01, so the value is -1.01 x 2^3 = -1010 in binary, which is -10.0.\n2. 0.375 = 0.011 = 1.1 x 2^-2, so `s` is 0, `e` is 125 (`01111101`), and `f` is a 1 then 22 zeros, giving `0x3ec00000`.\n3. Negative zero (`s` 1, `e` 0, `f` 0); NaN (`e` 255, `f` not 0); subnormal (`e` 0, `f` not 0)."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: floating point (challenge)](/practice/quiz-advance-floating-point): how `fmov` fits a constant into 8 bits (a sign, 3 exponent bits and 4 fraction bits, this lesson's layout in miniature).\n- [Fill in the blank: floating point (core)](/practice/blanks-floating-point): `.float` and `.double`.\n- [Predict: floating point (core)](/practice/predict-floating-point): `fneg` and `fabs`, which touch only the sign bit."
+    }
+  ]
+}
