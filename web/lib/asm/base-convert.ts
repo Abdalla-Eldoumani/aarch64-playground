@@ -11,8 +11,8 @@ export type Width = 8 | 16 | 32 | 64;
 
 export const WIDTHS: readonly Width[] = [8, 16, 32, 64];
 
-/** The four representations the widget keeps in sync. */
-export type Rep = "hex" | "binary" | "unsigned" | "signed";
+/** The five representations the widget keeps in sync. */
+export type Rep = "hex" | "octal" | "binary" | "unsigned" | "signed";
 
 export function maxUnsigned(width: Width): bigint {
   return (1n << BigInt(width)) - 1n;
@@ -64,6 +64,11 @@ export function formatHex(bits: bigint, width: Width): string {
   return bits.toString(16).padStart(width / 4, "0");
 }
 
+/** Zero-padded to the digits the width can fill: 3 at 8 bits, 22 at 64. */
+export function formatOctal(bits: bigint, width: Width): string {
+  return bits.toString(8).padStart(Math.ceil(width / 3), "0");
+}
+
 /** Zero-padded to the width and grouped in nibbles, matching the bit grid. */
 export function formatBinary(bits: bigint, width: Width): string {
   const digits = bits.toString(2).padStart(width, "0");
@@ -111,6 +116,25 @@ export function parseRep(rep: Rep, text: string, width: Width): ParseOutcome {
         return {
           kind: "range",
           message: `0x${bits.toString(16)} needs ${bitsNeeded(bits)} bits; ${width}-bit hex maxes at 0x${"f".repeat(width / 4)}`,
+        };
+      }
+      return { kind: "ok", bits };
+    }
+    case "octal": {
+      // 0o is the modern prefix; a C-style leading 0 is just another digit.
+      const digits = trimmed.replace(/^0[oO]/, "");
+      if (digits.length === 0) return { kind: "empty" };
+      if (/[89]/.test(digits) && /^[0-9]+$/.test(digits)) {
+        return { kind: "invalid", message: "8 and 9 are not octal digits; octal uses 0-7" };
+      }
+      if (!/^[0-7]+$/.test(digits)) {
+        return { kind: "invalid", message: "octal digits are 0-7" };
+      }
+      const bits = BigInt("0o" + digits);
+      if (!fitsUnsigned(bits, width)) {
+        return {
+          kind: "range",
+          message: `that needs ${bitsNeeded(bits)} bits; ${width}-bit octal maxes at ${formatOctal(maxUnsigned(width), width)}`,
         };
       }
       return { kind: "ok", bits };
@@ -171,6 +195,8 @@ export function formatRep(rep: Rep, bits: bigint, width: Width): string {
   switch (rep) {
     case "hex":
       return formatHex(bits, width);
+    case "octal":
+      return formatOctal(bits, width);
     case "binary":
       return formatBinary(bits, width);
     case "unsigned":
