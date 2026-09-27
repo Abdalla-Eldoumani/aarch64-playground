@@ -2,6 +2,7 @@
   "title": "Min-max tournament",
   "slug": "min-max-tournament",
   "order": 33,
+  "lastUpdated": "2026-09-27",
   "topic": "arrays",
   "difficulty": "core",
   "prompt": "Find the smallest and the largest element of an array in one pass, and print both. The starter reads a count and then that many values into the word array `entries`.\n\nSeed both records with element zero (the starter already has), then walk the rest once. Each element gets two comparisons: one against the minimum and one against the maximum.\n\n## what is checked\n\n- `min` and `max` each printed on their own line\n- the program exits cleanly\n- comparisons decide the records\n- the same holds for other arrays you do not see: one element, all equal, negatives, and the extremes at either end",
