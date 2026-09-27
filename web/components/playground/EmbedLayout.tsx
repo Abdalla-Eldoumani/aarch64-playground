@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
 
 export interface EmbedLayoutProps {
   editor: ReactNode;
@@ -14,6 +15,8 @@ export interface EmbedLayoutProps {
   showBack: boolean;
   /** Checker chrome only; the shell folds the chrome test into this flag. */
   showCheck: boolean;
+  /** The command-line box, present only when the host asks for one. */
+  args?: { value: string; onChange: (next: string) => void };
   /** Disables run while one is in flight; a halted machine still runs again,
    *  because the embedded run re-assembles first. */
   isRunning: boolean;
@@ -49,6 +52,7 @@ export function EmbedLayout({
   showStep,
   showBack,
   showCheck,
+  args,
   isRunning,
   canStep,
   canStepBack,
@@ -72,6 +76,22 @@ export function EmbedLayout({
       </div>
       <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center">
         <div className="controls-band flex items-center gap-2">
+          {args && (
+            // The next run or check assembles with whatever this holds, so a
+            // student can try the command lines the hidden inputs use.
+            <label className="inline-flex shrink-0 items-center gap-1.5 font-mono text-[11px] text-[var(--text-secondary)]">
+              args
+              <input
+                type="text"
+                value={args.value}
+                onChange={(event) => args.onChange(event.target.value)}
+                maxLength={MAX_ARGS_CHARS}
+                spellCheck={false}
+                autoComplete="off"
+                className="min-h-[44px] w-36 rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 font-mono text-[12px] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] sm:w-44"
+              />
+            </label>
+          )}
           {showRun && (
             // Run stays available on a halted machine: the embedded run
             // re-assembles and restarts, so a finished (or edited) program runs
