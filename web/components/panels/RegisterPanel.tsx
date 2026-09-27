@@ -1,11 +1,28 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useReducer,
+  useRef,
+  useState,
+} from "react";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { formatWord64 } from "@/lib/emulator/format-hex";
 import { isCallLeftover } from "@/lib/emulator/clobber-note";
-import { LANE_WIDTHS, upperHalfMoved, type LaneWidth } from "@/lib/emulator/vector-lanes";
+import {
+  compactHex,
+  fpRegisterText,
+  integerReading,
+  laneText,
+  parseBits,
+  type LaneArrangement,
+} from "@/lib/emulator/register-format";
+import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { Select } from "@/components/ui/Select";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
 import { DRegisterRow } from "@/components/panels/DRegisterRow";
@@ -29,6 +46,9 @@ interface RegisterPanelProps {
    *  read the one that actually executed. */
   source?: string;
   currentLine?: number | null;
+  /** A run is streaming snapshots. The list holds still and says nothing
+   *  until it stops, then follows the last write once. */
+  running?: boolean;
 }
 
 // nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
@@ -45,6 +65,10 @@ const HEX_KEY = "aarch64-playground:regfile-fp-hex";
 const X_DEC_KEY = "aarch64-playground:regfile-x-dec";
 const V_DEC_KEY = "aarch64-playground:regfile-v-dec";
 const LANE_KEY = "aarch64-playground:regfile-lane-width";
+const FOLLOW_KEY = "aarch64-playground:regfile-follow";
+
+/** How long a scroll by the student holds the list still. */
+const USER_SCROLL_HOLD_MS = 5000;
 
 const VIEW_LABELS: Record<RegView, string> = {
   x: "x0–x30",
@@ -53,28 +77,58 @@ const VIEW_LABELS: Record<RegView, string> = {
 };
 
 /** One line of orientation per view: which registers these are, and how the
- *  three files overlap. The control points at it with aria-describedby. */
+ *  three files overlap. The control points at it with aria-describedby, and
+ *  each cell shows it on hover. */
 const VIEW_HELP: Record<RegView, string> = {
   x: "x0–x30 are the integer registers.",
   d: "d0–d31 are the low 64 bits of the floating-point registers, with s the low 32.",
   v: "v0–v31 are the full 128-bit vector registers, and q0–q31 is the same 128 bits named as a scalar.",
 };
 
-const LANE_HELP: Record<LaneWidth, string> = {
-  b: "8-bit lanes",
-  h: "16-bit lanes",
-  s: "32-bit lanes",
-  d: "64-bit lanes",
-};
+/** The lane arrangements the v view reads a register in, named the way the
+ *  source spells them (`v1.16b`). The first four are the old lane widths, so
+ *  a stored width still parses. */
+const ARRANGEMENTS = {
+  b: { width: "b", float: false, label: "16b" },
+  h: { width: "h", float: false, label: "8h" },
+  s: { width: "s", float: false, label: "4s" },
+  d: { width: "d", float: false, label: "2d" },
+  sf: { width: "s", float: true, label: "4s float" },
+  df: { width: "d", float: true, label: "2d float" },
+} as const satisfies Record<string, LaneArrangement & { label: string }>;
+
+type ArrangementId = keyof typeof ARRANGEMENTS;
+
+const ARRANGEMENT_GROUPS = [
+  {
+    label: "integer lanes",
+    options: (["b", "h", "s", "d"] as const).map((id) => ({
+      value: id,
+      label: ARRANGEMENTS[id].label,
+    })),
+  },
+  {
+    label: "float lanes",
+    options: (["sf", "df"] as const).map((id) => ({
+      value: id,
+      label: ARRANGEMENTS[id].label,
+    })),
+  },
+];
+
+function isArrangementId(raw: string | null): raw is ArrangementId {
+  return raw != null && Object.hasOwn(ARRANGEMENTS, raw);
+}
 
 /**
- * A destination written through a v or q spelling: optional label, mnemonic,
- * then a first operand naming the whole register (`ldr q0, [x0]`,
- * `mov v0.16b, v1.16b`). This is the half of the v-view rule a bit comparison
- * cannot see: `ins v0.d[0], x1` moves nothing above bit 63, but the student
- * named the vector register and should be shown it.
+ * The letter a destination register was spelled with: optional label,
+ * mnemonic, then a first operand naming a v, q, or d register (`ldr q0, [x0]`,
+ * `mov v0.16b, v1.16b`, `fmov d0, x1`). It is what a bit comparison cannot
+ * see. `ins v0.d[0], x1` moves nothing above bit 63, but the student named the
+ * vector register and should be shown it. And `fmov d0, x1` with a small x1
+ * leaves only low bits set, which would otherwise read as an s write's float.
  */
-const V_SPELLED_DEST = /^\s*(?:[A-Za-z_.$][\w.$]*\s*:\s*)?[a-zA-Z][\w.]*\s+[vq]\d{1,2}\b/;
+const SPELLED_DEST = /^\s*(?:[A-Za-z_.$][\w.$]*\s*:\s*)?[a-zA-Z][\w.]*\s+([vqd])\d{1,2}\b/;
 
 /**
  * ARM calling-convention aliases for X0..X30. Shown beside the register name
@@ -104,33 +158,22 @@ const ABI_ALIAS: Record<number, string> = {
 const NO_REGISTERS: string[] = [];
 const NO_CHANGES: ReadonlySet<number> = new Set<number>();
 
-const TWO_64 = 1n << 64n;
-const SIGN_64 = 1n << 63n;
-
-/** The signed 64-bit reading of a register, with the unsigned one beside it:
- *  the same pair the memory panel offers on a word. */
-function readDecimal(hex: string): { signed: string; unsigned: string } {
-  try {
-    const bits = BigInt(hex) & (TWO_64 - 1n);
-    return {
-      signed: String(bits >= SIGN_64 ? bits - TWO_64 : bits),
-      unsigned: String(bits),
-    };
-  } catch {
-    return { signed: "0", unsigned: "0" };
-  }
-}
-
-/** Persisted boolean flag, SSR-safe (reads localStorage after mount). */
-function usePersistedFlag(key: string): [boolean, (next: boolean) => void] {
-  const [value, setValue] = useState(false);
+/** Persisted boolean flag, SSR-safe (reads localStorage after mount). A
+ *  reducer, like the lane arrangement below, so the stored value can arrive
+ *  from an effect. */
+function usePersistedFlag(
+  key: string,
+  fallback = false,
+): [boolean, (next: boolean) => void] {
+  const [value, apply] = useReducer((_prev: boolean, next: boolean) => next, fallback);
   useEffect(() => {
-    // Storage unavailable reads as null, which is the same false the state
-    // already holds: session-only state, no separate branch needed.
-    setValue(safeGetItem(key) === "1");
+    // Storage unavailable reads as null, which keeps the fallback: session-only
+    // state, no separate branch needed.
+    const stored = safeGetItem(key);
+    if (stored != null) apply(stored === "1");
   }, [key]);
   const set = useCallback((next: boolean) => {
-    setValue(next);
+    apply(next);
     safeSetItem(key, next ? "1" : "0");
   }, [key]);
   return [value, set];
@@ -143,75 +186,121 @@ function parseView(raw: string | null): RegView | null {
   return stored === "x" || stored === "d" || stored === "v" ? stored : null;
 }
 
-function parseLaneWidth(raw: string | null): LaneWidth | null {
-  return raw === "b" || raw === "h" || raw === "s" || raw === "d" ? raw : null;
-}
-
-/** The lane width, persisted like the format flags. 64-bit lanes by default:
- *  two halves is the reading closest to the d-view the student came from. The
- *  state is a reducer so the stored value can arrive from an effect, the same
- *  reason the pulse ids below are one. */
-function usePersistedLaneWidth(): [LaneWidth, (next: LaneWidth) => void] {
-  const [value, apply] = useReducer((_prev: LaneWidth, next: LaneWidth) => next, "d");
+/** The lane arrangement, persisted like the format flags. 64-bit integer
+ *  lanes by default: two halves is the reading closest to the d-view the
+ *  student came from. The state is a reducer so the stored value can arrive
+ *  from an effect, the same reason the pulse ids below are one. */
+function usePersistedArrangement(): [ArrangementId, (next: string) => void] {
+  const [value, apply] = useReducer((_prev: ArrangementId, next: ArrangementId) => next, "d");
   useEffect(() => {
-    const stored = parseLaneWidth(safeGetItem(LANE_KEY));
-    if (stored != null) apply(stored);
+    const stored = safeGetItem(LANE_KEY);
+    if (isArrangementId(stored)) apply(stored);
   }, []);
-  const set = useCallback((next: LaneWidth) => {
+  const set = useCallback((next: string) => {
+    if (!isArrangementId(next)) return;
     apply(next);
     safeSetItem(LANE_KEY, next);
   }, []);
   return [value, set];
 }
 
+/** A step's write, waiting for the list to bring its rows into view and for
+ *  the live region to say it. `id` tells a new write from a re-render. */
+interface PendingFollow {
+  id: number;
+  view: RegView;
+  /** Row positions in that view's grid (register index; SP is 31). */
+  rows: readonly number[];
+  speech: string;
+}
+
 /**
- * Which file is shown, and which of the other cells wrote while the student
- * was reading this one. The two are one state because the switch rule decides
- * both at once, and a reducer is how a rule inside an effect moves state here
- * (the pulse ids below do the same).
+ * Which file is shown, which of the other cells wrote while the student was
+ * reading this one, and the write waiting to be followed. They are one state
+ * because the switch rule decides all three at once, and a reducer is how a
+ * rule inside an effect moves state here (the pulse ids below do the same).
  */
 interface ViewState {
   view: RegView;
   flagged: ReadonlySet<RegView>;
+  pending: PendingFollow | null;
+  /** fp registers whose last write was spelled `dN`: always read as doubles. */
+  doubles: ReadonlySet<number>;
 }
 
 type ViewAction =
   /** The student picked a cell, or the stored choice arrived after mount. */
   | { kind: "show"; view: RegView }
   /** The classes this step wrote, already filtered to the ones that exist. */
-  | { kind: "follow"; touched: readonly RegView[] };
+  | {
+      kind: "follow";
+      touched: readonly RegView[];
+      /** "follow changes" is on: a single-class write may switch the view. */
+      move: boolean;
+      rows: Record<RegView, readonly number[]>;
+      speech: string;
+      /** The fp registers the machine reports written, and whether the
+       *  executed line spelled its destination `dN`. */
+      fpWritten: readonly number[];
+      dSpelled: boolean;
+    };
 
 const NO_FLAGS: ReadonlySet<RegView> = new Set<RegView>();
-const INITIAL_VIEW: ViewState = { view: "x", flagged: NO_FLAGS };
+const INITIAL_VIEW: ViewState = {
+  view: "x",
+  flagged: NO_FLAGS,
+  pending: null,
+  doubles: new Set<number>(),
+};
+
+function sameViews(a: readonly RegView[], b: ReadonlySet<RegView>): boolean {
+  return a.length === b.size && a.every((t) => b.has(t));
+}
 
 function reduceView(state: ViewState, action: ViewAction): ViewState {
   if (action.kind === "show") {
     if (state.view === action.view && !state.flagged.has(action.view)) return state;
     const flagged = new Set(state.flagged);
     flagged.delete(action.view);
-    return { view: action.view, flagged };
+    return { ...state, view: action.view, flagged };
   }
-  const { touched } = action;
+  const { touched, move } = action;
+  let { view, flagged } = state;
   // Exactly one class wrote: show it, so a mixed program needs no manual
-  // switching. Several at once: the student's view stays put and the other
-  // cells carry a change dot, because guessing which write they meant to
-  // watch is worse than saying both moved. A click between steps still wins;
-  // the next single-class write may move it again.
-  if (touched.length === 1) {
-    if (state.view === touched[0] && state.flagged.size === 0) return state;
-    return { view: touched[0], flagged: NO_FLAGS };
+  // switching. Several at once, or following switched off: the student's
+  // view stays put and the other cells carry a change dot, because guessing
+  // which write they meant to watch is worse than saying both moved. A click
+  // between steps still wins; the next single-class write may move it again.
+  if (move && touched.length === 1) {
+    view = touched[0];
+    if (flagged.size > 0) flagged = NO_FLAGS;
+  } else if (touched.length > 0) {
+    const others = touched.filter((t) => t !== view);
+    if (!sameViews(others, flagged)) flagged = new Set(others);
   }
-  if (touched.length > 1) {
-    const others = touched.filter((t) => t !== state.view);
-    if (
-      others.length === state.flagged.size &&
-      others.every((t) => state.flagged.has(t))
-    ) {
-      return state;
+  const rows = action.rows[view];
+  const pending =
+    rows.length > 0 || action.speech
+      ? { id: (state.pending?.id ?? 0) + 1, view, rows, speech: action.speech }
+      : state.pending;
+  let { doubles } = state;
+  if (action.fpWritten.some((i) => doubles.has(i) !== action.dSpelled)) {
+    const next = new Set(doubles);
+    for (const i of action.fpWritten) {
+      if (action.dSpelled) next.add(i);
+      else next.delete(i);
     }
-    return { view: state.view, flagged: new Set(others) };
+    doubles = next;
   }
-  return state;
+  if (
+    view === state.view &&
+    flagged === state.flagged &&
+    pending === state.pending &&
+    doubles === state.doubles
+  ) {
+    return state;
+  }
+  return { view, flagged, pending, doubles };
 }
 
 /** Monotonic pulse id per register, used as the React key so the CSS flash
@@ -236,6 +325,55 @@ function usePulseIds(changed: ReadonlySet<number>): Map<number, number> {
   return pulses;
 }
 
+/** The nearest ancestor that actually scrolls, short of the page itself:
+ *  a host that sizes the panel by its content leaves the scrolling to its
+ *  own box, and the page is never ours to move. */
+function scrollParent(from: HTMLElement): HTMLElement | null {
+  const page = document.scrollingElement;
+  for (let el = from.parentElement; el; el = el.parentElement) {
+    if (el === page || el === document.body) return null;
+    const { overflowY } = getComputedStyle(el);
+    if ((overflowY === "auto" || overflowY === "scroll") && el.scrollHeight > el.clientHeight) {
+      return el;
+    }
+  }
+  return null;
+}
+
+/**
+ * Scroll the box holding `rows` just far enough to show all of them, or the
+ * first of them when they cannot all fit. Nothing moves when they are
+ * already in view. Only the one box moves: `scrollIntoView` would also
+ * scroll every ancestor, the page included.
+ */
+function revealRows(body: HTMLElement, rows: readonly Element[], smooth: boolean): void {
+  const box = body.scrollHeight > body.clientHeight ? body : scrollParent(body);
+  if (!box || rows.length === 0) return;
+  const top = box.getBoundingClientRect().top + box.clientTop;
+  const bottom = top + box.clientHeight;
+  const rects = rows.map((row) => row.getBoundingClientRect());
+  const first = Math.min(...rects.map((r) => r.top));
+  const last = Math.max(...rects.map((r) => r.bottom));
+  // A pixel of slack: fractional layout can leave a fully shown row a
+  // hair outside the box.
+  if (first >= top - 1 && last <= bottom + 1) return;
+  const delta = first < top || last - first > bottom - top ? first - top : last - bottom;
+  box.scrollTo({ top: box.scrollTop + delta, behavior: smooth ? "smooth" : "auto" });
+}
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
+}
+
+/** At most this many writes are named; the rest are counted. */
+const SPOKEN_WRITES = 3;
+
+function joinSpeech(parts: string[]): string {
+  if (parts.length <= SPOKEN_WRITES) return parts.join(", ");
+  const more = parts.length - SPOKEN_WRITES;
+  return `${parts.slice(0, SPOKEN_WRITES).join(", ")}, and ${more} more`;
+}
+
 export function RegisterPanel({
   registers,
   changedRegs,
@@ -247,6 +385,7 @@ export function RegisterPanel({
   nzcv,
   source,
   currentLine = null,
+  running = false,
 }: RegisterPanelProps) {
   // 16 nibbles like every other row: PC renders through the same RegisterRow
   // as x0-x30 and SP, whose values are already 64-bit wide, so PC uses the
@@ -262,7 +401,7 @@ export function RegisterPanel({
     const stored = parseView(safeGetItem(VIEW_KEY));
     if (stored != null) dispatchView({ kind: "show", view: stored });
   }, []);
-  const { flagged } = viewState;
+  const { flagged, pending, doubles } = viewState;
   const view: RegView =
     (viewState.view === "d" && !hasFp) || (viewState.view === "v" && !hasVec)
       ? "x"
@@ -271,8 +410,10 @@ export function RegisterPanel({
   const [xDec, setXDec] = usePersistedFlag(X_DEC_KEY);
   const [hexMode, setHexMode] = usePersistedFlag(HEX_KEY);
   const [vDec, setVDec] = usePersistedFlag(V_DEC_KEY);
+  const [follow, setFollow] = usePersistedFlag(FOLLOW_KEY, true);
 
-  const [laneWidth, setLaneWidth] = usePersistedLaneWidth();
+  const [arrangementId, setArrangementId] = usePersistedArrangement();
+  const arrangement = ARRANGEMENTS[arrangementId];
 
   // The previous snapshot, kept by adjusting state during render (React's
   // derive-from-props pattern). Two things live here. The vector file, because
@@ -328,10 +469,11 @@ export function RegisterPanel({
     return false;
   }, [changedVecRegs, followedVecRegs, prevVectors, vectorRegisters]);
 
-  const vSpelledDest = useMemo(() => {
-    if (executedLine == null || !source) return false;
-    return V_SPELLED_DEST.test(source.split("\n")[executedLine - 1] ?? "");
+  const spelledDest = useMemo(() => {
+    if (executedLine == null || !source) return null;
+    return SPELLED_DEST.exec(source.split("\n")[executedLine - 1] ?? "")?.[1] ?? null;
   }, [source, executedLine]);
+  const vSpelledDest = spelledDest === "v" || spelledDest === "q";
 
   // A v-view row flashes on either signal: the bits moved, or the machine
   // reported the write and it happened to land on the same value.
@@ -345,36 +487,109 @@ export function RegisterPanel({
   const fpPulses = usePulseIds(changedFpRegs);
   const vecPulses = usePulseIds(changedVecRows);
 
-  // Auto-switching follows the write: which classes moved is read here, what
-  // to do about it lives in reduceView. The current view is deliberately not a
-  // dependency: it reaches the rule through the reducer's own state, so a
-  // click survives until the next write instead of being snapped back.
-  useEffect(() => {
-    const touched: RegView[] = [];
-    if (changedRegs.size > 0) touched.push("x");
-    if (followedVecRegs.size > 0) {
+  // Auto-switching follows the write: which classes moved, and the rows and
+  // words that describe it, are read here; what to do about it lives in
+  // reduceView. Only a new write runs it: the change sets are fresh objects
+  // per snapshot, and everything else (the format flags, the follow switch,
+  // the current view, which reaches the rule through the reducer's own
+  // state) is read as it stands then. A click therefore survives until the
+  // next write, and a format click neither re-speaks nor re-scrolls.
+  const followWrite = useEffectEvent(
+    (xChanged: ReadonlySet<number>, vecChanged: ReadonlySet<number>) => {
       // A d write reaches bits 63:0 and no further; anything above that, or a
       // destination the student spelled v or q, is a vector write.
-      touched.push(hasVec && (upperMoved || vSpelledDest) ? "v" : "d");
-    }
-    const usable = touched.filter(
-      (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
-    );
-    if (usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
-    dispatchView({ kind: "follow", touched: usable });
-  }, [
-    changedRegs,
-    followedVecRegs,
-    upperMoved,
-    vSpelledDest,
-    hasFp,
-    hasVec,
-  ]);
+      const vecClass: RegView = hasVec && (upperMoved || vSpelledDest) ? "v" : "d";
+      const touched: RegView[] = [];
+      if (xChanged.size > 0) touched.push("x");
+      if (vecChanged.size > 0) touched.push(vecClass);
+      const usable = touched.filter(
+        (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
+      );
+      if (follow && usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
+
+      const xRows = [...xChanged].sort((a, b) => a - b);
+      const vecRows = [...vecChanged].sort((a, b) => a - b);
+      const speech: string[] = [];
+      for (const i of xRows) {
+        const hex = i === 31 ? sp : registers[i];
+        if (hex == null) continue;
+        const value =
+          xDec && i !== 31 ? integerReading(parseBits(hex, 64), 64).signed : compactHex(hex);
+        speech.push(`${i === 31 ? "sp" : `x${i}`} = ${value}`);
+      }
+      for (const i of vecRows) {
+        if (vecClass === "v" && vectorRegisters[i] != null) {
+          const lanes = sliceLanes(vectorRegisters[i], arrangement.width).map(
+            (lane) => laneText(lane.hex, arrangement, vDec).primary,
+          );
+          const said = lanes.every((lane) => lane === lanes[0])
+            ? `${lanes.length} lanes of ${lanes[0]}`
+            : `lanes from 0: ${lanes.join(", ")}`;
+          speech.push(`v${i} = ${said}`);
+        } else if (fpRegisters[i] != null) {
+          const bits = fpRegisters[i];
+          // This write's own spelling decides; an unreported change keeps
+          // the reading the register last had.
+          const asDouble = changedFpRegs.has(i) ? spelledDest === "d" : doubles.has(i);
+          speech.push(
+            `d${i} = ${hexMode ? compactHex(bits) : fpRegisterText(bits, asDouble)}`,
+          );
+        }
+      }
+
+      dispatchView({
+        kind: "follow",
+        touched: usable,
+        move: follow,
+        rows: { x: xRows, d: vecRows, v: vecRows },
+        speech: joinSpeech(speech),
+        fpWritten: [...changedFpRegs],
+        dSpelled: spelledDest === "d",
+      });
+    },
+  );
+  useEffect(() => {
+    followWrite(changedRegs, followedVecRegs);
+  }, [changedRegs, followedVecRegs]);
 
   const pickView = useCallback((next: RegView) => {
     dispatchView({ kind: "show", view: next });
     safeSetItem(VIEW_KEY, next);
   }, []);
+
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement>(null);
+  const userScrolledAt = useRef(-Infinity);
+  const followedId = useRef(0);
+
+  // The student's own scroll, told apart from the list's by intent (a wheel,
+  // a drag, a scroll key, a press on the scrollbar) rather than by scroll
+  // events: a view switch that shortens the list moves scrollTop too.
+  const markUserScroll = useCallback(() => {
+    userScrolledAt.current = Date.now();
+  }, []);
+
+  // Bring the write into view once the view it belongs to is on screen. A
+  // run holds it until the run stops, so the list does not chase 20 writes a
+  // second; the last one is followed then.
+  useEffect(() => {
+    if (!pending || pending.id === followedId.current || running) return;
+    if (pending.view !== view) return;
+    followedId.current = pending.id;
+    const body = bodyRef.current;
+    const grid = gridRef.current;
+    if (!follow || !body || !grid) return;
+    if (Date.now() - userScrolledAt.current < USER_SCROLL_HOLD_MS) return;
+    // The grid's children are the rows in register order, SP at 31.
+    const rows = pending.rows.map((i) => grid.children[i]).filter((row) => row != null);
+    revealRows(body, rows, !prefersReducedMotion());
+  }, [pending, view, running, follow]);
+
+  // Said once per write, and not at all mid-run. A second, identical write
+  // would leave the text unchanged and unspoken, so each new write flips a
+  // trailing no-break space.
+  const speech =
+    running || !pending?.speech ? "" : `${pending.speech}${pending.id % 2 ? "\u00a0" : ""}`;
 
   const zoom = useZoom("registers");
 
@@ -388,6 +603,9 @@ export function RegisterPanel({
   const selectedCell = "bg-[var(--cyan)] text-[var(--on-cyan)]";
   const restCell = "text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
   const toggleOn = "bg-[var(--bg-elevated)] text-[var(--text-primary)]";
+  // A short cell under a mouse keeps the header to two lines; a finger gets
+  // the full 44px.
+  const touchTall = "min-h-[22px] [@media(pointer:coarse)]:min-h-[44px]";
 
   const availableViews = (["x", "d", "v"] as RegView[]).filter(
     (id) => id === "x" || (id === "d" && hasFp) || (id === "v" && hasVec),
@@ -403,7 +621,7 @@ export function RegisterPanel({
         type="button"
         aria-pressed={decPressed}
         onClick={() => onPick(true)}
-        className={`${segmentCell} ${decPressed ? toggleOn : restCell}`}
+        className={`${segmentCell} ${touchTall} ${decPressed ? toggleOn : restCell}`}
       >
         dec
       </button>
@@ -411,7 +629,7 @@ export function RegisterPanel({
         type="button"
         aria-pressed={!decPressed}
         onClick={() => onPick(false)}
-        className={`${segmentCell} border-l border-[var(--border)] ${
+        className={`${segmentCell} ${touchTall} border-l border-[var(--border)] ${
           !decPressed ? toggleOn : restCell
         }`}
       >
@@ -420,9 +638,18 @@ export function RegisterPanel({
     </div>
   );
 
+  // A column appears only when a whole row fits it, measured in the row's own
+  // characters so zoom widens it too: 28ch holds a name, an alias, and an
+  // 18-character hex value; 30ch holds a 20-digit signed decimal.
+  const gridColumns =
+    view === "x" && xDec
+      ? "grid-cols-[repeat(auto-fill,minmax(min(30ch,100%),1fr))]"
+      : "grid-cols-[repeat(auto-fill,minmax(min(28ch,100%),1fr))]";
+
   return (
     <div
-      className="p-3"
+      // `relative` keeps the sr-only text below inside the panel's box.
+      className="relative flex h-full min-h-0 flex-col"
       style={{ ...zoom.style, fontSize: `calc(0.75rem * var(--font-scale, 1))` }}
       onWheel={(e) => {
         if (!e.ctrlKey) return;
@@ -431,173 +658,204 @@ export function RegisterPanel({
         else zoom.zoomOut();
       }}
     >
-      <div className="flex flex-wrap items-center justify-between mb-2 gap-x-2 gap-y-1">
-        <h2 className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)]">
-          regfile
-        </h2>
-        {hasFp ? (
-          <div
-            role="group"
-            aria-label="register view"
-            aria-describedby="regfile-view-help"
-            className={groupShell}
-          >
-            {availableViews.map((id, i) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={view === id}
-                // The dot is ink; the word is the same fact for a reader who
-                // never sees it. It contains the visible label, so the cell
-                // is still addressable by the name on it.
-                aria-label={flagged.has(id) ? `${VIEW_LABELS[id]} changed` : undefined}
-                onClick={() => pickView(id)}
-                className={`${segmentCell} min-h-[44px] ${
-                  i > 0 ? "border-l border-[var(--border)]" : ""
-                } ${view === id ? selectedCell : restCell}`}
-              >
-                {VIEW_LABELS[id]}
-                {/* Another class wrote while the student was reading this
-                    one: a dot in --changed ink, with the word carried by the
-                    cell's own label above. */}
-                {flagged.has(id) ? (
-                  <span
-                    aria-hidden="true"
-                    className="ml-1 inline-block h-1 w-1 align-middle bg-[var(--changed)]"
-                  />
-                ) : null}
-              </button>
-            ))}
-          </div>
-        ) : null}
-        {view === "x"
-          ? formatToggle("integer value format", xDec, setXDec)
-          : view === "d"
-            ? formatToggle("fp value format", !hexMode, (dec) => setHexMode(!dec))
-            : formatToggle("vector value format", vDec, setVDec)}
-        {view === "v" ? (
-          <div role="group" aria-label="lane width" className={groupShell}>
-            {LANE_WIDTHS.map((w, i) => (
-              <button
-                key={w}
-                type="button"
-                aria-pressed={laneWidth === w}
-                onClick={() => setLaneWidth(w)}
-                className={`${segmentCell} ${
-                  i > 0 ? "border-l border-[var(--border)]" : ""
-                } ${laneWidth === w ? toggleOn : restCell}`}
-              >
-                <span aria-hidden="true">{w}</span>
-                <span className="sr-only">
-                  {w}, {LANE_HELP[w]}
+      <div className="shrink-0 px-2 pt-1">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <h2 className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)]">
+            regfile
+          </h2>
+          {hasFp ? (
+            <div
+              role="group"
+              aria-label="register view"
+              aria-describedby="regfile-view-help"
+              className={groupShell}
+            >
+              {availableViews.map((id, i) => (
+                <button
+                  key={id}
+                  type="button"
+                  aria-pressed={view === id}
+                  // The dot is ink; the word is the same fact for a reader who
+                  // never sees it. It contains the visible label, so the cell
+                  // is still addressable by the name on it.
+                  aria-label={flagged.has(id) ? `${VIEW_LABELS[id]} changed` : undefined}
+                  title={VIEW_HELP[id]}
+                  onClick={() => pickView(id)}
+                  className={`${segmentCell} ${touchTall} ${
+                    i > 0 ? "border-l border-[var(--border)]" : ""
+                  } ${view === id ? selectedCell : restCell}`}
+                >
+                  {VIEW_LABELS[id]}
+                  {/* Another class wrote while the student was reading this
+                      one: a dot in --changed ink, with the word carried by the
+                      cell's own label above. */}
+                  {flagged.has(id) ? (
+                    <span
+                      aria-hidden="true"
+                      className="ml-1 inline-block h-1 w-1 align-middle bg-[var(--changed)]"
+                    />
+                  ) : null}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          {view === "x"
+            ? formatToggle("integer value format", xDec, setXDec)
+            : view === "d"
+              ? formatToggle("fp value format", !hexMode, (dec) => setHexMode(!dec))
+              : formatToggle("vector value format", vDec, setVDec)}
+          {view === "v" ? (
+            <Select
+              size="xs"
+              ariaLabel="lane arrangement"
+              placeholder={arrangement.label}
+              value={arrangementId}
+              groups={ARRANGEMENT_GROUPS}
+              onSelect={setArrangementId}
+            />
+          ) : null}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div className="flex gap-2">
+            {FLAG_NAMES.map((name, i) => {
+              const bitPos = 3 - i;
+              const set = (nzcv >> bitPos) & 1;
+              // A set flag is machine state, so it reads in execution amber;
+              // an unset flag recedes to the tertiary text token.
+              const tone = set
+                ? "text-[var(--amber)] font-bold"
+                : "text-[var(--text-tertiary)]";
+              return (
+                <span key={name} className="px-1 whitespace-nowrap font-mono">
+                  <span className={tone}>{name}</span>
+                  {/* Colour alone cannot carry set/clear: the bit value rides
+                      beside the letter for anyone who cannot see the amber,
+                      and the state reaches a screen reader as words. */}
+                  <span aria-hidden="true" className={tone}>
+                    {set ? "=1" : "=0"}
+                  </span>
+                  <span className="sr-only">{set ? " set" : " clear"}</span>
                 </span>
-              </button>
-            ))}
+              );
+            })}
           </div>
-        ) : null}
-        <ZoomControl
-          scale={zoom.scale}
-          onZoomIn={zoom.zoomIn}
-          onZoomOut={zoom.zoomOut}
-          onReset={zoom.reset}
-        />
-        <div className="flex gap-2 ml-auto">
-          {FLAG_NAMES.map((name, i) => {
-            const bitPos = 3 - i;
-            const set = (nzcv >> bitPos) & 1;
-            // A set flag is machine state, so it reads in execution amber;
-            // an unset flag recedes to the tertiary text token.
-            const tone = set
-              ? "text-[var(--amber)] font-bold"
-              : "text-[var(--text-tertiary)]";
-            return (
-              <span key={name} className="px-1 whitespace-nowrap">
-                <span className={tone}>{name}</span>
-                {/* Colour alone cannot carry set/clear: the bit value rides
-                    beside the letter for anyone who cannot see the amber,
-                    and the state reaches a screen reader as words. */}
-                <span aria-hidden="true" className={tone}>
-                  {set ? "=1" : "=0"}
-                </span>
-                <span className="sr-only">{set ? " set" : " clear"}</span>
-              </span>
-            );
-          })}
+          <div className="ml-auto flex items-center gap-2">
+            <label
+              className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-[var(--text-secondary)] ${touchTall}`}
+            >
+              <input
+                type="checkbox"
+                checked={follow}
+                onChange={(e) => setFollow(e.target.checked)}
+                className="h-3 w-3 accent-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+              />
+              follow changes
+            </label>
+            <ZoomControl
+              scale={zoom.scale}
+              onZoomIn={zoom.zoomIn}
+              onZoomOut={zoom.zoomOut}
+              onReset={zoom.reset}
+            />
+          </div>
         </div>
       </div>
 
-      <p
-        id="regfile-view-help"
-        className="mb-2 font-mono text-[10px] leading-snug text-[var(--text-tertiary)]"
-      >
+      <p id="regfile-view-help" className="sr-only">
         {VIEW_HELP[view]}
       </p>
+      <p role="status" className="sr-only">
+        {speech}
+      </p>
 
-      {/* Columns are intrinsic to the panel's own width, not the viewport:
-          a second column appears only when two full rows actually fit, so a
-          narrow host (an embed rail, a dragged-thin panel) can never squeeze
-          a value into the neighboring column. 16.5rem covers one full row:
-          name, alias, an 18-character hex value, gaps, and padding. The
-          v-view takes the full width instead: a lane strip is wider than any
-          column, and it scrolls inside its own row. */}
+      {/* The panel's own scroll box: the header above stays put, and following
+          a write scrolls this and nothing else. It takes focus so the rows
+          can be scrolled from the keyboard. */}
       <div
-        className={
-          view === "v"
-            ? "grid grid-cols-1 gap-y-0.5"
-            : "grid grid-cols-[repeat(auto-fill,minmax(min(16.5rem,100%),1fr))] gap-x-4 gap-y-0.5"
-        }
+        ref={bodyRef}
+        role="region"
+        aria-label="register values"
+        tabIndex={0}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        onWheel={(e) => {
+          if (!e.ctrlKey) markUserScroll();
+        }}
+        onTouchMove={markUserScroll}
+        onPointerDown={(e) => {
+          // A press on the box itself is its scrollbar; a middle press
+          // anywhere starts autoscroll.
+          if (e.target === e.currentTarget || e.button === 1) markUserScroll();
+        }}
+        onKeyDown={(e) => {
+          if (
+            e.target === e.currentTarget &&
+            ["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "].includes(e.key)
+          ) {
+            markUserScroll();
+          }
+        }}
       >
-        {view === "v" ? (
-          vectorRegisters.map((bits, i) => (
-            <VRegisterRow
-              key={`v${i}-${vecPulses.get(i) ?? 0}`}
-              index={i}
-              bitsHex={bits}
-              prevBitsHex={prevVectors[i]}
-              width={laneWidth}
-              decMode={vDec}
-              changed={changedVecRows.has(i)}
-            />
-          ))
-        ) : view === "d" ? (
-          fpRegisters.map((bits, i) => (
-            // Keying on the pulse id remounts the row each time the register
-            // actually changes, so the reduced-motion-safe --changed flash
-            // replays even on consecutive writes.
-            <DRegisterRow
-              key={`d${i}-${fpPulses.get(i) ?? 0}`}
-              index={i}
-              bitsHex={bits}
-              hexMode={hexMode}
-              changed={changedFpRegs.has(i)}
-            />
-          ))
-        ) : (
-          <>
-            {registers.map((val, i) => {
-              const dec = xDec ? readDecimal(val) : null;
-              return (
-                <RegisterRow
-                  key={`x${i}-${pulses.get(i) ?? 0}`}
-                  name={`X${i}`}
-                  value={dec ? dec.signed : val}
-                  secondary={dec ? `${dec.unsigned} u` : undefined}
-                  alias={ABI_ALIAS[i]}
-                  changed={changedRegs.has(i)}
-                />
-              );
-            })}
-            {/* SP and PC stay hex under either format: they are addresses, and
-                every other address in the debugger reads in hex. */}
-            <RegisterRow
-              key={`sp-${pulses.get(31) ?? 0}`}
-              name="SP"
-              value={sp}
-              changed={changedRegs.has(31)}
-            />
-            <RegisterRow name="PC" value={pcHex} changed={false} />
-          </>
-        )}
+        <div
+          ref={gridRef}
+          className={
+            view === "v"
+              ? "grid grid-cols-1 font-mono"
+              : `grid ${gridColumns} gap-x-3 font-mono`
+          }
+        >
+          {view === "v" ? (
+            vectorRegisters.map((bits, i) => (
+              <VRegisterRow
+                key={`v${i}-${vecPulses.get(i) ?? 0}`}
+                index={i}
+                bitsHex={bits}
+                prevBitsHex={prevVectors[i]}
+                arrangement={arrangement}
+                decMode={vDec}
+                changed={changedVecRows.has(i)}
+              />
+            ))
+          ) : view === "d" ? (
+            fpRegisters.map((bits, i) => (
+              // Keying on the pulse id remounts the row each time the register
+              // actually changes, so the reduced-motion-safe --changed flash
+              // replays even on consecutive writes.
+              <DRegisterRow
+                key={`d${i}-${fpPulses.get(i) ?? 0}`}
+                index={i}
+                bitsHex={bits}
+                hexMode={hexMode}
+                asDouble={doubles.has(i)}
+                changed={changedFpRegs.has(i)}
+              />
+            ))
+          ) : (
+            <>
+              {registers.map((val, i) => {
+                const dec = xDec ? integerReading(parseBits(val, 64), 64) : null;
+                return (
+                  <RegisterRow
+                    key={`x${i}-${pulses.get(i) ?? 0}`}
+                    name={`X${i}`}
+                    value={dec ? dec.signed : val}
+                    secondary={dec?.unsigned ? `${dec.unsigned}u` : undefined}
+                    alias={ABI_ALIAS[i]}
+                    changed={changedRegs.has(i)}
+                  />
+                );
+              })}
+              {/* SP and PC stay hex under either format: they are addresses, and
+                  every other address in the debugger reads in hex. */}
+              <RegisterRow
+                key={`sp-${pulses.get(31) ?? 0}`}
+                name="SP"
+                value={sp}
+                changed={changedRegs.has(31)}
+              />
+              <RegisterRow name="PC" value={pcHex} changed={false} />
+            </>
+          )}
+        </div>
       </div>
     </div>
   );
