@@ -186,7 +186,7 @@ main:
 	.section .rodata
 	.align	4
 	.LANCHOR0:
-vals__1:
+vals.1:
 	.quad	-9114578090645354616
 	.quad	9187201950435737471
 	.quad	4294967296
@@ -195,7 +195,7 @@ vals__1:
 	.quad	-9223372036854775808
 	.quad	71777214294589695
 	.quad	1099511627904
-nv__0:
+nv.0:
 	.word	127
 	.word	128
 	.word	255
