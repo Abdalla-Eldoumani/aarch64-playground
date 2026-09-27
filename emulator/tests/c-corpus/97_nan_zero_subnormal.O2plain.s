@@ -32,7 +32,7 @@
 	.string	"fs%d %08x %.9g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #496
@@ -52,11 +52,11 @@ main:
 	stp	d12, d13, [sp, 112]
 	stp	d14, d15, [sp, 128]
 	bl	puts
-	.align 5
+	.p2align 5,,15
 .L2:
 	sxtw	x22, w21
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	d31, [x20, x22, lsl 3]
 	mov	w2, w19
@@ -110,7 +110,7 @@ main:
 	mov	x19, x22
 	add	x23, x23, :lo12:.LC2
 	mov	w21, 0
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldrb	w0, [x19]
 	mov	w1, w21
@@ -147,7 +147,7 @@ main:
 	mov	w19, 0
 	fmov	d15, 1.0e+0
 	fneg	v29.2d, v29.2d
-	.align 5
+	.p2align 5,,15
 .L6:
 	ldr	d31, [x20, w19, sxtw 3]
 // 20 "programs/97_nan_zero_subnormal.c" 1
@@ -186,7 +186,7 @@ main:
 	bl	sqrt
 	fmov	d12, d0
 	b	.L9
-	.align 2
+	.p2align 2,,3
 .L23:
 	fsqrt	d31, d15
 	fmov	d12, d31
@@ -248,7 +248,7 @@ main:
 	bl	sqrt
 	ldr	x2, [sp, 152]
 	b	.L12
-	.align 2
+	.p2align 2,,3
 .L24:
 	fsqrt	d0, d0
 .L12:
@@ -328,7 +328,7 @@ main:
 	fneg	d30, d30
 	str	d30, [sp, 376]
 	stp	d27, d28, [sp, 360]
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldr	d0, [x20], 8
 	mov	w1, w19
@@ -346,7 +346,7 @@ main:
 	fcmp	d31, #0.0
 	beq	.L14
 	fmov	d30, 5.0e-1
-	.align 5
+	.p2align 5,,15
 .L15:
 	fmul	d31, d31, d30
 	add	w1, w1, 1
@@ -360,7 +360,7 @@ main:
 	mov	x1, 2024
 	mov	w0, 1000
 	fmov	d29, x1
-	.align 5
+	.p2align 5,,15
 .L16:
 	ldr	d30, [sp, 208]
 	subs	w0, w0, #1
@@ -427,7 +427,7 @@ main:
 	bpl	.L25
 	bl	sqrt
 	b	.L19
-	.align 2
+	.p2align 2,,3
 .L25:
 	fsqrt	d0, d0
 .L19:
@@ -436,7 +436,7 @@ main:
 	add	x21, x21, :lo12:.LC9
 	mov	w19, 0
 	str	d0, [sp, 488]
-	.align 5
+	.p2align 5,,15
 .L20:
 	ldr	d0, [x20], 8
 	mov	w1, w19
@@ -486,7 +486,7 @@ main:
 	stp	s25, s27, [x0]
 	fmul	s24, s24, s23
 	stp	s24, s31, [x0, -8]
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldr	s31, [x20], 4
 	mov	w1, w19
@@ -531,14 +531,14 @@ fma_cases:
 	.align	4
 	.LANCHOR0:
 in:
-	.quad	9221120237041090560
-	.quad	-2251799813685247
-	.quad	9218868437227405317
-	.quad	-3377699720527872
-	.quad	9218868437227405312
-	.quad	-4503599627370496
-	.quad	0
-	.quad	-9223372036854775808
-	.quad	4607182418800017408
-	.quad	1
+	.xword	9221120237041090560
+	.xword	-2251799813685247
+	.xword	9218868437227405317
+	.xword	-3377699720527872
+	.xword	9218868437227405312
+	.xword	-4503599627370496
+	.xword	0
+	.xword	-9223372036854775808
+	.xword	4607182418800017408
+	.xword	1
 
