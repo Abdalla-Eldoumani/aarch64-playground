@@ -161,7 +161,7 @@ jobs:
             emulator/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
-  # The corpus gate replays fifty gcc-compiled programs and was nearly all
+  # The corpus gate replays 101 gcc-compiled programs and was nearly all
   # of the cargo runtime, so the suite is partitioned the way the vitest
   # shards below are: one job runs every test except that gate, and three
   # more slice the corpus programs round-robin (CORPUS_SHARD, read by the
