@@ -149,8 +149,9 @@ export function MultiFileTabs({
           type="text"
           value={pending}
           onChange={(e) => setPending(e.target.value)}
-          // A file-like placeholder ("new.asm") read as a second tab.
-          placeholder="new file name"
+          // A file-like placeholder ("new.asm") read as a second tab. Short
+          // enough to fit the box whole.
+          placeholder="file name"
           aria-label="new file name"
           className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
         />
