@@ -1,4 +1,10 @@
 	.text
+	.align	2
+	.align 5
+differ:
+	fcmp	d0, d1
+	cset	w0, ne
+	ret
 	.section .rodata
 	.align	3
 .LC0:
@@ -50,83 +56,82 @@ main:
 	str	d15, [sp, 128]
 	bl	puts
 	.align 5
-.L2:
+.L4:
 	sxtw	x20, w19
 	mov	w24, 0
 	mov	w21, 48
 	.align 5
-.L12:
-	ldr	d31, [x23, x20, lsl 3]
-	ldr	d30, [x23, w24, sxtw 3]
-	fcmpe	d31, d30
-	bmi	.L58
+.L13:
+	ldr	d0, [x23, x20, lsl 3]
+	ldr	d1, [x23, w24, sxtw 3]
+	fcmpe	d0, d1
+	bmi	.L59
 	strb	w21, [sp, 184]
-	bls	.L59
+	bls	.L60
 	strb	w21, [sp, 185]
-	bgt	.L57
-	mov	w1, 48
-	mov	w0, w1
-	b	.L5
+	bgt	.L64
+	mov	w0, 48
+	fmov	s31, w0
+	fmov	s30, w0
+	b	.L7
 	.align 2
-.L57:
-	mov	w1, 49
-	mov	w0, w1
-.L5:
-	mov	w2, 48
-	strb	w1, [sp, 186]
-	mov	w1, 49
-.L8:
-	fcmp	d31, d30
-	strb	w0, [sp, 187]
-	mov	w0, 0
-	add	x3, sp, 184
-	bfi	w0, w2, 0, 8
+.L64:
+	movi	v30.2s, 0x30
+	mov	w0, 49
+	fmov	s31, w0
+.L7:
+	strb	w0, [sp, 186]
+	bl	differ
+	fcmp	d0, d1
+	ins	v31.b[1], v30.b[0]
+	add	w0, w0, 48
+	strb	wzr, [sp, 200]
+	ins	v31.b[2], w0
+	cset	w2, pl
+	eor	w2, w2, 1
+	cset	w5, hi
+	add	w2, w2, 48
+	eor	w5, w5, 1
+	add	w5, w5, 48
+	cset	w4, le
+	ins	v31.b[3], w2
+	eor	w4, w4, 1
+	add	w4, w4, 48
+	cset	w3, lt
+	eor	w3, w3, 1
+	cset	w6, vs
+	add	w3, w3, 48
+	csinc	w1, w6, wzr, ne
+	ins	v31.b[4], w5
+	eor	w1, w1, 1
+	fcmpe	d0, d1
+	add	w1, w1, 48
+	add	w6, w6, 48
 	mov	w2, w24
 	add	w24, w24, 1
-	strb	wzr, [sp, 200]
-	bfi	w0, w1, 8, 8
-	cset	w1, pl
-	eor	w1, w1, 1
-	add	w1, w1, 48
-	bfi	w0, w1, 16, 8
-	cset	w1, hi
-	eor	w1, w1, 1
-	add	w1, w1, 48
-	bfi	w0, w1, 24, 8
-	str	w0, [sp, 188]
-	cset	w0, le
-	cset	w1, vs
-	eor	w0, w0, 1
-	add	w0, w0, 48
-	strb	w0, [sp, 192]
-	cset	w0, lt
-	eor	w0, w0, 1
-	add	w0, w0, 48
-	strb	w0, [sp, 193]
-	csinc	w0, w1, wzr, ne
-	fcmpe	d31, d30
-	eor	w0, w0, 1
-	add	w1, w1, 48
-	add	w0, w0, 48
-	strb	w0, [sp, 194]
-	strb	w1, [sp, 195]
-	fmov	x1, d31
+	strb	w6, [sp, 195]
+	ins	v31.b[5], w4
 	cset	w0, mi
-	fcsel	d29, d31, d30, ge
 	eor	w0, w0, 1
-	fcsel	d31, d31, d30, mi
 	add	w0, w0, 48
 	strb	w0, [sp, 196]
+	ins	v31.b[6], w3
 	cset	w0, ge
 	eor	w0, w0, 1
+	add	x3, sp, 184
 	add	w0, w0, 48
 	strb	w0, [sp, 197]
-	fmov	x0, d31
+	ins	v31.b[7], w1
+	fmov	x1, d0
+	str	d31, [sp, 187]
+	fcsel	d31, d0, d1, ge
+	fcsel	d1, d0, d1, mi
+	fmov	x0, d1
 	cmp	x1, x0
 	cset	w0, ne
 	add	w0, w0, 97
 	strb	w0, [sp, 198]
-	fmov	x0, d29
+	fmov	x0, d31
 	cmp	x1, x0
 	mov	w1, w19
 	cset	w0, ne
@@ -135,10 +140,10 @@ main:
 	mov	x0, x22
 	bl	printf
 	cmp	w24, 10
-	bne	.L12
+	bne	.L13
 	add	w19, w19, 1
 	cmp	w19, 10
-	bne	.L2
+	bne	.L4
 	adrp	x26, .LC2
 	adrp	x20, stdout
 	add	x26, x26, :lo12:.LC2
@@ -147,35 +152,35 @@ main:
 	mov	w25, 63
 	mov	w24, 61
 	.align 5
-.L13:
+.L14:
 	sxtw	x21, w22
 	mov	w19, 0
 	mov	w1, w22
 	mov	x0, x26
 	bl	printf
 	.align 5
-.L15:
+.L16:
 	ldr	d31, [x23, x21, lsl 3]
 	mov	w0, 60
 	ldr	d30, [x23, w19, sxtw 3]
 	fcmpe	d31, d30
-	bmi	.L14
+	bmi	.L15
 	mov	w0, 62
-	bgt	.L14
+	bgt	.L15
 	fcmp	d31, d30
 	csel	w0, w25, w24, ne
-.L14:
+.L15:
 	ldr	x1, [x20]
 	add	w19, w19, 1
 	bl	putc
 	cmp	w19, 10
-	bne	.L15
+	bne	.L16
 	ldr	x1, [x20]
 	add	w22, w22, 1
 	mov	w0, w19
 	bl	putc
 	cmp	w22, 10
-	bne	.L13
+	bne	.L14
 	adrp	x20, .LC3
 	add	x20, x20, :lo12:.LC3
 	mov	w19, 0
@@ -183,11 +188,11 @@ main:
 	fmov	d14, 1.5e+0
 	fmov	d13, 2.0e+0
 	.align 5
-.L26:
+.L27:
 	ldr	d29, [x23, w19, sxtw 3]
 	fcmpe	d29, d15
-	bge	.L16
-	bmi	.L60
+	bge	.L17
+	bmi	.L61
 	mov	w6, 0
 	mov	w3, 0
 	mov	w4, 0
@@ -195,14 +200,14 @@ main:
 	mov	w2, 0
 	mov	w7, 0
 	mov	w0, 0
-.L17:
+.L18:
 	str	w0, [sp]
 	mov	w1, w19
 	mov	x0, x20
 	add	w19, w19, 1
 	bl	printf
 	cmp	w19, 10
-	bne	.L26
+	bne	.L27
 	movi	v31.2s, 0x80, lsl 24
 	mov	w0, 2143289344
 	adrp	x20, .LANCHOR1
@@ -279,12 +284,12 @@ main:
 	mov	x1, x19
 	mov	w0, 9
 	.align 5
-.L27:
+.L28:
 	ldr	d31, [x23, w0, sxtw 3]
 	sub	w0, w0, #1
 	str	d31, [x1], 8
 	cmn	w0, #1
-	bne	.L27
+	bne	.L28
 	add	x20, x20, :lo12:.LANCHOR1
 	fmov	d26, 3.0e+0
 	add	x22, x19, 128
@@ -302,21 +307,21 @@ main:
 	str	d31, [sp, 312]
 	str	d26, [sp, 328]
 	.align 5
-.L37:
+.L38:
 	ldp	d31, d30, [x3, -8]
 	mov	x2, x3
 	fcmp	d31, d31
-	bne	.L89
+	bne	.L90
 	fcmp	d30, d30
-	beq	.L56
-.L87:
+	beq	.L57
+.L89:
 	add	x0, x19, w4, uxtw 3
-.L30:
+.L31:
 	add	x3, x3, 8
 	str	d30, [x0]
 	add	x4, x4, 1
-	cmp	x22, x3
-	bne	.L37
+	cmp	x3, x22
+	bne	.L38
 	adrp	x0, .LC7
 	adrp	x24, .LC9
 	add	x0, x0, :lo12:.LC7
@@ -324,25 +329,25 @@ main:
 	add	x24, x24, :lo12:.LC9
 	add	x23, x23, :lo12:.LC8
 	bl	printf
-	b	.L40
+	b	.L41
 	.align 2
-.L91:
+.L92:
 	fmov	x1, d0
 	mov	x0, x23
 	add	x19, x19, 8
 	bl	printf
 	cmp	x22, x19
-	beq	.L90
-.L40:
+	beq	.L91
+.L41:
 	ldr	d0, [x19]
 	fcmp	d0, d0
-	bne	.L91
+	bne	.L92
 	mov	x0, x24
 	add	x19, x19, 8
 	bl	printf
 	cmp	x22, x19
-	bne	.L40
-.L90:
+	bne	.L41
+.L91:
 	mov	w0, 10
 	bl	putchar
 	mov	x0, -4503599627370496
@@ -351,11 +356,11 @@ main:
 	mov	w2, 0
 	mov	w1, 0
 	fmov	d0, x0
-	b	.L41
+	b	.L42
 	.align 2
-.L92:
+.L93:
 	add	x20, x20, 8
-.L41:
+.L42:
 	ldr	d31, [x21]
 	mov	x21, x20
 	fcmpe	d31, d0
@@ -370,7 +375,7 @@ main:
 	eor	w0, w0, 1
 	add	w3, w3, w0
 	cmp	x22, x20
-	bne	.L92
+	bne	.L93
 	adrp	x0, .LC10
 	add	x0, x0, :lo12:.LC10
 	bl	printf
@@ -385,77 +390,71 @@ main:
 	add	sp, sp, 336
 	ret
 	.align 2
-.L56:
+.L57:
 	mov	x1, x3
 	mov	x0, x4
 	.align 5
-.L32:
+.L33:
 	fcmpe	d30, d31
-	bmi	.L31
+	bmi	.L32
 	fcmp	d30, d31
-	bne	.L86
+	bne	.L88
 	fmov	x5, d30
-	tbz	x5, #63, .L86
+	tbz	x5, #63, .L88
 	fmov	x5, d31
-	tbnz	x5, #63, .L86
+	tbnz	x5, #63, .L88
 	.align 5
-.L31:
+.L32:
 	str	d31, [x2]
 	subs	x0, x0, #1
-	beq	.L54
-.L93:
+	beq	.L55
+.L94:
 	ldr	d31, [x1, -16]
 	sub	x1, x1, #8
 	mov	x2, x1
 	fcmp	d31, d31
-	beq	.L32
+	beq	.L33
 	str	d31, [x2]
 	subs	x0, x0, #1
-	bne	.L93
-.L54:
+	bne	.L94
+.L55:
 	mov	x0, x19
-	b	.L30
+	b	.L31
 	.align 2
-.L86:
+.L88:
 	add	x0, x19, w0, uxtw 3
-	b	.L30
+	b	.L31
+	.align 2
 .L59:
-	mov	w0, 12337
-	mov	w1, 48
-	strh	w0, [sp, 185]
-	mov	w0, 49
-	mov	w2, w0
-	b	.L8
-	.align 2
-.L58:
 	mov	w0, 12593
-	mov	w1, 48
 	strh	w0, [sp, 184]
-	mov	w0, w1
-	b	.L5
+	mov	w0, 48
+	fmov	s31, w0
+	fmov	s30, w0
+	b	.L7
 	.align 2
-.L16:
+.L17:
 	fcmpe	d29, d14
-	bls	.L61
+	bls	.L62
 	mov	w2, 0
 	mov	w3, 1
-.L19:
+.L20:
 	fcmpe	d29, d13
 	mov	w6, 1
 	mov	w4, 0
 	mov	w5, w6
 	mov	w7, 0
 	cset	w0, mi
-	b	.L17
+	b	.L18
 	.align 2
-.L89:
+.L90:
 	fcmp	d30, d30
-	bne	.L87
+	bne	.L89
 	mov	x1, x3
 	mov	x0, x4
-	b	.L31
+	b	.L32
 	.align 2
-.L60:
+.L61:
 	mov	w6, 1
 	mov	w4, 0
 	mov	w3, w6
@@ -463,14 +462,14 @@ main:
 	mov	w2, 0
 	mov	w7, 0
 	mov	w0, 0
-	b	.L17
+	b	.L18
 	.align 2
-.L61:
+.L62:
 	fcmpe	d29, #0.0
-	bge	.L62
+	bge	.L63
 	fmov	d0, -1.0e+0
 	fcmpe	d29, d0
-	bgt	.L24
+	bgt	.L25
 	mov	w6, 1
 	mov	w3, 0
 	mov	w5, w6
@@ -478,14 +477,14 @@ main:
 	mov	w4, 0
 	mov	w7, 0
 	mov	w0, 0
-	b	.L17
+	b	.L18
 	.align 2
-.L62:
+.L63:
 	fcmp	d29, #0.0
 	mov	w4, 1
 	mov	w5, 0
-	bne	.L94
-.L23:
+	bne	.L95
+.L24:
 	fneg	d1, d29
 	mov	w6, 1
 	mov	w3, 0
@@ -493,18 +492,25 @@ main:
 	mov	w7, w6
 	fcmpe	d29, d1
 	cset	w0, gt
-	b	.L17
-.L94:
+	b	.L18
+.L95:
 	fmov	d28, 1.0e+0
 	fcmpe	d29, d28
-	bmi	.L24
+	bmi	.L25
 	mov	w2, w4
 	mov	w3, 0
-	b	.L19
-.L24:
+	b	.L20
+.L25:
 	mov	w4, 0
 	mov	w5, 1
-	b	.L23
+	b	.L24
+.L60:
+	movi	v31.2s, 0x31
+	mov	w0, 49
+	strb	w0, [sp, 185]
+	mov	w0, 48
+	fmov	s30, s31
+	b	.L7
 	.section .rodata
 	.align	4
 	.LANCHOR1:
