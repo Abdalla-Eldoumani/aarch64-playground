@@ -5,7 +5,7 @@
 	.string	"%d %d %u %u %ld %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	w0, w0, #1
