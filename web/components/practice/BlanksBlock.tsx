@@ -12,6 +12,7 @@
 import { useId, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { FeedbackAlert } from "@/components/practice/FeedbackAlert";
+import { typedAnswerIsRight } from "@/lib/content/theory-answers";
 
 /** The empty blank's width in characters: room for a mnemonic like `ldrsw`. */
 const BLANK_MIN_CH = 8;
@@ -24,6 +25,7 @@ export function BlanksBlock({
   hint,
   value,
   onValueChange,
+  locked,
   onAttempt,
 }: {
   prompt: string;
@@ -39,6 +41,9 @@ export function BlanksBlock({
   value?: string;
   /** Fires on every keystroke so the sheet can persist it. */
   onValueChange?: (value: string) => void;
+  /** Opens answered when the sheet restored this question as already
+   *  checked and right; honoured only while the restored answer still is. */
+  locked?: boolean;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
@@ -54,11 +59,10 @@ export function BlanksBlock({
   };
 
   const parts = code.split("___");
-  const isCorrect = blanks.some(
-    (accepted) => accepted.trim().toLowerCase() === inputVal.trim().toLowerCase(),
-  );
+  const isCorrect = typedAnswerIsRight(blanks, inputVal);
+  const answered = submitted || (locked === true && isCorrect);
 
-  const inputTone = submitted
+  const inputTone = answered
     ? isCorrect
       ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]"
       : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]"
@@ -83,7 +87,7 @@ export function BlanksBlock({
           type="text"
           value={inputVal}
           onChange={(event) => setInputVal(event.target.value)}
-          disabled={submitted}
+          disabled={answered}
           // Grows with what is typed, so a two-word answer is never clipped,
           // and never with the answer's own length, which would be a hint.
           style={{ width: `${Math.max(BLANK_MIN_CH, inputVal.length + 2)}ch` }}
@@ -93,7 +97,7 @@ export function BlanksBlock({
       </div>
 
       <div className="flex flex-col items-start gap-4">
-        {!submitted ? (
+        {!answered ? (
           <Button
             disabled={inputVal.trim() === ""}
             onClick={() => {
