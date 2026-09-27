@@ -12,9 +12,12 @@
  * throws through the shared safe-storage helpers.
  *
  * The solved tick says an exercise was passed; this says what the student
- * wrote, so nobody retypes an answer after a reload. The check RESULT is
- * deliberately not stored: the tick already carries it, and a stored
- * verdict would outlive the source it graded.
+ * wrote, so nobody retypes an answer after a reload. A coding exercise's
+ * check RESULT is deliberately not stored: the tick already carries it, and a
+ * stored verdict would outlive the source it graded. A theory set does keep
+ * which questions were checked and right (`graded`), because each one locks
+ * once right and the answer it locked on is stored beside it; the sheet opens
+ * those questions answered instead of asking for them again.
  */
 
 import {
@@ -40,9 +43,9 @@ export const MAX_ANSWER_CHARS = 64 * 1024;
  */
 export type AnswerBody =
   | { kind: "write"; source: string }
-  | { kind: "quiz"; answers: (number | null)[] }
-  | { kind: "blanks"; answers: string[] }
-  | { kind: "predict"; answers: string[] };
+  | { kind: "quiz"; answers: (number | null)[]; graded?: number[] }
+  | { kind: "blanks"; answers: string[]; graded?: number[] }
+  | { kind: "predict"; answers: string[]; graded?: number[] };
 
 export type AnswerKind = AnswerBody["kind"];
 
@@ -59,6 +62,13 @@ function keyFor(slug: string): string {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isIndexArray(value: unknown): value is number[] {
+  return (
+    Array.isArray(value) &&
+    value.every((item) => typeof item === "number" && Number.isInteger(item) && item >= 0)
+  );
 }
 
 function isChoiceArray(value: unknown): value is (number | null)[] {
@@ -79,15 +89,22 @@ export function validateAnswer(raw: unknown): StoredAnswer | null {
   if (o.version !== 1) return null;
   if (typeof o.updatedAt !== "number" || !Number.isFinite(o.updatedAt)) return null;
   const stamp = { version: 1, updatedAt: o.updatedAt } as const;
+  // A graded list that is not clean indices is dropped on its own: the
+  // answers are still worth restoring, just not as already checked.
+  const graded = isIndexArray(o.graded) ? { graded: o.graded } : {};
   switch (o.kind) {
     case "write":
       return typeof o.source === "string" ? { ...stamp, kind: "write", source: o.source } : null;
     case "quiz":
-      return isChoiceArray(o.answers) ? { ...stamp, kind: "quiz", answers: o.answers } : null;
+      return isChoiceArray(o.answers) ? { ...stamp, kind: "quiz", answers: o.answers, ...graded } : null;
     case "blanks":
-      return isStringArray(o.answers) ? { ...stamp, kind: "blanks", answers: o.answers } : null;
+      return isStringArray(o.answers)
+        ? { ...stamp, kind: "blanks", answers: o.answers, ...graded }
+        : null;
     case "predict":
-      return isStringArray(o.answers) ? { ...stamp, kind: "predict", answers: o.answers } : null;
+      return isStringArray(o.answers)
+        ? { ...stamp, kind: "predict", answers: o.answers, ...graded }
+        : null;
     default:
       return null;
   }
