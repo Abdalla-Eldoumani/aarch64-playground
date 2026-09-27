@@ -33,7 +33,8 @@ export type FlagMnemonic =
   | "ands"
   | "fcmp";
 
-/** The reference entries that set NZCV and so render this panel. */
+/** The reference entries this panel can model. Other instructions set NZCV
+ *  too (adcs, ccmp, fcmpe, ...); the badge reads reference-data's list. */
 export const FLAG_SETTERS: ReadonlySet<string> = new Set<string>([
   "cmp",
   "cmn",
