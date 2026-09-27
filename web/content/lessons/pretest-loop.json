@@ -2,6 +2,7 @@
   "title": "Pre-test loops",
   "slug": "pretest-loop",
   "order": 11,
+  "lastUpdated": "2026-09-27",
   "summary": "How to build a for or while loop, where the condition is checked before every pass, so the body can run zero times.",
   "tags": [
     "loops",
