@@ -682,6 +682,7 @@ export function FullChromeSurface({
       <ConsolePanel
         stdout={emu.stdout}
         stderr={emu.stderr}
+        notes={emu.notes}
         blocked={emu.blocked}
         ownedByTerminal={foregroundLive || launchMode === "terminal"}
         terminalOwnedFrom={terminalOwnedFrom}
@@ -793,6 +794,7 @@ export function FullChromeSurface({
     stdin: undefined,
     stdout: emu.stdout || undefined,
     stderr: emu.stderr || undefined,
+    notes: emu.notes.length > 0 ? emu.notes : undefined,
     exitCode: emu.exitCode,
     registers: emu.registers,
     sp: emu.sp,
