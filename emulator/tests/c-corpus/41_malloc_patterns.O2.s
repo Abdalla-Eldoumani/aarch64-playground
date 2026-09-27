@@ -26,7 +26,7 @@
 	.string	"ok=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #848
@@ -52,7 +52,7 @@ main:
 	mov	x0, x20
 	add	x3, x20, 1048576
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldrb	w2, [x0]
 	add	x0, x0, 4096
@@ -66,7 +66,7 @@ main:
 	bl	malloc
 	mov	x19, x0
 	mov	x1, 0
-	.align 5
+	.p2align 5,,15
 .L4:
 	mul	w2, w1, w1
 	str	w2, [x19, x1, lsl 2]
@@ -80,7 +80,7 @@ main:
 	mov	x20, x0
 	mov	x1, x0
 	add	x0, x0, 64
-	.align 5
+	.p2align 5,,15
 .L5:
 	str	wzr, [x1], 4
 	cmp	x1, x0
@@ -112,7 +112,7 @@ main:
 	mov	x0, x19
 	mov	x19, 100
 	bl	free
-	.align 5
+	.p2align 5,,15
 .L6:
 	mov	x0, x19
 	bl	malloc
@@ -126,7 +126,7 @@ main:
 	add	x21, sp, 48
 	mov	w19, 0
 	mov	w20, 1
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldr	x0, [x21], 8
 	ldrb	w1, [x0, 99]
