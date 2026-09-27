@@ -11,6 +11,8 @@
  * prefix regex below only serves strings that arrive Display-formatted
  * (runtime aborts pass through Display unchanged).
  */
+import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
+
 export type StyleSection =
   | "m4 preprocessing"
   | "section directives"
@@ -81,10 +83,13 @@ export function explainError(message: string): ErrorExplanation | null {
     };
   }
   if (lower.includes("not a multiple of 16")) {
+    // The message already carries the fix, so `fix` here only says where to
+    // look: Controls prints it under the message and a second copy of the
+    // rounding advice read as a repeat.
     return {
       what: "A load or store used sp as its base (or a libc call ran) while sp was off the 16-byte boundary.",
       why: "Linux turns on the AArch64 stack-alignment check (SA0): every sp-based access faults with a bus error when sp is not a multiple of 16, and AAPCS64 requires the boundary at every bl. The playground stops exactly where the course servers do.",
-      fix: "Round the frame to a 16 multiple: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`. The line that broke the boundary is the sp adjustment above the fault.",
+      fix: "The line to change is the last one above this stop that moved sp: a `sub sp`, or an `stp` ending in `]!`.",
       styleSection: "general",
     };
   }
@@ -96,11 +101,13 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "addressing modes",
     };
   }
-  if (lower.includes("no entry point")) {
+  if (lower.includes("undefined reference to `main'")) {
+    // The message names what is missing and the line that fixes it; `fix`
+    // adds the one thing it does not say.
     return {
-      what: "Nothing in the source is labelled `main:` or `_start:`, so there is no instruction to begin at.",
-      why: "The linker starts a program at one of those two names. A file of helper functions is meant to be assembled beside the file that has main, and `ld` on the course servers refuses the same file with `undefined reference to 'main'`.",
-      fix: "Name the entry `main:` and declare it `.global main`. Keep it called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own links here but fails on the servers with `multiple definition of '_start'`.",
+      what: "The program has no global `main`, so there is no instruction to begin at.",
+      why: "gcc links a startup file whose code calls `main`, and a label is only visible outside its own file when `.global` names it. A file of helper functions is meant to be assembled beside the file that has main.",
+      fix: "Keep the entry called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own fails on the servers with `multiple definition of '_start'`.",
       styleSection: "general",
     };
   }
@@ -134,6 +141,23 @@ export function explainError(message: string): ErrorExplanation | null {
       why: "Either too many args (each one needs an 8-byte pointer slot plus the string body and a NUL), or one very large arg.",
       fix: "Trim the args field above the editor, or pass fewer arguments.",
       styleSection: "hosted runtime",
+    };
+  }
+
+  // GAS's own line, which the emulator repeats: unknown mnemonic `mvo' -- `mvo w0,0'.
+  // The guesses live here rather than in the emulator because the name table
+  // would cost the wasm about 2 KB compressed.
+  const unknownMnemonic = message.match(/unknown mnemonic `([^'\s]+)'/);
+  if (unknownMnemonic) {
+    const guesses = nearestMnemonics(unknownMnemonic[1]).map((g) => `\`${g}\``);
+    // Nothing close: the message's own hint (spelling, or not implemented) stands.
+    if (guesses.length === 0) return null;
+    const last = guesses.pop();
+    return {
+      what: `\`${unknownMnemonic[1]}\` is not an instruction the assembler knows.`,
+      why: "It is a few letters away from a real mnemonic, which is what a typo looks like.",
+      fix: `did you mean ${guesses.length > 0 ? `${guesses.join(", ")} or ${last}` : last}?`,
+      styleSection: "general",
     };
   }
 
@@ -261,4 +285,47 @@ export function explainError(message: string): ErrorExplanation | null {
   }
 
   return null;
+}
+
+/**
+ * The supported mnemonics nearest to a misspelled one: every name at the
+ * smallest edit distance found, at most three, in the reference's order. A
+ * swap of two neighbouring letters counts as one edit (`mvo` is one swap from
+ * `mov`). Words of three letters or fewer take one edit only, since two edits
+ * reach a dozen real mnemonics from almost any three letters.
+ */
+function nearestMnemonics(word: string): string[] {
+  const w = word.toLowerCase();
+  const limit = w.length <= 3 ? 1 : 2;
+  let best = limit + 1;
+  let found: string[] = [];
+  for (const name of ARM64_MNEMONIC_NAMES) {
+    // A length gap past the limit already rules a name out.
+    if (Math.abs(name.length - w.length) > limit) continue;
+    const d = editDistance(w, name);
+    if (d < best) {
+      best = d;
+      found = [name];
+    } else if (d === best) {
+      found.push(name);
+    }
+  }
+  return found.slice(0, 3);
+}
+
+/** Optimal string alignment distance: insert, delete, substitute, or swap two neighbours, one each. */
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  );
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[a.length][b.length];
 }
