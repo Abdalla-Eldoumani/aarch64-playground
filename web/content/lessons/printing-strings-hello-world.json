@@ -108,7 +108,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Quiz: ARMv8 assembly (core)](/practice/quiz-inter-armv8): asks what the argument registers are for.\n- [Warm up the registers](/practice/warm-up-the-registers): its starter ends with a `printf` call built the same way."
+      "markdown": "## Practice\n\n- [Quiz: ARMv8 assembly (core)](/practice/quiz-inter-armv8): asks what the argument registers are for.\n- [Warm up the registers](/practice/warm-up-the-registers): its starter ends with a `printf` call built the same way.\n- [Say it with a frame](/practice/say-it-with-a-frame): draw a box around a word with strings you add to `.data`."
     }
   ]
 }
