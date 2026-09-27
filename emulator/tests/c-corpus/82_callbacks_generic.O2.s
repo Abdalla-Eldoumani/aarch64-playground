@@ -329,7 +329,7 @@ sort_both:
 	ret
 	.align	2
 	.align 5
-filter__constprop__0:
+filter.constprop.0:
 	stp	x29, x30, [sp, -64]!
 	mov	x29, sp
 	stp	x19, x20, [sp, 16]
@@ -368,7 +368,7 @@ filter__constprop__0:
 	ret
 	.align	2
 	.align 5
-lower_bound__constprop__0:
+lower_bound.constprop.0:
 	stp	x29, x30, [sp, -80]!
 	mov	x29, sp
 	stp	x19, x20, [sp, 16]
@@ -549,7 +549,7 @@ main:
 	mov	x1, x19
 	strb	w0, [sp, 135]
 	add	x0, sp, 135
-	bl	lower_bound__constprop__0
+	bl	lower_bound.constprop.0
 	mov	w1, w0
 	adrp	x0, .LC13
 	add	x0, x0, :lo12:.LC13
@@ -756,7 +756,7 @@ main:
 	add	x22, sp, 496
 	str	d31, [sp, 160]
 	str	wzr, [sp, 168]
-	bl	lower_bound__constprop__0
+	bl	lower_bound.constprop.0
 	mov	w1, w0
 	adrp	x0, .LC28
 	add	x0, x0, :lo12:.LC28
@@ -785,7 +785,7 @@ main:
 	bne	.L69
 	add	x1, sp, 144
 	mov	x0, x22
-	bl	filter__constprop__0
+	bl	filter.constprop.0
 	mov	x24, x0
 	mov	w1, w0
 	adrp	x0, .LC29
