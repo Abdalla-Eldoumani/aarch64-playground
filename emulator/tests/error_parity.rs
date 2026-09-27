@@ -134,6 +134,16 @@ fn undefined_label() {
 }
 
 #[test]
+fn undefined_label_in_a_literal_pool_load() {
+    run_case("undefined-ldr-label");
+}
+
+#[test]
+fn undefined_label_in_a_data_directive() {
+    run_case("undefined-data-label");
+}
+
+#[test]
 fn duplicate_label() {
     run_case("duplicate-label");
 }
