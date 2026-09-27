@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 // The three section renderers are replaced with text markers so this test
 // exercises only the shell's wiring (which tab is active -> which section fills
@@ -16,8 +16,10 @@ vi.mock("@/components/reference/CallingConventionGuide", () => ({
 vi.mock("@/components/reference/PitfallsCatalog", () => ({
   PitfallsCatalog: () => "pitfalls-catalog",
 }));
+// The converter marker echoes the view it was opened at, so the fragment
+// wiring is visible without the real widget.
 vi.mock("@/components/panels/BaseConverter", () => ({
-  BaseConverter: () => "base-converter-widget",
+  BaseConverter: ({ view }: { view?: string }) => `base-converter-widget:${view ?? "none"}`,
 }));
 
 import type { ReferenceInstruction } from "@/lib/content/reference-data";
@@ -45,7 +47,17 @@ const INSTRUCTIONS: ReferenceInstruction[] = [
 afterEach(() => {
   cleanup();
   document.documentElement.removeAttribute("data-theme");
+  window.history.replaceState(null, "", "/");
 });
+
+// Moves the fragment the way a clicked link or back/forward does; jsdom
+// queues its own hashchange, so the event is sent here to keep it in step.
+function followFragment(fragment: string): void {
+  act(() => {
+    window.history.replaceState(null, "", fragment);
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+  });
+}
 
 describe("ReferenceView", () => {
   it("renders the four reference tabs with Instructions active by default", () => {
@@ -86,11 +98,50 @@ describe("ReferenceView", () => {
     render(<ReferenceView instructions={INSTRUCTIONS} />);
     fireEvent.click(screen.getByRole("tab", { name: "Converter" }));
     // The widget arrives asynchronously behind next/dynamic.
-    expect(await screen.findByText("base-converter-widget")).toBeTruthy();
-    expect(screen.getByText(/One bit pattern, four readings/)).toBeTruthy();
+    expect(await screen.findByText("base-converter-widget:none")).toBeTruthy();
+    expect(screen.getByText(/One bit pattern, five readings/)).toBeTruthy();
     expect(
       screen.queryByText(`instruction-reference:${INSTRUCTIONS.length}`),
     ).toBeNull();
+  });
+
+  it("opens the converter at the part a fragment names", async () => {
+    for (const [fragment, view] of [
+      ["#converter", "none"],
+      ["#converter-octal", "octal"],
+      ["#converter-ieee754", "ieee754"],
+    ] as const) {
+      window.history.replaceState(null, "", fragment);
+      const { unmount } = render(<ReferenceView instructions={INSTRUCTIONS} />);
+      expect(
+        screen.getByRole("tab", { name: "Converter" }).getAttribute("aria-selected"),
+      ).toBe("true");
+      expect(await screen.findByText(`base-converter-widget:${view}`)).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("a converter link followed later wins over a tab pick; other fragments do not", async () => {
+    render(<ReferenceView instructions={INSTRUCTIONS} />);
+    fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
+
+    // An instruction fragment belongs to the instruction list.
+    followFragment("#add");
+    expect(screen.getByText("pitfalls-catalog")).toBeTruthy();
+
+    followFragment("#converter-ieee754");
+    expect(await screen.findByText("base-converter-widget:ieee754")).toBeTruthy();
+
+    followFragment("#converter-octal");
+    expect(await screen.findByText("base-converter-widget:octal")).toBeTruthy();
+  });
+
+  it("ignores a fragment that only looks like a key", () => {
+    window.history.replaceState(null, "", "#constructor");
+    render(<ReferenceView instructions={INSTRUCTIONS} />);
+    expect(
+      screen.getByRole("tab", { name: "Instructions" }).getAttribute("aria-selected"),
+    ).toBe("true");
   });
 
   it("moves between sections with the arrow keys", () => {
