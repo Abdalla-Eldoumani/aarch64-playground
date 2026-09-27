@@ -301,8 +301,8 @@ export async function collectDiagnostic(input: DiagnosticInput): Promise<Diagnos
     files: workspace.extras.length > 0 ? workspace.extras.map(({ name, body }) => ({ name, body })) : undefined,
     args: args || undefined,
     stdin: clipTail(m.stdinGiven(), "input") || undefined,
-    stdout: clipTail(m.stdout, "output") || undefined,
-    stderr: clipTail(m.stderr, "error output") || undefined,
+    stdout: clipTail(squeezeRepeats(m.stdout), "output") || undefined,
+    stderr: clipTail(squeezeRepeats(m.stderr), "error output") || undefined,
     notes: m.notes.length > 0 ? [...m.notes] : undefined,
     exitCode: m.exitCode,
     error: m.error,
@@ -330,10 +330,28 @@ export async function collectDiagnostic(input: DiagnosticInput): Promise<Diagnos
   };
 }
 
-/** The end of a long text, with a first line saying the start was cut. */
+/** The end of a long text from a whole line on, with a first line saying
+ *  the start was cut. */
 function clipTail(text: string, what: string): string {
   if (text.length <= TEXT_CAP) return text;
-  return `[${what} cut: only its last ${TEXT_CAP} characters are included]\n${text.slice(-TEXT_CAP)}`;
+  const tail = text.slice(-TEXT_CAP);
+  return `[${what} cut: only the end, at most ${TEXT_CAP} characters, is included]\n${tail.slice(tail.indexOf("\n") + 1)}`;
+}
+
+/** A line printed over and over, the usual output of a loop that never
+ *  ends, kept once with a count. */
+function squeezeRepeats(text: string): string {
+  const lines = text.split("\n");
+  const out: string[] = [];
+  for (let first = 0; first < lines.length; ) {
+    let last = first;
+    while (last + 1 < lines.length && lines[last + 1] === lines[first]) last++;
+    const again = last - first;
+    if (again >= 3) out.push(lines[first], `[the line above repeats ${again} more times]`);
+    else out.push(...lines.slice(first, last + 1));
+    first = last + 1;
+  }
+  return out.join("\n");
 }
 
 function sameWorkspace(a: Workspace, b: Workspace): boolean {
