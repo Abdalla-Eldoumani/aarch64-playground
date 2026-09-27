@@ -50,6 +50,11 @@ export function bundleToMarkdown(bundle: DiagnosticBundle, shareUrl?: string): s
     lines.push("```");
     lines.push("");
   }
+  if (bundle.notes && bundle.notes.length > 0) {
+    lines.push("**notes:**");
+    for (const note of bundle.notes) lines.push(`- ${note}`);
+    lines.push("");
+  }
   if (bundle.exitCode != null) {
     lines.push(`**exit code:** ${bundle.exitCode}`);
     lines.push("");
