@@ -1,0 +1,102 @@
+{
+  "title": "Strings, pointer arrays, and argv",
+  "slug": "strings-and-command-line-arguments",
+  "order": 24,
+  "summary": "Handle text as bytes: character codes, strings that end in a zero byte, tables of string addresses, and the arguments main receives.",
+  "tags": [
+    "strings",
+    "command-line arguments"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [External data: .data, .bss, and .text](/learn/external-data)\n- [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions)"
+    },
+    {
+      "type": "prose",
+      "markdown": "To a program, text is nothing but bytes in memory. This lesson reads and changes text one byte at a time, builds a table of strings, and reads the words typed after a program's name on the command line."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Characters are numbers\n\nA computer stores text as numbers, one per character. The table that pairs each character with its number is ASCII (American Standard Code for Information Interchange): `'A'` is 65, `'a'` is 97, `'0'` is 48, a space is 32 and a newline is 10. Every code fits in one byte.\n\nYou never need to look the numbers up. A *character constant*, one character between single quotes, stands for its code, so `mov w10, 'a'` puts 97 in `w10` and `cmp w10, 'z'` compares with 122. Arithmetic works on them too: `'a' - 'A'` is 32, the distance from any capital letter to its lower-case partner.\n\nThe letters come in order, so `'a'` to `'z'` is one unbroken range, and so are `'A'` to `'Z'` and `'0'` to `'9'`. A digit character is not its value: `'7'` is 55, and subtracting `'0'` leaves 7."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A string is bytes ending in zero\n\nA *string* is a run of character codes in consecutive bytes, followed by one byte holding 0, called the *terminator* (or null byte). The label on a string is the address of its first byte. Nothing records the length, so any code that walks a string, `printf`'s `%s` included, reads bytes until it meets the 0.\n\nThree directives put text in memory:\n\n| Directive | What it stores |\n|---|---|\n| `.string \"hi\"` | 3 bytes: `'h'`, `'i'`, 0 |\n| `.asciz \"hi\"` | the same 3 bytes; another spelling of `.string` |\n| `.ascii \"hi\"` | 2 bytes: `'h'`, `'i'`, and no terminator |\n\nText made with `.ascii` has no end marker, so `%s` runs on into whatever follows it in memory. Use `.string` unless you are joining pieces by hand."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Walking a string one byte at a time\n\n`ldrb` loads one byte into a register and fills the rest of the register with zeros; `strb` stores the lowest byte of a register. Together they let a program read and change a string one character at a time.\n\nThe program below points `x9` at the first byte of a note. For each byte before the terminator, it checks whether the byte lies between `'a'` and `'z'`. If it does, subtracting 32 turns it into the matching capital, and `strb` writes it back in the same place. The note is in `.data`, so the program is allowed to change it. The loop loads each byte in its test, so an empty string, which is only a terminator, runs the body zero times. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "before: Meet me at 9, by the old oak.\nafter:  MEET ME AT 9, BY THE OLD OAK.\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Visit each byte of a string up to the zero byte, upper-casing letters\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(ptr_r, x9)\ndefine(ch_r, w10)\n\n.data\nnote_m:     .string \"Meet me at 9, by the old oak.\"\nfmt_before: .string \"before: %s\\n\"\nfmt_after:  .string \"after:  %s\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_before\n        ldr     x1, =note_m\n        bl      printf\n\n        ldr     ptr_r, =note_m\n        b       walk_test\nwalk_loop:\n        cmp     ch_r, 'a'\n        b.lt    walk_next                   // below 'a': not a lower-case letter\n        cmp     ch_r, 'z'\n        b.gt    walk_next                   // above 'z': not one either\n        sub     ch_r, ch_r, 'a' - 'A'       // 'a' - 'A' is 32, the gap between the cases\n        strb    ch_r, [ptr_r]\nwalk_next:\n        add     ptr_r, ptr_r, 1\nwalk_test:\n        ldrb    ch_r, [ptr_r]\n        cmp     ch_r, 0\n        b.ne    walk_loop                   // the zero byte marks the end\n\n        ldr     x0, =fmt_after\n        ldr     x1, =note_m\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "before: Meet me at 9, by the old oak.\nafter:  MEET ME AT 9, BY THE OLD OAK.\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## An array of pointers to strings\n\nStrings differ in length, so they cannot sit in a table where every entry has the same size. Their addresses can, since every address is 8 bytes. `.dword` stores 8-byte values, and a label written as a value stands for its address, so this line builds a table of four addresses, 32 bytes in all:\n\n```text\nphrases_m:  .dword hello_m, bonjour_m, hola_m, salaam_m\n```\n\nEntry `i` starts at `phrases_m + i * 8`, so the index is scaled by 8: `ldr x2, [table_r, pick_r, SXTW 3]` (a left shift by 3 multiplies by 8). What comes back is an address, ready for `%s`, and one `ldrb` through it reads the first letter. `.balign 8` in front of the table puts each address on an 8-byte boundary.\n\nWith `PICK` set to 2 the program prints `phrase 2 is hola, first letter h`. Change the `define` to 0, 1 or 3 and run it again."
+    },
+    {
+      "type": "editor",
+      "starter": "// An array of pointers to strings, one entry picked by index\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(pick_r, w9)\ndefine(table_r, x10)\n\ndefine(PICK, 2)\n\n.data\nhello_m:    .string \"hello\"\nbonjour_m:  .string \"bonjour\"\nhola_m:     .string \"hola\"\nsalaam_m:   .string \"salaam\"\n\n        .balign 8\nphrases_m:  .dword hello_m, bonjour_m, hola_m, salaam_m    // four addresses, 8 bytes each\n\nfmt_phrase: .string \"phrase %d is %s, first letter %c\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     pick_r, PICK\n        ldr     table_r, =phrases_m\n        ldr     x2, [table_r, pick_r, SXTW 3]   // x2 = phrases[pick]: an address, so scale by 8\n        ldrb    w3, [x2]                    // the first byte of that string\n\n        ldr     x0, =fmt_phrase\n        mov     w1, pick_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "phrase 2 is hola, first letter h\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## argc and argv\n\nWhen a program starts, the operating system passes `main` two arguments:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int main(int argc, char *argv[]);\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "`argc`, in `w0`, counts the words on the command line, the program's own name included. `argv`, in `x1`, is the address of an array of pointers, one per word, built just like `phrases_m`: `argv[0]` points at the program's name, `argv[1]` at the first argument, and so on. After the last one sits an entry holding 0.\n\nEvery argument is a string, even one that looks like a number: `42` arrives as the bytes `'4'`, `'2'`, 0. The library function `atoi` turns a string like that into an `int`.\n\nThe program below prints `argc`, then walks `argv` from the last entry down to `argv[1]`, printing each argument and its length. The length comes from `strlen`, a library function that counts the bytes before the terminator. The walk stops before `argv[0]`, whose text depends on how the program was started. `argc`, `argv`, the index and the current argument all have to survive calls to `printf` and `strlen`, so they live in `x19` to `x22`, which `main` saves first.\n\nThe lesson runs it with the arguments `red green blue`, so it prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "argc = 4\nargv[3] = blue, length 4\nargv[2] = green, length 5\nargv[1] = red, length 3\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Print argc, then each argument and its length, last to first\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(argc_r, w19)\ndefine(argv_r, x20)\ndefine(idx_r, w21)\ndefine(arg_r, x22)\n\n.data\nfmt_argc:   .string \"argc = %d\\n\"\nfmt_arg:    .string \"argv[%d] = %s, length %ld\\n\"\n\n.text\n// main(w0 = argc, x1 = argv) keeps four values across calls in x19 to x22,\n// so it saves the caller's copies first\nsave_s = 16\nalloc = -(16 + 32) & -16\ndealloc = -alloc\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        stp     x19, x20, [fp, save_s]\n        stp     x21, x22, [fp, save_s + 16]\n\n        mov     argc_r, w0                  // argc and argv arrive in w0 and x1,\n        mov     argv_r, x1                  // which the first printf would overwrite\n\n        ldr     x0, =fmt_argc\n        mov     w1, argc_r\n        bl      printf\n\n        sub     idx_r, argc_r, 1            // start at the last argument\n        b       back_test\nback_loop:\n        ldr     arg_r, [argv_r, idx_r, SXTW 3]  // one entry: the address of that argument's text\n        mov     x0, arg_r\n        bl      strlen                      // x0 = its length in bytes\n\n        mov     x3, x0\n        ldr     x0, =fmt_arg\n        mov     w1, idx_r\n        mov     x2, arg_r\n        bl      printf\n        sub     idx_r, idx_r, 1\nback_test:\n        cmp     idx_r, 1\n        b.ge    back_loop                   // stop before argv[0], the program's own name\n\n        ldp     x19, x20, [fp, save_s]\n        ldp     x21, x22, [fp, save_s + 16]\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "args": "red green blue",
+      "expectedOutput": {
+        "stdout": "argc = 4\nargv[3] = blue, length 4\nargv[2] = green, length 5\nargv[1] = red, length 3\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "To try other words, open the program in the playground and change the args box there. With the box empty, `argc` is 1 and the loop body never runs."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. What does `.string \"ok\"` store, byte by byte?\n2. `x9` holds `argv`. Which instruction loads `argv[2]`, the address of the second argument's text?\n3. A program reads the character `'7'` out of a string and wants to add seven to a total. What must it do first?\n4. A program is started as `./a.out one two`. What is `argc`?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. Three bytes: 111 (`'o'`), 107 (`'k'`) and the terminator 0.\n2. `ldr x10, [x9, 16]`. Entry 2 starts 2 times 8, or 16, bytes into the array.\n3. Subtract `'0'`. The byte holds 55, the code for `'7'`, and 55 - 48 is 7.\n4. 3: the program's name and the two arguments."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Count the vowels](/practice/count-the-vowels): walk a string byte by byte.\n- [Caesar's little secret](/practice/caesars-little-secret): change a string in place.\n- [argv arithmetic](/practice/argv-arithmetic): add up numbers given on the command line."
+    }
+  ]
+}
