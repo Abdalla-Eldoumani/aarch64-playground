@@ -2,6 +2,7 @@
   "title": "Registers and immediates",
   "slug": "registers-and-immediates",
   "order": 4,
+  "lastUpdated": "2026-09-27",
   "summary": "Name the 31 registers and their jobs, write a constant in any of four bases, and build one too wide for a single mov.",
   "tags": [
     "registers",
