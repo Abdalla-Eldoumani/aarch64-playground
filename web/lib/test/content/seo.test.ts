@@ -38,8 +38,9 @@ describe("clipDescription", () => {
 });
 
 describe("snippetFromMarkdown", () => {
-  it("skips code, lists, and the lead-in sentence that introduces them", () => {
+  it("skips headings, code, lists, and the lead-in sentence that introduces them", () => {
     const prompt = [
+      "## task",
       "Draw a box around one word read from input. For the input `hello`:",
       "",
       "```text",
