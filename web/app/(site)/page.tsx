@@ -4,34 +4,14 @@ import { RoutesRegisterFile } from "@/components/diagrams/RoutesRegisterFile";
 import { FeatureCatalog } from "@/components/landing/FeatureCatalog";
 import { BitRuler } from "@/components/ui/BitRuler";
 import { DocRule } from "@/components/ui/DocRule";
-import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/content/site";
+import { jsonLdGraph, pageMetadata, toJsonLd, websiteNode } from "@/lib/content/seo";
 
-const DESCRIPTION =
-  "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
-
-export const metadata: Metadata = {
-  // The landing answers for the site root, so its title is the bare site name
-  // rather than the "%s · cpsc 355 playground" template the content routes
-  // compose. Open Graph and Twitter are not deep-merged across segments, so the
-  // home card is restated here with the canonical "/" url.
-  title: { absolute: "cpsc 355 playground" },
-  description: DESCRIPTION,
-  alternates: { canonical: "/" },
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
+  path: "/",
+});
 
 // Each section owns its own measure (centred at max-w-5xl) and its own
 // py-12/sm:py-16 rhythm, so the page only orders them, with no wrapper measure
@@ -43,6 +23,10 @@ export const metadata: Metadata = {
 export default function LandingPage() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: toJsonLd(jsonLdGraph(websiteNode(HOME_DESCRIPTION))) }}
+      />
       {/* Decorative chrome. The hero owns the h1. */}
       <BitRuler />
       <div className="mx-auto w-full max-w-5xl px-6 pt-6">
