@@ -150,7 +150,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [The absolute truth](/practice/the-absolute-truth): an if with no else that flips the sign of a negative number.\n- [Pick the bigger one](/practice/pick-the-bigger-one): one comparison decides which of two values to print."
+      "markdown": "## Practice\n\n- [The absolute truth](/practice/the-absolute-truth): an if with no else that flips the sign of a negative number.\n- [Pick the bigger one](/practice/pick-the-bigger-one): one comparison decides which of two values to print.\n- [Rock, paper, scissors referee](/practice/rock-paper-scissors-referee): an if-else chain that names the winner of one round."
     }
   ]
 }
