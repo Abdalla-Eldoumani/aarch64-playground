@@ -306,10 +306,14 @@ Stubs read argument registers per AAPCS64, call into
 Rust, write results to `x0`/`d0`, then return via `pc = lr`. On the way
 back they fill every register AAPCS64 lets a callee change (x0-x18 and
 v0-v7 apart from the one holding the result, v16-v31, the top half of
-v8-v15, and NZCV) with
-0xDEADBEEFDEADBEEF, as real glibc leaves its own values there, and a
-program that reads one before writing it gets a console note naming the
-call and the register. `main`
+v8-v15, and NZCV) with 0xDEADBEEFDEADBEEF (the flags with 1101), as real
+glibc leaves its own values there. A program that then uses one of them
+before writing it gets a console note naming the call and the register:
+an x register or a d view read by an instruction, taken as the next
+call's argument, or returned from `main`, and the flags read by a
+conditional branch, select, compare, or carry. Storing such a register
+or copying it into another is not a use: the note waits for the read
+that is, and then names the copy. Whole-vector reads earn no note. `main`
 returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
 the exit code.
 
