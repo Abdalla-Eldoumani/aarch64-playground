@@ -2,6 +2,7 @@
   "title": "Guess the number",
   "slug": "guess-the-number",
   "order": 17,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Two players, one input. The first number is the secret (player 1 types it while player 2 looks away), and every number after it is one of player 2's guesses. For each guess that misses, print `higher` if the secret is bigger than the guess, or `lower` if it is smaller. When a guess hits, print `correct! guesses = N`, where N counts every guess including the one that hit, and stop reading.\n\nThe starter reads the secret into `secret_r` and holds the messages. The loop has to read a guess before it has anything to test, so its body always runs at least once: a post-test loop fits. The input always ends with a correct guess.\n\n## what is checked\n\n- with the input `50 25 75 50` (one number per line) the program prints `higher`, `lower`, then `correct! guesses = 3`, one per line, and returns 0\n- the checker also plays games you do not see, including a first guess that hits and secrets of zero or below",
