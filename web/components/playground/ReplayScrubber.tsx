@@ -58,6 +58,13 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
   if (frames.length < 2) return null;
 
   const idx = sliderIdx ?? liveIdx;
+  // The slider walks the KEPT frames, not every step: a step keeps its own
+  // frame, a run keeps only the step it stopped on. Naming the step and the
+  // frame position together keeps the knob and the label telling one story
+  // (a label reading "step 2 / 274" over a knob a third of the way along
+  // told two).
+  const stepShown = frames[idx]?.stepCount ?? 0;
+  const position = `${idx + 1} of ${frames.length}`;
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseInt(e.target.value, 10);
@@ -126,9 +133,14 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
         onChange={onChange}
         className="flex-1 accent-[var(--amber)]"
         aria-label="replay step slider"
+        aria-valuetext={`step ${stepShown}, frame ${position}`}
       />
-      <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap tabular-nums">
-        step {frames[idx]?.stepCount ?? 0} / {frames[frames.length - 1]?.stepCount ?? 0}
+      <span
+        className="text-[var(--text-secondary)] font-mono whitespace-nowrap tabular-nums"
+        title="each step keeps a frame; a run keeps only the step it stopped on. scrubbing shows registers only: the console and memory stay at the live step"
+      >
+        step {stepShown} · {position}
+        {sliderIdx !== null && " · registers only"}
       </span>
     </div>
   );
