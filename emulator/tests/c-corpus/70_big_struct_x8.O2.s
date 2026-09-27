@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	cross
 cross:
 	ldp	x3, x2, [x0]
@@ -17,7 +17,7 @@ cross:
 	str	x2, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	add3
 add3:
 	ldr	q31, [x0]
@@ -30,7 +30,7 @@ add3:
 	str	x2, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	scale
 scale:
 	ldp	x2, x3, [x0]
@@ -42,7 +42,7 @@ scale:
 	str	x0, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	triple
 triple:
 	stp	x29, x30, [sp, -128]!
@@ -84,7 +84,7 @@ triple:
 	ldp	x29, x30, [sp], 128
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	nine
 nine:
 	ldr	x0, [x0]
@@ -112,7 +112,7 @@ nine:
 	add	x0, x0, x1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mmul
 mmul:
 	ldp	x5, x12, [x0]
@@ -157,7 +157,7 @@ mmul:
 	stp	x1, x0, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mpow
 mpow:
 	cbnz	w1, .L10
@@ -167,7 +167,7 @@ mpow:
 	ldr	q30, [x1, 16]
 	stp	q31, q30, [x8]
 	ret
-	.align 2
+	.p2align 2,,3
 .L10:
 	stp	x29, x30, [sp, -176]!
 	mov	x3, x0
@@ -210,7 +210,7 @@ mpow:
 	ldp	x29, x30, [sp], 176
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mkrec
 mkrec:
 	ldrb	w5, [x0]
@@ -218,7 +218,7 @@ mkrec:
 	cbz	w5, .L25
 	add	x7, sp, 8
 	mov	x4, 1
-	.align 5
+	.p2align 5,,15
 .L22:
 	add	x6, x7, x4
 	strb	w5, [x6, -1]
@@ -236,7 +236,7 @@ mkrec:
 	add	x4, x4, x6
 	add	x0, x7, x6
 	add	x4, x4, x5
-	.align 5
+	.p2align 5,,15
 .L23:
 	strb	wzr, [x0], 1
 	cmp	x0, x4
@@ -255,7 +255,7 @@ mkrec:
 	mov	w4, 0
 	b	.L20
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	promote
 promote:
 	ldr	x2, [x0, 24]
@@ -277,7 +277,7 @@ promote:
 	str	x0, [x8, 32]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	fill
 fill:
 	adrp	x2, .LANCHOR0
@@ -292,7 +292,7 @@ fill:
 	dup	v29.4s, v29.s[0]
 	eor	v26.8b, v26.8b, v31.8b
 	ldr	q31, [x2, 32]
-	.align 5
+	.p2align 5,,15
 .L32:
 	mov	v30.16b, v29.16b
 	shl	v28.4s, v31.4s, 7
@@ -318,7 +318,7 @@ fill:
 	add	sp, sp, 208
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	digest
 digest:
 	mov	x1, x0
@@ -329,7 +329,7 @@ digest:
 	movk	x3, 0x100, lsl 32
 	movk	x0, 0xfb0, lsl 32
 	movk	x0, 0x1465, lsl 48
-	.align 5
+	.p2align 5,,15
 .L36:
 	ldr	w2, [x1], 4
 	eor	x0, x2, x0
@@ -367,7 +367,7 @@ digest:
 	.string	"direct %u %016lx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #1712
@@ -431,7 +431,7 @@ main:
 	mov	x19, x20
 	add	x25, x25, :lo12:.LC9
 	mov	w21, 0
-	.align 5
+	.p2align 5,,15
 .L40:
 	ldr	x4, [x19, 16]
 	mov	w1, w21
@@ -692,11 +692,11 @@ main:
 	.align	4
 	.LANCHOR0:
 .LC3:
-	.quad	1
-	.quad	0
+	.xword	1
+	.xword	0
 .LC4:
-	.quad	0
-	.quad	1
+	.xword	0
+	.xword	1
 .LC5:
 	.word	0
 	.word	1
@@ -709,23 +709,23 @@ main:
 	.word	6144
 	.word	6272
 .LC8:
-	.quad	1
-	.quad	2
+	.xword	1
+	.xword	2
 .LC13:
 	.word	10
 	.word	50
 	.word	90
 	.word	1000000
 .LC19:
-	.quad	1
-	.quad	1
+	.xword	1
+	.xword	1
 	.data
 	.align	4
 	.LANCHOR1:
 knob:
-	.quad	5
+	.xword	5
 	.zero	8
 ops:
-	.quad	cross
-	.quad	add3
+	.xword	cross
+	.xword	add3
 
