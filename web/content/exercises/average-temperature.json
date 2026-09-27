@@ -2,6 +2,7 @@
   "title": "Average temperature",
   "slug": "average-temperature",
   "order": 64,
+  "lastUpdated": "2026-09-27",
   "topic": "floating-point",
   "difficulty": "core",
   "prompt": "A week of weather readings arrives on standard input: first how many there are, then the temperatures themselves, which can have a fractional part and can be below zero. Store them in the `temps` array in `.bss` (room for 32 doubles), then print their average to two decimal places and how many readings were strictly above it.\n\nWith the stdin box as given the program prints:\n\n```\naverage = 15.32\nabove average: 3\n```\n\nRead each temperature with `scanf` and `%lf`, which stores an 8-byte double at the address in `x1`. The sum needs `fadd`, and the division needs the count as a double too: `scvtf` converts an integer register to one. `printf` takes a double argument in `d0`, and it may change `d0` to `d7` itself, so count the readings above the average before you print anything.\n\nTwo counts need their own answer:\n\n- 0 readings: print `no readings` (there is nothing to divide by)\n- a count below 0 or above 32: print `between 0 and 32 readings, please` and return 1\n\n## what is checked\n\n- both lines for the readings in the stdin box, and for more sets of readings you cannot see\n- the exit status (0, or 1 for a count out of range)\n- the arithmetic is floating point (`fadd`, `fdiv`, and `scvtf` present)",
