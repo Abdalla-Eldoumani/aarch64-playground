@@ -106,7 +106,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Quiz: floating point (intro)](/practice/quiz-basic-floating-point), then [core](/practice/quiz-inter-floating-point) and [challenge](/practice/quiz-advance-floating-point): the registers, the instructions, and the calling rules.\n- [Fill in the blank: floating point (core)](/practice/blanks-floating-point) and [Predict: floating point (core)](/practice/predict-floating-point): the directives, the conversions, and what each instruction leaves in a register."
+      "markdown": "## Practice\n\n- [Average temperature](/practice/average-temperature): read doubles into an array and print their mean.\n- [Newton's square root](/practice/newtons-square-root): close in on a square root with `fdiv` and `fadd`, no `fsqrt`.\n- [Quiz: floating point (intro)](/practice/quiz-basic-floating-point), then [core](/practice/quiz-inter-floating-point) and [challenge](/practice/quiz-advance-floating-point): the registers, the instructions, and the calling rules.\n- [Fill in the blank: floating point (core)](/practice/blanks-floating-point) and [Predict: floating point (core)](/practice/predict-floating-point): the directives, the conversions, and what each instruction leaves in a register."
     }
   ]
 }
