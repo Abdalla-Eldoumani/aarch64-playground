@@ -16,22 +16,22 @@
 	.data
 	.align	3
 stock:
-	.quad	.LC0
+	.xword	.LC0
 	.word	120
 	.zero	4
 	.word	0
 	.word	1070596096
-	.quad	.LC1
+	.xword	.LC1
 	.word	300
 	.zero	4
 	.word	0
 	.word	1069547520
-	.quad	.LC2
+	.xword	.LC2
 	.word	7
 	.zero	4
 	.word	0
 	.word	1076428800
-	.quad	.LC3
+	.xword	.LC3
 	.word	2
 	.zero	4
 	.word	0
