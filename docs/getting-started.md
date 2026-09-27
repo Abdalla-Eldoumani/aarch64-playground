@@ -165,7 +165,8 @@ for the full index of where each lives.
 
 | Key | Action |
 | --- | --- |
-| `F6` | Assemble (also `Ctrl+Enter`) |
+| `F6` | Assemble |
+| `Ctrl+Enter` | Assemble and run, from anywhere including the editor |
 | `F10` | Step one instruction |
 | `Shift+F10` | Step back (up to 128 instructions) |
 | `F5` | Run / pause |
@@ -175,6 +176,9 @@ for the full index of where each lives.
 | `Ctrl+S` | Nothing to save: the buffer is written continuously |
 | `Ctrl+/` | Toggle line comment (on the selected lines) |
 | `Shift+Alt+A` | Toggle block comment |
+| `Tab` | In the editor, indent or take the highlighted suggestion |
+| `Esc`, then `Tab` | Leave the editor and move to the next control |
+| `Ctrl+M` | Make `Tab` move focus out of the editor instead of indenting (press again to undo) |
 | `Ctrl+Wheel` | Zoom the panel under the pointer |
 | `?` | Keyboard shortcuts help |
 
