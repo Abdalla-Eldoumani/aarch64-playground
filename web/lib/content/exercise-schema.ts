@@ -6,13 +6,15 @@
  * checker, the index, and the view all import these types and call this
  * validator, and only a validated exercise is ever rendered or evaluated.
  *
- * The validator is dependency-free and modeled on the defensive style in
+ * The validator needs no package (only the shared input caps) and is modeled on the defensive style in
  * lesson-schema.ts and upload-guard.ts: narrow `unknown` one field at a
  * time, return a discriminated result, never throw. A stdout `matches`
  * pattern is compiled here, at validation time, so an author's
  * un-compilable regular expression is rejected on load instead of throwing
  * later when the checker runs it against program output.
  */
+
+import { validateArgs, validateStdin } from "@/lib/playground/upload-guard";
 
 /** A single result assertion evaluated against emulator output. */
 export type ResultAssertion =
@@ -21,10 +23,30 @@ export type ResultAssertion =
   | { kind: "stdout"; equals: string }
   | { kind: "stdout"; matches: string }; // a declared RegExp pattern
 
-/** A single structural assertion evaluated against the source text. */
+/**
+ * A single structural assertion evaluated against the source text. `in`
+ * narrows it to one function's body (see exercise-checker's functionBody), so
+ * an instruction main already uses cannot satisfy a check about a helper.
+ */
 export type StructuralAssertion =
-  | { kind: "uses-instruction"; mnemonic: string }
-  | { kind: "forbids-literal"; value: number | string };
+  | { kind: "uses-instruction"; mnemonic: string; in?: string }
+  | { kind: "forbids-instruction"; mnemonics: string[]; in?: string }
+  | { kind: "forbids-literal"; value: number | string; in?: string };
+
+/**
+ * One run the student never sees: the program is started with these
+ * arguments, fed this input and then end of input (as `./program < file`
+ * does), and must print exactly `stdout` and exit with `exitCode`. `edge`
+ * marks a boundary input (zero, a negative, an empty line, the largest
+ * value), which every coding exercise must include at least once.
+ */
+export interface HiddenCase {
+  args?: string;
+  stdin?: string;
+  stdout: string;
+  exitCode: number;
+  edge?: boolean;
+}
 
 export type ExerciseVariant = "write" | "identify-bug" | "quiz" | "prediction" | "blanks";
 export type ExerciseDifficulty = "intro" | "core" | "challenge";
@@ -96,6 +118,8 @@ export interface WriteExercise extends BaseExercise {
   args?: string;
   /** Optional stdin passed to the run. */
   stdin?: string;
+  /** Optional runs on other inputs, graded after the visible run passes. */
+  hiddenCases?: HiddenCase[];
 }
 
 /**
@@ -160,6 +184,12 @@ const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 /** A general-purpose register x0..x30, or the stack pointer sp. */
 const REGISTER_PATTERN = /^(x(\d|1\d|2\d|30)|sp)$/;
+
+/** An assembler symbol name, the only thing a structural `in` can scope to. */
+const LABEL_PATTERN = /^[A-Za-z_.$][\w.$]*$/;
+
+/** Exit statuses a hosted program can report. */
+const MAX_EXIT_STATUS = 255;
 
 /**
  * Validate one result assertion by its `kind`, tagging every message with
@@ -262,6 +292,13 @@ function validateStructuralAssertion(
   if (typeof kind !== "string") {
     return { ok: false, error: `acceptance.structural[${index}]: missing assertion kind` };
   }
+  if (a.in !== undefined && (typeof a.in !== "string" || !LABEL_PATTERN.test(a.in))) {
+    return {
+      ok: false,
+      error: `acceptance.structural[${index}]: in must be a label name when present`,
+    };
+  }
+  const scope = a.in === undefined ? {} : { in: a.in };
   switch (kind) {
     case "uses-instruction": {
       if (typeof a.mnemonic !== "string" || a.mnemonic.trim().length === 0) {
@@ -270,7 +307,21 @@ function validateStructuralAssertion(
           error: `acceptance.structural[${index}] (uses-instruction): mnemonic must be a non-empty string`,
         };
       }
-      return { ok: true, assertion: { kind: "uses-instruction", mnemonic: a.mnemonic } };
+      return { ok: true, assertion: { kind: "uses-instruction", mnemonic: a.mnemonic, ...scope } };
+    }
+    case "forbids-instruction": {
+      const list = a.mnemonics;
+      if (
+        !Array.isArray(list) ||
+        list.length === 0 ||
+        !list.every((m): m is string => typeof m === "string" && m.trim().length > 0)
+      ) {
+        return {
+          ok: false,
+          error: `acceptance.structural[${index}] (forbids-instruction): mnemonics must be a non-empty list of strings`,
+        };
+      }
+      return { ok: true, assertion: { kind: "forbids-instruction", mnemonics: list, ...scope } };
     }
     case "forbids-literal": {
       if (typeof a.value !== "number" && typeof a.value !== "string") {
@@ -279,7 +330,7 @@ function validateStructuralAssertion(
           error: `acceptance.structural[${index}] (forbids-literal): value must be a number or string`,
         };
       }
-      return { ok: true, assertion: { kind: "forbids-literal", value: a.value } };
+      return { ok: true, assertion: { kind: "forbids-literal", value: a.value, ...scope } };
     }
     default:
       return {
@@ -287,6 +338,49 @@ function validateStructuralAssertion(
         error: `acceptance.structural[${index}]: unknown assertion kind "${kind}"`,
       };
   }
+}
+
+/**
+ * Validate one hidden case, tagging every message with the entry index (e.g.
+ * hiddenCases[2]). Its args and stdin face the same caps the args box and the
+ * console enforce, so an authored case can never feed the machine more than a
+ * student could.
+ */
+function validateHiddenCase(
+  raw: unknown,
+  index: number,
+): { ok: true; hiddenCase: HiddenCase } | { ok: false; error: string } {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, error: `hiddenCases[${index}]: expected a case object` };
+  }
+  const c = raw as Record<string, unknown>;
+  if (typeof c.stdout !== "string") {
+    return { ok: false, error: `hiddenCases[${index}]: stdout must be a string` };
+  }
+  const code = c.exitCode;
+  if (typeof code !== "number" || !Number.isInteger(code) || code < 0 || code > MAX_EXIT_STATUS) {
+    return { ok: false, error: `hiddenCases[${index}]: exitCode must be an integer from 0 to 255` };
+  }
+  const hiddenCase: HiddenCase = { stdout: c.stdout, exitCode: code };
+  if (c.args !== undefined) {
+    if (typeof c.args !== "string" || validateArgs(c.args) !== null) {
+      return { ok: false, error: `hiddenCases[${index}]: args must be a string within the args cap` };
+    }
+    hiddenCase.args = c.args;
+  }
+  if (c.stdin !== undefined) {
+    if (typeof c.stdin !== "string" || validateStdin(c.stdin) !== null) {
+      return { ok: false, error: `hiddenCases[${index}]: stdin must be a string within the stdin cap` };
+    }
+    hiddenCase.stdin = c.stdin;
+  }
+  if (c.edge !== undefined) {
+    if (typeof c.edge !== "boolean") {
+      return { ok: false, error: `hiddenCases[${index}]: edge must be true or false when present` };
+    }
+    hiddenCase.edge = c.edge;
+  }
+  return { ok: true, hiddenCase };
 }
 
 /** A non-empty trimmed string, the shape every question text field must have. */
@@ -549,6 +643,18 @@ export function validateExercise(data: unknown): ExerciseResult {
       if (o.stdin !== undefined) {
         if (typeof o.stdin !== "string") return { ok: false, error: "stdin: expected a string when present" };
         exercise.stdin = o.stdin;
+      }
+      if (o.hiddenCases !== undefined) {
+        if (!Array.isArray(o.hiddenCases)) {
+          return { ok: false, error: "hiddenCases: expected an array when present" };
+        }
+        const hiddenCases: HiddenCase[] = [];
+        for (let i = 0; i < o.hiddenCases.length; i++) {
+          const result = validateHiddenCase(o.hiddenCases[i], i);
+          if (!result.ok) return result;
+          hiddenCases.push(result.hiddenCase);
+        }
+        exercise.hiddenCases = hiddenCases;
       }
 
       return { ok: true, exercise };
