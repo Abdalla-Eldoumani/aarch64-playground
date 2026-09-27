@@ -352,3 +352,109 @@ main:
     // last column is the function answering what the table holds.
     assert_eq!(run(&mut cpu), "65 65 53 97 -1 65\n");
 }
+
+const SORT_AND_SEARCH: &str = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+nums:           .word 5, -3, 9, 0, -3, 7
+key:            .word 7
+missing:        .word 4
+sorted_fmt:     .string "%d %d %d %d %d %d\n"
+found_fmt:      .string "found %d at %ld, missing %ld\n"
+
+        .text
+        .balign 4
+// int cmp_int(const int *a, const int *b): -1, 0 or 1
+cmp_int:
+        ldr     w2, [x0]
+        ldr     w3, [x1]
+        cmp     w2, w3
+        cset    w0, gt
+        csinv   w0, w0, wzr, ge
+        ret
+
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        stp     x19, x20, [sp, -16]!
+
+        ldr     x19, =nums
+        mov     x0, x19
+        mov     x1, 6
+        mov     x2, 4
+        adr     x3, cmp_int
+        bl      qsort
+
+        ldr     w1, [x19]
+        ldr     w2, [x19, 4]
+        ldr     w3, [x19, 8]
+        ldr     w4, [x19, 12]
+        ldr     w5, [x19, 16]
+        ldr     w6, [x19, 20]
+        ldr     x0, =sorted_fmt
+        bl      printf
+
+        ldr     x0, =key
+        mov     x1, x19
+        mov     x2, 6
+        mov     x3, 4
+        adr     x4, cmp_int
+        bl      bsearch
+        mov     x20, x0
+
+        ldr     x0, =missing
+        mov     x1, x19
+        mov     x2, 6
+        mov     x3, 4
+        adr     x4, cmp_int
+        bl      bsearch
+        mov     x3, x0
+
+        ldr     w1, [x20]
+        sub     x2, x20, x19
+        asr     x2, x2, 2
+        ldr     x0, =found_fmt
+        bl      printf
+
+        ldp     x19, x20, [sp], 16
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+const SORTED_OUTPUT: &str = "-3 -3 0 5 7 9\nfound 7 at 4, missing 0\n";
+
+/// qsort and bsearch call back into the program's comparator, which runs
+/// as ordinary guest code and returns to the library.
+#[test]
+fn qsort_and_bsearch_call_the_programs_comparator() {
+    let mut cpu = load(SORT_AND_SEARCH);
+    assert_eq!(run(&mut cpu), SORTED_OUTPUT);
+}
+
+/// The sort in progress lives host-side and rides in every snapshot, so
+/// stepping back out of a comparator and running on sorts the same way.
+#[test]
+fn step_back_inside_a_comparator_resumes_the_same_sort() {
+    let mut cpu = load(SORT_AND_SEARCH);
+    let comparator = cpu.resolve_label("cmp_int").expect("cmp_int label");
+    cpu.set_breakpoint(comparator);
+    for _ in 0..3 {
+        let r = cpu.run_until_break(10_000).expect("run");
+        assert!(!r.halted, "the comparator runs before the program ends");
+        cpu.step().expect("step off the breakpoint");
+    }
+    let pc_at_third = cpu.regs.read_pc();
+    for _ in 0..12 {
+        cpu.step().expect("step through the comparator and the stub");
+    }
+    for _ in 0..12 {
+        cpu.step_back();
+    }
+    assert_eq!(cpu.regs.read_pc(), pc_at_third, "twelve back undoes twelve forward");
+    cpu.clear_all_breakpoints();
+    assert_eq!(run(&mut cpu), SORTED_OUTPUT);
+}
