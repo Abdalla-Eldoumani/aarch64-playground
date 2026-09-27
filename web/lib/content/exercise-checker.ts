@@ -13,7 +13,12 @@
  * comment neither satisfies a `uses-instruction` nor trips a `forbids-literal`.
  */
 
-import type { Acceptance, ResultAssertion, StructuralAssertion } from "@/lib/content/exercise-schema";
+import type {
+  Acceptance,
+  HiddenCase,
+  ResultAssertion,
+  StructuralAssertion,
+} from "@/lib/content/exercise-schema";
 
 /**
  * The structural subset of the embed's `EmbeddableState` the checker reads.
@@ -35,10 +40,17 @@ export interface ResultCheck {
   actual: string;
 }
 
-/** One evaluated structural assertion. */
+/**
+ * One evaluated structural assertion. `found` names the forbidden mnemonic a
+ * forbids-instruction check tripped on, and `scopeMissing` says the function
+ * an `in` names is not defined; both describe the student's own source, so
+ * reporting them leaks nothing.
+ */
 export interface StructuralCheck {
   assertion: StructuralAssertion;
   pass: boolean;
+  found?: string;
+  scopeMissing?: boolean;
 }
 
 /** The full result: per-assertion outcomes, an overall pass, and a short summary. */
@@ -51,6 +63,9 @@ export interface CheckResult {
 
 /** Longest observed value shown verbatim in feedback before it is clipped. */
 const MAX_DISPLAY = 200;
+
+/** The exit code a run reports when it never got that far. */
+const NO_EXIT = "none (the program did not finish)";
 
 /**
  * Strip AArch64 comments so structural checks see only real code. Block
@@ -136,7 +151,7 @@ function evaluateResult(assertion: ResultAssertion, snapshot: CheckerSnapshot): 
     }
     case "exit": {
       const expected = String(assertion.equals);
-      const actual = snapshot.exitCode === null ? "none" : String(snapshot.exitCode);
+      const actual = snapshot.exitCode === null ? NO_EXIT : String(snapshot.exitCode);
       return { assertion, pass: snapshot.exitCode === assertion.equals, expected, actual };
     }
     case "stdout": {
@@ -176,27 +191,132 @@ function evaluateResult(assertion: ResultAssertion, snapshot: CheckerSnapshot): 
   }
 }
 
+/** A line that opens with a label definition, capturing the name. */
+const LABEL_LINE = /^\s*([A-Za-z_.$][\w.$]*):/;
+
+/**
+ * Labels that start a function: main and _start, every `bl` target, and every
+ * `.global` name. Loop labels inside a function are none of these, so they do
+ * not end the function they sit in.
+ */
+function functionEntries(stripped: string): Set<string> {
+  const entries = new Set(["main", "_start"]);
+  for (const m of stripped.matchAll(/\bbl\s+([A-Za-z_.$][\w.$]*)/gi)) entries.add(m[1]);
+  for (const m of stripped.matchAll(/\.globa?l\s+([A-Za-z_.$][\w.$]*)/gi)) entries.add(m[1]);
+  return entries;
+}
+
+/**
+ * The text of one function: from its label to the next function's label (or
+ * the end). Null when the label is not defined, which fails the check rather
+ * than quietly grading the whole file.
+ */
+function functionBody(stripped: string, label: string): string | null {
+  const lines = stripped.split("\n");
+  const start = lines.findIndex((line) => LABEL_LINE.exec(line)?.[1] === label);
+  if (start < 0) return null;
+  const entries = functionEntries(stripped);
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i++) {
+    const name = LABEL_LINE.exec(lines[i])?.[1];
+    if (name !== undefined && name !== label && entries.has(name)) {
+      end = i;
+      break;
+    }
+  }
+  return lines.slice(start, end).join("\n");
+}
+
+/**
+ * Whether a mnemonic, or a mnemonic with its operand ("bl fact"), appears as
+ * a token. Runs of blanks collapse first, so column-aligned source matches a
+ * single-spaced pattern.
+ */
+function hasInstruction(text: string, mnemonic: string): boolean {
+  const token = mnemonic.trim().replace(/\s+/g, " ");
+  return standaloneTokenRegex(token).test(text.replace(/[ \t]+/g, " "));
+}
+
 /** Evaluate one structural assertion against the comment-stripped source. */
 function evaluateStructural(assertion: StructuralAssertion, strippedSource: string): StructuralCheck {
+  const scope = assertion.in === undefined ? strippedSource : functionBody(strippedSource, assertion.in);
+  if (scope === null) return { assertion, pass: false, scopeMissing: true };
   switch (assertion.kind) {
-    case "uses-instruction": {
-      const present = standaloneTokenRegex(assertion.mnemonic).test(strippedSource);
-      return { assertion, pass: present };
+    case "uses-instruction":
+      return { assertion, pass: hasInstruction(scope, assertion.mnemonic) };
+    case "forbids-instruction": {
+      const found = assertion.mnemonics.find((m) => hasInstruction(scope, m));
+      return found === undefined ? { assertion, pass: true } : { assertion, pass: false, found };
     }
     case "forbids-literal": {
       if (typeof assertion.value === "number") {
         // A standalone numeric token: forbidding 12 ignores 120 / 0x12.
-        const present = standaloneTokenRegex(String(assertion.value)).test(strippedSource);
+        const present = standaloneTokenRegex(String(assertion.value)).test(scope);
         return { assertion, pass: !present };
       }
       // A plain substring for a forbidden string literal.
-      return { assertion, pass: !strippedSource.includes(assertion.value) };
+      return { assertion, pass: !scope.includes(assertion.value) };
     }
     default: {
       const exhaustive: never = assertion;
       return exhaustive;
     }
   }
+}
+
+/**
+ * What one run of the student's program on a hidden case produced
+ * (lib/emulator/headless-run fills it in).
+ */
+export interface HiddenRunOutcome {
+  /** The assembler's message, or null when the program built. */
+  assembleError: string | null;
+  /** A runtime fault, or null. */
+  error: string | null;
+  /** False when the step budget ran out before the program ended. */
+  finished: boolean;
+  stdout: string;
+  exitCode: number | null;
+  /** Whether main returned with sp where it found it; null when the program
+   *  ended some other way (exit, an exit system call), where sp says nothing. */
+  stackBalanced: boolean | null;
+  /** False when the program wrote above main's entry sp, into its caller's frame. */
+  frameIntact: boolean;
+}
+
+/** Why a hidden case failed, first cause first. */
+export type HiddenMiss = "assemble" | "fault" | "unfinished" | "stdout" | "exit" | "stack" | "frame";
+
+/**
+ * One graded hidden case. `detail` carries only what the student's own run
+ * did (its output, its exit code, its error), never the expected value.
+ */
+export interface HiddenCaseCheck {
+  pass: boolean;
+  miss: HiddenMiss | null;
+  detail: string;
+}
+
+/**
+ * Grade one hidden case. A case passes when the program built, ran to its end
+ * without a fault, printed exactly the expected text, exited with the expected
+ * status, returned from main with a balanced stack, and left its caller's
+ * frame alone. The two stack rules are what real hardware punishes later (a
+ * misaligned sp at the next call, a caller whose saved registers were
+ * overwritten), so a program that only gets lucky here does not pass.
+ */
+export function checkHiddenCase(testCase: HiddenCase, outcome: HiddenRunOutcome): HiddenCaseCheck {
+  const missed = (miss: HiddenMiss, detail = ""): HiddenCaseCheck => ({ pass: false, miss, detail });
+  if (outcome.assembleError !== null) return missed("assemble", outcome.assembleError);
+  if (outcome.error !== null) return missed("fault", outcome.error);
+  if (!outcome.finished) return missed("unfinished");
+  if (outcome.stdout !== testCase.stdout) return missed("stdout", display(outcome.stdout));
+  if (outcome.exitCode !== testCase.exitCode) {
+    return missed("exit", outcome.exitCode === null ? NO_EXIT : String(outcome.exitCode));
+  }
+  if (outcome.stackBalanced === false) return missed("stack");
+  if (!outcome.frameIntact) return missed("frame");
+  return { pass: true, miss: null, detail: "" };
 }
 
 /**
