@@ -594,3 +594,186 @@ main:
     let err = assemble_hosted(&bad, &cpu.host).expect_err("018 is not octal").to_string();
     assert!(err.contains("018") && err.contains("octal"), "message was: {err}");
 }
+
+// Linux maps a whole .bss (and .data) as zero-filled pages, so a read of
+// a page no store ever touched answers 0 on the servers. The emulator maps
+// pages on first write, and a read past the first 4 KiB of a big .bss
+// used to fault as an unmapped access.
+#[test]
+fn an_untouched_bss_page_reads_as_zero() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld %ld\n"
+
+        .bss
+        .balign 8
+table:          .skip 20000
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =table
+        mov     x10, 5
+        str     x10, [x9]               // the first page, written
+        ldr     x1, [x9]
+        add     x9, x9, 16384
+        ldr     x2, [x9]                // four pages on, never written
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "5 0\n");
+}
+
+// gcc ends a function whose last act is a libc call with `b printf`, a
+// sibling call: printf returns straight to that function's caller. The
+// linker only redirected `bl`, so the branch had no target in reach.
+#[test]
+fn a_tail_call_into_libc_returns_to_the_callers_caller() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "tail %d\n"
+
+        .text
+        .balign 4
+say:
+        mov     w1, w0
+        ldr     x0, =fmt
+        b       printf
+
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 7
+        bl      say
+        mov     w0, 9
+        bl      say
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (cpu, out) = run_with_stdin(source, "");
+    assert_eq!(out, "tail 7\ntail 9\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+// gcc plants `brk #1000` where it proved the code can only fault (a use
+// of a pointer that is NULL on that path). On the servers the shell
+// reports `Trace/breakpoint trap` and the output before it survives.
+#[test]
+fn brk_stops_with_the_servers_trap_wording() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+msg:            .string "before"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =msg
+        bl      puts
+        brk     #1000
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(message.starts_with("Trace/breakpoint trap"), "message was: {message}");
+    assert!(message.contains("brk #1000"), "message names the instruction: {message}");
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "before\n");
+}
+
+// LONG_MIN has no positive twin, so gcc writes it as the negative decimal
+// literal `-9223372036854775808` in both `mov` and `.quad`. GAS takes it;
+// the lexer read the digits as a positive i64 first and overflowed.
+#[test]
+fn long_min_is_a_literal_gas_accepts() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld %ld %ld\n"
+        .balign 8
+low:            .quad -9223372036854775808
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x1, -9223372036854775808
+        ldr     x9, =low
+        ldr     x2, [x9]
+        mov     x3, -4607182418800017408
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "-9223372036854775808 -9223372036854775808 -4607182418800017408\n");
+}
+
+// gcc names an offset into a section with a dotted equate
+// (`.LANCHOR2 = . + 4352`); GAS takes a name starting with a dot on the
+// left of `=` the same as any other, and the parser read it as an
+// unknown directive.
+#[test]
+fn a_dotted_name_can_be_an_equate() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld\n"
+        .balign 8
+vals:           .quad 10, 20, 30
+.Lthird = vals + 16
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x9, =.Lthird
+        ldr     x1, [x9]
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "30\n");
+}
