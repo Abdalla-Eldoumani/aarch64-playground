@@ -2,6 +2,7 @@
   "title": "The stack and the frame pointer",
   "slug": "stack-and-frame-pointer",
   "order": 18,
+  "lastUpdated": "2026-09-27",
   "summary": "Open a stack frame that saves fp and lr, keep locals at fp offsets, read input straight into them, and keep sp 16-byte aligned.",
   "tags": [
     "stack",
