@@ -2,6 +2,7 @@
   "title": "Predict: ARMv8 assembly",
   "slug": "predict-armv8",
   "order": 86,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "challenge",
   "variant": "prediction",
