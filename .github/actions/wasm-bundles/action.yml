@@ -1,34 +1,73 @@
 name: wasm bundles
 description: >-
-  Puts the emulator's two wasm bundles in web/lib/wasm and web/lib/wasm-node
-  for a job that needs them: from the cache under the key check.yml's wasm
-  job looked up, or from that job's artifact when it had to build them.
+  Puts the emulator's two wasm bundles in web/lib/wasm and web/lib/wasm-node.
+  They are cached on a hash of what they are built from. On a miss, check.yml's
+  wasm job builds them and uploads them as this run's wasm-bundles artifact,
+  and this action waits for that upload, so the job calling it has its own
+  setup done by the time the bundles exist. The wasm job itself calls it with
+  lookup-only to learn whether it has anything to build.
 
 inputs:
+  lookup-only:
+    description: '"true" to only check the cache and restore nothing'
+    default: "false"
+
+outputs:
   key:
-    description: the wasm job's cache key output
-    required: true
-  built:
-    description: the wasm job's built output, "true" when it built the bundles in this run
-    required: true
+    description: the cache key the bundles are saved under
+    value: ${{ steps.key.outputs.key }}
+  hit:
+    description: '"true" when the cache holds the bundles'
+    value: ${{ steps.cache.outputs.cache-hit == 'true' }}
 
 runs:
   using: composite
   steps:
-    # The path list must match the wasm job's exactly: the cache version is
-    # a hash of it, so a different list misses the same key.
+    # The bundles are a pure function of the emulator sources and the two
+    # pinned tools (RUST_TOOLCHAIN and WASM_PACK_VERSION, set in check.yml).
+    - name: wasm bundle key
+      id: key
+      shell: bash
+      run: echo "key=$RUNNER_OS-wasm-out-$RUST_TOOLCHAIN-$WASM_PACK_VERSION-${{ hashFiles('emulator/src/**', 'emulator/Cargo.toml', 'emulator/Cargo.lock') }}" >> "$GITHUB_OUTPUT"
+
+    # The cache version is a hash of this path list, so the save in the wasm
+    # job must list the same paths.
     - name: restore wasm bundles
-      if: inputs.built != 'true'
+      id: cache
       uses: actions/cache/restore@v6
       with:
         path: |
           web/lib/wasm/
           web/lib/wasm-node/
-        key: ${{ inputs.key }}
-        fail-on-cache-miss: true
+        key: ${{ steps.key.outputs.key }}
+        lookup-only: ${{ inputs.lookup-only }}
+
+    # The job status is read before the artifact list: a job that had
+    # finished by then had also finished its upload, so an empty list after
+    # a finished job means the build failed, not that the upload is late. A
+    # failed API call counts as "not yet" and is asked again.
+    - name: wait for the wasm job's bundles
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.lookup-only != 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        run="repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+        for _ in $(seq 120); do
+          ended=$(gh api "$run/jobs?per_page=100" --jq '[.jobs[] | select(.name == "wasm-pack bundles" and .status == "completed")] | length' || echo 0)
+          found=$(gh api "$run/artifacts?name=wasm-bundles" --jq .total_count || echo 0)
+          if [ "$found" -gt 0 ]; then exit 0; fi
+          if [ "$ended" -gt 0 ]; then
+            echo "::error::the wasm job finished without uploading the bundles"
+            exit 1
+          fi
+          sleep 5
+        done
+        echo "::error::no wasm bundles after 10 minutes"
+        exit 1
 
     - name: download wasm bundles
-      if: inputs.built == 'true'
+      if: steps.cache.outputs.cache-hit != 'true' && inputs.lookup-only != 'true'
       uses: actions/download-artifact@v8
       with:
         name: wasm-bundles
