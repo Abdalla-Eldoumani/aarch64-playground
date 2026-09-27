@@ -1,0 +1,4 @@
+$ gcc duplicate-label.s -o program
+duplicate-label.s: Assembler messages:
+duplicate-label.s:22: Error: symbol `loop' is already defined
+[exit 1]
