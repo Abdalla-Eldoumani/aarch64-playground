@@ -262,6 +262,54 @@ pub const READ_BY_INSTRUCTION: u32 = 0;
 pub const READ_BY_CALL: u32 = 1;
 pub const READ_BY_MAIN_RETURN: u32 = 2;
 
+/// A read an instruction makes without using the value, in the clobber
+/// notes' register numbering (`xN` N, `dN` 32 + N).
+#[derive(Debug, PartialEq)]
+enum PassiveRead {
+    /// Registers a store writes to memory, as a bit set.
+    Stored(u64),
+    /// A register copied into another.
+    Copied { from: u8, to: u8 },
+    Used,
+}
+
+/// What `instr` reads only to store or copy, if anything.
+fn passive_read(instr: &decoder::Instruction) -> PassiveRead {
+    use decoder::{Instruction as I, LdStOffset, LdStOp, LdStPairOp, LogOp};
+    // x31 is xzr or sp here, never a tracked register.
+    let x = |r: u8| if r < 31 { 1u64 << r } else { 0 };
+    let d = |r: u8| 1u64 << (32 + r);
+    match instr {
+        // A register that also forms the address is used, not stored.
+        I::LdSt { op: LdStOp::Str, rt, rn, offset, .. } => {
+            let rm = match offset {
+                LdStOffset::Register { rm, .. } => *rm,
+                LdStOffset::Immediate(_) => 31,
+            };
+            PassiveRead::Stored(x(*rt) & !x(*rn) & !x(rm))
+        }
+        I::LdStPair { op: LdStPairOp::Stp, rt, rt2, rn, .. } => {
+            PassiveRead::Stored((x(*rt) | x(*rt2)) & !x(*rn))
+        }
+        I::FpLdSt { load: false, ft, .. } => PassiveRead::Stored(d(*ft)),
+        I::FpLdStPair { op: LdStPairOp::Stp, rt, rt2, .. } => PassiveRead::Stored(d(*rt) | d(*rt2)),
+        // `mov` is `orr` from the zero register with no shift.
+        I::LogReg { op: LogOp::Orr, rd, rn: 31, rm, amount: 0, set_flags: false, invert: false, .. }
+            if *rd < 31 && *rm < 31 =>
+        {
+            PassiveRead::Copied { from: *rm, to: *rd }
+        }
+        I::FpMoveReg { fd, fn_, .. } => PassiveRead::Copied { from: 32 + fn_, to: 32 + fd },
+        I::FpMoveGeneral { to_fp: true, rd, rn, .. } if *rn < 31 => {
+            PassiveRead::Copied { from: *rn, to: 32 + rd }
+        }
+        I::FpMoveGeneral { to_fp: false, rd, rn, .. } if *rd < 31 => {
+            PassiveRead::Copied { from: 32 + rn, to: *rd }
+        }
+        _ => PassiveRead::Used,
+    }
+}
+
 /// Result of a run (multiple steps).
 #[derive(Debug, Clone)]
 pub struct RunResult {
@@ -995,21 +1043,21 @@ impl Cpu {
 
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
-        // Reads made between steps (the register panel) are not the program's.
-        self.regs.take_clobbered_reads();
         let pc = self.regs.read_pc();
         let lr = self.regs.read_gpr(30, true);
-        let call_pc = self.regs.clobber_call_pc;
+        // Reads made between steps (the register panel, the lr above) are
+        // not the program's.
+        self.regs.take_clobbered_reads();
         let result = self.execute_step();
-        self.note_clobbered_reads(pc, lr, call_pc);
+        self.note_clobbered_reads(pc, lr);
         result
     }
 
-    /// One note per caller-saved register the step read while it still held
-    /// what a library call left. `pc`, `lr` and `call_pc` are from before the
-    /// step, so a library function reading a stale argument names its own
-    /// `bl` as the reader and the earlier call as the culprit.
-    fn note_clobbered_reads(&mut self, pc: u64, lr: u64, call_pc: u64) {
+    /// One note per register a library call overwrote that the step used
+    /// while it still held the call's leftovers. `pc` and `lr` are from
+    /// before the step, so a library function reading a stale argument
+    /// names its own `bl` as the reader.
+    fn note_clobbered_reads(&mut self, pc: u64, lr: u64) {
         let reads = self.regs.take_clobbered_reads();
         if reads.is_empty() {
             return;
@@ -1021,22 +1069,54 @@ impl Cpu {
         } else {
             (READ_BY_INSTRUCTION, pc)
         };
-        let read = u64::from(reads.x) | (u64::from(reads.d) << 32);
-        let fresh = read & !self.clobber_noted;
-        self.clobber_noted |= fresh;
-        for register in 0..64 {
-            if (fresh >> register) & 1 != 0 {
-                // Every address the loader hands out fits in 32 bits.
-                let row = [register, read_by, call_pc as u32, read_pc as u32];
-                self.clobber_notes.extend_from_slice(&row);
+        let mut read = u64::from(reads.x) | (u64::from(reads.d) << 32);
+        if read_by == READ_BY_INSTRUCTION {
+            read = self.drop_passive_reads(pc, read);
+        }
+        for code in 0..64u8 {
+            if (read >> code) & 1 == 0 {
+                continue;
             }
+            let origin = self.regs.clobber_origin(code);
+            let noted = 1u64 << origin.register;
+            if self.clobber_noted & noted != 0 {
+                continue;
+            }
+            self.clobber_noted |= noted;
+            // A copied value is noted at the copy: that is the read the
+            // program wrote, of the register the call overwrote.
+            let row = if origin.copied_at != 0 {
+                [origin.register.into(), READ_BY_INSTRUCTION, origin.call_pc, origin.copied_at]
+            } else {
+                // Every address the loader hands out fits in 32 bits.
+                [origin.register.into(), read_by, origin.call_pc, read_pc as u32]
+            };
+            self.clobber_notes.extend_from_slice(&row);
+        }
+    }
+
+    /// Take out of `read` what the instruction at `pc` read without using
+    /// the value: the data of a store (memory is not tracked, so a register
+    /// saved and restored around a call earns nothing), and the source of a
+    /// register copy, whose leftovers move on to the destination instead.
+    fn drop_passive_reads(&mut self, pc: u64, read: u64) -> u64 {
+        let Some(instr) = self.mem.read_u32(pc).ok().and_then(|w| decoder::decode(w).ok()) else {
+            return read;
+        };
+        match passive_read(&instr) {
+            PassiveRead::Stored(data) => read & !data,
+            PassiveRead::Copied { from, to } if (read >> from) & 1 != 0 => {
+                self.regs.carry_clobber(from, to, pc as u32);
+                read & !(1u64 << from)
+            }
+            _ => read,
         }
     }
 
     /// The notes recorded since the last take, four words each: the
-    /// register (`xN` is N, `dN` is 32 + N), what read it (`READ_BY_*`),
-    /// the `bl` of the call that overwrote it, and the pc that read it
-    /// (a reading library call's `bl`).
+    /// register (`xN` is N, the flags 31, `dN` is 32 + N), what read it
+    /// (`READ_BY_*`), the `bl` of the call that overwrote it, and the pc
+    /// that read it (a reading library call's `bl`).
     pub fn take_clobber_notes(&mut self) -> Vec<u32> {
         std::mem::take(&mut self.clobber_notes)
     }
@@ -1044,11 +1124,14 @@ impl Cpu {
     /// What a real library call leaves behind, applied as the call returns
     /// (see `RegisterFile::clobber_caller_saved`).
     fn clobber_after_call(&mut self, stub_pc: u64) {
+        let lr = self.regs.read_gpr(30, true);
+        // The call's reads of its arguments are noted against the calls
+        // that left them, before this one replaces every origin.
+        self.note_clobbered_reads(stub_pc, lr);
         let name = self.host.name_for_address(stub_pc).unwrap_or_default();
         let in_d0 = RETURNS_IN_D0.contains(&name);
         let in_x0 = !in_d0 && !RETURNS_NOTHING.contains(&name);
-        let call_pc = self.regs.read_gpr(30, true).wrapping_sub(4);
-        self.regs.clobber_caller_saved(in_x0, in_d0, call_pc);
+        self.regs.clobber_caller_saved(in_x0, in_d0, lr.wrapping_sub(4));
     }
 
     fn execute_step(&mut self) -> Result<StepResult, EmuError> {
@@ -1808,6 +1891,45 @@ impl Default for Cpu {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn stores_and_copies_are_told_from_uses() {
+        use PassiveRead::{Copied, Stored, Used};
+        let labels = HashMap::new();
+        let d = |r: u32| 1u64 << (32 + r);
+        let cases = [
+            ("str x9, [sp, 16]", Stored(1 << 9)),
+            ("str w3, [x1], 4", Stored(1 << 3)),
+            ("str x5, [x29, -8]", Stored(1 << 5)),
+            ("strb w2, [x0, x4]", Stored(1 << 2)),
+            ("str x1, [x1]", Stored(0)),
+            ("str x1, [x0, x1]", Stored(0)),
+            ("stp x2, x3, [sp, -16]!", Stored((1 << 2) | (1 << 3))),
+            ("stp x0, x9, [x0]", Stored(1 << 9)),
+            ("str d3, [sp, -16]!", Stored(d(3))),
+            ("str q7, [x0]", Stored(d(7))),
+            ("stp d8, d9, [sp, 16]", Stored(d(8) | d(9))),
+            ("mov x1, x9", Copied { from: 9, to: 1 }),
+            ("mov w21, w2", Copied { from: 2, to: 21 }),
+            ("fmov d4, d3", Copied { from: 35, to: 36 }),
+            ("fmov s1, s2", Copied { from: 34, to: 33 }),
+            ("fmov d0, x9", Copied { from: 9, to: 32 }),
+            ("fmov x1, d2", Copied { from: 34, to: 1 }),
+            ("ldr x9, [sp]", Used),
+            ("ldp x2, x3, [sp], 16", Used),
+            ("ldr q7, [x0]", Used),
+            ("add x1, x9, 0", Used),
+            ("mov x1, 5", Used),
+            ("orr x1, xzr, x9, lsl 1", Used),
+            ("mvn x1, x9", Used),
+            ("fmov d0, 1.0", Used),
+            ("mov x0, sp", Used),
+        ];
+        for (line, want) in cases {
+            let word = crate::assembler::encode_line_absolute(line, 0, &labels, 1).expect(line);
+            assert_eq!(passive_read(&decoder::decode(word).expect(line)), want, "{line}");
+        }
+    }
 
     // hand-encode a few instructions for integration tests
 
