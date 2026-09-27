@@ -76,6 +76,19 @@ describe("Select", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
+  it("closes from its backdrop on the click, so the tap cannot land on what it covered", () => {
+    const onSelect = renderSelect();
+    fireEvent.click(trigger());
+    const backdrop = document.querySelector('[role="listbox"]')!.previousElementSibling as HTMLElement;
+    fireEvent.pointerDown(backdrop, { pointerType: "touch" });
+    // Still open at pointer-down: the click that follows must hit the
+    // backdrop, not the page underneath it.
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
   it("keeps the open list outside any clipping ancestor of the trigger", () => {
     render(
       <div data-testid="band" style={{ overflow: "hidden" }}>
