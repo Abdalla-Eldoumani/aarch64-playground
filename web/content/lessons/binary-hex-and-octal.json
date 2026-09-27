@@ -2,6 +2,7 @@
   "title": "Binary, hex, and octal: one number, many spellings",
   "slug": "binary-hex-and-octal",
   "order": 13,
+  "lastUpdated": "2026-09-27",
   "summary": "Read one bit pattern as unsigned, as two's complement, in hex and in octal, and know the range each size can hold.",
   "tags": [
     "binary arithmetic",
