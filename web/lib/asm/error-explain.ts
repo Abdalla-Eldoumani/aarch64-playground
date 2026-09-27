@@ -181,7 +181,10 @@ export function explainError(message: string): ErrorExplanation | null {
       styleSection: "m4 preprocessing",
     };
   }
+  // ld's own line leads when a branch, `ldr =`, or data slot names the
+  // label; the evaluator's wording covers immediates and equates.
   if (
+    detail.includes("undefined reference to") ||
     detail.includes("is not defined anywhere in this program") ||
     detail.includes("unknown symbol") ||
     detail.includes("undefined symbol")
