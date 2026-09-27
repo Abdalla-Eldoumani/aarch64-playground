@@ -14,11 +14,12 @@ const STARS_ENDPOINT = `https://api.github.com/repos/${REPO_URL.replace(
 
 // The build-time fetch cache lives in .next/cache, which Vercel restores from
 // one build to the next, and a force-cached response is kept for a year. On
-// its own that would freeze the count at the first build. The deploy's commit
-// is put in the query string, which GitHub ignores, so every deploy has its
-// own cache key and reads the count afresh; a local build has no commit and
-// keys on "local".
-const STARS_URL = `${STARS_ENDPOINT}?deploy=${process.env.VERCEL_GIT_COMMIT_SHA ?? "local"}`;
+// its own that would freeze the count at the first build. The deployment's id
+// is put in the query string, which GitHub ignores, so every deployment has
+// its own cache key and reads the count afresh. The id, not the commit: a
+// deploy hook rebuilds the same commit, and a commit key would hand that
+// rebuild the cached count. A local build has no id and keys on "local".
+const STARS_URL = `${STARS_ENDPOINT}?deploy=${process.env.VERCEL_DEPLOYMENT_ID ?? "local"}`;
 
 /**
  * Server-only: the current stargazer count, or null when the count cannot be
