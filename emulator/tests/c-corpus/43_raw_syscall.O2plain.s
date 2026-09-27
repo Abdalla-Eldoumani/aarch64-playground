@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sys3
 sys3:
 	mov	x8, x0
@@ -13,7 +13,7 @@ sys3:
 	ret
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	adrp	x0, .LC0
