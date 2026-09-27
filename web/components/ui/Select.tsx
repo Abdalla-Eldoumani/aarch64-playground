@@ -89,6 +89,7 @@ export function Select({
   const baseId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const typeahead = useRef<{ buffer: string; at: number }>({ buffer: "", at: 0 });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -129,6 +130,9 @@ export function Select({
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
+      // The backdrop closes on its own click instead: gone at pointer-down,
+      // it would hand the tap's click to whatever it was covering.
+      if (backdropRef.current?.contains(target)) return;
       if (!rootRef.current?.contains(target) && !listRef.current?.contains(target)) close();
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -284,15 +288,17 @@ export function Select({
               {/* On a touch screen the sheet sits over a backdrop, so a tap
                   anywhere else closes it the way an outside click does. */}
               <div
+                ref={backdropRef}
                 aria-hidden="true"
-                className="fixed inset-0 z-50 hidden bg-black/50 [@media(pointer:coarse)]:block"
+                onClick={close}
+                className="fixed inset-0 z-[75] hidden bg-black/50 [@media(pointer:coarse)]:block"
               />
               <div
                 ref={listRef}
                 id={`${baseId}-listbox`}
                 role="listbox"
                 aria-label={ariaLabel}
-                className={`anim-modal-rise fixed z-50 overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-1 [box-shadow:var(--shadow-overlay)] ${SHEET}`}
+                className={`anim-modal-rise fixed z-[75] overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-1 [box-shadow:var(--shadow-overlay)] ${SHEET}`}
                 style={
                   placement
                     ? {
