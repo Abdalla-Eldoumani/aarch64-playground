@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	qmul
 qmul:
 	fmul	d28, d1, d5
@@ -23,7 +23,7 @@ qmul:
 	fmadd	d3, d3, d4, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	qconj
 qconj:
 	sub	sp, sp, #96
@@ -33,7 +33,7 @@ qconj:
 	add	sp, sp, 96
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sq_add
 sq_add:
 	fmul	d30, d1, d1
@@ -43,7 +43,7 @@ sq_add:
 	fadd	d0, d30, d2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	escape
 escape:
 	mov	w1, w0
@@ -54,7 +54,7 @@ escape:
 	fmov	d28, 4.0e+0
 	fmov	d30, d31
 	fmov	d29, d31
-	.align 5
+	.p2align 5,,15
 .L10:
 	fmov	d2, d31
 	fnmsub	d31, d31, d31, d29
@@ -73,7 +73,7 @@ escape:
 .L7:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	advance
 advance:
 	fmov	x1, d3
@@ -90,7 +90,7 @@ advance:
 	add	sp, sp, 112
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dot3
 dot3:
 	fmul	d1, d1, d4
@@ -100,7 +100,7 @@ dot3:
 	fmadd	d0, d2, d5, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dmix
 dmix:
 	fmov	d31, x0
@@ -115,7 +115,7 @@ dmix:
 	fmov	w1, s31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	d5scale
 d5scale:
 	ldr	d31, [x0, 32]
@@ -135,7 +135,7 @@ d5scale:
 	str	x0, [x8, 32]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	dlmake
 dlmake:
 	scvtf	d31, x0
@@ -145,7 +145,7 @@ dlmake:
 	fmov	x0, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	overflow
 overflow:
 	sub	sp, sp, #32
@@ -172,7 +172,7 @@ overflow:
 	fmadd	d0, d31, d30, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	third
 third:
 	fneg	d1, d0
@@ -187,7 +187,7 @@ third:
 	.string	"%s %.4f %.4f %.4f %.4f\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	pq
 pq:
 	sub	sp, sp, #32
@@ -232,7 +232,7 @@ pq:
 	.string	"sizes %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -272]!
@@ -257,7 +257,7 @@ main:
 	stp	d14, d15, [sp, 96]
 	str	d11, [sp, 120]
 	stp	q31, q31, [sp, 144]
-	.align 5
+	.p2align 5,,15
 .L26:
 	fmov	d0, d8
 	fmov	d1, d9
@@ -308,7 +308,7 @@ main:
 	fmov	d24, -2.0e+0
 	fmov	d25, 4.0e+0
 	fmsub	d26, d30, d31, d26
-	.align 5
+	.p2align 5,,15
 .L30:
 	scvtf	d27, w2
 	movi	d29, #0
@@ -316,7 +316,7 @@ main:
 	fmadd	d27, d27, d23, d24
 	fmov	d28, d29
 	fmov	d30, d29
-	.align 5
+	.p2align 5,,15
 .L29:
 	fmov	d31, d28
 	fnmsub	d30, d28, d28, d30
@@ -459,7 +459,7 @@ main:
 	ldp	d14, d15, [sp, 96]
 	ldp	x29, x30, [sp], 272
 	ret
-	.align 2
+	.p2align 2,,3
 .L28:
 	umull	x1, w0, w20
 	lsr	x1, x1, 35
