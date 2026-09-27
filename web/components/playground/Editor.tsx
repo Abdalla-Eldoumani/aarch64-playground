@@ -163,8 +163,9 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
   // from app/globals.css: the editor sits on --bg-base with --bg-raised
   // as the resting line highlight, line numbers read --text-tertiary,
   // and the caret is the brand block cursor in --amber (the machine's
-  // color: the block marks where the machine will write next). Keep the
-  // two files in step when a token moves.
+  // color: the block marks where the machine will write next). Hover-card
+  // links take --cyan like every other link. Keep the two files in step
+  // when a token moves.
   monaco.editor.defineTheme("arm64-dark", {
     base: "vs-dark",
     inherit: true,
@@ -183,6 +184,8 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       "editorLineNumber.foreground": "#79808B",
       "editorCursor.foreground": "#FFB224",
       "editorCursor.background": "#0B0C10",
+      "textLink.foreground": "#3EC5E8",
+      "textLink.activeForeground": "#3EC5E8",
     },
   });
 
@@ -204,6 +207,8 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       "editorLineNumber.foreground": "#626A73",
       "editorCursor.foreground": "#A86A0F",
       "editorCursor.background": "#FFFFFF",
+      "textLink.foreground": "#0E7490",
+      "textLink.activeForeground": "#0E7490",
     },
   });
 
@@ -225,6 +230,8 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       "editorLineNumber.foreground": "#C7C7C7",
       "editorCursor.foreground": "#FFC247",
       "editorCursor.background": "#000000",
+      "textLink.foreground": "#5AD7F0",
+      "textLink.activeForeground": "#5AD7F0",
     },
   });
 
