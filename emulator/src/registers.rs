@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::errors::EmuError;
 
 /// ARM64 condition codes used by B.cond and conditional select.
@@ -208,6 +210,29 @@ impl NzcvFlags {
     }
 }
 
+/// What a library call leaves in every register AAPCS64 lets it change,
+/// so a program that trusted one to survive the call reads an obviously
+/// wrong value, as it would on the servers.
+pub const CLOBBER_PATTERN: u64 = 0xDEAD_BEEF_DEAD_BEEF;
+
+/// The flags a library call leaves: the pattern's top nibble. N and Z are
+/// never both set by an arithmetic result, so the panel shows it as junk.
+pub const CLOBBER_NZCV: u8 = 0b1101;
+
+/// A set of registers by bit: x0-x30 in `x`, and d0-d31 (the low 64 bits
+/// of v0-v31) in `d`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RegMask {
+    pub x: u32,
+    pub d: u32,
+}
+
+impl RegMask {
+    pub fn is_empty(&self) -> bool {
+        self.x == 0 && self.d == 0
+    }
+}
+
 /// The 64-bit ARM register file.
 ///
 /// Contains X0-X30, SP, PC, and the NZCV condition flags.
@@ -223,6 +248,14 @@ pub struct RegisterFile {
     /// the low 8/16/32/64/128 bits of the same entry, so the scalar helpers
     /// below extract from and deposit into `u128` storage.
     fpr: [u128; 32],
+    /// Registers still holding what the last library call left, until
+    /// the program writes them again.
+    clobbered: RegMask,
+    /// Which clobbered registers were read since the last take. A Cell
+    /// because every read path borrows the file shared.
+    clobbered_reads: Cell<RegMask>,
+    /// The `bl` of the call behind `clobbered`.
+    pub clobber_call_pc: u64,
 }
 
 impl RegisterFile {
@@ -234,22 +267,77 @@ impl RegisterFile {
             pc: 0,
             nzcv: NzcvFlags::default(),
             fpr: [0u128; 32],
+            clobbered: RegMask::default(),
+            clobbered_reads: Cell::new(RegMask::default()),
+            clobber_call_pc: 0,
+        }
+    }
+
+    /// Overwrite everything AAPCS64 lets a called function change: x0-x18,
+    /// v0-v7 and v16-v31, bits 127:64 of v8-v15, and NZCV. `keep_x0` and
+    /// `keep_v0` spare the register the return value came back in.
+    pub fn clobber_caller_saved(&mut self, keep_x0: bool, keep_v0: bool, call_pc: u64) {
+        let first = usize::from(keep_x0);
+        for reg in &mut self.gpr[first..=18] {
+            *reg = CLOBBER_PATTERN;
+        }
+        let pattern = u128::from(CLOBBER_PATTERN);
+        let mut d = 0u32;
+        for (i, reg) in self.fpr.iter_mut().enumerate() {
+            if i == 0 && keep_v0 {
+                continue;
+            }
+            if (8..16).contains(&i) {
+                *reg = (*reg & u128::from(u64::MAX)) | (pattern << 64);
+            } else {
+                *reg = (pattern << 64) | pattern;
+                d |= 1 << i;
+            }
+        }
+        self.nzcv = NzcvFlags::unpack(CLOBBER_NZCV);
+        self.clobbered.x |= 0x7_FFFF & !u32::from(keep_x0); // x0-x18
+        self.clobbered.d |= d;
+        self.clobber_call_pc = call_pc;
+    }
+
+    /// The clobbered registers read since the last take, emptied.
+    pub fn take_clobbered_reads(&self) -> RegMask {
+        self.clobbered_reads.take()
+    }
+
+    /// Note which of these registers a read found still holding a call's
+    /// leftovers.
+    fn mark_read(&self, x: u32, d: u32) {
+        let (x, d) = (x & self.clobbered.x, d & self.clobbered.d);
+        if x | d != 0 {
+            let seen = self.clobbered_reads.get();
+            self.clobbered_reads.set(RegMask { x: seen.x | x, d: seen.d | d });
         }
     }
 
     /// Read a general-purpose register. Index 31 returns zero (XZR/WZR).
     /// When `sf` is false the upper 32 bits are masked off.
+    // The register accessors stay out of line: inlined into every executor
+    // call site, the clobber bookkeeping pushed the wasm over its budget.
+    #[inline(never)]
     pub fn read_gpr(&self, index: u8, sf: bool) -> u64 {
-        let val = if index >= 31 { 0 } else { self.gpr[index as usize] };
+        let val = if index >= 31 {
+            0
+        } else {
+            self.mark_read(1 << index, 0);
+            self.gpr[index as usize]
+        };
         if sf { val } else { val & 0xFFFF_FFFF }
     }
 
     /// Write a general-purpose register. Index 31 is a no-op (write to XZR).
     /// When `sf` is false the value is zero-extended from 32 bits.
+    #[inline(never)]
     pub fn write_gpr(&mut self, index: u8, sf: bool, value: u64) {
         if index >= 31 {
             return;
         }
+        self.clobbered.x &= !(1 << index);
         self.gpr[index as usize] = if sf { value } else { value & 0xFFFF_FFFF };
     }
 
@@ -265,17 +353,18 @@ impl RegisterFile {
 
     /// Read a register where index 31 means SP instead of XZR.
     pub fn read_gpr_or_sp(&self, index: u8, sf: bool) -> u64 {
-        let val = if index >= 31 { self.sp } else { self.gpr[index as usize] };
-        if sf { val } else { val & 0xFFFF_FFFF }
+        if index >= 31 {
+            return if sf { self.sp } else { self.sp & 0xFFFF_FFFF };
+        }
+        self.read_gpr(index, sf)
     }
 
     /// Write a register where index 31 means SP instead of XZR.
     pub fn write_gpr_or_sp(&mut self, index: u8, sf: bool, value: u64) {
-        let value = if sf { value } else { value & 0xFFFF_FFFF };
         if index >= 31 {
-            self.sp = value;
+            self.sp = if sf { value } else { value & 0xFFFF_FFFF };
         } else {
-            self.gpr[index as usize] = value;
+            self.write_gpr(index, sf, value);
         }
     }
 
@@ -298,23 +387,31 @@ impl RegisterFile {
     }
 
     /// Read the low 64 bits of an FP register: the D view.
+    #[inline(never)]
     pub fn read_fpr_bits(&self, index: u8) -> u64 {
         if index >= 32 {
             return 0;
         }
+        self.mark_read(0, 1 << index);
         self.fpr[index as usize] as u64
     }
 
     /// Write the D view of an FP register. Like the hardware, a D write
     /// zeroes bits 127:64.
+    #[inline(never)]
     pub fn write_fpr_bits(&mut self, index: u8, value: u64) {
         if index >= 32 {
             return;
         }
+        self.unclobber_fpr(index);
         self.fpr[index as usize] = u128::from(value);
     }
 
-    /// Read the whole 128-bit register: the Q (and V) view.
+    /// Read the whole 128-bit register: the Q (and V) view. Vector reads
+    /// are not tracked: the lane engine reads whole registers, destinations
+    /// included, for lanes an instruction never uses, so a note from here
+    /// would be wrong as often as right.
+    #[inline(never)]
     pub fn read_fpr_q(&self, index: u8) -> u128 {
         if index >= 32 {
             return 0;
@@ -323,20 +420,29 @@ impl RegisterFile {
     }
 
     /// Write the whole 128-bit register: the Q (and V) view.
+    #[inline(never)]
     pub fn write_fpr_q(&mut self, index: u8, value: u128) {
         if index >= 32 {
             return;
         }
+        self.unclobber_fpr(index);
         self.fpr[index as usize] = value;
+    }
+
+    /// A write of the low 64 bits replaces whatever a call left there.
+    fn unclobber_fpr(&mut self, index: u8) {
+        self.clobbered.d &= !(1 << index);
     }
 
     /// Write a B/H/S/D scalar view (1, 2, 4 or 8 bytes). Everything above
     /// the written width is zeroed, which is what a SIMD&FP scalar
     /// destination does on AArch64.
+    #[inline(never)]
     pub fn write_fpr_scalar(&mut self, index: u8, bytes: u8, value: u64) {
         if index >= 32 {
             return;
         }
+        self.unclobber_fpr(index);
         self.fpr[index as usize] = match bytes {
             1 => u128::from(value as u8),
             2 => u128::from(value as u16),
@@ -347,6 +453,7 @@ impl RegisterFile {
 
     /// Read one lane of `esize_bytes` (1, 2, 4 or 8) as a zero-extended
     /// u64. An out-of-range lane or element size reads zero.
+    #[inline(never)]
     pub fn read_fpr_lane(&self, index: u8, esize_bytes: u8, lane: u8) -> u64 {
         let (bits, shift) = match Self::lane_position(index, esize_bytes, lane) {
             Some(pos) => pos,
@@ -358,11 +465,17 @@ impl RegisterFile {
 
     /// Write one lane of `esize_bytes` (1, 2, 4 or 8). Unlike a scalar
     /// write this leaves every other bit of the register alone.
+    #[inline(never)]
     pub fn write_fpr_lane(&mut self, index: u8, esize_bytes: u8, lane: u8, value: u64) {
         let (bits, shift) = match Self::lane_position(index, esize_bytes, lane) {
             Some(pos) => pos,
             None => return,
         };
+        // A lane in the low half counts as writing all of it: a narrow lane
+        // leaves junk beside it, but a missed note beats a false one.
+        if shift < 64 {
+            self.unclobber_fpr(index);
+        }
         let mask = Self::lane_mask(bits);
         let slot = &mut self.fpr[index as usize];
         *slot = (*slot & !(mask << shift)) | ((u128::from(value) & mask) << shift);
