@@ -185,7 +185,7 @@ main:
 	.section .rodata
 	.align	3
 	.LANCHOR0:
-CSWTCH__1:
+CSWTCH.1:
 	.quad	.LC6
 	.quad	.LC7
 	.quad	.LC8
