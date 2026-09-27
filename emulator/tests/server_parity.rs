@@ -553,3 +553,44 @@ main:
     let (_, out) = run_with_stdin(source, "");
     assert_eq!(out, "7 7\n");
 }
+
+// GAS reads a leading zero as octal inside an instruction, exactly as it
+// does in a data directive: `mov w1, 052` loads 42 and `017` is 15. The
+// operand reached the encoder as plain text and was read as decimal, so
+// one literal meant two numbers depending on where it was written. A lone
+// `0` stays zero, and `018` is refused rather than read as eighteen.
+#[test]
+fn leading_zero_instruction_immediates_are_octal() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%d %d %d %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt
+        mov     w1, 052
+        mov     w2, 010
+        add     w3, w2, 017
+        mov     w4, 0
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "42 8 23 0\n");
+
+    let bad = source.replace("mov     w1, 052", "mov     w1, 018");
+    let cpu = Cpu::new();
+    let err = assemble_hosted(&bad, &cpu.host).expect_err("018 is not octal").to_string();
+    assert!(err.contains("018") && err.contains("octal"), "message was: {err}");
+}
