@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	counter
 counter:
 	sub	sp, sp, #16
@@ -16,7 +16,7 @@ counter:
 	add	w0, w0, 1
 	str	w0, [x1, :lo12:.LANCHOR0]
 	mov	x1, sp
-	.align 5
+	.p2align 5,,15
 .L2:
 	ldrb	w3, [x1], 1
 	add	x2, x2, x3
@@ -39,7 +39,7 @@ counter:
 	madd	w0, w0, w2, w1
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	make100
 make100:
 	adrp	x4, .LANCHOR1
@@ -57,7 +57,7 @@ make100:
 	movi	v25.4s, 0x1a
 	movi	v24.16b, 0x61
 	movi	v23.4s, 0x10
-	.align 5
+	.p2align 5,,15
 .L7:
 	add	v1.4s, v30.4s, v29.4s
 	add	v0.4s, v30.4s, v28.4s
@@ -113,7 +113,7 @@ make100:
 	add	w1, w0, 672
 	add	w4, w0, 700
 	mov	w3, 26
-	.align 5
+	.p2align 5,,15
 .L8:
 	sdiv	w0, w1, w3
 	add	x2, x2, 1
@@ -134,7 +134,7 @@ make100:
 	add	sp, sp, 112
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	sum100
 sum100:
 	mov	x3, 16963
@@ -142,7 +142,7 @@ sum100:
 	add	x4, x0, 100
 	movk	x3, 0xf, lsl 16
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L13:
 	sbfiz	x1, x0, 1, 32
 	add	x0, x1, w0, sxtw
@@ -154,7 +154,7 @@ sum100:
 	bne	.L13
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	manhattan
 manhattan:
 	subs	w2, w0, w1
@@ -166,7 +166,7 @@ manhattan:
 	add	w0, w2, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mkfam
 mkfam:
 	stp	x29, x30, [sp, -32]!
@@ -183,7 +183,7 @@ mkfam:
 	add	x4, x0, 8
 	mov	x1, 0
 	mov	x3, -3
-	.align 5
+	.p2align 5,,15
 .L18:
 	smaddl	x2, w1, w1, x3
 	str	x2, [x4, x1, lsl 3]
@@ -233,7 +233,7 @@ mkfam:
 	.string	"fam %d %ld %ld %ld size %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #640
@@ -341,7 +341,7 @@ main:
 	mov	x3, x23
 	mov	w1, 0
 	movk	w4, 0xcccc, lsl 16
-	.align 5
+	.p2align 5,,15
 .L26:
 	umull	x0, w1, w4
 	lsr	x0, x0, 35
@@ -389,7 +389,7 @@ main:
 	add	x1, sp, 144
 	add	x2, sp, 157
 	mov	w0, 1
-	.align 5
+	.p2align 5,,15
 .L29:
 	strb	w0, [x1], 1
 	add	w0, w19, w0
@@ -415,7 +415,7 @@ main:
 	mov	x0, x23
 	add	w1, w1, 1
 	str	w1, [x22]
-	.align 5
+	.p2align 5,,15
 .L30:
 	ldrb	w3, [x0], 1
 	add	x2, x2, x3
@@ -448,7 +448,7 @@ main:
 	movi	v24.4s, 0x1a
 	movi	v22.16b, 0x61
 	movi	v23.4s, 0x10
-	.align 5
+	.p2align 5,,15
 .L32:
 	add	v30.4s, v26.4s, v19.4s
 	add	v28.4s, v26.4s, v20.4s
@@ -504,7 +504,7 @@ main:
 	add	w1, w19, 672
 	add	w4, w19, 700
 	mov	w3, 26
-	.align 5
+	.p2align 5,,15
 .L33:
 	sdiv	w0, w1, w3
 	add	x2, x2, 1
@@ -535,7 +535,7 @@ main:
 	stp	q28, q27, [x5, 16]
 	stp	q30, q29, [x5, 48]
 	str	q31, [x5, 80]
-	.align 5
+	.p2align 5,,15
 .L34:
 	sbfiz	x0, x1, 1, 32
 	add	x1, x0, w1, sxtw
@@ -549,7 +549,7 @@ main:
 	add	x0, x22, 256
 	mov	x2, 0
 	movk	x5, 0xf, lsl 16
-	.align 5
+	.p2align 5,,15
 .L35:
 	sbfiz	x3, x2, 1, 32
 	add	x2, x3, w2, sxtw
@@ -563,7 +563,7 @@ main:
 	add	x6, x22, 356
 	mov	x3, 0
 	movk	x5, 0xf, lsl 16
-	.align 5
+	.p2align 5,,15
 .L36:
 	sbfiz	x4, x3, 1, 32
 	add	x3, x4, w3, sxtw
@@ -633,7 +633,7 @@ main:
 	adrp	x0, .LC7
 	add	x0, x0, :lo12:.LC7
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L38:
 	ldrb	w5, [x23, 6]
 	mov	w1, w22
@@ -713,7 +713,7 @@ main:
 	sxtw	x1, w1
 	add	x0, x20, 8
 	mneg	x2, x1, x24
-	.align 5
+	.p2align 5,,15
 .L44:
 	str	x2, [x0, x1, lsl 3]
 	add	x1, x1, 1
@@ -725,7 +725,7 @@ main:
 	mov	w1, 12
 	mov	x4, 0
 	str	w1, [x2], 104
-	.align 5
+	.p2align 5,,15
 .L45:
 	lsl	x1, x4, 3
 	sub	x4, x1, x4
@@ -799,11 +799,11 @@ table:
 	.zero	1
 	.zero	8
 .LC13:
-	.quad	-3
-	.quad	-2
+	.xword	-3
+	.xword	-2
 .LC14:
-	.quad	1
-	.quad	6
+	.xword	1
+	.xword	6
 .LC1:
 	.word	1321528399
 	.word	1321528399
@@ -816,22 +816,22 @@ knob:
 	.word	4
 	.zero	4
 stock:
-	.quad	.LC16
+	.xword	.LC16
 	.word	120
 	.zero	4
 	.word	0
 	.word	1070596096
-	.quad	.LC17
+	.xword	.LC17
 	.word	300
 	.zero	4
 	.word	0
 	.word	1069547520
-	.quad	.LC18
+	.xword	.LC18
 	.word	7
 	.zero	4
 	.word	0
 	.word	1076428800
-	.quad	.LC19
+	.xword	.LC19
 	.word	2
 	.zero	4
 	.word	0
