@@ -1,7 +1,7 @@
 "use client";
 
 import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
 import { docKeyAt, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
 import { hoverCLine } from "@/lib/asm/c-equivalents";
@@ -11,8 +11,9 @@ import {
 } from "@/lib/asm/highlight-arm64";
 import { errorHoverMarkdown } from "@/lib/asm/error-explain";
 import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
-import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
+import { LINE_COMMENT } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
+import { TouchEditor } from "@/components/playground/TouchEditor";
 import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playground/upload-guard";
 
 // The editor runtime is vendored from the monaco-editor dependency instead
@@ -374,9 +375,14 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function isNarrow(): boolean {
+// Touch screens get the textarea editor at every size: Monaco's caret jumps
+// lines when a soft keyboard shrinks the view, and its iPad keyboard button
+// sits on the code. Pointer type never changes on rotation, so the editor, its
+// caret, and its undo history survive a turn of the phone. A mouse gets it
+// only in a window too narrow for Monaco's gutter and code together.
+function wantsTouchEditor(): boolean {
   if (typeof window === "undefined") return false;
-  return window.innerWidth < 480;
+  return isCoarsePointer() || window.innerWidth < 480;
 }
 
 export function Editor({
@@ -419,7 +425,7 @@ export function Editor({
       })),
     );
   }, [lintWarnings]);
-  const [fallback, setFallback] = useState<boolean>(() => isNarrow());
+  const [fallback, setFallback] = useState<boolean>(() => wantsTouchEditor());
   // Keep the latest format handler accessible from the Monaco command
   // (registered once at mount).
   const onFormatRef = useRef(onFormat);
@@ -476,11 +482,11 @@ export function Editor({
     [onChange, toast],
   );
 
-  // Re-evaluate the narrow-viewport fallback on resize so a student
-  // who rotates their phone doesn't get stuck in the wrong mode.
+  // Re-evaluate on resize so a desktop window dragged narrow or wide gets
+  // the editor that fits it.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onResize = () => setFallback(isNarrow());
+    const onResize = () => setFallback(wantsTouchEditor());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -683,24 +689,20 @@ export function Editor({
   );
 
   if (fallback) {
-    // Under 480px, Monaco's keyboard behavior on iOS is unreliable
-    // (the soft keyboard jumps the caret to the wrong line when the
-    // visual viewport shrinks). Fall back to a plain textarea with a
-    // synced gutter that surfaces line numbers, breakpoint dots, the
-    // current PC line, and the first assembler error so a student can
-    // still navigate errors and toggle breakpoints on a phone.
-    return <FallbackEditor
-      value={value}
-      onChange={handleChange}
-      currentLine={currentLine}
-      currentLineInCall={currentLineInCall}
-      breakpoints={breakpoints}
-      onToggleBreakpoint={onToggleBreakpoint}
-      assemblyErrors={assemblyErrors}
-      onDrop={onDrop}
-      onCursorChange={onCursorChange}
-      readOnly={readOnly}
-    />;
+    return (
+      <TouchEditor
+        value={value}
+        onChange={handleChange}
+        currentLine={currentLine}
+        currentLineInCall={currentLineInCall}
+        breakpoints={breakpoints}
+        onToggleBreakpoint={onToggleBreakpoint}
+        assemblyErrors={assemblyErrors}
+        onDrop={onDrop}
+        onCursorChange={onCursorChange}
+        readOnly={readOnly}
+      />
+    );
   }
 
   return (
@@ -776,19 +778,6 @@ export function Editor({
   );
 }
 
-interface FallbackEditorProps {
-  value: string;
-  onChange: (value: string) => void;
-  currentLine: number | null;
-  currentLineInCall?: boolean;
-  breakpoints: Set<number>;
-  onToggleBreakpoint: (line: number) => void;
-  assemblyErrors: AssemblyError[];
-  onDrop: (e: React.DragEvent) => void;
-  onCursorChange?: (pos: { line: number; column: number }) => void;
-  readOnly?: boolean;
-}
-
 type MonacoForCompletion = Parameters<OnMount>[1];
 
 function mapSuggestion(
@@ -812,197 +801,4 @@ function mapSuggestion(
     insertText: s.insertText ?? s.label,
     range,
   };
-}
-
-/**
- * Phone-mode editor: bare `<textarea>` plus a synced gutter strip that shows
- * line numbers, breakpoint dots, current-PC marker, and the first error line.
- * Students on iPhone SE need to be able to toggle a breakpoint, see which line
- * their error is on, and watch the PC move during step, all without Monaco's
- * larger virtual surface.
- */
-// Vertical padding shared by gutter and textarea so the first line
-// of code aligns with the first gutter button. Both elements offset by
-// the same constant so the running translateY math stays simple.
-const FALLBACK_PAD_Y = 12;
-const FALLBACK_LINE_H = 24;
-// The gutter draws a window around the scroll offset, not one button per
-// line. A share link is allowed a 1 MB buffer, and 1 MB of bare newlines is
-// a million lines: a million buttons committed in one synchronous render, on
-// a phone, with no click required. 240 rows is 5760px of gutter, more than
-// any viewport this fallback runs in (under 480px wide) can show at once,
-// and the overscan keeps a flick-scroll from outrunning the scroll handler.
-const FALLBACK_GUTTER_ROWS = 240;
-const FALLBACK_GUTTER_OVERSCAN = 20;
-
-function FallbackEditor({
-  value,
-  onChange,
-  currentLine,
-  currentLineInCall = false,
-  breakpoints,
-  onToggleBreakpoint,
-  assemblyErrors,
-  onDrop,
-  onCursorChange,
-  readOnly = false,
-}: FallbackEditorProps) {
-  const [scrollTop, setScrollTop] = useState(0);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const gutterRef = useRef<HTMLDivElement>(null);
-  // The textarea owns the offset, so the gutter's transform is written to the
-  // element in the frame of the scroll that caused it. The state write only
-  // decides which window of rows the next render commits; letting it drive the
-  // transform too left the numbers a frame behind the code.
-  const paintGutter = useCallback((top: number) => {
-    const gutter = gutterRef.current;
-    if (gutter) gutter.style.transform = `translateY(${FALLBACK_PAD_Y - top}px)`;
-  }, []);
-  // A comment toggle changes the controlled `value`, so the DOM selection is
-  // lost on the re-render. Stash the target range and reapply it after the
-  // new value lands (before paint, so the caret never visibly jumps).
-  const pendingSelRef = useRef<{ start: number; end: number } | null>(null);
-  const lineCount = Math.max(1, value.split("\n").length);
-  const errorLines = new Set(assemblyErrors.map((e) => e.line));
-  const gutterFirst = Math.max(
-    0,
-    Math.floor(scrollTop / FALLBACK_LINE_H) - FALLBACK_GUTTER_OVERSCAN,
-  );
-  const gutterRows = Math.max(0, Math.min(FALLBACK_GUTTER_ROWS, lineCount - gutterFirst));
-
-  useLayoutEffect(() => {
-    const pending = pendingSelRef.current;
-    const ta = taRef.current;
-    if (!pending || !ta) return;
-    pendingSelRef.current = null;
-    const max = ta.value.length;
-    ta.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
-  });
-
-  // Follow the pc the way Monaco's revealLine does: nearest, so the buffer
-  // moves only as far as it must. Monaco gets this for free; without it the
-  // marker walks off-screen on a phone during autoplay and during any step
-  // past the visible window.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta || currentLine == null) return;
-    const top = FALLBACK_PAD_Y + (currentLine - 1) * FALLBACK_LINE_H;
-    const above = top < ta.scrollTop;
-    const below = top + FALLBACK_LINE_H > ta.scrollTop + ta.clientHeight;
-    if (!above && !below) return;
-    const next = Math.max(0, above ? top : top + FALLBACK_LINE_H - ta.clientHeight);
-    ta.scrollTop = next;
-    // The scroll event this write raises carries the new offset into state
-    // and re-picks the row window; the paint here is what keeps the numbers
-    // aligned in the meantime.
-    paintGutter(next);
-  }, [currentLine, paintGutter]);
-
-  // Ctrl/Cmd + / toggles line comments on the touched lines, mirroring the
-  // desktop Monaco editor's built-in commentLine. `onChange` (the parent's
-  // over-cap guard) may reject a near-cap add, in which case nothing changes.
-  const handleCommentToggle = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (readOnly) return;
-    if (!(e.ctrlKey || e.metaKey) || e.key !== "/") return;
-    e.preventDefault();
-    const ta = e.currentTarget;
-    const next = toggleLineComment(ta.value, ta.selectionStart, ta.selectionEnd);
-    if (next.text === ta.value) return;
-    pendingSelRef.current = { start: next.selStart, end: next.selEnd };
-    onChange(next.text);
-  };
-
-  // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's natural
-  // content height (lineCount * 24px, often well past the viewport on phones)
-  // cannot expand its parent and push the rest of the page off-screen. Without
-  // it the pane balloons to thousands of pixels and pushes the rest of the
-  // chrome off an iPhone portrait screen.
-  return (
-    <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-base)]">
-      <div
-        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-sunken)] select-none relative"
-        role="presentation"
-      >
-        <div
-          ref={gutterRef}
-          className="absolute left-0 right-0 will-change-transform"
-          style={{
-            // Scroll and window are split across two properties so the scroll
-            // half can be written imperatively without fighting this render.
-            transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)`,
-            paddingTop: `${gutterFirst * FALLBACK_LINE_H}px`,
-          }}
-        >
-          {Array.from({ length: gutterRows }, (_, i) => gutterFirst + i + 1).map((n) => {
-            const isBreak = breakpoints.has(n);
-            const isError = errorLines.has(n);
-            const isCurrent = currentLine === n;
-            const cls = isError
-              ? "text-[var(--danger)] font-bold"
-              : isBreak
-              ? "text-[var(--danger)]"
-              : isCurrent
-              ? // Inside a libc call the marker is on the call site, not on
-                // the executing instruction: same amber, without the weight.
-                currentLineInCall
-                ? "text-[var(--amber)] opacity-70"
-                : "text-[var(--amber)] font-bold"
-              : "text-[var(--text-secondary)]";
-            return (
-              <button
-                key={n}
-                type="button"
-                onClick={() => onToggleBreakpoint(n)}
-                className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] ${cls}`}
-                aria-label={
-                  isBreak
-                    ? `line ${n}, breakpoint set, tap to clear`
-                    : `line ${n}, tap to set breakpoint`
-                }
-              >
-                {isBreak ? "●" : n}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <textarea
-        // caret-color keeps the phone fallback's native caret in the same
-        // amber as Monaco's block cursor, so the brand cursor survives the
-        // textarea downgrade.
-        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-base)] text-[var(--text-primary)] [caret-color:var(--amber)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
-        style={{
-          WebkitAppearance: "none",
-          paddingTop: `${FALLBACK_PAD_Y}px`,
-          paddingBottom: `${FALLBACK_PAD_Y}px`,
-          lineHeight: `${FALLBACK_LINE_H}px`,
-          overflow: "auto",
-        }}
-        ref={taRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleCommentToggle}
-        readOnly={readOnly}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-        onScroll={(e) => {
-          paintGutter(e.currentTarget.scrollTop);
-          setScrollTop(e.currentTarget.scrollTop);
-        }}
-        onSelect={(e) => {
-          if (!onCursorChange) return;
-          const ta = e.currentTarget;
-          const upto = ta.value.slice(0, ta.selectionStart);
-          const lines = upto.split("\n");
-          const line = lines.length;
-          const column = (lines[lines.length - 1]?.length ?? 0) + 1;
-          onCursorChange({ line, column });
-        }}
-        aria-label="assembly source"
-      />
-    </div>
-  );
 }
