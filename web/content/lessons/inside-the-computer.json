@@ -1,0 +1,108 @@
+{
+  "title": "System architecture: what is inside the box",
+  "slug": "inside-the-computer",
+  "order": 2,
+  "summary": "Name the parts of a computer, and follow one instruction as the processor fetches, decodes and runs it.",
+  "tags": [
+    "system architecture"
+  ],
+  "body": [
+    {
+      "type": "prose",
+      "markdown": "A program is a list of instructions stored in memory as numbers. The processor reads them one at a time and does what each one says, billions of times a second. Assembly is written close to that level, so it pays to know the parts involved. This lesson names them, follows one instruction through the processor, and then steps a real program to watch it happen."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The parts of a computer\n\nEvery general-purpose computer is built from the same few parts:\n\n- The **CPU** (central processing unit), or processor, runs the instructions.\n- **Main memory**, also called RAM, holds a program while it runs and the data it works on. It is fast but *volatile*: it loses everything when the power goes off.\n- **Secondary storage**, such as an SSD (solid-state drive) or a hard disk, keeps files while the power is off. It is much slower than RAM, so a program is copied from storage into memory before it starts.\n- **Peripherals** are the devices around the edge: the keyboard, the screen, the network card.\n- The **bus** is the set of wires that connects these parts and carries values between them."
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "+-------------------------------+\n|              CPU              |\n|   control unit     ALU        |\n|   registers: pc, x0 to x30    |\n+---------------+---------------+\n                |\n  system bus: address, data, control\n                |\n     +----------+-----------+\n     |          |           |\n  memory     storage    peripherals\n  (RAM)     (SSD, disk) (keyboard,\n                         screen)\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Inside the CPU\n\nThe CPU has three main parts:\n\n- The **control unit** reads each instruction, works out what it asks for, and tells the other parts what to do.\n- The **ALU** (arithmetic logic unit) does the arithmetic and the logic: add, subtract, compare, and the bit operations.\n- The **registers** are a small set of storage slots inside the CPU itself. They are the fastest storage in the machine, and the ALU works on them directly. An AArch64 processor has 31 general registers, `x0` to `x30`, each 64 bits wide.\n\nA few registers have fixed jobs. The **program counter**, `pc`, holds the address of the instruction being run. Inside the control unit, the **instruction register** holds a copy of that instruction while it is worked on. A **status register** holds *flags*: single bits that describe the last result, such as whether it was zero or negative. The branching lessons use the flags to make decisions."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Memory is a long row of numbered bytes\n\nMain memory is a long row of bytes, and each byte has its own number, called its *address*. A program names a byte by its address. A value wider than one byte, such as a 4-byte `int`, sits in bytes next to each other and is named by the address of its first byte. AArch64 calls a 4-byte value a *word*.\n\nOn AArch64 an address is 64 bits wide, so it fits in one `x` register. The program and its data share this one memory: the instructions are numbers in memory too, sitting beside the data. A machine built this way is called a *von Neumann* machine. A *Harvard* machine, by contrast, keeps instructions and data in separate memories."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The system bus\n\nThe CPU and memory talk over the *system bus*, which has three parts:\n\n- the **address bus** carries the address the CPU wants,\n- the **data bus** carries the value being read or written,\n- the **control bus** carries signals such as \"read\" or \"write\", and says when a value is ready.\n\nTo read a word, the CPU puts the address on the address bus and a read signal on the control bus, and memory answers with the value on the data bus."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The clock\n\nThe *clock* keeps every part in step. It is a signal that flips between low and high at a fixed rate, a square wave, and each tick is one *cycle*. A 3 GHz processor's clock ticks 3 billion times a second. A simple instruction takes one cycle or a few; a trip out to main memory takes many more."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Fetch, decode, execute\n\nThe processor runs every program with the same three-step loop, over and over:\n\n1. **Fetch.** Read the instruction at the address in `pc` from memory into the instruction register.\n2. **Decode.** The control unit splits the instruction's bits into fields (which operation, which registers, which constant) and sets up the parts that will do the work.\n3. **Execute.** The ALU, or the part that talks to memory, does the work, and the result goes to its destination register, or to memory for a store. Then `pc` moves on to the next instruction.\n\nEvery AArch64 instruction is exactly 4 bytes long, so the next instruction is normally at `pc + 4`. The exception is a *branch*, an instruction whose whole job is to put a different address into `pc`; that is how loops and if statements work. Here is one instruction from the program below, `add w12, w10, w11`, going round the loop:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "fetch    read the 4 bytes at the address in pc into the instruction register\ndecode   operation: add    destination: w12    sources: w10 and w11\nexecute  the ALU adds w10 and w11, and the sum goes into w12\nnext     pc = pc + 4\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "## Watch it happen\n\nThe program below keeps two numbers in memory, loads them into registers, adds them, and stores the sum into a third memory word. It prints that word before and after, so you can see the one change to memory:\n\n```\nsum in memory before: 0\nsum in memory after:  42\n```\n\nRun it, then press step to run one instruction at a time and watch the registers:\n\n- `pc` grows by 4 on every step, because every instruction is 4 bytes. The two `bl printf` lines are the exception: `bl` is a branch, so `pc` jumps away into the library and comes back to the line after the call a few steps later.\n- The two `ldr` steps that load values fill `x10` and `x11`, and the `add` fills `x12`. (`w10` is the low 32 bits of `x10`; the next lessons explain the two names.) The `add` does not touch memory; only the `str` writes the 42 back."
+    },
+    {
+      "type": "editor",
+      "starter": "// Loads two words from memory, adds them in registers, and stores the sum back.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(addr_r, x9)\ndefine(first_r, w10)\ndefine(second_r, w11)\ndefine(sum_r, w12)\n\n.data\nfirst:      .word   30\nsecond:     .word   12\nsum:        .word   0\nfmt_before: .string \"sum in memory before: %d\\n\"\nfmt_after:  .string \"sum in memory after:  %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     addr_r, =sum                // print the word at sum as it starts\n        ldr     w1, [addr_r]\n        ldr     x0, =fmt_before\n        bl      printf\n\n        ldr     addr_r, =first              // addr_r = the address of first\n        ldr     first_r, [addr_r]           // load: a copy goes from memory into a register\n        ldr     addr_r, =second\n        ldr     second_r, [addr_r]\n        add     sum_r, first_r, second_r    // the ALU works on registers only\n        ldr     addr_r, =sum\n        str     sum_r, [addr_r]             // store: the register value goes back to memory\n\n        ldr     w1, [addr_r]                // read the word at sum again\n        ldr     x0, =fmt_after\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum in memory before: 0\nsum in memory after:  42\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`ldr addr_r, =first` puts the *address* of `first` into a register, and `ldr first_r, [addr_r]` then loads the value stored at that address. The square brackets mean \"the memory at this address\". This program keeps its values in `w10` to `w12` because it is done with them before each call to `printf`, which is free to change those registers."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Load/store machines and accumulator machines\n\nThe `add` above never touches memory. AArch64 is a *load/store* design: only load and store instructions reach memory, and every other instruction works on registers. To add two numbers held in memory, a program loads both, adds the registers, and stores the result.\n\nMany older and smaller processors had a single working register, the *accumulator*. On an *accumulator machine*, an instruction like `ADD b` means \"add the value in memory at `b` to the accumulator\", and every result lands in the accumulator. With only one register to keep results in, a longer calculation has to park each partial result in memory and fetch it back later. Here are both designs working out (a + b) - (c + d):"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "load/store machine         accumulator machine\n(ARMv8)\n\nload  r1 <- a              LOAD  a\nload  r2 <- b              ADD   b\nload  r3 <- c              STORE temp1\nload  r4 <- d              LOAD  c\nadd   r1 <- r1 + r2        ADD   d\nadd   r3 <- r3 + r4        STORE temp2\nsub   r1 <- r1 - r3        LOAD  temp1\nstore r1 -> result         SUB   temp2\n                           STORE result\n\nmemory trips: 5            memory trips: 9\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below plays an accumulator machine on AArch64. `acc_r` is the only register allowed to keep a result. AArch64 cannot add straight from memory, so each accumulator `ADD` becomes a load into `in_r`, which carries the value for one instruction only, followed by the `add`. Every partial result is stored before the next one starts. It prints `(a + b) - (c + d) = 28`."
+    },
+    {
+      "type": "editor",
+      "starter": "// Works out (a + b) - (c + d) the way a one-register machine would:\n// every partial result goes back to memory before the next one starts.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(acc_r, w9)\ndefine(in_r, w10)\ndefine(addr_r, x11)\n\n.data\nval_a:      .word   30\nval_b:      .word   12\nval_c:      .word   9\nval_d:      .word   5\ntemp1:      .word   0\ntemp2:      .word   0\nresult:     .word   0\nfmt_res:    .string \"(a + b) - (c + d) = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // LOAD a, ADD b, STORE temp1\n        ldr     addr_r, =val_a\n        ldr     acc_r, [addr_r]\n        ldr     addr_r, =val_b\n        ldr     in_r, [addr_r]              // in_r only carries b to the add\n        add     acc_r, acc_r, in_r\n        ldr     addr_r, =temp1\n        str     acc_r, [addr_r]             // park a + b in memory\n\n        // LOAD c, ADD d, STORE temp2\n        ldr     addr_r, =val_c\n        ldr     acc_r, [addr_r]\n        ldr     addr_r, =val_d\n        ldr     in_r, [addr_r]\n        add     acc_r, acc_r, in_r\n        ldr     addr_r, =temp2\n        str     acc_r, [addr_r]             // park c + d in memory\n\n        // LOAD temp1, SUB temp2, STORE result\n        ldr     addr_r, =temp1\n        ldr     acc_r, [addr_r]\n        ldr     addr_r, =temp2\n        ldr     in_r, [addr_r]\n        sub     acc_r, acc_r, in_r\n        ldr     addr_r, =result\n        str     acc_r, [addr_r]\n\n        ldr     x0, =fmt_res\n        mov     w1, acc_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "(a + b) - (c + d) = 28\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## RISC and CISC\n\nProcessor designs fall into two broad families:\n\n- **RISC** (reduced instruction set computer) designs, such as ARMv8, have fewer and simpler instructions, all the same size, and are load/store machines. Simple instructions of one size are quick to decode.\n- **CISC** (complex instruction set computer) designs, such as the x86 chips in most Windows PCs, have many more instructions. Some do several steps at once, including arithmetic straight on memory, and some take many cycles. Their instructions are anywhere from 1 to 15 bytes long, so the processor has to work out where one ends before it can decode the next.\n\nA RISC program usually needs more instructions to do the same job, but each one is simpler."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The operating system and exception levels\n\nYour program never talks to the keyboard, the screen or the disk itself. The *operating system* (Linux, on the machines this site imitates) sits between programs and the hardware. ARMv8 enforces this with *exception levels*, privilege levels numbered EL0 to EL3:\n\n- EL0: ordinary programs, including yours, with the least privilege.\n- EL1: the *kernel*, the core of the operating system.\n- EL2: a *hypervisor*, which runs several operating systems side by side.\n- EL3: the *secure monitor*, the most trusted code on the chip.\n\nWhen `printf` has text to show, it asks the kernel to write it, and the kernel, running at EL1, does the part that touches the hardware. A later lesson makes that request directly."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. What does the ALU do, and what does the control unit do?\n2. Which keeps its contents when the power goes off: RAM or an SSD?\n3. `pc` holds `0x400100` and the instruction there is an `add`. What does `pc` hold after the `add` runs?\n4. On a load/store machine, which instructions may read or write memory?\n5. What does the data bus carry?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. The ALU does arithmetic and logic; the control unit decodes each instruction and directs the other parts.\n2. The SSD; RAM is volatile.\n3. `0x400104`.\n4. Only the loads and the stores.\n5. The value being read from memory or written to it."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Quiz: system architecture (intro)](/practice/quiz-basic-architecture) and [Quiz: system architecture (core)](/practice/quiz-inter-architecture): the parts of the machine, the bus, and the two machine designs.\n- [Fill in the blank: system architecture](/practice/blanks-architecture): the names of the parts.\n- [Quiz: system architecture (challenge)](/practice/quiz-advance-architecture): also asks about labels and the m4 build, which the next lesson, [Anatomy of an assembly file](/learn/anatomy-of-a-program), covers."
+    }
+  ]
+}
