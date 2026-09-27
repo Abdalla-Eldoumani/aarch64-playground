@@ -135,8 +135,11 @@ const TD_CLASS =
   "border border-[var(--border)] px-3 py-2 align-top tabular-nums";
 const HOVER_WRAP_CLASS =
   "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
+// On a phone the card is fixed along the bottom edge instead of hanging off
+// the term: a 288px card anchored at a term near the right edge ran past the
+// screen and widened the whole page, which then scrolled sideways.
 const TOOLTIP_CLASS =
-  "pointer-events-none absolute left-0 top-full z-10 mt-1 hidden w-max max-w-[18rem] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-secondary)] shadow-[var(--shadow-overlay)] [font:var(--type-small)] group-hover:block group-focus:block group-focus-within:block";
+  "pointer-events-none absolute left-0 top-full z-10 mt-1 hidden w-max max-w-[18rem] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-secondary)] shadow-[var(--shadow-overlay)] [font:var(--type-small)] group-hover:block group-focus:block group-focus-within:block max-sm:fixed max-sm:inset-x-4 max-sm:bottom-[calc(1rem+var(--safe-bottom))] max-sm:top-auto max-sm:z-[60] max-sm:mt-0 max-sm:w-auto max-sm:max-w-none max-sm:px-3 max-sm:py-2";
 
 const components: Components = {
   h2(props) {
