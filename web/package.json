@@ -88,7 +88,7 @@
     "next": "16.3.6",
     "react": "19.3.0",
     "react-dom": "19.3.0",
-    "react-hot-toast": "2.6.0",
+    "react-hot-toast": "2.6.1",
     "react-markdown": "10.1.0",
     "react-resizable-panels": "4.12.3",
     "rehype-sanitize": "6.0.0",
