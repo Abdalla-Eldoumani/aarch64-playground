@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 tak:
 	stp	x29, x30, [sp, -64]!
 	mov	x29, sp
@@ -47,7 +47,7 @@ tak:
 	ldp	x29, x30, [sp], 64
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 big_side:
 	stp	x29, x30, [sp, -288]!
 	add	w5, w0, 50
@@ -56,7 +56,7 @@ big_side:
 	and	w5, w5, 255
 	mov	x4, x1
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L8:
 	add	w3, w2, 51
 	strb	w2, [x4], 51
@@ -68,7 +68,7 @@ big_side:
 	bne	.L16
 .L9:
 	add	x3, x1, 306
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldrb	w0, [x1], 51
 	add	w2, w2, w0
@@ -77,7 +77,7 @@ big_side:
 	mov	w0, w2
 	ldp	x29, x30, [sp], 288
 	ret
-	.align 2
+	.p2align 2,,3
 .L16:
 	sub	w0, w0, #2
 	str	x1, [sp, 24]
@@ -91,7 +91,7 @@ big_side:
 	.string	"ping n=%d a=%d acc=%llu\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 ping:
 	mov	x3, x1
 	mov	w7, 10311
@@ -111,7 +111,7 @@ ping:
 .L32:
 	mov	x0, x3
 	ret
-	.align 2
+	.p2align 2,,3
 .L40:
 	mov	w0, 300
 	add	x3, x3, x3, lsl 1
@@ -124,7 +124,7 @@ ping:
 	eor	x3, x4, x0
 	mov	x0, x3
 	ret
-	.align 2
+	.p2align 2,,3
 .L37:
 	stp	x29, x30, [sp, -32]!
 	mov	x29, sp
@@ -148,7 +148,7 @@ ping:
 	mov	x0, x3
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L41:
 	mov	w0, 300
 	add	x3, x3, x3, lsl 1
@@ -160,7 +160,7 @@ ping:
 	bne	.L20
 	eor	x3, x4, x0
 	b	.L19
-	.align 2
+	.p2align 2,,3
 .L35:
 	mov	w3, -40000
 	add	w2, w2, w3
@@ -173,7 +173,7 @@ ping:
 	eor	w4, w4, w2
 	sxtb	w4, w4
 	b	.L29
-	.align 2
+	.p2align 2,,3
 .L20:
 	mov	w8, -40000
 	add	w2, w2, w8
@@ -192,7 +192,7 @@ ping:
 	cbz	w1, .L19
 	b	.L41
 	.align	2
-	.align 5
+	.p2align 5,,15
 hof_f.part.0:
 	stp	x29, x30, [sp, -32]!
 	mov	w1, w0
@@ -208,7 +208,7 @@ hof_f.part.0:
 	ldp	x29, x30, [sp], 32
 	sub	w0, w1, w0
 	ret
-	.align 2
+	.p2align 2,,3
 .L61:
 	subs	w3, w0, #2
 	bne	.L62
@@ -224,7 +224,7 @@ hof_f.part.0:
 	bne	.L43
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L62:
 	subs	w4, w1, #3
 	mov	w0, 1
@@ -238,7 +238,7 @@ hof_f.part.0:
 	subs	w3, w3, w0
 	beq	.L43
 	b	.L44
-	.align 2
+	.p2align 2,,3
 .L63:
 	mov	w0, w4
 	stp	w2, w3, [sp, 20]
@@ -249,13 +249,13 @@ hof_f.part.0:
 	cbz	w0, .L44
 	b	.L45
 	.align	2
-	.align 5
+	.p2align 5,,15
 hof_m.part.0:
 	mov	w1, w0
 	subs	w0, w0, #1
 	bne	.L85
 	ret
-	.align 2
+	.p2align 2,,3
 .L85:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -276,7 +276,7 @@ hof_m.part.0:
 	ldr	x19, [sp, 16]
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L67:
 	subs	w4, w2, #2
 	mov	w0, 1
@@ -298,7 +298,7 @@ hof_m.part.0:
 	mov	w1, w3
 	mov	w0, w4
 	b	.L71
-	.align 2
+	.p2align 2,,3
 .L86:
 	mov	w0, w4
 	stp	w3, w1, [sp, 32]
@@ -332,7 +332,7 @@ hof_m.part.0:
 	.string	"big/small=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -96]!
@@ -442,7 +442,7 @@ main:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 96
 	ret
-	.align 2
+	.p2align 2,,3
 .L121:
 	mov	w1, w22
 	mov	w2, w23
