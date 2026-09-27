@@ -3,7 +3,9 @@ name: dependabot auto-merge
 # Turns on auto-merge for each Dependabot patch or minor pull request. GitHub
 # still merges only once main's rules are met: a code owner's approval and a
 # passing ci check. A major bump is left for a person to merge by hand.
-on: pull_request
+on:
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
