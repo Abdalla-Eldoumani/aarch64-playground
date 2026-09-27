@@ -161,6 +161,13 @@ export class EmulatorInstance {
     return this.inner.stderr_seen?.() ?? null;
   }
 
+  /** Caller-saved registers read after a library call overwrote them, as
+   *  the four-number rows lib/emulator/clobber-note words, drained. Empty
+   *  on a wasm build that predates them. */
+  takeClobberNotes(): number[] {
+    return Array.from(this.inner.take_clobber_notes?.() ?? []);
+  }
+
   isBlocked(): boolean {
     return this.inner.is_blocked();
   }
@@ -412,6 +419,8 @@ interface WasmEmulatorInstance {
    *  them. Plain JS numbers, not BigInt. */
   stdout_seen?(): number;
   stderr_seen?(): number;
+  /** Optional: clobber note rows, present once the crate ships them. */
+  take_clobber_notes?(): Uint32Array;
   is_blocked(): boolean;
   get_exit_code(): bigint | number | null | undefined;
   upload_vfs_file(path: string, data: Uint8Array): void;
