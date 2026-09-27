@@ -372,6 +372,49 @@ fn a_branch_on_flags_a_call_left_is_noted() {
     assert_eq!(notes(&mut cpu, &map), vec![[FLAGS_CODE.into(), READ_BY_INSTRUCTION, 17, 18]]);
 }
 
+/// After puts, the program compares again: x19 is 3, so the eq on the
+/// ccmp fails and the ccmp writes its literal 13, which is 1101, the same
+/// bits a call leaves. Those flags are the program's own, so the b.ne
+/// reading them is not noted.
+const CCMP_LITERAL_AFTER_PUTS: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+msg_m:  .string "checked"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        mov     x19, 3
+        ldr     x0, =msg_m
+        bl      puts
+        cmp     x19, 4
+        ccmp    x19, 3, 13, eq
+        b.ne    differ
+        mov     w20, 2
+        b       done
+differ:
+        mov     w20, 1
+done:
+        mov     w0, w20
+        ldp     x19, x20, [sp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+
+#[test]
+fn flags_a_ccmp_writes_after_a_call_are_not_noted() {
+    let (mut cpu, map) = run(CCMP_LITERAL_AFTER_PUTS);
+    // The literal's Z is set, so the b.ne falls through.
+    assert_eq!(cpu.exit_code(), Some(2));
+    assert_eq!(cpu.regs.nzcv.pack(), CLOBBER_NZCV);
+    assert!(notes(&mut cpu, &map).is_empty());
+}
+
 /// After puts (line 15), line 16 saves x2 and x3 and line 17 restores
 /// them, line 18 copies w4 into x19 and line 19 copies that on, and d2
 /// and d3 are copied and saved the same way. None of it uses a value.
