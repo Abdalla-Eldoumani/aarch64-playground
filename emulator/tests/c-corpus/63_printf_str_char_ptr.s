@@ -251,14 +251,14 @@ main:
 	mov	w1, 85
 	bl	memset
 	add	x7, sp, 56
-	adrp	x0, utf8__0
-	add	x6, x0, :lo12:utf8__0
-	adrp	x0, utf8__0
-	add	x5, x0, :lo12:utf8__0
-	adrp	x0, utf8__0
-	add	x4, x0, :lo12:utf8__0
-	adrp	x0, latin__1
-	add	x3, x0, :lo12:latin__1
+	adrp	x0, utf8.0
+	add	x6, x0, :lo12:utf8.0
+	adrp	x0, utf8.0
+	add	x5, x0, :lo12:utf8.0
+	adrp	x0, utf8.0
+	add	x4, x0, :lo12:utf8.0
+	adrp	x0, latin.1
+	add	x3, x0, :lo12:latin.1
 	adrp	x0, .LC19
 	add	x2, x0, :lo12:.LC19
 	mov	x1, 64
@@ -295,14 +295,14 @@ main:
 	adrp	x0, .LC23
 	add	x0, x0, :lo12:.LC23
 	bl	dump
-	adrp	x0, utf8__0
-	add	x4, x0, :lo12:utf8__0
-	adrp	x0, latin__1
-	add	x3, x0, :lo12:latin__1
-	adrp	x0, utf8__0
-	add	x2, x0, :lo12:utf8__0
-	adrp	x0, latin__1
-	add	x1, x0, :lo12:latin__1
+	adrp	x0, utf8.0
+	add	x4, x0, :lo12:utf8.0
+	adrp	x0, latin.1
+	add	x3, x0, :lo12:latin.1
+	adrp	x0, utf8.0
+	add	x2, x0, :lo12:utf8.0
+	adrp	x0, latin.1
+	add	x1, x0, :lo12:latin.1
 	adrp	x0, .LC24
 	add	x0, x0, :lo12:.LC24
 	bl	printf
@@ -399,10 +399,10 @@ main:
 	ret
 	.section .rodata
 	.align	3
-latin__1:
+latin.1:
 	.byte 99, 97, 102, 233, 32, 255, 254, 0
 	.align	3
-utf8__0:
+utf8.0:
 	.byte 195, 169, 116, 195, 169, 0
 
 
