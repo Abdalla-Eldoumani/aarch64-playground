@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
+import { clobberNoteTexts, isCallLeftover } from "@/lib/emulator/clobber-note";
 
 // Line numbers below are 1-based editor lines of this source.
 const SOURCE = [
@@ -49,6 +49,20 @@ describe("clobberNoteTexts", () => {
     const [unnamed, unmapped] = clobberNoteTexts([9, 0, 8, 6, 9, 0, 0, 0], SOURCE);
     expect(unnamed).toMatch(/^Line 6 reads x9, but the library call on line 8 overwrote it\./);
     expect(unmapped).toMatch(/^The program reads x9, but a library call overwrote it\./);
+  });
+
+  it("tells a call's leftovers in a vector register from a program's write", () => {
+    const P = "deadbeefdeadbeef";
+    const Z = "0000000000000000";
+    const LOW = "1234567812345678";
+    // v3 is caller-saved whole: the pattern in both halves is the call's.
+    expect(isCallLeftover(3, `0x${Z}${Z}`, `0x${P}${P}`)).toBe(true);
+    expect(isCallLeftover(3, `0x${Z}${Z}`, `0x${P}${Z}`)).toBe(false);
+    // v9 keeps its low half across a call: only the top may have moved.
+    expect(isCallLeftover(9, `0x${Z}${LOW}`, `0x${P}${LOW}`)).toBe(true);
+    expect(isCallLeftover(9, `0x${Z}${Z}`, `0x${P}${LOW}`)).toBe(false);
+    // No vector file (an older wasm build): never a leftover.
+    expect(isCallLeftover(0, undefined, undefined)).toBe(false);
   });
 
   it("reads four numbers per note and ignores a ragged tail", () => {
