@@ -8,7 +8,7 @@
 	.string	"\""
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 show:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -25,7 +25,7 @@ show:
 	mov	w21, 92
 	add	x22, x22, :lo12:.LC0
 	b	.L5
-	.align 2
+	.p2align 2,,3
 .L10:
 	add	x19, x19, 1
 	bl	putchar
@@ -121,7 +121,7 @@ show:
 	.string	"n=%d p=%d same=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #448
@@ -148,7 +148,7 @@ main:
 	mov	x0, 0
 	ldr	d15, [x1, :lo12:.LC5]
 	b	.L13
-	.align 2
+	.p2align 2,,3
 .L24:
 	mov	x0, x20
 	mov	x2, 48
@@ -184,7 +184,7 @@ main:
 	add	x22, x22, :lo12:.LC8
 	add	x19, x19, :lo12:.LC10
 	ldr	d14, [x0, :lo12:.LC9]
-	.align 5
+	.p2align 5,,15
 .L15:
 	mov	x2, 48
 	mov	w1, 35
@@ -244,7 +244,7 @@ main:
 	mov	w22, 0
 	adrp	x26, .LC2
 	b	.L17
-	.align 2
+	.p2align 2,,3
 .L25:
 	add	w24, w24, 37
 	add	w22, w22, 255
@@ -276,7 +276,7 @@ main:
 	mov	w21, 0
 	fmov	d15, 5.0e-1
 	mov	x24, 48
-	.align 5
+	.p2align 5,,15
 .L19:
 	scvtf	d0, w19
 	sxtw	x0, w21
