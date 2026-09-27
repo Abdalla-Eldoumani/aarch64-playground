@@ -1,0 +1,35 @@
+name: wasm bundles
+description: >-
+  Puts the emulator's two wasm bundles in web/lib/wasm and web/lib/wasm-node
+  for a job that needs them: from the cache under the key check.yml's wasm
+  job looked up, or from that job's artifact when it had to build them.
+
+inputs:
+  key:
+    description: the wasm job's cache key output
+    required: true
+  built:
+    description: the wasm job's built output, "true" when it built the bundles in this run
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # The path list must match the wasm job's exactly: the cache version is
+    # a hash of it, so a different list misses the same key.
+    - name: restore wasm bundles
+      if: inputs.built != 'true'
+      uses: actions/cache/restore@v6
+      with:
+        path: |
+          web/lib/wasm/
+          web/lib/wasm-node/
+        key: ${{ inputs.key }}
+        fail-on-cache-miss: true
+
+    - name: download wasm bundles
+      if: inputs.built == 'true'
+      uses: actions/download-artifact@v8
+      with:
+        name: wasm-bundles
+        path: web/lib
