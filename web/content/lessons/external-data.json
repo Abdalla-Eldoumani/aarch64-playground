@@ -1,0 +1,90 @@
+{
+  "title": "External data: .data, .bss, and .text",
+  "slug": "external-data",
+  "order": 23,
+  "summary": "Choose where a variable lives (the frame, .data, .bss or .text) and reach each one by its label.",
+  "tags": [
+    "external data",
+    "variables"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Printing a variable from .data](/learn/printing-defined-variables)\n- [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions)"
+    },
+    {
+      "type": "prose",
+      "markdown": "So far a variable has lived in a register or in a slot of the current function's frame, and both are gone once the function returns. This lesson covers variables that live outside every function, in memory the program keeps from the moment it starts until it ends. Because they sit outside any one function, they are called *external data*.\n\nA running program's memory is split into *sections*: named regions that each hold one kind of thing. Three of them matter here.\n\n- `.text` holds the instructions, plus any constants that never change. The operating system marks it read-only.\n- `.data` holds variables that start with a value written in the source.\n- `.bss` holds variables that start at zero. The program file records only how big they are, and the loader fills them with zero bytes when the program starts."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Four kinds of variable\n\nC has four kinds of variable, told apart by where they are declared and by the word `static`. Each one maps onto a place in memory.\n\n| In C | Lives in | Lasts | Its name can be used by |\n|---|---|---|---|\n| a local: `int n;` inside a function | the frame | one call | that function |\n| a static local: `static int n;` inside a function | `.data` or `.bss` | the whole run | that function |\n| a global: `int n;` outside every function | `.data` or `.bss` | the whole run | every function, in every file |\n| a static global: `static int n;` outside every function | `.data` or `.bss` | the whole run | every function in the same file |\n\nA variable written with a starting value goes in `.data`; one with no starting value goes in `.bss`, where it starts at zero. (gcc also sends a variable written as `= 0` to `.bss`, since the result is the same.) A constant, such as `const int limit = 60;`, goes in `.text` in course programs. (gcc itself puts constants in a section called `.rodata`, for read-only data; the effect is the same.)\n\nIn assembly, the last three rows look alike: a label in front of some storage. The label is visible to other files only when the file says `.global` with its name; without that line the name stays private to its file, which is what `static` means for a C global. Which functions use a static local is up to you, since the assembler does not check."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A counter that survives the return\n\nHere are two functions that should hand out numbered tickets. The first keeps its count in a static local, the second in an ordinary local:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "int next_ticket(void) {\n    static int served = 0;      // one copy, made when the program loads\n    served = served + 1;\n    return served;\n}\n\nint next_ticket_frame(void) {\n    int count = 0;              // a new copy on every call\n    count = count + 1;\n    return count;\n}\n"
+    },
+    {
+      "type": "prose",
+      "markdown": "In the assembly version, `next_ticket` keeps its counter in `.data` under the label `served_m`. Each call loads the word, adds one and stores it back, and the new value is still in memory on the next call. `next_ticket_frame` does the same work on a local in its frame, which is set to 0 on every entry and thrown away at `ret`. `main` calls each one three times and prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "counter in .data: ticket 1\ncounter in .data: ticket 2\ncounter in .data: ticket 3\ncounter in frame: ticket 1\ncounter in frame: ticket 1\ncounter in frame: ticket 1\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// A counter in .data lasts between calls, a frame local does not\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(calls_r, w19)\ndefine(addr_r, x9)\n\n.data\nserved_m:   .word 0                         // one copy for the whole run, set to 0 at load\nfmt_kept:   .string \"counter in .data: ticket %d\\n\"\nfmt_lost:   .string \"counter in frame: ticket %d\\n\"\n\n.text\n// next_ticket() -> w0 = the next ticket number, counted in served_m\n        .balign 4\n        .global next_ticket\nnext_ticket:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     addr_r, =served_m\n        ldr     w0, [addr_r]\n        add     w0, w0, 1\n        str     w0, [addr_r]                // the new count stays in memory after the return\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n// next_ticket_frame() -> w0: the same job with the counter as a frame local\ncount_s = 16\nnt_alloc = -(16 + 4) & -16\nnt_dealloc = -nt_alloc\n\n        .balign 4\n        .global next_ticket_frame\nnext_ticket_frame:\n        stp     fp, lr, [sp, nt_alloc]!\n        mov     fp, sp\n\n        str     wzr, [fp, count_s]          // count = 0, redone on every call\n        ldr     w0, [fp, count_s]\n        add     w0, w0, 1\n        str     w0, [fp, count_s]           // gone once the frame is released\n\n        ldp     fp, lr, [sp], nt_dealloc\n        ret\n\n// main uses x19 across calls, so it saves the caller's x19 like any function\nmain_save = 16\nalloc = -(16 + 8) & -16\ndealloc = -alloc\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        str     x19, [fp, main_save]\n\n        mov     calls_r, 0\n        b       kept_test\nkept_loop:\n        bl      next_ticket\n        mov     w1, w0\n        ldr     x0, =fmt_kept\n        bl      printf\n        add     calls_r, calls_r, 1\nkept_test:\n        cmp     calls_r, 3\n        b.lt    kept_loop\n\n        mov     calls_r, 0\n        b       lost_test\nlost_loop:\n        bl      next_ticket_frame\n        mov     w1, w0\n        ldr     x0, =fmt_lost\n        bl      printf\n        add     calls_r, calls_r, 1\nlost_test:\n        cmp     calls_r, 3\n        b.lt    lost_loop\n\n        ldr     x19, [fp, main_save]\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "counter in .data: ticket 1\ncounter in .data: ticket 2\ncounter in .data: ticket 3\ncounter in frame: ticket 1\ncounter in frame: ticket 1\ncounter in frame: ticket 1\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A variable in `.data` is one copy shared by every call. A recursive function that keeps its working value there finds each deeper call writing over it. A value that belongs to one call goes in that call's frame."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Two ways to reach a label\n\nEvery access to external data starts by getting its address into a register.\n\n`ldr x9, =served_m` is the form course programs use. The assembler stores the full 64-bit address of `served_m` in a *literal pool*, a small table of constants it places near the code, and the `ldr` loads the address from that table.\n\nThe other form builds the address in two instructions, without a table. Memory is divided into *pages*, blocks of 4096 bytes. `adrp x9, label` puts the address of the page that holds the label into `x9`, and `add x9, x9, :lo12:label` adds the low 12 bits of the label's address, which is its position inside the page. This is the pair gcc writes for C code. Both forms leave the same address in `x9`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Three sections in one program\n\nThe next program counts how many of eight marks pass. Each piece of data sits in the section that fits it:\n\n- The marks start with values, so they are in `.data`.\n- The two counters need no starting value, so they are in `.bss`. `.bss` guarantees zero, so the program adds to them without clearing them first. `.skip 4` reserves 4 bytes for each, and `.balign 4` puts the first on a 4-byte boundary, the alignment a word load expects.\n- The pass mark never changes, so it is a constant in `.text`, reached with `adrp` and `add`. Everything else is reached with `ldr =`.\n\nFive of the eight marks are 60 or more, so the program prints `passed: 5, failed: 3`."
+    },
+    {
+      "type": "editor",
+      "starter": "// .data holds the marks, .bss the two counters, .text the pass mark\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(i_r, w9)\ndefine(mark_r, w10)\ndefine(pass_r, w11)\ndefine(base_r, x12)\ndefine(count_r, w13)\ndefine(slot_r, x14)\n\ndefine(MARKS_N, 8)\n\n.data\nmarks_m:    .word 91, 58, 77, 64, 45, 83, 70, 59\nfmt_tally:  .string \"passed: %d, failed: %d\\n\"\n\n.bss\n        .balign 4\npassed_m:   .skip 4                         // no initial value: zero when the program loads\nfailed_m:   .skip 4\n\n.text\npass_mark:  .word 60                        // read-only: code may load it, never store to it\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        adrp    x9, pass_mark               // the 4 KB page that holds pass_mark\n        add     x9, x9, :lo12:pass_mark     // plus its offset inside that page\n        ldr     pass_r, [x9]\n\n        ldr     base_r, =marks_m\n        mov     i_r, 0\n        b       tally_test\ntally_loop:\n        ldr     mark_r, [base_r, i_r, SXTW 2]\n        ldr     slot_r, =failed_m\n        cmp     mark_r, pass_r\n        b.lt    tally_add\n        ldr     slot_r, =passed_m\ntally_add:\n        ldr     count_r, [slot_r]           // add one to whichever counter slot_r names\n        add     count_r, count_r, 1\n        str     count_r, [slot_r]\n        add     i_r, i_r, 1\ntally_test:\n        cmp     i_r, MARKS_N\n        b.lt    tally_loop\n\n        ldr     x9, =passed_m\n        ldr     w1, [x9]\n        ldr     x9, =failed_m\n        ldr     w2, [x9]\n        ldr     x0, =fmt_tally\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "passed: 5, failed: 3\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "warning",
+      "markdown": "`.text` is read-only on the servers. A store into `pass_mark` stops the program with a segmentation fault, the error Linux raises when a program touches memory in a way it is not allowed to. The playground does not enforce this yet, so a store into `.text` that runs here can still crash on the server. Keep anything you plan to change in `.data` or `.bss`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. A program needs a 4000-byte buffer that starts out empty. Which section should it go in, and what would `.data` cost instead?\n2. What does `next_ticket_frame` return on its tenth call, and why?\n3. After `adrp x9, fmt_tally` alone, does `x9` hold the address of `fmt_tally`?\n4. A helper file wants to call a function named `tally` in this file. What line does this file need?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `.bss`. It starts at zero and takes no room in the program file; in `.data` the file would carry 4000 zero bytes.\n2. 1, because its counter is a frame local, made again and set to 0 on every call.\n3. Only if `fmt_tally` happens to start a page. `adrp` gives the page's address; the `add` with `:lo12:` supplies the rest.\n4. `.global tally`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Sum a global array](/practice/sum-a-global-array): walk an array that lives in `.data`.\n- [Quiz: external data (intro)](/practice/quiz-basic-external-data), then [core](/practice/quiz-inter-external-data) and [challenge](/practice/quiz-advance-external-data): sections and variable kinds.\n- [Fill in the blank: external data (core)](/practice/blanks-external-data) and [Predict: external data (core)](/practice/predict-external-data): where each kind of variable lives."
+    }
+  ]
+}
