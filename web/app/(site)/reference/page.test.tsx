@@ -27,7 +27,7 @@ describe("reference route", () => {
   });
 
   it("keeps its per-route metadata", () => {
-    expect(metadata.title).toBe("reference");
+    expect(metadata.title).toEqual({ absolute: "AArch64 instruction reference · AArch64 Playground" });
     expect(metadata.description).toBeTruthy();
     expect(metadata.openGraph).toBeTruthy();
     expect(metadata.twitter).toBeTruthy();
