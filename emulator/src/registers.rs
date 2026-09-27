@@ -370,10 +370,19 @@ impl RegisterFile {
         self.nzcv.c
     }
 
+    /// Set the flags a conditional compare chose. Its literal is the one
+    /// flags write that can spell the call's pattern, so the write also
+    /// ends the flags' life as that call's leftovers.
+    pub fn set_nzcv(&mut self, flags: NzcvFlags) {
+        self.clobbered.x &= !FLAGS_BIT;
+        self.nzcv = flags;
+    }
+
     /// The executor sets the flags by assigning `nzcv` wherever an
     /// instruction writes them, so there is no one write to clear the mark
     /// on. The flags count as a call's leftovers while they still read as
-    /// its pattern instead, which no compare produces.
+    /// its pattern instead, which no compare produces; a conditional
+    /// compare's literal can, so it writes through `set_nzcv`.
     fn mark_flags_read(&self) {
         if self.nzcv.pack() == CLOBBER_NZCV {
             self.mark_read(FLAGS_BIT, 0);
