@@ -240,7 +240,7 @@ main:
 "#;
     let (_, message) = run_expect_halt_message(source);
     assert!(
-        message.contains("multiple of 16") && message.contains("bus error"),
+        message.contains("multiple of 16") && message.starts_with("Bus error"),
         "message names the rule and the servers' behavior: {message}"
     );
 }
