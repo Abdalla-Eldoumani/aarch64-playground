@@ -9,18 +9,17 @@ afterEach(() => cleanup());
 const BITS_3_5 = "0x400c000000000000";
 
 describe("DRegisterRow", () => {
-  it("decodes the raw bit pattern to the decimal double", () => {
+  it("decodes the raw bit pattern to the decimal double, and shows only that", () => {
     render(<DRegisterRow index={0} bitsHex={BITS_3_5} />);
     expect(screen.getByText("3.5")).toBeTruthy();
-    expect(screen.getByText(BITS_3_5)).toBeTruthy();
+    expect(screen.queryByText(BITS_3_5)).toBeNull();
     expect(screen.getByText("D0")).toBeTruthy();
   });
 
-  it("swaps primary and secondary in hex mode", () => {
+  it("shows the raw bits and nothing else in hex mode", () => {
     render(<DRegisterRow index={4} bitsHex={BITS_3_5} hexMode />);
-    // Hex leads (13px primary), decimal rides beneath; both visible.
-    const primary = screen.getByTitle("3.5");
-    expect(primary.textContent).toBe(BITS_3_5);
+    expect(screen.getByText(BITS_3_5)).toBeTruthy();
+    expect(screen.queryByText("3.5")).toBeNull();
   });
 
   it("carries the aapcs aliases for d0-d15 only", () => {
@@ -53,6 +52,6 @@ describe("DRegisterRow", () => {
     );
     const row = container.firstElementChild as HTMLElement;
     expect(row.className).toContain("anim-reg-flash");
-    expect(screen.getByTitle(BITS_3_5).className).toContain("var(--changed)");
+    expect(screen.getByText("3.5").className).toContain("var(--changed)");
   });
 });
