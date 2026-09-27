@@ -9,12 +9,13 @@
  * been answered correctly.
  *
  * The answers themselves are held here rather than in the blocks, so they
- * can be saved per slug and restored on a later visit. Restoring happens
+ * can be saved per slug and restored on a later visit, together with which
+ * questions were already checked and right, so those open answered. Restoring happens
  * after mount: reading storage during the first render would put a value in
  * the DOM the server render could not have, and hydration would flag it.
  */
 
-import { useCallback, useEffect, useReducer, useState, type JSX } from "react";
+import { useCallback, useEffect, useReducer, type JSX } from "react";
 import type {
   BlanksExercise,
   PredictionExercise,
@@ -22,6 +23,7 @@ import type {
 } from "@/lib/content/exercise-schema";
 import { markSolved } from "@/lib/playground/solved-state";
 import { readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
+import { typedAnswerIsRight } from "@/lib/content/theory-answers";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Kicker } from "@/components/ui/Kicker";
 import { QuizBlock } from "@/components/practice/QuizBlock";
@@ -48,14 +50,16 @@ function questionCount(exercise: InteractiveExercise): number {
 
 /**
  * The answers in flight for this sheet. One field is live per variant: the
- * quiz picks option indices, the other two collect typed text.
+ * quiz picks option indices, the other two collect typed text. `graded` holds
+ * the questions checked and right, in the order they landed.
  */
 interface AnswerDraft {
   picks: (number | null)[];
   typed: string[];
+  graded: number[];
 }
 
-const EMPTY_DRAFT: AnswerDraft = { picks: [], typed: [] };
+const EMPTY_DRAFT: AnswerDraft = { picks: [], typed: [], graded: [] };
 
 /**
  * A reducer rather than two useState pairs, because the restore below has to
@@ -66,6 +70,28 @@ const EMPTY_DRAFT: AnswerDraft = { picks: [], typed: [] };
  */
 function draftReducer(prev: AnswerDraft, edit: Partial<AnswerDraft>): AnswerDraft {
   return { ...prev, ...edit };
+}
+
+/** Whether a stored answer still passes its question, by the blocks' own rules. */
+function stillRight(
+  exercise: InteractiveExercise,
+  index: number,
+  answer: number | string | null | undefined,
+): boolean {
+  switch (exercise.variant) {
+    case "quiz":
+      return answer === exercise.questions[index].correctAnswer;
+    case "blanks":
+      return typeof answer === "string" && typedAnswerIsRight(exercise.blanks[index].blanks, answer);
+    case "prediction":
+      return (
+        typeof answer === "string" && typedAnswerIsRight([exercise.predictions[index].answer], answer)
+      );
+    default: {
+      const exhaustive: never = exercise;
+      return exhaustive;
+    }
+  }
 }
 
 /** A copy of `values` with `index` set, padded with `filler` where short. */
@@ -85,53 +111,73 @@ export function InteractiveExerciseView({
   sheetNumber?: string;
 }): JSX.Element {
   const total = questionCount(exercise);
-  const [correct, setCorrect] = useState<ReadonlySet<number>>(new Set());
   const [draft, editDraft] = useReducer(draftReducer, EMPTY_DRAFT);
   const { slug, variant } = exercise;
 
   useEffect(() => {
     const saved = readAnswer(slug);
-    if (!saved) return;
+    if (!saved || saved.kind === "write") return;
     // A record whose kind does not match this variant is left alone; the
     // slice trims to the questions this build renders, so a set that lost a
-    // question does not carry a stranded answer back into the store.
-    if (variant === "quiz" && saved.kind === "quiz") {
-      editDraft({ picks: saved.answers.slice(0, total) });
+    // question does not carry a stranded answer back. A question comes back
+    // checked only while its stored answer still passes, in case the set's
+    // answer changed since.
+    const graded = (answers: readonly (number | string | null)[]): number[] =>
+      (saved.graded ?? []).filter((index) => index < total && stillRight(exercise, index, answers[index]));
+    if (exercise.variant === "quiz" && saved.kind === "quiz") {
+      const picks = saved.answers.slice(0, total);
+      editDraft({ picks, graded: graded(picks) });
     }
-    if (variant === "blanks" && saved.kind === "blanks") {
-      editDraft({ typed: saved.answers.slice(0, total) });
+    if (exercise.variant === "blanks" && saved.kind === "blanks") {
+      const typed = saved.answers.slice(0, total);
+      editDraft({ typed, graded: graded(typed) });
     }
-    if (variant === "prediction" && saved.kind === "predict") {
-      editDraft({ typed: saved.answers.slice(0, total) });
+    if (exercise.variant === "prediction" && saved.kind === "predict") {
+      const typed = saved.answers.slice(0, total);
+      editDraft({ typed, graded: graded(typed) });
     }
-  }, [slug, variant, total]);
+  }, [slug, exercise, total]);
+
+  // Every write carries both halves of the record, so storing an answer can
+  // never forget which questions were already right, or the reverse.
+  const store = useCallback(
+    (next: AnswerDraft): void => {
+      if (variant === "quiz") {
+        saveAnswer(slug, { kind: "quiz", answers: next.picks, graded: next.graded });
+      } else {
+        const kind = variant === "blanks" ? "blanks" : "predict";
+        saveAnswer(slug, { kind, answers: next.typed, graded: next.graded });
+      }
+    },
+    [slug, variant],
+  );
 
   const pickAt = useCallback(
     (index: number, value: number | null): void => {
       const picks = withAt(draft.picks, index, value, null);
       editDraft({ picks });
-      saveAnswer(slug, { kind: "quiz", answers: picks });
+      store({ ...draft, picks });
     },
-    [draft.picks, slug],
+    [draft, store],
   );
 
   const typeAt = useCallback(
     (index: number, value: string): void => {
       const typed = withAt(draft.typed, index, value, "");
       editDraft({ typed });
-      saveAnswer(slug, { kind: variant === "blanks" ? "blanks" : "predict", answers: typed });
+      store({ ...draft, typed });
     },
-    [draft.typed, slug, variant],
+    [draft, store],
   );
 
   // A block locks once answered correctly, so a correct index never leaves
-  // the set; when the last one lands the exercise is solved for the index.
+  // the list; when the last one lands the exercise is solved for the index.
   const handleAttempt = (index: number, isCorrect: boolean): void => {
-    if (!isCorrect || correct.has(index)) return;
-    const next = new Set(correct);
-    next.add(index);
-    setCorrect(next);
-    if (next.size === total) markSolved(exercise.slug);
+    if (!isCorrect || draft.graded.includes(index)) return;
+    const graded = [...draft.graded, index];
+    editDraft({ graded });
+    store({ ...draft, graded });
+    if (graded.length === total) markSolved(exercise.slug);
   };
 
   return (
@@ -146,7 +192,7 @@ export function InteractiveExerciseView({
           role="status"
           className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
         >
-          {correct.size} of {total} correct
+          {draft.graded.length} of {total} correct
         </p>
       </div>
 
@@ -157,6 +203,7 @@ export function InteractiveExerciseView({
             {...question}
             value={draft.picks[index] ?? null}
             onValueChange={(value) => pickAt(index, value)}
+            locked={draft.graded.includes(index)}
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}
@@ -167,6 +214,7 @@ export function InteractiveExerciseView({
             {...question}
             value={draft.typed[index] ?? ""}
             onValueChange={(value) => typeAt(index, value)}
+            locked={draft.graded.includes(index)}
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}
@@ -177,6 +225,7 @@ export function InteractiveExerciseView({
             {...question}
             value={draft.typed[index] ?? ""}
             onValueChange={(value) => typeAt(index, value)}
+            locked={draft.graded.includes(index)}
             onAttempt={(isCorrect) => handleAttempt(index, isCorrect)}
           />
         ))}
