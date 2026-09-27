@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 v2_add:
 	fmov	w0, s1
 	ins	v0.s[1], w0
@@ -12,7 +12,7 @@ v2_add:
 	fmov	s1, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 v3_cross:
 	fmov	s31, s0
 	fmul	s30, s1, s3
@@ -25,7 +25,7 @@ v3_cross:
 	fnmsub	s2, s31, s4, s30
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 f5_rev:
 	adrp	x1, .LANCHOR0
 	ldr	s31, [x0]
@@ -42,7 +42,7 @@ f5_rev:
 	add	sp, sp, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 nv_norm:
 	fmul	s31, s1, s1
 	sub	sp, sp, #48
@@ -54,7 +54,7 @@ nv_norm:
 	fdiv	s2, s2, s31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 step.constprop.0:
 	fmov	w2, s0
 	mov	x0, 0
@@ -96,11 +96,11 @@ step.constprop.0:
 	fmov	s3, w0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 bf_sum.constprop.0:
 	movi	v0.2s, #0
 	add	x2, x0, 48
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldrb	w1, [x0, 8]
 	ldr	s31, [x0, 4]
@@ -117,13 +117,13 @@ bf_sum.constprop.0:
 	bne	.L13
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 range.constprop.0:
 	mov	x1, x0
 	add	x0, x0, 56
 	ldr	d31, [x1], 8
 	fmov	d30, d31
-	.align 5
+	.p2align 5,,15
 .L17:
 	ldr	d29, [x1], 8
 	fcmpe	d29, d31
@@ -137,7 +137,7 @@ range.constprop.0:
 	str	x0, [x8, 16]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 no_backfill.constprop.0:
 	mov	x0, 140737488355328
 	fmov	d31, 6.0e+0
@@ -156,7 +156,7 @@ no_backfill.constprop.0:
 	fmadd	d0, d4, d0, d31
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fi_mix.constprop.0:
 	sxtw	x0, w0
 	fmov	d31, x0
@@ -169,7 +169,7 @@ fi_mix.constprop.0:
 	bfi	x0, x1, 32, 32
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 d4_scale.constprop.0:
 	sub	sp, sp, #96
 	adrp	x0, .LC1
@@ -185,7 +185,7 @@ d4_scale.constprop.0:
 	add	sp, sp, 96
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fd_swap.constprop.0.isra.0:
 	fcvt	d0, s0
 	mov	x0, 18725
@@ -193,7 +193,7 @@ fd_swap.constprop.0.isra.0:
 	fmov	x1, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 spill.constprop.0.isra.0:
 	fmov	w1, s3
 	fmov	x0, d2
@@ -252,7 +252,7 @@ spill.constprop.0.isra.0:
 	.string	"fu %.9g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -480]!
@@ -417,7 +417,7 @@ main:
 	mov	w1, 0
 	movk	w3, 0xaaaa, lsl 16
 	fmov	d31, 1.0e+0
-	.align 5
+	.p2align 5,,15
 .L27:
 	umull	x0, w1, w3
 	lsr	x0, x0, 34
@@ -509,7 +509,7 @@ main:
 	str	s26, [sp, 384]
 	str	s25, [sp, 388]
 	str	s24, [sp, 400]
-	.align 5
+	.p2align 5,,15
 .L28:
 	fmov	s0, s23
 	fmov	s1, s22
