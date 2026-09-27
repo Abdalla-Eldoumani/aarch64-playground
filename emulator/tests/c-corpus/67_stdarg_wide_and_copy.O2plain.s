@@ -29,7 +29,7 @@
 	.string	"\n  sum=%lx check=%016lx\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 wide:
 	stp	x29, x30, [sp, -352]!
 	mov	x29, sp
@@ -73,7 +73,7 @@ wide:
 	str	d15, [sp, 72]
 	fmov	d15, x0
 	b	.L35
-	.align 2
+	.p2align 2,,3
 .L84:
 	cmp	w1, 84
 	beq	.L5
@@ -100,7 +100,7 @@ wide:
 	add	x0, x0, :lo12:.LC2
 	add	x1, x1, :lo12:.LC3
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldrb	w1, [x20, 1]!
 	cbz	w1, .L83
@@ -133,13 +133,13 @@ wide:
 	ldrb	w1, [x20, 1]!
 	add	x21, x21, x24
 	cbnz	w1, .L35
-	.align 5
+	.p2align 5,,15
 .L83:
 	ldrb	w1, [x19]
 	cbz	w1, .L67
 	ldr	x0, [sp, 128]
 	mov	x2, 0
-	.align 5
+	.p2align 5,,15
 .L62:
 	cmp	w1, 113
 	beq	.L86
@@ -157,7 +157,7 @@ wide:
 	and	x0, x1, -8
 .L60:
 	ldr	w1, [x3]
-	.align 5
+	.p2align 5,,15
 .L40:
 	eor	x2, x1, x2, ror 57
 	ldrb	w1, [x19, 1]!
@@ -175,7 +175,7 @@ wide:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 352
 	ret
-	.align 2
+	.p2align 2,,3
 .L6:
 	ldr	w1, [sp, 120]
 	ldr	x0, [sp, 96]
@@ -192,7 +192,7 @@ wide:
 	add	x21, x21, w24, uxtb
 	bl	printf
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L3:
 	ldr	w1, [sp, 124]
 	ldr	x0, [sp, 96]
@@ -211,7 +211,7 @@ wide:
 	fcvtzs	x0, d0
 	add	x21, x21, x0
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L5:
 	ldr	w2, [sp, 120]
 	ldr	x0, [sp, 96]
@@ -242,7 +242,7 @@ wide:
 	add	x21, x21, w24, uxtw
 	bl	printf
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L9:
 	ldr	w1, [sp, 120]
 	ldr	x0, [sp, 96]
@@ -258,7 +258,7 @@ wide:
 	bl	printf
 	add	x21, x21, w24, uxtw
 	b	.L8
-	.align 2
+	.p2align 2,,3
 .L86:
 	ldr	w1, [sp, 152]
 	tbnz	w1, #31, .L37
@@ -271,7 +271,7 @@ wide:
 	add	x1, x1, x1, lsl 1
 	eor	x1, x1, x3
 	b	.L40
-	.align 2
+	.p2align 2,,3
 .L87:
 	ldr	w1, [sp, 156]
 	tbnz	w1, #31, .L42
@@ -284,7 +284,7 @@ wide:
 	add	x1, x5, x5, lsl 1
 	eor	x1, x1, x4
 	b	.L40
-	.align 2
+	.p2align 2,,3
 .L88:
 	ldr	w1, [sp, 156]
 	tbnz	w1, #31, .L46
@@ -294,7 +294,7 @@ wide:
 	and	x0, x3, -8
 	ldr	x1, [x1]
 	b	.L40
-	.align 2
+	.p2align 2,,3
 .L37:
 	add	w1, w1, 15
 	and	w1, w1, -16
@@ -305,7 +305,7 @@ wide:
 	ldr	x3, [sp, 136]
 	add	x1, x3, w1, sxtw
 	b	.L38
-	.align 2
+	.p2align 2,,3
 .L89:
 	tbnz	w3, #31, .L50
 .L80:
@@ -330,7 +330,7 @@ wide:
 	madd	w1, w1, w5, w4
 	add	w1, w1, w3
 	b	.L40
-	.align 2
+	.p2align 2,,3
 .L42:
 	add	w3, w1, 16
 	str	w3, [sp, 156]
@@ -462,7 +462,7 @@ wide:
 	.string	"\n  fp_full=%g\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fp_full:
 	stp	x29, x30, [sp, -160]!
 	mov	x29, sp
@@ -492,7 +492,7 @@ fp_full:
 	fadd	d15, d15, d6
 	fadd	d15, d15, d7
 	b	.L102
-	.align 2
+	.p2align 2,,3
 .L96:
 	add	x0, x1, 11
 	ldr	w22, [x1]
@@ -529,7 +529,7 @@ fp_full:
 	ldr	w22, [x1]
 	ldr	w1, [sp, 92]
 	tbz	w1, #31, .L99
-	.align 5
+	.p2align 5,,15
 .L105:
 	add	w2, w1, 16
 	str	w2, [sp, 92]
@@ -538,7 +538,7 @@ fp_full:
 	ldr	x0, [sp, 80]
 	add	x0, x0, w1, sxtw
 	b	.L101
-	.align 2
+	.p2align 2,,3
 .L106:
 	fmov	d0, d15
 	adrp	x0, .LC10
@@ -559,7 +559,7 @@ fp_full:
 	.string	"\n  gp_full=%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 gp_full:
 	add	x1, x0, x1, lsl 1
 	add	x2, x2, x2, lsl 1
@@ -593,7 +593,7 @@ gp_full:
 	stp	q4, q5, [sp, 160]
 	stp	q6, q7, [sp, 192]
 	b	.L114
-	.align 2
+	.p2align 2,,3
 .L108:
 	ldr	x22, [x1]
 	add	x0, x1, 15
@@ -630,7 +630,7 @@ gp_full:
 	ldr	x22, [x1]
 	ldr	w1, [sp, 92]
 	tbz	w1, #31, .L111
-	.align 5
+	.p2align 5,,15
 .L117:
 	add	w2, w1, 16
 	str	w2, [sp, 92]
@@ -639,7 +639,7 @@ gp_full:
 	ldr	x0, [sp, 80]
 	add	x0, x0, w1, sxtw
 	b	.L113
-	.align 2
+	.p2align 2,,3
 .L118:
 	mov	x1, x23
 	adrp	x0, .LC12
@@ -676,7 +676,7 @@ gp_full:
 	.string	"TTTi"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #224
@@ -920,8 +920,8 @@ main:
 	.section .rodata
 	.align	4
 .LC13:
-	.quad	-81985529216486896
-	.quad	81985529216486895
+	.xword	-81985529216486896
+	.xword	81985529216486895
 	.section .rodata
 	.align	4
 	.LANCHOR0:
