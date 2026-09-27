@@ -839,7 +839,7 @@ stock:
 	.bss
 	.align	4
 	.LANCHOR0:
-st__0:
+st.0:
 	.zero	16
 g33:
 	.zero	33
