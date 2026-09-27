@@ -1,40 +1,40 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 dbits:
 	fmov	x0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fbits:
 	fmov	w0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 via_long:
 	fcvtzs	d0, d0
 	scvtf	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 via_ulong:
 	fcvtzu	d0, d0
 	ucvtf	d0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 via_int:
 	fcvtzs	s0, s0
 	scvtf	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 via_uint:
 	fcvtzu	s0, s0
 	ucvtf	s0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 convert_lanes:
 	adrp	x0, .LANCHOR0
 	add	x0, x0, :lo12:.LANCHOR0
@@ -47,7 +47,7 @@ convert_lanes:
 	stp	q29, q31, [x0, 64]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 q16:
 	mov	x0, 4679240012837945344
 	fmov	d31, x0
@@ -55,7 +55,7 @@ q16:
 	fcvtzs	w0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 q32:
 	mov	x0, 4751297606875873280
 	fmov	d31, x0
@@ -63,7 +63,7 @@ q32:
 	fcvtzs	x0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 uq8:
 	mov	w0, 1132462080
 	fmov	s31, w0
@@ -71,112 +71,112 @@ uq8:
 	fcvtzu	w0, s0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtns_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtns w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtns_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtns x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtas_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtas w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtas_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtas x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtms_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtms w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtms_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtms x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtps_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtps w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtps_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtps x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtnu_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtnu w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtnu_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtnu x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtau_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtau w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtau_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtau x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtmu_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtmu w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtmu_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtmu x0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtpu_w:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtpu w0, d0
 // 0 "" 2
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 fcvtpu_x:
 // 62 "programs/94_fcvt_saturate.c" 1
 	fcvtpu x0, d0
@@ -215,7 +215,7 @@ fcvtpu_x:
 	.string	"\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -128]!
@@ -233,7 +233,7 @@ main:
 	stp	x25, x26, [sp, 64]
 	stp	x27, x28, [sp, 80]
 	str	d15, [sp, 96]
-	.align 5
+	.p2align 5,,15
 .L29:
 	ldr	d15, [x24, w19, sxtw 3]
 	mov	w1, w19
@@ -262,7 +262,7 @@ main:
 	add	x21, x24, 208
 	add	x20, x20, :lo12:.LC2
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L30:
 	ldr	s31, [x21, w19, sxtw 2]
 	mov	w1, w19
@@ -288,7 +288,7 @@ main:
 	add	x1, x24, 304
 	add	x20, x20, :lo12:.LANCHOR0
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L31:
 	ldr	s31, [x1, w0, sxtw 2]
 	str	s31, [x20, x0, lsl 2]
@@ -301,7 +301,7 @@ main:
 	add	x22, x20, 32
 	mov	x19, 0
 	bl	convert_lanes
-	.align 5
+	.p2align 5,,15
 .L32:
 	ldr	s0, [x20, x19, lsl 2]
 	mov	w1, w19
@@ -318,7 +318,7 @@ main:
 	add	x20, x24, 336
 	add	x21, x21, :lo12:.LC4
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L33:
 	ldr	d0, [x20, w19, sxtw 3]
 	mov	w1, w19
@@ -353,7 +353,7 @@ main:
 	str	x0, [sp, 112]
 	add	x0, x26, :lo12:.LC9
 	str	x0, [sp, 120]
-	.align 5
+	.p2align 5,,15
 .L36:
 	ldr	d15, [x24, w23, sxtw 3]
 	mov	x19, x25
@@ -361,7 +361,7 @@ main:
 	mov	w1, w23
 	mov	x0, x28
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L34:
 	ldp	x27, x0, [x26], 24
 	fmov	d0, d15
@@ -374,7 +374,7 @@ main:
 	bne	.L34
 	ldr	x0, [sp, 112]
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L35:
 	ldr	x0, [x19, 16]
 	fmov	d0, d15
@@ -430,30 +430,30 @@ main:
 	.align	3
 	.LANCHOR2:
 modes:
-	.quad	.LC10
-	.quad	fcvtns_w
-	.quad	fcvtns_x
-	.quad	.LC11
-	.quad	fcvtas_w
-	.quad	fcvtas_x
-	.quad	.LC12
-	.quad	fcvtms_w
-	.quad	fcvtms_x
-	.quad	.LC13
-	.quad	fcvtps_w
-	.quad	fcvtps_x
-	.quad	.LC14
-	.quad	fcvtnu_w
-	.quad	fcvtnu_x
-	.quad	.LC15
-	.quad	fcvtau_w
-	.quad	fcvtau_x
-	.quad	.LC16
-	.quad	fcvtmu_w
-	.quad	fcvtmu_x
-	.quad	.LC17
-	.quad	fcvtpu_w
-	.quad	fcvtpu_x
+	.xword	.LC10
+	.xword	fcvtns_w
+	.xword	fcvtns_x
+	.xword	.LC11
+	.xword	fcvtas_w
+	.xword	fcvtas_x
+	.xword	.LC12
+	.xword	fcvtms_w
+	.xword	fcvtms_x
+	.xword	.LC13
+	.xword	fcvtps_w
+	.xword	fcvtps_x
+	.xword	.LC14
+	.xword	fcvtnu_w
+	.xword	fcvtnu_x
+	.xword	.LC15
+	.xword	fcvtau_w
+	.xword	fcvtau_x
+	.xword	.LC16
+	.xword	fcvtmu_w
+	.xword	fcvtmu_x
+	.xword	.LC17
+	.xword	fcvtpu_w
+	.xword	fcvtpu_x
 	.data
 	.align	4
 	.LANCHOR1:
