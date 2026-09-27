@@ -1054,8 +1054,8 @@ main:
 	str	w0, [sp, 72]
 	b	.L83
 .L87:
-	adrp	x0, k32__3
-	add	x0, x0, :lo12:k32__3
+	adrp	x0, k32.3
+	add	x0, x0, :lo12:k32.3
 	ldrsw	x1, [sp, 76]
 	ldr	x1, [x0, x1, lsl 3]
 	ldrsw	x0, [sp, 72]
@@ -1114,8 +1114,8 @@ main:
 	str	wzr, [sp, 76]
 	b	.L89
 .L90:
-	adrp	x0, kc__2
-	add	x0, x0, :lo12:kc__2
+	adrp	x0, kc.2
+	add	x0, x0, :lo12:kc.2
 	ldrsw	x1, [sp, 76]
 	ldr	w1, [x0, x1, lsl 2]
 	ldr	w0, [sp, 60]
@@ -1182,8 +1182,8 @@ main:
 	str	wzr, [sp, 76]
 	b	.L93
 .L94:
-	adrp	x0, k64__1
-	add	x0, x0, :lo12:k64__1
+	adrp	x0, k64.1
+	add	x0, x0, :lo12:k64.1
 	ldrsw	x1, [sp, 76]
 	ldr	x1, [x0, x1, lsl 3]
 	ldrsw	x0, [sp, 60]
@@ -1191,16 +1191,16 @@ main:
 	sub	x0, x0, #1
 	bl	key64
 	mov	w19, w0
-	adrp	x0, k64__1
-	add	x0, x0, :lo12:k64__1
+	adrp	x0, k64.1
+	add	x0, x0, :lo12:k64.1
 	ldrsw	x1, [sp, 76]
 	ldr	x1, [x0, x1, lsl 3]
 	ldrsw	x0, [sp, 60]
 	add	x0, x1, x0
 	bl	key64
 	mov	w20, w0
-	adrp	x0, k64__1
-	add	x0, x0, :lo12:k64__1
+	adrp	x0, k64.1
+	add	x0, x0, :lo12:k64.1
 	ldrsw	x1, [sp, 76]
 	ldr	x1, [x0, x1, lsl 3]
 	ldrsw	x0, [sp, 60]
@@ -1229,8 +1229,8 @@ main:
 	str	wzr, [sp, 76]
 	b	.L95
 .L100:
-	adrp	x0, s64__0
-	add	x0, x0, :lo12:s64__0
+	adrp	x0, s64.0
+	add	x0, x0, :lo12:s64.0
 	ldrsw	x1, [sp, 76]
 	ldr	x1, [x0, x1, lsl 3]
 	ldrsw	x0, [sp, 60]
@@ -1354,7 +1354,7 @@ main:
 	ret
 	.section .rodata
 	.align	3
-k32__3:
+k32.3:
 	.quad	-2147483648
 	.quad	-65536
 	.quad	-4097
@@ -1369,7 +1369,7 @@ k32__3:
 	.quad	2147418112
 	.quad	2147483647
 	.align	3
-kc__2:
+kc.2:
 	.word	0
 	.word	1
 	.word	4
@@ -1389,7 +1389,7 @@ kc__2:
 	.word	1048577
 	.word	-1
 	.align	3
-k64__1:
+k64.1:
 	.quad	0
 	.quad	4294967295
 	.quad	4294967296
@@ -1402,7 +1402,7 @@ k64__1:
 	.quad	-2401053092612145152
 	.quad	3405691582
 	.align	3
-s64__0:
+s64.0:
 	.quad	-9223372036854775808
 	.quad	-4294967296
 	.quad	-4096
