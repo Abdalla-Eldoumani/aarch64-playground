@@ -7,6 +7,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { makeHub } from "@/components/test/playground/helpers/emulator-hub";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
+import { combineSources } from "@/lib/playground/file-map";
 import {
   createTerminalContext,
   type TerminalContextDeps,
@@ -22,7 +23,7 @@ function setup(
   const hub = makeHub(hubOverrides);
   const deps: TerminalContextDeps = {
     machine: { current: hub },
-    combinedSource: () => SOURCE,
+    workspace: () => ({ main: SOURCE, extras: [] }),
     applySeeds: vi.fn(),
     stageVfsFile: vi.fn(),
     removeVfsFile: vi.fn(async () => true),
@@ -62,9 +63,24 @@ describe("running a program", () => {
     haltsWith(hub, { exitCode: 0 });
     await ctx.runProgram(["./program", "5", "7"]);
     // The emulator owns argv[0]; passing the whole array doubled the name.
-    expect(hub.assembleForTool).toHaveBeenCalledWith(SOURCE, ["5", "7"]);
+    expect(hub.assembleForTool).toHaveBeenCalledWith(SOURCE, ["5", "7"], {
+      main: SOURCE,
+      extras: [],
+    });
     expect(deps.applySeeds).toHaveBeenCalledTimes(1);
     expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("joins the extra files and hands their layout over, so notes can name a file", async () => {
+    const workspace = { main: SOURCE, extras: [{ name: "util.s", body: "        ret\n" }] };
+    const { hub, ctx } = setup({}, { workspace: () => workspace });
+    haltsWith(hub, { exitCode: 0 });
+    await ctx.runProgram(["./program"]);
+    expect(hub.assembleForTool).toHaveBeenCalledWith(
+      combineSources(SOURCE, workspace.extras),
+      [],
+      workspace,
+    );
   });
 
   it("reports only this program's output, as the delta over the editor's scrollback", async () => {
@@ -115,7 +131,7 @@ describe("running a program", () => {
     const { hub, ctx } = setup();
     haltsWith(hub, { exitCode: 0 });
     await ctx.runSource("        mov x0, 9\n", ["./other"]);
-    expect(hub.assembleForTool).toHaveBeenCalledWith("        mov x0, 9\n", []);
+    expect(hub.assembleForTool).toHaveBeenCalledWith("        mov x0, 9\n", [], undefined);
   });
 });
 
@@ -349,7 +365,7 @@ describe("the context itself", () => {
     const machine = { current: hub };
     const ctx = createTerminalContext({
       machine,
-      combinedSource: () => SOURCE,
+      workspace: () => ({ main: SOURCE, extras: [] }),
       applySeeds: vi.fn(),
       stageVfsFile: vi.fn(),
       removeVfsFile: vi.fn(async () => true),
