@@ -8,7 +8,7 @@
 	.string	" %02x"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 hex.constprop.0:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -22,7 +22,7 @@ hex.constprop.0:
 	adrp	x0, .LC15
 	add	x0, x0, :lo12:.LC15
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L2:
 	ldrb	w1, [x19], 1
 	mov	x0, x20
@@ -238,7 +238,7 @@ hex.constprop.0:
 	.string	"plain char: %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #1248
@@ -647,7 +647,7 @@ main:
 	mov	x2, x0
 	add	x25, x25, :lo12:.LC66
 	mov	w26, 0
-	.align 5
+	.p2align 5,,15
 .L8:
 	mov	w1, w26
 	sub	w3, w2, w19
@@ -672,7 +672,7 @@ main:
 	add	x1, x1, :lo12:.LC67
 	add	x0, x0, :lo12:.LC68
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L10:
 	ldrb	w0, [x19], 1
 	ldr	x1, [x21]
@@ -755,7 +755,7 @@ main:
 	str	w0, [x26, 48]
 	stp	q30, q29, [x26]
 	str	q31, [x26, 32]
-	.align 5
+	.p2align 5,,15
 .L11:
 	add	x0, x25, x19, lsl 3
 	add	x1, sp, 688
@@ -888,7 +888,7 @@ main:
 	movi	v23.8h, 0x20, lsl 8
 	movi	v22.4s, 0x4
 	movi	v21.4s, 0x8
-	.align 5
+	.p2align 5,,15
 .L12:
 	ldr	q1, [x1], 16
 	ldp	q0, q20, [x0], 32
@@ -937,7 +937,7 @@ main:
 	str	x0, [x1]
 	add	x1, sp, 688
 	mov	w0, 72
-	.align 5
+	.p2align 5,,15
 .L13:
 	ldr	x2, [x19]
 	ubfiz	x0, x0, 2, 8
@@ -1046,19 +1046,19 @@ main:
 	.string	"c"
 	.zero	4
 .LC75:
-	.quad	.LC0
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
-	.quad	.LC4
-	.quad	.LC5
-	.quad	.LC6
-	.quad	.LC7
-	.quad	.LC8
-	.quad	.LC9
-	.quad	.LC10
-	.quad	.LC11
-	.quad	.LC12
+	.xword	.LC0
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
+	.xword	.LC4
+	.xword	.LC5
+	.xword	.LC6
+	.xword	.LC7
+	.xword	.LC8
+	.xword	.LC9
+	.xword	.LC10
+	.xword	.LC11
+	.xword	.LC12
 .LC14:
 	.word	0
 	.word	0
