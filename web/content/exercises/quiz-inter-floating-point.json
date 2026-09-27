@@ -10,24 +10,24 @@
     {
       "question": "What can go wrong when fcvt s0, d0 executes?",
       "options": [
-        "The program aborts with an alignment fault.",
-        "The condition flags are cleared.",
-        "Precision can be lost, because the single-precision destination has fewer fraction bits than the source.",
-        "The sign bit is inverted."
+        "The program aborts with an alignment fault, because s0 and d0 have different sizes.",
+        "Precision can be lost, because a single has fewer fraction bits than a double.",
+        "The condition flags are cleared, so a following b.eq no longer sees the last compare.",
+        "The sign bit is inverted, because the conversion stores the value in ones' complement."
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 1,
       "explanation": "fcvt s0, d0 converts the double in d0 to a single in s0, rounding to the nearest representable value. A double carries 52 fraction bits and a single carries 23, so the narrowing conversion can round digits away.",
       "hint": "Compare the fraction field of a double with the fraction field of a single."
     },
     {
       "question": "In fmadd s0, s1, s2, s3, what value does the destination receive?",
       "options": [
-        "s0 = (s3 + s1) * s2",
         "s0 = s3 + (s1 * s2)",
+        "s0 = (s3 + s1) * s2",
         "s0 = (s3 * s1) + s2",
         "s0 = s3 * (s1 + s2)"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "fmadd multiplies the second and third operands and adds the fourth to the product, so s0 gets s3 + s1 * s2. The companion fmsub subtracts the product from the addend instead.",
       "hint": "The last operand is the addend, the middle two are the multiplicands."
     },
@@ -35,11 +35,11 @@
       "question": "Which floating-point registers must a subroutine preserve across a call, saving and restoring them if it uses them?",
       "options": [
         "d0 to d7",
-        "d8 to d15",
         "d16 to d31",
+        "d8 to d15",
         "s0 to s7"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": "d8 to d15 are the callee-saved floating-point registers, and only their low 64 bits have to survive a call. d0 to d7 carry arguments and results, and d16 to d31 are free for a subroutine to use.",
       "hint": "It is the second block of eight registers."
     },
