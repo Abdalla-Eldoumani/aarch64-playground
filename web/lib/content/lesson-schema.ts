@@ -43,6 +43,12 @@ export interface Lesson {
   slug: string;
   /** Sortable; the index orders by this, never by a week label. */
   order: number | string;
+  /**
+   * The day the content last changed, YYYY-MM-DD. The sitemap reads it:
+   * the deploy clones the repository without its history, so git cannot
+   * say when a page changed there.
+   */
+  lastUpdated?: string;
   /** Optional one-line index card summary. */
   summary?: string;
   /** Optional index filter tags. */
@@ -74,6 +80,17 @@ export type LessonResult = { ok: true; lesson: Lesson } | { ok: false; error: st
 
 /** URL-safe kebab-case: lowercase alphanumerics joined by single dashes. */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * True for a YYYY-MM-DD date that exists on the calendar. The round trip
+ * through Date catches 2026-02-30, which the pattern alone lets through.
+ * Exercises share this rule for their own lastUpdated.
+ */
+export function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
 
 /**
  * Narrow an editor's expectedOutput, or say what is wrong with it. The exit
@@ -205,6 +222,14 @@ export function validateLesson(data: unknown): LessonResult {
     return { ok: false, error: "order: expected a number or string" };
   }
 
+  let lastUpdated: string | undefined;
+  if (o.lastUpdated !== undefined) {
+    if (!isCalendarDate(o.lastUpdated)) {
+      return { ok: false, error: "lastUpdated: expected a YYYY-MM-DD date when present" };
+    }
+    lastUpdated = o.lastUpdated;
+  }
+
   let summary: string | undefined;
   if (o.summary !== undefined) {
     if (typeof o.summary !== "string") {
@@ -237,6 +262,7 @@ export function validateLesson(data: unknown): LessonResult {
   }
 
   const lesson: Lesson = { title, slug, order, body };
+  if (lastUpdated !== undefined) lesson.lastUpdated = lastUpdated;
   if (summary !== undefined) lesson.summary = summary;
   if (tags !== undefined) lesson.tags = tags;
   return { ok: true, lesson };
