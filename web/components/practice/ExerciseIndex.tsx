@@ -98,7 +98,7 @@ function EmptyCard({ message }: { message: string }): JSX.Element {
 }
 
 const PROGRESS_LINK_CLASS =
-  "inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+  "touch-target inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
  * Export / import for the solved set and the answers saved beside it. Both
