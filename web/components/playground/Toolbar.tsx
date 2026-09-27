@@ -9,9 +9,9 @@ export interface ToolbarProps {
   onShare: () => void;
   onTour: () => void;
   onToggleTheme: () => void;
-  /** Builds the diagnostic snapshot lazily on click; kept in the parent so the
-   *  toolbar holds no emulator-hub state. */
-  buildDiagnostic: () => DiagnosticBundleData;
+  /** Gathers the diagnostic snapshot when its dialog opens; kept in the parent
+   *  so the toolbar holds no emulator-hub state. */
+  buildDiagnostic: () => Promise<DiagnosticBundleData>;
   /** The GitHub source anchor, supplied by the parent so the playground owns
    *  the link's destination and styling. */
   sourceLink?: ReactNode;
