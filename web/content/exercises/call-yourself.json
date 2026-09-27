@@ -4,9 +4,10 @@
   "order": 48,
   "topic": "functions",
   "difficulty": "challenge",
-  "prompt": "Write `fact`, a subroutine that computes a factorial by calling itself, and use it to print `10!`.\n\n Each call to `fact` needs its own frame (`lr` must survive the recursive `bl`), and `n` has to outlive the recursive call, which means a callee-saved register that you save on entry and restore on exit. Base case first: when `n` is 1 or less, the answer is 1. Otherwise it is `n * fact(n - 1)`.\n\n## what is checked\n\n- `10!` printed on its own line\n- the program exits cleanly\n- a real call chain does it: a frame is built (`stp`) and the recursion happens (`bl`), with no precomputed answer",
-  "starter": "// compute a factorial with a recursive subroutine\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\n\n        .data\nfmt:    .string \"10! = %lld\\n\"\n\n        .text\n\n// fact(x0 = n) -> x0 = n!\n        .balign 4\n        .global fact\nfact:\n        // TODO: the base case returns 1 when n is 1 or less.\n        // Otherwise save what must survive (this function calls\n        // itself, so lr needs a frame, and n needs to live in a\n        // callee-saved register that you save and restore), recurse on\n        // n - 1, and multiply the result by n on the way back up.\n        mov     x0, 1                       // replace this placeholder\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     x0, 10                      // the argument\n        bl      fact\n\n        mov     x1, x0\n        ldr     x0, =fmt\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Write `fact`, a subroutine that computes a factorial by calling itself. `main` reads `n`, calls `fact`, and prints `n! = ` and the answer.\n\nEach call to `fact` needs its own frame (`lr` must survive the recursive `bl`), and `n` has to outlive the recursive call, which means a callee-saved register that you save on entry and restore on exit. `main` itself keeps `n` in `x19` across the call, so a `fact` that forgets to restore it prints the wrong `n`. Base case first: when `n` is 1 or less, the answer is 1. Otherwise it is `n * fact(n - 1)`.\n\n## what is checked\n\n- `10! = 3628800` printed on its own line for the `10` in the stdin box\n- the program exits cleanly\n- a real call chain does it: `fact` builds a frame (`stp`) and calls itself (`bl fact` inside `fact`), with no precomputed answer\n- the same holds for other values of `n` you do not see, from 0 up to 20",
+  "starter": "// compute a factorial with a recursive subroutine\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_out:    .string \"%lld! = %lld\\n\"\n\n        .bss\n        .balign 8\nn_m:        .skip 8\n\n        .text\n\n// fact(x0 = n) -> x0 = n!\n        .balign 4\n        .global fact\nfact:\n        // TODO: the base case returns 1 when n is 1 or less.\n        // Otherwise save what must survive (this function calls\n        // itself, so lr needs a frame, and n needs to live in a\n        // callee-saved register that you save and restore), recurse on\n        // n - 1, and multiply the result by n on the way back up.\n        mov     x0, 1                       // replace this placeholder\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read n\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n\n        mov     x0, n_r                     // the argument\n        bl      fact\n\n        mov     x2, x0                      // n! prints after n itself\n        mov     x1, n_r\n        ldr     x0, =fmt_out\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "10\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -22,16 +23,42 @@
     "structural": [
       {
         "kind": "uses-instruction",
-        "mnemonic": "bl"
+        "mnemonic": "bl fact",
+        "in": "fact"
       },
       {
         "kind": "uses-instruction",
-        "mnemonic": "stp"
+        "mnemonic": "stp",
+        "in": "fact"
       },
       {
         "kind": "forbids-literal",
         "value": 3628800
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "0! = 1\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "1! = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "5\n",
+      "stdout": "5! = 120\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "20\n",
+      "stdout": "20! = 2432902008176640000\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
 }
