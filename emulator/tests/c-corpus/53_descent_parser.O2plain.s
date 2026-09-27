@@ -17,7 +17,7 @@
 	.string	"negative exponent"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 unary:
 	stp	x29, x30, [sp, -32]!
 	adrp	x6, .LANCHOR0
@@ -27,7 +27,7 @@ unary:
 	cmp	w0, 32
 	bne	.L2
 	add	x1, x2, 1
-	.align 5
+	.p2align 5,,15
 .L3:
 	mov	x2, x1
 	ldrb	w0, [x1], 1
@@ -57,7 +57,7 @@ unary:
 	cmp	w5, 9
 	bls	.L23
 	b	.L17
-	.align 2
+	.p2align 2,,3
 .L21:
 	ldrb	w2, [x4]
 	add	x1, x1, x1, lsl 2
@@ -83,7 +83,7 @@ unary:
 	bne	.L10
 .L38:
 	add	x0, x3, 1
-	.align 5
+	.p2align 5,,15
 .L25:
 	mov	x3, x0
 	ldrb	w2, [x0], 1
@@ -99,7 +99,7 @@ unary:
 	mov	x0, x1
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	cbnz	x9, .L16
 	adrp	x0, .LC2
@@ -109,7 +109,7 @@ unary:
 	sub	x2, x2, x0
 	str	w2, [x10, 16]
 	b	.L16
-	.align 2
+	.p2align 2,,3
 .L69:
 	add	x3, x3, 1
 	str	x3, [x6, :lo12:.LANCHOR0]
@@ -125,14 +125,14 @@ unary:
 	mov	x0, x1
 	ldp	x29, x30, [sp], 32
 	ret
-	.align 2
+	.p2align 2,,3
 .L67:
 	str	x3, [x6, :lo12:.LANCHOR0]
 .L17:
 	cmp	w2, 32
 	beq	.L38
 	b	.L24
-	.align 2
+	.p2align 2,,3
 .L65:
 	add	x2, x2, 1
 	str	x2, [x6, :lo12:.LANCHOR0]
@@ -160,7 +160,7 @@ unary:
 	sub	x0, x4, x0
 	str	w0, [x10, 16]
 	b	.L16
-	.align 2
+	.p2align 2,,3
 .L66:
 	add	x2, x2, 1
 	str	x2, [x6, :lo12:.LANCHOR0]
@@ -172,7 +172,7 @@ unary:
 	cmp	w2, 32
 	bne	.L12
 	add	x0, x0, 1
-	.align 5
+	.p2align 5,,15
 .L13:
 	mov	x3, x0
 	ldrb	w2, [x0], 1
@@ -207,7 +207,7 @@ unary:
 	ldr	x2, [sp, 16]
 	mov	x1, 1
 	cbz	x0, .L1
-	.align 5
+	.p2align 5,,15
 .L27:
 	tbz	x0, 0, .L28
 	mul	x3, x2, x1
@@ -246,7 +246,7 @@ unary:
 	.string	"divide by zero"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 product:
 	stp	x29, x30, [sp, -64]!
 	mov	x29, sp
@@ -261,7 +261,7 @@ product:
 	cmp	w1, 32
 	bne	.L75
 	add	x0, x0, 1
-	.align 5
+	.p2align 5,,15
 .L76:
 	mov	x2, x0
 	ldrb	w1, [x0], 1
@@ -279,7 +279,7 @@ product:
 	ldrb	w23, [x1]
 	cmp	w23, 47
 	bhi	.L74
-	.align 5
+	.p2align 5,,15
 .L110:
 	lsr	x0, x20, x23
 	tbz	x0, 0, .L74
@@ -304,7 +304,7 @@ product:
 	cmp	w0, 32
 	bne	.L77
 	add	x1, x1, 1
-	.align 5
+	.p2align 5,,15
 .L90:
 	mov	x3, x1
 	ldrb	w2, [x1], 1
@@ -322,7 +322,7 @@ product:
 	ldp	x23, x24, [sp, 48]
 	ldp	x29, x30, [sp], 64
 	ret
-	.align 2
+	.p2align 2,,3
 .L107:
 	mul	x1, x0, x24
 	smulh	x0, x0, x24
@@ -330,7 +330,7 @@ product:
 	bne	.L104
 	mov	x24, x1
 	b	.L84
-	.align 2
+	.p2align 2,,3
 .L109:
 	sdiv	x24, x24, x0
 	b	.L84
@@ -361,7 +361,7 @@ product:
 	.string	"expected ':'"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 cond:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -383,7 +383,7 @@ cond:
 	ldrb	w19, [x0], 1
 	cmp	w19, 32
 	bne	.L161
-	.align 5
+	.p2align 5,,15
 .L116:
 	mov	x2, x0
 	ldrb	w19, [x0], 1
@@ -393,7 +393,7 @@ cond:
 .L161:
 	ldr	x0, [x21, 8]
 	cbnz	x0, .L115
-	.align 5
+	.p2align 5,,15
 .L118:
 	sub	w0, w19, #43
 	mov	w1, 253
@@ -414,7 +414,7 @@ cond:
 	add	x1, x2, 1
 	cmp	w19, 32
 	bne	.L127
-	.align 5
+	.p2align 5,,15
 .L129:
 	mov	x2, x1
 	ldrb	w19, [x1], 1
@@ -437,7 +437,7 @@ cond:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L163:
 	ldr	x2, [x21]
 	adds	x0, x0, x22
@@ -451,7 +451,7 @@ cond:
 	add	x0, x2, 1
 	cmp	w19, 32
 	bne	.L167
-	.align 5
+	.p2align 5,,15
 .L132:
 	mov	x2, x0
 	ldrb	w19, [x0], 1
@@ -523,7 +523,7 @@ cond:
 	.string	"%-26.26s -> %lld (depth %d)\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 run:
 	stp	x29, x30, [sp, -48]!
 	mov	x29, sp
@@ -543,7 +543,7 @@ run:
 	cmp	w4, 32
 	bne	.L169
 	add	x3, x5, 1
-	.align 5
+	.p2align 5,,15
 .L170:
 	mov	x5, x3
 	ldrb	w4, [x3], 1
@@ -565,7 +565,7 @@ run:
 	ldp	x29, x30, [sp], 48
 	add	x0, x0, :lo12:.LC8
 	b	printf
-	.align 2
+	.p2align 2,,3
 .L173:
 	ldr	w3, [x19, 36]
 	mov	x1, x22
@@ -576,7 +576,7 @@ run:
 	ldp	x29, x30, [sp], 48
 	add	x0, x0, :lo12:.LC9
 	b	printf
-	.align 2
+	.p2align 2,,3
 .L177:
 	sub	x5, x5, x20
 	adrp	x3, .LC7
@@ -612,7 +612,7 @@ run:
 	.string	"400 carets"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -64]!
@@ -623,7 +623,7 @@ main:
 	add	x20, x19, 264
 	stp	x21, x22, [sp, 32]
 	str	x23, [sp, 48]
-	.align 5
+	.p2align 5,,15
 .L179:
 	ldr	x1, [x19], 8
 	mov	x0, x1
@@ -657,7 +657,7 @@ main:
 	mov	x0, x21
 	add	x1, x1, :lo12:buf+402
 	mov	w2, 10285
-	.align 5
+	.p2align 5,,15
 .L180:
 	strh	w2, [x0], 2
 	cmp	x0, x1
@@ -689,7 +689,7 @@ main:
 	add	x1, x1, :lo12:.LC13
 	mov	w2, 1
 	bl	sprintf
-	.align 5
+	.p2align 5,,15
 .L181:
 	mov	w2, w19
 	mov	x0, x20
@@ -833,39 +833,39 @@ main:
 	.align	4
 	.LANCHOR1:
 cases:
-	.quad	.LC18
-	.quad	.LC19
-	.quad	.LC20
-	.quad	.LC21
-	.quad	.LC22
-	.quad	.LC23
-	.quad	.LC24
-	.quad	.LC25
-	.quad	.LC26
-	.quad	.LC27
-	.quad	.LC28
-	.quad	.LC29
-	.quad	.LC30
-	.quad	.LC31
-	.quad	.LC32
-	.quad	.LC33
-	.quad	.LC34
-	.quad	.LC35
-	.quad	.LC36
-	.quad	.LC37
-	.quad	.LC38
-	.quad	.LC39
-	.quad	.LC40
-	.quad	.LC41
-	.quad	.LC42
-	.quad	.LC43
-	.quad	.LC44
-	.quad	.LC45
-	.quad	.LC46
-	.quad	.LC47
-	.quad	.LC48
-	.quad	.LC49
-	.quad	.LC50
+	.xword	.LC18
+	.xword	.LC19
+	.xword	.LC20
+	.xword	.LC21
+	.xword	.LC22
+	.xword	.LC23
+	.xword	.LC24
+	.xword	.LC25
+	.xword	.LC26
+	.xword	.LC27
+	.xword	.LC28
+	.xword	.LC29
+	.xword	.LC30
+	.xword	.LC31
+	.xword	.LC32
+	.xword	.LC33
+	.xword	.LC34
+	.xword	.LC35
+	.xword	.LC36
+	.xword	.LC37
+	.xword	.LC38
+	.xword	.LC39
+	.xword	.LC40
+	.xword	.LC41
+	.xword	.LC42
+	.xword	.LC43
+	.xword	.LC44
+	.xword	.LC45
+	.xword	.LC46
+	.xword	.LC47
+	.xword	.LC48
+	.xword	.LC49
+	.xword	.LC50
 	.bss
 	.align	4
 	.LANCHOR0:
