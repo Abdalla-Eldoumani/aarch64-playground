@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 fill:
 	mov	x9, 58255
 	adrp	x0, .LANCHOR0
@@ -19,7 +19,7 @@ fill:
 	mov	x0, 0
 	movk	w6, 0x3c6e, lsl 16
 	movk	x9, 0xe38e, lsl 48
-	.align 5
+	.p2align 5,,15
 .L5:
 	madd	w1, w1, w7, w6
 	tbz	x0, 5, .L2
@@ -39,7 +39,7 @@ fill:
 	mov	w0, -128
 	strb	w0, [x4, 3]
 	ret
-	.align 2
+	.p2align 2,,3
 .L2:
 	umulh	x2, x0, x9
 	lsr	x2, x2, 6
@@ -54,7 +54,7 @@ fill:
 	add	x0, x0, 1
 	b	.L5
 	.align	2
-	.align 5
+	.p2align 5,,15
 hash:
 	mov	x2, x0
 	add	x1, x0, w1, sxtw
@@ -62,7 +62,7 @@ hash:
 	mov	w0, 40389
 	movk	w0, 0x811c, lsl 16
 	movk	w4, 0x100, lsl 16
-	.align 5
+	.p2align 5,,15
 .L9:
 	ldrb	w3, [x2], 1
 	eor	w0, w3, w0
@@ -71,14 +71,14 @@ hash:
 	bne	.L9
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 xor_key:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
 	movi	v31.16b, 0x5a
 	add	x2, x1, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L12:
 	ldr	q30, [x1, x0]
 	eor	v30.16b, v30.16b, v31.16b
@@ -88,7 +88,7 @@ xor_key:
 	bne	.L12
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 to_upper:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -97,7 +97,7 @@ to_upper:
 	movi	v30.16b, 0x19
 	mov	x0, 0
 	movi	v29.16b, 0xffffffffffffffe0
-	.align 5
+	.p2align 5,,15
 .L15:
 	ldr	q28, [x1, x0]
 	add	v27.16b, v28.16b, v31.16b
@@ -110,7 +110,7 @@ to_upper:
 	bne	.L15
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rot13:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -121,7 +121,7 @@ rot13:
 	movi	v29.16b, 0x6d
 	movi	v28.16b, 0xfffffffffffffff3
 	movi	v27.16b, 0xd
-	.align 5
+	.p2align 5,,15
 .L18:
 	ldr	q26, [x1, x0]
 	cmhi	v24.16b, v26.16b, v29.16b
@@ -136,7 +136,7 @@ rot13:
 	bne	.L18
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sat_add:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -144,7 +144,7 @@ sat_add:
 	add	x3, x1, 512
 	add	x2, x1, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L21:
 	ldr	q30, [x1, x0]
 	ldr	q29, [x0, x3]
@@ -159,7 +159,7 @@ sat_add:
 	bne	.L21
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sat_sub:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
@@ -167,7 +167,7 @@ sat_sub:
 	add	x3, x1, 512
 	add	x2, x1, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L24:
 	ldr	q30, [x1, x0]
 	ldr	q29, [x0, x3]
@@ -182,14 +182,14 @@ sat_sub:
 	bne	.L24
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 avg_round:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
 	add	x3, x1, 1536
 	add	x2, x1, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L27:
 	ldr	q31, [x1, x0]
 	ldr	q30, [x0, x2]
@@ -200,14 +200,14 @@ avg_round:
 	bne	.L27
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 abs_diff:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
 	add	x3, x1, 512
 	add	x2, x1, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L30:
 	ldr	q31, [x1, x0]
 	ldr	q30, [x0, x3]
@@ -221,14 +221,14 @@ abs_diff:
 	bne	.L30
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 max_u8:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
 	add	x3, x1, 1536
 	add	x2, x1, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L33:
 	ldr	q31, [x0, x2]
 	ldr	q30, [x1, x0]
@@ -239,13 +239,13 @@ max_u8:
 	bne	.L33
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 rotl3:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
 	add	x2, x1, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L36:
 	ldr	q31, [x1, x0]
 	shl	v30.16b, v31.16b, 3
@@ -256,14 +256,14 @@ rotl3:
 	bne	.L36
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 abs_s8:
 	adrp	x1, .LANCHOR1
 	add	x1, x1, :lo12:.LANCHOR1
 	add	x2, x1, 1024
 	add	x1, x1, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L39:
 	ldr	q31, [x0, x2]
 	cmlt	v30.16b, v31.16b, #0
@@ -275,7 +275,7 @@ abs_s8:
 	bne	.L39
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 widen_mul:
 	adrp	x4, .LC0
 	adrp	x2, .LANCHOR1
@@ -285,7 +285,7 @@ widen_mul:
 	add	x1, x2, 2048
 	add	x3, x2, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L42:
 	ldr	q29, [x2, x0]
 	ldr	q28, [x0, x3]
@@ -301,14 +301,14 @@ widen_mul:
 	bne	.L42
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 narrow_hi:
 	adrp	x2, .LANCHOR1
 	add	x2, x2, :lo12:.LANCHOR1
 	add	x0, x2, 2048
 	add	x1, x2, 1536
 	add	x2, x2, 3072
-	.align 5
+	.p2align 5,,15
 .L45:
 	ldp	q31, q30, [x0], 32
 	uzp2	v30.16b, v31.16b, v30.16b
@@ -317,14 +317,14 @@ narrow_hi:
 	bne	.L45
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 pair_sum:
 	adrp	x0, .LANCHOR1
 	add	x0, x0, :lo12:.LANCHOR1
 	add	x2, x0, 1536
 	add	x3, x0, 512
 	mov	x1, x2
-	.align 5
+	.p2align 5,,15
 .L48:
 	ld2	{v30.16b - v31.16b}, [x0], 32
 	add	v30.16b, v30.16b, v31.16b
@@ -334,21 +334,21 @@ pair_sum:
 	movi	v31.4s, 0
 	add	x0, x2, 256
 	add	x1, x2, 512
-	.align 5
+	.p2align 5,,15
 .L49:
 	str	q31, [x0], 16
 	cmp	x1, x0
 	bne	.L49
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 interleave:
 	adrp	x2, .LANCHOR1
 	add	x2, x2, :lo12:.LANCHOR1
 	add	x1, x2, 3072
 	add	x3, x2, 512
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L53:
 	ldr	q30, [x2, x0]
 	ldr	q31, [x3, x0]
@@ -358,7 +358,7 @@ interleave:
 	bne	.L53
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 count_space:
 	movi	v31.4s, 0
 	adrp	x0, .LANCHOR1
@@ -367,7 +367,7 @@ count_space:
 	movi	v28.16b, 0x1
 	add	x1, x0, 512
 	mov	v30.16b, v31.16b
-	.align 5
+	.p2align 5,,15
 .L56:
 	ldr	q27, [x0], 16
 	cmeq	v27.16b, v27.16b, v29.16b
@@ -389,7 +389,7 @@ count_space:
 	.string	"%-9s %08x %02x %02x %02x %02x %02x\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 report:
 	stp	x29, x30, [sp, -16]!
 	adrp	x9, .LANCHOR1
@@ -464,7 +464,7 @@ report:
 	.string	"again"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!
@@ -551,7 +551,7 @@ main:
 	movi	v31.4s, 0
 	add	x3, x19, 512
 	mov	x1, x0
-	.align 5
+	.p2align 5,,15
 .L61:
 	ld4	{v20.16b - v23.16b}, [x2], 64
 	add	x1, x1, 64
@@ -595,7 +595,7 @@ main:
 	bne	.L61
 	add	x3, x0, 512
 	mov	x1, x0
-	.align 5
+	.p2align 5,,15
 .L62:
 	ldr	q31, [x1]
 	rev32	v31.16b, v31.16b
@@ -603,7 +603,7 @@ main:
 	cmp	x1, x3
 	bne	.L62
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L63:
 	lsl	w2, w1, 5
 	sub	w1, w2, w1
@@ -618,7 +618,7 @@ main:
 	bl	printf
 	add	x1, x19, 1536
 	mov	x0, 0
-	.align 5
+	.p2align 5,,15
 .L64:
 	ldr	q31, [x0, x1]
 	str	q31, [x19, x0]
