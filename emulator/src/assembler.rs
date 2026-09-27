@@ -158,8 +158,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "CMP", "CMN", "CCMP", "CCMN",
     // logical
     "AND", "ANDS", "ORR", "EOR", "BIC", "ORN", "EON", "MVN", "TST",
-    // shifts and rotate
-    "LSL", "LSR", "ASR", "ROR",
+    // shifts, rotate, and the funnel shift
+    "LSL", "LSR", "ASR", "ROR", "EXTR",
     // sign / zero extension
     "SXTB", "SXTH", "SXTW", "UXTB", "UXTH", "UXTW",
     // bitfield extract / insert
@@ -176,9 +176,10 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "LDUR", "STUR", "LDNP", "STNP",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
+    "FCCMP", "FCCMPE",
     "FMAX", "FMIN", "FMAXNM", "FMINNM", "FCSEL",
     "FMADD", "FMSUB", "FNMADD", "FNMSUB",
-    "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP",
+    "FCVT", "SCVTF", "UCVTF", "FCVTZS", "FCVTNS", "FCVTNU", "LDP", "STP", "LDPSW",
     // advanced simd: the vector immediates and the lane moves (the vector
     // forms of MOV, ORR, BIC and FMOV ride their existing arms)
     "MOVI", "MVNI", "DUP", "INS", "UMOV", "SMOV",
@@ -260,7 +261,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     // conditional select
     "CSEL", "CSINC", "CSINV", "CSNEG", "CSET", "CSETM", "CINC", "CINV", "CNEG",
     // system
-    "NOP", "SVC",
+    "NOP", "SVC", "BRK",
 ];
 
 fn encode_line(
@@ -339,6 +340,7 @@ fn encode_line(
         "LSR" => encode_shift(&ops, 1, line_num),
         "ASR" => encode_shift(&ops, 2, line_num),
         "ROR" => encode_ror(&ops, line_num),
+        "EXTR" => encode_extr(&ops, line_num),
 
         // -- sign / zero extension (SBFM / UBFM extract-and-extend aliases) --
         "SXTB" => encode_extend(&ops, true, 7, line_num),
@@ -418,6 +420,8 @@ fn encode_line(
         "FSQRT" => encode_fp_unary(&ops, "fsqrt", line_num),
         "FCMP" => encode_fcmp(&ops, false, line_num),
         "FCMPE" => encode_fcmp(&ops, true, line_num),
+        "FCCMP" => encode_fccmp(&ops, false, line_num),
+        "FCCMPE" => encode_fccmp(&ops, true, line_num),
         "FCVT" => encode_fcvt(&ops, line_num),
         "SCVTF" => encode_fp_cvt_from_int(&ops, "scvtf", line_num),
         "UCVTF" => encode_fp_cvt_from_int(&ops, "ucvtf", line_num),
@@ -431,8 +435,9 @@ fn encode_line(
         "FCVTMU" => encode_fp_cvt_int(&ops, "fcvtmu", line_num),
         "FCVTPS" => encode_fp_cvt_int(&ops, "fcvtps", line_num),
         "FCVTPU" => encode_fp_cvt_int(&ops, "fcvtpu", line_num),
-        "LDP" => encode_ldst_pair(&ops, 1, line_num),
-        "STP" => encode_ldst_pair(&ops, 0, line_num),
+        "LDP" => encode_ldst_pair(&ops, 1, false, line_num),
+        "STP" => encode_ldst_pair(&ops, 0, false, line_num),
+        "LDPSW" => encode_ldst_pair(&ops, 1, true, line_num),
         "LDNP" => encode_ldst_pair_no_allocate(&ops, 1, line_num),
         "STNP" => encode_ldst_pair_no_allocate(&ops, 0, line_num),
 
@@ -526,6 +531,7 @@ fn encode_line(
         // -- system --
         "NOP" => Ok(crate::decoder::NOP_WORD),
         "SVC" => encode_svc(&ops, line_num),
+        "BRK" => encode_brk(&ops, line_num),
 
         _ => Err(unknown_mnemonic(mnemonic, operands, line_num)),
     }
@@ -660,7 +666,9 @@ fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError> {
             })?
     };
 
-    Ok(if negative { -(val as i64) } else { val as i64 })
+    // Wrapping, because -9223372036854775808 (LONG_MIN, which gcc writes
+    // out in decimal) has no positive i64 to negate.
+    Ok(if negative { (val as i64).wrapping_neg() } else { val as i64 })
 }
 
 fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
@@ -856,10 +864,18 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         if (0..=0xFFFF).contains(&imm) {
             return encode_movzk(&[ops[0], op2], 0b10, ln); // MOVZ
         }
-        if imm > 0 {
+        // The bits the register ends up holding: a negative X immediate is
+        // its own two's complement (gcc writes the double -4.0 as
+        // `mov x2, -4607182418800017408`, MOVZ #0xc010, LSL #48), and a
+        // negative W one its low 32 bits.
+        let pattern = match imm {
+            _ if sf || imm > 0 => Some(imm as u64),
+            _ if imm >= i64::from(i32::MIN) => Some(u64::from(imm as u32)),
+            _ => None,
+        };
+        if let Some(u) = pattern {
             // Try to encode as a single MOVZ with a shifted 16-bit field
             // (e.g. 0x10000000 -> MOVZ Xd, #0x1000, LSL #16).
-            let u = imm as u64;
             let limit: u64 = if sf { 4 } else { 2 };
             for hw in 0..limit {
                 let shift = hw * 16;
@@ -1453,6 +1469,29 @@ fn encode_ror(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         | (0b001011 << 10) | ((rn as u32) << 5) | (rd as u32))
 }
 
+/// Encode `EXTR Rd, Rn, Rm, #lsb`: bits lsb and up of the pair Rn:Rm.
+/// ROR by an immediate is the same word with Rn repeated.
+fn encode_extr(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    if ops.len() != 4 {
+        return asm_err(ln, "EXTR requires 4 operands: Rd, Rn, Rm, #lsb");
+    }
+    reject_sp_operands(ops, ln, "EXTR")?;
+    let (rd, sf) = parse_register(ops[0], ln)?;
+    let (rn, sf_n) = parse_register(ops[1], ln)?;
+    let (rm, sf_m) = parse_register(ops[2], ln)?;
+    if sf_n != sf || sf_m != sf {
+        return asm_err(ln, "EXTR takes three registers of the same width");
+    }
+    let reg_size: i64 = if sf { 64 } else { 32 };
+    let lsb = parse_immediate(ops[3], ln)?;
+    if !(0..reg_size).contains(&lsb) {
+        return asm_err(ln, &format!("EXTR takes an lsb from 0 to {} here, not {lsb}", reg_size - 1));
+    }
+    let sf_bit = u32::from(sf);
+    Ok((sf_bit << 31) | (0b00100111 << 23) | (sf_bit << 22)
+        | ((rm as u32) << 16) | ((lsb as u32) << 10) | ((rn as u32) << 5) | (rd as u32))
+}
+
 /// Encode `MVN Rd, Rm` (and `MVN Rd, Rm, LSL #k`) as `ORN Rd, ZR, Rm`.
 /// Delegating rather than spelling the word inline is what gives the
 /// shifted form for free, the same way BIC gets it from `encode_log_reg`.
@@ -1887,13 +1926,15 @@ fn encode_mneg(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
 }
 
 fn encode_neg(ops: &[&str], set_flags: bool, ln: usize) -> Result<u32, EmuError> {
-    // NEG Xd, Xm -> SUB Xd, XZR, Xm; NEGS is the SUBS form and sets NZCV.
-    if ops.len() != 2 {
-        return asm_err(ln, "NEG/NEGS requires 2 operands");
+    // NEG Xd, Xm{, shift #n} -> SUB Xd, XZR, Xm{, shift #n}; NEGS is the
+    // SUBS form and sets NZCV. gcc writes the shifted one for `-(x << 1)`.
+    if ops.len() != 2 && ops.len() != 3 {
+        return asm_err(ln, "NEG/NEGS takes 2 operands, or 3 with a shift (neg w0, w1, lsl 2)");
     }
     let (_, sf) = parse_register(ops[0], ln)?;
     let zr = if sf { "XZR" } else { "WZR" };
-    let new_ops = [ops[0], zr, ops[1]];
+    let mut new_ops = vec![ops[0], zr];
+    new_ops.extend_from_slice(&ops[1..]);
     encode_dp(&new_ops, 1, if set_flags { 1 } else { 0 }, ln)
 }
 
@@ -2427,8 +2468,10 @@ fn encode_simd_mod_imm(ops: &[&str], op: SimdImmOp, ln: usize) -> Result<u32, Em
         }
         imm8
     } else {
-        if value > 0xff {
-            return asm_err(ln, &format!("{name} takes an 8-bit immediate (0 to 255), got {value:#x}"));
+        // gcc writes a byte with its top bit set sign-extended to 64 bits
+        // (0xffffffffffffffe0 for 0xe0), and GAS takes it as that byte.
+        if !(-128..=255).contains(&(value as i64)) {
+            return asm_err(ln, &format!("{name} takes an 8-bit immediate (-128 to 255), got {value:#x}"));
         }
         value as u8
     };
@@ -2620,6 +2663,14 @@ fn is_simd_integer_line(mn: &str, ops: &[&str]) -> bool {
             .is_some_and(|op| parse_vec_operand(op).is_some() || simd_scalar_operand(op).is_some())
 }
 
+/// Whether a vector instruction's last operand is an immediate. GAS
+/// takes it with or without `#`, and gcc writes vector shifts without
+/// one (`shl v0.4s, v1.4s, 3`).
+fn simd_immediate(op: &str) -> bool {
+    let op = op.trim();
+    op.starts_with('#') || op.starts_with(|c: char| c.is_ascii_digit())
+}
+
 /// SXTL and UXTL: how GAS spells the lengthening shift by #0, and how it
 /// prints that word back.
 fn is_extend_long_alias(name: &str) -> bool {
@@ -2679,10 +2730,10 @@ fn encode_simd_integer(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuErro
         {
             encode_simd_by_element(&name, ops, upper, ln)
         }
-        // A third operand spelled `#` is one of three different things:
-        // the compare against zero, SHLL's fixed shift by the lane
+        // A third operand that is a number is one of three different
+        // things: the compare against zero, SHLL's fixed shift by the lane
         // width, or a shift by immediate.
-        3 if ops[2].trim().starts_with('#') => {
+        3 if simd_immediate(ops[2]) => {
             if simd_misc_by_name(&name, true).is_some() {
                 encode_simd_two_misc(&name, ops, true, upper, ln)
             } else if let Some(row) = simd_shift_by_name(&name) {
@@ -3173,9 +3224,9 @@ fn encode_simd_float(mn: &str, ops: &[&str], ln: usize) -> Result<u32, EmuError>
         return encode_simd_fp_by_element(&name, ops, ln);
     }
     match ops.len() {
-        // A third operand spelled `#` is either the compare against zero
-        // or the fixed-point conversion's fraction width.
-        3 if ops[2].trim().starts_with('#') => {
+        // A third operand that is a number is either the compare against
+        // zero or the fixed-point conversion's fraction width.
+        3 if simd_immediate(ops[2]) => {
             let zero = simd_fp_misc_by_name(&name, true).is_some();
             encode_simd_fp_two_misc(&name, ops, zero, upper, ln)
         }
@@ -3284,6 +3335,16 @@ fn encode_simd_fp_two_misc(
         let Some((rn, src)) = simd_scalar_operand(ops[1]) else {
             return asm_err(ln, &format!("`{}` is not a scalar register", ops[1].trim()));
         };
+        // A scalar rounding is an FP 1-source word (the FNEG class), not a
+        // SIMD-scalar one.
+        if let Some((opcode, _)) = crate::decoder::FP_ROUND_OPS.iter().find(|(_, op)| *op == row.op) {
+            if dest != src || (dest != 4 && dest != 8) || fbits.is_some() {
+                return asm_err(ln, &format!("{name} takes two s or two d registers"));
+            }
+            let ftype = u32::from(dest == 8);
+            return Ok(0x1E20_4000 | (ftype << 22) | (u32::from(*opcode) << 15)
+                | (u32::from(rn) << 5) | u32::from(rd));
+        }
         // A narrowing convert reads a lane of twice what it writes.
         let esize = src;
         if !row.scalar
@@ -3966,13 +4027,43 @@ fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError
         return asm_err(ln, "fcmp/fcmpe requires 2 operands");
     }
     let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[0], ln)?;
-    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[1], ln)?;
-    let width = require_same_fp_width("fcmp", &[wn, wm], ln)?;
+    // `fcmp d0, #0.0` names no second register: opc bit 3 set, Rm zero.
+    let (fm, zero) = if matches!(ops[1].trim().trim_start_matches('#'), "0" | "0.0") {
+        (0, 0b01000)
+    } else {
+        let FpReg { idx, width: wm } = parse_fp_register(ops[1], ln)?;
+        require_same_fp_width("fcmp", &[wn, wm], ln)?;
+        (idx, 0)
+    };
     // FCMP Fn, Fm: 0_0_0_11110_ftype_1_Rm_00_1000_Rn_0_0000; FCMPE sets
     // opc bit 4. The emulator raises no FP exceptions, so the two set the
     // same flags either way.
     let opc: u32 = if signaling { 0b10000 } else { 0 };
-    Ok(0x1E20_2000 | fp_ftype(width, ln)? | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc)
+    Ok(0x1E20_2000 | fp_ftype(wn, ln)? | ((fm as u32) << 16) | ((fn_ as u32) << 5) | opc | zero)
+}
+
+/// FCCMP / FCCMPE Fn, Fm, #nzcv, cond: FCMP when cond holds, the literal
+/// flags otherwise, as CCMP. Bits 11:10 are 01, FCSEL's neighbour.
+fn encode_fccmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u32, EmuError> {
+    let name = if signaling { "fccmpe" } else { "fccmp" };
+    if ops.len() != 4 {
+        return asm_err(ln, &format!("{name} requires 4 operands: {name} fn, fm, #nzcv, cond"));
+    }
+    let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[0], ln)?;
+    let FpReg { idx: fm, width: wm } = parse_fp_register(ops[1], ln)?;
+    let width = require_same_fp_width(name, &[wn, wm], ln)?;
+    let nzcv = parse_immediate(ops[2], ln)?;
+    if !(0..=15).contains(&nzcv) {
+        return asm_err(ln, &format!("{name} nzcv must be 0 to 15 (the four flag bits, N Z C V)"));
+    }
+    let cond = parse_condition_allowing_nv(ops[3], ln)?;
+    Ok(0x1E20_0400
+        | fp_ftype(width, ln)?
+        | ((fm as u32) << 16)
+        | ((cond as u32) << 12)
+        | ((fn_ as u32) << 5)
+        | ((signaling as u32) << 4)
+        | (nzcv as u32))
 }
 
 /// SCVTF / UCVTF Fd, Rn, plus SCVTF's SIMD-scalar spelling. `name` keys
@@ -4800,7 +4891,9 @@ fn encode_ldur_stur(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
 }
 
 #[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout
-fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
+/// LDP/STP, and with `signed_words` LDPSW: two words from memory, each
+/// sign-extended into an X register (gcc's load of an int pair).
+fn encode_ldst_pair(ops: &[&str], load: u8, signed_words: bool, ln: usize) -> Result<u32, EmuError> {
     if ops.len() < 3 {
         return asm_err(ln, "LDP/STP requires at least 3 operands");
     }
@@ -4843,7 +4936,10 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
         }
     };
 
-    let scale: i64 = if sf { 8 } else { 4 };
+    if signed_words && !sf {
+        return asm_err(ln, "LDPSW loads into X registers: ldpsw x1, x2, [x0]");
+    }
+    let scale: i64 = if sf && !signed_words { 8 } else { 4 };
     if offset_val % scale != 0 {
         return asm_err(ln, "pair offset must be aligned to register size");
     }
@@ -4866,7 +4962,7 @@ fn encode_ldst_pair(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> 
     }
     let imm7_enc = (quotient as u32) & 0x7F;
 
-    let opc: u32 = if sf { 0b10 } else { 0b00 };
+    let opc: u32 = if signed_words { 0b01 } else if sf { 0b10 } else { 0b00 };
     let mode_bits: u32 = match mode {
         IndexMode::PostIndex => 0b01,
         IndexMode::Unsigned => 0b10,
@@ -5260,6 +5356,18 @@ fn encode_svc(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
         parse_immediate(ops[0], ln)? as u16
     };
     Ok(0xD400_0001 | ((imm as u32) << 5))
+}
+
+/// `brk #imm16`, the breakpoint trap gcc plants on a path that can only fault.
+fn encode_brk(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
+    let [op] = ops else {
+        return asm_err(ln, "BRK takes one immediate: brk #1000");
+    };
+    let imm = parse_immediate(op, ln)?;
+    if !(0..=0xFFFF).contains(&imm) {
+        return asm_err(ln, "BRK takes an immediate from 0 to 65535");
+    }
+    Ok(0xD420_0000 | ((imm as u32) << 5))
 }
 
 // ---------------------------------------------------------------------------
