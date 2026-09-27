@@ -52,14 +52,14 @@ function plainText(markdown: string): string {
     .trim();
 }
 
-/** Lines that are not running prose: lists, tables, quotes, indented code. */
-const NOT_PROSE = /^\s*([-*+] |\d+\. |\||>)|^ {4}/;
+/** Lines that are not running prose: headings, lists, tables, quotes, indented code. */
+const NOT_PROSE = /^\s*(#{1,6} |[-*+] |\d+\. |\||>)|^ {4}/;
 
 /**
  * A snippet from authored Markdown: its prose, in whole sentences while they
- * fit. Lists, tables, and code are skipped, and so is a sentence that ends
- * in a colon, since it introduces one of them. When whole sentences come
- * out short, the prose is clipped at a word instead.
+ * fit. Headings, lists, tables, and code are skipped, and so is a sentence
+ * that ends in a colon, since it introduces one of them. When whole
+ * sentences come out short, the prose is clipped at a word instead.
  */
 export function snippetFromMarkdown(markdown: string): string {
   const paragraphs: string[] = [];
