@@ -1,17 +1,17 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 dbits:
 	fmov	x0, d0
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 differ:
 	fcmp	d0, d1
 	cset	w0, ne
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 relations:
 	fcmpe	d0, d1
 	stp	x29, x30, [sp, -16]!
@@ -28,7 +28,7 @@ relations:
 	fmov	s29, s31
 	fmov	s28, s31
 	b	.L7
-	.align 2
+	.p2align 2,,3
 .L20:
 	movi	v31.2s, 0x31
 	movi	v28.2s, 0x30
@@ -94,7 +94,7 @@ relations:
 	strb	w0, [x1, 15]
 	ldp	x29, x30, [sp], 16
 	ret
-	.align 2
+	.p2align 2,,3
 .L18:
 	movi	v31.2s, 0x30
 	mov	w0, 12593
@@ -110,7 +110,7 @@ relations:
 	fmov	s28, s29
 	b	.L7
 	.align	2
-	.align 5
+	.p2align 5,,15
 cmp3:
 	fcmpe	d0, d1
 	mov	w0, 60
@@ -124,19 +124,19 @@ cmp3:
 .L26:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 inside:
 	fcmpe	d0, d1
 	bge	.L35
 	mov	w0, 0
 	ret
-	.align 2
+	.p2align 2,,3
 .L35:
 	fcmpe	d0, d2
 	cset	w0, ls
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 outside:
 	fcmpe	d0, d1
 	mov	w0, 1
@@ -146,26 +146,26 @@ outside:
 .L38:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 both_less:
 	fcmpe	d0, d1
 	bmi	.L44
 	mov	w0, 0
 	ret
-	.align 2
+	.p2align 2,,3
 .L44:
 	fcmpe	d2, d3
 	cset	w0, mi
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 either_eq:
 	fcmp	s0, s1
 	fccmp	s0, s2, 4, ne
 	cset	w0, eq
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 before:
 	fcmp	d1, d1
 	bne	.L56
@@ -184,28 +184,28 @@ before:
 	cset	w0, ge
 .L47:
 	ret
-	.align 2
+	.p2align 2,,3
 .L51:
 	mov	w0, 0
 	ret
-	.align 2
+	.p2align 2,,3
 .L56:
 	fcmp	d0, d0
 	cset	w0, eq
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 sort.constprop.0:
 	mov	x4, x0
 	add	x5, x0, 8
 	stp	x29, x30, [sp, -16]!
 	mov	w6, 1
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L61:
 	ldr	d31, [x5]
 	mov	x2, x5
-	.align 5
+	.p2align 5,,15
 .L58:
 	ldr	d30, [x2, -8]
 	fmov	d0, d31
@@ -259,7 +259,7 @@ sort.constprop.0:
 	.string	"best %g above %d below %d unordered %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #288
@@ -277,11 +277,11 @@ main:
 	mov	w21, 0
 	str	d15, [sp, 88]
 	bl	puts
-	.align 5
+	.p2align 5,,15
 .L66:
 	sxtw	x22, w21
 	mov	w19, 0
-	.align 5
+	.p2align 5,,15
 .L67:
 	ldr	d0, [x20, x22, lsl 3]
 	add	x0, sp, 136
@@ -301,14 +301,14 @@ main:
 	adrp	x23, .LC2
 	add	x23, x23, :lo12:.LC2
 	mov	w22, 0
-	.align 5
+	.p2align 5,,15
 .L68:
 	sxtw	x21, w22
 	mov	w19, 0
 	mov	w1, w22
 	mov	x0, x23
 	bl	printf
-	.align 5
+	.p2align 5,,15
 .L69:
 	ldr	d0, [x20, x21, lsl 3]
 	ldr	d1, [x20, w19, sxtw 3]
@@ -327,7 +327,7 @@ main:
 	mov	x0, -9223372036854775808
 	mov	w19, 0
 	fmov	d15, x0
-	.align 5
+	.p2align 5,,15
 .L70:
 	ldr	d0, [x20, w19, sxtw 3]
 	fmov	d2, 1.5e+0
@@ -436,7 +436,7 @@ main:
 	bl	printf
 	mov	x1, x21
 	mov	w0, 9
-	.align 5
+	.p2align 5,,15
 .L71:
 	ldr	d31, [x20, w0, sxtw 3]
 	sub	w0, w0, #1
@@ -466,7 +466,7 @@ main:
 	add	x0, x0, :lo12:.LC7
 	bl	printf
 	b	.L74
-	.align 2
+	.p2align 2,,3
 .L86:
 	bl	dbits
 	mov	x1, x0
@@ -497,7 +497,7 @@ main:
 	mov	w2, 0
 	mov	w1, 0
 	fmov	d0, x0
-	.align 5
+	.p2align 5,,15
 .L75:
 	ldr	d31, [x21], 8
 	fcmpe	d31, d0
