@@ -2,6 +2,7 @@
   "title": "Fibonacci goes large",
   "slug": "fibonacci-goes-large",
   "order": 16,
+  "lastUpdated": "2026-09-27",
   "topic": "loops",
   "difficulty": "core",
   "prompt": "Compute the `n`th Fibonacci number for the `n` the starter reads. With the 50 in the stdin box the answer is 12,586,269,025, which does not fit in 32 bits, so the loop has to run in `x` registers.\n\nKeep the classic sliding pair: `a` and `b` start as 0 and 1, and `n` times over, the new value is `a + b`, then the pair slides forward. When the loop ends, `a` holds the answer.\n\n## what is checked\n\n- `fib(50)` printed on its own line\n- the program exits cleanly\n- the loop builds it (answer not written in)\n- the same holds for other values of `n` you do not see, from `fib(0)` up to `fib(92)`, the largest that fits in a signed 64-bit register",
