@@ -11,21 +11,21 @@
       "question": "Which memory section holds data that the programmer initializes and that the program can still write to while it runs?",
       "options": [
         ".text",
-        ".data",
         ".bss",
+        ".data",
         "The run-time heap"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": "The .data section holds programmer-initialized data and stays read/write for the life of the program. .text is read-only, and .bss is reserved for data that starts out as zero.",
       "hint": "Think about where a global variable with an explicit starting value goes."
     },
     {
       "question": "Where does a local (automatic) variable in a C function live while that function runs?",
       "options": [
-        "In the .bss section",
-        "In the .data section",
+        "In the .bss section, which starts out as zeros",
+        "In the .data section, beside the global variables",
         "In the stack frame of the running function",
-        "In the .text section"
+        "In the .text section, next to the function's code"
       ],
       "correctAnswer": 2,
       "explanation": "An automatic variable exists only for the duration of one call, so it is allocated in that call's stack frame and released when the function returns. .data and .bss hold storage that lasts for the whole program instead.",
@@ -46,12 +46,12 @@
     {
       "question": "Which of these is stored in the .text section?",
       "options": [
-        "Variables declared with no starting value",
         "Machine code, plus read-only initialized data such as string literals",
-        "The run-time stack",
-        "Memory handed out by malloc"
+        "Global variables declared with no starting value, which all begin as zeros",
+        "The run-time stack, which grows down from the top of the program",
+        "Memory handed out by malloc while the program is running"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "The .text section holds the program text, meaning the machine instructions, together with read-only initialized data such as string constants. Nothing placed there can be written once the program is running.",
       "hint": "This section is read-only after the program is loaded."
     },
@@ -59,11 +59,11 @@
       "question": "How is the character constant Z written as an immediate in GAS AArch64 source?",
       "options": [
         "mov w19, \"Z\"",
-        "mov w19, 'Z'",
         "mov w19, [Z]",
-        "mov w19, char(Z)"
+        "mov w19, char(Z)",
+        "mov w19, 'Z'"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "A character constant is written between single quotes and the assembler substitutes its ASCII code, so mov w19, 'Z' puts 90 into w19. Double quotes mark a string of characters, not a single one.",
       "hint": "It is written the same way as a character literal in C."
     }
