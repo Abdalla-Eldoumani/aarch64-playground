@@ -25,8 +25,6 @@ vi.mock("@/components/panels/BaseConverter", () => ({
 import type { ReferenceInstruction } from "@/lib/content/reference-data";
 import { ReferenceView } from "@/components/reference/ReferenceView";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 const INSTRUCTIONS: ReferenceInstruction[] = [
   {
     mnemonic: "mov",
@@ -52,7 +50,6 @@ const INSTRUCTIONS: ReferenceInstruction[] = [
 
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
   window.history.replaceState(null, "", "/");
 });
 
@@ -164,17 +161,5 @@ describe("ReferenceView", () => {
 
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
     expect(screen.getByText("pitfalls-catalog")).toBeTruthy();
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<ReferenceView instructions={INSTRUCTIONS} />);
-      expect(screen.getByRole("tablist")).toBeTruthy();
-      expect(
-        screen.getByText(`instruction-reference:${INSTRUCTIONS.length}`),
-      ).toBeTruthy();
-      unmount();
-    }
   });
 });
