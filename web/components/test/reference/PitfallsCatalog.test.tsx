@@ -78,7 +78,7 @@ describe("PitfallsCatalog", () => {
     expect(container.textContent).toContain("bl overwrites lr");
   });
 
-  it("offers a run-the-fault and run-the-fix affordance on every card", () => {
+  it("offers run-the-fault and run-the-fix buttons on every card", () => {
     render(<PitfallsCatalog />);
     for (const title of TITLES) {
       expect(
