@@ -1,5 +1,3 @@
-// Pins the IEEE-754 reading of 32- and 64-bit patterns: the fields, the
-// class, the shortest and exact decimals, and exact decimal-to-bits rounding.
 // Every expected pattern and decimal below was worked out independently
 // (by hand and with Python's struct and decimal modules), never through the
 // module under test.
