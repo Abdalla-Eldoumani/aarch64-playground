@@ -1,10 +1,8 @@
 /**
- * Pure number-base conversions for the base converter widget. The canonical
- * value is always the raw bit pattern, held as an unsigned BigInt in
- * [0, 2^width): two's complement is a reading of that pattern, not a second
- * value, and it only means anything at a declared width, which is why every
- * function here takes one. BigInt throughout because 64-bit patterns exceed
- * Number's safe range.
+ * Conversions for the base converter. The one stored value is the raw bit
+ * pattern, an unsigned BigInt in [0, 2^width): signed is only another reading
+ * of it and needs a width to mean anything, so every function takes one.
+ * BigInt because 64-bit patterns pass Number's safe range.
  */
 
 export type Width = 8 | 16 | 32 | 64;
