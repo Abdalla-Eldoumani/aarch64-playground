@@ -2,7 +2,7 @@
   "title": "Quiz: binary logic",
   "slug": "quiz-inter-binary-logic",
   "order": 73,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "binary-logic",
   "difficulty": "core",
   "variant": "quiz",
@@ -41,7 +41,7 @@
         "subs"
       ],
       "correctAnswer": 0,
-      "explanation": "tst x0, x1 assembles as ands xzr, x0, x1. The AND is computed and the flags are set from it, then the result is discarded by writing it to xzr, so only the flags survive for a following conditional branch.",
+      "explanation": "tst x0, x1 assembles as ands xzr, x0, x1. The AND is computed and the flags are set from it, then the result is discarded by writing it to xzr, the zero register, so only the flags survive for a following conditional branch.",
       "hint": "Only the s-suffixed form of a logical instruction updates the condition flags."
     },
     {
