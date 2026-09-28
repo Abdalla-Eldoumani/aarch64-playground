@@ -2,7 +2,7 @@
 
 Every instruction the playground understands. If it isn't listed here, the assembler will reject it with an `unknown mnemonic` error.
 
-Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/`WZR`. Immediates can be written decimal (`#42`), hex (`#0x2a`), or binary (`#0b101010`). The `#` is conventional and optional: `add x0, x1, 8` and `movk x4, 0x10, lsl 16` assemble exactly like their hashed forms, which is why unmodified GCC output, where the hash never appears, works unchanged. Labels end with a colon.
+Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/`WZR`. Immediates can be written decimal (`#42`), hex (`#0x2a`), or binary (`#0b101010`). The `#` is conventional and optional: `add x0, x1, 8` and `movk x4, 0x10, lsl 16` assemble exactly like their hashed forms, so GCC's immediates, which never carry the hash, need no edit (a whole `gcc -S` file still needs the few edits under [GCC output compatibility](#gcc-output-compatibility)). Labels end with a colon.
 
 ## Data processing
 
@@ -150,7 +150,7 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 | `BLR`    | `BLR Xn`         | Branch to register with link.                     |
 | `RET`    | `RET` / `RET Xn` | Default `RET` uses X30.                           |
 | `B.cond` | `B.EQ label` etc.| One per condition code listed above.              |
-| `Bcond`  | `BEQ label` etc. | GAS-style alias for every `B.cond` form (`BNE`, `BLT`, `BGT`, ...). Emits the same encoding; lets unmodified GCC output assemble unchanged. |
+| `Bcond`  | `BEQ label` etc. | GAS-style alias for every `B.cond` form (`BNE`, `BLT`, `BGT`, ...). Emits the same encoding, so GCC's branches need no edit. |
 | `CBZ`    | `CBZ Rt, label`  | Compare-and-branch if zero. `Rt` can be W or X.   |
 | `CBNZ`   | `CBNZ Rt, label` | Compare-and-branch if non-zero.                   |
 | `TBZ`    | `TBZ Rt, #bit, label` | Test-bit-and-branch if zero. `bit` is 0..63. |
@@ -161,7 +161,7 @@ The `adrp` / `add :lo12:` pair forms an address in two steps: `adrp Xd, sym` giv
 | Mnemonic | Form     | Notes                                  |
 | -------- | -------- | -------------------------------------- |
 | `NOP`    | `NOP`    | Does nothing, still advances PC.       |
-| `SVC`    | `SVC #0` | Hosted: reads the syscall number from `x8`. `SVC #N` with `N != 0` halts the CPU. |
+| `SVC`    | `SVC #0` | A Linux system call: reads the call number from `x8`. `SVC #N` with `N != 0` halts the CPU. |
 | `BRK`    | `BRK #imm` | Breakpoint trap: stops the program with `Trace/breakpoint trap`, as it does on the servers. `imm` runs 0 to 65535. GCC plants one where it proved the code can only fault, such as a use of a pointer that is NULL on that path. |
 
 ## Floating point
@@ -644,7 +644,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `.float`      | IEEE 754 float.                                       |
 | `.string` / `.asciz` | Null-terminated string.                        |
 | `.ascii`      | String, no null terminator.                           |
-| `.type` / `.size` | Parsed-and-ignored so GCC output still loads.     |
+| `.type` / `.size` | Accepted and ignored, so the ones GCC writes need no edit. |
 | `name .req reg` | Register alias, integer or FP (`fp .req x29`, `sum .req d19`). Takes effect on the lines after it; string literals are never rewritten. |
 
 ## Pseudo-instructions
@@ -653,7 +653,7 @@ An address in the unmapped first page faults here exactly as it does for
 | --------------------- | ----------------------------------- |
 | `ldr Xt, =<symbol>`   | `LDR (literal)` with a pool slot.   |
 | `ldr Xt, =<constant>` | Same, or a MOVZ/MOVK chain for small constants. |
-| `ldr Rt, <label>`     | `LDR (literal)`: loads the value at the label's address. Rt may be X, W, S, or D. Lowered through the literal pool as two words because the data sections sit past imm19's reach here; the S/D forms borrow x16, the same scratch the libc trampolines claim. |
+| `ldr Rt, <label>`     | `LDR (literal)`: loads the value at the label's address. Rt may be X, W, S, or D. Lowered through the literal pool as two words because the data sections sit past imm19's reach here; the S/D forms borrow x16, the same scratch register the linker's jumps into the C library use. |
 | `tst Rn, #imm`        | `ANDS WZR/XZR, Rn, #imm` (bitmask immediate encoding). |
 | `cmp Rn, #imm`        | `SUBS WZR/XZR, Rn, #imm`.           |
 | `mov Rd, #imm`        | MOVZ/MOVK/MOVN sequence depending on immediate shape. |
@@ -680,9 +680,9 @@ A whole `-S` file still needs these edits before it assembles:
 - Drop the `#` in front of `:lo12:` inside an address: `ldr d0, [x0, :lo12:.LC0]`, not `[x0, #:lo12:.LC0]`.
 - Call `scanf` and `strtol` by those names where glibc's headers renamed them `__isoc99_scanf` or `__isoc23_strtol`.
 
-## Host stubs (hosted runtime)
+## C library functions
 
-Pre-registered and available without setup:
+Built into the playground, so `bl` reaches them with no setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |
@@ -710,7 +710,7 @@ Pre-registered and available without setup:
 | `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
 | `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer; dereferencing it faults. |
-| `fprintf`                      | The printf engine writing to a FILE* (x0 = stream, x1 = format, varargs from x2). Bytes land in the virtual file under the same caps as the write syscall; the file appears in the console's files view. A stream that never came from fopen is a calm halt naming the fix. |
+| `fprintf`                      | The printf engine writing to a FILE* (x0 = stream, x1 = format, varargs from x2). Bytes land in the virtual file under the same caps as the write syscall; the file appears in the console's files view. A stream that never came from fopen stops the program with a message naming the fix. |
 | `fclose`                       | Drops the stream's descriptor; returns 0, or EOF for a handle that is not open (a second fclose answers EOF, as glibc does). Nothing is buffered, so there is nothing to flush. |
 | `sqrt`                         | Argument in `d0`, result in `d0`. Of a negative it is NaN, the IEEE answer rather than an error. |
 | `pow`                          | Base in `d0`, exponent in `d1`, result in `d0`. `pow(0, 0)` is 1, per C. |
@@ -726,9 +726,9 @@ Pre-registered and available without setup:
 | `sincos`                       | Argument in `d0`; stores the sine through `x0` and the cosine through `x1`. GCC merges a `sin` and a `cos` of the same value into this one call. |
 
 Stepping through one of these costs three steps, and the debugger says
-where you are for all three. A `bl printf` lands first on the two words of
-the trampoline the linker plants (`ldr x16, =<stub>; br x16`), then on the
-stub address itself; none of the three is an instruction you wrote. Through
+where you are for all three. A `bl printf` lands first on the two
+instructions the linker adds to reach it (`ldr x16, =<stub>; br x16`), then
+on the function's own address; none of the three is an instruction you wrote. Through
 all three the decode strip drops its bit-field row for a card naming the
 call (`printf`, `external call · handled by the runtime`), the editor
 holds the marker on your `bl` line in a quieter dashed amber rather than
