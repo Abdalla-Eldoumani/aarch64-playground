@@ -205,7 +205,7 @@ describe("the console watermark", () => {
     await halt(h.machine, session);
   });
 
-  it("goes with the bytes it describes: drop, reset, and clear", async () => {
+  it("is cleared with the output it marks: drop, reset, and clear", async () => {
     const h = setup({ stdout: "x" });
     await h.update({ wantsTerminal: true });
     expect(h.drive().terminalOwnedFrom).toBe(1);
@@ -378,7 +378,7 @@ describe("forwarding keystrokes", () => {
     await end();
   });
 
-  it("swallows an escape sequence, which a canonical read has no use for", async () => {
+  it("swallows an escape sequence, which a cooked-mode read has no use for", async () => {
     const machine = makeMachine();
     const { io, end } = await withSession(machine);
     const fg = foregroundOf(io);
@@ -401,7 +401,7 @@ describe("forwarding keystrokes", () => {
     await end();
   });
 
-  it("bounds a pasted megabyte where both tty modes converge", async () => {
+  it("refuses a pasted megabyte at the stdin cap both tty modes share", async () => {
     const machine = makeMachine();
     const { io, end } = await withSession(machine);
     foregroundOf(io).pushInput("x".repeat(MAX_STDIN_BYTES + 1));
