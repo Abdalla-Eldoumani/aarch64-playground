@@ -7,7 +7,7 @@ import type { DiagnosticBundle as DiagnosticBundleData } from "@/lib/playground/
 export interface ToolbarProps {
   /** share and tools. */
   onShare: () => void;
-  onTour: () => void;
+  onTutorials: () => void;
   onToggleTheme: () => void;
   /** Gathers the diagnostic snapshot when its dialog opens; kept in the parent
    *  so the toolbar holds no emulator-hub state. */
@@ -43,13 +43,13 @@ function GroupLabel({ children }: { children: ReactNode }) {
 
 /**
  * The playground's labeled toolbar: one "tools" group (share, diagnostic
- * bundle, guided tour, theme, source, and the command-palette opener), so
+ * bundle, tutorials, theme, source, and the command-palette opener), so
  * every action is visible and named. The run controls (Assemble / Run / Step /
  * Back / Reset) keep their dedicated bottom bar.
  */
 export function Toolbar({
   onShare,
-  onTour,
+  onTutorials,
   onToggleTheme,
   buildDiagnostic,
   sourceLink,
@@ -71,11 +71,10 @@ export function Toolbar({
         <DiagnosticBundle build={buildDiagnostic} />
         <button
           type="button"
-          onClick={onTour}
-          aria-label="start guided tour"
+          onClick={onTutorials}
           className={`${CONTROL} ${INACTIVE}`}
         >
-          tour
+          tutorials
         </button>
         <button
           type="button"
