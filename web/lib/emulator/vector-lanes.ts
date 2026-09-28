@@ -1,14 +1,7 @@
 /**
- * Slicing a 128-bit vector register into lanes, the pure half of the v-view.
- *
- * A v register arrives from the wasm as `0x` + 32 hex digits, most significant
- * digit first. AArch64 numbers lanes from the LEAST significant end, so lane 0
- * is the low bytes, the tail of the string, and the lane count follows the
- * width: 16 b, 8 h, 4 s, 2 d. Re-slicing never changes the bits, only how many
- * groups they are read in.
- *
- * A lane is its bits as unsigned hex; register-format reads them as a signed
- * or unsigned integer, or a float, at the lane's own width.
+ * Slices a 128-bit vector register into lanes. The wasm sends `0x` + 32 hex
+ * digits, most significant first, but AArch64 numbers lanes from the least
+ * significant end, so lane 0 is the tail of the string.
  */
 
 export type LaneWidth = "b" | "h" | "s" | "d";
@@ -28,10 +21,8 @@ const VECTOR_BYTES = 16;
 const VECTOR_DIGITS = VECTOR_BYTES * 2;
 
 /**
- * The register's 32 hex digits, whatever shape the value arrived in: the `0x`
- * comes off, a short value is left-padded, and anything unreadable (an older
- * wasm answering with junk rather than nothing) reads as zero rather than
- * throwing inside a render.
+ * The register's 32 hex digits. Anything unreadable (an older wasm sending
+ * junk) reads as zero, because a throw here would land inside a render.
  */
 function digitsOf(bitsHex: string): string {
   const raw = bitsHex.trim().replace(/^0[xX]/, "");
