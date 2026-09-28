@@ -10,6 +10,8 @@ pub mod hosted;
 pub mod memory;
 pub mod registers;
 pub mod snapshot;
+#[cfg(test)]
+mod test_support;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
