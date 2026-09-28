@@ -48,11 +48,11 @@ export const metadata: Metadata = {
     default: composeTitle(HOME_TITLE),
     template: `%s · ${SITE_NAME}`,
   },
-  // Search Console URL-prefix verification; the domain property is verified
-  // via DNS separately, so this tag is a second anchor, not the primary.
   // iOS takes a home-screen app's name and standalone launch from these
   // tags, not from the web manifest.
-  appleWebApp: { capable: true, title: "AArch64 Playground" },
+  appleWebApp: { capable: true, title: SITE_NAME },
+  // Search Console URL-prefix verification; the domain property is verified
+  // via DNS separately, so this tag is a second anchor, not the primary.
   verification: { google: "RJmIR859S00gRMvoEXI-3lhiav4ygzIp6oUW6lP54j4" },
 };
 
