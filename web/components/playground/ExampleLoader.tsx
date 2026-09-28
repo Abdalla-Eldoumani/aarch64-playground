@@ -24,13 +24,8 @@ interface ExampleGroup {
 }
 
 /**
- * Examples presented as a level-up path, in the order the concepts
- * build: first programs, data and memory, stack and locals, records
- * and arrays, subroutines, static data and arguments, floating point,
- * files and I/O, a vector-register stage the course does not teach,
- * then a miscellaneous stage for playable extras. Each stage carries at
- * least one program; the labels are the stage names, with no
- * course-week text.
+ * The examples in the order the ideas build on each other. Labels name the
+ * stage, never a course week.
  */
 const GROUPS: ExampleGroup[] = [
   {
