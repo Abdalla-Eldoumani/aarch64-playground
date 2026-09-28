@@ -55,7 +55,7 @@ describe("RegisterPanel", () => {
     expect(row("X2")).not.toMatch(/-|u/);
   });
 
-  it("cross-references the ABI aliases beside the register names", () => {
+  it("shows each register's alias (arg0, fp, lr) beside its name", () => {
     renderPanel();
     expect(screen.getByText("arg0")).toBeTruthy();
     expect(screen.getByText("fp")).toBeTruthy();
