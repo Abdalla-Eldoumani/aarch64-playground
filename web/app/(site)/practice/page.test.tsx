@@ -16,6 +16,21 @@ vi.mock("@/components/practice/ExerciseView", () => ({
     `exercise-view:${exercise.slug}`,
 }));
 
+// The real loaders, read once as the file loads. Every call reads and
+// validates all the exercise files, and with every test worker busy one call
+// took seconds, so five of them overran the five-second test limit.
+vi.mock("@/lib/content/exercises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/content/exercises")>();
+  const all = real.loadAllExercises();
+  const index = real.loadExerciseIndex();
+  return {
+    ...real,
+    loadAllExercises: () => all,
+    loadExerciseIndex: () => index,
+    loadExercise: (slug: string) => all.find((exercise) => exercise.slug === slug),
+  };
+});
+
 // notFound throws a sentinel like the real one halts rendering, so an unknown
 // slug is observable here as a rejection plus a spy call.
 vi.mock("next/navigation", () => ({
