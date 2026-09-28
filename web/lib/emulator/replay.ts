@@ -1,16 +1,7 @@
 /**
- * Replay buffer for the step-range scrubber. Captures the last N
- * snapshot frames as the user steps the program; the scrubber UI
- * reads `range()` to populate its slider.
- *
- * The ring is fixed-capacity (default 128). Once full, pushing evicts
- * the oldest frame. Frames are stored in insertion order; `range()`
- * returns oldest-to-newest.
- *
- * Replay is visual-only: scrubbing applies a captured frame's
- * registers / sp / fp registers / changedRegs / currentLine to the React
- * tree without touching the underlying CPU. Stepping forward resumes from
- * the live PC.
+ * The last N register frames for the step scrubber, oldest first; once full,
+ * a push drops the oldest. Scrubbing only repaints the panels and never
+ * touches the CPU, so stepping forward resumes from the live pc.
  */
 export interface ReplayFrame {
   stepCount: number;
