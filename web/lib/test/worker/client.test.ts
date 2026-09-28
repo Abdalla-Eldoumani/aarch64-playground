@@ -233,6 +233,22 @@ describe("WorkerClient", () => {
     }
   });
 
+  test("spawnEmulatorWorker returns null when the Worker constructor throws", () => {
+    // A strict CSP or a file:// preview refuses the worker at construction;
+    // the caller then falls back to running the machine on the main thread.
+    vi.stubGlobal(
+      "Worker",
+      vi.fn(() => {
+        throw new Error("refused by the content security policy");
+      }),
+    );
+    try {
+      expect(spawnEmulatorWorker()).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("error event rejects all pending promises with the event message", async () => {
     const { w } = makeMockWorker();
     const listeners: Record<string, Array<(e: unknown) => void>> = {};
