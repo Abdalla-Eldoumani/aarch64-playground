@@ -84,22 +84,24 @@ describe("pickBackend", () => {
     expect(pickBackend()).toBe(sentinel);
   });
 
-  test("force 'main' selects the main-thread backend and never spawns a worker", () => {
+  // The fake wrapper's counters (12 and 3) reach a snapshot only through
+  // loadEmulator, so they prove the main-thread path drove the machine.
+  test("force 'main' selects the main-thread backend and never spawns a worker", async () => {
     const sentinel = workerSentinel();
     h.worker = sentinel;
     setPref("main");
     const backend = pickBackend();
     expect(backend).not.toBe(sentinel);
-    expect(typeof backend.assemble).toBe("function");
-    expect(typeof backend.onSnapshot).toBe("function");
+    const snap = await backend.init();
+    expect(snap.stdoutSeen).toBe(12);
   });
 
-  test("falls back to the main-thread backend when no worker is available", () => {
+  test("falls back to the main-thread backend when no worker is available", async () => {
     h.worker = null;
     setPref(null);
-    const backend = pickBackend();
-    expect(typeof backend.step).toBe("function");
-    expect(typeof backend.onSnapshot).toBe("function");
+    const snap = await pickBackend().init();
+    expect(snap.stdoutSeen).toBe(12);
+    expect(snap.stderrSeen).toBe(3);
   });
 
   test("force 'worker' uses the worker when one is available", () => {
