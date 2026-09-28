@@ -56,11 +56,12 @@ describe("sitemap", () => {
     expect(home?.priority).toBe(1);
   });
 
-  it("includes the dedicated playground route", () => {
+  it("lists the playground as a nav route with no date, since no content file dates it", () => {
     const playground = entries.find(
       (entry) => entry.url === new URL("/playground", SITE_URL).toString(),
     );
-    expect(playground).toBeDefined();
+    expect(playground?.priority).toBe(0.8);
+    expect(playground && "lastModified" in playground).toBe(false);
   });
 
   it("gives every entry a change frequency and a numeric priority", () => {
