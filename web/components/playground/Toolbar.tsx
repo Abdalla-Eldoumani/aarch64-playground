@@ -91,8 +91,8 @@ export function Toolbar({
           onClick={onOpenCommandPalette}
           // The accessible name matches the visible label (WCAG label-in-name);
           // the title still spells out what the button opens. The chip is
-          // full-strength for contrast on hover states and aria-hidden so the
-          // name stays the bare word.
+          // full-strength for contrast on hover states, and its key is drawn
+          // by CSS from data-keys so the button's text stays the bare word.
           aria-label="commands"
           title="open the command palette (Ctrl+K)"
           className={`${CONTROL} ${INACTIVE}`}
@@ -100,10 +100,9 @@ export function Toolbar({
           commands
           <kbd
             aria-hidden="true"
-            className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
-          >
-            Ctrl+K
-          </kbd>
+            data-keys="Ctrl+K"
+            className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
+          />
         </button>
       </div>
     </div>
