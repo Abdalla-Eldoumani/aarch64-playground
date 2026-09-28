@@ -10,7 +10,7 @@ use crate::registers::NzcvFlags;
 /// Compute NZCV for a double-precision comparison of `a` against `b`.
 pub fn fcmp_flags(a: f64, b: f64) -> NzcvFlags {
     if a.is_nan() || b.is_nan() {
-        // "Unordered" result: N=0 Z=0 C=1 V=1 per the ARM ARM.
+        // "Unordered" result: N=0 Z=0 C=1 V=1 per the Arm manual.
         return NzcvFlags {
             n: false,
             z: false,
