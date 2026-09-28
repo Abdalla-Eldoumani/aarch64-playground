@@ -1,6 +1,6 @@
-// Pins the third register view: the v cell only on a wasm that reports the
-// 128-bit file, the lane-width control, and the auto-switch rule that tells a
-// v write from a d write.
+// Pins the third register view: the v cell only when the emulator reports the
+// 128-bit registers, the lane-width control, and the auto-switch rule that
+// tells a v write from a d write.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
@@ -51,7 +51,7 @@ function panel(props: {
 }
 
 describe("RegisterPanel v-register view", () => {
-  it("offers three cells only when the wasm reports the vector file", () => {
+  it("offers the v view only when the emulator reports the vector registers", () => {
     const { rerender } = render(panel({ vectorRegisters: [] }));
     expect(screen.getByRole("button", { name: "x0–x30" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "d0–d31" })).toBeTruthy();
@@ -60,7 +60,7 @@ describe("RegisterPanel v-register view", () => {
     expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
   });
 
-  it("shows the whole file with both of each register's names", () => {
+  it("shows all 32 v registers, each under both of its names", () => {
     render(panel({}));
     fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
     expect(screen.getByText("v0 (q0)")).toBeTruthy();
@@ -69,7 +69,7 @@ describe("RegisterPanel v-register view", () => {
     expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("v");
   });
 
-  it("re-slices the same bits under the persisted lane arrangement", () => {
+  it("splits the same bits by the chosen lane width and remembers it", () => {
     render(panel({ vectorRegisters: vecsWith("0x0123456789abcdeffedcba9876543210") }));
     fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
     // Two 64-bit lanes by default.
@@ -207,7 +207,7 @@ describe("RegisterPanel auto-switch across three views", () => {
     );
   });
 
-  it("keeps the view and dots the other cells when two classes write at once", () => {
+  it("keeps the view and dots the other cells when two kinds of register change at once", () => {
     const { rerender } = render(panel({}));
     rerender(
       panel({
@@ -215,7 +215,7 @@ describe("RegisterPanel auto-switch across three views", () => {
         vectorRegisters: vecsWith("0x00000000000000010000000000000000"),
       }),
     );
-    // The student was reading the x-file and stays there.
+    // The student was reading the x view and stays there.
     expect(screen.getByText("X0")).toBeTruthy();
     const vCell = screen.getByRole("button", { name: "v0–v31 changed" });
     expect(vCell.innerHTML).toContain("var(--changed)");
@@ -230,9 +230,9 @@ describe("RegisterPanel auto-switch across three views", () => {
   CLOBBERED[3] = "0xdeadbeefdeadbeefdeadbeefdeadbeef";
   CLOBBERED[9] = "0xdeadbeefdeadbeef0000000000000000";
 
-  it("does not follow what a library call leaves in the vector file", () => {
-    // Only x0 (the result) is the program's write: the x-file stays in view
-    // and the vector cell carries no dot.
+  it("does not follow what a library call leaves in the vector registers", () => {
+    // Only x0 (the result) is the program's write: the x view stays up and
+    // the vector cell carries no dot.
     const { rerender } = render(panel({}));
     rerender(
       panel({
@@ -245,9 +245,9 @@ describe("RegisterPanel auto-switch across three views", () => {
     expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
   });
 
-  it("stays on the x-file after a run whose only vector change was a call's", () => {
-    // A run's last snapshot names no written register, but the vector file
-    // differs from the one before the run.
+  it("stays on the x view after a run whose only vector change was a call's", () => {
+    // A run's last snapshot names no written register, but the vector
+    // registers differ from before the run.
     const { rerender } = render(panel({}));
     rerender(panel({ vectorRegisters: CLOBBERED }));
     expect(screen.getByText("X0")).toBeTruthy();
