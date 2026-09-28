@@ -536,9 +536,11 @@ body {
 }
 
 /* While the install tip (chrome/InstallHint) floats at the bottom, a control
-   scrolled or tabbed into view stops above it instead of under it. */
+   scrolled or tabbed into view stops above it instead of under it. The tip
+   publishes its measured height; the fallback covers the frame before it. */
 html:has([data-install-tip]) {
-  scroll-padding-bottom: calc(7rem + var(--safe-bottom));
+  --install-tip-clear: calc(var(--install-tip-height, 7.5rem) + 1.5rem + var(--safe-bottom));
+  scroll-padding-bottom: var(--install-tip-clear);
 }
 
 /* A lesson term's card (LessonMarkdown) sits along the bottom edge on a touch
@@ -557,7 +559,7 @@ html:has([data-install-tip]) {
   }
   /* Clear of the install tip, which holds the same edge while it shows. */
   html:has([data-install-tip]) .term-card {
-    bottom: calc(7rem + var(--safe-bottom));
+    bottom: var(--install-tip-clear);
   }
 }
 
