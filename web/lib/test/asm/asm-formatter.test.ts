@@ -47,7 +47,7 @@ describe("formatAsm", () => {
     expect(got.split("\n")[1]).toBe("alloc = -16");
   });
 
-  it("is idempotent under repeated runs", () => {
+  it("leaves its own output unchanged when run again", () => {
     const input = `define(fp, x29)\n\n.text\n.global main\nmain:\n  STP fp, lr, [sp, -16]!\n  mov fp, sp  // entry\n  mov w0, 0\n  ldp fp, lr, [sp], 16\n  ret\n`;
     const once = formatAsm(input);
     const twice = formatAsm(once);
@@ -61,9 +61,8 @@ describe("formatAsm", () => {
     expect(got).toContain(".string");
   });
 
-  it("handles instructions whose mnemonic is longer than the column", () => {
-    // ldrsb is 5 chars; the column width is 8, so still fits with at
-    // least one trailing space.
+  it("pads a five-letter mnemonic to the same operand column", () => {
+    // The mnemonic column is 8 wide, so ldrsb still gets three spaces.
     const input = `main:\n  ldrsb w0, [x1]\n`;
     const got = formatAsm(input);
     expect(got).toContain("        ldrsb   w0, [x1]");
