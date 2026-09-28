@@ -1,19 +1,9 @@
 "use client";
 
 /**
- * The single-exercise layout for the interactive variants (quiz, prediction,
- * blanks): kicker, serif title, prompt, a progress line, then one graded
- * block per question. Grading happens entirely in the blocks; this view only
- * counts the questions answered correctly and marks the exercise solved (the
- * same solved-state store the index badges read) once every question has
- * been answered correctly.
- *
- * The answers themselves are held here rather than in the blocks, so they
- * can be saved per slug and restored on a later visit, together with which
- * questions were already checked and right, so those open answered.
- * Restoring happens after mount: reading storage during the first render
- * would put a value in the DOM the server render could not have, and
- * hydration would flag it.
+ * One quiz, prediction, or blanks exercise. The answers live here rather than
+ * in the blocks so they can be saved per slug and come back on a later visit;
+ * the restore waits until after mount so the first render matches the server's.
  */
 
 import { useCallback, useEffect, useReducer, type JSX } from "react";
@@ -63,11 +53,8 @@ interface AnswerDraft {
 const EMPTY_DRAFT: AnswerDraft = { picks: [], typed: [], graded: [] };
 
 /**
- * A reducer rather than two useState pairs, because the restore below has to
- * run in an effect (storage cannot be read during the first render without
- * diverging from the server's) and a dispatch is what React 19's
- * set-state-in-effect check allows there. Every edit arrives already built,
- * so the reducer itself stays a merge.
+ * A reducer rather than useState, because the restore below runs in an effect
+ * and a dispatch is what React 19's set-state-in-effect check allows there.
  */
 function draftReducer(prev: AnswerDraft, edit: Partial<AnswerDraft>): AnswerDraft {
   return { ...prev, ...edit };
@@ -108,7 +95,7 @@ export function InteractiveExerciseView({
   sheetNumber = "5.x",
 }: {
   exercise: InteractiveExercise;
-  /** Datasheet coordinate, e.g. "5.2"; the [slug] page derives it from the sorted order. */
+  /** The sheet number, e.g. "5.2"; the [slug] page derives it from the sorted order. */
   sheetNumber?: string;
 }): JSX.Element {
   const total = questionCount(exercise);
