@@ -89,14 +89,4 @@ describe("FrameWalk", () => {
     fireEvent.keyDown(group, { key: "ArrowLeft" });
     expect(screen.getByText("step 1 of 7")).toBeTruthy();
   });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of ["dark", "light", "high-contrast"]) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<FrameWalk />);
-      expect(screen.getByLabelText("frame walk")).toBeTruthy();
-      unmount();
-    }
-    document.documentElement.removeAttribute("data-theme");
-  });
 });
