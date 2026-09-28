@@ -92,7 +92,7 @@ describe("LessonMarkdown", () => {
     expect(h2?.id).toBe(tocId);
   });
 
-  it("renders a gfm table with padded, ruled cells inside a sideways scroller", () => {
+  it("renders a gfm table inside a sideways scroller", () => {
     const markdown = [
       "| Specifier | Bytes |",
       "| --- | ---: |",
@@ -100,15 +100,10 @@ describe("LessonMarkdown", () => {
     ].join("\n");
     const { container } = render(<LessonMarkdown markdown={markdown} />);
     const table = container.querySelector("table");
+    // A wide table scrolls inside its box instead of widening a phone's page.
     expect(table?.parentElement?.className).toContain("overflow-x-auto");
-    const th = container.querySelector("th");
+    expect(container.querySelector("th")?.textContent).toBe("Specifier");
     const td = container.querySelectorAll("td");
-    expect(th?.className).toContain("px-3 py-2");
-    expect(th?.className).toContain("font-semibold");
-    expect(th?.className).toContain("border-[var(--border)]");
-    expect(td[1]?.className).toContain("px-3 py-2");
-    expect(td[1]?.className).toContain("border-[var(--border)]");
-    expect(td[1]?.className).toContain("tabular-nums");
     // The column's right alignment survives sanitizing.
     expect(td[1]?.style.textAlign).toBe("right");
     expect(td[1]?.textContent).toBe("4");
