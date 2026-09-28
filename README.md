@@ -2,13 +2,13 @@
 
 An AArch64 (ARMv8) assembly emulator and visual debugger that runs in your
 browser, built for students learning ARM assembly in CPSC 355 at the
-University of Calgary (it is not an official university project). Paste a
-course program, assemble it, and step through it while the registers, stack,
-memory, and output change. Nothing to install, and your code never leaves the
+University of Calgary (not an official university project). Paste a course
+program, assemble it, and step through it while the registers, stack, memory,
+and output change. There is nothing to install, and your code stays in the
 browser tab.
 
-Use it at <https://aarch64-playground.com>. To run your own copy, see
-[Run it locally](#run-it-locally).
+Use it at <https://aarch64-playground.com>, or run your own copy with the
+steps in [Run it locally](#run-it-locally).
 
 ## What you can do
 
