@@ -35,8 +35,6 @@ describe("MobileNavDrawer", () => {
     const dialog = screen.getByRole("dialog");
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
 
-    // All four routes render as links with their href; exactly the current
-    // route (/learn) carries aria-current="page".
     expect(NAV_ROUTES).toHaveLength(4);
     for (const route of NAV_ROUTES) {
       const link = within(dialog).getByRole("link", { name: route.label });
