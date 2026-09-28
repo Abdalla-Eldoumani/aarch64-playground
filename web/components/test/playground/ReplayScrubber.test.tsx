@@ -72,7 +72,7 @@ describe("ReplayScrubber", () => {
     fireEvent.change(slider, { target: { value: "0" } });
     expect(slider.value).toBe("0");
     // A real Step arrives: new frame, higher live count. The handle and
-    // label must track the live machine again, not the stale pin.
+    // label must track the live machine again, not the old scrubbed position.
     const grown = [...frames, frame(4)];
     rerender(<ReplayScrubber frames={grown} currentStep={4} onSeek={onSeek} />);
     expect(slider.value).toBe("3");
@@ -80,7 +80,7 @@ describe("ReplayScrubber", () => {
   });
 
   it("names the step and the kept frame together when a run skipped ahead", () => {
-    // Three single steps, then a run that stopped at step 274: the ring keeps
+    // Three single steps, then a run that stopped at step 274: the replay keeps
     // four frames, and the knob a third of the way along is frame 2, step 2.
     const onSeek = vi.fn();
     render(
@@ -98,7 +98,7 @@ describe("ReplayScrubber", () => {
     expect(screen.getByText("step 2 · 2 of 4 · registers only")).toBeTruthy();
   });
 
-  it("releases the pin when playback runs to the end", () => {
+  it("returns to the live frame when playback runs to the end", () => {
     vi.useFakeTimers();
     try {
       const onSeek = vi.fn();
