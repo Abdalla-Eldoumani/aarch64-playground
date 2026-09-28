@@ -85,7 +85,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     id: "registers",
     title: "Registers",
-    body: "The registers after each step, with the ones the last instruction changed marked. The x, d, and v buttons switch between the integer, floating-point, and vector registers, and dec and hex change how values are written.",
+    body: "The registers after each step, with the ones the last instruction changed marked. Dec and hex change how values are written. Once a program is assembled, the x, d, and v buttons switch between the integer, floating-point, and vector registers.",
     // A phone tab only while its view is not already showing: a turned
     // phone shows the registers beside the code, and the card belongs
     // beside them, not on top of them.
