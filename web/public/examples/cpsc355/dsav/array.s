@@ -1,9 +1,9 @@
 // array.s - ten cells in a row, and what an index costs
 //
 // The strip is the whole structure: ten words of memory, repainted from
-// those same ten words every frame. Nothing links and nothing shifts,
-// reaching cell i is one multiply and one load
-// whether i is 0 or 9, and writing a cell leaves its neighbours alone.
+// those same ten words every frame. Nothing links and nothing shifts:
+// reaching cell i is one multiply and one load whether i is 0 or 9, and
+// writing a cell leaves its neighbours alone.
 
 define(fp, x29)
 define(lr, x30)
@@ -11,7 +11,7 @@ define(lr, x30)
     array_capacity = 10
 
 // Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated so
-// this file also assembles on its own, the way the web build feeds it.
+// this file also assembles on its own, without ui.s.
     ARRAY_ROLE_TEXT  = 0
     ARRAY_ROLE_DIM   = 1
     ARRAY_ROLE_FAINT = 2
@@ -43,7 +43,7 @@ array_count:        .word 0
 
 // The cells wearing something other than their resting colour this
 // frame. array_render fills these in and array_role_of reads them back,
-// so a cell colour is data rather than a branch at every draw site.
+// so a cell colour is data rather than a branch everywhere a cell is drawn.
 array_hl_slot:      .word -1, -1
 array_hl_role:      .word 0, 0
 
@@ -691,8 +691,9 @@ array_rest:
 //           answer falls outside)
 //        -> w0 = value, w1 = 1 when the value is usable
 // One reader for every prompt in the module: it reprompts in place on an
-// out-of-range answer and refuses a closed stdin, so a finished script
-// walks back out of the menu instead of feeding the array zeros.
+// out-of-range answer and refuses a closed stdin, so when the input runs
+// out the program walks back out of the menu instead of feeding the array
+// zeros.
 array_ask:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -806,7 +807,7 @@ array_fill_loop:
     cmp     w21, w19
     b.ge    array_fill_done
 
-    mov     w0, 100                         // values in [0, 100)
+    mov     w0, 100                         // values from 0 to 99
     bl      get_random
     mov     w22, w0
     ldr     x23, =array_data
