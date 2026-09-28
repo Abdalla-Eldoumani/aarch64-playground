@@ -86,8 +86,11 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     id: "registers",
     title: "Registers",
     body: "The registers after each step, with the ones the last instruction changed marked. The x, d, and v buttons switch between the integer, floating-point, and vector registers, and dec and hex change how values are written.",
+    // A phone tab only while its view is not already showing: a turned
+    // phone shows the registers beside the code, and the card belongs
+    // beside them, not on top of them.
     targets: [
-      { selector: "#phone-tab-regs", hint: "On a phone, tap registers to see them." },
+      { selector: '#phone-tab-regs[aria-selected="false"]', hint: "On a phone, tap registers to see them." },
       { selector: anchor("registers") },
     ],
   },
@@ -102,7 +105,8 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: "Console and input",
     body: "What the program prints lands here. A program that reads input, with scanf or read, waits at the box below the output until you type a line and press enter.",
     targets: [
-      { selector: "#phone-tab-console", hint: "On a phone, tap console to see it." },
+      { selector: '#phone-tab-console[aria-selected="false"]', hint: "On a phone, tap console to see it." },
+      { selector: '#phone-panel[aria-labelledby="phone-tab-console"]' },
       { selector: "#right-panel-console" },
       tab("console", "console"),
     ],
