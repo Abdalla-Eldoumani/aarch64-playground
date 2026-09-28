@@ -140,8 +140,8 @@ ACT_MMINUS = 37
 ACT_DRG = 38
 ACT_MODE = 39
 
-// Pending-operator codes, kept apart from the action numbers so the
-// fold in imm_binop reads as arithmetic rather than as key handling.
+// Pending-operator codes, kept apart from the action numbers so
+// imm_binop reads as arithmetic rather than as key handling.
 OP_ADD = 1
 OP_SUB = 2
 OP_MUL = 3
@@ -214,10 +214,10 @@ main_quit:
 // ------------------------------------------------------------------ //
 // console mode: the line calculator                                    //
 //                                                                      //
-// The same expression engine EXPR mode runs, driven from cooked stdio.  //
-// Nothing on this path touches termios or fcntl and nothing on it       //
-// writes an escape byte: a plain-text console shows an escape as        //
-// literal garbage, and a redirected stdin has to read the same.         //
+// The same expression engine EXPR mode runs, reading stdin a line at    //
+// a time. Nothing here touches termios or fcntl or writes the 0x1b      //
+// that starts a colour or cursor code: a plain-text console shows it    //
+// as garbage, and a redirected stdin has to read the same.              //
 // ------------------------------------------------------------------ //
 
 console_repl:
@@ -533,7 +533,8 @@ set_raw_mode:
         bic     w1, w1, w2
         str     w1, [x0, 12]
 
-        // VMIN = 1, VTIME = 0
+        // VMIN = 1, VTIME = 0: a read returns as soon as one byte is
+        // there, with no timer
         mov     w1, 1
         strb    w1, [x0, 17]
         mov     w1, 0
@@ -827,7 +828,7 @@ paint_display:
         ret
 
 // paint_indicators: every lamp is always drawn. A lamp that is off goes
-// dim rather than blank, so the strip never reflows under you.
+// dim rather than blank, so the strip never shifts under you.
 paint_indicators:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1331,9 +1332,9 @@ mark_all_done:
 // input                                                                //
 // ------------------------------------------------------------------ //
 
-// poll_input: drain whatever stdin has and feed it through the escape
-// state machine. An arrow key arrives as three bytes that may or may not
-// land in the same read, which is why that state lives outside the call.
+// poll_input: drain whatever stdin has and feed it to feed_byte one byte
+// at a time. An arrow key arrives as three bytes that may or may not
+// land in the same read, which is why esc_state lives outside the call.
 poll_input:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -2827,7 +2828,7 @@ parse_expr:
         ldr     w10, [x9]
         add     w10, w10, 1
         str     w10, [x9]
-        cmp     w10, 32                 // 32 nested parentheses is well past anything the 40-character cap can hold
+        cmp     w10, 32                 // 32 nested parentheses is far more than a real expression needs
         b.gt    parse_expr_too_deep
 
         bl      parse_term
@@ -2949,8 +2950,8 @@ parse_unary_pos:
         ldp     fp, lr, [sp], 16
         ret
 
-// parse_power: right-associative, and its exponent goes back through the
-// unary level so 2^-1 reads as a half.
+// parse_power: right-associative, so 2^3^2 is 2^9, and its exponent goes
+// back through the unary level so 2^-1 reads as a half.
 parse_power:
         stp     fp, lr, [sp, parse_alloc]!
         mov     fp, sp
@@ -3412,8 +3413,8 @@ check_positive_done:
         ret
 
 // check_result: the two ways a value stops being displayable. Either it is
-// not a number at all, or it has run past the hundred-decade window the
-// display can address.
+// not a number at all, or it has reached 1e100, which the display's
+// two-digit exponent cannot show.
 check_result:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -3517,7 +3518,7 @@ format_double:
 
         fabs    d1, d0
 
-        // Anything under the snap threshold reads as a flat zero.
+        // Anything under 1e-10 (tiny_m) reads as a flat zero.
         // Without it sin(pi) would display its 1.2e-16 of rounding dust.
         ldr     x9, =tiny_m
         ldr     d2, [x9]
@@ -3543,8 +3544,8 @@ format_double_down:
         b.lt    format_double_up
         fdiv    d1, d1, d3
         add     x22, x22, 1
-        // An infinity divides to itself forever; the decade counter is
-        // what notices.
+        // An infinity divides to itself forever; the power-of-ten
+        // counter in x22 is what notices.
         cmp     x22, 100
         b.ge    format_double_inf
         b       format_double_down
@@ -3612,7 +3613,7 @@ format_double_place:
         cmp     x22, 0
         b.ge    format_double_whole
         // Below a ten-thousandth the fixed form spends the window on
-        // leading zeros, so it hands over to the mantissa form.
+        // leading zeros, so it hands over to e notation.
         neg     x15, x22
         cmp     x15, 5
         b.ge    format_double_sci
@@ -3666,8 +3667,8 @@ format_double_small_loop:
         b       format_double_small_loop
 
 format_double_sci:
-        // Outside the window the display falls back to a mantissa and a
-        // decade, the same way a pocket device does.
+        // Outside the window the display falls back to e notation
+        // (1.5e+12), the same way a pocket device does.
         ldrb    w13, [x12]
         strb    w13, [x20], 1
         cbz     x24, format_double_sci_exp
@@ -3962,7 +3963,7 @@ quit_flag:      .word 0
 parse_err:      .word 0
 parse_depth:    .word 0
 tape_count:     .word 0
-sel_key:        .word 35        // the highlight starts on 0
+sel_key:        .word 35        // the highlight starts on =
 flash_key:      .word -1
 flash_ticks:    .word 0
 dirty_flags:    .word 0
