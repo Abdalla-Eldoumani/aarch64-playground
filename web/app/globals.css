@@ -540,6 +540,12 @@ body {
   }
 }
 
+/* While the install tip (chrome/InstallHint) floats at the bottom, a control
+   scrolled or tabbed into view stops above it instead of under it. */
+html:has([data-install-tip]) {
+  scroll-padding-bottom: calc(7rem + var(--safe-bottom));
+}
+
 /* A lesson term's card (LessonMarkdown) sits along the bottom edge on a touch
    screen or in a window under 1024px: hung off a term near the right edge, it
    ran past the screen and widened the page. The auto margins centre it once
