@@ -12,8 +12,8 @@ export interface ZoomControlProps {
 }
 
 /**
- * Tiny zoom control: `-`, percentage, `+`, reset. Each button is 24x24,
- * sized for the panel header rather than for a coarse pointer.
+ * Zoom control: `-`, the percentage (click to reset), `+`. The buttons are
+ * 24px to fit a panel header and grow to 44px on a touch screen.
  */
 export function ZoomControl({
   scale,
