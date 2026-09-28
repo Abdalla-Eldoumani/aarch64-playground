@@ -1,10 +1,8 @@
 /**
- * Run one program to its end on a machine of its own, away from the hub, the
- * way the servers run `./program args < input`: the input is queued and then
- * closed, so a read past it sees end of input instead of waiting for a key.
- * The practice checker grades its hidden cases on this; the tests drive it
- * with the node build. The caller owns the machine and may reuse it, because
- * every assemble resets the whole machine.
+ * Run one program to its end the way the server runs `./program args < input`:
+ * the input is queued and then closed, so a read past it sees end of input
+ * instead of waiting for a key. The practice checker grades hidden cases on
+ * this. The caller may reuse the machine, since every assemble resets it.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
