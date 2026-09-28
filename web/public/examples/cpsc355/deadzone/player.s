@@ -1,12 +1,13 @@
-// The player: position and bounded movement, health with invincibility
-// frames after a hit, experience and levelling, and the glyph on screen.
+// The player: position and movement inside the play area, health with
+// invincibility frames after a hit, experience and levelling, and the '@'
+// drawn on screen.
 
 // Player structure offsets
 PLAYER_X = 0                                    // X position (2 bytes, signed)
 PLAYER_Y = 2                                    // Y position (2 bytes, signed)
 PLAYER_HEALTH = 4                               // Current health (1 byte)
 PLAYER_MAX_HP = 5                               // Maximum health (1 byte)
-PLAYER_XP = 8                                   // Current XP (4 bytes)
+PLAYER_XP = 8                                   // Experience points, XP (4 bytes)
 PLAYER_LEVEL = 12                               // Current level (2 bytes)
 PLAYER_SPEED = 14                               // Movement speed (1 byte)
 PLAYER_IFRAMES = 15                             // Invincibility frames (1 byte)
@@ -18,7 +19,7 @@ PLAYER_DEFAULT_HP = 100                         // Starting health
 PLAYER_DEFAULT_SPEED = 1                        // Starting speed
 PLAYER_CHAR = '@'                               // Player character
 PLAYER_IFRAMES_TOTAL = TARGET_FPS               // A second of invincibility
-HURT_FLASH_FRAMES = 3                           // Red frames on the way in
+HURT_FLASH_FRAMES = 3                           // Frames drawn red right after a hit
 
 // Play area bounds
 PLAY_LEFT = 1                                   // Left boundary (after border)
@@ -28,15 +29,15 @@ PLAY_BOTTOM = ROW_FIELD_LAST                    // Last playable row, above the 
 
                 .data
 
-// Player data structure (24 bytes)
+// Player data structure (20 bytes of fields, in offset order)
                 .balign 8
 player_data:
-                .hword  0                       // PLAYER_LEVEL: Level
+                .hword  0                       // PLAYER_X: X position
                 .hword  0
                 .byte   0
                 .byte   0
                 .byte   0, 0
-                .word   0                       // PLAYER_KILLS: Kill count
+                .word   0                       // PLAYER_XP: Experience points
                 .hword  0
                 .byte   0
                 .byte   0
@@ -217,7 +218,7 @@ player_damage:
                 mov     w0, 8                   // Shake intensity
                 bl      effects_trigger_shake
 
-                // The two calls above clobber x1
+                // The two calls above can change x1
                 adrp    x1, player_data
                 add     x1, x1, :lo12:player_data
 
@@ -332,8 +333,8 @@ player_draw:
 
                 bl      cursor_move
 
-                // A hit reads as one red frame, then the invincibility window
-                // strobes amber against the normal white.
+                // Right after a hit the player is red for a few frames, then
+                // flashes yellow and white while the invincibility lasts.
                 ldrb    w0, [x19, PLAYER_IFRAMES]
                 cbz     w0, player_draw_normal
 
