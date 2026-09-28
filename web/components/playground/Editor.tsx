@@ -18,24 +18,12 @@ import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playgro
 import { yieldToEventLoop } from "@/lib/emulator/run-loop";
 import { MONACO_FEATURES } from "@/components/playground/monaco-features";
 
-// The editor runtime is vendored from the monaco-editor dependency instead
-// of fetched from the loader's default CDN: the installed PWA has to keep
-// working offline, and a campus network that filters public CDNs would
-// otherwise leave a student with an empty editor pane. One dependency pin
-// now decides both the runtime build and the compile-time types.
-//
-// Two details of the arrangement carry their own reasons:
-//   - the editor-only build is two entries, `editor` for the API surface
-//     and `features/register.all` for every widget the playground uses
-//     (suggest, hover, find). Neither one pulls a bundled language
-//     service, and this editor registers arm64 itself and never asks for
-//     another language, so those services, and the extra workers they
-//     need, would be megabytes of dead weight.
-//   - the import is dynamic because monaco is a browser-only module and
-//     this component is rendered on the server too, and because the editor
-//     belongs in its own async chunk: the landing page composes this same
-//     component, and a reader who never types should not download an
-//     editor.
+// Monaco comes from the monaco-editor dependency, not the loader's default
+// CDN: the installed app must work offline, and a campus network that blocks
+// CDNs would leave an empty editor. Only the editor core and its widgets load,
+// since the language services are megabytes this editor never uses. The import
+// is dynamic because monaco is browser-only and a reader who never types
+// should not download it.
 let monacoLoad: Promise<void> | null = null;
 
 function loadMonaco(): Promise<void> {
@@ -54,17 +42,11 @@ function loadMonaco(): Promise<void> {
           { name: "monaco-worker" },
         ),
     };
-    // Registering the widgets is a pure side effect of importing them, and
-    // the API entry exports without registering anything, so both have to
-    // be asked for. They share a chunk name so the budget still measures
-    // one file, and they are ordered the way monaco's own all-in entry
-    // orders them: contributions first, the API that reads them second.
-    //
-    // Run as one import, that is a quarter of a second of script on a laptop
-    // and several times that on a slow phone, and a click or a key that lands
-    // in it waits for all of it. So each feature runs in a task of its own,
-    // and register.all then has nothing left to run but a feature the list
-    // has not caught up with.
+    // The widgets register themselves on import and the API entry registers
+    // nothing, so both load, widgets first as monaco's own entry orders them,
+    // under one chunk name so the size budget sees one file. Each feature runs
+    // in its own task, since one big import blocks input for a quarter second
+    // or more; register.all then catches any feature the list lacks.
     for (const load of MONACO_FEATURES) {
       await load();
       await yieldToEventLoop();
@@ -84,17 +66,11 @@ function loadMonaco(): Promise<void> {
 
 let arm64Registered = false;
 
-// Monaco reads `fontFamily` as a literal CSS font list and never resolves a
-// custom property through it, so this one option cannot just name
-// --font-mono the way every other surface does. Hardcoding the stack instead
-// dropped the half of it that matters most: next/font emits the webfont as
-// "JetBrains Mono" AND a metric-matched local stand-in, "JetBrains Mono
-// Fallback" (size-adjust + ascent-override tuned to the real face), and
-// publishes both as --font-mono on <html> (app/layout.tsx). Monaco measures
-// one glyph's advance at creation and lays the whole grid on it, so an editor
-// created during the swap window measured Consolas and kept the wrong column
-// width. Resolving the variable puts the metric-matched face in front of the
-// generic ones, and keeps the page's stack the only place it is written.
+// Monaco takes `fontFamily` as a literal font list and cannot read a CSS
+// variable, so this resolves --font-mono (set in app/layout.tsx) rather than
+// restating it. That keeps next/font's metric-matched fallback face in front:
+// Monaco measures one glyph at creation, and an editor made during the font
+// swap kept Consolas's column width.
 const MONO_FALLBACKS = "'JetBrains Mono', 'Fira Code', Consolas, monospace";
 let monoFontFamily: string | null = null;
 
@@ -122,13 +98,9 @@ function applyDocumentTheme(monaco: Parameters<OnMount>[1]): void {
 }
 
 /**
- * One-time global Monaco setup: the arm64 language, its tokenizer and
- * themes, the theme-attribute observer, and the completion + hover
- * providers. Monaco's registries are tab-global and CONCATENATE
- * providers, so registering per mount stacked N copies of every hover
- * card and completion after N mounts (the pitfalls catalog remounts
- * the embed on every fault/fix toggle). The loader calls it before any
- * editor exists. Per-editor wiring stays in handleMount.
+ * One-time global setup: the arm64 language, themes, and providers. Monaco's
+ * registries are tab-wide and add up, so registering per mount stacked a copy
+ * of every hover card and completion on each remount.
  */
 function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
   if (arm64Registered) return;
@@ -178,13 +150,9 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
     },
   });
 
-  // Monaco themes take literal hex only, so these restate token values
-  // from app/globals.css: the editor sits on --bg-base with --bg-raised
-  // as the resting line highlight, line numbers read --text-tertiary,
-  // and the caret is the brand block cursor in --amber (the machine's
-  // color: the block marks where the machine will write next). Hover-card
-  // links take --cyan like every other link. Keep the two files in step
-  // when a token moves.
+  // Monaco themes take literal hex only, so these restate the tokens in
+  // app/globals.css (the caret is the amber block cursor). Keep the two files
+  // in step when a token moves.
   monaco.editor.defineTheme("arm64-dark", {
     base: "vs-dark",
     inherit: true,
@@ -340,12 +308,9 @@ interface EditorProps {
   value: string;
   onChange: (value: string) => void;
   currentLine: number | null;
-  /**
-   * True while the pc is inside a hosted libc call, where `currentLine` is
-   * the call SITE rather than the executing instruction. The current-line
-   * decoration takes a quieter variant (dashed rule, lighter fill) so three
-   * steps spent inside printf do not read as three steps on the `bl`.
-   */
+  /** The pc is inside a libc call and `currentLine` is the call site, so the
+   *  marker goes quieter: three steps inside printf should not read as three
+   *  steps on the `bl`. */
   currentLineInCall?: boolean;
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
@@ -364,12 +329,10 @@ interface EditorProps {
   /** Jump the editor to a line (an error the student should fix): the
    *  parent bumps the nonce so the same line can be requested twice. */
   focusRequest?: { line: number; nonce: number } | null;
-  /** Scroll the current line into view whenever it moves, by the nearest
-   *  scroll (a visible line stays put, never centred). The parent turns
-   *  this off while a run is driving (the marker then moves many times a
-   *  second) and before the first step (an assemble's entry marker must not
-   *  scroll away from the line being edited). Turning it back on reveals the
-   *  line, which is what shows a breakpoint hit when a run stops. */
+  /** Keep the current line in view. Off during a run (the marker moves many
+   *  times a second) and before the first step (assembling must not scroll
+   *  away from the line being edited); turning it back on reveals the line,
+   *  which shows a breakpoint hit when a run stops. */
   followCurrentLine?: boolean;
   /** Ctrl+Enter (Cmd+Enter) inside the editor. Monaco binds that chord to
    *  "insert line below" and stops the key there, so the page's own shortcut
@@ -606,15 +569,10 @@ export function Editor({
       // than "edit text"; Monaco's default label is generic.
       editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
 
-      // Escape leaves the editor when no internal Monaco widget is open, so
-      // a keyboard-only student is not trapped: Tab indents in here, and
-      // Escape then Tab moves on to the next control. The focus sits on
-      // Monaco's input element INSIDE the node, which is what has to blur;
-      // blurring the node itself did nothing. The context expression is what
-      // leaves Monaco's own Escape work first: a command registered without
-      // one outranks those bindings, which left the find and suggestion
-      // widgets with nothing to close them and a selection or extra cursors
-      // with nothing to collapse them. Escape does that, a second one leaves.
+      // Escape leaves the editor so a keyboard user is not trapped (Tab indents
+      // in here). Focus sits on Monaco's inner input, so that is what blurs.
+      // The context lets Monaco's own Escape go first, closing find or suggest
+      // or collapsing a selection; a second Escape leaves.
       editor.addCommand(
         monaco.KeyCode.Escape,
         () => {
