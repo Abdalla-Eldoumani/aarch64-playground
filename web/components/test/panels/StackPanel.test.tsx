@@ -1,6 +1,6 @@
 // pins the stack panel contract: sp parses from hex and anchors a
 // 16-row by 8-byte window read through getMemory, values render as
-// little-endian u64s, the fp row and frame-slot labels appear only
+// little-endian 64-bit numbers, the fp row and frame-slot labels appear only
 // while fp is inside the window, and rows fall back to SP+N labels.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
@@ -13,7 +13,7 @@ afterEach(() => {
 
 const SP = 0x80000000;
 
-// row 0 gets bytes 01..08 so the little-endian u64 is recognizable;
+// row 0 gets bytes 01..08 so the little-endian value is recognizable;
 // everything else reads as zero.
 function seededMemory() {
   return vi.fn((addr: number, len: number) => {
@@ -58,7 +58,7 @@ describe("StackPanel window", () => {
     expect(screen.getByText("0x80000078")).toBeTruthy();
   });
 
-  it("renders each slot as a little-endian u64", () => {
+  it("reads each 8-byte slot as a little-endian 64-bit number", () => {
     renderPanel();
     // bytes 01 02 03 04 05 06 07 08 read back most-significant-last
     expect(screen.getByText("0x0807060504030201")).toBeTruthy();
