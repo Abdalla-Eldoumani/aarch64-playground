@@ -66,8 +66,7 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  // Persist as the user types, but debounced so a keystroke does not reach
-  // localStorage.
+  // Debounced so storage is written once typing pauses, not on every keystroke.
   useEffect(() => {
     const id = setTimeout(() => saveFor(source, value), 250);
     return () => clearTimeout(id);
