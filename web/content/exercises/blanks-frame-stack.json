@@ -2,7 +2,7 @@
   "title": "Fill in the blank: memory and the stack",
   "slug": "blanks-frame-stack",
   "order": 95,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "memory",
   "difficulty": "core",
   "variant": "blanks",
@@ -63,7 +63,7 @@
       "hint": "The standard m4 macro keyword."
     },
     {
-      "prompt": "Create an assembler equate that renames register x29 to fp.",
+      "prompt": "Create an assembler alias that renames register x29 to fp.",
       "code": "fp .___ x29",
       "blanks": [
         "req"
@@ -86,7 +86,7 @@
       "blanks": [
         "-16"
       ],
-      "explanation": "ANDing with -16 clears the low four bits, so -20 becomes -32 and sp stays 16-byte aligned. The assembler folds the whole expression into one constant before the instruction is encoded.",
+      "explanation": "ANDing with -16 clears the low four bits, so -20 becomes -32 and sp stays 16-byte aligned. The assembler works out the whole expression as one constant before the instruction is encoded.",
       "hint": "AND the value with negative sixteen."
     },
     {
@@ -96,7 +96,7 @@
         "x29",
         "fp"
       ],
-      "explanation": "x29 is the frame pointer. Copying sp into it once the frame record is on the stack gives the body of the subroutine a base that stays put even if sp moves again.",
+      "explanation": "x29 is the frame pointer. Copying sp into it once the frame record (the saved x29 and x30) is on the stack gives the body of the subroutine a base that stays put even if sp moves again.",
       "hint": "Which register is the frame pointer?"
     }
   ]
