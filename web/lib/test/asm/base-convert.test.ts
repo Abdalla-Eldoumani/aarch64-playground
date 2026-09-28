@@ -241,7 +241,7 @@ describe("parseRep range: one past the boundary at every width", () => {
 
 describe("signed reading helpers", () => {
   for (const width of WIDTHS) {
-    test(`toSigned / fromSigned round the boundaries at ${width}-bit`, () => {
+    test(`toSigned and fromSigned round-trip the boundaries at ${width}-bit`, () => {
       for (const value of [0n, 1n, -1n, minSigned(width), maxSigned(width)]) {
         expect(toSigned(fromSigned(value, width), width)).toBe(value);
       }
@@ -261,7 +261,7 @@ describe("flipBit", () => {
       expect(toSigned(flipped, width)).toBe(minSigned(width));
       expect(signBit(flipped, width)).toBe(1);
     });
-    test(`double flip is identity at ${width}-bit`, () => {
+    test(`flipping the sign bit twice restores the value at ${width}-bit`, () => {
       const start = maxUnsigned(width) >> 1n; // 0111...1
       expect(flipBit(flipBit(start, width - 1, width), width - 1, width)).toBe(start);
     });
