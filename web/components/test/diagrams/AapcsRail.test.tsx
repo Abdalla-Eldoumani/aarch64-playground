@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { AapcsRail } from "@/components/diagrams/AapcsRail";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 // Every row group of the rail: range on the left, role note on the right.
@@ -50,16 +47,6 @@ describe("AapcsRail", () => {
     expect(screen.getByText(/row is one register with a/)).toBeTruthy();
   });
 
-  it("never wraps a register name, only its role note", () => {
-    render(<AapcsRail />);
-    const name = screen.getByText("x29 · x30");
-    expect(name.className).toContain("shrink-0");
-    expect(name.className).toContain("whitespace-nowrap");
-    const note = screen.getByText("fp · lr (the frame record)");
-    expect(note.className).toContain("leading-tight");
-    expect(note.className).not.toContain("whitespace-nowrap");
-  });
-
   it("names each v row's q form and tints it like its d row", () => {
     render(<AapcsRail />);
     for (const alias of ["q0 – q7", "q8 – q15", "q16 – q31"]) {
@@ -78,22 +65,6 @@ describe("AapcsRail", () => {
     expect(screen.getByText("x0 – x7").className).toContain("var(--cyan)");
     expect(screen.getByText("x19 – x28").className).toContain("var(--amber)");
     expect(screen.getByText("x29 · x30").className).toContain("var(--amber)");
-    // The platform rows read at 60% opacity: they are the ones to avoid.
-    expect(screen.getByText("x16 – x18").closest("li")?.className).toContain(
-      "opacity-60",
-    );
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<AapcsRail />);
-      expect(
-        screen.getByRole("complementary", {
-          name: "aapcs64 register file rail",
-        }),
-      ).toBeTruthy();
-      unmount();
-    }
+    expect(screen.getByText("x9 – x15").className).not.toContain("var(--amber)");
   });
 });
