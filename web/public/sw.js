@@ -1,15 +1,6 @@
-// Service worker for the cpsc 355 playground.
-// Strategy:
-//   - install: skipWaiting so the new worker activates without a reload.
-//   - activate: claim clients + sweep stale caches keyed by version.
-//   - fetch:
-//       * cross-origin or non-GET -> network only.
-//       * navigation              -> network first, cache 2xx per URL,
-//                                    fall back to that URL's copy, then the shell.
-//       * /_next/static, /examples, /icons -> cache first.
-//       * else                    -> network first, fall back to cache.
-//   - every cache write goes through putBounded, which holds the runtime
-//     cache to MAX_RUNTIME_ENTRIES.
+// Service worker for AArch64 Playground: network first for pages so a new
+// deploy reaches students, cache first for build files, examples, and icons,
+// and a size bound on the one runtime cache.
 
 // Bumping CACHE_VERSION retires the previous runtime cache instead of
 // inheriting its entries: activate deletes every cpsc355-runtime-* key that
@@ -18,30 +9,18 @@ const CACHE_VERSION = "v7";
 const RUNTIME_CACHE = `cpsc355-runtime-${CACHE_VERSION}`;
 const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
 
-// One full working set for a single build is about 220 entries: 93 files under
-// /_next/static, 46 addressable documents (landing, playground, the three
-// index pages, 8 lessons, 32 exercises, 404), 78 files under /examples, 3
-// icons, the manifest, and the share card. 450 is roughly double that, so a
-// student who reads every page and loads every example never evicts anything,
-// and a redeploy (which mints a fresh set of hashed /_next/static URLs
-// inside the same cache version) can sit beside the previous build's set
-// before the bound bites.
+// One build's full working set is about 220 entries (pages, build files,
+// examples, icons). Double that lets a student open everything without an
+// eviction, with room for the next deploy's hashed files beside it.
 const MAX_RUNTIME_ENTRIES = 450;
 
 const SHELL_PATHS = new Set(APP_SHELL);
 
 /**
- * Write to the runtime cache, then trim it back to the bound.
- *
- * The Cache API exposes no size, no timestamps, and no access record, so
- * the bound is an entry count and the eviction order is the only order
- * available: keys() answers in insertion order, so dropping from the front
- * is FIFO, not LRU. That is acceptable here because eviction is never a
- * correctness event: every route is network-first or serve-cached-then-
- * revalidate, so an entry evicted too eagerly costs one network round trip
- * and nothing else. The app shell is held back from the candidates: it is
- * the oldest thing in the cache, so plain FIFO would evict the offline
- * fallback first, which is the one entry whose absence a user would feel.
+ * Write to the runtime cache, then trim it to the bound. The Cache API has no
+ * sizes or access times, so the bound is an entry count and the oldest go
+ * first, which only ever costs a refetch. The app shell, oldest of all and the
+ * offline fallback, is never evicted.
  */
 async function putBounded(cache, request, response) {
   await cache.put(request, response);
@@ -89,13 +68,10 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
 
-  // Navigation: network first so a fresh deploy reaches the user. Each
-  // route caches under its own URL, not a fixed "/" key: a single "/" key
-  // would hold whichever route loaded last, so offline /learn would render
-  // the wrong page. Only
-  // 2xx documents are cached, and the write is carried by waitUntil so a
-  // terminating worker cannot drop it half-done. Offline fallback: the
-  // request's own cached copy, then the pre-cached shell.
+  // Pages: network first so a new deploy reaches the student. Each page caches
+  // under its own URL, since one shared "/" key would show offline /learn as
+  // whichever page loaded last. waitUntil keeps a stopping worker from
+  // dropping the write half done.
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
@@ -134,12 +110,9 @@ self.addEventListener("fetch", (event) => {
             return res;
           })
           .catch(() => cached);
-        // /_next/static and /icons carry a build hash in the path, so a
-        // changed file is a changed URL and the cached copy can never be
-        // stale. /examples does not: editing a program in place leaves the
-        // path alone, so a pure cache-first answer holds the old text until
-        // CACHE_VERSION is bumped by hand. Serve the cached copy for speed,
-        // then refresh it in the background so the next load is current.
+        // /examples paths carry no build hash, so an edited program keeps its
+        // URL. Serve the cached copy for speed and refresh it in the
+        // background so the next load is current.
         if (!cached) return network;
         event.waitUntil(network.catch(() => undefined));
         return cached;
