@@ -1,5 +1,5 @@
 // The Titan, the wave 10 boss: idle, moving and stunned states, two phases, a
-// health bar across the top rule, and the minions it spawns while attacking.
+// health bar across the top border, and the minions it spawns while attacking.
 
 // Boss structure offsets
 BOSS_ACTIVE = 0                                 // Active flag (1 byte)
@@ -30,7 +30,7 @@ BOSS_PHASE_NORMAL = 0                           // Normal phase (>50% HP)
 BOSS_PHASE_ENRAGED = 1                          // Enraged phase (<50% HP)
 
 // Titan stats
-TITAN_MAX_HP = 500                              // Twenty-five hits at level-one damage
+TITAN_MAX_HP = 500                              // 500 hits at the starting damage of 1
 TITAN_MOVE_SPEED = 20                           // Move every 20 frames
 TITAN_ATTACK_CD = 60                            // Attack every 2 seconds
 TITAN_DAMAGE = 20                               // Damage on hit
@@ -179,7 +179,7 @@ boss_spawn_common:
                 bl      play_bell
                 bl      play_bell
 
-                // The health bar takes over the top rule, so repaint in full
+                // The health bar takes over the top border, so repaint in full
                 bl      screen_invalidate
 
                 ldr     x19, [sp, 16]
@@ -417,9 +417,8 @@ boss_draw:
                 b       boss_draw_sprite
 
 boss_color_enraged:
-                // Flash between red and yellow when enraged
-                // intro_frame stops advancing once play starts, so this flash
-                // holds on one colour rather than alternating.
+                // Meant to flash red and yellow when enraged, but intro_frame
+                // stops advancing once play starts, so the colour holds on one.
                 adrp    x0, intro_frame
                 add     x0, x0, :lo12:intro_frame
                 ldr     w0, [x0]
@@ -584,7 +583,7 @@ boss_killed:
                 str     wzr, [x0]
 
                 // Three explosions at the boss centre. effects_spawn_explosion
-                // takes its coordinates in w0-w2 and is free to clobber them,
+                // takes its arguments in w0-w2 and may overwrite them,
                 // so every call reloads them. The struct pointer sits in x2,
                 // which the type argument overwrites only after both loads.
                 // w19 held the damage; the epilogue restores it from the frame.
