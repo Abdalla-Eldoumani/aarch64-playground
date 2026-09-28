@@ -26,7 +26,7 @@ const lessons: Lesson[] = [
 ];
 
 describe("LessonIndex", () => {
-  it("renders cards ordered by order, each linking to its lesson", () => {
+  it("renders cards sorted by their order field, each linking to its lesson", () => {
     const { container } = render(<LessonIndex lessons={lessons} />);
     const hrefs = Array.from(container.querySelectorAll('a[href^="/learn/"]')).map((a) =>
       a.getAttribute("href"),
