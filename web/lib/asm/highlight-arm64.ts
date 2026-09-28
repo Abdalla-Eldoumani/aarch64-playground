@@ -1,7 +1,7 @@
 /**
- * The read-only highlighter shared by CodeBlock and the landing hero's
- * StaticCodeView. Editor.tsx builds its Monaco rules from the two patterns
- * exported here, so the editor and the reading surfaces cannot drift. Names
+ * The highlighter behind CodeBlock, the landing hero's StaticCodeView and
+ * TouchEditor's colour layer. Editor.tsx builds its Monaco rules from the two
+ * patterns exported here, so all four colour code the same way. Names
  * come from lib/asm/mnemonics, not instruction-docs, to keep the hover-card
  * text out of the landing bundle. KIND_CLASS holds Tailwind classes, which is
  * why the Tailwind content globs cover lib/.
