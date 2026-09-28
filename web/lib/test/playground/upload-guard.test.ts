@@ -28,20 +28,20 @@ describe("upload-guard", () => {
     expect(msg).toMatch(/1 MiB/);
   });
 
-  test("error string interpolates the cap in MB rounded to integer", () => {
+  test("the message gives the cap in whole MiB", () => {
     expect(checkUploadSize(2_000_000_000, 1_048_576, "x")).toBe("x too large: the limit is 1 MiB");
     expect(checkUploadSize(2_000_000_000, MAX_VFS_BYTES, "y")).toBe("y too large: the limit is 4 MiB");
   });
 });
 
 describe("upload-guard caps", () => {
-  test("the locked sizes match the security decision", () => {
+  test("each cap keeps its chosen size", () => {
     expect(MAX_SOURCE_BYTES).toBe(1 * 1024 * 1024);
     expect(MAX_VFS_BYTES).toBe(4 * 1024 * 1024);
     expect(MAX_ARGS_CHARS).toBe(1000);
     expect(MAX_STDIN_BYTES).toBe(100 * 1024);
-    // 12 KB: sized from lz-string's quadratic worst case so an
-    // under-cap bomb stays a bounded transient (see upload-guard.ts).
+    // 12 KB: a crafted link inflates with the square of its length, and this
+    // cap holds the worst case near 33 MB (see upload-guard.ts).
     expect(MAX_SHARE_HASH_BYTES).toBe(12 * 1024);
   });
 
@@ -140,7 +140,7 @@ describe("astral-plane accounting", () => {
 });
 
 describe("checkUploadSize at the remaining production caps", () => {
-  test("bookmark imports pass at the cap and fail one byte over, MB-labeled", () => {
+  test("bookmark imports pass at the cap and fail one byte over, naming the cap in MiB", () => {
     expect(checkUploadSize(MAX_BOOKMARK_JSON_BYTES, MAX_BOOKMARK_JSON_BYTES, "bookmark file")).toBe(
       null,
     );
