@@ -6,48 +6,32 @@ use crate::errors::{EmuError, MemAccess};
 const PAGE_SIZE: usize = 4096;
 const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 
-/// Hard ceiling on how many 4 KiB pages a single program may have mapped
-/// at once. A store that would map a NEW page beyond this cap faults with
-/// `MemoryFault { access: Write }` instead of allocating, so a runaway
-/// allocation (a memory bomb, or unbounded recursion growing the stack)
-/// aborts calmly rather than growing the wasm heap until the tab dies.
+/// Most 4 KiB pages a program may have mapped at once. A write that would
+/// map one more faults with `MemoryFault { access: Write }`, so a runaway
+/// allocation or recursion stops calmly rather than growing the wasm heap
+/// until the tab dies. `map_page`, which maps the fixed baseline, is exempt.
 ///
-/// 8192 pages is 32 MiB of live program memory: enough to back the full
-/// 8 MiB stack (2048 pages, matching the course servers' `ulimit -s`) and
-/// the 16 MiB heap window (4096 pages) touched together, with the section
-/// baseline and headroom on top, yet still well under tab exhaustion. The
-/// stack floor must stay below this cap in page terms so runaway recursion
-/// meets the stack-overflow message, never the memory-cap one. Page
-/// buffers are shared copy-on-write with the step-back snapshot ring, so
-/// the peak is the live cap plus whatever the ring's frames still hold of
-/// pages the program has since rewritten. The pre-mapped stack/code/data
-/// baseline and `map_page` are not subject to the cap (they are the fixed
-/// baseline).
+/// 8192 pages is 32 MiB: the full 8 MiB stack (the course servers'
+/// `ulimit -s`) and the 16 MiB heap together, plus the sections. The stack
+/// floor must stay under this cap so runaway recursion gets the
+/// stack-overflow message, not this one. Snapshot frames may still hold old
+/// copies of pages on top of it.
 pub const MAX_MAPPED_PAGES: usize = 8192;
 
-/// Upper bound on how many `(addr, len)` ranges the dirty log holds
-/// between drains. The log is a hint for the UI's changed-byte tint, not
-/// machine state, so it is allowed to be approximate. Unbounded, and
-/// copied into every snapshot frame, it turns a buffer-filling loop into
-/// quadratic time: a 24 MB memset died on a 417 MB allocation.
-/// Sequential writes coalesce into the previous range, so a whole-buffer
-/// fill costs one entry; past the cap further ranges widen the last entry
-/// instead of appending.
+/// Most `(addr, len)` ranges the dirty log holds between drains. The log
+/// only drives the UI's changed-byte tint, so it may be approximate; left
+/// unbounded, a 24 MB memset once died on a 417 MB allocation. Past the
+/// cap, new ranges widen the last entry instead of appending.
 const MAX_DIRTY_RANGES: usize = 4096;
 
-/// Sparse page-based memory.
+/// Sparse memory in 4 KiB pages, mapped on first write. Reads of unmapped
+/// addresses fault. Accesses are little-endian, and unaligned ones succeed
+/// byte by byte, as in Linux user space (SCTLR.A = 0). The stack-pointer
+/// alignment check (SA0) belongs to the executor, since it checks SP, not
+/// the address.
 ///
-/// Pages are 4 KiB, allocated on first write (auto-map). Reads to unmapped
-/// addresses fault. All multi-byte accesses are little-endian; unaligned
-/// accesses fall back to byte-at-a-time and succeed, modeling Linux
-/// userspace normal memory (SCTLR.A = 0). The stack-pointer alignment
-/// rule (SA0) is the executor's job, not this module's: it checks SP
-/// itself, never the effective address.
-///
-/// Each write also records an `(addr, len)` range in `dirty` so callers
-/// (the snapshot layer) can surface a per-step list of changed addresses
-/// for the replay scrubber's memory-diff highlighting. The buffer is
-/// drained by `take_dirty()` between steps.
+/// Every write is logged as an `(addr, len)` range that `take_dirty()`
+/// drains, so the UI can tint the bytes a step changed.
 pub struct Memory {
     /// Page buffers behind `Rc` so a snapshot clone shares them instead of
     /// copying every live page. A write goes through `Rc::make_mut`, which
@@ -187,14 +171,10 @@ impl Memory {
         self.pages.len()
     }
 
-    /// Unmap every page, parking the zeroed buffers in the recycle pool.
-    ///
-    /// The buffers are recycled rather than dropped to keep the dlmalloc
-    /// workaround (see `free`) closed, while `mapped_page_count()` (the
-    /// `MAX_MAPPED_PAGES` budget) returns to zero. Without the unmap,
-    /// a program that hit the page cap left the budget exhausted forever
-    /// and the NEXT program was blamed for it: reset never gave the pages
-    /// back.
+    /// Unmap every page, parking the zeroed buffers in the recycle pool (see
+    /// `free`) so the page budget returns to zero. Without this, a program
+    /// that hit the cap left the budget spent and the next program was
+    /// blamed.
     pub fn clear(&mut self) {
         self.zero_fill.clear();
         let Self { pages, free, .. } = self;
