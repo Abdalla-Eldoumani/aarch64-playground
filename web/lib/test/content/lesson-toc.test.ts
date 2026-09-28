@@ -23,7 +23,7 @@ describe("slugify", () => {
     expect(slugify("Hello, World!")).toBe("hello-world");
   });
 
-  test("passes through an already-kebab string", () => {
+  test("leaves a string that is already a slug unchanged", () => {
     expect(slugify("already-kebab")).toBe("already-kebab");
   });
 
@@ -31,7 +31,7 @@ describe("slugify", () => {
     expect(slugify("")).toBe("");
   });
 
-  test("is idempotent", () => {
+  test("gives the same slug when run on its own output", () => {
     for (const input of ["Moving Values", "the `mov` instruction", "  Spaced  --  Out  "]) {
       expect(slugify(slugify(input))).toBe(slugify(input));
     }
@@ -87,7 +87,7 @@ describe("extractToc", () => {
     ]);
   });
 
-  test("a formatted heading slugifies to the stripped, kebab id", () => {
+  test("a heading with inline code gets an id without the backticks", () => {
     const entry = toc.find((e) => e.text === "the mov instruction");
     expect(entry?.id).toBe("the-mov-instruction");
   });
@@ -116,7 +116,7 @@ describe("extractToc with links, images, and fenced code", () => {
     expect(toc[0].id).toBe("a-chart-overview");
   });
 
-  test("skips ATX-looking lines inside a fenced code block", () => {
+  test("skips lines that look like headings inside a fenced code block", () => {
     const toc = extractToc({
       body: [
         {
