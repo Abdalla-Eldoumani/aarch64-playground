@@ -118,6 +118,27 @@ describe("walking the steps", () => {
     expect(document.activeElement).toBe(opener);
     opener.remove();
   });
+
+  it("gives focus to the tutorials button when what opened it is gone", () => {
+    // A panel or palette that closes as the walkthrough opens takes its
+    // button with it.
+    const opener = document.createElement("button");
+    document.body.appendChild(opener);
+    opener.focus();
+    const tutorials = document.createElement("button");
+    tutorials.setAttribute("data-walkthrough", "tutorials");
+    document.body.appendChild(tutorials);
+    vi.spyOn(tutorials, "getBoundingClientRect").mockReturnValue({
+      top: 8, left: 900, width: 90, height: 36, right: 990, bottom: 44, x: 900, y: 8, toJSON: () => ({}),
+    } as DOMRect);
+    renderOpen(5);
+    expect(document.activeElement).toBe(next());
+    opener.remove();
+    fireEvent.keyDown(card(), { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(tutorials);
+    tutorials.remove();
+  });
 });
 
 describe("entry points and the top layer", () => {
