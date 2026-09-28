@@ -80,12 +80,10 @@ export function useAutoplay({
         }
       }, AUTOPLAY_STEP_MS);
     };
-    // One idle slot before the first assemble. The walk starts the moment the
-    // hub loads, which on the landing is inside the LCP window: the assemble
-    // instantiates the wasm and the first steps re-render the whole register
-    // file. The timeout bounds the wait so a busy thread cannot leave the hero
-    // looking dead. hasAutoplayedRef is already set above, so a re-render
-    // during the wait cannot queue a second walk.
+    // Wait for an idle slot: the hub loads while the landing is still painting,
+    // and the assemble and first steps are heavy. The timeout keeps a busy
+    // thread from leaving the hero looking dead; the ref set above keeps a
+    // re-render during the wait from starting a second walk.
     const start = () => {
       if (!cancelled) void walk();
     };
@@ -110,12 +108,9 @@ export function useAutoplay({
         timer = null;
       }
     };
-    // Keyed STRICTLY on [machineLoaded, enabled]: useEmulator returns a NEW
-    // object after every step (its memo deps include the changing
-    // registers/pc), so keying on anything that moves with it would re-run this
-    // effect after the first step, the cleanup would clear the timer, and the
-    // once-per-engage guard would then block any restart, and the hero would
-    // step once and freeze.
+    // Keyed only on these two: useEmulator returns a new object after every
+    // step, so any dep that moves with it would re-run the effect, clear the
+    // timer, and the run-once guard would leave the hero frozen after one step.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [machineLoaded, enabled]);
 }
