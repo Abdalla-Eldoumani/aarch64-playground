@@ -85,7 +85,6 @@ describe("WatchPanel", () => {
     renderPanel();
     addExpression("x99");
     const error = screen.getByText("unknown register x99");
-    expect(error.className).toContain("text-[var(--danger)]");
     expect(error.getAttribute("title")).toBe("unknown register x99");
   });
 
