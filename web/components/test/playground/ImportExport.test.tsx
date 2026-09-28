@@ -349,6 +349,7 @@ describe("ImportExport and the command palette", () => {
     openShare: noop,
     openShortcuts: noop,
     openTutorials: noop,
+    openWalkthrough: noop,
     openConverter: noop,
     toggleTheme: noop,
   };
