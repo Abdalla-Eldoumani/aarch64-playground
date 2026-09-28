@@ -18,19 +18,10 @@ export interface RegisterRowProps {
 }
 
 /**
- * One register row: name / alias / value columns. The value uses tabular
- * figures so hex digits line up down the column. Sizes are relative (em for
- * type, ch for the columns), so the panel's zoom scales the whole row from
- * the font size its grid sets. The row is a wrap-capable flex line rather
- * than a rigid grid: a value too long for the column reflows onto its own
- * right-aligned line under the name and alias instead of painting into the
- * neighboring column; `title` keeps the full value one hover away. On a
- * write the row plays the `anim-reg-flash` keyframe: the amber write bar
- * strikes in wide and settles into the static 2px edge. The keyframe lives
- * inside a `prefers-reduced-motion: no-preference` block, so under reduced
- * motion the row is static and the bar plus the value's `--changed` ink are
- * the indicators. The alias stays on `--text-secondary` at full opacity so
- * it clears WCAG AA.
+ * One register row. Sizes are em and ch so the panel's zoom scales it. A
+ * wrapping flex line, not a grid, so a value too long for its column drops to
+ * its own line instead of painting over the next one. The alias stays at full
+ * opacity on --text-secondary so it clears WCAG AA contrast.
  */
 export function RegisterRow({
   name,
@@ -41,9 +32,9 @@ export function RegisterRow({
 }: RegisterRowProps) {
   return (
     <div
-      // The 2px amber edge bar is the machine's write marker; the flash
-      // above strikes into it, and the --changed ink on the value keeps
-      // the write readable after the motion ends.
+      // The 2px amber edge bar marks a write and the flash settles into it;
+      // the --changed ink on the value keeps the write readable after the
+      // motion ends, or with reduced motion on.
       className={`flex flex-wrap items-center gap-x-[0.5ch] rounded-[var(--radius-control)] px-1.5 py-0.5 font-mono leading-[1.25] ${
         changed
           ? "anim-reg-flash [box-shadow:inset_2px_0_0_0_var(--amber)]"
