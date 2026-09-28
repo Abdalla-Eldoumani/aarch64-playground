@@ -103,13 +103,10 @@ pub enum Item {
         tokens: Vec<Token>,
         original_line: usize,
     },
-    /// Integer data slots whose expressions reference symbols or `.`, one
-    /// token group per comma-separated value. Course pointer tables
-    /// (`array_months: .dword label_january, label_february, ...`) name
-    /// labels whose addresses only exist once the linker has placed every
-    /// section, so the parser defers these for link-time evaluation
-    /// instead of valuing them against an empty symbol table. `width` is
-    /// the slot size in bytes; the item occupies `exprs.len() * width`.
+    /// Integer data slots whose values name a label or `.`, one token group
+    /// per comma-separated value (`.dword label_january, label_february`).
+    /// Label addresses exist only once the linker has placed every section,
+    /// so these wait for it. `width` is the slot size in bytes.
     DataExprs {
         exprs: Vec<Vec<Token>>,
         width: usize,
