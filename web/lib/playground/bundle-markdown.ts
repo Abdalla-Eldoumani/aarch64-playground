@@ -1,12 +1,7 @@
 /**
- * The diagnostic bundle's markdown form: the report a student pastes into a
- * bug report, the course forum, or a chat with an AI assistant.
- *
- * Its own module because the two error boundaries want exactly this and nothing
- * else, while its sibling diagnostic-bundle.ts imports lz-string for the
- * `?bundle=` codec. Reaching the builder through that module put the
- * compressor, and this report format, in the script list of every document, the
- * landing's included. The type import below is erased at build time.
+ * The diagnostic report as markdown, kept apart from diagnostic-bundle.ts so
+ * the error boundaries can build it without putting lz-string on every page.
+ * The type import below is erased at build time.
  */
 
 import type { DiagnosticBundle, Place } from "@/lib/playground/diagnostic-bundle";
@@ -125,10 +120,8 @@ function flagRows(nzcv: number): string[] {
 }
 
 /**
- * Build the markdown report. The share link is optional: a caller that can
- * reach the codec passes `bundleShareUrl`'s result and the report reopens
- * the program in one click. It arrives already built so this module never
- * needs the compressor.
+ * `shareUrl` arrives already built (from `bundleShareUrl`) so this module
+ * never needs the compressor; without it the report has no reopen link.
  */
 export function bundleToMarkdown(bundle: DiagnosticBundle, shareUrl?: string): string {
   const out: string[] = ["# Diagnostic bundle", "", ...PREAMBLE, ""];
