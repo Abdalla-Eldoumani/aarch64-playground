@@ -50,15 +50,9 @@ const TAB_BUTTON =
   "relative flex-1 min-w-0 h-11 px-1 font-sans text-[13px] font-medium transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--cyan)]";
 
 /**
- * The playground on a phone. Upright: one view at a time (code, registers,
- * console, or one of the rest under "more") over a status line, the run
- * controls, and the tabs, so the chrome takes four fixed rows and the code the
- * remainder. On its side: the code stays on the left, the chosen view sits on
- * the right, and the controls and tabs share one row under both, because a
- * landscape phone has well under 400px of height to give.
- *
- * Both arrangements are one element tree with different grid placement, so a
- * turn of the phone never remounts the editor, and the chosen tab survives it.
+ * Upright and on its side are one element tree placed by the grid, so turning
+ * the phone never remounts the editor. On its side the controls and tabs share
+ * a row, because a landscape phone has well under 400px of height to give.
  */
 export function PhoneLayout({
   shape,
