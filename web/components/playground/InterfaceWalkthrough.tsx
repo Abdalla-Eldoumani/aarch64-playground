@@ -48,9 +48,11 @@ function sameLayout(a: Layout, b: Layout): boolean {
 
 /**
  * A walk around the playground's own interface, one part at a time: the card
- * sits beside the part it describes, never over it, with a ring around the
- * part. It is not modal: every control stays live, so a student can press
- * the button the card is talking about.
+ * sits beside the part it describes, with a ring around the part. A view that
+ * fills a phone leaves no room beside it, so there the card sits low over the
+ * view, clear of its header. It is not modal: every control stays live, so a
+ * student can press the button the card is talking about, and it steps aside
+ * while a dialog or a picker's list is open.
  *
  * Offered once on a first visit, dismissible at any step, and resumed from
  * the step it was closed on. `/playground?walkthrough` opens it at the start.
