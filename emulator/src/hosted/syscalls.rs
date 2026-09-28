@@ -2,8 +2,9 @@
 //! syscall number from `x8`, the arguments from `x0..x5`, and writes the
 //! result back into `x0`.
 //!
-//! Covers the set the corpus needs: `write` (64), `read` (63), `exit` (93),
-//! and the VFS-backed file syscalls (openat, close, lseek).
+//! Covers what course programs call: `read`, `write`, `exit`, the
+//! VFS-backed file calls (openat, close, lseek), and the terminal set
+//! (ioctl, fcntl, nanosleep, clock_gettime, getrandom).
 
 use crate::cpu::OpenFile;
 use crate::errors::EmuError;
@@ -60,13 +61,11 @@ const TERMIOS_BYTES: u64 = 36;
 /// stalling the tab filling gigabytes.
 const MAX_GETRANDOM_BYTES: u64 = 1024;
 
-/// Upper bound on a virtual-filesystem file size. `lseek` lets a guest pick
-/// the offset a later `write` lands at, so without a cap a one-byte write at
-/// a huge offset would resize the backing `Vec` to gigabytes and abort the
-/// host allocator. Sized against the step-back snapshot ring, which clones
-/// the whole VFS every step (~129x amplification, the same budget math as
-/// `memory::MAX_MAPPED_PAGES`): 4 MiB keeps the worst-case ring cost near
-/// half a GiB while staying far above anything the corpus needs.
+/// Largest size a virtual file may reach. Without it, an `lseek` to a huge
+/// offset followed by a one-byte `write` would resize the file to gigabytes
+/// and abort the allocator. The step-back ring clones the whole VFS every
+/// step (about 129x), so 4 MiB keeps its worst case near half a GiB while
+/// staying far above what course programs write.
 pub const MAX_VFS_FILE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Upper bound on the VFS as a whole. The per-file cap alone would let N
@@ -78,12 +77,10 @@ pub const MAX_VFS_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 /// create one or two.
 pub const MAX_VFS_FILES: usize = 16;
 
-/// Upper bound on how many descriptors may be open at once. The file
-/// count caps the VFS, not the fd table: re-opening one existing file in
-/// a loop grows `open_files` without limit, and each entry carries
-/// its own copy of the path (200 re-opens of a 60 KiB path held 11 MiB,
-/// cloned again into every snapshot frame). Linux answers EMFILE past
-/// its own limit; course programs open one or two files at a time.
+/// Most descriptors open at once. The file-count cap does not cover this:
+/// reopening one file in a loop grows `open_files`, and each entry copies
+/// its path (200 reopens of a 60 KiB path held 11 MiB, cloned into every
+/// snapshot). Linux answers EMFILE past its own limit.
 pub const MAX_OPEN_FILES: usize = 16;
 
 /// Linux `O_*` flag bits we care about. Matches the AArch64 Linux ABI.
@@ -117,12 +114,10 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
     }
 }
 
-/// ioctl(fd, request, argp). Supports the termios pair a raw-mode
-/// program needs: TCGETS reports a cooked terminal, and any TCSETS
-/// variant applies the caller's c_lflag: clearing ICANON is the
-/// raw-mode handshake that marks this program as a terminal program.
-/// Unknown requests return -1 without halting, like the kernel's
-/// EINVAL, so a stray ioctl stays a program-visible error.
+/// ioctl(fd, request, argp). TCGETS reports a cooked terminal; any TCSETS
+/// variant applies the caller's c_lflag, and clearing ICANON or ECHO marks
+/// the program as a terminal program. Other requests return -1 (the
+/// kernel's EINVAL) rather than halting.
 pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let request = ctx.regs.read_gpr(1, true);
     let argp = ctx.regs.read_gpr(2, true);
