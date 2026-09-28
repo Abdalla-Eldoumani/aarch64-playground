@@ -2,7 +2,7 @@
   "title": "External data: .data, .bss, and .text",
   "slug": "external-data",
   "order": 23,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Choose where a variable lives (the frame, .data, .bss or .text) and reach each one by its label.",
   "tags": [
     "external data",
@@ -16,7 +16,7 @@
     },
     {
       "type": "prose",
-      "markdown": "So far a variable has lived in a register or in a slot of the current function's frame, and both are gone once the function returns. This lesson covers variables that live outside every function, in memory the program keeps from the moment it starts until it ends. Because they sit outside any one function, they are called *external data*.\n\nA running program's memory is split into *sections*: named regions that each hold one kind of thing. Three of them matter here.\n\n- `.text` holds the instructions, plus any constants that never change. The operating system marks it read-only.\n- `.data` holds variables that start with a value written in the source.\n- `.bss` holds variables that start at zero. The program file records only how big they are, and the loader fills them with zero bytes when the program starts."
+      "markdown": "So far a variable has lived in a register or in a slot of the current function's frame, and both are gone once the function returns. This lesson covers variables that live outside every function, in memory the program keeps from the moment it starts until it ends. Because they sit outside any one function, they are called *external data*.\n\nA running program's memory is split into *sections*: named regions that each hold one kind of thing. Three of them matter here.\n\n- `.text` holds the instructions, plus any constants that never change. The operating system marks it read-only.\n- `.data` holds variables that start with a value written in the source.\n- `.bss` holds variables that start at zero. The program file records only how big they are, and the operating system fills them with zero bytes when the program starts."
     },
     {
       "type": "prose",
