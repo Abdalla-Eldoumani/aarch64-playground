@@ -36,13 +36,9 @@ export interface ImportExportProps {
 }
 
 /**
- * Import and export buttons in the header. Importing one file sends its
- * body to the active target (main / an extra) so a student editing extras
- * isn't surprised when their import overwrites the wrong buffer; picking
- * several files at once hands the whole set to the parent as named files,
- * and a single `.json` is read as a workspace bundle through the same path.
- * Export offers `.asm` / `.s` download of the buffer, `.json` download of
- * the whole workspace, plus copy-to-clipboard.
+ * Import and export in the header. One imported file goes to the tab being
+ * edited, so it never overwrites a buffer the student is not looking at;
+ * several files, or one workspace `.json`, go to the parent as named files.
  */
 export function ImportExport({
   source,
