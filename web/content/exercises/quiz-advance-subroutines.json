@@ -2,34 +2,34 @@
   "title": "Quiz: subroutines",
   "slug": "quiz-advance-subroutines",
   "order": 99,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "subroutines",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "The procedure call standard: when a leaf routine can skip its frame, what 16-byte alignment actually demands, who prepares stack-passed arguments, and which registers survive a `bl`.",
+  "prompt": "The procedure call standard: when a leaf routine (one that calls nothing) can skip its frame, what 16-byte alignment actually demands, who prepares stack-passed arguments, and which registers survive a `bl`.",
   "questions": [
     {
       "question": "A leaf subroutine does not call any other subroutines. Under what conditions can it avoid creating a stack frame?",
       "options": [
         "If it uses only registers x0 through x7, regardless of what other storage it needs.",
-        "If it does not modify any callee-saved registers and does not need stack storage for local data or spills.",
+        "If it does not modify any callee-saved registers and does not need stack storage for local data or for values that do not fit in the registers.",
         "If it passes all arguments by reference.",
         "If it returns a structure larger than 16 bytes."
       ],
       "correctAnswer": 1,
-      "explanation": "A leaf subroutine can skip the frame when it has nothing to preserve and nothing to store: no callee-saved registers written, no local data, no spills. The routine must also have no reason to touch the stack.",
+      "explanation": "A leaf subroutine can skip the frame when it has nothing to preserve and nothing to store: no callee-saved registers written, no local data, no values that do not fit in the registers. The routine must also have no reason to touch the stack.",
       "hint": "Ask what a stack frame is actually for. If the routine needs neither saved registers nor stack-based locals, does it need one?"
     },
     {
       "question": "Which statement about stack alignment in AArch64 is correct?",
       "options": [
-        "sp must be 16-byte aligned at a public interface, but a routine need not build a frame.",
+        "sp must be 16-byte aligned at every call, but a routine need not build a frame.",
         "Every subroutine must allocate at least 16 bytes of stack, even a leaf that saves nothing.",
         "Every stack frame must be exactly 16 bytes, and larger locals go in .bss instead.",
         "sp only needs to be aligned when the routine uses x29 as a frame pointer."
       ],
       "correctAnswer": 0,
-      "explanation": "AArch64 requires sp to be 16-byte aligned at a public interface, and any memory access through sp must use an aligned value or the program takes a bus error. That is a constraint on the value in sp, not a requirement that every routine allocate a frame: a leaf subroutine may need no frame at all.",
+      "explanation": "AArch64 requires sp to be 16-byte aligned at every call from one routine to another, and any memory access through sp must use an aligned value or the program takes a bus error. That is a constraint on the value in sp, not a requirement that every routine allocate a frame: a leaf subroutine may need no frame at all.",
       "hint": "Separate keeping sp correctly aligned from allocating space for a stack frame."
     },
     {
@@ -48,13 +48,13 @@
       "question": "What are x16 and x17 used for in the AArch64 procedure call standard?",
       "options": [
         "They are callee-saved registers that must be preserved by every subroutine.",
-        "They are intra-procedure-call scratch registers, known as IP0 and IP1.",
-        "They are the indirect result location registers.",
+        "They are scratch registers IP0 and IP1 that linker code may overwrite.",
+        "They hold the address where a large returned structure is written.",
         "They are reserved for the frame pointer and the link register."
       ],
       "correctAnswer": 1,
-      "explanation": "x16 and x17 are the intra-procedure-call scratch registers IP0 and IP1. Linker-inserted veneers and other linkage code may clobber them across a call, so never expect a value in x16 or x17 to survive a bl.",
-      "hint": "The names carry 'IP' for intra-procedure. Think about temporary workspace used during a call."
+      "explanation": "x16 and x17 are scratch registers named IP0 and IP1. When a bl target is too far away or sits in a shared library, the linker places a small piece of code between the call and the target, and that code may overwrite them, so never expect a value in x16 or x17 to survive a bl.",
+      "hint": "IP0 and IP1 are named for the short gap between a bl and the routine it reaches. Think about temporary workspace used in that gap."
     },
     {
       "question": "A calling function stores a value it still needs in x9, then executes bl. What must the calling function do?",
