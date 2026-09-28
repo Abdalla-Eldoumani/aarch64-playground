@@ -407,6 +407,9 @@ fn every_implemented_line_moves_the_bytes_csarm_moved() {
     }
 
     println!("simd behaviour: {replayed} rows replayed, {skipped} rows still queued");
+    // Every captured row replays today; a row that stops replaying would
+    // otherwise drop out of the check without a word.
+    assert_eq!(skipped, 0, "{skipped} captured rows are no longer replayed");
     assert!(
         failures.is_empty(),
         "{} of {replayed} replayed rows disagree with csarm:\n{}",
