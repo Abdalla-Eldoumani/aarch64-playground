@@ -49,22 +49,11 @@ export type TerminalDrive = {
 };
 
 /**
- * ONE foreground drive for every way a program can take the terminal pane
- * over: it streams output to the pane, forwards its keystrokes to stdin,
- * resumes input-starved stops, and stands down on halt, error, ctrl+c, a user
- * pause, or the loss of its pane.
- *
- * Three entry paths converge on it: `./name` through the terminal's own
- * dispatch (which calls driveForeground directly), a raw-mode program's
- * self-attach when `wantsTerminal` rises, and a terminal-mode program's run
- * press (requestTerminalRun, honoured by the attach effect once the lazily
- * mounted pane registers its io).
- *
- * The console watermark lives here too, pinned at the EARLIEST signal that
- * the terminal owns the run: the wantsTerminal rising edge or the drive's
- * attach, whichever comes first. The console is plain text and would render a
- * full-screen program's escape sequences as literal garbage, so it shows
- * output up to the watermark and one note in place of the session's bytes.
+ * One foreground drive for every way a program takes over the terminal pane:
+ * `./name`, a raw-mode program's self-attach, and a terminal-mode run press.
+ * The console is plain text and would print a full-screen program's escape
+ * codes as garbage, so it shows output only up to a watermark pinned at the
+ * earliest sign the terminal owns the run, then one note.
  */
 export function useTerminalDrive(opts: {
   machine: RefObject<TerminalDriveMachine>;
@@ -177,12 +166,10 @@ export function useTerminalDrive(opts: {
   useEffect(() => {
     if (wantsTerminal && !lastWantsTermRef.current) {
       lastWantsTermRef.current = true;
-      // For a raw-mode program this edge IS the session start: the tab
-      // switch, the lazy pane mount, and the io registration all take
-      // renders, and the program paints full frames through every one of
-      // them. Pinning the console's watermark here rather than at the
-      // drive's attach is what keeps those frames out of a plain-text
-      // scrollback. Earliest pin wins, so the attach leaves it alone.
+      // For a raw-mode program this edge is the session start, and it paints
+      // frames through the renders the tab switch and pane mount take.
+      // Pinning the watermark here keeps those frames out of the console;
+      // the earliest pin wins, so the attach leaves it alone.
       setTerminalOwnedFrom((prev) => prev ?? stdout.length);
       queueMicrotask(() => {
         requestPane("term");
@@ -192,9 +179,6 @@ export function useTerminalDrive(opts: {
     }
   }, [wantsTerminal, stdout, requestPane]);
 
-  // The one foreground drive both entry paths share: stream output to
-  // the pane, forward its keystrokes to stdin, resume input-starved
-  // stops, and stand down on halt, error, cancel, or a user pause.
   const driveForeground = useCallback(
     async (
       io: TerminalProgramIO,
@@ -203,12 +187,8 @@ export function useTerminalDrive(opts: {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
       setForegroundLive(true);
-      // Everything from here goes to the pane through the output tap below.
-      // Pin where the console's scrollback stops so it can show what
-      // printed BEFORE the takeover and one note in place of the rest.
-      // A raw-mode program pinned this at its rising edge, several frames
-      // ago; the earliest pin of a session wins, so this only fires for a
-      // session that starts here (terminal mode's run, `./name`).
+      // Output now goes to the pane. Pin where the console stops, unless a
+      // raw-mode program already pinned it at its rising edge.
       setTerminalOwnedFrom((prev) => prev ?? machine.current.stdout.length);
       let cancelled = false;
       // Set once the pane we are driving has registered itself; after that,
