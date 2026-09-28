@@ -67,14 +67,29 @@ const MAX_DISPLAY = 200;
 /** The exit code a run reports when it never got that far. */
 const NO_EXIT = "none (the program did not finish)";
 
+/** A double-quoted string literal on one line, escapes included. */
+const STRING_LITERAL = /"(?:[^"\\\n]|\\.)*"/.source;
+
 /**
- * Strip AArch64 comments so structural checks see only real code. Block
- * comments are removed first (so a `//` inside a block is already gone), then
- * line comments to end of line.
+ * Strip AArch64 comments so structural checks see only real code. One
+ * left-to-right pass: a `//` inside a string stays text, and a `//` inside a
+ * block comment goes with the block.
  */
 function stripComments(source: string): string {
-  const withoutBlocks = source.replace(/\/\*[\s\S]*?\*\//g, " ");
-  return withoutBlocks.replace(/\/\/[^\n]*/g, "");
+  const pieces = new RegExp(`(${STRING_LITERAL})|/\\*[\\s\\S]*?\\*/|//[^\\n]*`, "g");
+  return source.replace(pieces, (match, literal?: string) =>
+    literal ?? (match.startsWith("/*") ? " " : ""),
+  );
+}
+
+/**
+ * Only what the machine executes: string literals emptied and label
+ * definitions dropped, so `.string "mul"` or a label `mul:` is not a mul.
+ */
+function instructionText(text: string): string {
+  return text
+    .replace(new RegExp(STRING_LITERAL, "g"), '""')
+    .replace(/^([ \t]*)[A-Za-z_.$][\w.$]*:/gm, "$1");
 }
 
 /** Escape every regex metacharacter so author text matches literally. */
@@ -234,7 +249,7 @@ function functionBody(stripped: string, label: string): string | null {
  */
 function hasInstruction(text: string, mnemonic: string): boolean {
   const token = mnemonic.trim().replace(/\s+/g, " ");
-  return standaloneTokenRegex(token).test(text.replace(/[ \t]+/g, " "));
+  return standaloneTokenRegex(token).test(instructionText(text).replace(/[ \t]+/g, " "));
 }
 
 /** Evaluate one structural assertion against the comment-stripped source. */
