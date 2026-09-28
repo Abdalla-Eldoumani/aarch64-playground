@@ -5,13 +5,14 @@
  * message; the prefix regex below only serves a message that still has it.
  */
 import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
+import { REPO_URL } from "@/lib/content/site";
 
 export type StyleSection =
   | "m4 preprocessing"
   | "section directives"
   | "addressing modes"
   | "literal pool"
-  | "hosted runtime"
+  | "C library and system calls"
   | "virtual filesystem"
   | "naming conventions"
   | "general";
@@ -133,7 +134,7 @@ export function explainError(message: string): ErrorExplanation | null {
       what: "The argv pointer table plus the string pool would exceed the single 4 KiB page reserved at 0x00800000.",
       why: "Either too many args (each one needs an 8-byte pointer slot plus the string body and a NUL), or one very large arg.",
       fix: "Trim the args field above the editor, or pass fewer arguments.",
-      styleSection: "hosted runtime",
+      styleSection: "C library and system calls",
     };
   }
 
@@ -283,6 +284,8 @@ export function explainError(message: string): ErrorExplanation | null {
   return null;
 }
 
+const STYLE_GUIDE_URL = `${REPO_URL}/blob/main/docs/cpsc355-style-guide.md`;
+
 /**
  * The editor's hover for an error line, as Monaco markdown: the raw message in
  * bold, then the explainer's teaching block when one matches. The raw message
@@ -304,8 +307,11 @@ export function errorHoverMarkdown(message: string): string {
     `*why:* ${explanation.why}`,
     "",
     `*fix:* ${explanation.fix}`,
-    "",
-    `*consult:* ${explanation.styleSection} (docs/cpsc355-style-guide.md)`,
+    // A student cannot open a repository path from the site, so the pointer is
+    // a link to the guide's section; "general" has no section of its own.
+    ...(explanation.styleSection === "general"
+      ? []
+      : ["", `*more:* [style guide, ${explanation.styleSection}](${STYLE_GUIDE_URL}#${explanation.styleSection.toLowerCase().replace(/ /g, "-")})`]),
   ].join("\n");
 }
 
