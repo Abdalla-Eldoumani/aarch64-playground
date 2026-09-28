@@ -105,8 +105,10 @@ export function TouchEditor({
     ta.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
   });
 
-  // A new line length can put text past the right edge, or take it away.
-  useLayoutEffect(() => {
+  // A new line length can put text past the right edge, or take it away. Read
+  // after paint: before it, the read forced the first layout of the whole
+  // playground into the mount's own task, and the fade is only a hint.
+  useEffect(() => {
     measureRight();
   }, [value, measureRight]);
 
