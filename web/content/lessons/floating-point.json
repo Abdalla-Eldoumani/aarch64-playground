@@ -2,7 +2,7 @@
   "title": "Floating point: the other register file",
   "slug": "floating-point",
   "order": 26,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Load, compute with, convert, compare, and print single and double values, and pass them to and from functions in d0 to d7.",
   "tags": [
     "floating point",
@@ -16,11 +16,11 @@
     },
     {
       "type": "prose",
-      "markdown": "An integer register cannot hold 12.5 or 0.045. For numbers with a fraction the processor has *floating-point* numbers: a value stored as a sign, a power of two, and a fixed number of significant digits, the way scientific notation writes 6.02 * 10^23, but in binary. How those bits are laid out is the subject of [Inside a float: IEEE 754](/learn/ieee-754); this lesson is about using them.\n\nFloating-point values live in their own set of 32 registers, apart from `x0` to `x30`, and have their own instructions, nearly all of them starting with `f`."
+      "markdown": "An integer register cannot hold 12.5 or 0.045. For numbers with a fraction the processor has *floating-point* numbers: a value stored as a sign, a power of two, and a fixed number of significant digits, the way scientific notation writes 6.02 * 10^23, but in binary. How those bits are laid out is the subject of [Inside a float: IEEE 754](/learn/ieee-754); this lesson is about using them.\n\nFloating-point values live in their own set of 32 registers, their own *register file*, apart from `x0` to `x30`, and have their own instructions, nearly all of them starting with `f`."
     },
     {
       "type": "prose",
-      "markdown": "## The s and d registers\n\nEach of the 32 floating-point registers can be read at more than one width. `d0` to `d31` are 64 bits wide and hold a *double* (double precision, C's `double`, good for about 15 significant decimal digits). `s0` to `s31` are the low 32 bits of the same registers and hold a *single* (single precision, C's `float`, about 7 digits). `d3` and `s3` are one register seen two ways, just as `x3` and `w3` are, and writing `s3` clears the rest of it. The full 128-bit register is called `v3`; the vector instructions use that name, and this lesson needs only `s` and `d`.\n\nAn instruction works at one width. `fadd d0, d1, d2` adds doubles and `fadd s0, s1, s2` adds singles. `fadd d0, s1, d2` does not assemble: convert one operand first, as shown further down."
+      "markdown": "## The s and d registers\n\nEach of the 32 floating-point registers can be read at more than one width. `d0` to `d31` are 64 bits wide and hold a *double* (double precision, C's `double`, good for about 15 significant decimal digits). `s0` to `s31` are the low 32 bits of the same registers and hold a *single* (single precision, C's `float`, about 7 digits). `d3` and `s3` are one register seen two ways, just as `x3` and `w3` are, and writing `s3` clears the rest of it. The full 128-bit register is called `v3`; the instructions that work on several values at once use that name, and this lesson needs only `s` and `d`.\n\nAn instruction works at one width. `fadd d0, d1, d2` adds doubles and `fadd s0, s1, s2` adds singles. `fadd d0, s1, d2` does not assemble: convert one operand first, as shown further down."
     },
     {
       "type": "prose",
@@ -94,7 +94,7 @@
     {
       "type": "callout",
       "variant": "pitfall",
-      "markdown": "The step of 0.25 and the limit of 1.0 go through `d16`, which any call may change. That is why the loop sets `d16` again just before each use, and never counts on it across `bl lerp` or `bl printf`. A value that must outlive a call belongs in `d8` to `d15`, saved in the prologue, or in memory."
+      "markdown": "The step of 0.25 and the limit of 1.0 go through `d16`, which any call may change. That is why the loop sets `d16` again just before each use, and never counts on it across `bl lerp` or `bl printf`. A value that must outlive a call belongs in `d8` to `d15`, saved in the prologue (the function's opening lines), or in memory."
     },
     {
       "type": "prose",
