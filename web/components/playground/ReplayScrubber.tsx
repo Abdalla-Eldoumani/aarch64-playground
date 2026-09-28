@@ -10,12 +10,8 @@ interface ReplayScrubberProps {
 }
 
 /**
- * Slider + play button above the RegisterPanel that lets a student scrub
- * through the last N captured frames. Renders nothing when there are fewer than
- * two frames, so the panel is empty until the student steps a couple of times.
- * Visual-only: scrubbing applies the captured frame to React state without
- * touching the underlying CPU; the next forward `step` resumes from the live
- * PC.
+ * Scrubbing only repaints the registers from a saved frame and never touches
+ * the CPU, so the next step resumes from the live pc.
  */
 export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberProps) {
   const [playing, setPlaying] = useState(false);
@@ -137,7 +133,7 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
       />
       <span
         className="text-[var(--text-secondary)] font-mono whitespace-nowrap tabular-nums"
-        title="each step keeps a frame; a run keeps only the step it stopped on. scrubbing shows registers only: the console and memory stay at the live step"
+        title="each step is saved as a frame; a run saves only the step it stopped on. dragging the slider changes the registers only: the console and memory stay where the program is now"
       >
         step {stepShown} · {position}
         {sliderIdx !== null && " · registers only"}
