@@ -13,14 +13,9 @@ const LINK_CLASS =
   "touch-target inline-flex items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
- * The persistent site footer shared by the content layout and the 404: the brand
- * wordmark with a one-line description and the Rust-to-WASM engine note, the
- * route links, the repository and license links, the course context, the
- * open-source line, and the not-affiliated disclaimer. The one footer everywhere,
- * the landing included: it carries the project's credibility facts itself so no
- * page needs a second footer-like band above it. Stays a server component (no
- * hooks) so it ships no client JS and can be imported by server layouts. The
- * author's name lives only in the committed LICENSE, never here.
+ * The one footer on every page, the landing included, so it carries the
+ * project's facts and no page needs a second band above it. A server component
+ * so it ships no client JS. The author's name lives only in LICENSE, never here.
  */
 export function SiteFooter() {
   return (
