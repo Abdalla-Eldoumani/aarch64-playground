@@ -1,9 +1,7 @@
 /**
- * Source-text line arithmetic, with no line map involved. The linker's
- * authoritative address->line map (line-map.ts) is the primary path; these
- * helpers cover the bare-metal fallback, where instruction index and
- * non-label source line are already 1:1, and supply the disassembly listing
- * its per-line text.
+ * Line counting on the source text alone. The linker's line map (line-map.ts)
+ * comes first; these cover the bare-metal fallback, where each non-label line
+ * is one instruction, and give the disassembly its per-line text.
  */
 
 /** One line with its comment stripped and its indentation trimmed. */
