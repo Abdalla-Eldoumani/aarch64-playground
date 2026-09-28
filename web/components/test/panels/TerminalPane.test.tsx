@@ -99,7 +99,7 @@ afterEach(() => {
 });
 
 describe("TerminalPane", () => {
-  it("survives prop identity churn without re-allocating the terminal", () => {
+  it("keeps one terminal when buildContext changes on every render", () => {
     // The regression this guards: buildContext closes over the emulator
     // hub and changes identity on every machine snapshot; when the init
     // effect depended on it, each step or run disposed the terminal and
@@ -173,7 +173,7 @@ describe("TerminalPane", () => {
     expect(output).not.toContain("not found");
   });
 
-  it("serializes a pasted command sequence so later lines see earlier writes", async () => {
+  it("runs pasted commands one at a time so later lines see earlier writes", async () => {
     // The course toolchain paste depends on ordering: line 2 reads the
     // file line 1 creates. Concurrent dispatch read it too early.
     const files = new Map<string, string>([["a.txt", "payload\n"]]);
@@ -197,7 +197,7 @@ describe("TerminalPane", () => {
     });
   });
 
-  it("prints a line and restores the prompt when a command rejects", async () => {
+  it("prints a line and brings the prompt back when a command fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const ctx = makeContext({
       readVfs: vi.fn(async () => {
@@ -217,7 +217,7 @@ describe("TerminalPane", () => {
     warn.mockRestore();
   });
 
-  it("routes the upload pseudo-command to the host picker through the latest prop", async () => {
+  it("hands the upload command to the host's file picker through the latest prop", async () => {
     const onUploadRequest = vi.fn();
     render(
       <TerminalPane buildContext={() => makeContext()} onUploadRequest={onUploadRequest} />,
