@@ -512,12 +512,6 @@ fn the_conformance_corpus_lints_clean() {
     }
 }
 
-/// `.` inside an `ldr xN, =expr` operand means the address of that LDR,
-/// and the literal pool is keyed by operand TEXT. Both halves were wrong:
-/// `.` resolved to zero, and two identical operands at different
-/// addresses shared one slot. GAS allocates a separate pool entry per
-/// site (`R_AARCH64_ABS64 .text+0xc` and `.text+0x14` for two
-/// `ldr xN, =. + 8` four instructions apart).
 #[test]
 fn symbol_plus_offset_resolves_into_the_middle_of_an_object() {
     // csarm's sym_offset probe: `msg+19` is 19 bytes past `msg`, the
@@ -622,6 +616,9 @@ fn relocatable_operand_errors_name_the_symbol() {
     }
 }
 
+/// `.` in `ldr xN, =expr` is the address of that ldr, so two identical
+/// operands at different addresses need their own pool slots, as GAS gives
+/// them. Both used to go wrong: `.` read as zero, and the two shared a slot.
 #[test]
 fn dot_relative_ldr_eq_resolves_per_site() {
     let src = ".text\n\
@@ -669,14 +666,10 @@ fn dot_relative_ldr_eq_resolves_per_site() {
     assert_eq!(cpu.regs.read_gpr(0, true), cpu.regs.read_gpr(1, true));
 }
 
-/// GAS treats `=` as `.set`, which is positional: each use takes the most
-/// recent definition above it. Two files concatenated into one workspace
-/// can each write `len = . - msg` against their own string, and the linker
-/// kept only the first value and handed it to both files' uses.
-///
-/// Oracle (`aarch64-linux-gnu-as` on the same source): the first `.word
-/// len` is 9 and the second is 3; a `.word len` placed above both
-/// definitions is 9, the first binding.
+/// GAS treats `=` as `.set`: each use takes the latest definition above it,
+/// so two joined files can each define `len = . - msg`. The linker used to
+/// keep only the first. `aarch64-linux-gnu-as` gives 9 for the first
+/// `.word len`, 3 for the second, and 9 for one above both definitions.
 #[test]
 fn a_redefined_equate_resolves_against_the_definition_above_each_use() {
     let src = ".data\n\
@@ -765,6 +758,7 @@ fn data_before_text_still_assembles() {
     cpu.run_until_break(10_000).expect("run");
     assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "hi\n");
 }
+
 /// Both of these used to overflow the wasm stack rather than return an
 /// error. A wasm stack overflow is unrecoverable: the trap skips
 /// wasm-bindgen's borrow-guard Drop, so every later call fails on a stuck
@@ -854,14 +848,10 @@ fn the_entry_point_is_a_label_and_start_counts_as_one() {
 
 #[test]
 fn a_brace_register_list_survives_the_frontend_and_runs() {
-    // The hosted parser used to refuse every `{...}` operand: the `.` of
-    // an arrangement made the operand look like an expression, and the
-    // evaluator then reported "unexpected `{`". That closed the whole
-    // structure load/store family, and TBL with it, to real programs.
-    // This drives one of each shape end to end and checks the bytes.
-    //
-    // buf holds 0..31, idx holds the table indices, out is the store
-    // target. Every expected value below is read off those two tables.
+    // The parser used to refuse every `{...}` operand (it took the `.` in
+    // `v0.16b` for an expression), which shut out the structure loads and
+    // stores and TBL. One of each shape runs here; buf holds 0..31 and idx
+    // the table indices, so every expected value reads off those two.
     let src = "        .data\n\
                buf:    .byte 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\n\
                        .byte 16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\n\
