@@ -1,14 +1,10 @@
 "use client";
 
 /**
- * The single sanitizing renderer for author-supplied Markdown across the whole
- * site: lesson prose and callout bodies both render through here, and nothing
- * else turns author Markdown into DOM. Author Markdown is untrusted, so it runs
- * through react-markdown + remark-gfm + rehype-sanitize, with no raw-HTML
- * injection path at all. The sanitize schema is the library
- * default widened by a single attribute (heading `id`); every other custom
- * attribute (the hover-define aria/tabindex) is added here, in the React
- * `components` layer, AFTER sanitization runs over the HTML AST.
+ * The one renderer for author Markdown on the site. Author Markdown is
+ * untrusted, so it runs through rehype-sanitize with no raw-HTML path; the
+ * hover-define attributes are added by the React components below, after
+ * sanitizing, so the schema widens the default only by a heading `id`.
  */
 
 import { Children, isValidElement, type JSX, type ReactNode } from "react";
@@ -41,16 +37,19 @@ const sanitizeSchema = {
 const REGISTER_ROLES = {
   arg: "argument and return register (x0-x7): carries the first eight arguments and the return value.",
   indirectResult:
-    "indirect-result register (x8): also holds the syscall number for svc.",
+    "result address or system call number (x8): where to write a large returned struct, or the call svc makes; a called routine may overwrite it.",
   temp: "caller-saved temporary (x9-x15): a called routine may overwrite it.",
-  ip: "intra-procedure-call scratch register (ip0/ip1, x16/x17).",
-  platform: "platform register (x18): reserved by the platform abi.",
+  ip:
+    "linker temporary (x16/x17, also called ip0/ip1): a bl may overwrite it, so do not keep a value here across a call.",
+  platform:
+    "reserved register (x18): some operating systems use it, so leave it alone.",
   calleeSaved:
     "callee-saved register (x19-x28): a routine must restore it before it returns.",
-  framePointer: "frame pointer (x29 / fp): anchors the current stack frame.",
+  framePointer:
+    "frame pointer (x29 / fp): points to the current function's stack frame.",
   linkRegister: "link register (x30 / lr): holds the return address set by bl.",
   stackPointer:
-    "stack pointer (sp): keep it 16-byte aligned at a public boundary.",
+    "stack pointer (sp): points to the top of the stack; keep it a multiple of 16.",
   zero: "zero register (xzr / wzr): reads as zero, writes are discarded.",
 } as const;
 
