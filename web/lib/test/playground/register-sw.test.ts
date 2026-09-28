@@ -32,12 +32,12 @@ function setSecureContext(secure: boolean): void {
 }
 
 describe("registerServiceWorker", () => {
-  test("no-ops when serviceWorker isn't on navigator", () => {
+  test("does nothing when navigator has no serviceWorker", () => {
     setNavigator({});
     expect(() => registerServiceWorker()).not.toThrow();
   });
 
-  test("no-ops over plain http on a non-localhost host", () => {
+  test("does nothing over plain http on a host other than localhost", () => {
     const register = vi.fn();
     setNavigator({ serviceWorker: { register } });
     setSecureContext(false);
