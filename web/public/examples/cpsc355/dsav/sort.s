@@ -1,17 +1,18 @@
 // sort.s - eight sorting algorithms, one state change per frame
 //
-// The chrome is drawn once when a run starts. After that a frame repaints
-// only the bars, the values, the slot ruler, the marks under the cells and
-// the counters, so nothing blinks. Every state change - a comparison, a move,
-// a cell settling - gets exactly one frame and one delay, and no change is
-// ever left for the following frame to reveal.
+// The parts of the screen that never change are drawn once when a run
+// starts. After that a frame repaints only the bars, the values, the slot
+// ruler, the marks under the cells and the counters, so nothing blinks.
+// Every state change (a comparison, a move, a cell settling) gets exactly
+// one frame and one delay, and no change is ever left for the following
+// frame to reveal.
 //
 // A cell's colour is data rather than a branch: sort_role_of reads the
 // marker words and answers with a role from theme.s, so all eight
 // algorithms paint through one set of rules. sort_src says where a cell's
 // value comes from, which is what lets the merge show its scratch copy
-// instead of the half-overwritten memory underneath it - the picture never
-// shows a value the array does not hold.
+// instead of the half-overwritten memory underneath it, so the picture
+// never shows a value the array does not hold.
 
 define(fp, x29)
 define(lr, x30)
@@ -20,10 +21,10 @@ define(lr, x30)
     .balign 8
 
     SORT_CAP        = 10                    // the widest array that fits
-    SORT_KEYS       = 100                   // counting sort's key space
+    SORT_KEYS       = 100                   // counting sort's keys, 0 to 99
 
-// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here so
-// this file also assembles on its own, the way the web build feeds it.
+// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here
+// because the playground assembles each file on its own.
     SORT_TEXT       = 0
     SORT_DIM        = 1
     SORT_FAINT      = 2
@@ -93,7 +94,7 @@ sort_pan_array:     .string "the array"
 sort_pan_input:     .string "the array, read left to right"
 sort_pan_output:    .string "the output"
 // Panel titles stay plain ascii: ui_panel measures them in bytes to work
-// out how much border is left, and a multi-byte glyph would shorten the
+// out how much border is left, and a multi-byte character would shorten the
 // top edge by a column.
 sort_pan_bucket:    .string "one bucket per key, top row 0-49 and bottom row 50-99"
 sort_pan_menu:      .string "algorithms"
@@ -1491,7 +1492,7 @@ sort_marks_done:
     ldp     fp, lr, [sp], 64
     ret
 
-// sort_bucket_ruler() - the decade ticks over the bucket grid, drawn once
+// sort_bucket_ruler() - a label over every tenth bucket, drawn once
 sort_bucket_ruler:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
@@ -1651,7 +1652,7 @@ sort_bucket_key:
     cmp     w20, SORT_KEYS
     b.ge    sort_bucket_done
 
-    // fifty keys to a row, so the whole key space fits on the screen
+    // fifty keys to a row, so all 100 keys fit on the screen
     mov     w0, 50
     udiv    w21, w20, w0
     msub    w22, w21, w0, w20
@@ -1711,7 +1712,7 @@ sort_bucket_done:
     ldp     fp, lr, [sp], 80
     ret
 
-// sort_clear_marks() - drop the transient markers only. The band, the
+// sort_clear_marks() - drop the short-lived markers only. The band, the
 // hole, the placed run and the settled cells survive, which is what lets
 // a merge keep its green instead of starting over every inner step.
 sort_clear_marks:
@@ -2873,7 +2874,7 @@ sort_quick_left:
 
 // sort_quick_part_sort(w0 = low, w1 = high) - partition, then sort both
 // sides. The band belongs to this call, so it is put back after each
-// child returns instead of being left wherever the recursion ended.
+// recursive call returns instead of being left wherever the recursion ended.
 sort_quick_part_sort:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
@@ -3141,9 +3142,10 @@ sort_heap_left:
     ldp     fp, lr, [sp], 16
     ret
 
-// sort_heap_run() - build a max-heap in the array itself, then pull the
-// largest value off the top n times. The band is the part of the array
-// that is still a heap; everything to its right has settled.
+// sort_heap_run() - build a max-heap (no parent smaller than its children)
+// in the array itself, then pull the largest value off the top n times. The
+// band is the part of the array that is still a heap; everything to its
+// right has settled.
 sort_heap_run:
     stp     fp, lr, [sp, -64]!
     mov     fp, sp
