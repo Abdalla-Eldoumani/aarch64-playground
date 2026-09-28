@@ -1,11 +1,7 @@
-// The security headers docs/security.md promises. Declared here, the
-// framework applies them under `next dev` and `next start`, and on Vercel
-// they compile into the routes manifest and are attached by the platform with
-// no function in the path. A proxy.ts used to set the same headers, but on
-// Vercel a proxy runs as a Node function in front of every page request, which
-// put a function invocation on every visit to a fully static site.
-// vercel.json carries the identical set as the deploy-time copy;
-// next.config.test.ts fails the suite if the two drift.
+// The security headers docs/security.md promises. Set here, they apply under
+// `next dev` and `next start` and on Vercel with no function in the path (a
+// proxy.ts would run a function on every page request). vercel.json holds the
+// same set; next.config.test.ts fails if the two drift.
 export const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
