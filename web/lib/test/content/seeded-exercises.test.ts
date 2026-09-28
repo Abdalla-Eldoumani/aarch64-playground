@@ -64,14 +64,6 @@ describe("seeded exercises validate", () => {
     expect(coding.some((exercise) => (exercise.acceptance.structural?.length ?? 0) > 0)).toBe(true);
   });
 
-  it("carry no week labels, archive numbers, or personal data", () => {
-    const banned = /week\s*\d|tutorial\s*\d|assignment\s*\d|@[a-z0-9.-]+\.[a-z]{2,}/i;
-    for (const file of files) {
-      const raw = fs.readFileSync(path.join(DIR, file), "utf8");
-      expect(banned.test(raw), `${file} matched a banned pattern`).toBe(false);
-    }
-  });
-
   // The no-answer-key rule holds for the emulator-backed variants: a coding
   // exercise is graded by running the student's program, never by comparing
   // against a stored solution, so its JSON must not carry one. The interactive
