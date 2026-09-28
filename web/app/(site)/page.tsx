@@ -13,13 +13,9 @@ export const metadata: Metadata = pageMetadata({
   path: "/",
 });
 
-// Each section owns its own measure (centred at max-w-5xl) and its own
-// py-12/sm:py-16 rhythm, so the page only orders them, with no wrapper measure
-// or extra spacing. The nav and footer come from the (site) layout, and the
-// footer carries the open-source, license, and course facts itself, so the
-// page ends at the catalog rather than stacking a second footer-like band
-// above the footer. A server component: it renders the client Hero without
-// itself going client, so the rest of the page ships no JS.
+// Each section sets its own width and spacing, so the page only orders them.
+// It ends at the catalog because the footer already carries the project facts.
+// A server component, so only the client Hero ships JS.
 export default function LandingPage() {
   return (
     <>
@@ -30,7 +26,7 @@ export default function LandingPage() {
       {/* Decorative chrome. The hero owns the h1. */}
       <BitRuler />
       <div className="mx-auto w-full max-w-5xl px-6 pt-6">
-        <DocRule section="sheet 1 · overview" context="cpsc 355 study aid" />
+        <DocRule section="overview" context="cpsc 355 study aid" />
       </div>
       <Hero />
       <RoutesRegisterFile />
