@@ -24,7 +24,7 @@ const anchor = (name: string) => `[data-walkthrough="${name}"]`;
 // the bottom tabs, so those steps point at the way in.
 const menu = (what: string): WalkthroughTarget => ({
   selector: anchor("menu"),
-  hint: `On a phone, ${what} is in this menu.`,
+  hint: `On a phone, find ${what} in this menu.`,
 });
 const more = (what: string): WalkthroughTarget => ({
   selector: "#phone-tab-more",
@@ -39,7 +39,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     id: "editor",
     title: "The editor",
-    body: "Write or paste your program here. It is saved as you type, so a reload keeps it.",
+    body: "Where you write or paste your program. It is saved as you type, so a reload keeps it.",
     targets: [
       { selector: "#phone-tab-code", hint: "On a phone, the code tab shows it." },
       { selector: anchor("editor") },
