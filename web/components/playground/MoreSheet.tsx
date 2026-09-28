@@ -21,11 +21,9 @@ const HEADING =
   "font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] [@media(pointer:coarse)]:text-[12px]";
 
 /**
- * The phone playground's "more" sheet: everything the desktop header band
- * lays out in one row, which on a phone was a sideways strip showing four of
- * its thirteen controls. It rises from the bottom, where a thumb already is,
- * and carries the site links too, since the phone playground drops the site
- * bar to give the code its height.
+ * The header band's controls on a phone, where one row showed only four of
+ * them. It rises from the bottom, near the thumb, and holds the site links,
+ * since the phone playground drops the site bar to give the code room.
  */
 export function MoreSheet({ open, onClose, sections }: MoreSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
