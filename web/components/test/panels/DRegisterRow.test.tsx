@@ -22,7 +22,7 @@ describe("DRegisterRow", () => {
     expect(screen.queryByText("3.5")).toBeNull();
   });
 
-  it("carries the aapcs aliases for d0-d15 only", () => {
+  it("shows the calling-convention names (arg, save) for d0-d15 only", () => {
     const { unmount } = render(<DRegisterRow index={3} bitsHex="0x0" />);
     expect(screen.getByText("arg3")).toBeTruthy();
     unmount();
@@ -40,7 +40,7 @@ describe("DRegisterRow", () => {
     expect(screen.getByText("4.5f")).toBeTruthy();
   });
 
-  it("renders integral doubles with one decimal and zero as 0.0", () => {
+  it("renders a whole-number double with one decimal place", () => {
     // 42.0 is 0x4045000000000000.
     render(<DRegisterRow index={1} bitsHex="0x4045000000000000" />);
     expect(screen.getByText("42.0")).toBeTruthy();
