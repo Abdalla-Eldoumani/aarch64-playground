@@ -68,11 +68,8 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
 }
 
 /**
- * Legacy example stems (the old course-labeled file names) mapped to the
- * renamed clean stems. A `?example=` link shared before the corpus was
- * renamed still resolves: the resolver translates the old stem to the new
- * one before fetching. This is a fixed allow-list: only these stems are
- * translated.
+ * Old example names mapped to their current ones, so a `?example=` link
+ * shared before the examples were renamed still opens the right file.
  */
 export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
   week03_exercise: "basics",
