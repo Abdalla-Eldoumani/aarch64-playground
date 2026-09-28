@@ -2,7 +2,7 @@
   "title": "Quiz: ARMv8 assembly",
   "slug": "quiz-inter-armv8",
   "order": 83,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "armv8",
   "difficulty": "core",
   "variant": "quiz",
@@ -12,7 +12,7 @@
       "question": "What role do registers x0 through x7 play in an AArch64 procedure call?",
       "options": [
         "They are callee-saved registers, so a procedure must restore them before it returns.",
-        "They hold intra-procedure-call scratch data for the linker's veneers.",
+        "They are scratch registers that code added by the linker may overwrite during a call.",
         "They pass the first eight arguments into a procedure and carry the result back out.",
         "They act as the frame pointer and the procedure link register."
       ],
@@ -29,7 +29,7 @@
         "subs xzr, x20, x21"
       ],
       "correctAnswer": 3,
-      "explanation": "cmp subtracts with the s suffix so the condition flags are set, and writes the difference to xzr so the numeric result is thrown away. That is why cmp never disturbs either operand.",
+      "explanation": "cmp subtracts with the s suffix so the condition flags are set, and writes the difference to xzr, the zero register, so the numeric result is thrown away. That is why cmp never disturbs either operand.",
       "hint": "Comparing means subtracting and keeping the flags, not the difference."
     },
     {
@@ -48,7 +48,7 @@
       "question": "What happens to the remainder when sdiv divides one register by another?",
       "options": [
         "The quotient is truncated toward zero and the remainder is discarded.",
-        "It is stored in x8, the indirect result register.",
+        "It is stored in x8, the register that points to memory for a large result.",
         "It raises an exception.",
         "It is written to the destination register alongside the quotient."
       ],
@@ -81,7 +81,7 @@
       "hint": "One of the four flags copies the sign bit of the result."
     },
     {
-      "question": "In GAS, which prefix marks an immediate written in binary?",
+      "question": "In the GNU assembler, which prefix marks an immediate written in binary?",
       "options": [
         "0b",
         "0x",
@@ -89,7 +89,7 @@
         "#"
       ],
       "correctAnswer": 0,
-      "explanation": "0b introduces a binary literal, so 0b101 is 5. A leading 0x means hexadecimal, a bare leading 0 means octal, and # is the optional immediate marker, not a radix.",
+      "explanation": "0b introduces a binary literal, so 0b101 is 5. A leading 0x means hexadecimal, a bare leading 0 means octal, and # is the optional immediate marker, not a number base.",
       "hint": "Hex takes a letter after the zero, and so does binary."
     },
     {
@@ -101,7 +101,7 @@
         "A routine that uses one saves it on entry and restores it before returning."
       ],
       "correctAnswer": 3,
-      "explanation": "Callee-saved means the routine being called owns the responsibility: it puts the values back before returning. That is what lets a caller keep a value in x19 across a bl without spilling it.",
+      "explanation": "Callee-saved means the routine being called owns the responsibility: it puts the values back before returning. That is what lets a caller keep a value in x19 across a bl without saving it to the stack.",
       "hint": "Ask which side of the call, caller or callee, has to do the saving."
     }
   ]
