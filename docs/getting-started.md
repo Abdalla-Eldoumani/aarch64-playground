@@ -30,7 +30,7 @@ in turn. Reopen it any time from the command palette (`Ctrl+K`), or open
 
 Open the **load example...** menu and pick **scores (scanf + avg)** under
 "Records and arrays". It reads three scores, stores them on the stack, and
-prints their average. The top of the file:
+prints their average. Some lines from the top of the file:
 
 ```
 define(fp, x29)
