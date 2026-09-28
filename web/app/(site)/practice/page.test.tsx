@@ -31,8 +31,8 @@ vi.mock("@/lib/content/exercises", async (importOriginal) => {
   };
 });
 
-// notFound throws a sentinel like the real one halts rendering, so an unknown
-// slug is observable here as a rejection plus a spy call.
+// notFound throws, as the real one does to stop rendering, so an unknown slug
+// shows up here as a rejection plus a spy call.
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
@@ -58,7 +58,7 @@ afterEach(() => {
 });
 
 describe("practice routes", () => {
-  it("statically enumerates one page per exercise file", () => {
+  it("builds one static page per exercise file", () => {
     const slugs = generateStaticParams().map((entry) => entry.slug);
     expect([...slugs].sort()).toEqual([...FILE_SLUGS].sort());
     for (const slug of SEEDED_SLUGS) expect(slugs).toContain(slug);
@@ -81,7 +81,7 @@ describe("practice routes", () => {
     expect(vi.mocked(notFound)).not.toHaveBeenCalled();
   });
 
-  it("not-founds an unknown slug", async () => {
+  it("sends an unknown slug to the 404 page", async () => {
     await expect(
       ExercisePage({ params: Promise.resolve({ slug: "does-not-exist" }) }),
     ).rejects.toThrow("NEXT_NOT_FOUND");
