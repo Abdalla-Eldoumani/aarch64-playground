@@ -1,10 +1,9 @@
-//! Error parity with the course servers. Every `<case>.s` in
-//! tests/error-parity/ was built with `gcc <case>.s -o program` and run as
-//! `./program` on the servers; `<case>.server.txt` is that terminal session,
-//! with the temporary object file renamed after the case. The playground's
-//! message has to open with the server's own diagnostic line and add one
-//! line of guidance under it, and a program the server builds has to stop
-//! here with the same fault and the same output.
+//! Errors match the course servers. Each `<case>.server.txt` in
+//! tests/error-parity/ is the server session for `gcc <case>.s -o program`
+//! and `./program`, with the temporary object file renamed after the case.
+//! The playground's message must open with the server's line and add one
+//! line of guidance, and a program the server builds must stop here with
+//! the same fault and the same output.
 
 use std::fs;
 use std::path::PathBuf;
