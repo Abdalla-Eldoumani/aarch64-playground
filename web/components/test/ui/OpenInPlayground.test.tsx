@@ -1,6 +1,5 @@
-// Pins the shared playground hand-off: an <a> to the given deep link, named
-// "Open in playground", with caller layout classes appended. The learn
-// article and the practice sheet both draw from it.
+// Lesson and exercise pages both link to the playground through this one
+// component.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { OpenInPlayground } from "@/components/ui/OpenInPlayground";
