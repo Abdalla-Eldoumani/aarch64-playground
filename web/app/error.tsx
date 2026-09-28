@@ -5,15 +5,9 @@ import Link from "next/link";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
- * The route error boundary, wearing the 404's fault-card register: a document
- * rule naming the fault by its hex address, the serif head, a mono gloss in the
- * decode strip's voice, and the two ways out (retry, or back to the
- * playground). A student who hits this can hand over a small markdown report
- * with one click: the autosaved program plus the error itself. There is no
- * emulator here to snapshot, so the report carries no machine state.
- *
- * This boundary sits above the (site) layout, so it supplies the route's own
- * <main id="main"> for the root layout's skip link.
+ * The copy button hands over the autosaved program and the error, but no
+ * machine state, since there is no emulator here. This boundary sits above the
+ * (site) layout, so it renders its own <main id="main"> for the skip link.
  */
 export default function Error({
   error,
@@ -24,12 +18,9 @@ export default function Error({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "ok" | "error">("idle");
 
-  // The report is the whole bundle format, and this boundary needs it only
-  // when the button is pressed, so the builder arrives through a dynamic
-  // import: reaching it statically put the format in the script list of every
-  // document, including the landing's. It is built as soon as the chunk lands
-  // rather than inside the handler, so the clipboard write still happens in
-  // the same task as the press.
+  // Imported on demand, since a static import put the report builder in every
+  // page's scripts. The report is built as soon as it loads, not in the click
+  // handler, so the clipboard write happens in the same task as the press.
   const [report, setReport] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
