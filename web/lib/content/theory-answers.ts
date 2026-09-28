@@ -1,8 +1,7 @@
 /**
- * The one rule a typed theory answer is graded by, shared by the blanks and
- * prediction blocks and by the sheet that restores a checked answer on a later
- * visit, so a restored question is locked only when the same rule would still
- * pass it. Case and the spaces around the answer do not matter.
+ * Case and outer spaces do not count. The blanks, the predictions, and the
+ * restore on a later visit all grade here, so a restored answer locks only
+ * when it would still pass.
  */
 export function typedAnswerIsRight(accepted: readonly string[], typed: string): boolean {
   const answer = typed.trim().toLowerCase();
