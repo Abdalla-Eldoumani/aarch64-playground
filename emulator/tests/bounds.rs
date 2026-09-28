@@ -1,13 +1,10 @@
-//! Runaway-loop and memory-bomb bounds. These prove the in-browser
-//! execution sandbox can never hang or exhaust the tab: a
-//! runaway loop hits the cumulative step ceiling and a runaway allocation
-//! hits the mapped-page cap, both aborting as a CALM halt that carries a
-//! plain-language message through the result `error` field, never a
-//! silent stop, never a raw panic. A normal program stays well under both
-//! walls and finishes unaffected.
+//! Limits that keep a runaway program from hanging or filling the tab: an
+//! endless loop stops at the step ceiling and runaway memory use stops at
+//! the page cap, each with a plain message in `error`, never a silent stop
+//! or a panic. A normal program never gets near either limit.
 //!
-//! The bounds live in the emulator, so they hold regardless of how the
-//! program arrived (typed, decoded from a share link, or uploaded).
+//! The limits live in the emulator, so they hold however the program
+//! arrived (typed, opened from a share link, or uploaded).
 
 use aarch64_emulator::cpu::{
     step_ceiling_message, Cpu, MAX_SNAPSHOT_SIDE_BYTES, MAX_TOTAL_STEPS, MEMORY_CAP_MESSAGE,
@@ -40,20 +37,16 @@ fn svc(imm16: u16) -> u32 {
     0xD400_0001 | ((imm16 as u32) << 5)
 }
 
-// The full end-to-end runaway wall executes the real ~10M-step ceiling,
-// which takes ~60s in a debug build, too slow for the default `cargo test`
-// gate. It is kept as an on-demand proof; run it explicitly with
-// `cargo test --test bounds -- --ignored`. The fast boundary proof (the
-// ceiling fires exactly at MAX_TOTAL_STEPS) lives in the cpu unit tests
-// (`step_ceiling_aborts_calmly_with_message`), which the default gate runs.
+// Runs the real ~10M-step ceiling (~60 s in a debug build), too slow for a
+// plain `cargo test`. The quick check that the ceiling fires exactly at
+// MAX_TOTAL_STEPS is `step_ceiling_aborts_calmly_with_message` in the cpu
+// unit tests.
 #[test]
 #[ignore = "runs the real ~10M-step wall (~60s); run with --ignored"]
 fn runaway_loop_aborts_calmly_within_the_step_ceiling() {
     let mut cpu = Cpu::new();
-    // `b .`, a branch to self and so an infinite loop. Driven with a
-    // step budget just above the ceiling so the runaway wall (not max_steps)
-    // is what stops it. This runs the real ~10M-step wall end to end,
-    // proving a runaway program terminates rather than hanging the tab.
+    // `b .` branches to itself forever. The budget sits just above the
+    // ceiling so the ceiling, not the budget, is what stops it.
     cpu.load_program(&[0x1400_0000]);
     let r = cpu.run_until_break(MAX_TOTAL_STEPS as u32 + 16).unwrap();
 
@@ -163,12 +156,10 @@ fn a_buffer_filling_loop_keeps_the_dirty_log_bounded() {
 
 #[test]
 fn a_large_virtual_filesystem_stops_the_snapshot_ring() {
-    // Guest pages are shared copy-on-write, so a frame costs almost
-    // nothing to take, but the virtual files, the queued stdin and the
-    // open-file paths are copied whole, once per step. 100k steps with a
-    // 1 MiB virtual file took 51 s against 73 ms with none. Past the side
-    // budget the ring stops recording, the same trade a raw-mode program
-    // makes, and the run goes back to full speed.
+    // Step-back frames share memory pages but copy the virtual files whole,
+    // once per step: 100k steps with a 1 MiB file took 51 s against 73 ms
+    // with none. Past the side budget step-back stops recording, as it does
+    // for a raw-mode program, and the run goes back to full speed.
     let src = r#"
         .text
         .global main
@@ -246,12 +237,10 @@ open_loop:
     assert_eq!(stdout, "-1\n", "a refused open reports EMFILE, not a halt");
 }
 
-// The bulk-work wall end to end spends the real ~10M-step ceiling on
-// `memset` bytes (~160 MB of guest writes), which is minutes in a debug
-// build, the same trade as the runaway-loop proof above, so it is kept
-// on demand: `cargo test --test bounds -- --ignored`. The fast proof that
-// bulk bytes are charged at all lives in the cpu unit tests
-// (`bulk_stub_work_is_charged_against_the_step_budget`).
+// Spends the real ceiling on `memset` bytes (~160 MB of writes, minutes in
+// a debug build), so it is ignored like the loop test above. The quick
+// check is `bulk_stub_work_is_charged_against_the_step_budget` in the cpu
+// unit tests.
 #[test]
 #[ignore = "spends the real ~10M-step ceiling on bulk bytes; run with --ignored"]
 fn a_bulk_fill_loop_halts_calmly_at_the_step_ceiling() {
