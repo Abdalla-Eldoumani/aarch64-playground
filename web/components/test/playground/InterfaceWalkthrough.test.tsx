@@ -1,7 +1,8 @@
 // Pins the interface walkthrough's behaviour: offered once on a first visit
 // without taking focus, walked by buttons and arrow keys, closed at any step
 // with the step kept for a resume, reset once finished, opened at the start by
-// a deep link, and put in the top layer where the popover API exists.
+// a deep link, put in the top layer where the popover API exists, and stepped
+// aside while a picker's list is open.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { InterfaceWalkthrough } from "@/components/playground/InterfaceWalkthrough";
@@ -162,6 +163,29 @@ describe("entry points and the top layer", () => {
     } finally {
       delete (HTMLElement.prototype as { showPopover?: unknown }).showPopover;
     }
+  });
+
+  it("steps aside while a picker's list is open and comes back when it closes", () => {
+    renderOpen();
+    const shown = () => document.querySelector<HTMLElement>('[role="dialog"]')?.style.visibility === "";
+    // Monaco leaves its suggestion list in the page once it has shown, open
+    // or not, so a listbox alone must not hide the card.
+    const leftover = document.createElement("div");
+    leftover.setAttribute("role", "listbox");
+    document.body.appendChild(leftover);
+    act(() => vi.advanceTimersByTime(500));
+    expect(shown()).toBe(true);
+    const picker = document.createElement("button");
+    picker.setAttribute("aria-haspopup", "listbox");
+    picker.setAttribute("aria-expanded", "true");
+    document.body.appendChild(picker);
+    act(() => vi.advanceTimersByTime(500));
+    expect(shown()).toBe(false);
+    picker.setAttribute("aria-expanded", "false");
+    act(() => vi.advanceTimersByTime(500));
+    expect(shown()).toBe(true);
+    picker.remove();
+    leftover.remove();
   });
 
   it("names the way in on a phone when the part is behind a tab", () => {
