@@ -1,11 +1,6 @@
 /**
- * The practice sheet's two sides and its topic order, in one table.
- *
- * Every exercise is either a coding exercise (the emulator runs the
- * student's program and checks it) or a theory set (quizzes, fill-in-the-
- * blank drills, and mental traces graded on the page). The index shows
- * the two side by side, each grouped by topic in the order the course
- * meets them, so the table below is the single place that order lives.
+ * The practice page's two columns (coding exercises and theory sets) and the
+ * course's topic order, kept in this one place.
  */
 
 import type { Exercise } from "@/lib/content/exercise-schema";
@@ -32,7 +27,7 @@ export const PRACTICE_SIDES: readonly PracticeSideInfo[] = [
     id: "theory",
     caption: "theory",
     title: "Theory sets",
-    description: "Quizzes, fill-in-the-blank drills, and mental traces, graded on the page.",
+    description: "Quizzes, fill-in-the-blank drills, and predict-the-output questions, graded on the page.",
   },
 ];
 
