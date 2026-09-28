@@ -227,7 +227,7 @@ describe("laneText", () => {
 });
 
 describe("compactHex", () => {
-  it("drops the leading zeros a listener would otherwise hear", () => {
+  it("drops the leading zeros a screen reader would otherwise read aloud", () => {
     expect(compactHex("0x000000000000002f")).toBe("0x2f");
     expect(compactHex("0x0000000000000000")).toBe("0x0");
     expect(compactHex("0xffffffffffffffff")).toBe("0xffffffffffffffff");
