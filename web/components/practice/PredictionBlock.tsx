@@ -1,12 +1,9 @@
 "use client";
 
 /**
- * One mental-trace question: a code snippet, a question about the state it
- * leaves behind, and a free-form input graded by trimmed, case-folded
- * string equality against the validated answer. Before a wrong answer is
- * corrected the block shows only the author's hint, never the explanation
- * or the answer. `onAttempt` reports each submission upward for the
- * exercise-level solved state.
+ * One prediction question: a snippet the student works through by hand and a
+ * typed answer. A wrong answer shows only the author's hint, never the
+ * explanation or the answer.
  */
 
 import { useId, useState, type JSX } from "react";
@@ -67,7 +64,7 @@ export function PredictionBlock({
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Mental Trace
+        Predict the Result
       </h3>
 
       <pre className="mb-6 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 font-mono text-[14px] leading-relaxed text-[var(--text-primary)]">
