@@ -13,32 +13,12 @@ const wasm = require(path.join(wasmDir, "aarch64_emulator.js"));
 
 const examplesDir = path.join(__dirname, "..", "web", "public", "examples");
 
-// Whitespace-quoted parser to keep the verifier's .args handling in sync
-// with the in-app `parseArgs` (web/lib/playground/args.ts). Supports double + single
-// quotes and `\` escapes; tolerant of unterminated quotes (rest of line
-// becomes the final token).
-function parseArgsLine(input) {
-  const out = [];
-  let buf = "";
-  let inQuote = null;
-  let hasToken = false;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "\\" && i + 1 < input.length) { buf += input[i + 1]; hasToken = true; i++; continue; }
-    if (inQuote) {
-      if (ch === inQuote) { inQuote = null; continue; }
-      buf += ch; hasToken = true; continue;
-    }
-    if (ch === '"' || ch === "'") { inQuote = ch; hasToken = true; continue; }
-    if (/\s/.test(ch)) {
-      if (hasToken) { out.push(buf); buf = ""; hasToken = false; }
-      continue;
-    }
-    buf += ch; hasToken = true;
-  }
-  if (hasToken) out.push(buf);
-  return out;
-}
+// The app's own argument parser, so a fixture's .args splits exactly the way
+// the args box does. Node 24 strips the file's types on load; the file
+// imports nothing, so no path alias has to resolve.
+const { parseArgs: parseArgsLine } = require(
+  path.join(__dirname, "..", "web", "lib", "playground", "args.ts"),
+);
 
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
