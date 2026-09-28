@@ -1,9 +1,6 @@
 /**
- * Split pasted terminal data into command lines. xterm normalizes every
- * pasted line break to a bare carriage return before it reaches onData,
- * so splitting on \n alone never fires for a real clipboard paste; this
- * accepts \r\n, \r, and \n so each pasted line submits as its own
- * command regardless of the source's line-ending convention.
+ * xterm turns every pasted line break into a bare \r, so splitting on \n
+ * alone never fires on a real paste; all three line endings count.
  */
 export function splitPasteLines(data: string): string[] {
   return data.split(/\r\n|\r|\n/);
@@ -19,13 +16,9 @@ export function stripEscapeSequences(text: string): string {
 }
 
 /**
- * Drop terminal control data from text entering the input buffer: whole
- * ANSI escape sequences first (a special key's CSI/SS3 sequence, or a
- * pasted colored shell transcript), then any remaining C0/C1 control
- * bytes. Tabs become single spaces so pasted token separation survives.
- * The buffer can then never hold bytes that repaint as cursor movement:
- * an ESC[A smuggled into the line is invisible on screen but corrupts
- * the submitted command and scrambles the scrollback on repaint.
+ * An ESC[A left in the line is invisible but corrupts the command and
+ * scrambles the screen on repaint, so escape sequences and control bytes go.
+ * Tabs become spaces so pasted words stay apart.
  */
 export function sanitizeInput(text: string): string {
   return stripEscapeSequences(text)
