@@ -126,14 +126,15 @@ describe("placeCard", () => {
 
   it("sits whole inside a view that fills a phone, clear of the rows under it", () => {
     // The registers view on a 390x664 phone: the top bar above it, and the
-    // status line, run controls and tabs in the 140 px below it.
+    // status line, run controls and tabs in the 150 px below it. The card
+    // leaves 180 px of the view's top showing, where its dec and hex are.
     const view = { width: 390, height: 664 };
-    const registers = { top: 44, left: 0, width: 390, height: 480 };
+    const registers = { top: 44, left: 0, width: 390, height: 470 };
     const p = check(registers, view);
     expect(p.side).toBe("over");
     expect(p.maxHeight).toBeNull();
-    expect(p.top).toBe(184);
-    expect(p.top + 200).toBeLessThanOrEqual(524);
+    expect(p.top).toBe(224);
+    expect(p.top + 200).toBeLessThanOrEqual(514);
     expect(p.left).toBe(19);
   });
 
