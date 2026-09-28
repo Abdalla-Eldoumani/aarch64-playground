@@ -92,8 +92,8 @@ recompares a results directory a previous run downloaded. It needs the
 node-target WASM built (`wasm-pack build --target nodejs --out-dir
 ../web/lib/wasm-node` from `emulator/`) and key-based ssh to csarm.
 
-Everything the sweep writes -- the per-program directories, both sides'
-results, and `report.md` -- lands outside the repository, under
+Everything the sweep writes (the per-program directories, both sides'
+results, and `report.md`) lands outside the repository, under
 `aarch64-playground-parity` in the OS temp directory by default and wherever
 `PARITY_SCRATCH` points otherwise. The report is not tracked and is never
 committed: rerun the sweep to regenerate it.
