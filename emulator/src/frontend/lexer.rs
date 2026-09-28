@@ -511,12 +511,9 @@ pub(crate) fn parse_int(text: &str) -> Option<i64> {
     if let Some(rest) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
         return u64::from_str_radix(rest, 2).ok().map(|v| v as i64);
     }
-    // Leading-zero octal a la GAS. "0" alone is decimal zero. A digit
-    // outside 0-7 makes the whole literal invalid rather than decimal:
-    // GAS reads `018` as the octal `01` and then rejects the stray `8`,
-    // so falling through to decimal would answer 18 for a literal GAS
-    // refuses, while `017` already means 15 here: the radix would change
-    // between two adjacent-looking numbers.
+    // A leading zero means octal, as in GAS; "0" alone is decimal zero. A
+    // digit outside 0-7 fails the literal instead of falling back to
+    // decimal: GAS rejects `018`, and `017` already means 15 here.
     if s.len() > 1 && s.starts_with('0') {
         if !s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
             return None;
@@ -568,12 +565,9 @@ fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
 }
 
 fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuError> {
-    // s starts with the opening quote. Like the real assembler, a string
-    // may not span lines: a raw newline before the closing quote is an
-    // unterminated literal, reported at the line where the quote opened
-    // (write \n for a newline byte). Without this stop, a stray quote
-    // later in the file would silently swallow the lines in between and
-    // the student would get a baffling error far from the real mistake.
+    // s starts with the opening quote. As in GAS, a string may not span
+    // lines. Otherwise a stray quote later in the file would swallow the
+    // lines in between and the error would land far from the real mistake.
     let bytes = s.as_bytes();
     let mut out = Vec::new();
     let mut i = 1;
@@ -632,12 +626,10 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
         b'"' => Ok((b'"' as u32, 2)),
         b'\'' => Ok((b'\'' as u32, 2)),
         b'x' | b'X' => {
-            // GAS consumes as many hex digits as follow the `x` and keeps
-            // the low byte: `"\xA"` is one newline and `"\x123"` is 0x23.
-            // A fixed two-digit window would reject the first and split the
-            // second into 0x12 plus a literal '3'. Masking each round is the
-            // same as masking at the end, since the low byte of a base-16
-            // accumulation only ever depends on itself.
+            // GAS takes every hex digit after the `x` and keeps the low
+            // byte: `"\xA"` is a newline and `"\x123"` is 0x23. Masking each
+            // round equals masking at the end, since the low byte of a
+            // base-16 accumulation depends only on itself.
             let mut value: u32 = 0;
             let mut consumed = 2;
             while consumed < bytes.len() && bytes[consumed].is_ascii_hexdigit() {
