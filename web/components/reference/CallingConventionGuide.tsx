@@ -7,22 +7,9 @@ import { FrameWalk } from "@/components/diagrams/FrameWalk";
 import { StackAlignment } from "@/components/diagrams/StackAlignment";
 
 /**
- * The calling-convention quick guide: a reading-measure article in four
- * numbered-kicker sections, the same section grammar as the landing and
- * lesson surfaces. 01 covers the integer register roles over the existing
- * RegisterFileDiagram; 02 covers the floating-point and vector file (v0-v7
- * arguments and results, v8-v15 callee-saved in their low 64 bits only,
- * v0-v7 and v16-v31 caller-saved, short vectors and homogeneous aggregates in
- * consecutive v registers, per AAPCS64) over its sibling
- * FpRegisterFileDiagram; 03 is the frame record, stepped live by FrameWalk
- * (code, registers, and frame bands per step), teaching the course frame
- * shape: the saved fp/lr pair at the frame base where fp points, locals
- * above it at positive offsets like [fp, 16]; 04 is 16-byte alignment, with
- * the hands-on StackAlignment probe. All prose flows through the single
- * sanitizing LessonMarkdown (no second renderer, no raw-HTML injection
- * path), and register tokens are written as inline code so LessonMarkdown
- * attaches the same role summaries that power the hover-define, keeping the
- * guide, the hover cards, and the diagrams on one story.
+ * The calling-convention guide. All prose goes through LessonMarkdown, the one
+ * sanitizing renderer, and register names are written as inline code so they
+ * get the same role summaries as the hover cards and the diagrams.
  */
 
 // Each block is newline-joined so back-ticked tokens keep the hover-define
@@ -32,11 +19,11 @@ const leadMarkdown = [
 ].join("\n");
 
 const integerMarkdown = [
-  "Every general-purpose register has two names for one storage location: `x19` is all 64 bits and `w19` is the same register's low 32 bits, the view you use when the value is an int or narrower. Writing the `w` form zeroes the top half. Everything below applies to both views at once: a role belongs to the register, so `w19` is exactly as callee-saved as `x19`, and `scanf`'s `%d` result read back into `w19` enjoys the same protection.",
+  "Every general-purpose register has two names for one storage location: `x19` is all 64 bits and `w19` is the same register's low 32 bits, the view you use when the value is an int or narrower. Writing the `w` form zeroes the top half. Everything below applies to both views at once: a role belongs to the register, so `w19` keeps its value across a call exactly as `x19` does (both are callee-saved, covered below), and `scanf`'s `%d` result read back into `w19` enjoys the same protection.",
   "",
-  "The first eight arguments and the return value travel in `x0` through `x7` (or `w0`-`w7` for int-sized values). A routine you call may use them freely, so treat anything in `x0`-`x7` as gone once the call returns. `x8` carries an indirect result address, and it also holds the syscall number for an `svc`.",
+  "The first eight arguments and the return value travel in `x0` through `x7` (or `w0`-`w7` for int-sized values). A routine you call may use them freely, so treat anything in `x0`-`x7` as gone once the call returns. When a routine returns a result too big for `x0` and `x1`, such as a large struct, the caller passes in `x8` the address to write it to; `x8` also holds the syscall number for an `svc`.",
   "",
-  "`x9` through `x15` are caller-saved temporaries: a routine you call may overwrite any of them, so stash a value you still need before the call. `x16` and `x17` are the intra-procedure-call scratch registers (ip0 and ip1), and `x18` is reserved by the platform, so do not use it.",
+  "`x9` through `x15` are caller-saved temporaries: a routine you call may overwrite any of them, so stash a value you still need before the call. `x16` and `x17` (also named ip0 and ip1) can be overwritten by code the linker adds on the way into a call, so never expect a value in them to survive a `bl`. `x18` is set aside for the operating system on some systems, so do not use it.",
   "",
   "`x19` through `x28` are callee-saved: a routine that writes one must restore it before returning, which makes them the place to keep a value alive across a call. `x29` is the frame pointer (`fp`) and `x30` is the link register (`lr`), both covered below. `sp` is the stack pointer; `xzr` (or `wzr` in its 32-bit view) reads as zero and discards writes.",
 ].join("\n");
@@ -46,7 +33,7 @@ const fpMarkdown = [
   "",
   "`fcvt d0, s0` widens a float to a double exactly, and `fcvt s0, d0` narrows a double to a float, rounding to the nearest float. `printf` takes a variable number of arguments, and C turns a `float` passed that way into a `double`, so a float reaches `printf` as a double in `d0`: widen it with `fcvt d0, s0` before the call.",
   "",
-  "The calling convention mirrors the integer split. `v0` through `v7` carry the first eight floating-point and vector arguments and return the result (as `d0`-`d7` for doubles, `s0`-`s7` for floats), a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `v8` through `v15` are callee-saved, but only their low 64 bits: a routine that writes `d8`-`d15` must restore them, which is why the course parks long-lived doubles there, and it owes nothing for bits 127:64, so a caller that needs a whole `q` value kept across a call saves it itself. `v0`-`v7` and `v16`-`v31` are caller-saved: treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
+  "The calling convention mirrors the integer split. `v0` through `v7` carry the first eight floating-point and vector arguments and return the result (as `d0`-`d7` for doubles, `s0`-`s7` for floats), a separate bank from `x0`-`x7`, so `printf(\"%d %f\", ...)` puts the int in `w1` and the double in `d0` without collision. `v8` through `v15` are callee-saved, but only their low 64 bits: a routine that writes `d8`-`d15` must restore them, which is why the course parks long-lived doubles there, and it owes nothing for the upper 64 bits, so a caller that needs a whole `q` value kept across a call saves it itself. `v0`-`v7` and `v16`-`v31` are caller-saved: treat them as gone once a call returns. There is no floating-point frame pointer: `x29` and `x30` still hold the frame record, whatever type the function computes with.",
   "",
   "Vectors travel the same way. A short vector, 8 or 16 bytes such as eight bytes in `v0.8b` or four floats in `v0.4s`, is passed in one `v` register, just like a double. A struct whose members are all the same floating-point type, or all the same short-vector type, with at most four of them (the standard calls it a homogeneous aggregate), travels in consecutive `v` registers, one member each: a struct of two doubles arrives in `d0` and `d1`. When too few of `v0`-`v7` are left for the whole struct, it goes on the stack instead, never split between the two.",
 ].join("\n");
