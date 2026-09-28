@@ -2,7 +2,7 @@
   "title": "Quiz: memory and the stack",
   "slug": "quiz-basic-frame-stack",
   "order": 92,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "memory",
   "difficulty": "intro",
   "variant": "quiz",
@@ -65,7 +65,7 @@
         "They are zero-extended."
       ],
       "correctAnswer": 3,
-      "explanation": "ldrb loads 1 byte from RAM into the low-order 8 bits of Wt and zero-extends the rest, so the upper 24 bits become 0. The signed form ldrsb is the one that copies the byte's sign bit upward instead.",
+      "explanation": "ldrb loads 1 byte from RAM into the low-order 8 bits of the W register and zero-extends the rest, so the upper 24 bits become 0. The signed form ldrsb is the one that copies the byte's sign bit upward instead.",
       "hint": "Notice that it is ldrb, not ldrsb."
     }
   ]
