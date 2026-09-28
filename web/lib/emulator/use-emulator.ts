@@ -65,12 +65,10 @@ export function useEmulator(): EmulatorState {
   // guard would still see the pre-assemble halt and silently skip the
   // run; the ref always reflects the latest snapshot.
   const haltedRef = useRef(false);
-  // Loaded-program gate for the execution controls. Stepping or running an
-  // empty machine decodes zeroed memory ("unknown instruction: 0x00000000")
-  // and fills the replay ring with steps that never really executed, so
-  // run/step/stepBack no-op until an assemble succeeds. A ref shadows the
-  // state for the same reason as haltedRef: callbacks captured before an
-  // awaited assemble must see the fresh flag.
+  // Run, step, and step back do nothing until an assemble succeeds: an empty
+  // machine decodes zeroed memory ("unknown instruction: 0x00000000") and
+  // fills the replay ring with steps that never ran. A ref, like haltedRef,
+  // so callbacks captured before an awaited assemble see the fresh flag.
   const programLoadedRef = useRef(false);
   // The latest snapshot's blocked and canStepBack flags, for the same reason
   // as haltedRef: the callbacks below act on them before a render lands.
@@ -195,10 +193,9 @@ export function useEmulator(): EmulatorState {
     setBlocked(snap.blocked);
     blockedRef.current = snap.blocked;
     canStepBackRef.current = snap.canStepBack;
-    // A halted machine wants nothing: the emulator only ever SETS raw mode
-    // (a termios call) and never clears it on exit, // A halted machine wants
-    // nothing: the emulator only ever SETS raw mode and never clears it on
-    // exit, so the flag would otherwise outlive the program that set it.
+    // A halted machine wants no terminal: the emulator sets raw mode (a
+    // termios call) but never clears it on exit, so the flag would outlive
+    // the program that set it.
     const wantsTerm = snap.wantsTerminal && !snap.halted;
     wantsTerminalRef.current = wantsTerm;
     setWantsTerminal(wantsTerm);
@@ -219,15 +216,9 @@ export function useEmulator(): EmulatorState {
     if (snap.clobberNotes?.length) {
       appendNotes(clobberNoteTexts(snap.clobberNotes, workspaceRef.current));
     }
-    // Drive the current-line marker off the linker's authoritative
-    // address->editor-line map: look the snapshot pc up directly instead
-    // of counting non-label source lines (which double-counts data/macro
-    // lines and drifts on complex programs). Fall back to the legacy
-    // line-count path only when the map is empty (bare-metal, already 1:1).
-    // An external call is a PAUSED-state affordance. A run passes through
-    // one on every printf, so honoring it mid-run would strobe the card and
-    // drag the marker back to the call site on every heartbeat; the pc the
-    // run reports is the truth there.
+    // An external call shows only while paused: a run passes through one on
+    // every printf, and showing it mid-run would flicker the card and drag
+    // the marker back to the call site on every heartbeat.
     const call = (!runningRef.current && snap.externalCall) || null;
     setExternalCall(call);
     const map = lineMapRef.current;
@@ -376,13 +367,9 @@ export function useEmulator(): EmulatorState {
         });
       }
 
-      // Return the promise chain so callers that must run only after the
-      // backend has loaded the program (the embed/checker Run, which has no
-      // separate Assemble control) can await assembly.
-      // isAssembling drives the Assemble button's disabled "loading..."
-      // state, which is the EDITOR's control: a terminal build flashing it
-      // told the student their button was busy with work they never asked
-      // for.
+      // Returned so callers with no Assemble button (the embed and checker
+      // Run) can await it. Only the editor's assemble marks that button busy;
+      // a terminal build did not come from it.
       if (surfaceErrors) setIsAssembling(true);
       return backend
         .assemble(source, args)
@@ -408,10 +395,7 @@ export function useEmulator(): EmulatorState {
             };
           }
           const base = await backend.codeBase();
-          // Fetch the authoritative line map alongside codeBase (mirroring
-          // the existing codeBase round-trip), parse it into addr<->line
-          // lookups, and key the disassembly text off it for this assembly,
-          // along with the marker and breakpoints through the ref.
+          // The marker, breakpoints, and disassembly all read this map.
           const flatMap = await backend.lineMap();
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
