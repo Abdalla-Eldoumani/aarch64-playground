@@ -1,8 +1,8 @@
-# cpsc 355 style guide
+# CPSC 355 style guide
 
-What the playground accepts, expressed in the same vocabulary the course
-uses. If your tutorial file follows these conventions, the playground
-runs it end to end without modification.
+What the playground accepts, in the words the course uses. A course file
+that follows these conventions runs here without changes. The error messages
+in the editor link to the sections below.
 
 ## m4 preprocessing
 
@@ -75,6 +75,10 @@ the author meant:
 .type / .size                            // silently accepted
 ```
 
+The directive table in [instruction-reference.md](instruction-reference.md#directives)
+lists every spelling, including the ones gcc writes (`.xword`, `.p2align`,
+`.space`, `.2byte`). `.equ` and `.set` are refused: write `NAME = value`.
+
 Base addresses:
 
 | section      | base          |
@@ -88,12 +92,11 @@ Base addresses:
 
 ## authored program style
 
-The list above is what the machine accepts, which is wider than what the
-course writes. Course tutorial and assignment files use a fixed directive
-vocabulary, so every program the site ships as course-style source (lesson
-and exercise programs, the built-in examples, the authoring-guide payloads)
-stays inside it. A content test (`web/lib/test/content/course-style.test.ts`) enforces
-the difference list:
+The playground accepts more than course files write. Course tutorial and
+assignment files use a fixed set of directives, so every program the site
+ships (the lessons, the exercises, the examples, and the programs in the
+authoring guide) stays inside that set. A content test
+(`web/lib/test/content/course-style.test.ts`) enforces this list:
 
 | never authored     | what course files write               |
 | ------------------ | ------------------------------------- |
@@ -105,11 +108,9 @@ the difference list:
 | `.p2align`         | `.balign` (bytes) or `.align` (2^N)   |
 | `.equ` / `.set`    | m4 `define(...)` or `name = expr`     |
 
-The wider acceptance is deliberate, so most of what gcc `-S` writes
-assembles as it stands. A whole `-S` file still needs a few edits first;
-[instruction-reference.md](instruction-reference.md) lists them under GCC
-output compatibility. The authored rule keeps every shipped program reading
-like a course file.
+The playground accepts the wider set so that most of what gcc `-S` writes
+assembles as it is. A whole `-S` file still needs a few edits, listed under
+[GCC output compatibility](instruction-reference.md#gcc-output-compatibility).
 
 ## addressing modes
 
@@ -187,6 +188,9 @@ argument in `d1` for `pow` and `fmod`, result in `d0`):
 sqrt, pow, sin, cos, tan, log, log10, exp, floor, fabs, fmod
 ```
 
+`sincos` is there too: it takes its argument in `d0` and stores the sine and
+cosine through the pointers in `x0` and `x1`.
+
 Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
 
 ```
@@ -220,11 +224,11 @@ the program with `w0` as the exit code.
 
 ## virtual filesystem
 
-`cpu.upload_vfs_file(path, bytes)` registers a file that `openat(path)`
-finds. `write(fd, ...)` on a VFS fd grows the file; `read(fd, ...)` advances
-the offset. The console panel's file-upload dropzone stages a file into the
-working set, which reaches this on the next seed apply, so file tutorials
-run against files the student just dropped in.
+Programs read and write files in a small virtual filesystem (VFS) kept in
+the browser. A file you upload in the console or with the terminal's `upload`
+is copied into it before the program runs, so `openat` finds it by name.
+`write` on an open file grows it, and `read` moves its offset forward.
+`Emulator::upload_vfs_file` in `emulator/src/lib.rs` is the entry point.
 
 ## naming conventions
 
