@@ -1,9 +1,6 @@
-// The verdict of check.yml's ci job, the one required status check. NEEDS
-// holds `toJSON(needs)`: every other job and its result. A skipped job
-// passes, because coverage is skipped on every pull request by its event
-// condition (a job whose files did not change still ends as success); any
-// other result that is not success fails, so a failed or cancelled job
-// cannot pass as green.
+// The verdict of check.yml's ci job, the one required status check, read
+// from NEEDS (`toJSON(needs)`). Skipped passes because coverage skips itself
+// on every pull request; anything else short of success fails.
 const PASSING = new Set(["success", "skipped"]);
 
 function failures(needs) {
