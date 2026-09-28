@@ -6,14 +6,8 @@ import { DieFloorplan } from "@/components/landing/DieFloorplan";
 import { HERO_PROGRAM } from "@/lib/content/landing-content";
 
 /**
- * The live landing hero: an amber bit-range kicker, the display headline with
- * the brand block cursor, the serif lead, and (on wide viewports) the die
- * floorplan motif beside the copy, echoing the instrument below. The shared
- * embeddable runs in a package frame (pin stubs on the rails, a live-die-view
- * header band) and autoplays the tiny hero program so the registers flash and
- * the pc marker advances on load. The embed supplies its own loading beat and
- * reduced-motion fallback, so the hero adds no competing motion; it only frames
- * it. The primary action deep-links into the full playground.
+ * The landing hero. The embed brings its own loading state and reduced-motion
+ * fallback, so the hero adds no motion of its own; it only frames it.
  */
 export function Hero() {
   return (
@@ -24,7 +18,7 @@ export function Hero() {
       <div className="flex items-start justify-between gap-12">
         <div className="flex max-w-2xl flex-col gap-5">
           <span className="font-mono text-[11px] font-semibold uppercase leading-[1.4] tracking-[0.18em] text-[var(--amber)]">
-            [31:0] live emulator · no install · no server
+            runs in your browser · nothing to install
           </span>
           <h1
             id="hero-heading"
@@ -39,7 +33,7 @@ export function Hero() {
             />
           </h1>
           <p className="text-[var(--text-secondary)] [font:var(--type-lead)]">
-            aarch64-playground is a hand-written ARMv8 emulator and visual
+            AArch64 Playground is a hand-written ARMv8 emulator and visual
             debugger. Paste a program, assemble it, and watch the registers, the
             stack, and memory update as each instruction runs.
           </p>
@@ -47,11 +41,9 @@ export function Hero() {
         <DieFloorplan className="mt-2 hidden lg:grid" />
       </div>
 
-      {/* The package frame: pin stubs down both rails, a live-die-view header
-          band, then the embed. One fixed embed height at every breakpoint:
-          the container-driven embed layout does the arranging, and a static
-          frame means the page cannot shift as the editor and emulator
-          stream in. */}
+      {/* One fixed embed height at every breakpoint, so the page cannot
+          shift as the editor and emulator load; the embed arranges itself
+          to fit. */}
       <div className="relative px-0 sm:px-2.5">
         <span
           aria-hidden="true"
@@ -83,10 +75,10 @@ export function Hero() {
               ))}
             </span>
             <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
-              a64-pg · live die view
+              live demo
             </span>
             <span className="ml-auto hidden font-mono text-[10px] text-[var(--text-tertiary)] sm:inline">
-              stepping the hero program · 450ms/instr
+              one instruction every 450 ms
             </span>
           </div>
           <div className="flex h-[560px] flex-col">
