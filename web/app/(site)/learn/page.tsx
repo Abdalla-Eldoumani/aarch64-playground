@@ -21,7 +21,7 @@ export default function LearnPage() {
   const lessons = loadLessonIndex();
   return (
     <section className="mx-auto w-full max-w-2xl px-6 py-10 sm:py-14">
-      <DocRule section="sheet 04 · learn" context="cpsc 355 study aid" className="mb-8" />
+      <DocRule section="learn" context="cpsc 355 study aid" className="mb-8" />
       <Kicker number="04" title="learn" className="mb-5" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
         Lessons
