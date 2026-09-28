@@ -1,16 +1,8 @@
-//! CPSC 355 acceptance matrix. One focused, original program per category
-//! of syntactically valid course assembly, asserting concrete registers,
-//! stdout, and exit codes. Every program is authored to the course style
-//! (lowercase mnemonics, m4 aliases, AAPCS64 prologue/epilogue where the
-//! function needs one, idiomatic addressing and syscalls) and is original:
-//! none reproduces course archive text.
-//!
-//! The matrix covers every valid form the assembler and emulator have to
-//! accept and execute: m4 aliases, the prologue/epilogue,
-//! all four sections, every addressing mode, the literal pool, the hosted
-//! runtime and raw syscalls, sign/zero extension, 16-byte alignment, the
-//! frame pointer, and floating point. Each program exercises a real
-//! decode + execute path through `assemble_hosted` -> `run_until_break`.
+//! CPSC 355 acceptance matrix: one small original program, in the course
+//! style, for each kind of valid course assembly (m4 aliases, sections,
+//! addressing modes, the literal pool, printf/scanf and raw syscalls,
+//! sign and zero extension, stack alignment, floating point), each held
+//! to exact registers, stdout and exit code. None copies course material.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -248,7 +240,7 @@ main:
 }
 
 // ---------------------------------------------------------------------------
-// 6a. hosted runtime: scanf + printf round trip
+// 6a. C library calls: scanf + printf round trip
 // ---------------------------------------------------------------------------
 
 #[test]
@@ -634,7 +626,7 @@ fn every_conditional_branch() {
 }
 
 // ---------------------------------------------------------------------------
-// 13. label pointer tables in .data (the assignment jump-table shape)
+// 13. tables of label addresses in .data (how assignments pick a string by number)
 // ---------------------------------------------------------------------------
 
 #[test]
