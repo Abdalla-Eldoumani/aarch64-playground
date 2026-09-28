@@ -82,7 +82,7 @@ const exercises: ExerciseIndexRow[] = [
 ];
 
 describe("ExerciseIndex", () => {
-  it("renders cards ordered by order, each linking to its exercise", () => {
+  it("renders cards sorted by their order field, each linking to its exercise", () => {
     const { container } = render(<ExerciseIndex exercises={exercises} />);
     const hrefs = Array.from(container.querySelectorAll('a[href^="/practice/"]')).map((a) =>
       a.getAttribute("href"),
@@ -364,7 +364,7 @@ describe("ExerciseIndex progress row", () => {
     await waitFor(() => expect(toastError).toHaveBeenCalledWith("that file is not valid json"));
   });
 
-  it("rejects an over-cap file on size, before reading it", () => {
+  it("rejects a file over the size limit before reading it", () => {
     const { container } = render(<ExerciseIndex exercises={exercises} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const oversized = new File(["{}"], "huge.json");
