@@ -52,10 +52,8 @@ export interface PlaygroundHeaderBandProps {
 }
 
 /**
- * The full playground's top row: program in (examples, import, recents),
- * program arguments, the run-mode switch, and the tools group. It holds no
- * state of its own: every control reports to the shell, which owns the
- * workspace and the machine.
+ * The playground's top row. It holds no state of its own: every control
+ * reports to the shell, which owns the workspace and the machine.
  */
 export function PlaygroundHeaderBand({
   onLoadProgram,
@@ -97,7 +95,7 @@ export function PlaygroundHeaderBand({
         entries={recent.entries}
         // A recent is a program delivery, not a text swap: the machine
         // resets and the seeds clear, so the previous program's
-        // registers, console, stdin, and VFS cannot show under the
+        // registers, console, stdin, and files cannot show under the
         // recalled source. The displaced buffer lands in recents.
         onLoad={(body) => {
           setSheetOpen(false);
