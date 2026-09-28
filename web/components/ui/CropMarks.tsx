@@ -1,8 +1,6 @@
 /**
- * Crop marks: four L-shaped calibration marks inset at the corners of a
- * reading surface, as on a datasheet proof. Pure CSS borders, decorative
- * (`aria-hidden`), hidden on phones where the margins cannot spare them.
- * The parent must be `position: relative`.
+ * Decorative L-shaped marks in the four corners of the page, hidden on phones
+ * where the margins are too narrow. The parent must be `position: relative`.
  */
 const CORNERS = [
   "left-[10px] top-[10px] border-l border-t",
