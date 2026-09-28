@@ -1,16 +1,9 @@
 "use client";
 
 /**
- * Interactive NZCV panel for the flag-setting reference entries. The student
- * types the two operand values the instruction would see and the panel shows
- * the arithmetic the machine performs, the four flags it leaves behind, and
- * which conditional branches those flags would take, signed and unsigned
- * side by side, because reading `b.lt` where `b.lo` was needed is the classic
- * slip. The flag math comes from lib/emulator/flag-math, the same NZCV rules
- * the emulator's executor applies; no emulator round trip. Inputs and the
- * width toggle are the user acting (cyan); the computed flags and taken
- * branches are the machine acting (amber). Native inputs and buttons; no
- * animation, so reduced motion needs no fallback.
+ * NZCV panel for the flag-setting reference entries. Signed and unsigned
+ * branches sit side by side because reading `b.lt` where `b.lo` was needed is
+ * the classic slip. Flag math is lib/emulator/flag-math, the emulator's rules.
  */
 
 import { useId, useMemo, useState, type JSX } from "react";
