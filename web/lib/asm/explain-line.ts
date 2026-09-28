@@ -1,8 +1,7 @@
 /**
- * The single source of truth for turning one line of source into a
- * plain-English gloss of the instruction the CPU is on. Both the always-on
- * CURRENT strip and the legacy explain strip read from here so the describe
- * logic and the m4 alias resolution live in exactly one place.
+ * Turns one line of source into a plain-English gloss of the instruction the
+ * CPU is on, with m4 alias names resolved. The decode strip's "current
+ * instruction" line is its one reader.
  */
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 
