@@ -568,6 +568,7 @@ function EmbeddableCore({
         openShare: () => onOpenShareDialog?.(),
         openShortcuts: () => onOpenShortcutsHelp?.(),
         openTutorials: () => fullRef.current?.openTutorials(),
+        openWalkthrough: () => fullRef.current?.openWalkthrough(),
         openConverter: () => fullRef.current?.openConverter(),
         toggleTheme: () => onToggleTheme?.(),
       }),
