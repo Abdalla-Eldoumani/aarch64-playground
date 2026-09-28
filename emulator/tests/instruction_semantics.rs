@@ -1,10 +1,7 @@
-//! Instruction-semantics edges through the hosted pipeline: cmp flag
-//! patterns at the signed/unsigned boundaries, conditional branches that
-//! must fall through, division by zero (defined on AArch64 to produce
-//! zero, never a trap), madd/msub arithmetic, and stp/ldp pre/post-index
-//! writeback observed one step at a time. Complements the acceptance
-//! matrix, which proves each condition's taken direction; the emphasis
-//! here is boundary values and the not-taken directions.
+//! Instruction edge cases, run through the hosted pipeline: flags at the
+//! signed/unsigned boundaries, division by zero (zero on AArch64, never a
+//! trap), writeback one step at a time, single precision, NaN rules, and
+//! encodings checked word for word against GNU as.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -807,12 +804,11 @@ main:
     assert_eq!(x(18) as i64, -4, "the bit pattern of -4.0");
 }
 
-/// Scalar floating point follows the AArch64 NaN and rounding rules
-/// rather than the host's: a signalling NaN operand wins over a quiet one
-/// and comes back quieted, infinity times zero plus a quiet NaN is the
-/// default NaN, a conversion keeps a NaN's sign and payload, and a 64-bit
-/// integer rounds to a single ONCE (through a double it can land on a tie
-/// the integer never had).
+/// Scalar floating point follows AArch64's NaN and rounding rules, not the
+/// host's: a signalling NaN beats a quiet one and comes back quiet, inf * 0
+/// plus a quiet NaN is the default NaN, conversions keep a NaN's sign and
+/// payload, and a 64-bit integer rounds to single precision once: through a
+/// double it can land on a tie the integer never had.
 #[test]
 fn scalar_fp_follows_the_aarch64_nan_and_rounding_rules() {
     let src = r#"
