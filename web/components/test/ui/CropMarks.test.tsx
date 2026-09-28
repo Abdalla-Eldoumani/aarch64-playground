@@ -1,5 +1,5 @@
-// pins the crop-mark furniture: four corner marks, purely decorative,
-// hidden on phones, never intercepting the pointer.
+// pins the corner crop marks: four of them, purely decorative, hidden on
+// phones, never intercepting the pointer.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render } from "@testing-library/react";
 import { CropMarks } from "@/components/ui/CropMarks";
