@@ -2,7 +2,7 @@
   "title": "Talking to the operating system: svc and files",
   "slug": "system-calls-and-files",
   "order": 27,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Ask the operating system for input and output with svc: write and read without printf, then create, fill, and read back a file, checking every result.",
   "tags": [
     "input and output"
@@ -48,7 +48,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Writing a file and reading it back\n\nThe next program uses all four calls. It creates `notes.txt`, writes three lines to it, and closes it. Then it opens the file again to read it and copies it to the screen 32 bytes at a time: `read` fills a buffer in the frame and returns how many bytes it put there, and `write` sends exactly that many to file descriptor 1. A read can return fewer bytes than asked for, which is normal; only 0 means the end of the file.\n\nEvery call that can fail is checked. If `openat` returns a negative number, or `write` stores fewer bytes than it was given, the program writes an error line to standard error and returns 1 from `main`, the exit status that tells the shell something went wrong. The descriptor stays in `x19` so that it is still there if you add a `printf` later; `main` saves `x19` first, as the calling convention asks."
+      "markdown": "## Writing a file and reading it back\n\nThe next program uses all four calls. It creates `notes.txt`, writes three lines to it, and closes it. Then it opens the file again to read it and copies it to the screen 32 bytes at a time: `read` fills a buffer in the frame and returns how many bytes it put there, and `write` sends exactly that many to file descriptor 1. A read can return fewer bytes than asked for, which is normal; only 0 means the end of the file.\n\nEvery call that can fail is checked. If `openat` returns a negative number, or `write` stores fewer bytes than it was given, the program writes an error line to standard error and returns 1 from `main`, the exit status that tells the shell something went wrong. The descriptor stays in `x19` so that it is still there if you add a `printf` later; `main` saves `x19` first, because every subroutine must leave `x19` as it found it."
     },
     {
       "type": "editor",
@@ -69,7 +69,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Reading until the input ends\n\nStandard input works the same way through file descriptor 0. The last program reads it 8 bytes at a time, adds up what each `read` returns, and stops when `read` returns 0. The lesson feeds it three lines, 28 bytes when the newline at the end of each line is counted.\n\nA keyboard never runs out by itself, so after those 28 bytes the program waits, and the console says it is waiting for input. Press **Ctrl+D** in the console's input box. That marks the end of the input, `read` returns 0, and the program prints `28 bytes`. On the server, `./count < notes.txt` feeds it a file instead, and the end of the file does the same job."
+      "markdown": "## Reading until the input ends\n\nStandard input works the same way through file descriptor 0. The last program reads it 8 bytes at a time, adds up what each `read` returns, and stops when `read` returns 0. The lesson feeds it three lines, 28 bytes when the newline at the end of each line is counted.\n\nA keyboard never runs out by itself, so after those 28 bytes the program waits, and the console says it is waiting for input. Press **Ctrl+D** in the console's input box. That marks the end of the input, `read` returns 0, and the program prints `28 bytes`. In a Linux terminal, `./count < notes.txt` feeds it a file instead, and the end of the file does the same job."
     },
     {
       "type": "editor",
