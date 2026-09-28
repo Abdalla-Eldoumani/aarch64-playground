@@ -2,7 +2,7 @@
   "title": "Quiz: system architecture",
   "slug": "quiz-advance-architecture",
   "order": 70,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "architecture",
   "difficulty": "challenge",
   "variant": "quiz",
@@ -65,7 +65,7 @@
         "A request that reserves storage for a variable while the program is running."
       ],
       "correctAnswer": 2,
-      "explanation": "The assembler records each label as a symbol whose value is the address of the instruction or data that follows it. That is why b loop assembles into a branch to the address marked by loop, and why loops and if-statements are written with labels.",
+      "explanation": "The assembler gives each label the address of the instruction or data that follows it. That is why b loop assembles into a branch to the address marked by loop, and why loops and if-statements are written with labels.",
       "hint": "Labels are resolved to addresses at assembly time, not while the program runs."
     }
   ]
