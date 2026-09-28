@@ -1,6 +1,5 @@
-// The multi-file line map: combined-string lines resolve to the owning
-// file and back, boundary comments attribute forward, and the main buffer
-// stays line-for-line identical to the combined head.
+// Every open file is assembled as one combined source; this map is how an
+// error or the pc on a combined line lands on the right file and line.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -129,8 +128,8 @@ describe("validateFileName", () => {
   });
 
   it("refuses a tab that impersonates the editor's own buffer", () => {
-    // The decoy still concatenates, and resolveLine labels everything inside
-    // it main.asm, so its errors point the student at the wrong buffer.
+    // A second main.asm would still be joined in, but resolveLine names every
+    // line in it main.asm, so its errors would point at the wrong tab.
     expect(validateFileName("main.asm", files)).toBe(
       "main.asm is the editor's own buffer; pick another name",
     );
@@ -188,8 +187,8 @@ describe("validateFileName", () => {
 
 describe("fileNameShapeError", () => {
   it("applies the shape rule without the main.asm rule", () => {
-    // The `.json` workspace bundle carries the whole strip, main.asm first,
-    // so the boundary that reads one needs the shape rule on its own.
+    // A saved `.json` workspace lists every file, main.asm first, so the code
+    // that loads one needs the shape check without the main.asm check.
     expect(fileNameShapeError("main.asm")).toBeNull();
     expect(fileNameShapeError("main.asm\nret")).not.toBeNull();
     expect(fileNameShapeError("  ")).toBe("file name cannot be empty");
