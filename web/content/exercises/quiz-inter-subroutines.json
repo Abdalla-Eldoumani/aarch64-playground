@@ -2,11 +2,11 @@
   "title": "Quiz: subroutines",
   "slug": "quiz-inter-subroutines",
   "order": 98,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "subroutines",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Follow a call through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and indirect results.",
+  "prompt": "Follow a call through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and large results returned through memory.",
   "questions": [
     {
       "question": "When a bl instruction executes, what value is placed in the link register (x30)?",
@@ -29,7 +29,7 @@
         "Each frame pointer stores a copy of every register the subroutine used."
       ],
       "correctAnswer": 1,
-      "explanation": "The frame record at the base of a frame holds the caller's x29 and x30. Because the saved x29 points at the caller's own frame record, following those links walks backward through every active call, which is what a backtrace does.",
+      "explanation": "The frame record at the base of a frame holds the caller's x29 and x30. Because the saved x29 points at the caller's own frame record, following those links walks backward through every active call. A debugger follows this chain to print a backtrace, the list of calls in progress.",
       "hint": "Think about what the saved copy of x29 inside a frame record points at."
     },
     {
@@ -65,7 +65,7 @@
         "The caller splits the address across x0 and x1."
       ],
       "correctAnswer": 2,
-      "explanation": "x8 is the indirect result location register. The caller allocates memory for the result, puts that address in x8, and the callee writes the result through it.",
+      "explanation": "x8 is set aside for this job. The caller reserves memory for the result, puts its address in x8, and the callee stores the result at that address.",
       "hint": "One dedicated register sits just past the eight argument registers and carries an address, not a value."
     },
     {
