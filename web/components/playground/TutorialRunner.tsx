@@ -76,16 +76,9 @@ function ExpectedRegisterCheck({
 }
 
 /**
- * A panel that walks the student through a tutorial, one step at a time.
- * Each tutorial backs a real source file under `/examples/cpsc355/`; the
- * runner can fetch it on demand and hand it to the editor with the
- * tutorial's prefilled args/stdin so the student can step alongside the
- * prose.
- *
- * It is not modal. A step says "step, then watch x19", so the run controls
- * and the registers have to stay live under it: the full-screen overlay it
- * used to be caught every tap. It docks to the lower right from sm up and
- * under the phone bar on a phone, clear of the run controls either way.
+ * Walks the student through a tutorial one step at a time. Not modal: a step
+ * says "step, then watch x19", so the run controls and the registers must
+ * stay usable under it.
  */
 export function TutorialRunner({
   open,
