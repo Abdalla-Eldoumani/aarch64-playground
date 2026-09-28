@@ -180,8 +180,35 @@ describe("checkExercise aggregation", () => {
     expect(result.results[0].actual).toBe("5");
   });
 
-  it("takes exactly three arguments, with no reference-solution parameter", () => {
-    expect(checkExercise.length).toBe(3);
+  it("fills a failing result only from the declared checks and the student's own run", () => {
+    const acc: Acceptance = {
+      results: [
+        { kind: "register", reg: "x0", equals: 55 },
+        { kind: "stdout", equals: "sum = 55\n" },
+      ],
+      structural: [{ kind: "forbids-instruction", mnemonics: ["mul", "madd"] }],
+    };
+    const result = checkExercise(
+      acc,
+      snap({ registers: regs({ 0: hex(42) }), stdout: "sum = 42\n" }),
+      "    madd x0, x1, x2, x3\n",
+    );
+    // Every value outside the echoed assertions, listed by hand: the spec's
+    // own numbers and text, and what this run and this source produced.
+    const values = [
+      ...result.results.flatMap((r) => [r.expected, r.actual]),
+      ...result.structural.map((s) => s.found),
+      result.summary,
+    ];
+    expect(values).toEqual([
+      "55",
+      "42",
+      '"sum = 55\\n"',
+      '"sum = 42\\n"',
+      "madd",
+      "0 of 3 checks passing",
+    ]);
+    expect(Object.keys(result).sort()).toEqual(["pass", "results", "structural", "summary"]);
   });
 });
 
@@ -216,6 +243,51 @@ describe("checkExercise comment stripping and token edges", () => {
     };
     expect(checkExercise(acc, snap(), "    mov x0, 0x12\n").structural[0].pass).toBe(true);
     expect(checkExercise(acc, snap(), "    mov x0, 12\n").structural[0].pass).toBe(false);
+  });
+
+  it("does not count a mnemonic inside a string or a label as the instruction", () => {
+    const usesMul: Acceptance = {
+      results: [{ kind: "exit", equals: 0 }],
+      structural: [{ kind: "uses-instruction", mnemonic: "mul" }],
+    };
+    const inString = 'fmt:    .string "mul x0, x1, x2"\n        add x0, x1, x2\n';
+    expect(checkExercise(usesMul, snap(), inString).structural[0].pass).toBe(false);
+    const asLabel = "mul:    add x0, x1, x2\n        ret\n";
+    expect(checkExercise(usesMul, snap(), asLabel).structural[0].pass).toBe(false);
+    const real = "top:    mul x0, x1, x2\n";
+    expect(checkExercise(usesMul, snap(), real).structural[0].pass).toBe(true);
+  });
+
+  it("does not trip a forbidden instruction the program only prints", () => {
+    const noMul: Acceptance = {
+      results: [{ kind: "exit", equals: 0 }],
+      structural: [{ kind: "forbids-instruction", mnemonics: ["mul"] }],
+    };
+    const prints = 'msg:    .string "no mul here"\n        add x0, x0, x0\n';
+    expect(checkExercise(noMul, snap(), prints).structural[0].pass).toBe(true);
+  });
+
+  it("keeps a // inside a string as text rather than a comment", () => {
+    const noExample: Acceptance = {
+      results: [{ kind: "exit", equals: 0 }],
+      structural: [{ kind: "forbids-literal", value: "example" }],
+    };
+    // The text after the // is still the string, so the forbidden word is there.
+    const source = 'url:    .string "http://example"\n';
+    expect(checkExercise(noExample, snap(), source).structural[0].pass).toBe(false);
+    const commentOnly = "        ret // see http://example\n";
+    expect(checkExercise(noExample, snap(), commentOnly).structural[0].pass).toBe(true);
+  });
+
+  it("catches a forbidden number written in hex", () => {
+    const acc: Acceptance = {
+      results: [{ kind: "exit", equals: 0 }],
+      structural: [{ kind: "forbids-literal", value: 120 }],
+    };
+    // 120 is 0x78; spelling it in hex is still hardcoding it.
+    expect(checkExercise(acc, snap(), "    mov x0, 0x78\n").structural[0].pass).toBe(false);
+    expect(checkExercise(acc, snap(), "    mov x0, #0X0078\n").structural[0].pass).toBe(false);
+    expect(checkExercise(acc, snap(), "    mov x0, 0x780\n").structural[0].pass).toBe(true);
   });
 
   it("passes a forbidden string that appears only inside a comment", () => {
