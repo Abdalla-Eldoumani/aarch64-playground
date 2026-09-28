@@ -12,11 +12,8 @@ export interface ShareDialogProps {
 }
 
 /**
- * Modal that builds a compressed `#p2=...` URL and offers copy/share.
- * Uses `navigator.share` when the platform supports it (iOS/Android),
- * falls back to a textarea with a copy button otherwise. The hash
- * carries the full editor state (source, args, stdin, view, cursor)
- * so the recipient lands in the same scenario the sender saw.
+ * The `#p2=` hash carries the whole editor state (files, args, stdin, cursor),
+ * so the recipient opens the program exactly as the sender saw it.
  */
 export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
@@ -76,12 +73,12 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
             this workspace is too large to share as a link (
             {size.chars.toLocaleString()} characters compressed, limit{" "}
-            {size.max.toLocaleString()}). export the files with the .json
-            button in the header and send those instead.
+            {size.max.toLocaleString()}). pick workspace .json from the
+            export menu in the header and send that file instead.
           </p>
         ) : (
           <p className="text-[11px] text-[var(--text-secondary)] mb-2">
-            the source is compressed into the URL hash; nothing is sent to a server.
+            the program is packed into the link itself; nothing is sent to a server.
           </p>
         )}
         {!oversize && (
