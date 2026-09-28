@@ -80,7 +80,7 @@ describe("ImportExport import path", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("rejects an over-cap file by size with the guard message and never imports", () => {
+  it("rejects a file over the size limit with the guard's message and never imports", () => {
     const { onImport, fileInput } = setup();
     const oversized = new File(["x".repeat(MAX_SOURCE_BYTES + 1)], "big.s");
 
@@ -93,7 +93,7 @@ describe("ImportExport import path", () => {
     expect(onImport).not.toHaveBeenCalled();
   });
 
-  it("rejects over-cap decoded content with the guard message and a console warning", async () => {
+  it("rejects file text over the size limit with the guard's message and a console warning", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { onImport, fileInput } = setup();
 
@@ -188,9 +188,9 @@ describe("ImportExport export path", () => {
 });
 
 describe("ImportExport workspace bundle", () => {
-  // The share link is the only other carrier for a multi-file program, and a
-  // real workspace exceeds the fragment cap, so the bundle is the export that
-  // carries the helpers.
+  // The share link is the only other way to move a multi-file program, and a
+  // real workspace is too long for a link, so the bundle is the export that
+  // keeps the helpers.
   const FILES = [
     { name: "util.s", body: "// util\n" },
     { name: "sort.s", body: "// sort\n" },
