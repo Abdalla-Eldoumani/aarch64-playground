@@ -11,9 +11,9 @@ afterEach(() => {
 // same in both files.
 const ROWS: Array<[string, string]> = [
   ["x0 – x7", "arguments · results"],
-  ["x8", "indirect result"],
+  ["x8", "struct result address"],
   ["x9 – x15", "caller-saved temps"],
-  ["x16 – x18", "platform · avoid"],
+  ["x16 – x18", "reserved · avoid"],
   ["x19 – x28", "callee-saved"],
   ["x29 · x30", "fp · lr (the frame record)"],
   ["d0 – d7", "float args · results"],
