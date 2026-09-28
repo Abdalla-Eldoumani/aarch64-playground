@@ -10,11 +10,8 @@ export interface RecentProgramsProps {
 }
 
 /**
- * Dropdown of the last few programs the student assembled, keyed by
- * content hash so reloading the same example doesn't push out distinct
- * work. Empty list collapses to a disabled dropdown. The Select caps its
- * own width (max-w-[14rem]), so one long recalled program name cannot
- * push the header past a 375px viewport.
+ * No width cap here: the Select caps its own (max-w-[14rem]), so a long
+ * program name cannot push the header past a 375px screen.
  */
 export function RecentPrograms({ entries, onLoad, onClear }: RecentProgramsProps) {
   const disabled = entries.length === 0;
