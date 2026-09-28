@@ -52,12 +52,9 @@ export const DEBUG_SPLIT: SplitSpec = {
   label: "resize registers and tabs",
 };
 
-// The one grip. A bare <Separator /> is a zero-width transparent div, so the
-// seam has to be drawn here: a 6px band in --border that takes the
-// interaction pole (--cyan) on hover, focus and drag, with a centred mark so
-// the band reads as a handle rather than a rule. The three states the library
-// publishes on data-separator cover the cases :hover cannot -- a pointer that
-// has left the element mid-drag is still dragging.
+// A bare <Separator /> is a zero-width transparent div, so the band is drawn
+// here. The library's data-separator states cover what :hover cannot: a
+// pointer that has left the grip mid-drag is still dragging.
 const SEPARATOR_CLASS = [
   // z-10 so the focus ring paints over the neighbouring panes rather than
   // under the edge of whichever one happens to come later in the flow.
@@ -115,10 +112,8 @@ export interface PaneSplitProps {
 }
 
 /**
- * Two panes and the grip between them. Every split in the playground is one
- * of these, so the band, the states, the aria-label, the keyboard resize the
- * library binds to the focused separator, and the double-click reset are
- * written once and worn by all of them.
+ * Two panes and the grip between them. Every split in the playground uses this,
+ * so the grip's look, keyboard resize, and double-click reset live in one place.
  */
 export function PaneSplit({
   orientation,
@@ -144,14 +139,9 @@ export function PaneSplit({
     groupRef.current?.setLayout(toLayout(defaults, ids));
   }, [defaults, groupRef, ids, save]);
 
-  // The stored split arrives one render late: useLayoutPersistence reads
-  // localStorage in an effect, and `defaultLayout` / `defaultSize` are read
-  // only at mount, so without this the group opens on the authored default
-  // and the reader's saved sizes are lost on every reload. It waits on
-  // `ready` so it reconciles against the LOADED sizes, never the fallback.
-  // The equality guard is load-bearing: a drag reports through
-  // onLayoutChange -> save -> new sizes -> this effect, and pushing that same
-  // layout back would loop.
+  // The saved split loads in an effect, after the group has read its default
+  // layout at mount, so it is applied here once `ready`. The drift check stops
+  // a loop: a drag saves new sizes, which run this effect again.
   useEffect(() => {
     if (!ready) return;
     const handle = groupRef.current;
@@ -206,10 +196,8 @@ export function PaneSplit({
 }
 
 /**
- * Laptop-and-up (lg+) layout: an outer horizontal split between the
- * editor column and the debug column. Each column is itself a vertical
- * split. All three grips persist their position per breakpoint so
- * resizing at laptop width doesn't clobber tablet/phone defaults.
+ * Each grip saves its position per breakpoint, so resizing at laptop width
+ * leaves the tablet split alone.
  */
 export function ResizableLayout({
   breakpoint,
