@@ -2,15 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import { isDeadInstance } from "@/lib/worker/dead-instance";
 
-/**
- * The worker's fatal-error classifier, pinned directly. It sits in its own
- * module because the worker entry cannot be imported under vitest (it calls
- * `self.addEventListener` at module scope and pulls in the generated wasm
- * glue by a literal relative URL the bundler pins), and this rule is
- * expensive to get wrong in EITHER direction: too eager and a student
- * loses their registers, console and VFS to a typo; too shy and one trap
- * wedges the playground until a page reload.
- */
+// Wrong in either direction costs a student: too eager and a typo throws away
+// their registers, console and files; too shy and one wasm trap leaves the
+// playground stuck until a page reload.
 describe("worker fatal-error classification", () => {
   it("treats a latched borrow guard and a trap as unusable", () => {
     // wasm-bindgen's guard after a trap skipped its Drop
