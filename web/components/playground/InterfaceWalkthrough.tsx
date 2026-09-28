@@ -73,7 +73,6 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   const rootRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
-  const scrolledRef = useRef<Element | null>(null);
   const titleId = useId();
   const bodyId = useId();
   const nextId = useId();
@@ -100,7 +99,6 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
 
   const close = useCallback(() => {
     setMode(CLOSED);
-    scrolledRef.current = null;
     const back = returnFocusRef.current;
     returnFocusRef.current = null;
     if (back?.isConnected) back.focus();
@@ -135,12 +133,6 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
       };
       setLayout((prev) => (sameLayout(prev, next) ? prev : next));
       return;
-    }
-    // A part inside a strip that scrolls sideways is brought into view once
-    // per step; after that the student's own scrolling is left alone.
-    if (scrolledRef.current !== found.el) {
-      scrolledRef.current = found.el;
-      found.el.scrollIntoView?.({ block: "nearest", inline: "nearest" });
     }
     const r = found.el.getBoundingClientRect();
     const target = { top: r.top, left: r.left, width: r.width, height: r.height };
