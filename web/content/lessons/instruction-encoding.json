@@ -2,7 +2,7 @@
   "title": "Every instruction is 32 bits",
   "slug": "instruction-encoding",
   "order": 28,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Split an instruction word into its fields, read the five common formats, and encode a simple instruction by hand.",
   "tags": [
     "armv8 basics",
@@ -16,7 +16,7 @@
     },
     {
       "type": "prose",
-      "markdown": "Every instruction in your program ends up as a number. The assembler's last job is to replace a line such as `add x9, x9, x12` with the pattern of bits the processor fetches and obeys. That pattern is the instruction's *machine code*, and on AArch64 it is always exactly 32 bits (four bytes), whichever instruction it is. The fixed size is part of what makes AArch64 a RISC (reduced instruction set) design: the processor always knows where the next instruction starts, which is why `pc` moves on by 4 after every instruction that does not branch.\n\nThis lesson reads those 32 bits. By the end you can take an instruction word written in hex, cut it into its fields, and name the instruction inside, and you can build the word for a simple instruction by hand. The two programs on this page read their own machine code out of memory, so you can check every number here by running them."
+      "markdown": "Every instruction in your program ends up as a number. The assembler's last job is to replace a line such as `add x9, x9, x12` with the pattern of bits the processor fetches and obeys. That pattern is the instruction's *machine code*, and on AArch64 it is always exactly 32 bits (four bytes), whichever instruction it is. The fixed size is part of what makes AArch64 a RISC (reduced instruction set) design: the processor always knows where the next instruction starts, which is why `pc`, the register holding the address of the running instruction, moves on by 4 after every instruction that does not branch.\n\nThis lesson reads those 32 bits. By the end you can take an instruction word written in hex, cut it into its fields, and name the instruction inside, and you can build the word for a simple instruction by hand. The two programs on this page read their own machine code out of memory, so you can check every number here by running them."
     },
     {
       "type": "prose",
