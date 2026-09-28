@@ -2,7 +2,7 @@
   "title": "Fill in the blank: binary arithmetic",
   "slug": "blanks-binary-arithmetic",
   "order": 80,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "binary-arithmetic",
   "difficulty": "core",
   "variant": "blanks",
@@ -24,7 +24,7 @@
       "blanks": [
         "adc"
       ],
-      "explanation": "adc computes x19 + x22 + C and does not write the condition flags. It is the second half of an extended-precision addition, where the carry out of the low words was produced by an earlier adds.",
+      "explanation": "adc computes x19 + x22 + C and does not write the condition flags. It is the second half of an extended-precision addition (a sum wider than one 64-bit register), where the carry out of the low words was produced by an earlier adds.",
       "hint": "Add with Carry."
     },
     {
@@ -33,7 +33,7 @@
       "blanks": [
         "adds"
       ],
-      "explanation": "adds performs the addition and writes NZCV, so the carry out of the low 64 bits survives for the next step. Plain add leaves the flags alone, which is why extended-precision code needs the s suffix here.",
+      "explanation": "adds performs the addition and writes the condition flags (NZCV), so the carry out of the low 64 bits survives for the next step. Plain add leaves the flags alone, which is why extended-precision code needs the s suffix here.",
       "hint": "Add and Set flags."
     },
     {
