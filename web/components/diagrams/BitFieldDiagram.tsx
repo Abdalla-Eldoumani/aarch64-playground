@@ -12,11 +12,8 @@ export interface BitFieldDiagramProps {
   label?: string;
   /** The concrete instruction the worked bits encode, shown as the caption. */
   asm?: string;
-  /** Reference-size chrome, off by default so existing callers are untouched:
-   *  each field gains a top line with its bit range ("30 : 21"), computed
-   *  right-to-left from bit 31, and the destination field (the datasheet's
-   *  "the machine is about to write here" convention: label `Rd`) takes the
-   *  amber treatment (1px amber border, 8% amber fill, amber ink). */
+  /** Adds each field's bit range ("30 : 21") and marks the `Rd` field amber,
+   *  since that is where the result is written. Off by default. */
   bitHeaders?: boolean;
   className?: string;
 }
@@ -95,16 +92,9 @@ const FIELD_LI_DEST =
   " [box-shadow:inset_0_0_0_1px_var(--amber)] bg-[color-mix(in_srgb,var(--amber)_8%,transparent)]";
 
 /**
- * Bit-field encoding diagram: a horizontal row of labeled boxes whose widths
- * are proportional to their bit counts (`flex-grow: bits` over a zero basis, so
- * width tracks bits regardless of label length). A field's top cap takes its
- * `color` when given, else a token-driven neutral, so colors stay theme-aware.
- *
- * With worked values it becomes the course's by-hand encoding exercise in
- * reverse: hover or focus a field and its bits light up inside the full 32-bit
- * word, which is regrouped into nibbles with the hex digit under each, the
- * exact pack-then-read-hex procedure exams ask for. The trace highlight is a
- * discrete state (no animation), so reduced motion needs no fallback.
+ * Box widths follow bit counts, not label lengths. With worked values, a
+ * hovered field lights its bits in the 32-bit word above their hex digits:
+ * the by-hand encoding exercise in reverse.
  */
 export function BitFieldDiagram({
   fields = SAMPLE_FIELDS,
@@ -258,7 +248,7 @@ export function BitFieldDiagram({
               ? `${fields[active].label} = ${fields[active].value}${
                   fields[active].meaning ? ` -> ${fields[active].meaning}` : ""
                 }`
-              : "hover or focus a field to trace its bits into the word; the hex digit under each nibble is how the exam wants it read."}
+              : "hover or focus a field to see its bits in the word; each hex digit sits under the four bits it stands for."}
           </p>
         </>
       )}
