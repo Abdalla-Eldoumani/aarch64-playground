@@ -1,15 +1,9 @@
 "use client";
 
 /**
- * The reference surface shell: four sections behind the shared Tabs primitive
- * (the WAI-ARIA tablist with roving tabindex and arrow-key nav). Instructions
- * is the default: the two-pane reference with the AAPCS64 rail as a third
- * column from lg up. Converter mounts the shared base converter on demand, so
- * the route chunk stays free of it; a #converter, #converter-octal, or
- * #converter-ieee754 fragment opens it at that part.
- * It owns only the active-tab state and switches which section fills the single
- * tabpanel, so each section keeps its own inner measure and the tab strip is the
- * one source of the active-route accent.
+ * The reference page's four tabs. The converter loads only when its tab opens,
+ * so the page's first download stays small; a #converter, #converter-octal or
+ * #converter-ieee754 link opens it at that part.
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -53,10 +47,8 @@ export function ReferenceView({
   // The reader's tab pick; until there is one, the fragment decides.
   const [picked, setPicked] = useState<string | null>(null);
   const active = picked ?? (CONVERTER_LINKS.has(fragment) ? "converter" : "instructions");
-  // The panel entrance answers a tab switch, never the page load: entrance
-  // motion is a response to the reader's action, and an animation riding the
-  // first paint would also slow it on throttled phones. False until the
-  // first switch, so the initial render is plain.
+  // False until the first tab switch, so the panel entrance answers the
+  // reader's pick and never slows the first paint on a slow phone.
   const [switched, setSwitched] = useState(false);
 
   // A converter link followed on this page (back, forward, a clicked
@@ -82,10 +74,8 @@ export function ReferenceView({
       onChange={onChange}
       label="reference sections"
     >
-      {/* Keyed by the active tab so a section swap replays the small panel
-          entrance (one UI beat, 4px settle). The sections already unmount on
-          switch, so the key changes nothing about state, only the animation;
-          under prefers-reduced-motion the panel appears in place, static. */}
+      {/* Keyed by the tab so each switch replays the entrance; the sections
+          unmount on switch anyway, so the key costs no state. */}
       <div key={active} className={`${switched ? "anim-panel-in " : ""}mt-8`}>
         {active === "instructions" && (
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-11 xl:grid-cols-[minmax(0,1fr)_280px]">
