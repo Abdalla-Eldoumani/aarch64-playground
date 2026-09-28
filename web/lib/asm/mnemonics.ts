@@ -1,23 +1,9 @@
 /**
- * Every mnemonic the assembler accepts, lowercase, in the order the public
- * instruction reference documents them.
- *
- * This is the name list on its own, with no prose attached, because the
- * surfaces that only need names must not drag the hover-card table into their
- * bundle: the landing page highlights its hero program through
- * highlight-arm64, and the summaries, details and examples in
- * instruction-docs are several kilobytes it would never render.
- *
- * The list is not a second source of truth. lib/test/asm/mnemonics.test.ts
- * pins it to the hover-card table in both directions, the same way
- * reference-data and instruction-docs are pinned to each other and both are
- * pinned to the assembler's own SUPPORTED_MNEMONICS, so an instruction cannot
- * reach one list and miss another.
- *
- * The conditional-branch family is absent on purpose. The hover-card table
- * folds it onto a single `B.COND` placeholder, which is not a spelling anyone
- * writes; the concrete `b.<cond>` forms are matched by CONDITIONAL_BRANCH_RE
- * in highlight-arm64 and by COND_BRANCHES in the editor's Monaco grammar.
+ * Every mnemonic the assembler accepts, lowercase, in instruction-reference
+ * order. The names live apart from the hover-card prose so the landing page's
+ * highlighter does not pull that table into its bundle; mnemonics.test.ts
+ * keeps the two lists equal. The `b.<cond>` branches are left out because the
+ * table folds them into one `B.COND` entry and both highlighters match them.
  */
 export const ARM64_MNEMONIC_NAMES: readonly string[] = [
   "mov", "movz", "movk", "movn", "add", "adds", "sub", "subs", "ccmp",
