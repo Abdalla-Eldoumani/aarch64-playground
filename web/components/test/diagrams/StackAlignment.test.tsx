@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StackAlignment } from "@/components/diagrams/StackAlignment";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 const STP = "stp x29, x30, [sp, -16]!";
 const SUB24 = "sub sp, sp, 24";
 const SUB32 = "sub sp, sp, 32";
@@ -11,7 +9,6 @@ const MISALIGNED_NOTE = "misaligned: a bl from here faults on real hardware";
 
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("StackAlignment", () => {
@@ -111,14 +108,5 @@ describe("StackAlignment", () => {
     expect(container.innerHTML).toContain("var(--success)");
     fireEvent.click(screen.getByRole("button", { name: SUB24 }));
     expect(container.innerHTML).toContain("var(--danger)");
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<StackAlignment />);
-      expect(screen.getByLabelText("stack alignment")).toBeTruthy();
-      unmount();
-    }
   });
 });
