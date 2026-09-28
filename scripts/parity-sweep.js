@@ -102,31 +102,13 @@ function loadWebModules() {
   };
 }
 
-// Whitespace-quoted argv tokenizer, the same shape verify-corpus.js uses so
-// both verifiers read a `.args` fixture the way web/lib/playground/args.ts
-// reads the args box.
-function parseArgsLine(input) {
-  const out = [];
-  let buf = "";
-  let inQuote = null;
-  let hasToken = false;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "\\" && i + 1 < input.length) { buf += input[i + 1]; hasToken = true; i++; continue; }
-    if (inQuote) {
-      if (ch === inQuote) { inQuote = null; continue; }
-      buf += ch; hasToken = true; continue;
-    }
-    if (ch === '"' || ch === "'") { inQuote = ch; hasToken = true; continue; }
-    if (/\s/.test(ch)) {
-      if (hasToken) { out.push(buf); buf = ""; hasToken = false; }
-      continue;
-    }
-    buf += ch; hasToken = true;
-  }
-  if (hasToken) out.push(buf);
-  return out;
-}
+// The app's own argument parser, the one verify-corpus.js uses too, so a
+// `.args` fixture or an `args` field splits exactly the way the args box
+// does. Node strips the file's types on load; the file imports nothing, so
+// no path alias has to resolve.
+const { parseArgs: parseArgsLine } = require(
+  path.join(webRoot, "lib", "playground", "args.ts"),
+);
 
 // Mirrors combineSources in web/lib/playground/file-map.ts: main first so
 // line numbers still point at the editor buffer, each helper behind its
