@@ -31,6 +31,7 @@ export type PaletteDeps = {
   openShare: () => void;
   openShortcuts: () => void;
   openTutorials: () => void;
+  openWalkthrough: () => void;
   openConverter: () => void;
   toggleTheme: () => void;
 };
@@ -154,6 +155,12 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       label: "Tutorials",
       description: "walk through an example program one step at a time",
       run: () => deps.openTutorials(),
+    },
+    {
+      id: "walkthrough",
+      label: "Interface walkthrough",
+      description: "point at each part of the playground in turn",
+      run: () => deps.openWalkthrough(),
     },
     {
       id: "base-converter",
