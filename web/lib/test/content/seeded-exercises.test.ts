@@ -13,13 +13,7 @@ import {
   solutionFor,
 } from "@/lib/test/content/helpers/grade-exercise";
 
-// Vitest runs with cwd = web/, so the real content directory is cwd-relative.
-// Part A proves the shipped set validates headlessly and carries no week
-// labels, PII, or reference solution; Part B drives the real node-target
-// emulator to prove the checker passes a correct program and fails an
-// incorrect one without ever comparing against a stored answer. Part C repeats
-// that proof for every emulator-graded exercise, hidden inputs included, from
-// the reference solutions in exercise-solutions/.
+// Vitest runs from web/, so the content directory is relative to it.
 const DIR = path.join(process.cwd(), "content/exercises");
 const files = fs.readdirSync(DIR).filter((name) => name.endsWith(".json"));
 
@@ -64,12 +58,9 @@ describe("seeded exercises validate", () => {
     expect(coding.some((exercise) => (exercise.acceptance.structural?.length ?? 0) > 0)).toBe(true);
   });
 
-  // The no-answer-key rule holds for the emulator-backed variants: a coding
-  // exercise is graded by running the student's program, never by comparing
-  // against a stored solution, so its JSON must not carry one. The interactive
-  // variants (quiz, prediction, blanks) are the deliberate exception: they
-  // grade entirely client-side against author-declared answers the schema
-  // validates, so their files carry those answers by design.
+  // A coding exercise is graded by running the student's program, so its file
+  // never needs a stored solution. Quiz, prediction, and blanks files carry
+  // their answers on purpose: the browser grades against them.
   it("coding exercises carry no reference-solution or answer key", () => {
     const solutionKey = /"solution"|"answer"|"reference/i;
     for (const exercise of coding) {
@@ -78,7 +69,7 @@ describe("seeded exercises validate", () => {
     }
   });
 
-  it("give every coding exercise three or more hidden inputs, at least one of them an edge", () => {
+  it("give every coding exercise three or more hidden inputs, at least one of them an edge case", () => {
     for (const exercise of coding) {
       const cases = exercise.hiddenCases ?? [];
       expect(cases.length, `${exercise.slug} hidden inputs`).toBeGreaterThanOrEqual(3);
@@ -87,11 +78,11 @@ describe("seeded exercises validate", () => {
   });
 });
 
-// Wrong programs used only to drive the checker. Each was authored per the
-// course style (lowercase mnemonics, m4 register aliases, an aapcs64 frame).
+// Wrong programs used only to drive the checker, in the course style
+// (lowercase mnemonics, m4 register aliases, a frame that saves fp and lr).
 
-// An off-by-one bound that ignores its input: stops while i < 10, so it sums
-// 1..9 = 45 and the result assertion fails.
+// An off-by-one bound that ignores its input: it stops when i reaches 10, so
+// it sums 1..9 = 45 and the result assertion fails.
 const sumWrong = `// off by one: this stops one value early
 define(fp, x29)
 define(lr, x30)
