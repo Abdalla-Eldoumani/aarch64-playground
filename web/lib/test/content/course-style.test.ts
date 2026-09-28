@@ -96,3 +96,18 @@ describe("authored programs stay inside the course directive vocabulary", () => 
     assertClean("docs/authoring-content.md", fs.readFileSync(guide, "utf8"));
   });
 });
+
+// One check for both content folders: lessons and exercises are authored
+// alike, and each used to carry its own copy of this pattern.
+describe("authored content stays anonymous and undated", () => {
+  it("lessons and exercises carry no week labels, archive numbers, or personal data", () => {
+    const banned = /week\s*\d|tutorial\s*\d|assignment\s*\d|@[a-z0-9.-]+\.[a-z]{2,}/i;
+    const files = ["content/lessons", "content/exercises"].flatMap((dir) =>
+      walk(path.join(process.cwd(), dir), ".json"),
+    );
+    for (const file of files) {
+      const raw = fs.readFileSync(file, "utf8");
+      expect(banned.test(raw), `${rel(file)} matched a banned pattern`).toBe(false);
+    }
+  });
+});
