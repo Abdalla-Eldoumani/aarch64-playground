@@ -9,7 +9,7 @@ import { combineSources, type SourceFile } from "@/lib/playground/file-map";
 export { combineSources, type SourceFile };
 
 export interface MultiFileTabsProps {
-  /** Current active file index in the auxiliary list (main.asm is implicit). */
+  /** The helper files; main.asm is not in this list, and index -1 selects it. */
   files: SourceFile[];
   activeIndex: number;
   onSelect: (idx: number) => void;
@@ -22,10 +22,8 @@ export interface MultiFileTabsProps {
 }
 
 /**
- * Tab strip for multi-file assembly. The main editor holds `main.asm`; this
- * strip manages any number of extra source files the linker will concatenate
- * with main before assembling. The tutorials that split `bl` callers and
- * callees across files need it.
+ * Tab strip for the helper files joined onto main.asm before assembling, for
+ * the tutorials that split `bl` callers and callees across files.
  */
 export function MultiFileTabs({
   files,
