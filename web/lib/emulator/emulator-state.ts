@@ -5,11 +5,9 @@ import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
 /**
- * The frozen contract between the emulator hub and everything that renders
- * it. useEmulator composes several internal modules, but this shape is what
- * the playground, the panels, the terminal, and every test see; a key added
- * here has to be answered in use-emulator.ts and in the typed fake the
- * component suites share.
+ * What the emulator hub hands the playground, panels, terminal, and tests. A
+ * key added here must also be filled in use-emulator.ts and in the shared
+ * test fake.
  */
 
 /** A register file the registers panel can show: x0-x30, d0-d31, or v0-v31. */
@@ -57,23 +55,15 @@ export interface EmulatorState {
   error: string | null;
   assemblyErrors: AssemblyError[];
   breakpoints: Set<number>;
-  /**
-   * Gutter lines the last editor assemble had to drop because no instruction
-   * runs at or after them (a dot set before assembling, below the last
-   * instruction). A new array per assemble that dropped any, so the shell can
-   * say why a dot vanished; empty otherwise.
-   */
+  /** Breakpoint lines the last assemble dropped because no instruction runs
+   *  at or after them, else empty. Each drop gives a new array, so the shell
+   *  can say why a dot vanished. */
   droppedBreakpoints: number[];
   currentLine: number | null;
-  /**
-   * The external call the paused pc sits inside, or null when the pc is one
-   * of the program's own instructions. Non-null means `currentLine` is the
-   * call SITE, not the executing address: the three steps a hosted call takes
-   * land on a trampoline and a synthetic stub, neither of which is a line the
-   * student wrote. Always null while the program is running (a full run
-   * passes through dozens of calls a second) and on wasm builds that predate
-   * the export.
-   */
+  /** The library call the paused pc is inside, else null. When set,
+   *  `currentLine` is the calling line, since the call's own steps run no
+   *  line the student wrote. Null mid-run, where calls pass too fast to
+   *  show, and on older wasm builds. */
   externalCall: ExternalCall | null;
   instructions: DecodedInstruction[];
   codeBase: number;
@@ -125,20 +115,12 @@ export interface EmulatorState {
   toggleBreakpoint: (line: number) => void;
   /** Drop every breakpoint, gutter and CPU alike (program switch). */
   clearAllBreakpoints: () => void;
-  /**
-   * Move every stored gutter line through `remap` (null drops it). The
-   * multi-file workspace keys breakpoints by COMBINED-string line, so an
-   * edit that changes any file's length re-numbers them all; the playground
-   * re-anchors them here rather than letting the next assemble arm an
-   * address belonging to a different instruction.
-   */
+  /** Move every breakpoint line through `remap` (null drops it). Lines count
+   *  through all the files joined, so an edit that changes one file's length
+   *  renumbers them; remapping keeps each on its own instruction. */
   remapBreakpoints: (remap: (line: number) => number | null) => void;
-  /**
-   * Returns the cached bytes for `[addr, addr + len)`. On a cache miss
-   * the returned array is empty and an async fetch is queued; the next
-   * render delivers the bytes via state. Memory panels render a
-   * "loading" placeholder while empty.
-   */
+  /** Cached bytes for `[addr, addr + len)`. A miss returns an empty array
+   *  and fetches in the background; the bytes arrive on a later render. */
   getMemory: (addr: number, len: number) => Uint8Array;
   /** Whether the range is mapped: true/false once known, null while
    *  the async verdict is in flight (render a pending placeholder). */
@@ -147,24 +129,18 @@ export interface EmulatorState {
    *  reader that cannot wait a render for `getMemory`'s cache (the
    *  diagnostic bundle). Empty when no machine is loaded. */
   readMemory: (addr: number, len: number) => Promise<Uint8Array>;
-  /**
-   * Queue stdin. `interactive` marks a line the student typed at a prompt:
-   * the machine echoes it into stdout as a read consumes it, so the console
-   * transcript reads "Enter score 1: 10" the way the terminal pane does.
-   * Redirects (seeds, `< file`, the terminal's own keystrokes) leave it off:
-   * a redirect prints nothing, and the pane echoes for itself.
-   */
+  /** Queue stdin. `interactive` marks a line typed at a prompt, which the
+   *  machine echoes as a read takes it so the console reads like a terminal.
+   *  Redirects leave it off, since a redirect prints nothing, and so do the
+   *  terminal's own keys, which the pane echoes itself. */
   pushStdin: (s: string, interactive?: boolean) => void;
   /** Everything pushed to stdin since the last assemble or reset (its last
    *  100 KiB): the machine drops input once a read consumes it, and a bug
    *  report needs what the program was given. */
   stdinGiven: () => string;
-  /**
-   * Pick a run back up after the console answered the read it stopped at.
-   * A no-op unless the last stop was a RUN parked on input: a step that
-   * reached a read waits for the next step, as it always has. The terminal
-   * drive resumes its own sessions and never calls this.
-   */
+  /** Continue a run that stopped at a read once the console answers it. A
+   *  step that reached a read waits for the next step instead, and the
+   *  terminal resumes its own sessions. */
   resumeAfterInput: () => void;
   /** Pause/resume the step-back snapshot ring (terminal sessions). */
   setSnapshotsPaused: (paused: boolean) => void;
@@ -184,14 +160,9 @@ export interface EmulatorState {
    *  primary path for the gutter UI. */
   setBreakpointAddress: (addr: number) => Promise<void>;
   clearBreakpointAddress: (addr: number) => Promise<void>;
-  /**
-   * Restore a named bookmark: assemble the saved source with the saved
-   * args, push the saved stdin (if any), then step the live CPU forward
-   * to `stepCount` (clamped to the run ceiling). Resolves a verdict:
-   * `success` false means the saved source no longer assembles, and `stepped`
-   * is how far the machine actually got (a halt, fault, or input wait stops
-   * the walk early) so the caller can say how far it got.
-   */
+  /** Rebuild a bookmark: assemble its source and args, queue its stdin, and
+   *  step to `stepCount`. `success` is false when the source no longer
+   *  assembles; `stepped` is how far it got before a halt, fault, or read. */
   restoreBookmark: (params: {
     source: string;
     args?: string;
