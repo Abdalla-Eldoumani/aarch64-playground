@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { isDeadInstance } from "@/lib/worker/dead-instance";
 
-// Wrong in either direction costs a student: too eager and a typo throws away
-// their registers, console and files; too shy and one wasm trap leaves the
-// playground stuck until a page reload.
+// The rule alone (emulator.worker.test.ts checks the rebuild it triggers): a
+// trap, or the borrow guard a trap leaves stuck, marks the instance dead, and
+// ordinary error messages do not. Too eager and the worker discards a working
+// machine; too shy and one trap leaves the playground stuck until a reload.
 describe("worker fatal-error classification", () => {
   it("treats a latched borrow guard and a trap as unusable", () => {
     // wasm-bindgen's guard after a trap skipped its Drop
