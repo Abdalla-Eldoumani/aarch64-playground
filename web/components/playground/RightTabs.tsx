@@ -15,10 +15,8 @@ export type RightTab =
   | "saves";
 
 /**
- * The eight machine views the debug column switches between. They arrive as
- * rendered nodes rather than as hub fields: the shell owns the single
- * `useEmulator()` hub and builds every panel from it, so no part of the hub
- * has to cross into the layout components that only arrange them.
+ * Rendered nodes, not hub fields: the shell owns the one `useEmulator()` hub,
+ * so the layouts that only arrange these panes never touch it.
  */
 export interface DebugPanes {
   memory: ReactNode;
@@ -53,11 +51,8 @@ const TABS: readonly RightTab[] = [
 ];
 
 /**
- * The debug column's tab strip (tablet and laptop layouts; the phone layout
- * reaches the same panes through PhoneLayout's tabs). The selected
- * tab is the shell's state so a command-palette action can bring a pane
- * forward, but which panes have ever been MOUNTED is this component's own
- * business; see the terminal latch below.
+ * The shell owns the selected tab so a command-palette action can bring a
+ * pane forward; which panes have been mounted stays in here.
  */
 export function RightTabs({
   activeTab,
