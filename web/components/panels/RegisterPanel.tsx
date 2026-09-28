@@ -86,7 +86,7 @@ const VIEW_LABELS: Record<RegView, string> = {
  *  each cell shows it on hover. */
 const VIEW_HELP: Record<RegView, string> = {
   x: "x0–x30 are the integer registers.",
-  d: "d0–d31 are the low 64 bits of the floating-point registers, with s the low 32.",
+  d: "d0–d31 are the low 64 bits of the floating-point registers, and s0–s31 the low 32.",
   v: "v0–v31 are the full 128-bit vector registers, and q0–q31 is the same 128 bits named as a scalar.",
 };
 
@@ -113,12 +113,10 @@ function isArrangementId(raw: string | null): raw is ArrangementId {
 }
 
 /**
- * The letter a destination register was spelled with: optional label,
- * mnemonic, then a first operand naming a v, q, or d register (`ldr q0, [x0]`,
- * `mov v0.16b, v1.16b`, `fmov d0, x1`). It is what a bit comparison cannot
- * see. `ins v0.d[0], x1` moves nothing above bit 63, but the student named the
- * vector register and should be shown it. And `fmov d0, x1` with a small x1
- * leaves only low bits set, which would otherwise read as an s write's float.
+ * The letter the destination register was written with (`ldr q0`,
+ * `mov v0.16b`, `fmov d0`), which comparing bits cannot tell: `ins v0.d[0], x1`
+ * moves nothing above bit 63 but names the vector register, and `fmov d0, x1`
+ * with a small x1 would otherwise read as an s write's float.
  */
 const SPELLED_DEST = /^\s*(?:[A-Za-z_.$][\w.$]*\s*:\s*)?[a-zA-Z][\w.]*\s+([vqd])\d{1,2}\b/;
 
@@ -433,16 +431,11 @@ export function RegisterPanel({
   const [arrangementId, setArrangementId] = usePersistedArrangement();
   const arrangement = ARRANGEMENTS[arrangementId];
 
-  // The previous snapshot, kept by adjusting state during render (React's
-  // derive-from-props pattern). Two things live here. The vector file, because
-  // nothing in the wasm reports which LANES a write touched, and the diff
-  // against the previous file answers both that and "did anything above bit 63
-  // move". And the line that was current before it: `currentLine` is where the
-  // pc points AFTER the step, so the instruction that produced this snapshot is
-  // the one the PREVIOUS snapshot was sitting on. Over a run that is where the
-  // run started rather than the last instruction of it, which costs nothing:
-  // the spelling is only consulted when an fp or vector register changed, and
-  // a run that touched bits 127:64 is already a v write by upperMoved.
+  // The previous snapshot, kept by adjusting state during render. The wasm
+  // does not say which lanes a write touched, so the vector diff does, and
+  // shows whether bits above 63 moved. `currentLine` is where pc points after
+  // the step, so the line that ran is the one the previous snapshot was on.
+  // After a run that is the run's first line; upperMoved still catches a v write.
   const [snapPair, setSnapPair] = useState({
     cur: vectorRegisters,
     prev: vectorRegisters,
@@ -513,13 +506,10 @@ export function RegisterPanel({
   const fpPulses = usePulseIds(changedFpRegs);
   const vecPulses = usePulseIds(changedVecRows);
 
-  // Auto-switching follows the write: which classes moved, and the rows and
-  // words that describe it, are read here; what to do about it lives in
-  // reduceView. Only a new write runs it: the change sets are fresh objects
-  // per snapshot, and everything else (the format flags, the follow switch,
-  // the current view, which reaches the rule through the reducer's own
-  // state) is read as it stands then. A click therefore survives until the
-  // next write, and a format click neither re-speaks nor re-scrolls.
+  // Reads what this write touched; reduceView decides what to do about it.
+  // Only a new write (a fresh change set) runs it, and the flags and view are
+  // read as they stand then: a click holds until the next write, and a format
+  // click neither re-speaks nor re-scrolls.
   const followWrite = useEffectEvent(
     (xChanged: ReadonlySet<number>, vecChanged: ReadonlySet<number>) => {
       // A d write reaches bits 63:0 and no further; anything above that, or a
@@ -842,12 +832,10 @@ export function RegisterPanel({
         {speech}
       </p>
 
-      {/* The panel's own scroll box: the header above stays put, and following
-          a write scrolls this first. It takes focus so the rows can be
-          scrolled from the keyboard. It never shrinks under three rows (19px
-          each at 12px): a lesson frame on a phone gives the whole panel less
-          height than the header, and the list shrank to nothing; the frame's
-          own pane scrolls instead. */}
+      {/* The panel's own scroll box, focusable for keyboard scrolling. It
+          keeps at least three rows (19px each at 12px): in a lesson frame on
+          a phone the list shrank to nothing, so the frame's pane scrolls
+          instead. */}
       <div
         ref={bodyRef}
         role="region"
