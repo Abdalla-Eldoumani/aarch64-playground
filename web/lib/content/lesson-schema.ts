@@ -1,14 +1,7 @@
 /**
- * The lesson authoring contract: TypeScript types plus a hand-rolled
- * runtime validator. A lesson is author-supplied JSON, so it is untrusted
- * until `validateLesson` has narrowed it field-by-field. This is the single
- * source of truth for the lesson shape; the loader, the index, and the
- * article all import these types and call this validator, and only a
- * validated lesson is ever rendered.
- *
- * The validator is dependency-free and modeled on the defensive style in
- * upload-guard.ts and share.ts: narrow `unknown` one field at a time,
- * return a discriminated result, never throw.
+ * The lesson shape and its validator, the one source for both. Lesson files
+ * are untrusted JSON, so nothing is rendered until `validateLesson` has
+ * checked it field by field; it returns an error instead of throwing.
  */
 
 /** A single body block. The `type` tag selects the per-block fields. */
@@ -58,14 +51,10 @@ export interface Lesson {
 }
 
 /**
- * The row shape the learn index renders: exactly the five fields
- * LessonIndex reads, and nothing else. `body` is the rest of a Lesson and it
- * is 53 KB of the 55 KB the authored set serializes to, never read by the
- * index and never rendered by it, and it would otherwise cross the
- * server-to-client boundary on every visit. The type lives here rather than
- * beside the loader because the loader is server-only: a client component
- * naming that module is one dropped `type` keyword away from a confusing
- * build failure.
+ * The row the learn index renders: only the five fields LessonIndex reads, so
+ * the lesson bodies (53 KB of the set's 55 KB) never reach the browser. It
+ * lives here, not beside the server-only loader, so a client component can
+ * name the type without importing that module.
  */
 export interface LessonIndexRow {
   title: string;
