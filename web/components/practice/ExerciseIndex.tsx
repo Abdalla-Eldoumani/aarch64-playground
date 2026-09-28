@@ -1,28 +1,8 @@
 "use client";
 
 /**
- * The practice index: two columns of ruled datasheet rows, coding exercises
- * on the left and theory sets on the right, each grouped by topic in course
- * order (lib/content/practice-topics owns both the split and the order). A
- * shared search box and difficulty filter sit above both columns, plus a
- * solved indicator, empty and loading states, and the progress row. It
- * receives already-validated index rows as props from the
- * server index page (loadExerciseIndex narrows each exercise to the seven
- * fields below, blurb included) and renders every row field as plain React
- * text (auto-escaped), so there is no markdown/HTML injection path here.
- *
- * Each row leads with its sheet number `5.N` (the 1-based position in the
- * sorted order, stable under filtering), then the title, a quieter blurb line,
- * and the difficulty/solved meta, inside one bordered container per column
- * with hairlines between rows and a sunken band at each topic boundary.
- *
- * Solved state comes from a useSyncExternalStore over the solved-state store:
- * the server snapshot is empty, so the server and first client render agree and
- * the solved badges appear after hydration without a mismatch, then update live
- * when a check passes here or in another tab.
- *
- * A quiet progress row below the columns exports that set as a small json file
- * and imports one back, since localStorage is the only place it lives.
+ * The practice index. Every row field renders as plain React text, never
+ * markdown or HTML, so exercise content has no way to inject markup here.
  */
 
 import {
