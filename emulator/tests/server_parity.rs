@@ -1,9 +1,6 @@
-//! Server-parity regression suite. Every behavior here was verified
-//! against the real course toolchain (GAS + glibc + GNU m4 on the
-//! U of C ARM servers, cross-checked under qemu-user with the same
-//! toolchain) before it was implemented. Each test pins one behavior
-//! a syntactically valid course program depends on, so a regression
-//! shows up as a program that works on the servers but not here.
+//! Behaviour of the course's ARM servers (GAS, glibc and GNU m4), each
+//! case checked there before it was built here. A failure means a program
+//! that runs on the servers no longer runs the same way in the playground.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -22,14 +19,11 @@ fn run_with_stdin(source: &str, stdin: &str) -> (Cpu, String) {
     (cpu, out)
 }
 
-// GAS resolves a locally-defined label used inside an instruction's
-// immediate field to the label's offset WITHIN ITS OWN SECTION, at
-// assembly time, with no relocation: `.bss` symbol at section offset 24
-// encodes as `#0x18` in both `add` and `ldr` (verified with objdump on
-// the servers' GAS 2.46). Assignment solutions lean on this when they
-// write `add x1, fp, a_local` / `ldr x19, [fp, a_local]` around scanf:
-// both sides fold to the same small frame offset, so the program is
-// self-consistent and runs.
+// GAS turns a label used as an immediate into its offset inside its own
+// section: a `.bss` label 24 bytes in encodes as `#0x18` in both `add` and
+// `ldr`. Student code writes `add x1, fp, a_local` and
+// `ldr x19, [fp, a_local]` around scanf, and it runs because both get the
+// same small offset.
 #[test]
 fn bss_label_as_immediate_resolves_to_section_offset() {
     let source = r#"
@@ -118,7 +112,7 @@ print:
     assert_eq!(out, "32\n");
 }
 
-// `.` inside an instruction immediate is section-relative too, so
+// `.` (the current address) inside an immediate is section-relative too, so
 // `. - label` measures the plain byte distance. Mixing an absolute `.`
 // with section-relative labels folded `. - main` to a 4 MiB-ish number
 // and refused to encode.
@@ -162,12 +156,11 @@ fn run_expect_halt_message(source: &str) -> (Cpu, String) {
     (cpu, message)
 }
 
-// The first page is never mapped on Linux, so a store through a zeroed
-// base register is SIGSEGV on the servers. The emulator auto-maps pages
-// on write, which let the week-10 find-max shape (an m4 alias
-// `define(i_r, w19)` reusing the register the array base was just
-// loaded into) run to a wrong answer instead of stopping where real
-// hardware stops.
+// Linux never maps the first page, so a store through a base register
+// that is zero crashes on the servers (SIGSEGV). Here an m4 alias
+// (`define(i_r, w19)`) zeroes the register the array address was just
+// loaded into; the emulator used to map any page on write, so this ran on
+// to a wrong answer instead.
 #[test]
 fn store_through_a_zeroed_base_register_halts_like_the_servers() {
     let source = r#"
@@ -215,10 +208,10 @@ done:
     );
 }
 
-// Linux sets SCTLR_EL1.SA0: any load or store through a misaligned SP
-// is a bus error on the servers (verified there: exit 135). The check
-// is on SP itself, pre-writeback, so `stp ..., [sp, -8]!` from an
-// aligned SP passes and the NEXT sp-based access faults.
+// Linux turns on SA0, the stack alignment check: a load or store through
+// an SP that is not a multiple of 16 is a bus error on the servers (exit
+// 135). The check reads SP before any `!` update, so `stp ..., [sp, -8]!`
+// from an aligned SP passes and the next access through SP faults.
 #[test]
 fn misaligned_sp_access_halts_like_the_servers() {
     let source = r#"
@@ -245,9 +238,8 @@ main:
     );
 }
 
-// The same rule at the AAPCS64 call boundary: a `bl printf` with SP off
-// the 16-byte boundary dies inside glibc on the servers; the stub
-// boundary is where the emulator reproduces it.
+// The same rule at a call: `bl printf` with SP off a 16-byte boundary
+// dies inside glibc on the servers, so the emulator stops at the call.
 #[test]
 fn misaligned_sp_at_a_libc_call_halts_with_the_call_wording() {
     let source = r#"
@@ -281,7 +273,8 @@ main:
 }
 
 // An offset from an ALIGNED sp is legal whatever the offset's own
-// alignment: SA0 checks the stack pointer, not the effective address.
+// alignment: SA0 checks the stack pointer, not the address it points to
+// once the offset is added.
 #[test]
 fn aligned_sp_with_odd_offsets_still_runs() {
     let source = r#"
@@ -310,12 +303,9 @@ main:
     assert_eq!(out, "42\n");
 }
 
-// rand() must reproduce glibc's TYPE_3 sequence exactly: shell-sort
-// style assignments print unseeded draws and students diff the
-// playground against the servers' sample runs. The pinned values are
-// glibc's, captured from the course toolchain. Masking each with `& 0x1FF`
-// gives 359, 454, 105, 115, 81, the sequence the assignment-3 shape
-// prints.
+// rand() must give glibc's exact sequence: programs print unseeded draws
+// and students compare the playground's output with a run on the
+// servers. The values below were captured there.
 #[test]
 fn unseeded_and_seeded_rand_match_glibc() {
     let source = r#"
@@ -478,8 +468,8 @@ main:
 }
 
 // The same form reaches W and the fp registers (`ldr d0, label`), and a
-// label in `.bss`, 3 MiB from .text and far past a real LDR (literal)'s
-// imm19, still loads.
+// label in `.bss`, 3 MiB from .text and far past the 1 MiB a real
+// LDR (literal) can reach, still loads.
 #[test]
 fn ldr_label_literal_load_covers_w_d_and_bss() {
     let source = r#"
@@ -887,11 +877,12 @@ main:
     assert_eq!(out, "6 3 7 99\n");
 }
 
-// gcc -O2 lowers a dense switch to a table of halfword distances in words
-// from a base label, `.2byte (.Lcase - .Lbase) / 4`, read with ldrh and
-// sign-extended by `sxth`. The lexer split `.2byte` at its digit and
-// refused it as the integer `2b`. Case 3 sits above the base, so its entry
-// is negative and only the sign extension reaches it.
+// gcc -O2 turns a dense switch into a table of 2-byte entries, each the
+// distance in instructions from a base label,
+// `.2byte (.Lcase - .Lbase) / 4`, read with ldrh and sign-extended by
+// `sxth`. The lexer split `.2byte` at its digit and refused it as the
+// integer `2b`. Case 3 sits above the base, so its entry is negative and
+// only the sign extension reaches it.
 #[test]
 fn a_halfword_jump_table_dispatches_every_case() {
     let source = r#"
