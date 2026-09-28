@@ -1,16 +1,9 @@
 /**
- * The outcome-based exercise checker. `checkExercise` is a pure function: its
- * only inputs are the declared `acceptance`, an emulator `snapshot`, and the
- * student's `source` text. It evaluates result assertions against the snapshot
- * (registers / exit code / stdout) and structural assertions against the
- * comment-stripped source, returning a per-assertion pass/fail with a
- * human-readable expected-vs-actual.
- *
- * It never holds, reads, or compares a reference solution: any approach that
- * produces the declared outcomes passes, and the result carries no answer, so
- * feedback can be shown without leaking a solution. Comments are stripped
- * before structural checks so a mnemonic or literal that appears only inside a
- * comment neither satisfies a `uses-instruction` nor trips a `forbids-literal`.
+ * Grades an exercise by what the program does, never against a stored
+ * solution, so any approach that gets the result passes and the feedback
+ * cannot leak an answer. Comments are stripped before the structural checks,
+ * so a mnemonic, number or string that appears only in a comment neither
+ * counts nor trips a ban.
  */
 
 import type {
@@ -319,12 +312,9 @@ export interface HiddenCaseCheck {
 }
 
 /**
- * Grade one hidden case. A case passes when the program built, ran to its end
- * without a fault, printed exactly the expected text, exited with the expected
- * status, returned from main with a balanced stack, and left its caller's
- * frame alone. The two stack rules are what real hardware punishes later (a
- * misaligned sp at the next call, a caller whose saved registers were
- * overwritten), so a program that only gets lucky here does not pass.
+ * Grade one hidden case. Beyond output and exit status, it fails an unbalanced
+ * stack or a write into the caller's frame: real hardware punishes both later
+ * (a misaligned sp at the next call, the caller's saved registers overwritten).
  */
 export function checkHiddenCase(testCase: HiddenCase, outcome: HiddenRunOutcome): HiddenCaseCheck {
   const missed = (miss: HiddenMiss, detail = ""): HiddenCaseCheck => ({ pass: false, miss, detail });
