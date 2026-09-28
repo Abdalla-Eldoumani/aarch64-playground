@@ -11,14 +11,9 @@ import { ThemeControl } from "@/components/chrome/ThemeControl";
 import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
 
 /**
- * A route link that starts cold and warms on intent. `prefetch={false}` means
- * never in the App Router, viewport and hover alike, so hover warming has to
- * be built: swap back to the default once a pointer or the keyboard arrives
- * and Next prefetches then. That keeps four route payloads off the landing's
- * initial network while a reader who aims at a route still gets it warm.
- * `onFocus` rides along because the nav is a keyboard landmark and tabbing
- * through should warm what hovering does. The flag is `warm`, not `active`,
- * which already means the current route in the map below.
+ * In the App Router `prefetch={false}` also stops hover prefetch, so the link
+ * returns to the default on hover or focus. The landing's first load skips
+ * four route payloads, and a link a reader aims at still arrives warm.
  */
 function HoverPrefetchLink({
   href,
@@ -40,19 +35,10 @@ function HoverPrefetchLink({
 }
 
 /**
- * The persistent top navigation: one component, two variants driven by a prop so
- * there is no second nav to keep in sync. `full` is the content-page bar: the
- * wordmark carries its "playground" label and an "Open playground" call to action
- * sits in the actions cluster. `slim` is the playground bar: no label, no CTA,
- * and a shorter desktop height so it never steals the debugger's vertical space.
- * Both reuse the same wordmark, route data, theme control, and mobile drawer; the
- * variant only toggles the label, the CTA, and the height. Under md the routes and
- * the GitHub link fold into the shared drawer, leaving the wordmark, a compact
- * theme control, and the drawer trigger.
- *
- * `stars` is optional because only the server-rendered mounts can supply it; the
- * playground's client-mounted slim bar passes nothing and keeps the icon-only
- * link, which is also what a failed lookup renders.
+ * One nav with two variants, so there is no second bar to keep in sync. `slim`
+ * is the playground's shorter bar, kept low so the debugger keeps its height.
+ * `stars` is optional because only server-rendered mounts know it; null shows
+ * the icon-only link, the same as a failed lookup.
  */
 export function SiteNav({
   variant,
