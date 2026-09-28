@@ -360,11 +360,8 @@ function looksLikeSnapshot(v: unknown): boolean {
 }
 
 /**
- * Pick a backend based on environment + opt-in flag. Honors the
- * `aarch64-playground:backend` localStorage key:
- * - `"main"` -> always main-thread (fallback)
- * - `"worker"` -> worker, throws if unavailable
- * - any other value (or absent) -> worker if available, else main-thread.
+ * The worker when one can start, else the main thread. Setting the
+ * `aarch64-playground:backend` storage key to "main" forces the main thread.
  */
 export function pickBackend(): EmulatorBackend {
   const force = safeGetItem("aarch64-playground:backend");
