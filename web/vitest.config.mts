@@ -43,14 +43,10 @@ export default defineConfig({
     environment: "jsdom",
     globals: false,
     setupFiles: ["./vitest.setup.ts"],
-    // Two projects over one config: the lib suites that never touch a DOM
-    // run under node, because standing up jsdom was nine tenths of the lib
-    // suite's wall clock, and everything that renders or reads window
-    // stays on jsdom. A lib test that needs the DOM is listed by name in
-    // DOM_LIB_TESTS; one that is missing from the list fails under node
-    // with a ReferenceError, never silently. Both projects extend this
-    // config, so the alias, the setup file, and the coverage floors apply
-    // to the union exactly as they did to the single suite.
+    // Lib suites that never touch a DOM run under node, since starting jsdom
+    // was nine tenths of their run time. A lib test that needs the DOM but is
+    // missing from DOM_LIB_TESTS fails under node with a ReferenceError,
+    // never silently.
     projects: [
       {
         extends: true,
