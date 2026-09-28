@@ -275,10 +275,10 @@ export function useTerminalDrive(opts: {
           // enough that a keystroke echoes.
           await new Promise<void>((r) => setTimeout(r, 32));
           // Stand down if the host surface unmounted (a route change) or
-          // the pane we are driving went away (a mobile pane switch
-          // unmounts it). Without this the loop spins forever on a
-          // blocked program, holding the console's stdin disabled and
-          // the snapshot ring paused with no way back.
+          // the pane we are driving went away (a switch between the phone,
+          // tablet and laptop layouts remounts it). Without this the loop
+          // spins forever on a blocked program, holding the console's stdin
+          // disabled and the snapshot ring paused with no way back.
           if (!mountedRef.current) break;
           // A pane that unmounts deregisters by writing null, so "not this io"
           // has to include null. The earlier `!== null` clause let through the
