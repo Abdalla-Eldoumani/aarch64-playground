@@ -41,7 +41,7 @@ export interface PlaygroundHeaderBandProps {
     disabled: boolean;
   } | null;
   onShare: () => void;
-  onTour: () => void;
+  onTutorials: () => void;
   onToggleTheme: () => void;
   /** Gathered by the shell, which owns the hub the snapshot reads. */
   buildDiagnostic: () => Promise<DiagnosticBundle>;
@@ -69,7 +69,7 @@ export function PlaygroundHeaderBand({
   onArgsChange,
   runMode,
   onShare,
-  onTour,
+  onTutorials,
   onToggleTheme,
   buildDiagnostic,
   onOpenCommandPalette,
@@ -168,7 +168,7 @@ export function PlaygroundHeaderBand({
                 <>
                   <Toolbar
                     onShare={fromSheet(onShare)}
-                    onTour={fromSheet(onTour)}
+                    onTutorials={fromSheet(onTutorials)}
                     onToggleTheme={onToggleTheme}
                     buildDiagnostic={buildDiagnostic}
                     onOpenCommandPalette={fromSheet(onOpenCommandPalette)}
@@ -198,7 +198,7 @@ export function PlaygroundHeaderBand({
       <Toolbar
         className="ml-auto"
         onShare={onShare}
-        onTour={onTour}
+        onTutorials={onTutorials}
         onToggleTheme={onToggleTheme}
         buildDiagnostic={buildDiagnostic}
         onOpenCommandPalette={onOpenCommandPalette}
