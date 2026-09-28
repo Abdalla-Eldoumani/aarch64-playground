@@ -2,7 +2,7 @@
   "title": "Quiz: memory and the stack",
   "slug": "quiz-inter-frame-stack",
   "order": 93,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "memory",
   "difficulty": "core",
   "variant": "quiz",
@@ -29,7 +29,7 @@
         "8 bytes"
       ],
       "correctAnswer": 1,
-      "explanation": "strh stores the low-order halfword of Wt to RAM, and a halfword is 2 bytes. The other three widths belong to strb, str with a w register, and str with an x register.",
+      "explanation": "strh stores the low-order halfword of a w register to RAM, and a halfword is 2 bytes. The other three widths belong to strb, str with a w register, and str with an x register.",
       "hint": "A halfword is half of a word, and a word is 4 bytes."
     },
     {
@@ -41,7 +41,7 @@
         "To calculate the offset of element 20 in an array of 16-byte elements."
       ],
       "correctAnswer": 2,
-      "explanation": "The stack pointer must stay quadword aligned, so a negative allocation size is ANDed with -16 to clear its low 4 bits. -20 & -16 is -32, and the assembler folds the expression to that constant, so 32 bytes are allocated instead of 20.",
+      "explanation": "The stack pointer must stay quadword aligned (a multiple of 16), so a negative allocation size is ANDed with -16 to clear its low 4 bits. -20 & -16 is -32, and the assembler replaces the expression with that constant, so 32 bytes are allocated instead of 20.",
       "hint": "ANDing with -16 clears the low 4 bits. What is the next multiple of 16 below -20?"
     },
     {
@@ -77,7 +77,7 @@
         ".req"
       ],
       "correctAnswer": 3,
-      "explanation": "A register equate is written with .req. Writing fp .req x29 lets the rest of the file say fp wherever x29 is meant, and the assembler substitutes the real register.",
+      "explanation": "A register alias is made with .req. Writing fp .req x29 lets the rest of the file say fp wherever x29 is meant, and the assembler substitutes the real register.",
       "hint": "The directive is short for the word request."
     },
     {
@@ -101,15 +101,15 @@
         "ldrsh"
       ],
       "correctAnswer": 2,
-      "explanation": "ldrsw loads 4 bytes into Xt and copies the sign bit through bits 32 to 63. ldr with an X register would load 8 bytes, ldrb loads 1, and ldrsh loads 2.",
+      "explanation": "ldrsw loads 4 bytes into an x register and copies the sign bit through bits 32 to 63. ldr with an X register would load 8 bytes, ldrb loads 1, and ldrsh loads 2.",
       "hint": "The mnemonic spells out load register signed word."
     },
     {
       "question": "What defines a full, descending stack?",
       "options": [
-        "It grows from a lower to a higher address, and the pointer points to the next free space.",
+        "It grows toward higher addresses, and the pointer points to the next free space.",
         "It pushes data to the heap and descends in size.",
-        "It grows from a higher to a lower address, and the pointer points at the last pushed item.",
+        "It grows toward lower addresses, and the pointer points at the last pushed item.",
         "It requires all 32 registers to be saved."
       ],
       "correctAnswer": 2,
@@ -125,7 +125,7 @@
         "The program aborts with a bus error."
       ],
       "correctAnswer": 3,
-      "explanation": "An access made through sp requires sp to be quadword aligned. A misaligned sp raises a stack alignment fault, which Linux delivers as SIGBUS, so the program aborts with a bus error.",
+      "explanation": "Any access through sp needs sp to be a multiple of 16. A misaligned sp raises a stack alignment fault, which Linux reports as the SIGBUS signal, so the program aborts with a bus error.",
       "hint": "The address in sp has to be evenly divisible by 16 on every access that uses it."
     }
   ]
