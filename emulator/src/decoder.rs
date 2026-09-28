@@ -2738,7 +2738,7 @@ fn sign_extend(val: u32, bit_width: u8) -> i64 {
 // ---------------------------------------------------------------------------
 
 /// Expand the FMOV 8-bit VFP immediate to its IEEE 754 double bit pattern.
-/// Per the ARM ARM: sign = b7, exponent = NOT(b6) then b6 replicated eight
+/// Per the Arm manual: sign = b7, exponent = NOT(b6) then b6 replicated eight
 /// times then b5:b4, mantissa = b3:b0 at the top of the 52-bit fraction.
 /// Every encodable value is (16..31)/16 scaled by a power of two from 2^-3
 /// to 2^4, either sign; the assembler brute-forces this table in reverse.
@@ -5210,7 +5210,6 @@ mod tests {
     fn bitmask_32bit_mode() {
         // sf=false, N must be 0
         // N=0, immr=0, imms=0b001111 -> element=32 (len=5 since NOT(001111)=110000, highest=5)
-        // wait: NOT(0b001111) = 0b110000, highest bit = 5 -> len=5 -> esize=32
         // s = imms & 0x1F = 15, r = immr & 0x1F = 0
         // 16 ones = 0x0000FFFF, no rotation
         let val = decode_bitmask_imm(false, 0, 0b001111, false).unwrap();
