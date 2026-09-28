@@ -184,7 +184,14 @@ describe("shortcuts around the point of an exercise", () => {
   });
 
   it("count-by-sevens rejects a counter in x9, which printf may overwrite", async () => {
-    const inScratch = edit(solutionFor("count-by-sevens"), "define(i_r, x19)", "define(i_r, x9)");
-    expect((await grade(codingExercise("count-by-sevens"), inScratch)).pass).toBe(false);
+    // The broken loop prints until the 4 MiB output cap stops it, about 1.8
+    // million steps; the reference needs about 100. Both get the same short
+    // budget, so the reference passing proves the budget is not the reason.
+    const budget = 100_000;
+    const exercise = codingExercise("count-by-sevens");
+    const reference = solutionFor("count-by-sevens");
+    expect((await grade(exercise, reference, budget)).pass).toBe(true);
+    const inScratch = edit(reference, "define(i_r, x19)", "define(i_r, x9)");
+    expect((await grade(exercise, inScratch, budget)).pass).toBe(false);
   });
 });
