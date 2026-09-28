@@ -1,9 +1,6 @@
 // Decides which check.yml jobs a pull request needs from the files it
-// changes. .github/actions/changed-paths pipes `git diff --name-only -z` in
-// on stdin; pushes and the weekly run pass --all instead and test
-// everything. Prints a `classes=` line naming the path classes it saw, then
-// one `name=true|false` line per job group, and appends the same lines to
-// $GITHUB_OUTPUT when the runner sets it.
+// changes, read as `git diff --name-only -z` output on stdin. Pushes and
+// the weekly run pass --all and test everything.
 
 // Each file gets the class of the first rule it matches. A file no rule
 // matches counts as a workflow change, so a new kind of file runs every job
