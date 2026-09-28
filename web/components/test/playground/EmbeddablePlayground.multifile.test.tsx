@@ -1,9 +1,5 @@
-// The multi-file workspace contract at the component boundary: every
-// combined-string line the machine reports is numbered against the workspace
-// that was assembled, the gutter's own lines are re-anchored when a buffer
-// changes length, the decode strip sees the whole concatenation, tab names
-// cannot collide with each other or with main.asm, and a foreground terminal
-// session stands down when an assemble replaces the program under it.
+// The machine numbers lines across all the files joined into one text, so
+// every line number it reports has to be traced back to the right file.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
@@ -210,10 +206,9 @@ describe("multi-file line translation", () => {
     fireEvent.click(screen.getByRole("button", { name: "main.asm" }));
     expect(editorProps.current!.currentLine).toBeNull();
 
-    // Typing five more lines into main.asm re-numbers the combined string.
-    // Resolving line 14 against the live buffers would put the marker on
-    // main.asm line 14, moving the dot to another file because the student
-    // typed.
+    // Typing five more lines into main.asm shifts every later combined line.
+    // Mapping line 14 against the current text would put the marker on
+    // main.asm line 14, in another file, only because the student typed.
     act(() => {
       ref.current!.loadSource(`${MAIN}\nmov x2, 1\nmov x2, 2\nmov x2, 3\nmov x2, 4\nmov x2, 5`);
     });
@@ -251,7 +246,7 @@ describe("multi-file line translation", () => {
     ]);
   });
 
-  it("re-anchors gutter breakpoints when a buffer changes length", async () => {
+  it("keeps a breakpoint on its own line when an earlier file grows", async () => {
     seedFiles();
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
@@ -285,7 +280,7 @@ describe("multi-file line translation", () => {
     expect(remap(UTIL_COMBINED_LINE)).toBe(19);
   });
 
-  it("drops the dots of a helper file that was closed", async () => {
+  it("drops the breakpoints of a helper file that was closed", async () => {
     seedFiles();
     const hub: Hub = makeHub({ breakpoints: new Set([UTIL_COMBINED_LINE]) });
     useEmulatorMock.mockReturnValue(hub);
@@ -304,7 +299,7 @@ describe("multi-file line translation", () => {
 });
 
 describe("the decode strip in a multi-file workspace", () => {
-  it("reads the line under the pc out of the whole concatenation", async () => {
+  it("reads the line at the pc from all files joined, not main.asm alone", async () => {
     seedFiles();
     const hub: Hub = makeHub({ currentLine: UTIL_COMBINED_LINE });
     useEmulatorMock.mockReturnValue(hub);
@@ -319,14 +314,14 @@ describe("the decode strip in a multi-file workspace", () => {
 
     const props = decodeProps.current!;
     expect(props.currentLine).toBe(UTIL_COMBINED_LINE);
-    // Handed main.asm alone, line 14 indexes past its end and the gloss falls
-    // to its placeholder for every pc inside a helper.
+    // Given main.asm alone, line 14 is past its end, and the strip would show
+    // its placeholder whenever the pc is inside a helper.
     expect(props.source.split("\n")[UTIL_COMBINED_LINE - 1]).toBe(UTIL_LINE_3);
   });
 });
 
 describe("helper file names", () => {
-  it("refuses a tab that would shadow the editor's own buffer", async () => {
+  it("refuses a new tab named main.asm", async () => {
     const { container } = render(
       <EmbeddablePlayground chrome="full" startSource={MAIN} />,
     );
@@ -372,21 +367,21 @@ describe("helper file names", () => {
   });
 });
 
-describe("boot stdin seeds", () => {
-  it("drops a hard-loaded link's stdin in full chrome", async () => {
+describe("stdin given when the page opens", () => {
+  it("drops stdin that came with a link in full chrome", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const { container } = render(
       <EmbeddablePlayground chrome="full" startSource={MAIN} startStdin={"42\n"} />,
     );
     engage(container);
-    // A program that reads input must block at the read and pull the student
-    // to the console; a seed would re-feed itself after every assemble.
+    // A program that reads input must wait at the read and bring the student
+    // to the console; preset input would be fed in again after every assemble.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
-  it("keeps an authored seed in embed chrome", async () => {
+  it("keeps the page's preset stdin in embed chrome", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const { container } = render(
@@ -404,7 +399,7 @@ describe("terminal stdin and output bounds", () => {
     return terminalProps.current!;
   }
 
-  it("refuses a redirect that would push more than the stdin cap in one go", async () => {
+  it("refuses a redirect that would send more than the stdin limit at once", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const { container } = render(
@@ -419,7 +414,7 @@ describe("terminal stdin and output bounds", () => {
       result = await terminal.buildContext().runSource("mov x0, 1\nret\n", ["./prog"], huge);
     });
     // `./prog < bigfile` is one command that could hand the machine the whole
-    // 4 MiB VFS cap in a single push. The message is asserted as a literal:
+    // 4 MiB file-storage limit at once. The message is asserted as a literal:
     // comparing against validateStdin(huge) would also pass if the guard
     // returned null.
     expect(result!.stderr).toBe("stdin too large: the limit is 100 KiB");
@@ -439,14 +434,14 @@ describe("terminal stdin and output bounds", () => {
     await act(async () => {
       result = await terminal.buildContext().runSource("mov x0, 1\nret\n", ["./prog"]);
     });
-    // The tool assemble leaves the console alone, so the terminal must not
-    // replay what the editor already printed.
+    // The terminal's own assemble leaves the console alone, so the terminal
+    // must not replay what the editor's run already printed.
     expect(result!.stdout).toBe("");
   });
 });
 
-describe("a foreground terminal session under an assemble", () => {
-  it("stands down instead of running whatever replaced its program", async () => {
+describe("a terminal run when the student assembles again", () => {
+  it("stops instead of running the program that replaced its own", async () => {
     const blockedHub: Hub = makeHub({ programLoaded: true, blocked: true });
     useEmulatorMock.mockReturnValue(blockedHub);
     const { container, rerender } = render(
@@ -469,16 +464,16 @@ describe("a foreground terminal session under an assemble", () => {
         .current!.buildContext()
         .runProgram(["./prog"], undefined, io);
     });
-    // The drive starts the program once and then waits on the blocked read.
+    // The terminal session starts the program once and then waits at the read.
     await waitFor(() => expect(blockedHub.run).toHaveBeenCalledTimes(1));
     await act(async () => {
       await new Promise((resolve) => setTimeout(resolve, 100));
     });
     expect(blockedHub.run).toHaveBeenCalledTimes(1);
 
-    // Pressing Assemble drops the loaded flag while the backend works. The
-    // drive's resume latch must not fire into that window and set the freshly
-    // assembled program running with no user action.
+    // Pressing assemble clears programLoaded while the emulator works. The
+    // session must not resume in that gap and start the new program with no
+    // press from the student.
     const reassembling: Hub = makeHub({
       programLoaded: false,
       blocked: false,
