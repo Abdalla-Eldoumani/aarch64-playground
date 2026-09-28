@@ -1,11 +1,7 @@
-# This program will read a program file, convert it to a long json string.
-# Json String can be copied and pasted into the contents file in the web template.
-# Converted String is automatically copied to clipboard for convenience.
-# Install pyperclip module to copy the result to clipboard automatically
-# pip install pyperclip
-
-# A line starting with -- is ignored: -- marks a comment.
-# Anything between /" and "/ will be treated as a block and will be converted to a single line, with all newlines replaced by a space.
+# Turns a text file into one JSON string (newlines become \n) to paste into a
+# content file, and copies it to the clipboard (needs: pip install pyperclip).
+# Lines starting with -- are comments and are dropped. Text between /" and "/
+# is one block: its newlines become spaces.
 
 import re
 import pyperclip
@@ -33,13 +29,13 @@ def file_to_single_string(filename="to_json.txt"):
 
 
 if __name__ == "__main__":
-    filename = input("Enter directory of the file to convert (default: to_json.txt): ").strip()
+    filename = input("Enter the path of the file to convert (default: to_json.txt): ").strip()
     if not filename:
         filename = "to_json.txt"
     try:
         result = file_to_single_string(filename=filename)
         pyperclip.copy(result)
-        print(f"Successfully converted {filename} to a json single string and copied to clipboard.")
+        print(f"Converted {filename} to one JSON string and copied it to the clipboard.")
     except FileNotFoundError:
         print(f"Error: {filename} was not found.")
     except Exception as e:
