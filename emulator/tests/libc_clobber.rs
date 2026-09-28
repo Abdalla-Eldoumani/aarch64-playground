@@ -1,13 +1,8 @@
-//! Library calls leave caller-saved registers the way real ones do.
-//!
-//! On the servers, printf and every other library function may change
-//! x0-x18, v0-v7, v16-v31, the top half of v8-v15, and the flags, so a
-//! program that keeps a value in x9 across a call prints garbage there.
-//! These tests pin the same behaviour here: what gets overwritten, what
-//! survives (the return value and the callee-saved registers), and the
-//! one note a program earns by using a register or the flags a call left.
-//! Saving a register to memory or copying it into another is not a use:
-//! the note waits for the read that is, and then names the copy.
+//! Library calls leave registers the way real ones do: on the course
+//! servers printf or any other library call may change x0-x18, v0-v7,
+//! v16-v31, the top half of v8-v15, and the flags, so a value kept in x9
+//! across a call is lost. Using such a value earns one note; saving or
+//! copying it is not a use, so the note waits for the read that is.
 
 use aarch64_emulator::clobber_note_lines;
 use aarch64_emulator::cpu::{Cpu, READ_BY_CALL, READ_BY_INSTRUCTION, READ_BY_MAIN_RETURN};
