@@ -1,6 +1,6 @@
 // Pins the phone fallback editor (under 480px, Monaco is replaced by a
 // textarea plus a synced gutter): the gutter numbers every line of a real
-// program, follows the textarea's scroll, and commits a bounded number of
+// program, follows the textarea's scroll, and renders a bounded number of
 // buttons no matter how many lines the buffer carries.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -36,7 +36,7 @@ function gutterLines(): number[] {
 }
 
 /** jsdom gives every element a zero scrollTop and clientHeight, and a plain
- *  `value` descriptor is not writable, and the reveal has to write. */
+ *  `value` descriptor is read-only, but the reveal has to write scrollTop. */
 function makeScrollable(el: HTMLElement, clientHeight: number): void {
   let top = 0;
   Object.defineProperty(el, "scrollTop", {
