@@ -39,7 +39,7 @@ export const CREDIBILITY = {
   engineNote: "a hand-written Rust interpreter compiled to WebAssembly",
   // The host's analytics are cookieless aggregate counts; everything a
   // student writes stays in their browser.
-  privacyNote: "No accounts · cookieless visit counts only · programs stay in your browser",
+  privacyNote: "No accounts · visits counted without cookies · programs stay in your browser",
 } as const;
 
 export interface NavRoute {
