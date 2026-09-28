@@ -837,6 +837,7 @@ fn is_id_continue_char(c: char) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
 
     #[test]
     fn aggregate_expansion_is_bounded() {
@@ -1141,22 +1142,22 @@ mod tests {
 
     #[test]
     fn ifelse_is_rejected() {
-        assert!(expand("ifelse(1, 2, yes, no)\n").is_err());
+        rejects(expand("ifelse(1, 2, yes, no)\n"), "unsupported m4 construct: ifelse");
     }
 
     #[test]
     fn forloop_is_rejected() {
-        assert!(expand("forloop(i, 0, 5, foo)\n").is_err());
+        rejects(expand("forloop(i, 0, 5, foo)\n"), "unsupported m4 construct: forloop");
     }
 
     #[test]
     fn dnl_is_rejected() {
-        assert!(expand("dnl skip to end of line\n").is_err());
+        rejects(expand("dnl skip to end of line\n"), "unsupported m4 construct: dnl");
     }
 
     #[test]
     fn backtick_is_rejected() {
-        assert!(expand("mov x0, `foo'\n").is_err());
+        rejects(expand("mov x0, `foo'\n"), "unsupported m4 construct: backtick-quoted string");
     }
 
     #[test]
