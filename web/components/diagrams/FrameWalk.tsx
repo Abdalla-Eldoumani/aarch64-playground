@@ -1,20 +1,9 @@
 "use client";
 
 /**
- * Step-through frame walk for the calling-convention guide: the course
- * prologue and epilogue in seven steps. Each step highlights the line that
- * just executed (the debugger's amber current-line treatment via CodeBlock's
- * highlightLine), updates an sp/fp/lr strip, and redraws the frame bands the
- * way the course lays them out: the saved fp/lr pair at the lowest address
- * where fp points, locals above it at positive offsets like [fp, 16], the
- * caller's frame above that (verified against the Week 8 examples and the
- * assignment files, which address locals as [fp, 16] / [fp, 20]).
- *
- * Every state is authored data, not a simulation; the values match what the
- * emulator would do. Amber marks what the machine changed on this step; the
- * step buttons are the user acting (cyan). Bands render as dashed
- * placeholders before the frame opens so the layout never shifts. No
- * animation anywhere: the changed tint is a discrete state.
+ * The course prologue and epilogue in seven steps. Each state is written by
+ * hand to match the emulator; dashed bands hold the layout before the frame
+ * opens, so nothing shifts.
  */
 
 import { useState, type JSX, type KeyboardEvent } from "react";
