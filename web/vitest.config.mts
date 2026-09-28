@@ -3,8 +3,8 @@ import { defineConfig } from "vitest/config";
 // An .mts file: Vite's native config loader reads ESM syntax from a plain
 // .ts file as CommonJS and warns on every run, and web/package.json carries no
 // "type": "module" because Next's config and scripts sit beside it.
-// The generated bundles carry no tests of their own; the seven suites that
-// load the node bundle reach it through createRequire, not the include list.
+// The generated bundles carry no tests of their own; the suites that load
+// the node bundle reach it through createRequire, not the include list.
 const NEVER_TESTS = ["node_modules/**", "lib/wasm/**", "lib/wasm-node/**"];
 
 // The lib suites that read window, document, localStorage, or render with
