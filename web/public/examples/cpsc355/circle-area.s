@@ -1,4 +1,4 @@
-// FP Example 2: Circle Area Calculator
+// Floating-point Example 2: Circle Area Calculator
 // Read an integer radius, compute area = pi * r * r, print it.
 
 define(fp, x29)
@@ -10,7 +10,7 @@ alloc = -(16 + 16) & -16
 dealloc = -alloc
 
         .data
-pi_m:   .double 0r3.14159265358979      // 0r prefix: GAS syntax for a real literal
+pi_m:   .double 0r3.14159265358979      // 0r marks a floating-point constant for the GNU assembler
 
         .text
 fmt_scan:   .string "%d"
