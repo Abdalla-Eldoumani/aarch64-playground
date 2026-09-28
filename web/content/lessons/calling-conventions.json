@@ -2,7 +2,7 @@
   "title": "Subroutines: saved registers, pointers, and big arguments",
   "slug": "calling-conventions",
   "order": 22,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Keep the registers a caller counts on, hand back answers through pointers, pass a ninth argument on the stack, and return a large struct through x8.",
   "tags": [
     "subroutines",
@@ -20,7 +20,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Who may change which register\n\nA called function (the *callee*) and the function that called it (the *caller*) share the same 31 registers. The convention splits them into two groups.\n\nA *caller-saved* register is one the callee may change freely. If the caller still needs its value after the call, the caller has to keep the value somewhere safe first. A *callee-saved* register is one the callee must hand back holding exactly what it held on entry. The callee may use it, but only after storing the old value, and it must put that value back before `ret`.\n\n| Registers | Job | After a `bl` |\n|---|---|---|\n| `x0` to `x7` | arguments in, result out | may have changed |\n| `x8` | address for a large returned struct | may have changed |\n| `x9` to `x15` | temporaries | may have changed |\n| `x16`, `x17` | used by the linker between a call and its target | may have changed |\n| `x18` | reserved for the platform | do not use it |\n| `x19` to `x28` | values that must outlive a call | unchanged |\n| `x29` (`fp`), `x30` (`lr`) | frame pointer, return address | saved by the prologue |\n| `sp` | stack pointer | back where it was |\n\n`printf`, `scanf` and every other library function follow the same rules. That is the part that catches people: a call to `printf` may change any register from `x0` to `x18`, and on the servers it does. The playground does the same, so a program that breaks the rule fails here too."
+      "markdown": "## Who may change which register\n\nA called function (the *callee*) and the function that called it (the *caller*) share the same 31 registers. The convention splits them into two groups.\n\nA *caller-saved* register is one the callee may change freely. If the caller still needs its value after the call, the caller has to keep the value somewhere safe first. A *callee-saved* register is one the callee must hand back holding exactly what it held on entry. The callee may use it, but only after storing the old value, and it must put that value back before `ret`.\n\n| Registers | Job | After a `bl` |\n|---|---|---|\n| `x0` to `x7` | arguments in, result out | may have changed |\n| `x8` | address for a large returned struct | may have changed |\n| `x9` to `x15` | temporaries | may have changed |\n| `x16`, `x17` | used by the linker between a call and its target | may have changed |\n| `x18` | set aside for the operating system | do not use it |\n| `x19` to `x28` | values that must outlive a call | unchanged |\n| `x29` (`fp`), `x30` (`lr`) | frame pointer, return address | saved by the prologue (a function's opening lines) |\n| `sp` | stack pointer | back where it was |\n\n`printf`, `scanf` and every other library function follow the same rules. That is the part that catches people: a call to `printf` may change any register from `x0` to `x18`, and on the servers it does. The playground does the same, so a program that breaks the rule fails here too."
     },
     {
       "type": "callout",
@@ -29,7 +29,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Saving the callee-saved registers you use\n\nA function that wants `x19` and `x20` makes room for them in its frame, stores them right after the prologue, and loads them back right before the epilogue. The pair takes 16 bytes, so the frame grows by 16:"
+      "markdown": "## Saving the callee-saved registers you use\n\nA function that wants `x19` and `x20` makes room for them in its frame, stores them right after the prologue, and loads them back right before the epilogue (the closing lines that return). The pair takes 16 bytes, so the frame grows by 16:"
     },
     {
       "type": "code",
