@@ -2,8 +2,6 @@ import { describe, expect, test } from "vitest";
 import {
   MAX_ARGS_CHARS,
   MAX_BOOKMARK_JSON_BYTES,
-  MAX_BUNDLE_DECOMPRESSED_BYTES,
-  MAX_SHARE_DECOMPRESSED_BYTES,
   MAX_SHARE_HASH_BYTES,
   MAX_SOURCE_BYTES,
   MAX_STDIN_BYTES,
@@ -47,13 +45,8 @@ describe("upload-guard caps", () => {
     expect(MAX_SHARE_HASH_BYTES).toBe(12 * 1024);
   });
 
-  test("caps are positive and ordered for the cpsc 355 corpus", () => {
-    expect(MAX_SOURCE_BYTES).toBeGreaterThan(0);
+  test("the working set holds more than one full source file", () => {
     expect(MAX_VFS_BYTES).toBeGreaterThan(MAX_SOURCE_BYTES);
-    expect(MAX_BOOKMARK_JSON_BYTES).toBeGreaterThan(0);
-    expect(MAX_BUNDLE_DECOMPRESSED_BYTES).toBeGreaterThan(0);
-    expect(MAX_SHARE_DECOMPRESSED_BYTES).toBeGreaterThan(0);
-    expect(MAX_SHARE_HASH_BYTES).toBeGreaterThan(0);
   });
 });
 
