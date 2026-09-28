@@ -1,14 +1,12 @@
 //! qsort and bsearch: the libc calls that call back into the program.
 //!
-//! A comparator is the program's own code, so it has to run on the guest
-//! CPU, one step at a time, breakpoints and all. Each call here therefore
-//! does one comparison's worth of work at a time: it points x0 and x1 at
-//! the two elements, sets the link register to its own stub address, and
-//! answers `HostOutcome::Call(comparator)`. The comparator's `ret` lands
-//! back on the stub, which reads w0, moves the search along, and either
-//! asks for the next comparison or returns to the real caller. The work in
-//! progress lives here, host-side and in every snapshot, so step-back can
-//! rewind into the middle of a sort.
+//! A comparator is the program's own code, so it runs on the emulated CPU,
+//! one step at a time, breakpoints and all. Each call here does one
+//! comparison: it points x0 and x1 at two elements, sets the link register
+//! to its own stub, and answers `HostOutcome::Call(comparator)`. The
+//! comparator's `ret` lands back on the stub, which reads w0 and asks for
+//! the next comparison or returns to the caller. The state lives in every
+//! snapshot, so step-back can rewind into the middle of a sort.
 
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
