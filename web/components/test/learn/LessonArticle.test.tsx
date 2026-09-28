@@ -3,8 +3,8 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { slugify } from "@/lib/content/lesson-toc";
 import { readShareHash } from "@/lib/playground/share";
 
-// readShareHash returns a discriminated verdict; these tests only
-// care about the ok payload.
+// readShareHash can also report a failure; these tests only want the
+// decoded state.
 function okShareState(hash: string) {
   const r = readShareHash(hash);
   if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
@@ -90,10 +90,10 @@ describe("LessonArticle", () => {
     expect(precedes(editorLink, secondProse)).toBe(true);
   });
 
-  it("renders prose through the real LessonMarkdown (heading id matches the toc)", () => {
+  it("renders prose through the real LessonMarkdown (heading id matches the table of contents)", () => {
     const { container } = render(<LessonArticle lesson={fullLesson} />);
     // A real heading element with the slugified id proves LessonMarkdown ran,
-    // not a stub, and that its ids agree with the toc anchors.
+    // not a stub, and that its ids agree with the table of contents links.
     const heading = container.querySelector(`#${slugify("First Heading")}`);
     expect(heading).not.toBeNull();
     expect(heading?.tagName.toLowerCase()).toBe("h2");
@@ -189,7 +189,7 @@ describe("LessonArticle", () => {
     expect(embed.getAttribute("data-startargs")).toBe("1 2");
   });
 
-  it("builds the toc from the prose headings, linking to the matching ids", () => {
+  it("builds the table of contents from the prose headings, linking to the matching ids", () => {
     render(<LessonArticle lesson={fullLesson} />);
     const nav = screen.getByRole("navigation", { name: /on this page/i });
     const hrefs = within(nav)
@@ -199,7 +199,7 @@ describe("LessonArticle", () => {
     expect(hrefs).toContain(`#${slugify("Second Heading")}`);
   });
 
-  it("numbers the contents from 1, the way the figures are numbered", () => {
+  it("numbers each contents entry under the lesson number, starting at 1", () => {
     render(<LessonArticle lesson={fullLesson} sheetNumber="4.2" />);
     const nav = screen.getByRole("navigation", { name: /on this page/i });
     const labels = within(nav)
@@ -209,7 +209,7 @@ describe("LessonArticle", () => {
     expect(labels[1].startsWith("4.2.2")).toBe(true);
   });
 
-  it("forwards an in-cap author stdin to the embed", () => {
+  it("passes a lesson's stdin under the size cap to the embed", () => {
     const lesson: Lesson = {
       title: "Stdin",
       slug: "stdin-ok",
@@ -221,7 +221,7 @@ describe("LessonArticle", () => {
     expect(embed.getAttribute("data-startstdin")).toBe("small input");
   });
 
-  it("drops an author stdin that exceeds the cap rather than forwarding it", () => {
+  it("drops a lesson's stdin over the size cap instead of passing it on", () => {
     const oversize = "x".repeat(MAX_STDIN_BYTES + 1);
     const lesson: Lesson = {
       title: "Stdin",
