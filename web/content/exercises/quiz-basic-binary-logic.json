@@ -2,7 +2,7 @@
   "title": "Quiz: binary logic",
   "slug": "quiz-basic-binary-logic",
   "order": 72,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "binary-logic",
   "difficulty": "intro",
   "variant": "quiz",
@@ -17,7 +17,7 @@
         "By toggling every bit (the one's complement) and subtracting 1."
       ],
       "correctAnswer": 1,
-      "explanation": "Take the one's complement (toggle every bit), then add 1. AArch64 spells this neg xd, xm, which assembles as sub xd, xzr, xm.",
+      "explanation": "Take the one's complement (toggle every bit), then add 1. AArch64 spells this neg xd, xm, which assembles as sub xd, xzr, xm: a subtraction from xzr, the register that always reads as zero.",
       "hint": "It is a two-step process, and it starts by flipping every single bit."
     },
     {
@@ -53,7 +53,7 @@
         "bic"
       ],
       "correctAnswer": 1,
-      "explanation": "mvn xd, xm writes the complement of xm into xd, and it assembles as orn xd, xzr, xm. bic xd, xn, xm clears in xn the bits that are set in xm, and eon xd, xn, xm exclusive-ORs xn with the complement of xm, so both need two sources. mvn is the one-source form, and there is no scalar not mnemonic.",
+      "explanation": "mvn xd, xm writes the complement of xm into xd, and it assembles as orn xd, xzr, xm. bic xd, xn, xm clears in xn the bits that are set in xm, and eon xd, xn, xm exclusive-ORs xn with the complement of xm, so both need two sources. mvn is the one-source form, and these registers have no instruction named not.",
       "hint": "It stands for 'move NOT'."
     },
     {
