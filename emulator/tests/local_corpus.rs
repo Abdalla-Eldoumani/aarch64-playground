@@ -1,22 +1,9 @@
-//! Integration test: a folder of assembly programs kept outside the repo
-//! parses, links, and runs.
-//!
-//! Some good test programs cannot be committed because the repo has no
-//! right to share them. Point `LOCAL_CORPUS_DIR` at a folder of them and
-//! both tests walk every `.asm` and `.s` file under it: each must parse,
-//! and each must link through the hosted pipeline and run to a halt (or
-//! pause waiting on stdin, for the interactive ones).
-//!
-//! With the variable unset, both tests print a skip line and pass, so CI
-//! and fresh clones stay green. Set to a path that is not a folder, or to
-//! a folder with no programs in it, they fail, so a typo in the path
-//! cannot pass as a skip.
-//!
-//! Two kinds of file cannot run alone and are reported, not failed. A file
-//! with no `main` is a helper meant to be linked with another file: only
-//! choosing an entry point refuses, as the real linker would. A file that
-//! calls a function a `.c` file in the same folder defines needs that C
-//! half, which the emulator does not compile.
+//! Checks a folder of programs the repo has no right to share: point
+//! `LOCAL_CORPUS_DIR` at it and every `.asm` and `.s` file must parse, link
+//! and run. Unset, both tests skip and pass, so CI and fresh clones stay
+//! green; a path that is not a folder or holds no programs fails, so a typo
+//! cannot pass as a skip. A helper with no `main`, or a file that needs a C
+//! file beside it (the emulator does not compile C), is reported, not failed.
 
 use std::path::{Path, PathBuf};
 
@@ -119,8 +106,8 @@ fn every_local_corpus_program_links_and_runs() {
                         run_ok += 1;
                     }
                     Ok(_r) if cpu.is_blocked() => {
-                        // scanf stalled waiting for stdin, expected for
-                        // interactive programs, still counts as linking.
+                        // Waiting on scanf is what an interactive program
+                        // does, so it counts as a run that worked.
                         println!("RUN WAIT: {name} (paused for stdin)");
                         run_ok += 1;
                     }
