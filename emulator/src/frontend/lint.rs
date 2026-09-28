@@ -313,12 +313,9 @@ fn split_functions(text: &str) -> Vec<FunctionSegment> {
         }
         if rest.starts_with('.') {
             let lower = rest.to_ascii_lowercase();
-            // Deliberately its own prefix chain rather than the parser's
-            // DIRECTIVES table: `.section` always leaves .text here, even
-            // when it names `.section .text`, because the bare `.text`
-            // check runs first and `.section` never re-enters. The function
-            // segments this lint reports depend on that, so widening it to
-            // the parser's set would change which code gets linted.
+            // Its own prefix chain, not the parser's DIRECTIVES table:
+            // `.section` always leaves .text here, even `.section .text`,
+            // and the function segments this lint reports depend on that.
             if lower.starts_with(".text") {
                 in_text = true;
             } else if lower.starts_with(".data")
