@@ -1,15 +1,9 @@
 /**
- * Build-time, server-only lesson loader. The `node:fs` / `node:path` imports are
- * the server-only guard: Next refuses to bundle node built-ins into a Client
- * Component, so any `"use client"` module that imports this file is a build
- * error. That is an equivalent of `import "server-only"` without adding the
- * `server-only` package, which would break the no-new-deps fence and this
- * module's own unit test. Only server components import this; client renderers
- * receive already-validated lessons as props.
- *
- * Every file is validated by `validateLesson` at load. Invalid JSON or invalid
- * content throws an `Error` that names the offending file, so unvalidated
- * content can never reach a renderer.
+ * Build-time lesson loader. Importing node:fs keeps it server-only: Next will
+ * not bundle node built-ins into a client component, so a client import fails
+ * the build, without the `server-only` package that would break this module's
+ * unit test. A bad file throws with its name, so unchecked content never
+ * reaches a renderer.
  */
 
 import fs from "node:fs";
