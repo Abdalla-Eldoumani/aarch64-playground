@@ -61,7 +61,6 @@ describe("ArgsInput", () => {
   });
 
   it("restores saved args when a different source mounts", () => {
-    // Pre-populate the storage entry for source X
     window.localStorage.setItem(
       `aarch64-playground:args:${hashString("// prog X")}`,
       "saved value",
