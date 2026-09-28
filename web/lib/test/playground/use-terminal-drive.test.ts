@@ -477,7 +477,8 @@ describe("standing down", () => {
   });
 
   it("lets go when the pane it was driving goes away", async () => {
-    // A mobile pane switch unmounts the pane, which deregisters with null.
+    // A switch between the phone, tablet and laptop layouts unmounts the
+    // pane, which deregisters with null.
     // Without this the loop spun forever on a blocked program, holding the
     // console's stdin disabled and the snapshot ring paused.
     const machine = makeMachine();
