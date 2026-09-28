@@ -2,7 +2,7 @@
   "title": "Quiz: arrays and structures",
   "slug": "quiz-inter-arrays",
   "order": 88,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "arrays",
   "difficulty": "core",
   "variant": "quiz",
@@ -65,7 +65,7 @@
         "Java"
       ],
       "correctAnswer": 2,
-      "explanation": "Fortran walks down a column before moving across, so adjacent elements in memory share a column. C and C++ lay each row out contiguously instead, and a Java array of arrays keeps each row in its own block.",
+      "explanation": "Fortran walks down a column before moving across, so adjacent elements in memory share a column. C and C++ lay out each row as one unbroken block instead, and a Java array of arrays keeps each row in its own block.",
       "hint": "It is the older scientific language in the list."
     },
     {
@@ -77,7 +77,7 @@
         "ldr x20, [x22, x19, lsl 8], shifting by the element size in bytes."
       ],
       "correctAnswer": 2,
-      "explanation": "The register-offset form accepts an optional left shift, so lsl 3 multiplies the index by eight as part of computing the address. Shifting by the base-two logarithm of the element size replaces the multiply.",
+      "explanation": "The register-offset form accepts an optional left shift, so lsl 3 multiplies the index by eight as part of computing the address. Shifting left by k multiplies by 2^k, so a shift replaces the multiply whenever the element size is a power of two.",
       "hint": "Eight is two to the third power."
     },
     {
@@ -89,7 +89,7 @@
         "The assembler evaluates the expression and produces one constant."
       ],
       "correctAnswer": 3,
-      "explanation": "The expression is arithmetic on values the assembler already knows, so it is folded at assembly time and the instruction carries a single immediate. Naming the offsets costs nothing at run time.",
+      "explanation": "The expression is arithmetic on values the assembler already knows, so it is worked out at assembly time and the instruction carries a single constant. Naming the offsets costs nothing at run time.",
       "hint": "The translation step does the arithmetic before the program ever runs."
     },
     {
