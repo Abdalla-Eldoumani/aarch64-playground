@@ -1,16 +1,9 @@
 "use client";
 
 /**
- * The learn index: ruled datasheet rows ordered by metadata, with a labeled
- * search box, a tag filter, and empty + loading states. It receives
- * already-validated index rows as props from the server index page
- * (loadLessonIndex narrows each lesson to LessonIndexRow, leaving the body
- * unread) and renders every row field as plain React text
- * (auto-escaped), so there is no markdown/HTML injection path here.
- *
- * Each row leads with its sheet number `4.N` (the 1-based position in the
- * sorted order, stable under filtering), then the title and a quieter
- * description line, inside one bordered container with hairlines between rows.
+ * The learn index: numbered rows with a search box and a tag filter. Rows
+ * arrive already validated and render as plain React text, so there is no
+ * Markdown or HTML injection path here.
  */
 
 import { useId, useMemo, useState, type JSX } from "react";
