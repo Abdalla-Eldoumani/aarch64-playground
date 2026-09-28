@@ -8,9 +8,8 @@ interface NotFoundProps {
 }
 
 /**
- * The 404 sheet: a document rule announcing the missing sheet by its hex
- * address, the serif head, a mono gloss in the decode strip's voice (a
- * branch to a target that does not exist), and a primary route home.
+ * The hex address and the `b` line show the 404 as a branch to a target that
+ * does not exist, in the assembly voice the rest of the site uses.
  */
 export function NotFound({
   title = "page not found",
