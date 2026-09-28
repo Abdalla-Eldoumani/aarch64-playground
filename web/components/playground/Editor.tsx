@@ -406,8 +406,11 @@ export function Editor({
   const decorationsRef = useRef<string[]>([]);
   // Lint markers live in Monaco's marker system (owner "lint"), separate
   // from the decoration pipeline: markers give the yellow squiggle, the
-  // hover message, and the problems affordance for free.
-  useEffect(() => {
+  // hover message, and the problems affordance for free. The first lint of a
+  // page load often lands while Monaco is still loading, so the mount applies
+  // the latest warnings too, not only a change to them.
+  const lintRef = useRef(lintWarnings);
+  const applyLint = useCallback(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     const model = editor?.getModel();
@@ -415,7 +418,7 @@ export function Editor({
     monaco.editor.setModelMarkers(
       model,
       "lint",
-      lintWarnings.map((w) => ({
+      lintRef.current.map((w) => ({
         severity: monaco.MarkerSeverity.Warning,
         message: w.message,
         startLineNumber: w.line,
@@ -424,7 +427,11 @@ export function Editor({
         endColumn: model.getLineMaxColumn(Math.min(w.line, model.getLineCount())),
       })),
     );
-  }, [lintWarnings]);
+  }, []);
+  useEffect(() => {
+    lintRef.current = lintWarnings;
+    applyLint();
+  }, [lintWarnings, applyLint]);
   const [fallback, setFallback] = useState<boolean>(() => wantsTouchEditor());
   // Keep the latest format handler accessible from the Monaco command
   // (registered once at mount).
@@ -648,8 +655,9 @@ export function Editor({
       }
 
       updateDecorations();
+      applyLint();
     },
-    [onToggleBreakpoint, updateDecorations, onCursorChange]
+    [onToggleBreakpoint, updateDecorations, applyLint, onCursorChange]
   );
 
   useEffect(() => {
