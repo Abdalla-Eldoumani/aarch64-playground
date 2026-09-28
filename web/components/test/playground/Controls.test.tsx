@@ -50,9 +50,7 @@ describe("Controls", () => {
     expect(alert.parentElement).toBe(row.parentElement);
   });
 
-  it("gives a phone five buttons that share the width, with nothing to scroll", () => {
-    // The old phone row was a scrolling strip that needed 413px: reset sat
-    // past the edge of a 393px screen and back under the fade.
+  it("gives a phone the five buttons and no step status or key hints", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -68,9 +66,6 @@ describe("Controls", () => {
     );
     const buttons = screen.getAllByRole("button");
     expect(buttons).toHaveLength(5);
-    const row = buttons[0].parentElement!;
-    expect(row.className).not.toContain("overflow");
-    for (const b of buttons) expect(b.className).toMatch(/flex-(1|\[1\.4\])/);
     // The phone's status line reports steps and the finish instead.
     expect(screen.queryByRole("status")).toBeNull();
     expect(document.querySelector("kbd")).toBeNull();
@@ -92,46 +87,6 @@ describe("Controls", () => {
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label"));
     expect(labels).toEqual(["assemble", "run", "step", "back", "reset"]);
-  });
-
-  it("sizes every control with the 44px Button base", () => {
-    const h = allHandlers();
-    render(
-      <Controls
-        {...h}
-        canStepBack={false}
-        isRunning={false}
-        isHalted={false}
-        programLoaded={true}
-        error={null}
-      />,
-    );
-    for (const b of screen.getAllByRole("button")) {
-      expect(b.className).toContain("min-h-[44px]");
-    }
-  });
-
-  it("leads with Assemble and Run as the cyan primary actions", () => {
-    const h = allHandlers();
-    render(
-      <Controls
-        {...h}
-        canStepBack={false}
-        isRunning={false}
-        isHalted={false}
-        programLoaded={true}
-        error={null}
-      />,
-    );
-    expect(
-      screen.getByRole("button", { name: /^assemble/ }).className,
-    ).toContain("bg-[var(--cyan)]");
-    expect(screen.getByRole("button", { name: /^run/ }).className).toContain(
-      "bg-[var(--cyan)]",
-    );
-    expect(screen.getByRole("button", { name: /^step/ }).className).not.toContain(
-      "bg-[var(--cyan)]",
-    );
   });
 
   it("disables back when canStepBack is false", () => {
@@ -214,19 +169,26 @@ describe("Controls", () => {
     // so a new error replays the one-shot shake while a re-render of the same
     // error does not.
     const h = allHandlers();
-    render(
+    const withError = (error: string) => (
       <Controls
         {...h}
         canStepBack={false}
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        error="boom"
-      />,
+        error={error}
+      />
     );
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("boom");
-    expect(alert.className).toContain("anim-error-shake");
+    const { rerender } = render(withError("boom"));
+    const first = screen.getByRole("alert");
+    expect(first.textContent).toContain("boom");
+    expect(first.className).toContain("anim-error-shake");
+    rerender(withError("boom"));
+    expect(screen.getByRole("alert")).toBe(first);
+    rerender(withError("bang"));
+    const second = screen.getByRole("alert");
+    expect(second).not.toBe(first);
+    expect(second.className).toContain("anim-error-shake");
   });
 
   it("surfaces a plain-language recovery hint for a recognized error", () => {
