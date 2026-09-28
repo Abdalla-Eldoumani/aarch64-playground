@@ -1,9 +1,6 @@
-//! End-to-end contracts for the extended libc set: the string search /
-//! copy family, the character classes (called, and indexed through the
-//! table gcc lowers the macros to), strtol, calloc/realloc, the
-//! buffer-formatting printf family, and fgets/fputs over the standard
-//! streams. Everything drives the public pipeline: assemble_hosted ->
-//! load -> run_until_break, with stdout asserted byte for byte.
+//! The less common libc functions, run the way a student program runs
+//! them: assemble_hosted -> load -> run_until_break, with stdout compared
+//! byte for byte.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -286,8 +283,8 @@ at_eof:
         ret
 "#;
     let mut cpu = load(src);
-    // Pushed, not typed: no cooked-tty echo, so the output below is
-    // exactly what fputs wrote.
+    // Pushed, not typed, so nothing is echoed back and the output below
+    // is exactly what fputs wrote.
     cpu.push_stdin(b"alpha\nbeta\n");
     cpu.close_stdin();
     assert_eq!(run(&mut cpu), "alpha\nbeta\neof\n");
@@ -296,7 +293,7 @@ at_eof:
 #[test]
 fn ctype_conversion_tables_answer_like_the_functions() {
     // The mirror of the class-table case above, for the two conversion
-    // tables gcc lowers the `toupper`/`tolower` macros to. The byte
+    // tables gcc turns the `toupper`/`tolower` macros into. The byte
     // offsets are the ones 42_libc_map.O2.s uses: 388 is 4 * 'a', 260 is
     // 4 * 'A', and 212 is 4 * '5'. Values from csarm's ctype_tables probe.
     let src = r#"
@@ -428,15 +425,16 @@ main:
 const SORTED_OUTPUT: &str = "-3 -3 0 5 7 9\nfound 7 at 4, missing 0\n";
 
 /// qsort and bsearch call back into the program's comparator, which runs
-/// as ordinary guest code and returns to the library.
+/// like any other program code and returns to the library.
 #[test]
 fn qsort_and_bsearch_call_the_programs_comparator() {
     let mut cpu = load(SORT_AND_SEARCH);
     assert_eq!(run(&mut cpu), SORTED_OUTPUT);
 }
 
-/// The sort in progress lives host-side and rides in every snapshot, so
-/// stepping back out of a comparator and running on sorts the same way.
+/// The sort's progress lives in the emulator, not in program memory, and
+/// is saved with every step, so stepping back out of a comparator and
+/// running on sorts the same way.
 #[test]
 fn step_back_inside_a_comparator_resumes_the_same_sort() {
     let mut cpu = load(SORT_AND_SEARCH);
