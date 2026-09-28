@@ -96,10 +96,12 @@ and memory, and copies it or a link that reopens the program.
   the registers as you go.
 - The **term** tab is a terminal with the course workflow (`m4`, `gcc`,
   `./program`) and a small `gdb`. See [terminal.md](terminal.md).
-- The **watches** tab evaluates expressions such as `x0`, `*x0`,
-  `[fp, score1_s]`, and `arr[2]` each time the program stops. Name registers
-  directly (`w19`); an m4 alias such as `score1_r` is not understood there.
-  **memwatch** pins address ranges you name.
+- The **watches** tab evaluates expressions such as `x0`, `*x0`, and
+  `[fp, score1_s]` each time the program stops. A stack offset also takes an
+  index: `score1_s[1]` reads the 8 bytes at `fp + score1_s + 8`. Name
+  registers directly (`w19`). An m4 alias such as `score1_r` and a `.data`
+  label such as `fmt_prompt` are not understood there. **memwatch** pins
+  address ranges you name.
 - The **convert** tab shows one value as binary, octal, decimal, and hex,
   signed and unsigned, and as an IEEE-754 float at 32 or 64 bits. Click a bit
   to flip it.
