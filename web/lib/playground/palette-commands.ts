@@ -30,7 +30,7 @@ export type PaletteDeps = {
   formatSource: () => void;
   openShare: () => void;
   openShortcuts: () => void;
-  openTour: () => void;
+  openTutorials: () => void;
   openConverter: () => void;
   toggleTheme: () => void;
 };
@@ -150,10 +150,10 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       run: () => deps.openShare(),
     },
     {
-      id: "tutorial",
-      label: "Start guided tour",
-      description: "walk through a concept one step at a time",
-      run: () => deps.openTour(),
+      id: "tutorials",
+      label: "Tutorials",
+      description: "walk through an example program one step at a time",
+      run: () => deps.openTutorials(),
     },
     {
       id: "base-converter",
