@@ -27,7 +27,7 @@ interface Layout {
   ring: Box | null;
   card: Placement | null;
   hint?: string;
-  /** A modal dialog is up; the walkthrough waits under it. */
+  /** A modal dialog or a picker's list is up; the walkthrough waits under it. */
   hidden: boolean;
 }
 
@@ -123,7 +123,10 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   const sync = useCallback(() => {
     const card = cardRef.current;
     if (!card || mode.kind === "closed") return;
-    const hidden = document.querySelector('[aria-modal="true"]') !== null;
+    // A picker's open list is a sheet on a phone, and the card in the top
+    // layer would sit on its options. Found by the open trigger: Monaco keeps
+    // a hidden listbox in the page once its suggestions have shown.
+    const hidden = document.querySelector('[aria-modal="true"], [aria-haspopup="listbox"][aria-expanded="true"]') !== null;
     const targets = mode.kind === "offer" ? OFFER_TARGETS : WALKTHROUGH_STEPS[mode.step].targets;
     const found = hidden ? null : resolveTarget(targets);
     const view = { width: window.innerWidth, height: window.innerHeight };
