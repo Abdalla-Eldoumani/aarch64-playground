@@ -282,200 +282,57 @@ describe("WorkerClient init", () => {
 });
 
 describe("WorkerClient protocol round-trips", () => {
-  test("assemble posts source and args and resolves the result payload", async () => {
-    const { posted, fire, promise } = call((c) => c.assemble("mov x0, 1", ["alpha"]));
-    expect(posted[0]).toMatchObject({ kind: "assemble", source: "mov x0, 1", args: ["alpha"] });
-    const value = { result: { success: true, instruction_count: 1 }, snapshot: makeSnapshot() };
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toEqual(value);
-  });
-
-  test("stepBack posts stepBack and resolves the step result", async () => {
-    const { posted, fire, promise } = call((c) => c.stepBack());
-    expect(posted[0].kind).toBe("stepBack");
-    const value = {
-      stepResult: { pc: 0, halted: false, error: null, outcome: "advance", exitCode: null },
-      snapshot: makeSnapshot(),
-    };
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toEqual(value);
-  });
-
-  test("runUntilBreak posts the max step budget", async () => {
-    const { posted, fire, promise } = call((c) => c.runUntilBreak(1234));
-    expect(posted[0]).toMatchObject({ kind: "runUntilBreak", maxSteps: 1234 });
-    const value = {
-      runResult: { pc: 0, halted: true, steps_executed: 12, hit_breakpoint: false, error: null },
-      snapshot: makeSnapshot(),
-    };
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toEqual(value);
-  });
-
-  test("pause posts pause and resolves undefined", async () => {
-    const { posted, fire, promise } = call((c) => c.pause());
-    expect(posted[0].kind).toBe("pause");
-    fire({ id: posted[0].id, kind: "ok", value: null });
-    await expect(promise).resolves.toBeUndefined();
-  });
-
-  test("pushStdin posts text and resolves a snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.pushStdin("hi"));
+  // Each method must post its own kind with its arguments on the wire; the
+  // reply is only relayed. The methods that answer nothing resolve
+  // undefined whatever the worker's ok carries.
+  const data = new Uint8Array([4, 2]);
+  const ROWS: Array<{
+    name: string;
+    invoke: (c: WorkerClient) => Promise<unknown>;
+    wire: Record<string, unknown>;
+    voidReply?: true;
+  }> = [
+    { name: "assemble", invoke: (c) => c.assemble("mov x0, 1", ["alpha"]), wire: { kind: "assemble", source: "mov x0, 1", args: ["alpha"] } },
+    { name: "stepBack", invoke: (c) => c.stepBack(), wire: { kind: "stepBack" } },
+    { name: "runUntilBreak", invoke: (c) => c.runUntilBreak(1234), wire: { kind: "runUntilBreak", maxSteps: 1234 } },
+    { name: "pause", invoke: (c) => c.pause(), wire: { kind: "pause" }, voidReply: true },
     // A redirect: no echo, so the worker takes the silent queue.
-    expect(posted[0]).toMatchObject({ kind: "pushStdin", text: "hi", interactive: false });
-    const value = makeSnapshot();
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
+    { name: "pushStdin", invoke: (c) => c.pushStdin("hi"), wire: { kind: "pushStdin", text: "hi", interactive: false } },
+    { name: "pushStdin at a prompt", invoke: (c) => c.pushStdin("42\n", true), wire: { kind: "pushStdin", text: "42\n", interactive: true } },
+    { name: "takeStdout", invoke: (c) => c.takeStdout(), wire: { kind: "takeStdout" } },
+    { name: "takeStderr", invoke: (c) => c.takeStderr(), wire: { kind: "takeStderr" } },
+    { name: "getMemory", invoke: (c) => c.getMemory(0x1000, 8), wire: { kind: "getMemory", addr: 0x1000, len: 8 } },
+    { name: "getSnapshot", invoke: (c) => c.getSnapshot(), wire: { kind: "getSnapshot" } },
+    { name: "setBreakpoint", invoke: (c) => c.setBreakpoint(0x400010), wire: { kind: "setBreakpoint", addr: 0x400010 }, voidReply: true },
+    { name: "clearBreakpoint", invoke: (c) => c.clearBreakpoint(0x400010), wire: { kind: "clearBreakpoint", addr: 0x400010 }, voidReply: true },
+    { name: "saveState", invoke: (c) => c.saveState("chk1"), wire: { kind: "saveState", name: "chk1" } },
+    { name: "loadState", invoke: (c) => c.loadState("chk1"), wire: { kind: "loadState", name: "chk1" } },
+    { name: "deleteState", invoke: (c) => c.deleteState("chk1"), wire: { kind: "deleteState", name: "chk1" } },
+    { name: "listStates", invoke: (c) => c.listStates(), wire: { kind: "listStates" } },
+    { name: "uploadVfsFile", invoke: (c) => c.uploadVfsFile("notes.bin", data), wire: { kind: "uploadVfsFile", path: "notes.bin", data } },
+    { name: "listVfsFiles", invoke: (c) => c.listVfsFiles(), wire: { kind: "listVfsFiles" } },
+    { name: "readVfsFile", invoke: (c) => c.readVfsFile("notes.bin"), wire: { kind: "readVfsFile", path: "notes.bin" } },
+    { name: "deleteVfsFile", invoke: (c) => c.deleteVfsFile("notes.bin"), wire: { kind: "deleteVfsFile", path: "notes.bin" } },
+    { name: "resolveLabel", invoke: (c) => c.resolveLabel("main"), wire: { kind: "resolveLabel", name: "main" } },
+    { name: "clearConsole", invoke: (c) => c.clearConsole(), wire: { kind: "clearConsole" } },
+    { name: "codeBase", invoke: (c) => c.codeBase(), wire: { kind: "codeBase" } },
+    { name: "lineMap", invoke: (c) => c.lineMap(), wire: { kind: "lineMap" } },
+  ];
 
-  test("pushStdin carries the echo flag for a line typed at a prompt", async () => {
-    const { posted, fire, promise } = call((c) => c.pushStdin("42\n", true));
-    expect(posted[0]).toMatchObject({ kind: "pushStdin", text: "42\n", interactive: true });
-    const value = makeSnapshot();
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("takeStdout posts takeStdout and resolves the buffered text", async () => {
-    const { posted, fire, promise } = call((c) => c.takeStdout());
-    expect(posted[0].kind).toBe("takeStdout");
-    fire({ id: posted[0].id, kind: "ok", value: "out" });
-    await expect(promise).resolves.toBe("out");
-  });
-
-  test("takeStderr posts takeStderr and resolves the buffered text", async () => {
-    const { posted, fire, promise } = call((c) => c.takeStderr());
-    expect(posted[0].kind).toBe("takeStderr");
-    fire({ id: posted[0].id, kind: "ok", value: "err" });
-    await expect(promise).resolves.toBe("err");
-  });
-
-  test("getMemory posts addr and len and resolves the bytes", async () => {
-    const { posted, fire, promise } = call((c) => c.getMemory(0x1000, 8));
-    expect(posted[0]).toMatchObject({ kind: "getMemory", addr: 0x1000, len: 8 });
-    const value = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("getSnapshot posts getSnapshot and resolves the snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.getSnapshot());
-    expect(posted[0].kind).toBe("getSnapshot");
-    const value = makeSnapshot();
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("setBreakpoint posts the address and resolves undefined", async () => {
-    const { posted, fire, promise } = call((c) => c.setBreakpoint(0x400010));
-    expect(posted[0]).toMatchObject({ kind: "setBreakpoint", addr: 0x400010 });
-    fire({ id: posted[0].id, kind: "ok", value: null });
-    await expect(promise).resolves.toBeUndefined();
-  });
-
-  test("clearBreakpoint posts the address and resolves undefined", async () => {
-    const { posted, fire, promise } = call((c) => c.clearBreakpoint(0x400010));
-    expect(posted[0]).toMatchObject({ kind: "clearBreakpoint", addr: 0x400010 });
-    fire({ id: posted[0].id, kind: "ok", value: null });
-    await expect(promise).resolves.toBeUndefined();
-  });
-
-  test("saveState posts the name and resolves a snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.saveState("chk1"));
-    expect(posted[0]).toMatchObject({ kind: "saveState", name: "chk1" });
-    const value = makeSnapshot();
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("loadState posts the name and resolves ok plus snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.loadState("chk1"));
-    expect(posted[0]).toMatchObject({ kind: "loadState", name: "chk1" });
-    const value = { ok: true, snapshot: makeSnapshot() };
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toEqual(value);
-  });
-
-  test("deleteState posts the name and resolves ok plus snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.deleteState("chk1"));
-    expect(posted[0]).toMatchObject({ kind: "deleteState", name: "chk1" });
-    const value = { ok: false, snapshot: makeSnapshot() };
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toEqual(value);
-  });
-
-  test("listStates posts listStates and resolves the names", async () => {
-    const { posted, fire, promise } = call((c) => c.listStates());
-    expect(posted[0].kind).toBe("listStates");
-    fire({ id: posted[0].id, kind: "ok", value: ["a", "b"] });
-    await expect(promise).resolves.toEqual(["a", "b"]);
-  });
-
-  test("uploadVfsFile posts the path and data and resolves a snapshot", async () => {
-    const data = new Uint8Array([4, 2]);
-    const { posted, fire, promise } = call((c) => c.uploadVfsFile("notes.bin", data));
-    expect(posted[0]).toMatchObject({ kind: "uploadVfsFile", path: "notes.bin", data });
-    const value = makeSnapshot();
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("listVfsFiles posts listVfsFiles and resolves the paths", async () => {
-    const { posted, fire, promise } = call((c) => c.listVfsFiles());
-    expect(posted[0].kind).toBe("listVfsFiles");
-    fire({ id: posted[0].id, kind: "ok", value: ["f.bin"] });
-    await expect(promise).resolves.toEqual(["f.bin"]);
-  });
-
-  test("readVfsFile posts the path and resolves the bytes", async () => {
-    const { posted, fire, promise } = call((c) => c.readVfsFile("notes.bin"));
-    expect(posted[0]).toMatchObject({ kind: "readVfsFile", path: "notes.bin" });
-    const value = new Uint8Array([7, 8, 9]);
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("deleteVfsFile posts the path and resolves removed plus snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.deleteVfsFile("notes.bin"));
-    expect(posted[0]).toMatchObject({ kind: "deleteVfsFile", path: "notes.bin" });
-    const value = { removed: true, snapshot: makeSnapshot() };
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toEqual(value);
-  });
-
-  test("resolveLabel posts the name and resolves an address", async () => {
-    const { posted, fire, promise } = call((c) => c.resolveLabel("main"));
-    expect(posted[0]).toMatchObject({ kind: "resolveLabel", name: "main" });
-    fire({ id: posted[0].id, kind: "ok", value: 0x400000 });
-    await expect(promise).resolves.toBe(0x400000);
+  test.each(ROWS)("$name posts its request and settles on the matching reply", async (row) => {
+    const { posted, fire, promise } = call(row.invoke);
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatchObject(row.wire);
+    const reply = { relayed: row.name };
+    fire({ id: posted[0].id, kind: "ok", value: row.voidReply ? null : reply });
+    if (row.voidReply) await expect(promise).resolves.toBeUndefined();
+    else await expect(promise).resolves.toBe(reply);
   });
 
   test("resolveLabel resolves null for an unknown label", async () => {
     const { posted, fire, promise } = call((c) => c.resolveLabel("ghost"));
     fire({ id: posted[0].id, kind: "ok", value: null });
     await expect(promise).resolves.toBeNull();
-  });
-
-  test("clearConsole posts clearConsole and resolves a snapshot", async () => {
-    const { posted, fire, promise } = call((c) => c.clearConsole());
-    expect(posted[0].kind).toBe("clearConsole");
-    const value = makeSnapshot();
-    fire({ id: posted[0].id, kind: "ok", value });
-    await expect(promise).resolves.toBe(value);
-  });
-
-  test("codeBase posts codeBase and resolves the base address", async () => {
-    const { posted, fire, promise } = call((c) => c.codeBase());
-    expect(posted[0].kind).toBe("codeBase");
-    fire({ id: posted[0].id, kind: "ok", value: 0x400000 });
-    await expect(promise).resolves.toBe(0x400000);
-  });
-
-  test("lineMap posts lineMap and resolves the flat map", async () => {
-    const { posted, fire, promise } = call((c) => c.lineMap());
-    expect(posted[0].kind).toBe("lineMap");
-    fire({ id: posted[0].id, kind: "ok", value: [0x400000, 9] });
-    await expect(promise).resolves.toEqual([0x400000, 9]);
   });
 
   test("an ok response whose value is not a snapshot does not notify subscribers", async () => {
