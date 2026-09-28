@@ -41,8 +41,8 @@ const HEAD = [
 const TAIL = ["        mov     w0, 0", "        ldp     x29, x30, [sp], 16", "        ret", ""].join("\n");
 const withBody = (body: string, after = "") => `${HEAD}${body}\n${TAIL}${after}`;
 
-// The same programs the emulator's own parity test runs, each beside the
-// session gcc and the program printed on the course server.
+// The same programs the emulator's own parity test runs, each beside what
+// gcc and the program printed for it on the course server.
 const PARITY_DIR = path.join(process.cwd(), "../emulator/tests/error-parity");
 
 /** The line the server printed that the playground's message must open with. */
