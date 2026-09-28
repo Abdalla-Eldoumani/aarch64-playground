@@ -2,14 +2,9 @@ import { FEATURES } from "@/lib/content/landing-content";
 import { Kicker } from "@/components/ui/Kicker";
 
 /**
- * The capability listing: one ruled row per FEATURES entry, read like a
- * datasheet rather than a wall of cards. Each row is a mono glyph column (the
- * mnemonic) beside the capability and its one-line description, separated by
- * hairline rules: the same table grammar as the jump table above it, so the
- * landing reads as a listing. The rows are not interactive: no hover states, no
- * card chrome. The grid is count-agnostic (rows flow into two columns from lg
- * up), so adding a capability is one array entry whether the list holds three
- * rows or a dozen. Presentational: a server component, no hooks.
+ * Ruled rows rather than cards, so the landing reads as one listing. The rows
+ * are not interactive, so no hover states. The grid does not care about the
+ * count: a new capability is one FEATURES entry.
  */
 export function FeatureCatalog() {
   return (
