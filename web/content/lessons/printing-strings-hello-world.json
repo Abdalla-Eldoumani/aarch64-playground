@@ -2,7 +2,7 @@
   "title": "Printing a string with printf",
   "slug": "printing-strings-hello-world",
   "order": 5,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Store a string in .data, put its address in x0, and print it with printf.",
   "tags": [
     "printing"
@@ -15,7 +15,7 @@
     },
     {
       "type": "prose",
-      "markdown": "This lesson prints a string to standard output in assembly, which takes more work than a print statement in a high-level language. *Standard output* is the stream of text a program writes as it runs; in the playground it appears in the console.\n\nA high-level programming language provides built-in functions that allow programmers to easily display information on the standard output stream. The code below demonstrates this process in the C programming language using the `printf` function."
+      "markdown": "This lesson prints a string to standard output in assembly, which takes more work than a print statement in a high-level language. *Standard output* is the stream of text a program writes as it runs; in the playground it appears in the console.\n\nA high-level language has a built-in way to print. In C, it is the `printf` function:"
     },
     {
       "type": "code",
@@ -24,15 +24,15 @@
     },
     {
       "type": "prose",
-      "markdown": "The above code outputs the value passed to the `printf` function to the standard output stream. In this example, the string `\"Hello, World!\"` is passed as an argument to `printf`, causing it to be displayed on the screen.\n\nPrinting in assembly is not as simple. Several additional steps must be performed before data can be displayed on the standard output."
+      "markdown": "The string `\"Hello, World!\"` is passed to `printf` as an argument, and `printf` writes it to standard output.\n\nIn assembly, printing takes a few more steps."
     },
     {
       "type": "prose",
-      "markdown": "## The big picture\n\nPrinting in assembly can be achieved by calling the same C `printf` function. The first thing `printf` receives is its *format string*: the text to print, which can also hold placeholders for values (the next lesson covers those). To display a string on the standard output stream, the following steps must be performed:\n\n1. Store the string in a variable.\n2. Load the variable's address into the first argument register, `x0`.\n3. Call the `printf` function."
+      "markdown": "## The big picture\n\nAssembly prints by calling the same C `printf` function. The first thing `printf` receives is its *format string*: the text to print, which can also hold placeholders for values (the next lesson covers those). To print a string:\n\n1. Store the string in a variable.\n2. Load the variable's address into the first argument register, `x0`.\n3. Call the `printf` function."
     },
     {
       "type": "prose",
-      "markdown": "## Storing the string\n\nThe first step in printing a string in assembly is to store the string in a variable. In assembly, a *variable* is a label, a name followed by a colon, that marks where a value sits in memory. The `.data` directive starts the data section, the part of the program that holds values rather than instructions, and the `.string` directive stores the string there. The following code demonstrates this process:"
+      "markdown": "## Storing the string\n\nThe first step in printing a string in assembly is to store the string in a variable. In assembly, a *variable* is a label, a name followed by a colon, that marks where a value sits in memory. The `.data` directive starts the data section, the part of the program that holds values rather than instructions, and the `.string` directive stores the string there. The following code does this:"
     },
     {
       "type": "code",
@@ -45,7 +45,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Loading the address\n\nThe next step in printing a string in assembly is to load the variable's address into the appropriate register. This is done using the `ldr` instruction with an `=` in front of the label. An address is 64 bits wide, too wide for any immediate, so the assembler stores it in a small table next to the code, called the *literal pool*, and `ldr` loads it from there. The following code demonstrates this process:"
+      "markdown": "## Loading the address\n\nThe next step in printing a string in assembly is to load the variable's address into the appropriate register. This is done using the `ldr` instruction with an `=` in front of the label. An address is 64 bits wide, too wide for any immediate, so the assembler stores it in a small table next to the code, called the *literal pool*, and `ldr` loads it from there. The following code does this:"
     },
     {
       "type": "code",
@@ -58,7 +58,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Calling printf\n\nThe final step in printing a string in assembly is to call the `printf` function. This is done using the `bl` instruction, short for *branch with link*: it jumps to `printf` and stores the address of the next instruction in `lr` (`x30`), so `printf` knows where to come back to. The following code demonstrates this process:"
+      "markdown": "## Calling printf\n\nThe final step in printing a string in assembly is to call the `printf` function. This is done using the `bl` instruction, short for *branch with link*: it jumps to `printf` and stores the address of the next instruction in `lr` (`x30`), so `printf` knows where to come back to. The following code does this:"
     },
     {
       "type": "code",
@@ -67,7 +67,7 @@
     },
     {
       "type": "prose",
-      "markdown": "In the above code, the `printf` function from C is called using the `bl` instruction. The address of the `greeting` variable is passed as an argument to `printf`, causing it to be displayed on the standard output stream."
+      "markdown": "`bl` calls `printf`, which prints the string whose address is in `x0`."
     },
     {
       "type": "prose",
