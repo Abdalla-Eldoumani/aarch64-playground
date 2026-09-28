@@ -2,11 +2,11 @@
   "title": "Quiz: external data",
   "slug": "quiz-inter-external-data",
   "order": 103,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "external-data",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Where a program's data lives: the `.text`, `.data`, and `.bss` sections, the string pseudo-ops, and how `adrp` forms an address.",
+  "prompt": "Where a program's data lives: the `.text`, `.data`, and `.bss` sections, the string directives, and how `adrp` forms an address.",
   "questions": [
     {
       "question": "How does the adrp instruction compute the address it writes to its destination register?",
@@ -17,7 +17,7 @@
         "It multiplies the immediate by 4096 and adds it to the link register in x30."
       ],
       "correctAnswer": 0,
-      "explanation": "adrp shifts a signed 21-bit immediate left by 12 bits, adds it to the address of the instruction with the bottom 12 bits cleared to zero, and writes the result to the destination register. The low 12 bits of the target are then supplied by a following add or by the offset of a load or store.",
+      "explanation": "adrp starts from the pc (the address of the adrp itself) with its low 12 bits cleared, which is the start of a 4 KB page. It shifts its signed 21-bit immediate left 12 bits, adds that to the page start, and puts the sum in the destination register. A following add, or the offset of a load or store, supplies the low 12 bits of the target.",
       "hint": "The name means address of page, and a page here is 4 KB, which is what the bottom 12 bits cover."
     },
     {
@@ -33,7 +33,7 @@
       "hint": "Reserve the space with .skip, then ask yourself where the initial bytes would be written down."
     },
     {
-      "question": "What is the key difference between the .ascii and .string pseudo-ops?",
+      "question": "What is the key difference between the .ascii and .string directives?",
       "options": [
         ".ascii places its characters in read-only memory, while .string places them in read/write memory.",
         ".string stores 16-bit characters, while .ascii stores 8-bit characters.",
@@ -65,7 +65,7 @@
         "Zero, before any of the program's code runs."
       ],
       "correctAnswer": 3,
-      "explanation": "An object with static storage duration is zero initialized, so count starts at 0. An uninitialized static lands in .bss, which the loader zeroes, unlike a local variable on the stack, which starts with whatever was already there.",
+      "explanation": "A static variable with no initializer starts at zero, so count is 0. It lands in .bss, which the loader zeroes, unlike a local variable on the stack, which starts with whatever was already there.",
       "hint": "Where does an uninitialized static live, and what is that section's starting state?"
     }
   ]
