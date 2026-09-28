@@ -8,19 +8,9 @@ import { Button } from "@/components/ui/Button";
 import { PITFALLS } from "@/lib/content/pitfall-data";
 
 /**
- * The seven recurring CPSC 355 traps. Each card keeps the compact wrong/right
- * snippets (read-only CodeBlock, token accents, never color alone) and gains
- * the run-it-live affordance: "run the fault" seeds the complete faulty
- * program into the one shared EmbeddablePlayground and the student watches it
- * misbehave (a printed misalignment, a ret that chases its own tail, a
- * wild-address fault, a wrong sum), then "run the fix" swaps in the
- * corrected program. All content comes from lib/pitfall-data (scanned by the
- * course-style guard, behavior pinned on the emulator by its playground
- * test). One embed exists at a time, mounted on demand and dynamically
- * imported, so browsing the catalog loads no emulator and only one demo is
- * ever mounted. The fixed-height frame mounts only with the embed, so a
- * closed card costs no space and an open one never shifts layout. Discrete
- * state, no animation.
+ * The common course pitfalls, each with its wrong and right snippet and
+ * buttons that run the whole broken or fixed program. Only one embed mounts
+ * at a time, loaded on demand, so browsing the list loads no emulator.
  */
 
 // The emulator surface loads only when a demo is opened; the catalog page
