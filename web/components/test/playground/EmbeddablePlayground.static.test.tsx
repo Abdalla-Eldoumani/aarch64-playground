@@ -1,8 +1,5 @@
-// Pins the hero's static-editor configuration: the program is in the render
-// before the embed engages, the pre-engage frame is the SAME grid the engaged
-// frame is, the embed paints its panes before the hub finishes loading, full
-// chrome keeps its loading beat, and a static view asked for without readOnly
-// warns in development.
+// The landing page uses staticEditor so it never loads the code editor; its
+// frame must look the same before and after the first press, or the page jumps.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
@@ -56,7 +53,7 @@ afterEach(() => {
 });
 
 describe("EmbeddablePlayground staticEditor", () => {
-  it("renders the program before the embed engages, with no editor mount", () => {
+  it("shows the program before the first press, without mounting the editor", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
     );
@@ -67,7 +64,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByText("loading editor...")).toBeNull();
   });
 
-  it("paints the same grid areas before and after the embed engages", () => {
+  it("paints the same grid areas before and after the first press", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
     );
@@ -81,8 +78,8 @@ describe("EmbeddablePlayground staticEditor", () => {
       "embed-area-registers",
       "embed-area-console",
     ]);
-    // The panes are the real components, so this also pins that both render
-    // against no hub at all.
+    // The panes are the real components, so this also checks that both render
+    // with no emulator at all.
     expect(screen.getByRole("heading", { name: "regfile" })).toBeTruthy();
     expect(container.querySelector(".embed-area-editor")?.textContent).toContain(
       "mov",
@@ -96,12 +93,12 @@ describe("EmbeddablePlayground staticEditor", () => {
     );
   });
 
-  it("keeps the loading beat for an embed without the prop", () => {
+  it("still shows 'loading editor...' for an embed without staticEditor", () => {
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly />);
     expect(screen.getByText("loading editor...")).toBeTruthy();
   });
 
-  it("renders the embed's editor, registers, and console before the hub loads", () => {
+  it("renders the embed's editor, registers, and console before the emulator loads", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
@@ -110,14 +107,14 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByText("loading emulator...")).toBeNull();
     expect(container.querySelector(".embed-layout")).not.toBeNull();
     // The panes render their initial state rather than being withheld, so the
-    // frame's layout is the same before and after the hub arrives.
+    // frame's layout is the same before and after the emulator loads.
     expect(screen.getByRole("heading", { name: "regfile" })).toBeTruthy();
     expect(container.querySelector(".embed-area-console")?.textContent).toContain(
       "console",
     );
   });
 
-  it("still shows the loading beat for full chrome while the hub loads", () => {
+  it("still shows 'loading emulator...' in full chrome while the emulator loads", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(<EmbeddablePlayground chrome="full" startSource={SRC} />);
     expect(screen.getByText("loading emulator...")).toBeTruthy();
@@ -134,7 +131,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     warn.mockRestore();
   });
 
-  it("does not warn when the pair is passed as intended", () => {
+  it("does not warn when staticEditor comes with readOnly", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
