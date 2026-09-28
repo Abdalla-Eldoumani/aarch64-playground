@@ -1,8 +1,7 @@
 # Terminal pane
 
-An xterm.js shell that runs alongside the standard console. Open it from
-the terminal tab on the right-side tab strip (desktop and tablet) or the
-bottom tab strip (mobile). The console tab is unchanged; pick whichever
+A small shell in the playground, beside the console. Open the **term** tab
+(on a phone, **terminal**). The console still works as before; use whichever
 fits the task.
 
 ## Commands
@@ -36,16 +35,11 @@ follows the terminal modes a real tty would apply:
   no echo: it draws its own screen.
 - Ctrl+C stops the program and returns the prompt.
 
-Terminal-first examples (snake, the data structures visualizer, calc,
-temp-convert, two-sum, deadzone) take the pane over from the run button
-too when their run-mode control is set to terminal: run
-switches to the term tab, clears the screen, and starts the session. The
-menu-driven ones are declared terminal-first up front; the raw-mode ones
-claim the pane the moment they switch the terminal over. Step-back is
-paused during a live session and comes back when it ends, and the decode
-strip keeps its usual bit-field view: the external-call card belongs to
-paused stepping, and it points at the console, which is not where a live
-session's keystrokes go.
+Six examples (snake, the data structures visualizer, calc, temp-convert,
+two-sum, and deadzone) can run in the terminal: set the `console | terminal`
+switch in the header to terminal, and **run** opens the term tab, clears it,
+and starts the program there. Step back is off while such a session runs and
+comes back when it ends.
 
 Calc, temp-convert, and two-sum each carry a second, plain-text face:
 `./program console` here answers a line at a time with no colour or
@@ -112,7 +106,7 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
-| `gdb x/Ni $pc` | Show N words of memory at the current PC (N capped at 1024). |
+| `gdb x/Ni $pc` | Show N words of memory at the PC, or at the address in a register (`$x0`). N is at most 1024. |
 | `gdb bt` | One-frame backtrace at the current PC. |
 
 ## Input handling
@@ -121,8 +115,13 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 - Tab completion: completes against the VFS file list. A unique prefix expands; an ambiguous one lists candidates.
 - Paste: multi-line clipboard pastes split on any line-break style (`\r\n`, `\r`, or `\n`), and each line submits as a separate command.
 
-## Implementation
+Quoting works as it does in the **args** box: `"two words"` is one argument.
+Only a bare `<` or `>` redirects; a quoted `">"` or an escaped `\>` is an
+ordinary argument.
 
-- `web/lib/terminal/dispatch.ts` parses each command line and routes it to a handler. It reuses the shell-style tokenizer in `web/lib/playground/args.ts`, so quoting works the same as the args input. Redirection follows shell rules: only a bare `<` or `>` redirects, while a quoted `">"` or escaped `\>` stays a literal argument.
-- `web/lib/terminal/input-state.ts` is a pure class for the buffer, cursor, history, and tab completion, unit-tested without xterm.
-- `web/components/panels/TerminalPane.tsx` wraps `@xterm/xterm` and `@xterm/addon-fit` and writes each dispatch result back to the terminal. It is lazy-loaded so the xterm bundle ships only when the term tab is opened.
+## Where the code lives
+
+`web/lib/terminal/dispatch.ts` reads each command line and runs it.
+`web/lib/terminal/input-state.ts` holds the line being typed, the history, and
+tab completion. `web/components/panels/TerminalPane.tsx` draws the terminal
+with xterm.js, which loads only when the tab is first opened.
