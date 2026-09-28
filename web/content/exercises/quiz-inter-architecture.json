@@ -2,7 +2,7 @@
   "title": "Quiz: system architecture",
   "slug": "quiz-inter-architecture",
   "order": 69,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "architecture",
   "difficulty": "core",
   "variant": "quiz",
@@ -12,7 +12,7 @@
       "question": "Which of the following describes a key characteristic of a von Neumann architecture compared to a Harvard architecture?",
       "options": [
         "A von Neumann architecture uses a single accumulator.",
-        "A von Neumann architecture is only possible on a RISC machine.",
+        "A von Neumann architecture is only possible on a RISC (reduced instruction set) machine.",
         "In a von Neumann architecture, RAM holds both the program and its data.",
         "A von Neumann architecture completes every instruction in one cycle."
       ],
@@ -23,13 +23,13 @@
     {
       "question": "How do load/store machines differ from accumulator machines when accessing RAM?",
       "options": [
-        "Load/store machines put every ALU result into the accumulator before storing it.",
-        "Only load and store instructions reach RAM, while every other instruction operates on the register file.",
-        "Load/store machines perform arithmetic directly on operands that stay in primary memory, with no register file at all.",
+        "Load/store machines put every ALU (arithmetic logic unit) result into the accumulator before storing it.",
+        "Only load and store instructions reach RAM, while every other instruction operates on registers.",
+        "Load/store machines perform arithmetic directly on operands that stay in RAM, with no registers at all.",
         "Load/store machines bypass the control unit when transferring data."
       ],
       "correctAnswer": 1,
-      "explanation": "On a load/store machine only the load and store instructions reach memory, and everything else works on the register file. That is why AArch64 code loads a value with ldr, computes on it in registers, then writes it back with str.",
+      "explanation": "On a load/store machine only the load and store instructions reach memory, and everything else works on registers. That is why AArch64 code loads a value with ldr, computes on it in registers, then writes it back with str.",
       "hint": "The name is the clue: those are the only two operations allowed to touch memory."
     },
     {
@@ -85,7 +85,7 @@
       "options": [
         "Into a destination register named by the instruction",
         "Into the accumulator",
-        "Directly into primary memory",
+        "Directly into memory (RAM)",
         "Into the status register"
       ],
       "correctAnswer": 1,
