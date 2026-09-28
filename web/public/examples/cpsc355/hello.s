@@ -9,7 +9,7 @@ define(lr, x30)
 
         .text
 msg:    .string "Hello from a system call!\n"
-msg_len = . - msg - 1           // -1 drops the .string NUL
+msg_len = . - msg - 1           // -1 leaves out the zero byte .string adds
 
         .balign 4
         .global main
