@@ -18,10 +18,8 @@ function subscribe(callback: () => void): () => void {
 }
 
 /**
- * One-line status strip that appears at the top of the page when the
- * browser reports offline. Renders nothing when online. The service
- * worker keeps the app shell + examples cached and the emulator runs
- * fully in the browser, so the playground keeps working offline.
+ * The emulator runs in the browser and the service worker serves what a
+ * visit already fetched, so going offline is news, not an error.
  */
 export function OfflineBadge() {
   // Default to online for the SSR snapshot so hydration matches the
