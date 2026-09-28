@@ -1,6 +1,6 @@
-// Pins the wait the lazy surfaces put beside their chunk import: it follows
-// document.fonts.ready when the page has it, gives up at the limit when the
-// fonts never settle, and never blocks where there is no font set at all.
+// The lazy editor and chrome wait on this so a late font swap cannot move
+// them after they mount: it follows document.fonts.ready, gives up at the
+// limit when the fonts never settle, and never blocks with no font set.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { fontsSettled } from "@/components/playground/fonts-settled";
