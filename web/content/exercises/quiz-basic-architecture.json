@@ -2,7 +2,7 @@
   "title": "Quiz: system architecture",
   "slug": "quiz-basic-architecture",
   "order": 68,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "architecture",
   "difficulty": "intro",
   "variant": "quiz",
@@ -33,7 +33,7 @@
       "hint": "One kind of memory needs power to hold its contents, the other does not."
     },
     {
-      "question": "In the context of computer architectures, what does the acronym RISC stand for?",
+      "question": "In computer architecture, what does RISC stand for?",
       "options": [
         "Rapid Integrated System Controller",
         "Random Internal Storage Cache",
@@ -50,14 +50,14 @@
         "From secondary memory, such as a disk drive, into the ALU",
         "From the system bus, which holds instructions between cycles",
         "From the arithmetic logic unit, which produces the next instruction",
-        "From primary memory, into the instruction register (IR)"
+        "From RAM, into the instruction register (IR)"
       ],
       "correctAnswer": 3,
       "explanation": "The fetch step uses the address in the program counter to read the next instruction out of primary memory and copies it into the instruction register, where the decode step can look at it. Secondary storage is far too slow to be read once per instruction.",
       "hint": "Instructions live in RAM and have to reach a register inside the CPU before they can be decoded."
     },
     {
-      "question": "In an AArch64 GAS source file, how is a comment appended to the end of an instruction line?",
+      "question": "In an AArch64 assembly file, how do you add a comment at the end of an instruction line?",
       "options": [
         "After a // delimiter",
         "After an @ delimiter",
