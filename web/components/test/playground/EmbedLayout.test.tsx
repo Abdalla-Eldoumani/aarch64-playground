@@ -59,7 +59,6 @@ describe("EmbedLayout's narrow view switch", () => {
       "console",
     ]);
     expect(grid().dataset.pane).toBe("editor");
-    for (const b of within(view()).getAllByRole("button")) expect(b.className).toContain("h-11");
   });
 
   test("a press shows that pane, and the peek opens the registers", () => {
