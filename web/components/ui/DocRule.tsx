@@ -1,18 +1,16 @@
 /**
- * Document rule: the datasheet header strip at the top of every reading
- * surface. Mono, uppercase, tertiary ink over a hairline. The segments name
- * the product, the sheet, and its context, with the section segment in amber
- * (the machine pole carries the sheet number, as on a real datasheet).
- * On phones the strip collapses to the product code alone so it never wraps.
+ * The small header strip at the top of each reading page: the site name, a
+ * section label in amber, and a context label on the right. Phones show only
+ * the short name so the strip never wraps.
  */
 export function DocRule({
   section,
   context,
   className = "",
 }: {
-  /** Sheet identifier, e.g. "SECTION 4 · LEARN"; rendered amber. */
+  /** Section label, e.g. "learn"; rendered amber. */
   section?: string;
-  /** Right-aligned context, e.g. "CPSC 355 STUDY AID". */
+  /** Right-aligned context, e.g. "cpsc 355 study aid". */
   context?: string;
   className?: string;
 }) {
