@@ -144,8 +144,8 @@ function BundleDialog({
         )}
         {ready && ready.link === null && (
           <p className="text-[11px] text-[var(--text-secondary)] mt-2">
-            this program is too large for a link. export it with the .json button in the header
-            and send the file with the report.
+            this program is too large for a link. save it with export, then workspace .json, and
+            send that file with the report.
           </p>
         )}
         <p role="status" className="text-[11px] min-h-[1.25rem] mt-2 text-[var(--text-secondary)]">
