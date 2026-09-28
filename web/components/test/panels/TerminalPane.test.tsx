@@ -13,6 +13,7 @@ const instances = vi.hoisted(
       dispose: ReturnType<typeof vi.fn>;
       keyCb: KeyHandler | null;
       dataCb: DataHandler | null;
+      options: { theme?: { background?: string } };
     }>,
 );
 vi.mock("@xterm/xterm", () => ({
@@ -21,7 +22,9 @@ vi.mock("@xterm/xterm", () => ({
     dispose = vi.fn();
     keyCb: KeyHandler | null = null;
     dataCb: DataHandler | null = null;
-    constructor() {
+    options: Record<string, unknown>;
+    constructor(options: Record<string, unknown> = {}) {
+      this.options = { ...options };
       instances.push(this as never);
     }
     open() {}
@@ -106,6 +109,27 @@ describe("TerminalPane", () => {
     rerender(<TerminalPane buildContext={() => makeContext()} />);
     expect(instances).toHaveLength(1);
     expect(instances[0].dispose).not.toHaveBeenCalled();
+  });
+
+  it("opens in the site's theme and follows a switch until it unmounts", async () => {
+    // The backgrounds each theme's terminal sits on (--bg-base per theme).
+    document.documentElement.setAttribute("data-theme", "light");
+    try {
+      const { unmount } = render(<TerminalPane buildContext={() => makeContext()} />);
+      const term = instances[0];
+      expect(term.options.theme?.background).toBe("#FFFFFF");
+      document.documentElement.setAttribute("data-theme", "high-contrast");
+      await vi.waitFor(() => expect(term.options.theme?.background).toBe("#000000"));
+      document.documentElement.setAttribute("data-theme", "dark");
+      await vi.waitFor(() => expect(term.options.theme?.background).toBe("#0B0C10"));
+      unmount();
+      // Gone from the page, it stops listening.
+      document.documentElement.setAttribute("data-theme", "light");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(term.options.theme?.background).toBe("#0B0C10");
+    } finally {
+      document.documentElement.removeAttribute("data-theme");
+    }
   });
 
   it("submits each line of a paste as its own command, xterm \\r endings included", async () => {
