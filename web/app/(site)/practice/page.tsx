@@ -22,13 +22,13 @@ export default function PracticePage() {
   const exercises = loadExerciseIndex();
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
-      <DocRule section="sheet 05 · practice" context="cpsc 355 study aid" className="mb-8" />
+      <DocRule section="practice" context="cpsc 355 study aid" className="mb-8" />
       <Kicker number="05" title="practice" className="mb-5" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
         Exercises
       </h1>
       <p className="mt-4 max-w-2xl text-[var(--text-secondary)] [font:var(--type-lead)]">
-        Coding exercises on the left, checked by running your program against expected behavior rather than a stored solution. Theory sets on the right, graded on the page. Both follow the course from the first week to the last.
+        In a coding exercise, Check runs your program and compares its result with what the exercise asks for. Theory sets are quizzes and short questions, graded on the page. Both follow the course from the first week to the last.
       </p>
       <div className="mt-10">
         <ExerciseIndex exercises={exercises} />
