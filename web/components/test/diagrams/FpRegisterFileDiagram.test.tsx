@@ -7,7 +7,7 @@ afterEach(() => {
 });
 
 describe("FpRegisterFileDiagram", () => {
-  it("renders the three ABI role bands edge to edge", () => {
+  it("renders the first and last register of each of the three role bands", () => {
     render(<FpRegisterFileDiagram />);
     // The footer prose also names d0/s0, so match within the cell list.
     for (const reg of ["d0", "d7", "d8", "d15", "d16", "d31"]) {
@@ -20,9 +20,9 @@ describe("FpRegisterFileDiagram", () => {
     for (const sview of ["s0", "s8", "s15", "s31"]) {
       expect(screen.getAllByText(sview).length).toBeGreaterThanOrEqual(1);
     }
-    // The cells stay in s/d; the vector width is named once in the footer, as
-    // the playground's reach rather than the course's, with the callee-saved
-    // promise pinned to bits 63:0 of v8-v15.
+    // The cells show only s and d. The footer names the full vector width once,
+    // as something the playground covers beyond the course, and says a call
+    // keeps only bits 63:0 of v8-v15.
     const text = container.textContent ?? "";
     expect(text).toContain("the vector file as well");
     expect(text).toContain("while the course keeps to");
