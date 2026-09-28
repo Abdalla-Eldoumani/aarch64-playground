@@ -5,7 +5,7 @@
 // assemble's machine reset. Embed chrome never touches the store. The
 // persistence module is mocked; its own IDB behavior is pinned in
 // lib/vfs-persist.test.ts.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import type { ReactNode } from "react";
@@ -103,6 +103,13 @@ async function openTerminal(): Promise<NonNullable<typeof terminalProps.current>
   await waitFor(() => expect(terminalProps.current).not.toBeNull());
   return terminalProps.current!;
 }
+
+// The full chrome's surface arrives through a dynamic import. Transforming
+// it the first time took about half a second, which the first test's
+// one-second waitFor had to absorb and, on a loaded machine, did not.
+beforeAll(async () => {
+  await import("@/components/playground/FullChromeSurface");
+});
 
 beforeEach(() => {
   useEmulatorMock.mockReturnValue(makeHub());
