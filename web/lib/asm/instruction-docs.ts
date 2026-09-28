@@ -1,8 +1,7 @@
 /**
- * Short hover-card content for every instruction the playground
- * understands, written in the cpsc 355 course voice. Monaco's hover
- * provider looks these up by upper-cased mnemonic; condition-code
- * variants (`B.EQ`, `B.NE`, ...) collapse onto the `B.cond` entry.
+ * Hover-card text for every instruction the playground understands, looked up
+ * by upper-cased mnemonic; condition variants (`B.EQ`, `B.NE`, ...) share the
+ * `B.COND` entry.
  */
 export interface InstructionDoc {
   /** Short one-line summary. */
@@ -18,7 +17,7 @@ export interface InstructionDoc {
 }
 
 const BCOND_NOTE =
-  "Conditional branch. NZCV set by an earlier `CMP`/`SUBS`/`ADDS`/`ANDS`/`TST`.";
+  "Reads the NZCV condition flags that an earlier `CMP`/`SUBS`/`ADDS`/`ANDS`/`TST` set.";
 
 export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   MOV: {
@@ -40,7 +39,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   },
   MOVN: { summary: "Move wide bitwise-NOT of immediate.", example: "movn x0, #0" },
   ADD: { summary: "Rd = Rn + Rm/imm. No flags.", example: "add x0, x1, x2" },
-  ADDS: { summary: "Rd = Rn + Rm/imm, sets NZCV." },
+  ADDS: { summary: "Rd = Rn + Rm/imm, and sets the NZCV condition flags." },
   SUB: { summary: "Rd = Rn - Rm/imm. No flags." },
   SUBS: { summary: "Rd = Rn - Rm/imm, sets NZCV (the basis of `CMP`)." },
   CCMP: {
@@ -245,7 +244,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   BL: {
     summary: "Branch with link; writes return address to X30.",
     details: [
-      "When the target is a host stub the linker rewrites this to hop through a trampoline in .text so the imm26 offset stays in range.",
+      "For `bl printf` and the other C library calls, the linker sends the branch through a short jump in .text, because the playground's library code sits beyond `BL`'s ±128 MiB reach.",
     ],
   },
   BR: { summary: "Branch to address in Xn." },
@@ -261,9 +260,9 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   TBZ: { summary: "Test-bit-and-branch if bit is clear.", example: "tbz w0, #0, even" },
   TBNZ: { summary: "Test-bit-and-branch if bit is set." },
   SVC: {
-    summary: "Supervisor call. With `#0` dispatches on `x8`.",
+    summary: "Supervisor call (a system call): `svc #0` runs the call whose number is in `x8`.",
     details: [
-      "Hosted syscall numbers: 63 read, 64 write, 93 exit, 56 openat, 57 close, 62 lseek.",
+      "System calls the playground handles: 63 read, 64 write, 93 exit, 56 openat, 57 close, 62 lseek.",
       "`SVC #N` with `N != 0` halts the CPU.",
     ],
   },
@@ -446,7 +445,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   SHSUB: { summary: "Signed halving subtract, the same extra bit.", example: "shsub v3.8b, v7.8b, v21.8b" },
   UHSUB: { summary: "Unsigned halving subtract.", example: "uhsub v3.8b, v7.8b, v21.8b" },
   SQDMULH: { summary: "Saturating doubling multiply, high half: `(2 * Vn * Vm) >> esize`.", example: "sqdmulh v3.4h, v7.4h, v21.4h" },
-  SQRDMULH: { summary: "The rounding form: half an ulp is added before the shift.", example: "sqrdmulh v3.4h, v7.4h, v21.4h" },
+  SQRDMULH: { summary: "The rounding form: `1 << (esize - 1)` is added before the shift.", example: "sqrdmulh v3.4h, v7.4h, v21.4h" },
   // advanced simd: max, min and across lanes
   SMAX: { summary: "Signed larger of each lane pair.", example: "smax v3.8b, v7.8b, v21.8b" },
   SMIN: { summary: "Signed smaller.", example: "smin v3.8b, v7.8b, v21.8b" },
@@ -516,7 +515,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   UABAL2: { summary: "The unsigned upper-half form.", example: "uabal2 v3.8h, v7.16b, v21.16b" },
   ADDHN: { summary: "Add at the SOURCE width and keep the HIGH half of each sum; the low half is discarded.", example: "addhn v3.8b, v7.8h, v21.8h" },
   ADDHN2: { summary: "The same sums written into the UPPER half of the destination, the low half untouched.", example: "addhn2 v3.16b, v7.8h, v21.8h" },
-  RADDHN: { summary: "Rounding: half an ulp of the kept half (bit `esize - 1` of the sum) is added before the top half is taken.", example: "raddhn v3.8b, v7.8h, v21.8h" },
+  RADDHN: { summary: "Rounding: `1 << (esize - 1)` is added to the sum before the top half is taken.", example: "raddhn v3.8b, v7.8h, v21.8h" },
   RADDHN2: { summary: "The rounding upper-half form.", example: "raddhn2 v3.16b, v7.8h, v21.8h" },
   SUBHN: { summary: "The difference's high half.", example: "subhn v3.8b, v7.8h, v21.8h" },
   SUBHN2: { summary: "The upper-half form.", example: "subhn2 v3.16b, v7.8h, v21.8h" },
@@ -565,13 +564,13 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   UXTL2: { summary: "The upper-half zero-extending alias.", example: "uxtl2 v3.8h, v7.16b" },
   SHRN: { summary: "Shift each source lane right, then truncate into a lane of half the width.", example: "shrn v3.8b, v7.8h, #3" },
   SHRN2: { summary: "The results in the UPPER half of the destination, the low half untouched.", example: "shrn2 v3.16b, v7.8h, #3" },
-  RSHRN: { summary: "Rounding: half an ulp is added before the shift.", example: "rshrn v3.8b, v7.8h, #3" },
+  RSHRN: { summary: "Rounding: `1 << (shift - 1)` is added before the shift.", example: "rshrn v3.8b, v7.8h, #3" },
   RSHRN2: { summary: "The rounding upper-half form.", example: "rshrn2 v3.16b, v7.8h, #3" },
   SQSHRN: { summary: "Signed saturating narrowing shift: the shift happens at the source width and the clamp at the destination's.", example: "sqshrn v3.8b, v7.8h, #3" },
   SQSHRN2: { summary: "The upper-half form; no `2` form has a scalar spelling.", example: "sqshrn2 v3.16b, v7.8h, #3" },
   UQSHRN: { summary: "Unsigned saturating narrowing shift.", example: "uqshrn v3.8b, v7.8h, #3" },
   UQSHRN2: { summary: "The unsigned upper-half form.", example: "uqshrn2 v3.16b, v7.8h, #3" },
-  SQRSHRN: { summary: "The signed rounding one: half an ulp before the shift, then the clamp.", example: "sqrshrn v3.8b, v7.8h, #3" },
+  SQRSHRN: { summary: "The signed rounding one: `1 << (shift - 1)` is added before the shift, then the clamp.", example: "sqrshrn v3.8b, v7.8h, #3" },
   SQRSHRN2: { summary: "The rounding upper-half form.", example: "sqrshrn2 v3.16b, v7.8h, #3" },
   UQRSHRN: { summary: "The unsigned rounding narrowing shift.", example: "uqrshrn v3.8b, v7.8h, #3" },
   UQRSHRN2: { summary: "The unsigned rounding upper-half form.", example: "uqrshrn2 v3.16b, v7.8h, #3" },
@@ -581,7 +580,7 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   SQRSHRUN2: { summary: "The rounding mixed upper-half form.", example: "sqrshrun2 v3.16b, v7.8h, #3" },
   SSHL: { summary: "Signed shift by the per-lane count; a right shift fills with the sign bit.", example: "sshl v3.8b, v7.8b, v21.8b" },
   USHL: { summary: "Unsigned: a right shift fills with zeros.", example: "ushl v3.8b, v7.8b, v21.8b" },
-  SRSHL: { summary: "Rounding: on a right shift, half an ulp of the discarded bits is added first.", example: "srshl v3.8b, v7.8b, v21.8b" },
+  SRSHL: { summary: "Rounding: on a right shift by n, `1 << (n - 1)` is added first.", example: "srshl v3.8b, v7.8b, v21.8b" },
   URSHL: { summary: "The unsigned rounding form.", example: "urshl v3.8b, v7.8b, v21.8b" },
   SQRSHL: { summary: "Signed saturating rounding shift.", example: "sqrshl v3.8b, v7.8b, v21.8b" },
   UQRSHL: { summary: "The unsigned saturating rounding shift.", example: "uqrshl v3.8b, v7.8b, v21.8b" },
@@ -670,17 +669,9 @@ export function lookupDoc(raw: string): InstructionDoc | undefined {
 
 /**
  * The table key for the word an editor found at `startColumn` (1-based) of
- * `line`, or undefined when the word names no instruction.
- *
- * The editor's word scan treats `.` as a separator, so a conditional branch
- * arrives as the bare condition (`eq` out of `b.eq`); this re-attaches the
- * letter before the dot and tries that spelling first. A vector operand splits
- * the same way, which is harmless: the word an editor hands over for a hover is
- * the mnemonic, and every mnemonic resolves on its own.
- *
- * It lives here, beside the table, so the hover provider in
- * components/playground/Editor.tsx holds no lookup rule of its own and the
- * whole path is testable without Monaco.
+ * `line`. The editor's word scan splits at `.`, so `b.eq` arrives as `eq`;
+ * this re-attaches the letter before the dot and tries that first. It lives
+ * beside the table so Editor.tsx's hover holds no lookup rule of its own.
  */
 export function docKeyAt(
   line: string,
