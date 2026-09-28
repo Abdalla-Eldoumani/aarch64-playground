@@ -2,7 +2,7 @@
   "title": "Arrays in memory, in one and two dimensions",
   "slug": "arrays-in-memory",
   "order": 19,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Reserve an array in the frame or in .bss and reach any element, in one or two dimensions, as base plus index times size.",
   "tags": [
     "arrays",
@@ -20,7 +20,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Finding element i\n\nThe address where an array starts is its *base address*. Element `i` sits `i` elements past the base, so the address of `a[i]` is `base + i * size`, where `size` is the width of one element in bytes. For an int array that starts at `0x1000`, `a[0]` is at `0x1000`, `a[1]` is at `0x1004`, and `a[5]` is at `0x1000 + 5 * 4 = 0x1014`.\n\nAArch64 can do that multiply inside the load or store itself. In `ldr w2, [x19, w20, SXTW 2]`, `x19` holds the base and `w20` holds the index. `SXTW` means *sign-extend word*: the 32-bit index is widened to 64 bits, keeping its sign, so it can be added to a 64-bit address. The `2` then shifts the index left by 2 bits, which multiplies it by 4. The shift is the element size written as a power of two:\n\n| element | bytes | shift | load one element |\n|---|---|---|---|\n| char | 1 | 0 | `ldrb w2, [x19, w20, SXTW]` |\n| short | 2 | 1 | `ldrsh w2, [x19, w20, SXTW 1]` |\n| int | 4 | 2 | `ldr w2, [x19, w20, SXTW 2]` |\n| long or pointer | 8 | 3 | `ldr x2, [x19, w20, SXTW 3]` |\n\nThe shift can only be 0 or the one that matches the size of the load, so the table above is the whole list."
+      "markdown": "## Finding element i\n\nThe address where an array starts is its *base address*. Element `i` sits `i` elements past the base, so the address of `a[i]` is `base + i * size`, where `size` is the width of one element in bytes. For an int array that starts at `0x1000`, `a[0]` is at `0x1000`, `a[1]` is at `0x1004`, and `a[5]` is at `0x1000 + 5 * 4 = 0x1014`.\n\nAArch64 can do that multiply inside the load or store itself, which is called *scaling* the index. In `ldr w2, [x19, w20, SXTW 2]`, `x19` holds the base and `w20` holds the index. `SXTW` means *sign-extend word*: the 32-bit index is widened to 64 bits, keeping its sign, so it can be added to a 64-bit address. The `2` then shifts the index left by 2 bits, which multiplies it by 4. The shift is the element size written as a power of two:\n\n| element | bytes | shift | load one element |\n|---|---|---|---|\n| char | 1 | 0 | `ldrb w2, [x19, w20, SXTW]` |\n| short | 2 | 1 | `ldrsh w2, [x19, w20, SXTW 1]` |\n| int | 4 | 2 | `ldr w2, [x19, w20, SXTW 2]` |\n| long or pointer | 8 | 3 | `ldr x2, [x19, w20, SXTW 3]` |\n\nThe shift can only be 0 or the one that matches the size of the load, so the table above is the whole list."
     },
     {
       "type": "prose",
@@ -59,7 +59,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## An array in .bss\n\nA table that several parts of a program share, or one too big for a frame, can live in the `.bss` section instead. `.bss` holds variables that start out as zero: the program file only records how many bytes to reserve, and the loader fills them with zeros when the program starts. `.skip ROWS * COLS * 4` reserves `4 * 5 * 4 = 80` bytes. `.align 4` before it starts the table on a 16-byte boundary, because `.align` counts in powers of two and 2 to the 4th is 16. `ldr grid_r, =grid` then puts the table's address in a register, the same way `ldr x0, =fmt` does for a format string."
+      "markdown": "## An array in .bss\n\nA table that several parts of a program share, or one too big for a frame, can live in the `.bss` section instead. `.bss` holds variables that start out as zero: the program file only records how many bytes to reserve, and those bytes are set to zero when the program starts. `.skip ROWS * COLS * 4` reserves `4 * 5 * 4 = 80` bytes. `.align 4` before it starts the table at an address that is a multiple of 16, because `.align` counts in powers of two and 2 to the 4th is 16. `ldr grid_r, =grid` then puts the table's address in a register, the same way `ldr x0, =fmt` does for a format string."
     },
     {
       "type": "prose",
