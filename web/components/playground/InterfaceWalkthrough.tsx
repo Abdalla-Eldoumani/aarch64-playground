@@ -104,7 +104,15 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     focusPendingRef.current = false;
     const back = returnFocusRef.current;
     returnFocusRef.current = null;
-    if (back?.isConnected) back.focus();
+    // Focus left in the card would fall to the top of the page when it
+    // unmounts. The opener is often gone by now (the offer, the tutorials
+    // panel, the palette), so the way back in the offer named takes it.
+    const active = document.activeElement;
+    if (active && active !== document.body && !cardRef.current?.contains(active)) return;
+    back?.focus();
+    if (back && document.activeElement === back) return;
+    const way = resolveTarget(OFFER_TARGETS)?.el;
+    if (way instanceof HTMLElement) way.focus();
   }, []);
 
   const finish = useCallback(() => {
@@ -307,7 +315,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
             <>
               <Button
                 variant="ghost"
-                onClick={() => setMode(CLOSED)}
+                onClick={close}
                 className="!min-h-[36px] !px-3 !text-[13px] [@media(pointer:coarse)]:!min-h-[44px]"
               >
                 not now
