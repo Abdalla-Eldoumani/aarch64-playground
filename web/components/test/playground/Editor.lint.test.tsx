@@ -42,6 +42,7 @@ const fake = vi.hoisted(() => {
   return { model, editor, monaco };
 });
 
+vi.mock("@/components/playground/monaco-features", () => ({ MONACO_FEATURES: [] }));
 vi.mock("monaco-editor/features/register.all", () => ({}));
 vi.mock("monaco-editor/editor", () => ({}));
 vi.mock("@monaco-editor/react", () => ({
