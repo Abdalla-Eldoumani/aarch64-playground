@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 
 const registers = Array.from(
@@ -35,6 +35,24 @@ describe("RegisterPanel", () => {
     expect(screen.getByText("0x0000000000000000")).toBeTruthy();
     expect(screen.getByText("0x000000000000001e")).toBeTruthy();
     expect(screen.getByText("0x0000fffffffff000")).toBeTruthy();
+  });
+
+  it("reads the 64-bit extremes in decimal: the unsigned value only under a negative", () => {
+    const extremes = [...registers];
+    extremes[0] = "0xffffffffffffffff"; // -1
+    extremes[1] = "0x8000000000000000"; // INT64_MIN, whose negation does not fit
+    extremes[2] = "0x7fffffffffffffff"; // INT64_MAX: one reading
+    render(
+      <RegisterPanel registers={extremes} changedRegs={new Set()} sp="0x0" pc={0x400000} nzcv={0} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "dec" }));
+    const row = (name: string) => screen.getByText(name).parentElement!.textContent ?? "";
+    expect(row("X0")).toContain("-1");
+    expect(row("X0")).toContain("18446744073709551615u");
+    expect(row("X1")).toContain("-9223372036854775808");
+    expect(row("X1")).toContain("9223372036854775808u");
+    expect(row("X2")).toContain("9223372036854775807");
+    expect(row("X2")).not.toMatch(/-|u/);
   });
 
   it("cross-references the ABI aliases beside the register names", () => {
