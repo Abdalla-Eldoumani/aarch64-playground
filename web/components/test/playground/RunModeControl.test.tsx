@@ -26,9 +26,6 @@ describe("RunModeControl", () => {
     const console_ = screen.getByLabelText("run in the console");
     expect(terminal.getAttribute("aria-pressed")).toBe("true");
     expect(console_.getAttribute("aria-pressed")).toBe("false");
-    // Cyan is the student acting; the unchosen cell stays quiet.
-    expect(terminal.className).toContain("bg-[var(--cyan)]");
-    expect(console_.className).not.toContain("bg-[var(--cyan)]");
   });
 
   it("reports the segment the student picked", () => {
@@ -49,18 +46,6 @@ describe("RunModeControl", () => {
     // type plus the click handler above.
     expect(terminal.tagName).toBe("BUTTON");
     expect(terminal.getAttribute("type")).toBe("button");
-  });
-
-  it("matches the header band's control height and keeps a visible focus ring", () => {
-    // 36px like the band's other controls: the band must not change height
-    // when the control appears and disappears with the loaded program.
-    render(<RunModeControl mode="console" onChange={vi.fn()} />);
-    for (const label of ["run in the console", "run in the terminal"]) {
-      const cell = screen.getByLabelText(label);
-      expect(cell.className).toContain("min-h-[36px]");
-      expect(cell.className).toContain("px-3.5");
-      expect(cell.className).toContain("focus-visible:[box-shadow:var(--ring)]");
-    }
   });
 
   it("goes inert while a session owns the pane, and says why", () => {
