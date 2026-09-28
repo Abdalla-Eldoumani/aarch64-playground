@@ -46,7 +46,7 @@ describe("BitFieldDiagram", () => {
     expect(narrow.style.flexGrow).toBe("5");
   });
 
-  it("uses a caller color when provided and a token default otherwise", () => {
+  it("uses the caller's color when given and the default color otherwise", () => {
     render(
       <BitFieldDiagram
         fields={[
