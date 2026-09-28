@@ -1,8 +1,8 @@
-//! End-to-end contracts for the libm host stubs. One program calls every
-//! one of the eleven through `bl` and prints what came back in `d0`;
-//! a second checks that a domain edge (`sqrt` of a negative) arrives as a
-//! NaN the program can test with `fcmp`. Everything drives the public
-//! pipeline: assemble_hosted -> load -> run_until_break.
+//! The math library (libm) functions the emulator answers itself. One
+//! program calls eleven of them through `bl` and prints what came back in
+//! `d0`; a second checks that `sqrt` of a negative comes back as a NaN the
+//! program can test with `fcmp`. Each runs the way a student program runs:
+//! assemble_hosted -> load -> run_until_break.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -218,10 +218,10 @@ report:
 }
 
 /// gcc merges a sin and a cos of one value into sincos, which stores both
-/// results. The NaN answers are glibc's on AArch64: a domain error gives
-/// the positive default NaN (the host's own has its sign set), a NaN
-/// argument comes back quieted with its payload, and fabs changes only
-/// the sign bit.
+/// results. The NaN answers are glibc's on AArch64: `sqrt(-1)` gives the
+/// positive NaN (the machine running the emulator makes one with the sign
+/// set), a NaN argument comes back with its quiet bit set and its other
+/// bits kept, and fabs changes only the sign bit.
 #[test]
 fn sincos_and_the_nan_answers_match_glibc() {
     let src = r#"
