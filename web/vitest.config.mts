@@ -95,18 +95,19 @@ export default defineConfig({
         "lib/wasm/**",
         "lib/wasm-node/**",
       ],
-      // A floor so coverage cannot silently regress. Set a few points below
-      // current so an ordinary change does not trip it; raise as coverage grows.
+      // A floor so coverage cannot silently regress: about five points under
+      // what was measured when it was set (88.2 / 85.9 / 84.9 / 89.6), so an
+      // ordinary change does not trip it; raise it as coverage grows.
       // CI runs the suite in shards, and a shard only sees its slice of the
       // coverage, so shards set VITEST_SHARD to defer the floor to the one
       // merged report (`vitest run --merge-reports --coverage`).
       thresholds: process.env.VITEST_SHARD
         ? undefined
         : {
-            statements: 70,
-            branches: 63,
-            functions: 60,
-            lines: 70,
+            statements: 83,
+            branches: 80,
+            functions: 79,
+            lines: 84,
           },
     },
   },
