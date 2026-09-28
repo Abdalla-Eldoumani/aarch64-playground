@@ -16,12 +16,9 @@ export interface CodeBlockProps {
 }
 
 /**
- * Read-only syntax-colored code block. Tokenizes assembly into React spans whose
- * colors read from the `--syntax-*` tokens (defined per theme in globals.css to
- * match the editor), so the block and the editor stay visually consistent. Code
- * is rendered as text spans only (no HTML-string injection path), so a
- * caller-supplied string cannot inject markup. A corner button copies the
- * source to the clipboard in a single click.
+ * Read-only code block colored by the `--syntax-*` tokens, set per theme to
+ * match the editor. Code renders as text spans only, so a caller's string
+ * cannot inject markup.
  */
 export function CodeBlock({
   code,
