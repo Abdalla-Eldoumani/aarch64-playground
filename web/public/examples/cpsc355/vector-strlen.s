@@ -1,7 +1,8 @@
 // Count the characters in a line sixteen at a time.
-// cmeq marks every lane holding the zero byte that ends a string, and
-// umaxv folds the sixteen marks into one number: nonzero means the end
-// is somewhere in this block, and a byte loop finds exactly where.
+// A v register holds 16 bytes, one per lane. cmeq marks every lane holding
+// the zero byte that ends a string, and umaxv folds the sixteen marks into
+// one number: nonzero means the end is somewhere in this block, and a byte
+// loop finds exactly where.
 
 define(fp, x29)
 define(lr, x30)
