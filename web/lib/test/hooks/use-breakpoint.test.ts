@@ -1,5 +1,5 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { isAtLeast, phoneShape, useBreakpoint, usePhoneShape } from "@/lib/hooks/use-breakpoint";
 
 afterEach(() => cleanup());
@@ -45,11 +45,26 @@ describe("useBreakpoint", () => {
 
   test("unsubscribes on unmount", () => {
     setWidth(800);
+    const remove = vi.spyOn(window, "removeEventListener");
     const { unmount, result } = renderHook(() => useBreakpoint());
     expect(result.current).toBe("md");
     unmount();
-    // No assertion: this checks only that unmount runs the resize cleanup
-    // without throwing.
+    expect(remove).toHaveBeenCalledWith("resize", expect.any(Function));
+    remove.mockRestore();
+  });
+
+  test("a phone's very first render is already xs, never the laptop's lg", () => {
+    // Reading the width one effect late made every phone mount the laptop
+    // layout, lay it out, and throw it away a frame later.
+    setWidth(360);
+    const seen: string[] = [];
+    renderHook(() => {
+      const bp = useBreakpoint();
+      seen.push(bp);
+      return bp;
+    });
+    expect(seen[0]).toBe("xs");
+    expect(seen).not.toContain("lg");
   });
 });
 
@@ -73,6 +88,19 @@ describe("phoneShape", () => {
 });
 
 describe("usePhoneShape", () => {
+  test("a phone's very first render already has its shape", () => {
+    Object.defineProperty(window, "innerHeight", { value: 844, configurable: true, writable: true });
+    setWidth(390);
+    const seen: Array<string | null> = [];
+    renderHook(() => {
+      const shape = usePhoneShape();
+      seen.push(shape);
+      return shape;
+    });
+    expect(seen[0]).toBe("portrait");
+    expect(seen).not.toContain(null);
+  });
+
   test("follows a rotation", () => {
     Object.defineProperty(window, "innerHeight", { value: 844, configurable: true, writable: true });
     setWidth(390);
