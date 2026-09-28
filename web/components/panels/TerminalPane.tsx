@@ -104,11 +104,8 @@ export interface TerminalPaneProps {
 const PROMPT = "$ ";
 
 /**
- * xterm.js-backed shell pane. Wraps a Terminal instance, drives the
- * input state machine on key events, dispatches command lines through
- * `dispatchCommand`, and writes the result back. Lazy-loaded by page.tsx
- * so the xterm bundle only ships when the user actually opens the
- * terminal tab.
+ * The xterm.js shell pane. lazy-panels.tsx loads it on demand so the xterm
+ * bundle ships only when the student opens the terminal tab.
  */
 export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -147,13 +144,9 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     },
   });
 
-  // The context builder closes over the emulator hub, which is a new
-  // object after every machine snapshot, so this prop changes identity
-  // on every step and run. Route it (and the upload handler) through
-  // refs so no callback below depends on it: a dependency chain from
-  // these props into the init effect would dispose and recreate the
-  // terminal on each machine change, destroying the scrollback
-  // mid-session, including during the terminal's own program runs.
+  // buildContext is a new function after every step and run. Refs keep these
+  // props out of the init effect's dependencies, which would otherwise rebuild
+  // the terminal on each step and wipe its scrollback mid-session.
   const buildContextRef = useRef(buildContext);
   const onUploadRequestRef = useRef(onUploadRequest);
   const onRegisterIORef = useRef(onRegisterIO);
@@ -188,7 +181,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       t.write("\r\n");
       if (line === "upload") {
         onUploadRequestRef.current?.();
-        t.write("upload: pick a file in the host dialog above\r\n");
+        t.write("upload: choose a file in the window that opened\r\n");
         writePrompt();
         return;
       }
@@ -247,7 +240,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     fitRef.current = fit;
     onRegisterIORef.current?.(terminalIORef.current);
 
-    term.writeln("cpsc 355 playground terminal. type 'help' for commands.");
+    term.writeln("AArch64 Playground terminal. type 'help' for commands.");
     term.write(PROMPT);
 
     // Keep the cursor's visible position in sync with the input state.
