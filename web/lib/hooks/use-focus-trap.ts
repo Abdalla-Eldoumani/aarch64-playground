@@ -11,13 +11,10 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
 }
 
 /**
- * Trap focus inside a modal-style container while it is open. On open,
- * focuses the first focusable child and remembers what was previously
- * focused. Tab + Shift+Tab cycle within the container; Escape calls
- * `onClose`. On close, restores focus to the previously-focused element.
- *
- * Caller still renders `role="dialog" aria-modal="true"` and any backdrop
- * dismissal; this hook only handles keyboard focus management.
+ * Keeps keyboard focus inside an open dialog: focus starts on its first
+ * control, Tab wraps, Escape calls `onClose`, and focus goes back where it
+ * was on close. The caller still renders `role="dialog" aria-modal="true"`
+ * and any backdrop click.
  */
 export function useFocusTrap(
   open: boolean,
