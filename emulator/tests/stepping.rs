@@ -1,28 +1,15 @@
-//! Stepping repro and regression for the line-map fix.
-//!
-//! The emulator's PC stepping is sound (pinned below). The drift the
-//! marker used to show came from the web layer counting non-label,
-//! non-comment source lines and treating m4 `define()` lines,
-//! `.data`/`.string` directives, and section directives as instructions,
-//! which diverges from the linker's real layout exactly when a program has
-//! data or macros. The linker now emits an authoritative
-//! address-to-editor-line map, and these tests pin the emulator-level
-//! facts it rests on, using one original complex program (m4 defines + a
-//! `.data` word + a non-leaf `main` that `bl`s a leaf helper + a counted
-//! loop with a conditional branch).
+//! Stepping, breakpoints, step-back, and the map from each instruction's
+//! address to its editor line. The editor's current-line marker once
+//! drifted because the web counted m4 `define` lines and data directives
+//! as instructions; the linker now records the real line for each one.
 
 use aarch64_emulator::cpu::{Cpu, StepOutcome, CODE_BASE};
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 
-/// An original CPSC 355-style program exercising the four shapes the drift
-/// needs to surface: m4 register aliases, a `.data` word, a non-leaf
-/// `main` that `bl`s a leaf `square`, and a counted loop with a
-/// conditional branch. It sums i*i for i in 1..=n (n read from `.data`)
-/// and returns the sum as the process exit code.
-///
-/// Editor line numbers matter for the line-map assertions below: line 1
-/// is the first `define`, `main`'s first instruction (`stp`) is line 14,
-/// and `square`'s body begins at line 34.
+/// Sums i*i for i in 1..=n (n read from `.data`) and returns the sum as the
+/// exit code. It has every shape that made the marker drift: m4 register
+/// names, a `.data` word, a `main` that calls `square`, and a loop. The
+/// line-map tests count on `main`'s `stp` being editor line 14.
 const COMPLEX_SRC: &str = r#"define(sum_r, w19)
 define(i_r, w20)
 define(n_r, w21)
@@ -81,10 +68,8 @@ fn complex_program_enters_at_main() {
 #[test]
 fn non_branch_steps_advance_pc_by_four() {
     let (mut cpu, _image) = assemble_complex();
-    // The prologue + setup (stp, mov fp, ldr =count_m, ldr [x0], mov, mov)
-    // is six straight-line instructions; each must advance the PC by
-    // exactly 4: the entry transition into main is a normal sequence,
-    // not a stall.
+    // main's first six instructions have no branch, so each step moves the
+    // pc by exactly 4; the very first step must not stall.
     for i in 0..6 {
         let before = cpu.regs.read_pc();
         cpu.step().expect("step ok");
@@ -165,23 +150,19 @@ fn complex_program_runs_to_expected_exit_code() {
     let (mut cpu, _image) = assemble_complex();
     let run = cpu.run_until_break(100_000).expect("run ok");
     assert!(run.halted, "program halts on ret from main via the __main_return sentinel");
-    // Sum of squares 1..=5 = 1 + 4 + 9 + 16 + 25 = 55, returned as w0 and
-    // surfaced as the exit code by the main-return sentinel.
+    // 1 + 4 + 9 + 16 + 25 = 55; main returns it in w0 and it becomes the
+    // exit code.
     assert_eq!(cpu.exit_code(), Some(55), "exit code is the sum of squares");
 }
 
-// -- the authoritative line map --
+// -- the line map --
 
 #[test]
 fn line_map_maps_main_first_instruction_to_editor_line() {
     let (_cpu, image) = assemble_complex();
     let main_addr = *image.symbols.get("main").expect("main symbol resolved");
-    // main's first instruction (`stp fp, lr, [sp, -16]!`) sits on editor
-    // line 14 of COMPLEX_SRC: after the five define lines, the blank,
-    // the `.data` block (lines 7-9), the blank, and the
-    // `.text`/`.global main`/`main:` header lines. A text-counting
-    // heuristic points at the 9th non-label source line instead, because
-    // it counts the data and define lines.
+    // Line 14 sits below five defines and the `.data` block, so counting
+    // source lines as instructions would land on an earlier line.
     let entry = image
         .line_map
         .iter()
@@ -195,10 +176,8 @@ fn line_map_skips_data_and_define_lines_and_strictly_increases() {
     let (_cpu, image) = assemble_complex();
     assert!(!image.line_map.is_empty(), "a hosted program emits a line map");
 
-    // Entries are emitted in `.text` address order. Addresses are
-    // contiguous (4 bytes apart) and the editor lines strictly increase,
-    // never pointing back at the m4 define lines (1-5) or the `.data`
-    // block (7-9), which carry no instructions and so get no entries.
+    // The define lines (1-5) and the `.data` block (7-9) hold no
+    // instructions, so no entry may point at them.
     let mut prev_addr: Option<u64> = None;
     let mut prev_line: Option<u32> = None;
     for (addr, line) in &image.line_map {
@@ -220,10 +199,9 @@ fn line_map_skips_data_and_define_lines_and_strictly_increases() {
 #[test]
 fn line_map_covers_every_text_instruction() {
     let (_cpu, image) = assemble_complex();
-    // Every emitted `.text` instruction gets exactly one entry; the
-    // trampolines and the literal pool (the `ldr x0, =count_m` pool slot)
-    // do not. This program is all-`.text` plus one pool entry, so the map
-    // length equals the instruction count.
+    // The libc call stubs and the literal pool slot behind
+    // `ldr x0, =count_m` are not the student's instructions, so they get
+    // no entry and the counts match.
     assert_eq!(
         image.line_map.len(),
         image.instruction_count,
