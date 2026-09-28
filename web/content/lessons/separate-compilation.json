@@ -2,7 +2,7 @@
   "title": "Splitting a program across files",
   "slug": "separate-compilation",
   "order": 25,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Split a program into files, share labels between them with .global, and build it so the linker can join the pieces, C files included.",
   "tags": [
     "external data",
@@ -33,7 +33,7 @@
     },
     {
       "type": "prose",
-      "markdown": "`clamp` takes a value and a range in `w0`, `w1`, and `w2`, and returns in `w0` the value moved inside the range. It calls nothing and changes no callee-saved register, so it needs no frame.\n\nThe file has no `define` lines because it uses no aliases. On the server `m4` reads each file by itself, so a helper that writes `fp` and `lr` needs its own `define(fp, x29)` and `define(lr, x30)` at the top: the ones in `main.asm` mean nothing to it."
+      "markdown": "`clamp` takes a value and a range in `w0`, `w1`, and `w2`, and returns in `w0` the value moved inside the range. It calls nothing and changes none of `x19` to `x28`, so it needs no frame.\n\nThe file has no `define` lines because it gives no register a name. On the server `m4` reads each file by itself, so a helper that writes `fp` and `lr` needs its own `define(fp, x29)` and `define(lr, x30)` at the top: the ones in `main.asm` mean nothing to it."
     },
     {
       "type": "prose",
@@ -90,7 +90,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Calling assembly from C\n\nC and assembly follow the same calling convention, so each can call the other. A C file calls an assembly function like any other function. It needs a *prototype*, a line that gives the function's name, argument types, and result type without a body, and the linker finds the body in `clamp.o`. The C compiler puts the three arguments in `w0`, `w1`, and `w2` and reads the answer from `w0`, exactly where `clamp` expects them and leaves it."
+      "markdown": "## Calling assembly from C\n\nC and assembly follow the same calling convention, the rules for where arguments and results go, so each can call the other. A C file calls an assembly function like any other function. It needs a *prototype*, a line that gives the function's name, argument types, and result type without a body, and the linker finds the body in `clamp.o`. The C compiler puts the three arguments in `w0`, `w1`, and `w2` and reads the answer from `w0`, exactly where `clamp` expects them and leaves it."
     },
     {
       "type": "code",
@@ -132,7 +132,7 @@
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "Answers:\n\n1. No. The assembler leaves a gap named `area` in the object file; only the linker reports a name it cannot find.\n2. The link step fails with an undefined reference to `mean`. Add `.global mean` to `stats.asm`, the file that defines it.\n3. On the server `m4` reads each file on its own, so aliases defined in `main.asm` do not exist while it reads the helper.\n4. `w0`, `w1`, and `w2` carry the arguments and `w0` the result. C uses the same calling convention as your assembly."
+      "markdown": "Answers:\n\n1. No. The assembler leaves a gap named `area` in the object file; only the linker reports a name it cannot find.\n2. The link step fails with an undefined reference to `mean`. Add `.global mean` to `stats.asm`, the file that defines it.\n3. On the server `m4` reads each file on its own, so names defined in `main.asm` do not exist while it reads the helper.\n4. `w0`, `w1`, and `w2` carry the arguments and `w0` the result. C uses the same calling convention as your assembly."
     },
     {
       "type": "prose",
