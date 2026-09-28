@@ -1,4 +1,5 @@
-// Dot product of two arrays of eight ints, four lanes at a time.
+// Dot product of two arrays of eight ints, four lanes at a time. A lane is
+// one 32-bit slot of a 128-bit vector register, so v0.4s holds four ints.
 // mla multiplies four pairs and adds the four products onto four running
 // totals in one instruction, so the loop runs twice instead of eight times.
 
@@ -40,7 +41,7 @@ dp_test:
         cmp     i_r, COUNT
         b.lt    dp_loop
 
-        addv    s2, v2.4s               // fold the four totals into one
+        addv    s2, v2.4s               // add the four totals into one
         fmov    dot_r, s2
 
         ldr     x0, =fmt_out
