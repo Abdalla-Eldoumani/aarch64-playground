@@ -7,8 +7,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { ShareDialog } from "@/components/playground/ShareDialog";
 import { readShareHash, type ShareState } from "@/lib/playground/share";
 
-// readShareHash returns a discriminated verdict; these tests only
-// care about the ok payload.
+// readShareHash returns either a state or the reason it failed; these tests
+// only need the state.
 function okShareState(hash: string) {
   const r = readShareHash(hash);
   if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
@@ -101,9 +101,9 @@ describe("ShareDialog", () => {
   });
 });
 
-describe("ShareDialog over the fragment cap", () => {
+describe("ShareDialog with a program too large for a link", () => {
   // A real multi-file workspace does not fit in a URL fragment: the
-  // receiver's 12 KB wall rejects it. Offering the link anyway moves the
+  // receiver's 12 KB limit rejects it. Offering the link anyway moves the
   // failure to the recipient's screen.
   const BIG: ShareState = {
     source: "mov x0, 1\nret\n",
@@ -133,7 +133,7 @@ describe("ShareDialog over the fragment cap", () => {
     );
   });
 
-  it("leaves a workspace that does fit completely alone", () => {
+  it("still offers the link for a multi-file workspace that fits", () => {
     render(
       <ShareDialog
         open
