@@ -6,7 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { createRequire } from "node:module";
 import type { WriteExercise } from "@/lib/content/exercise-schema";
-import { loadExercise } from "@/lib/content/exercises";
+import { loadAllExercises } from "@/lib/content/exercises";
 import {
   checkExercise,
   checkHiddenCase,
@@ -30,9 +30,13 @@ export function solutionFor(slug: string): string {
   return fs.readFileSync(path.join(SOLUTIONS_DIR, `${slug}.s`), "utf8");
 }
 
+// Read once, as a suite loads. Each read opens every exercise file, and with
+// every test worker busy one read took seconds, inside a five-second test.
+const EXERCISES = loadAllExercises();
+
 /** A shipped exercise the emulator grades, or a thrown error naming it. */
 export function codingExercise(slug: string): WriteExercise {
-  const exercise = loadExercise(slug);
+  const exercise = EXERCISES.find((entry) => entry.slug === slug);
   if (!exercise || (exercise.variant !== "write" && exercise.variant !== "identify-bug")) {
     throw new Error(`${slug} is not an emulator-graded exercise`);
   }
