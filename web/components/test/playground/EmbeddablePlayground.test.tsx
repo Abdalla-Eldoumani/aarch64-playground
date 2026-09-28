@@ -3,12 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { createRef } from "react";
 import type { ReactNode } from "react";
 
-// The core children pull in Monaco and toast; stub them so jsdom
-// never instantiates the editor or WASM. The tests exercise
-// EmbeddablePlayground's own logic (lazy engage, the handle, onStateChange,
-// chrome gating), not the children. The reduced embed/checker chrome renders
-// only these three plus the minimal control set, so they keep the heavy full
-// layout out of these unit tests.
+// The editor and panels are stubbed so jsdom never builds Monaco or loads the
+// WASM; these tests cover EmbeddablePlayground's own logic, not its children.
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
@@ -41,8 +37,8 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   EDITOR_SPLIT: { label: "resize editor and disassembly" },
   DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
-// Capture the tutorial's props so tests can drive onLoadSnippet, the snippet
-// handoff contract, without walking the real tutorials UI.
+// Capture the tutorial's props so tests can call onLoadSnippet without the
+// real tutorials UI.
 const tutorialProps = vi.hoisted(() => ({
   current: null as null | {
     onLoadSnippet: (
@@ -59,8 +55,8 @@ vi.mock("@/components/playground/TutorialRunner", () => ({
     return <div data-testid="tutorial-runner" />;
   },
 }));
-// Capture the terminal's props so tests can exercise buildTerminalContext, the
-// run-wait contract behind `./program`, without booting a real xterm.
+// Capture the terminal's props so tests can call buildTerminalContext, which
+// waits for `./program` to finish, without starting a real xterm.
 const terminalProps = vi.hoisted(() => ({
   current: null as null | {
     buildContext: () => {
@@ -78,8 +74,8 @@ vi.mock("@/components/panels/TerminalPane", () => ({
   },
 }));
 
-// A spy for the hub so a test can assert it is not called (the hub not
-// engaged) before the lazy trigger fires.
+// A spy, so a test can check the emulator is not started before the embed
+// is pressed or scrolled into view.
 const useEmulatorMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/emulator/use-emulator", () => ({ useEmulator: useEmulatorMock }));
 
@@ -121,7 +117,7 @@ async function fullChromeMounted() {
 }
 
 describe("EmbeddablePlayground", () => {
-  it("is driveable through an imperative handle once engaged", () => {
+  it("can be driven through its ref handle once started", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -135,7 +131,7 @@ describe("EmbeddablePlayground", () => {
     expect(ref.current!.getSource()).toBe("mov x0, #1");
   });
 
-  it("opens the embed's registers on the file the host names, x alone otherwise", () => {
+  it("opens the embed's registers on the view the page asks for, x registers only otherwise", () => {
     const named = render(
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" registerView="v" />,
     );
@@ -152,7 +148,7 @@ describe("EmbeddablePlayground", () => {
     expect(xOnly.getAttribute("data-vectors")).toBe("hidden");
   });
 
-  it("carries the base converter in the command actions", () => {
+  it("lists the base converter among the commands", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     const { container } = render(
       <EmbeddablePlayground ref={ref} chrome="embed" startSource="mov x0, #1" />,
@@ -163,15 +159,15 @@ describe("EmbeddablePlayground", () => {
       .find((command) => command.id === "base-converter");
     expect(action).toBeTruthy();
     expect(action!.description).toContain("two's complement");
-    // Running it flips the full-chrome tab and the mobile pane request; in
-    // embed chrome that state simply has no surface, so it must not throw.
+    // Running it switches tabs that only the full playground and the phone
+    // layout have; an embed has neither, so it must not throw.
     act(() => action!.run());
   });
 
-  it("does not engage the hub before the lazy trigger fires", () => {
+  it("does not start the emulator before the first press", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
-    // Embed defers until viewport entry / interaction; jsdom has no
-    // IntersectionObserver, so the hub must stay dormant on mount.
+    // An embed waits until it scrolls into view or is pressed; jsdom has no
+    // IntersectionObserver, so the emulator must not start on mount.
     expect(useEmulatorMock).not.toHaveBeenCalled();
     expect(screen.queryByTestId("editor")).toBeNull();
 
@@ -180,7 +176,7 @@ describe("EmbeddablePlayground", () => {
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
-  it("routes the observer's engage through an idle slot, once", () => {
+  it("starts once, in an idle moment, after scrolling into view", () => {
     // jsdom supplies neither of these, so both are stubbed: the observer to
     // drive the only engage path that defers, and the idle queue to hold the
     // callback rather than run it.
@@ -235,7 +231,7 @@ describe("EmbeddablePlayground", () => {
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
-  it("arranges the embed through the container-driven grid areas", () => {
+  it("places each embed pane in its named grid area", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     engage(container);
     // The embed's own width, not the viewport, picks the arrangement: the
@@ -296,7 +292,7 @@ describe("EmbeddablePlayground", () => {
     expect(screen.queryByLabelText("check")).toBeNull();
   });
 
-  it("drops step and back when the host opts out", () => {
+  it("hides step and back when the page turns them off", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" showStep={false} showBack={false} />,
     );
@@ -347,7 +343,7 @@ describe("EmbeddablePlayground", () => {
     );
   });
 
-  it("checker Check runs the current source to completion, then reports the post-run snapshot", async () => {
+  it("checker Check runs the current source to completion, then reports the state after the run", async () => {
     const hub: Hub = makeHub({ exitCode: 7 });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -430,8 +426,8 @@ describe("EmbeddablePlayground", () => {
     expect(hub.run).toHaveBeenCalledTimes(2);
   });
 
-  it("checker Check feeds the authored input, then ends it, and reruns a run that stopped short", async () => {
-    // Loaded but not halted: a Run that parked on a read. Grading that
+  it("checker Check feeds the exercise's input, then closes it, and reruns a run that stopped short", async () => {
+    // Loaded but not halted: a Run that stopped at a read. Grading that
     // half-finished state would fail a correct program, so Check starts over.
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "svc" }],
@@ -488,8 +484,8 @@ describe("EmbeddablePlayground", () => {
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
   });
 
-  it("checker Check grades the authored args whatever the args box holds", async () => {
-    // The expected output was written for the authored args, so a check on
+  it("checker Check grades with the exercise's own args whatever the args box holds", async () => {
+    // The expected output was written for the exercise's args, so a check on
     // the box's own args failed a correct program the moment the box changed.
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
@@ -521,7 +517,7 @@ describe("EmbeddablePlayground", () => {
     // The box stays the student's, for the next Run.
     expect(box.value).toBe("5 6");
 
-    // A second check on the same source reuses the authored-args run.
+    // A second check on the same source reuses the run with the exercise's args.
     fireEvent.click(check);
     await waitFor(() => expect(onCheck).toHaveBeenCalledTimes(2));
     expect(hub.assemble).toHaveBeenCalledTimes(2);
@@ -599,10 +595,10 @@ describe("EmbeddablePlayground", () => {
     expect(hub.assemble).toHaveBeenCalledWith("mov x0, #1", []);
   });
 
-  it("embed Run re-applies the stdin seed after its assemble", async () => {
+  it("embed Run sends the preset stdin again after its assemble", async () => {
     // Assembling resets the machine (stdin queue included), so a program
-    // arriving with seeded input must have it back before the run or the
-    // read blocks and nothing ever prints.
+    // that came with preset input must have it back before the run or the
+    // read waits and nothing ever prints.
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -638,12 +634,12 @@ describe("EmbeddablePlayground", () => {
     (hub.pushStdin as ReturnType<typeof vi.fn>).mockClear();
     fireEvent.click(screen.getByLabelText("run"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(1));
-    // No run over empty memory and no seeding of a machine that has no program.
+    // No run over empty memory and no input for a machine that has no program.
     expect(hub.run).not.toHaveBeenCalled();
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
-  it("checker Check re-applies the stdin seed after its assemble", async () => {
+  it("checker Check sends the preset stdin again after its assemble", async () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -668,7 +664,7 @@ describe("EmbeddablePlayground", () => {
     );
   });
 
-  it("renders the load-failure message when the hub fails to load", () => {
+  it("renders the load-failure message when the emulator fails to load", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({ isLoaded: false, loadError: "wasm exploded" }),
     );
@@ -689,10 +685,10 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 
-  it("gates the full-chrome execution controls on the hub's loaded flag", async () => {
+  it("disables the full playground's run, step, and back until a program is loaded", async () => {
     // The real Controls renders in full chrome; run/step/back must follow
-    // programLoaded even when the snapshot ring says stepping back is
-    // possible (a stale canStepBack cannot outvote a missing program).
+    // programLoaded even when the step-back history says stepping back is
+    // possible (an old canStepBack cannot outvote a missing program).
     useEmulatorMock.mockReturnValue(
       makeHub({ programLoaded: false, canStepBack: true }),
     );
@@ -721,7 +717,7 @@ describe("EmbeddablePlayground", () => {
 });
 
 describe("loadProgram", () => {
-  it("resets the machine and applies the full payload", () => {
+  it("resets the machine and applies the source, args, stdin, and files", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -738,7 +734,7 @@ describe("loadProgram", () => {
       }),
     );
     // A fresh program starts on a fresh machine: no registers, console,
-    // or VFS from the previous program may survive the load.
+    // or files from the previous program may survive the load.
     expect(hub.reset).toHaveBeenCalledTimes(1);
     expect(hub.uploadVfsFile).toHaveBeenCalledWith(
       "input.txt",
@@ -746,12 +742,12 @@ describe("loadProgram", () => {
     );
     expect(ref.current!.getSource()).toBe("new prog");
     expect(ref.current!.getArgs()).toBe("./prog a b");
-    // stdin is a seed, not an immediate push: assembling clears the queue,
-    // so it lands after each assemble instead.
+    // stdin is not sent yet: assembling clears the queue, so it is sent after
+    // each assemble instead.
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
-  it("re-applies the program's stdin and vfs seeds after a successful assemble", async () => {
+  it("sends the program's stdin and files again after a successful assemble", async () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -774,7 +770,7 @@ describe("loadProgram", () => {
       "f.txt",
       new TextEncoder().encode("x"),
     );
-    // Seeds land after the assemble round-trip, on the freshly reset machine.
+    // They arrive after the assemble finishes, on the freshly reset machine.
     expect(
       (hub.assemble as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
     ).toBeLessThan(
@@ -782,7 +778,7 @@ describe("loadProgram", () => {
     );
   });
 
-  it("does not seed inputs when the assemble fails", async () => {
+  it("sends no input when the assemble fails", async () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(false);
     useEmulatorMock.mockReturnValue(hub);
@@ -798,7 +794,7 @@ describe("loadProgram", () => {
   });
 });
 
-describe("program delivery from recents and the tutorial", () => {
+describe("loading a program from recents and the tutorial", () => {
   afterEach(() => {
     window.localStorage.clear();
     tutorialProps.current = null;
@@ -817,10 +813,10 @@ describe("program delivery from recents and the tutorial", () => {
       />,
     );
     await fullChromeMounted();
-    // A handoff carrying stdin and VFS seeds displaces the buffer into
-    // recents. The stdin seed must not survive the recall; the VFS file
-    // stays, because full chrome treats the VFS as the student's home
-    // directory (files persist across program loads until removed).
+    // Loading a program with stdin and a file pushes the current code into
+    // recents. The stdin must not come back with the recalled code; the file
+    // stays, because the full playground treats files as the student's home
+    // directory (they stay across program loads until removed).
     act(() =>
       ref.current!.loadProgram({
         source: "// prog a",
@@ -830,7 +826,7 @@ describe("program delivery from recents and the tutorial", () => {
       }),
     );
     // The custom Select opens as a listbox; pick the first real recent row
-    // (any option that is not the clear-history sentinel).
+    // (any option that is not "clear history").
     fireEvent.click(screen.getByRole("combobox", { name: "load recent program" }));
     const entry = screen
       .getAllByRole("option")
@@ -839,13 +835,13 @@ describe("program delivery from recents and the tutorial", () => {
     (hub.reset as ReturnType<typeof vi.fn>).mockClear();
     (hub.uploadVfsFile as ReturnType<typeof vi.fn>).mockClear();
     fireEvent.pointerDown(entry!);
-    // The recall is a program delivery, not a text swap: fresh machine,
-    // recalled source, no inherited args.
+    // Loading a recent is a full program load, not a text swap: fresh
+    // machine, recalled source, no args carried over.
     expect(hub.reset).toHaveBeenCalledTimes(1);
     expect(ref.current!.getSource()).toBe("// working buffer\nret");
     expect(ref.current!.getArgs()).toBe("");
-    // Assembling the recalled program must not re-seed the previous
-    // program's stdin; the home-directory file rides along.
+    // Assembling the recalled program must not resend the previous
+    // program's stdin; the home-directory file comes along.
     act(() => ref.current!.assemble());
     await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
     expect(hub.pushStdin).not.toHaveBeenCalled();
@@ -855,7 +851,7 @@ describe("program delivery from recents and the tutorial", () => {
     expect(uploaded).toContain("stale.txt");
   });
 
-  it("loads a tutorial snippet without pre-seeding stdin: input stays interactive", async () => {
+  it("loads a tutorial snippet without preset stdin, so the student types the input", async () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -875,16 +871,16 @@ describe("program delivery from recents and the tutorial", () => {
     expect(hub.reset).toHaveBeenCalled();
     expect(ref.current!.getSource()).toBe("mov x0, 1");
     expect(ref.current!.getArgs()).toBe("./scores");
-    // The full playground never queues canned stdin: a program that reads
-    // input blocks at the read, the console tab opens, and the student
-    // types the values themselves. Assembling must not push the fixture.
+    // The full playground never queues preset stdin: a program that reads
+    // input waits at the read, the console tab opens, and the student
+    // types the values themselves. Assembling must not send the preset input.
     act(() => ref.current!.assemble());
     await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 });
 
-describe("prior-work preservation (full chrome)", () => {
+describe("keeping earlier work (full chrome)", () => {
   const KEY_CURRENT = "aarch64-playground:auto-save:current";
   const KEY_RECENT = "aarch64-playground:auto-save:recent";
 
@@ -898,16 +894,16 @@ describe("prior-work preservation (full chrome)", () => {
     return (JSON.parse(raw) as Array<{ body: string }>).map((e) => e.body);
   }
 
-  it("keeps an autosave displaced by a handoff boot reachable through recents", () => {
+  it("keeps the autosaved code in recents when the page opens with other code", () => {
     window.localStorage.setItem(KEY_CURRENT, "// prior work\nret");
     // The loading gate keeps the heavy full layout out of the test; the
-    // preservation effect runs on mount regardless.
+    // effect that keeps earlier work runs on mount regardless.
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(<EmbeddablePlayground chrome="full" startSource="// shared program" />);
     expect(recentBodies()).toContain("// prior work\nret");
   });
 
-  it("leaves recents alone when the boot buffer is the autosave itself", () => {
+  it("leaves recents alone when the starting code is the autosave itself", () => {
     window.localStorage.setItem(KEY_CURRENT, "// prior work\nret");
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(
@@ -916,7 +912,7 @@ describe("prior-work preservation (full chrome)", () => {
     expect(window.localStorage.getItem(KEY_RECENT)).toBeNull();
   });
 
-  it("preserves the replaced buffer in recents when a program loads over it", () => {
+  it("keeps the replaced code in recents when a program loads over it", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -947,13 +943,10 @@ describe("terminal context", () => {
     setWidth(1024);
   });
 
-  it("runProgram reports the post-run stdout and exit code, not the pre-run state", async () => {
-    // Mirror the real useEmulator: run() flips isRunning through React state,
-    // so the hub object the wait loop reads through emuRef only advances when
-    // a render commits. The stub keeps that latency: `phase` moves inside
-    // run(), but no hub carries the new value until the next rerender, which
-    // is what makes a check-before-sleep loop exit on the pre-run false and
-    // report stale stdout and exit code.
+  it("runProgram reports stdout and exit code from after the run, not before it", async () => {
+    // As in the real useEmulator, a new isRunning shows only after the next
+    // render, so a wait loop that checks before it sleeps would see the old
+    // false and report the output from before the run.
     let phase: "idle" | "running" | "done" = "idle";
     const assemble = vi.fn(async () => true);
     const run = vi.fn(() => {
@@ -1029,15 +1022,12 @@ describe("autoplay", () => {
     vi.useRealTimers();
   });
 
-  it("assembles then steps on a timer, surviving the per-step re-render", async () => {
+  it("assembles then steps on a timer, surviving the re-render after each step", async () => {
     const assemble = vi.fn().mockResolvedValue(true);
     const step = vi.fn();
-    // Mirror the real useEmulator: a fresh hub object every render (its memo
-    // deps include the changing registers/pc) while the assemble/step spies
-    // persist. A referentially stable hub would pass even if `emu` were
-    // re-added to the autoplay effect's deps, the freeze regression this
-    // guards: keying on `emu` clears the interval on the first re-render and the
-    // once-per-engage guard then strands the walk (step fires 0-1 times).
+    // Like the real useEmulator, hand back a new object every render. A stable
+    // one would hide the freeze this guards: an autoplay effect keyed on `emu`
+    // clears its timer on the first re-render, and the walk stops after 0-1 steps.
     useEmulatorMock.mockImplementation(() => ({ ...makeHub(), assemble, step }));
     // A factory so every (re-)render gets a fresh element: React bails out on an
     // identical element reference, so this forces the re-render and a new hub.
