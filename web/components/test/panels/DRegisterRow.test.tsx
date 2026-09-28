@@ -46,6 +46,22 @@ describe("DRegisterRow", () => {
     expect(screen.getByText("42.0")).toBeTruthy();
   });
 
+  it("names infinities and NaN instead of printing their bits as a number", () => {
+    // +inf, -inf and the default NaN as doubles, then a single's NaN left by
+    // an s write, which takes no f suffix.
+    const cases: Array<[string, string]> = [
+      ["0x7ff0000000000000", "inf"],
+      ["0xfff0000000000000", "-inf"],
+      ["0x7ff8000000000000", "nan"],
+      ["0x000000007fc00000", "nan"],
+    ];
+    for (const [bits, text] of cases) {
+      const { unmount } = render(<DRegisterRow index={5} bitsHex={bits} />);
+      expect(screen.getByTitle(text).textContent).toBe(text);
+      unmount();
+    }
+  });
+
   it("tints the value with --changed and plays the flash on a write", () => {
     const { container } = render(
       <DRegisterRow index={2} bitsHex={BITS_3_5} changed />,
