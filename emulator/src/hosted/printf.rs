@@ -1,15 +1,8 @@
-//! printf implementation. Double-precision floats and 64-bit ints cover
-//! every format the corpus uses. Varargs follow AAPCS64:
-//! - Integer/pointer args use the next general-purpose register (NGRN
-//!   in the spec) starting at the first slot after the fixed parameters.
-//!   For printf, `x0` holds the format string pointer, so vararg ints
-//!   start at `x1` and run through `x7` before spilling.
-//! - Double args use the next SIMD register (NDRN) `d0..d7`.
-//! - Spilled args (NGRN > 7 or NDRN > 7) live on the stack starting at
-//!   the SP at the call site, advancing 8 bytes per spilled arg. The
-//!   stack offset is **shared** between integer and float spills, so a
-//!   format like `"%d ... %f ..."` that exhausts both register files
-//!   reads ints and doubles from the same NSAA cursor in source order.
+//! printf, sprintf and snprintf. Double-precision floats and 64-bit ints
+//! cover every format the course programs use. Arguments come through
+//! `VarargWalker`: ints from the register after the format (x1 for printf)
+//! through x7, doubles from d0 through d7, then from the stack, where int
+//! and double arguments share one cursor in the order they appear.
 
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome, VarargWalker};
