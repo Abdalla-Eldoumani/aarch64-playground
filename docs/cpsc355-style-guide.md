@@ -156,7 +156,7 @@ add  x0, x0, :lo12:msg  // plus the low 12 bits
 forms assemble. The course leans on the literal pool, but gcc output using
 the `adrp` / `add` pair runs unchanged.
 
-## hosted runtime
+## C library and system calls
 
 Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 
