@@ -75,12 +75,9 @@ describe("docKeyAt (the editor's hover path)", () => {
   });
 });
 
-// The hover-card list must cover every mnemonic the canonical reference
-// documents. The web half of the Rust drift guard (emulator/tests/
-// reference_consistency.rs): it parses the same instruction tables out of
-// docs/instruction-reference.md and asserts lookupDoc resolves each, so the
-// doc and the Monaco hover cards never drift apart. Parsing is
-// self-contained here (no import from the Rust side).
+// The web half of emulator/tests/reference_consistency.rs: every mnemonic
+// docs/instruction-reference.md documents must have a hover card, so the two
+// never drift apart.
 
 // The 4-bit AArch64 condition codes the reference documents for the
 // conditional-branch family.
@@ -112,12 +109,9 @@ function firstBacktickToken(cell: string): string | undefined {
   return cell.slice(start + 1, end).trim();
 }
 
-// Parse the documented mnemonic set from the reference's instruction tables.
-// An "instruction table" is any Markdown table whose first header cell is
-// exactly `Mnemonic`; that selects the instruction tables and skips the
-// directive / pseudo / m4 / host-stub / syscall tables and all prose. Only the
-// first column of each body row is read, so back-ticked aliases in the
-// Form/Notes columns never leak in.
+// Only tables headed `Mnemonic` hold instructions, and only their first
+// column is read, so the directive tables and the aliases in the Form and
+// Notes columns stay out.
 function documentedMnemonics(markdown: string): Set<string> {
   const set = new Set<string>();
   let inInstructionTable = false;
