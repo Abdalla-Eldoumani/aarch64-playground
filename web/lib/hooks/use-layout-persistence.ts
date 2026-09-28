@@ -25,17 +25,10 @@ function readStored(bp: Breakpoint): number[] | null {
 }
 
 /**
- * Persist a layout-size array per breakpoint in localStorage. Crossing a
- * breakpoint loads that breakpoint's entry or falls back to the caller's
- * default. Reset clears the current breakpoint only.
- *
- * The fourth element is `ready`: false until the storage read for the current
- * breakpoint has run. Until then `save` is a no-op, because a save in that
- * window is not the reader resizing anything. A panel group reports its
- * layout the moment it can measure itself, which on a column that gets its
- * height a beat after first render lands BEFORE this hook's load effect;
- * without the gate that report wrote the fallback over the stored split and
- * the reader's sizes were lost on every reload.
+ * Panel sizes per breakpoint in localStorage; reset clears only the current
+ * breakpoint. `save` does nothing until `ready`: a panel group can report its
+ * size before the stored sizes load, and saving that report would replace
+ * them with the fallback on every reload.
  */
 export function useLayoutPersistence(
   bp: Breakpoint,
