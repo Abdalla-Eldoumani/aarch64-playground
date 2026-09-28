@@ -74,6 +74,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   const cardRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const focusPendingRef = useRef(false);
   const titleId = useId();
   const bodyId = useId();
   const nextId = useId();
@@ -100,6 +101,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
 
   const close = useCallback(() => {
     setMode(CLOSED);
+    focusPendingRef.current = false;
     const back = returnFocusRef.current;
     returnFocusRef.current = null;
     if (back?.isConnected) back.focus();
@@ -183,7 +185,9 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   }, [mode, sync]);
 
   // Starting moves focus to next, so the keyboard can walk on with Enter;
-  // the offer takes no focus, since it arrives on its own.
+  // the offer takes no focus, since it arrives on its own. The move waits
+  // for the card's first placement: until then it is hidden, and a hidden
+  // button refuses focus without a word.
   const started = mode.kind === "open";
   useEffect(() => {
     if (!started) return;
@@ -191,8 +195,13 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     if (active && active !== document.body && !cardRef.current?.contains(active)) {
       returnFocusRef.current = active;
     }
+    focusPendingRef.current = true;
+  }, [started]);
+  useEffect(() => {
+    if (!focusPendingRef.current || !layout.card || layout.hidden) return;
+    focusPendingRef.current = false;
     document.getElementById(nextId)?.focus();
-  }, [started, nextId]);
+  }, [layout, started, nextId]);
 
   if (mode.kind === "closed") return null;
 
