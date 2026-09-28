@@ -907,12 +907,10 @@ fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
                 }
             }
         }
-        // Last resort, and the one GAS reaches for: any constant that is a
-        // valid repeating bitmask pattern lowers to `ORR Rd, ZR, #imm`.
-        // Without it `mov x0, 0x5555555555555555` (a mask a student
-        // writes by hand) is refused even though one instruction covers
-        // it. MOVZ/MOVN stay ahead of it so the common small constants keep
-        // the encoding GAS picks for them.
+        // Last resort, as in GAS: a repeating bitmask pattern lowers to
+        // `ORR Rd, ZR, #imm`, so a hand-written mask like
+        // `mov x0, 0x5555555555555555` is one instruction. MOVZ/MOVN go
+        // first so small constants keep the encoding GAS picks for them.
         if let Ok(word) = encode_log_imm_fields(31, rd, imm as u64, sf, 0b01, ln) {
             return Ok(word);
         }
@@ -1142,12 +1140,10 @@ fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Result<u32, EmuE
 
     // register form
     let (rm, _) = parse_register(op3, ln)?;
-    // parse_register collapses SP and XZR to index 31, but the hardware
-    // separates them by encoding: the shifted form (bit 21 = 0) reads
-    // register 31 as XZR, and only the EXTENDED form (bit 21 = 1) reaches
-    // SP. Route SP operands to the extended encoding (emitting shifted
-    // for `add x0, sp, x1` computes with 0) and reject the
-    // placements no encoding covers, exactly as GAS does.
+    // parse_register folds SP and XZR into 31, but only the EXTENDED form
+    // (bit 21 = 1) reads 31 as SP; the shifted form reads XZR, so
+    // `add x0, sp, x1` would compute with 0. Route SP to the extended
+    // encoding and reject what no encoding covers, as GAS does.
     let rd_is_sp = is_sp_name(ops[0]);
     let rn_is_sp = is_sp_name(ops[1]);
     if is_sp_name(op3) {
@@ -2410,8 +2406,8 @@ fn parse_vec_imm_shift(s: &str, ln: usize) -> Result<(u8, bool), EmuError> {
 
 /// MOVI / MVNI, and the ORR and BIC that take an immediate instead of a
 /// third register. The destination's arrangement picks the element width,
-/// the optional `lsl`/`msl` tail picks the shift, and `simd_imm_form` -
-/// the same table the decoder reads - turns the three into a cmode, so
+/// the optional `lsl`/`msl` tail picks the shift, and `simd_imm_form`,
+/// the same table the decoder reads, turns the three into a cmode, so
 /// the two directions cannot drift apart.
 fn encode_simd_mod_imm(ops: &[&str], op: SimdImmOp, ln: usize) -> Result<u32, EmuError> {
     let name = match op {
@@ -4192,12 +4188,10 @@ fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuError> {
         } => {
             let offset_val = offset.unwrap_or(0);
             if size == 0b11 {
-                // Unreachable from the dispatch: LDRSB/LDRSH/LDRSW come in
-                // as 00/01/10 and no sign-extending load has a 64-bit
-                // access size. Named explicitly so the shared MemSize
-                // mapping, which does answer for 11, cannot silently
-                // scale by 8, and as an error, not a panic, because on
-                // wasm a panic costs the whole worker.
+                // Unreachable (no sign-extending load is 64-bit), but named
+                // so the shared MemSize mapping cannot scale by 8, and an
+                // error rather than a panic because on wasm a panic kills
+                // the whole worker.
                 return asm_err(ln, "internal: LDRS* never carries the 64-bit size field");
             }
             let scale = u64::from(MemSize::from_size_field(size).bytes());
@@ -4439,13 +4433,10 @@ fn looks_like_register(s: &str) -> bool {
     if reg_alias(&lower).is_some() {
         return true;
     }
-    // Deliberately looser than `parse_register`: this only has to tell a
-    // register-offset address apart from an immediate one, so an
-    // out-of-range index like `x99` still reads as a register and reaches
-    // `parse_register` for the real complaint.
-    // The SIMD&FP names ride the same test: a `q` operand is a register,
-    // and an address that names one has to reach `parse_register` for the
-    // real complaint instead of being silently read as an immediate.
+    // Looser than `parse_register` on purpose: an out-of-range `x99` or a
+    // SIMD&FP name like `q0` must still read as a register, so it reaches
+    // `parse_register` for the real complaint instead of being taken for
+    // an immediate offset.
     for prefix in ["x", "w", "b", "h", "s", "d", "q", "v"] {
         if let Some(rest) = lower.strip_prefix(prefix) {
             if rest == "zr" {
@@ -4725,12 +4716,10 @@ fn parse_addressing_mode(s: &str, ln: usize) -> Result<AddressingMode, EmuError>
         });
     }
 
-    // `[Xn]`, `[Xn, #imm]`, `[Xn, Xm, ...]`. The offset segment decides:
-    // one register token and nothing else is the register-offset form.
-    // Everything else (a `#imm`, a bare number, a `d1`, an empty
-    // piece) is the immediate form and reports through
-    // `parse_immediate`, which is where those complaints came from
-    // before and still do.
+    // `[Xn]`, `[Xn, #imm]`, `[Xn, Xm, ...]`: a lone register token in the
+    // offset segment is the register-offset form. Anything else (`#imm`, a
+    // bare number, `d1`, an empty piece) is the immediate form, and
+    // `parse_immediate` reports its errors.
     let parts = comma_segments(&toks, inner_lo, inner_hi, 3);
     let offset_is_register = parts.len() >= 2
         && matches!(parts[1].toks(&toks), [tok] if tok.kind == TokKind::Reg);
@@ -5972,7 +5961,7 @@ mod tests {
     }
 
     #[test]
-    fn widening_multiplies_encode_as_the_arm_arm_words_and_round_trip() {
+    fn widening_multiplies_encode_as_the_arm_manual_words_and_round_trip() {
         use crate::decoder::{decode, Instruction, MulWideOp};
         let labels = HashMap::new();
         let cases = [
@@ -6305,7 +6294,7 @@ mod tests {
     }
 
     #[test]
-    fn carry_ops_encode_as_the_arm_arm_words_and_round_trip() {
+    fn carry_ops_encode_as_the_arm_manual_words_and_round_trip() {
         use crate::decoder::{decode, Instruction};
         let labels = HashMap::new();
         let cases = [
@@ -8217,12 +8206,9 @@ svc 0").unwrap();
 
     #[test]
     fn supported_mnemonics_all_reach_an_arm() {
-        // Probe the dispatch at the layer it lives on: hand `encode_line` the
-        // bare mnemonic with no operands at all. What comes back does not
-        // matter (an operand-count complaint, or an encoding for the forms
-        // that take no operands) because only the fallthrough produces
-        // "unknown mnemonic". So this fails on exactly one thing: an entry
-        // here that the match no longer has an arm for.
+        // Hand `encode_line` each bare mnemonic with no operands. Only the
+        // fallthrough answers "unknown mnemonic", so this fails on exactly
+        // one thing: a listed name the match has no arm for.
         let labels: HashMap<String, u64> = HashMap::new();
         for mnemonic in SUPPORTED_MNEMONICS {
             let message = match encode_line(mnemonic, 0, &labels, 1) {
@@ -8242,12 +8228,10 @@ svc 0").unwrap();
 
     #[test]
     fn every_dispatch_arm_is_listed_in_supported_mnemonics() {
-        // The direction `supported_mnemonics_all_reach_an_arm` cannot cover:
-        // that one proves every listed name reaches an arm, this one proves
-        // every arm is listed, so the assembler cannot quietly accept a
-        // mnemonic the public reference has no obligation to document. A
-        // match has no runtime list of its own patterns, so read them off
-        // this file's own text.
+        // The other direction: every arm is listed, so the assembler cannot
+        // quietly accept a mnemonic the public reference need not document.
+        // A match cannot list its own patterns at runtime, so read them off
+        // this file's text.
         let source = include_str!("assembler.rs");
         let start = source
             .find("match mn.as_str() {")
