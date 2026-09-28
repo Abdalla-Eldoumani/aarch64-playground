@@ -72,6 +72,11 @@ function loadMonaco(): Promise<void> {
     await import(/* webpackChunkName: "monaco" */ "monaco-editor/features/register.all");
     await yieldToEventLoop();
     const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
+    await yieldToEventLoop();
+    // The first language or theme call starts every editor service. Made
+    // here, that start-up is a task of its own instead of part of the
+    // editor's creation.
+    ensureArm64Registered(monaco);
     loader.config({ monaco });
   })();
   return monacoLoad;
@@ -122,8 +127,8 @@ function applyDocumentTheme(monaco: Parameters<OnMount>[1]): void {
  * providers. Monaco's registries are tab-global and CONCATENATE
  * providers, so registering per mount stacked N copies of every hover
  * card and completion after N mounts (the pitfalls catalog remounts
- * the embed on every fault/fix toggle). Per-editor wiring stays in
- * handleMount.
+ * the embed on every fault/fix toggle). The loader calls it before any
+ * editor exists. Per-editor wiring stays in handleMount.
  */
 function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
   if (arm64Registered) return;
@@ -586,7 +591,6 @@ export function Editor({
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      ensureArm64Registered(monaco);
       // Per mount: the component prop above just forced arm64-dark; put
       // the document's theme back before first paint settles.
       applyDocumentTheme(monaco);
