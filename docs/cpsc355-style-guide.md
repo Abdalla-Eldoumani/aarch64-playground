@@ -18,8 +18,8 @@ msg_len = . - msg - 1
 ```
 
 - `define(NAME, BODY)` substitutes every standalone `NAME` with `BODY`
-  in the rest of the source. Fixed-point; up to 32 rounds before the
-  playground flags a cycle.
+  in the rest of the source. Expansion repeats until nothing changes, up
+  to 32 rounds, before the playground reports a cycle.
 - `NAME = EXPRESSION` records a symbol evaluated where it appears. `.` is
   the address of the assignment line, so `msg_len = . - msg - 1` is the
   length of string `msg` minus its null terminator, wherever `msg_len` is
@@ -105,9 +105,11 @@ the difference list:
 | `.p2align`         | `.balign` (bytes) or `.align` (2^N)   |
 | `.equ` / `.set`    | m4 `define(...)` or `name = expr`     |
 
-The wider acceptance is deliberate, so unmodified gcc `-S` output still
-loads. The authored rule keeps every shipped program reading like a course
-file.
+The wider acceptance is deliberate, so most of what gcc `-S` writes
+assembles as it stands. A whole `-S` file still needs a few edits first;
+[instruction-reference.md](instruction-reference.md) lists them under GCC
+output compatibility. The authored rule keeps every shipped program reading
+like a course file.
 
 ## addressing modes
 
@@ -126,7 +128,10 @@ All four signed-offset widths (`B` / `H` / `W` / `X`) emit correctly;
 plain `LDR` / `STR` auto-pick 32 vs 64 bit based on whether the target
 register is `Wt` or `Xt`.
 
-Unaligned access succeeds (matches Linux userspace with SCTLR.A = 0).
+Unaligned access succeeds (matches Linux userspace with SCTLR.A = 0),
+except through `sp`: a load or store based on `sp`, or a libc call, while
+`sp` is not a multiple of 16 stops with `Bus error`, as it does on the
+servers.
 
 ## literal pool
 
@@ -165,6 +170,9 @@ rand, srand, time, exit, usleep,
 malloc, free, calloc, realloc,
 fflush, fopen, fprintf, fgets, fputs, fclose
 ```
+
+`putc`, `fputc`, `getc`, `fwrite`, `qsort`, and `bsearch` are registered
+too; [instruction-reference.md](instruction-reference.md) has the full table.
 
 The `stdin`, `stdout`, and `stderr` symbols resolve to loader-written
 words holding their `FILE*` handles, so `fprintf(stderr, ...)` and
@@ -206,9 +214,9 @@ single imm26 offset. The linker plants a per-host trampoline after
 `.text` (LDR X16, =<stub>; BR X16) and rewrites `bl printf` to target
 that trampoline.
 
-Main returning via `ret` lands on the `__main_return` sentinel the
-loader pre-stashed in LR; that stub halts the CPU with `w0` as the exit
-code.
+When `main` returns with `ret`, it jumps to `__main_return`, a stub whose
+address the loader put in LR before the program started; that stub stops
+the program with `w0` as the exit code.
 
 ## virtual filesystem
 
@@ -220,7 +228,7 @@ run against files the student just dropped in.
 
 ## naming conventions
 
-The corpus follows a convention that shows up in the alias names:
+Course files follow a naming convention that shows up in the alias names:
 
 | suffix | meaning                        | example                    |
 | ------ | ------------------------------ | -------------------------- |
@@ -228,6 +236,6 @@ The corpus follows a convention that shows up in the alias names:
 | `_s`   | stack-frame slot (bytes)       | `score2_s = 20`            |
 | `_m`   | `.data` / `.bss` object        | `count_m: .word 0`         |
 
-`lower_operands` relies on this convention: when it sees `[fp, score2_s]`
-it looks up `score2_s` in the symbol table, substitutes `20`, and hands
-`[fp, 20]` to the encoder.
+`lower_operands` resolves these names like any other symbol: when it sees
+`[fp, score2_s]` it looks up `score2_s` in the symbol table, substitutes
+`20`, and hands `[fp, 20]` to the encoder.
