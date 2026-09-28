@@ -4,21 +4,11 @@ import { laneText, type LaneArrangement } from "@/lib/emulator/register-format";
 import { LANE_BYTES, sliceLanes } from "@/lib/emulator/vector-lanes";
 
 /**
- * One 128-bit vector register row: the label, then the same bits re-sliced
- * into lanes of the chosen arrangement. Lanes render most significant first,
- * so the hex cells read left to right exactly as the register's own hex
- * string does.
- *
- * The label is `v0 (q0)` because the two names are one register: a student who
- * typed `ldr q0` has to find it here. Hex mode shows each lane's hex alone;
- * decimal shows a signed integer (with the unsigned value beneath a negative
- * one) or, in a float arrangement, the float. The row states which in its
- * accessible text, since 0xff and -1 are the same byte.
- *
- * A lane whose bits moved since the previous snapshot carries the amber write
- * bar and the `--changed` ink. The motion stays at the row level (one
- * `anim-reg-flash` layer per row, as everywhere else in the panel): a strike
- * per lane would put 32 rows x up to 16 layers on the compositor every step.
+ * One 128-bit vector register row. Lanes run most significant first to read
+ * like the register's own hex, and the label says `v0 (q0)` so a student who
+ * wrote `ldr q0` can find it. The hidden note says hex or decimal, since 0xff
+ * and -1 are the same byte. Only the row flashes, not each lane, so 32 rows of
+ * up to 16 lanes do not all animate every step.
  */
 export interface VRegisterRowProps {
   /** Register index 0-31 (v0-v31, the same bits as q0-q31). */
