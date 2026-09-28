@@ -533,11 +533,6 @@ body {
   select {
     font-size: 16px !important;
   }
-  /* A soft keyboard takes half the screen; while the editor has it, the
-     view tabs step aside so the code and the run controls keep the rest. */
-  .phone-layout:has(textarea:focus) .phone-tabs {
-    display: none;
-  }
 }
 
 /* While the install tip (chrome/InstallHint) floats at the bottom, a control
