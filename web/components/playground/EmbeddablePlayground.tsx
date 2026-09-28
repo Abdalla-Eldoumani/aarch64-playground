@@ -94,7 +94,8 @@ export type EmbeddablePlaygroundHandle = {
   step(): void;
   stepBack(): void;
   reset(): void;
-  /** Load a program into the editable buffer (recent / bookmark / tutorial). */
+  /** Swap the editor text only (an exercise's restore-starter); a new
+   *  program goes through loadProgram so the last run's state is cleared. */
   loadSource(source: string, label?: string): void;
   /** Deliver a complete program handoff (example, share link, bundle):
    *  preserves the replaced buffer in recents, resets the machine, then
