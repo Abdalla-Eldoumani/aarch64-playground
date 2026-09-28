@@ -1,21 +1,9 @@
 import type { JSX } from "react";
 
 /**
- * Static AAPCS64 floating-point register-file teaching diagram: d0-d31
- * grouped by ABI role, the floating-point sibling of RegisterFileDiagram.
- * Presentational only: no runtime, no live debugger state. Each cell
- * names both course views of the register: dN (double, 64 bits) with its
- * sN float view (the low 32 bits) beneath, exactly the s/d pairing the
- * course teaches; the vector width is named in the footer, not on the cells,
- * because the strip is the course's s/d view. The tints mark
- * saved-ness for floats: cyan = the argument/result area
- * (d0-d7, matching the integer diagram's argument band), amber = the
- * callee-must-preserve band d8-d15 (a caution rather than plain
- * success-green: the promise covers the d-sized value, which is all a
- * course double needs), and a neutral border tint = the d16-d31
- * caller-saved temporaries. There is no floating-point frame pointer to
- * mark: x29/x30 stay the frame record, so this strip carries no fp/lr
- * analogue.
+ * Static floating-point sibling of RegisterFileDiagram. d8-d15 are amber, not
+ * green, because the callee-saved promise covers only the low 64 bits. Cells
+ * show the course's s/d views; the vector width is left to the footer.
  */
 
 type FpFamily = "args" | "callee" | "caller";
@@ -128,23 +116,23 @@ export function FpRegisterFileDiagram({
         <span className="font-mono text-[var(--text-primary)]">dN</span>
         {", and "}
         <span className="font-mono text-[var(--text-primary)]">fcvt</span>
-        {" converts between them. The saved-ness role applies to the register whichever view you use. There is no floating-point frame pointer."}
+        {" converts between them. Whether a call keeps the register is the same in either view. There is no floating-point frame pointer."}
       </p>
 
       <p className="text-[12px] text-[var(--text-secondary)]">
         {"The same 32 entries are the vector file as well: the playground accepts "}
         <span className="font-mono text-[var(--text-primary)]">q8</span>
-        {" and the arrangements on "}
-        <span className="font-mono text-[var(--text-primary)]">v8</span>
+        {" and vector forms such as "}
+        <span className="font-mono text-[var(--text-primary)]">v8.4s</span>
         {", and the reference's Vector section documents them, while the course keeps to "}
         <span className="font-mono text-[var(--text-primary)]">sN</span>
         {" and "}
         <span className="font-mono text-[var(--text-primary)]">dN</span>
-        {". The callee-saved promise is narrower than the register: AAPCS64 preserves only bits 63:0 of "}
+        {". The callee-saved promise is narrower than the register: the calling convention preserves only bits 63:0 of "}
         <span className="font-mono text-[var(--text-primary)]">v8</span>
         {"-"}
         <span className="font-mono text-[var(--text-primary)]">v15</span>
-        {", which is exactly the d-sized value, so anything a routine leaves above bit 63 is its own business."}
+        {", exactly the dN part, so a call may change anything above bit 63."}
       </p>
     </section>
   );
