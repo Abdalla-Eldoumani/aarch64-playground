@@ -65,14 +65,10 @@ const POINTS_BACK = /^(\S+ ){0,2}(it|its|them|they)\b/i;
 const REGISTER_ALIAS = /\b\w+_r\b/;
 
 /**
- * A snippet from authored Markdown: its prose, in whole sentences while they
- * fit. Headings, lists, tables, and code are skipped, and so is a later
- * sentence that ends in a colon (it introduces one of them) or describes the
- * starter. The opening states the task, so it stays even as a lead-in; an
- * opening about the starter stays only when the next sentence points back
- * to it. A sentence naming a register alias is skipped while other prose
- * remains. When whole sentences come out short, the prose is clipped at a
- * word instead.
+ * A snippet from authored Markdown, in whole sentences while they fit. A
+ * search result shows no list, code, or starter program, so sentences that
+ * lead into those or name a starter's register alias drop out. The opening
+ * states the task, so it stays even when it leads into a list.
  */
 export function snippetFromMarkdown(markdown: string): string {
   const paragraphs: string[] = [];
