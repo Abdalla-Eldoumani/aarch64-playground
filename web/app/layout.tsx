@@ -9,12 +9,8 @@ import { RegisterSW } from "@/components/chrome/RegisterSW";
 import { HOME_DESCRIPTION, HOME_TITLE, SITE_NAME, SITE_URL } from "@/lib/content/site";
 import { composeTitle, pageMetadata } from "@/lib/content/seo";
 
-// Datasheet trio: Source Serif 4 in editorial chrome (reading-surface
-// titles, leads, empty-state heads), IBM Plex Sans for UI controls, body,
-// and display headlines, JetBrains Mono everywhere code, registers, labels,
-// or document rules appear. Each font is pinned to a CSS variable so
-// component-level utility classes can pull the right family without a
-// Tailwind config rewrite.
+// Each font is bound to a CSS variable so utility classes and the --type-*
+// tokens in globals.css can pick a family without a Tailwind config change.
 const fontSerif = Source_Serif_4({
   subsets: ["latin"],
   weight: ["400", "600"],
@@ -87,13 +83,10 @@ export default function RootLayout({
     // design. The suppression scopes to this element only.
     <html lang="en" className={fontClasses} suppressHydrationWarning>
       <head>
-        {/* Set data-theme from the saved preference BEFORE first paint, so a
-            light or high-contrast user does not see a flash of the default
-            dark theme every load. With nothing saved the OS preference
-            decides. Nothing is persisted here: use-theme writes the choice
-            on mount. Static, code-authored script (no user input); the CSP
-            permits inline scripts. Kept in lockstep with the
-            "aarch64-playground:theme" key in lib/hooks/use-theme. */}
+        {/* Runs before first paint so a saved light or high-contrast theme
+            does not flash dark on load; with nothing saved, the OS decides.
+            use-theme does the saving, and its storage key must match this
+            one. A fixed script with no user input, which the CSP allows. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
