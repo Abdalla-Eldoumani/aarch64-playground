@@ -98,7 +98,7 @@ the shipped lessons, exercises, and examples as a whole are in
 the `window.matchMedia` that jsdom lacks. Use plain DOM assertions;
 `@testing-library/jest-dom` is not installed.
 
-On a busy machine, jsdom tests can pass their 5-second timeout. If they fail
+On a busy machine, jsdom tests can run past their 5-second timeout. If they fail
 only on timeouts, run fewer at once with `npm test -- --maxWorkers=4`.
 
 ## Example programs
