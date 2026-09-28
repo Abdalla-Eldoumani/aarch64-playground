@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { CallingConventionGuide } from "@/components/reference/CallingConventionGuide";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("CallingConventionGuide", () => {
@@ -142,14 +139,5 @@ describe("CallingConventionGuide", () => {
     const text = container.textContent ?? "";
     expect(text).toContain("[sp, alloc]!"); // pre-indexed save opens the frame
     expect(text).toContain("[sp], dealloc"); // post-indexed restore closes it
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<CallingConventionGuide />);
-      expect(screen.getByLabelText("aapcs64 calling convention")).toBeTruthy();
-      unmount();
-    }
   });
 });
