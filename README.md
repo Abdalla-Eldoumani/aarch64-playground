@@ -96,6 +96,10 @@ npm run build
 npm run start
 ```
 
+A local production server logs two 404 errors in the browser console for
+Vercel's analytics scripts, which exist only on Vercel. They do not affect
+the site.
+
 To run the tests, see [docs/TESTING.md](docs/TESTING.md). To change the code,
 start with [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Every doc is listed in
 [docs/README.md](docs/README.md).
