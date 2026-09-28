@@ -9,12 +9,13 @@
 //! against what GNU as does with the same line.
 //!
 //! tests/addressing-freeze.txt is that answer: every spelling below,
-//! assembled by GNU as on csarm, with the word as encoded or the error it
-//! refused the line with. A spelling as encodes must encode to the same
-//! word here, and a spelling as refuses must be refused here. The error
-//! text is not compared: the playground words its refusals for students.
+//! assembled by GNU as on csarm, with the word GNU as encoded or the error
+//! it refused the line with. A spelling GNU as encodes must encode to the
+//! same word here, and a spelling it refuses must be refused here. The
+//! error text is not compared: the playground words its refusals for
+//! students.
 //!
-//! The rows where the encoder is known to part from as are listed in
+//! The rows where the encoder is known to differ from GNU as are listed in
 //! `KNOWN_GAPS` with what the encoder does instead. A listed row that
 //! changes fails too, so a fixed gap has to leave the list.
 //!
@@ -32,28 +33,29 @@ const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/addressing-fre
 /// Rows where the encoder and GNU as disagree today, with the encoder's
 /// outcome (`0xWORD`, or `ERR` for a refusal).
 const KNOWN_GAPS: &[(&str, &str)] = &[
-    // A label operand: as encodes one LDR (literal) and leaves the address
-    // to the linker. The hosted pipeline lowers `ldr reg, label` to two
+    // A label operand: GNU as encodes one LDR (literal) and leaves the
+    // address to the linker. The hosted pipeline lowers `ldr reg, label` to two
     // words before the encoder sees it (tests/server_parity.rs), so the
     // one-line encoder never takes a label here.
     ("ldr x1, msg", "ERR"),
     ("ldr d1, msg", "ERR"),
-    // as sets the S bit when a byte access spells out its `lsl #0`; the
-    // encoder leaves it clear. Both load the byte at x0 + x2.
+    // GNU as sets the S bit when a byte access spells out its `lsl #0`;
+    // the encoder leaves it clear. Both load the byte at x0 + x2.
     ("ldrb w1, [x0, x2, lsl #0]", "0x38626801"),
     ("strb w1, [x0, x2, lsl #0]", "0x38226801"),
     ("ldrsb w1, [x0, x2, lsl #0]", "0x38e26801"),
     ("ldrsb x1, [x0, x2, lsl #0]", "0x38a26801"),
     ("LDRB W1, [X0, X2, LSL #0]", "0x38626801"),
-    // as refuses UXTX on a register offset; the encoder reads it as LSL.
+    // GNU as refuses UXTX on a register offset; the encoder reads it as
+    // LSL.
     ("ldr w1, [x0, x2, uxtx #2]", "0xb8627801"),
     ("str w1, [x0, x2, uxtx #2]", "0xb8227801"),
     ("ldrsw x1, [x0, x2, uxtx #2]", "0xb8a27801"),
     ("ldr s1, [x0, x2, uxtx #2]", "0xbc627801"),
     ("str s1, [x0, x2, uxtx #2]", "0xbc227801"),
     ("LDR S1, [X0, X2, UXTX #2]", "0xbc627801"),
-    // as refuses a shift with no amount; the encoder reads a bare `lsl`
-    // as no shift at all.
+    // GNU as refuses a shift with no amount; the encoder reads a bare
+    // `lsl` as no shift at all.
     ("ldr x1, [x0, x1, lsl]", "0xf8616801"),
     ("ldr d1, [x0, x1, lsl]", "0xfc616801"),
 ];
@@ -130,10 +132,11 @@ const BASES: &[&str] = &["x0", "x15", "sp", "fp"];
 /// non-x0 bases ride this subset instead of the full cross.
 const FORM_SPREAD: &[usize] = &[0, 1, 3, 5, 6, 8, 11, 13];
 
-/// Malformed spellings. as refuses all but `msg` (a label, which it
-/// leaves to the linker), and the parser has to refuse them too:
-/// `[sp, w1]` once picked up an implicit UXTW and `[x0, #8, #9]` once
-/// dropped its third operand without a word.
+/// Malformed spellings. GNU as refuses all but `msg` (a label, which it
+/// leaves to the linker), and the parser has to refuse them too, except
+/// where `KNOWN_GAPS` says otherwise. `[sp, w1]` once picked up an
+/// implicit UXTW and `[x0, #8, #9]` once dropped its third operand
+/// without a word.
 const REJECTS: &[&str] = &[
     "[x0, #8",
     "[x0,,x1]",
@@ -407,7 +410,7 @@ fn addressing_mode_spellings_encode_as_gnu_as_does() {
                 assert_ne!(
                     *pinned,
                     short(*gas),
-                    "KNOWN_GAPS lists `{spelling}` with the outcome as gives it, so it is no gap"
+                    "KNOWN_GAPS lists `{spelling}` with the outcome GNU as gives it, so it is no gap"
                 );
                 (pinned.to_string(), " (a known gap)")
             }
