@@ -7,7 +7,7 @@ export default function manifest(): MetadataRoute.Manifest {
     // The label under the home-screen icon, which fits about twelve characters.
     short_name: "AArch64",
     description:
-      "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus",
+      "Write, run, and step through ARMv8 assembly in the browser, watching the registers, stack, and memory change.",
     start_url: "/playground",
     display: "standalone",
     background_color: "#0B0C10",
