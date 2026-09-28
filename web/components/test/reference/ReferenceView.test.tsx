@@ -139,7 +139,7 @@ describe("ReferenceView", () => {
     expect(await screen.findByText("base-converter-widget:octal")).toBeTruthy();
   });
 
-  it("ignores a fragment that only looks like a key", () => {
+  it("ignores a fragment named after an inherited object key", () => {
     window.history.replaceState(null, "", "#constructor");
     render(<ReferenceView instructions={INSTRUCTIONS} />);
     expect(
