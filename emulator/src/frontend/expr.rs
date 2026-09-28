@@ -320,6 +320,7 @@ fn err(line: usize, message: &str) -> EmuError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
     use super::super::lexer::lex;
     use std::collections::HashMap;
 
@@ -365,7 +366,7 @@ mod tests {
         let src = format!("{}1{}", "(".repeat(128), ")".repeat(128));
         assert_eq!(run(&src).unwrap(), 1);
         let src = format!("{}1{}", "(".repeat(129), ")".repeat(129));
-        assert!(run(&src).is_err());
+        rejects(run(&src), "nests too deeply");
     }
 
     #[test]
@@ -430,7 +431,7 @@ mod tests {
 
     #[test]
     fn division_by_zero_errors() {
-        assert!(run("1 / 0").is_err());
+        rejects(run("1 / 0"), "division by zero");
     }
 
     #[test]
@@ -440,7 +441,7 @@ mod tests {
 
     #[test]
     fn modulo_by_zero_errors() {
-        assert!(run("1 % 0").is_err());
+        rejects(run("1 % 0"), "modulo by zero");
     }
 
     #[test]
@@ -495,23 +496,23 @@ mod tests {
 
     #[test]
     fn float_in_integer_expression_errors() {
-        assert!(run("0r1.5 + 1").is_err());
+        rejects(run("0r1.5 + 1"), "use it inside .double");
     }
 
     #[test]
     fn empty_expression_errors() {
         let v: Vec<Token> = Vec::new();
-        assert!(evaluate(&v, &nothing, 0, 1).is_err());
+        rejects(evaluate(&v, &nothing, 0, 1), "expected an expression");
     }
 
     #[test]
     fn trailing_tokens_error() {
-        assert!(run("1 + 2 3").is_err());
+        rejects(run("1 + 2 3"), "unexpected tokens after expression");
     }
 
     #[test]
     fn unclosed_paren_errors() {
-        assert!(run("(1 + 2").is_err());
+        rejects(run("(1 + 2"), "expected closing paren");
     }
 
     #[test]
@@ -524,8 +525,8 @@ mod tests {
 
     #[test]
     fn shift_amount_out_of_range_errors() {
-        assert!(run("1 << 64").is_err());
-        assert!(run("1 << -1").is_err());
+        rejects(run("1 << 64"), "shift amount out of range");
+        rejects(run("1 << -1"), "shift amount out of range");
     }
 
     #[test]
