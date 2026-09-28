@@ -6,15 +6,16 @@
 // three cases of that repair are the whole idea, so the insert screen
 // stops on each one, paints the family it is looking at, and names the case.
 //
-// The rules, in the order they matter: the root is black; a red node
-// never has a red child; every path from a node down to a nil leaf passes
-// the same number of black nodes. The last one bounds the height, and the
-// first two are what keep it true.
+// The rules: the root is black; a red node never has a red child; every
+// path from a node down to an empty child (a nil leaf) passes the same
+// number of black nodes. The last two together keep the longest path at
+// most twice the shortest, which is what keeps the tree shallow.
 
 define(fp, x29)
 define(lr, x30)
 
-// node layout: value, links, parent, colour, and the flag a walk paints
+// node layout: value, links, parent, colour, and a flag a walk sets on
+// each node it visits
     RB_DATA   = 0
     RB_LEFT   = 8
     RB_RIGHT  = 16
@@ -23,12 +24,12 @@ define(lr, x30)
     RB_SEEN   = 40
     RB_SIZE   = 48
 
-// Colours are plain flags on the node, nothing to do with what is drawn
+// Colours are plain numbers stored in the node, not terminal colours
     RB_BLACK = 0
     RB_RED   = 1
 
 // Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated here
-// so this file also assembles on its own, the way the web build feeds it.
+// because each file assembles on its own.
     RB_ROLE_TEXT   = 0
     RB_ROLE_DIM    = 1
     RB_ROLE_FAINT  = 2
@@ -50,8 +51,8 @@ define(lr, x30)
     .balign 8
 
 rb_root:            .dword 0
-rb_nil:             .dword 0                // one shared black leaf
-rb_hl_node:         .dword 0, 0, 0, 0       // nodes wearing a state colour
+rb_nil:             .dword 0                // the sentinel: one black leaf every empty child points to
+rb_hl_node:         .dword 0, 0, 0, 0       // nodes wearing a highlight colour
 
     .balign 4
 rb_node_count:      .word 0
@@ -376,7 +377,7 @@ rotate_right_done:
     ldp     fp, lr, [sp], 48
     ret
 
-// rb_insert_fixup(x0 = new node) - recolor and rotate until the red rules hold
+// rb_insert_fixup(x0 = new node) - recolor and rotate until no red node has a red child
     .global rb_insert_fixup
 rb_insert_fixup:
     stp     fp, lr, [sp, -64]!
@@ -764,7 +765,7 @@ rb_delete_fixup_case4_right:
     mov     x0, x20
     mov     w1, RB_BLACK
     bl      rb_set_color
-    ldr     x22, [x21, RB_LEFT]     // the far nephew pays for the rotation
+    ldr     x22, [x21, RB_LEFT]     // the far nephew turns black so its side keeps its black count
     mov     x0, x22
     mov     w1, RB_BLACK
     bl      rb_set_color
@@ -831,7 +832,7 @@ rb_delete_fixup_case4_left:
     mov     x0, x20
     mov     w1, RB_BLACK
     bl      rb_set_color
-    ldr     x22, [x21, RB_RIGHT]    // the far nephew pays for the rotation
+    ldr     x22, [x21, RB_RIGHT]    // the far nephew turns black so its side keeps its black count
     mov     x0, x22
     mov     w1, RB_BLACK
     bl      rb_set_color
@@ -880,7 +881,7 @@ rb_delete:
     ldr     x0, [x19]
     mov     w1, w20
     bl      rb_search
-    mov     x21, x0                      // x21 = node to delete
+    mov     x21, x0                      // x21 = z, the node to delete
     cbz     x21, rb_delete_not_found
 
     ldr     x25, =rb_nil
@@ -924,10 +925,11 @@ rb_delete_two_children:
     b       rb_delete_splice_y
 
 rb_delete_successor_is_child:
-    // Only when y sat directly under z. x may be the nil sentinel, and it
-    // still needs y as its parent for the fixup climb. On the other path
-    // the transplant above already gave x its real parent, and overwriting
-    // it here would point the climb at a node that is about to move.
+    // Only when y sat directly under z. x (x24, the child that moves up
+    // into y's place) may be the nil sentinel, and it still needs y as its
+    // parent for the fixup climb. On the other path the transplant above
+    // already gave x its real parent, and overwriting it here would point
+    // the climb at a node that is about to move.
     str     x22, [x24, RB_PARENT]
 
 rb_delete_splice_y:
@@ -1019,7 +1021,8 @@ rb_free_skip:
     ldp     fp, lr, [sp], 32
     ret
 
-// rb_free_recursive(x0 = node) - post-order free; the shared sentinel stays
+// rb_free_recursive(x0 = node) - free both children, then the node; the
+// shared sentinel stays
 rb_free_recursive:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
@@ -1159,8 +1162,8 @@ rb_size_out:
     ret
 
 // rb_black_height(x0 = node) -> w0 = blacks on any path down from it, or
-// -1 when two paths disagree. This is the rule that bounds the height, so
-// the verify screen measures it rather than asserting it.
+// -1 when two paths disagree. With the no-red-child rule, this is what
+// bounds the height, so the verify screen measures it rather than assuming it.
 rb_black_height:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
@@ -1300,7 +1303,7 @@ rb_depth_out:
     ldp     fp, lr, [sp], 48
     ret
 
-// rb_clear_seen(x0 = node) - drop the paint a previous walk left
+// rb_clear_seen(x0 = node) - clear the visited flags a previous walk set
 rb_clear_seen:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
@@ -1403,7 +1406,7 @@ rb_say:
 
 // rb_role_of(x0 = node) -> w0 = the colour role this node wears now
 // At rest a node wears its own colour, red or black. A node the current
-// step is working on wears the state instead, which is why the legend
+// step is working on wears a highlight colour instead, which is why the legend
 // names both kinds.
 rb_role_of:
     ldr     x1, =rb_hl_node
@@ -1687,7 +1690,7 @@ rb_render_tree:
     bl      rb_draw
 
     mov     w0, RB_TOP_ROW
-    mov     w1, RB_TOP_COL - 7          // 7 columns left of the root, the width of the root label
+    mov     w1, RB_TOP_COL - 7          // room for the four-letter label and a gap
     mov     w2, RB_ROLE_KEY
     ldr     x3, =rb_lbl_root
     bl      ui_text
@@ -1703,7 +1706,7 @@ rb_render_empty:
 rb_render_stats:
     mov     w0, 16
     mov     w1, 56
-    // 18 columns of literal plus two counts, and a full tree is 100 nodes.
+    // 18 columns of fixed text plus two counts, and a full tree is 100 nodes.
     // Wipe to the last inner column so the line can never leave a stale
     // digit behind when it shrinks.
     mov     w2, 24
@@ -2029,8 +2032,8 @@ rb_ask_prompt:
     b       rb_ask_done
 
 rb_ask_range:
-    // Say why and ask again. Answering 0 here would be indistinguishable
-    // from a closed stdin, and the operation was being abandoned silently.
+    // Say why and ask again. Returning 0 here would look the same as a
+    // closed stdin, and the operation would stop without a word.
     ldr     x0, =rb_msg_range
     mov     w1, 0
     mov     w2, 0
@@ -2344,7 +2347,7 @@ rb_insert_int_place:
     ldr     x0, =rb_root
     mov     w1, w19
     bl      rb_insert
-    mov     w23, w1                         // a printf below would eat w1
+    mov     w23, w1                         // a printf below would overwrite w1
 
     ldr     x0, =rb_narrate
     str     wzr, [x0]
