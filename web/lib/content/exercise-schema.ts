@@ -1,17 +1,8 @@
 /**
- * The exercise authoring contract: TypeScript types plus a hand-rolled
- * runtime validator. An exercise is author-supplied JSON, so it is
- * untrusted until `validateExercise` has narrowed it field-by-field. This
- * is the single source of truth for the exercise shape; the loader, the
- * checker, the index, and the view all import these types and call this
- * validator, and only a validated exercise is ever rendered or evaluated.
- *
- * The validator needs no package (only the shared input caps) and is modeled on the defensive style in
- * lesson-schema.ts and upload-guard.ts: narrow `unknown` one field at a
- * time, return a discriminated result, never throw. A stdout `matches`
- * pattern is compiled here, at validation time, so an author's
- * un-compilable regular expression is rejected on load instead of throwing
- * later when the checker runs it against program output.
+ * The exercise shape and its validator, the one source for both. Exercise
+ * files are untrusted JSON, so nothing is rendered or graded until
+ * `validateExercise` has checked it field by field; it returns an error
+ * instead of throwing.
  */
 
 import { validateArgs, validateStdin } from "@/lib/playground/upload-guard";
@@ -70,7 +61,7 @@ export interface QuizQuestion {
   hint?: string;
 }
 
-/** A mental tracing exercise requiring the user to predict the output or state of a snippet. */
+/** A question asking the student to predict what a snippet prints or leaves behind. */
 export interface PredictionQuestion {
   code: string;
   question: string;
@@ -134,8 +125,8 @@ export interface QuizExercise extends BaseExercise {
 }
 
 /**
- * A mental tracing variant. Requires the student to predict the output or
- * internal state of a provided code snippet without executing it.
+ * Predict-the-output questions: the student works out what a snippet does
+ * without running it.
  */
 export interface PredictionExercise extends BaseExercise {
   variant: "prediction";
@@ -157,15 +148,10 @@ export interface BlanksExercise extends BaseExercise {
 export type Exercise = WriteExercise | QuizExercise | PredictionExercise | BlanksExercise;
 
 /**
- * The row shape the practice index renders: exactly the seven fields
- * ExerciseIndex reads, and nothing else. A full Exercise also carries the
- * prompt, the starter source, the acceptance criteria, the questions, the
- * predictions, the blanks, the args, and the stdin, roughly 232 KB across the
- * authored set, every byte of which would otherwise cross the
- * server-to-client boundary so one short blurb could be derived during the
- * client render. The type lives here rather than beside the loader because
- * the loader is server-only: a client component naming that module is one
- * dropped `type` keyword away from a confusing build failure.
+ * The row the practice index renders: only the seven fields ExerciseIndex
+ * reads, so the rest of each exercise (about 232 KB across the set) never
+ * reaches the browser. It lives here, not beside the server-only loader, so a
+ * client component can name the type without importing that module.
  */
 export interface ExerciseIndexRow {
   title: string;
