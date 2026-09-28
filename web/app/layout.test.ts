@@ -3,13 +3,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { SITE_URL } from "@/lib/content/site";
 
-// next/font/google only runs inside the Next build; stub the three loaders so
-// the layout module can be imported for its metadata export. Each stub keeps
-// the options it was called with, because those options are the font
-// configuration, and every face declared there lands in a render-blocking
-// stylesheet on every route. The options are kept in a plain record rather
-// than read back from mock call history: the loaders run once, at import,
-// and vitest clears every mock's history before each test.
+// next/font/google runs only inside the Next build. Each stub records its
+// options in a plain object, not mock call history: the loaders run once at
+// import, and vitest clears call history before each test.
 interface FontOptions {
   weight?: string[];
   style?: string[];
@@ -105,7 +101,7 @@ describe("share card metadata", () => {
     expect(image.url).toBe("/og.png");
   });
 
-  it("ships the cover the tags advertise: a real 1200x630 png, light enough to unfurl", () => {
+  it("ships the cover the tags advertise: a real 1200x630 png, small enough for link previews", () => {
     // Vitest runs from web/, so the public dir sits under the cwd.
     const png = readFileSync(join(process.cwd(), "public", "og.png"));
     // PNG signature, then width and height straight from the IHDR chunk, so
