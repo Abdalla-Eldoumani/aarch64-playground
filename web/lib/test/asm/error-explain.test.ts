@@ -100,6 +100,16 @@ describe("errorHoverMarkdown", () => {
     expect(rest).toContain("*fix:* did you mean `mov` or `mvn`?");
   });
 
+  it("links the matching style guide section, and none for a general error", () => {
+    const argv = errorHoverMarkdown("the arguments do not fit in the page the playground reserves for argv");
+    expect(argv).toContain(
+      "*more:* [style guide, C library and system calls](https://github.com/Abdalla-Eldoumani/aarch64-playground/blob/main/docs/cpsc355-style-guide.md#c-library-and-system-calls)",
+    );
+    const general = errorHoverMarkdown("execution ran past the last instruction");
+    expect(general).toContain("*fix:*");
+    expect(general).not.toContain("*more:*");
+  });
+
   it("escapes GAS's quoting when the explainer has nothing to add", () => {
     const message = "unknown mnemonic `frobnicate' -- `frobnicate x0'";
     const md = errorHoverMarkdown(message);
