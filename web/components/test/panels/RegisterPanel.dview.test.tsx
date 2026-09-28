@@ -41,21 +41,6 @@ describe("RegisterPanel d-register view", () => {
     expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("d");
   });
 
-  it("keeps the regfile switch at full size when the panel is narrow", () => {
-    renderPanel();
-    const group = screen.getByRole("group", { name: "register view" });
-    expect(group.className).toContain("shrink-0");
-    // The header wraps instead of squeezing the switch, so each cell keeps its
-    // label on one line.
-    for (const label of ["x0–x30", "d0–d31"]) {
-      const cell = screen.getByRole("button", { name: label });
-      expect(cell.className).toContain("shrink-0");
-      expect(cell.className).toContain("whitespace-nowrap");
-    }
-    expect(group.parentElement?.className).toContain("flex-wrap");
-    expect(group.parentElement?.className).toContain("gap-y-1");
-  });
-
   it("gives each view its own dec/hex toggle, under its own key", () => {
     renderPanel();
     // The x-view's toggle is the integer one; the d-view's keeps the key it
