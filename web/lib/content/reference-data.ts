@@ -3,18 +3,10 @@ import { C_EQUIVALENTS } from "@/lib/asm/c-equivalents";
 import type { RegView } from "@/lib/emulator/emulator-state";
 
 /**
- * The rich data source for the two-pane instruction reference. It is derived
- * from docs/instruction-reference.md (the canonical mnemonic list, the eight
- * category sections, and the Form column) and merges the hover-card prose from
- * instruction-docs.ts and the C from c-equivalents.ts by mnemonic, so the
- * one-line summary and the C keep a single source rather than being retyped
- * here. A guard
- * (reference-data.test.ts) pins this set to the documented set so the two
- * cannot drift apart.
- *
- * `encoding` is authored for a small, instructive subset only: each layout
- * follows the real AArch64 form and its bit widths sum to 32. Instructions
- * without an authored encoding omit the field and render without a diagram.
+ * The data behind the instruction reference page. Mnemonics, categories and
+ * syntax follow docs/instruction-reference.md (reference-data.test.ts keeps
+ * them equal); the summary and the C come from instruction-docs.ts and
+ * c-equivalents.ts so they are never retyped. Only a few rows draw an encoding.
  */
 
 /**
@@ -91,20 +83,12 @@ interface ReferenceSeed {
   mnemonic: string;
   category: ReferenceCategory;
   syntax: string;
-  /** Worked example for the reference page: concrete values and the result
-   *  in a comment, so reading it teaches and running it in place shows real
-   *  state. Wins over the terse hover example; absent, the hover's is used.
-   *
-   *  Two conventions hold across every example. Comments start at column 32,
-   *  which is column 40 once playground-source indents the body by eight
-   *  spaces (the course's comment column); a line whose code already reaches
-   *  32 takes a two-space gap instead. Immediates follow the row: a general-
-   *  register row writes them bare, the way the course does, and a vector
-   *  row carries the `#` on every line, its scalar setup lines included, so
-   *  no block mixes the two spellings. The vector shift and compare-against-
-   *  zero parsers reject the bare spelling, so the hashed one is the only
-   *  form those rows can use, and it is what the reference's Form cells and
-   *  the conformance inventory carry for them. */
+  /** Worked example for the reference page, result in a comment; absent, the
+   *  hover card's is used. Comments start at column 32 (the course's column 40
+   *  once playground-source indents the body), or two spaces after a longer
+   *  line. General-register rows write immediates bare, as the course does;
+   *  vector rows write `#` on every line so no block mixes the two, since the
+   *  vector shift and compare-with-zero forms accept only `#`. */
   example?: string;
   gotchas?: string[];
   encoding?: BitField[];
@@ -1289,7 +1273,7 @@ mov     x10, 2
 stp     x9, x10, [sp, -16]!     // push the pair; sp drops 16 first
 ldp     x11, x12, [sp], 16      // pop it back: x11 = 1, x12 = 2`,
     gotchas: [
-      "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved fp registers.",
+      "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved floating-point registers (d8-d15).",
     ],
   },
   {
@@ -1347,7 +1331,7 @@ stur    d1, [sp, 4]             // an offset the scaled form cannot encode
 ldur    d3, [sp, 4]             // d3 = 2.0
 add     sp, sp, 16`,
     gotchas: [
-      "simd&fp targets only, and the immediate runs [-256, 255] unscaled.",
+      "floating-point and vector registers only (b, h, s, d, q), and the offset runs from -256 to 255 in bytes, not scaled by the size.",
       "`ldr` picks this encoding itself for a negative or unaligned offset, so a course file rarely spells it.",
     ],
   },
@@ -1514,7 +1498,7 @@ ret                             // back to the caller: exit code 7`,
 fcvtzs  x9, d16                 // x9 = 5: the double, made visible`,
     gotchas: [
       "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
-      "the between-files forms (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
+      "the forms that move between integer and floating-point registers (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
     ],
   },
   {
@@ -2000,7 +1984,7 @@ cmge    v3.8b, v7.8b, v21.8b    // every lane = all ones`,
 movi    v21.16b, #5
 cmhi    v3.8b, v7.8b, v21.8b    // every lane = all ones`,
     gotchas: [
-      "the `S`/`U` pair to watch: `CMGT` and `CMHI` differ only in how the lane is read.",
+      "`CMGT` reads each lane as signed and `CMHI` as unsigned; that is the only difference.",
     ],
   },
   {
@@ -2392,7 +2376,7 @@ cnt     v3.8b, v7.8b            // every lane = 2`,
     example: `movi    v7.4s, #12
 rev64   v3.8b, v7.8b            // v3 = 0 0 0 12 0 0 0 12`,
     gotchas: [
-      "the lane has to be narrower than the container, which is why each of the three takes a different set.",
+      "the lane has to be narrower than the block being reversed (16, 32 or 64 bits), which is why `rev16`, `rev32` and `rev64` each accept a different set of lanes.",
     ],
   },
   {
@@ -2429,7 +2413,7 @@ saddl   v3.8h, v7.8b, v21.8b    // every lane = 0x0011`,
 movi    v21.16b, #5
 saddl2  v3.8h, v7.16b, v21.16b  // every lane = 0x0011`,
     gotchas: [
-      "every `2` form in this table is its base form reading those lanes instead of the low ones.",
+      "every widening `2` form is its base form reading the upper half of the narrow sources instead of the lower half.",
     ],
   },
   {
@@ -3293,7 +3277,7 @@ movi    v7.16b, #0x11
 movi    v21.8b, #40
 tbx     v3.8b, {v7.16b}, v21.8b // every lane = 0x99: index 40 is past the table, so the byte survives`,
     gotchas: [
-      "that is the whole difference between the two.",
+      "an index past the table leaves the destination byte alone instead of zeroing it; that is the only difference from `tbl`.",
     ],
   },
   {
