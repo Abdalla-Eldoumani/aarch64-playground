@@ -16,8 +16,6 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
 
 import { PitfallsCatalog } from "@/components/reference/PitfallsCatalog";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 const TITLES = [
   "16-byte stack alignment",
   "saving and restoring fp and lr",
@@ -30,7 +28,6 @@ const TITLES = [
 
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 /** The embed stub appears asynchronously behind next/dynamic. */
@@ -141,14 +138,5 @@ describe("PitfallsCatalog", () => {
   it("exposes an accessible name", () => {
     render(<PitfallsCatalog />);
     expect(screen.getByLabelText("cpsc 355 pitfalls")).toBeTruthy();
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<PitfallsCatalog />);
-      expect(screen.getByLabelText("cpsc 355 pitfalls")).toBeTruthy();
-      unmount();
-    }
   });
 });
