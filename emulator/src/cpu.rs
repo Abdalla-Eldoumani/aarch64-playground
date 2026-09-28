@@ -1195,14 +1195,12 @@ impl Cpu {
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
         if self.host.contains_address(pc) {
-            // AAPCS64's public-interface rule, enforced where glibc would
-            // fault: SP must be 16-aligned at every call into the runtime.
-            // On the servers a misaligned frame dies inside printf's first
-            // stack access; the stubs here are Rust and mostly skip guest
-            // stack reads, so the boundary check is what reproduces the
-            // bus error. `__main_return` is the loader's return sentinel,
-            // not a call: faulting there would blame the wrong line on
-            // an unbalanced epilogue, which has its own diagnosis.
+            // SP must be 16-aligned at every library call. On the servers a
+            // misaligned frame dies at printf's first stack access, which
+            // these Rust stubs mostly skip, so the check lives here instead.
+            // `__main_return` is not a call: faulting there would blame the
+            // wrong line for an unbalanced epilogue, which has its own
+            // diagnosis.
             let sp = self.regs.read_sp();
             if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
                 return Ok(self.runtime_error_halt(EmuError::SpAlignmentFault {
@@ -2041,7 +2039,7 @@ mod tests {
     fn changed_fp_regs_tracked() {
         // movz x5, 42 (integer step: fp set stays empty), then fmov d0, #1.5.
         // The VFP8 immediate for 1.5 is 0x78 and the IEEE-754 double bits are
-        // 0x3FF8000000000000, both independent literals from the ARM ARM,
+        // 0x3FF8000000000000, both independent literals from the Arm manual,
         // never recomputed through the code under test.
         let mut cpu = Cpu::new();
         let code = vec![
