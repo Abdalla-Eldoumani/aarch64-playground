@@ -160,8 +160,8 @@ describe("decodeFields", () => {
     expect(decoded.destIndex).toBeNull();
   });
 
-  // The six classes tier 2 added. Their words come from `as` and
-  // `objdump -d` on the course server, not from this file's arithmetic.
+  // Words for the six newer classes come from `as` and `objdump -d` on the
+  // course server, not from this file's arithmetic.
   it("re-concatenates every word of the newly mapped classes", () => {
     for (const word of [
       0x1f420c20, 0x1f628c20, 0x1f020c20, // fmadd/fnmsub d, fmadd s
@@ -175,7 +175,7 @@ describe("decodeFields", () => {
     }
   });
 
-  it("names the addend of an fp 3-source word and keeps it last", () => {
+  it("names the addend of an fp 3-source word", () => {
     // fmadd d0, d1, d2, d3 = 0x1f420c20. Ra is the addend, not a source
     // of the product, which is the whole reason the strip splits it out.
     const decoded = decodeFields(0x1f420c20);
