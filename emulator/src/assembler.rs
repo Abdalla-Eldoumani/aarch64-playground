@@ -5377,6 +5377,7 @@ fn encode_brk(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
     use crate::cpu::Cpu;
 
     #[test]
@@ -5568,8 +5569,8 @@ mod tests {
     fn bic_and_mvn_refuse_an_immediate_source() {
         // Both are register-only aliases; the shifted-register arity fix
         // must not have opened a door to an immediate GAS would refuse.
-        assert!(assemble("BIC X0, X1, #1").is_err());
-        assert!(assemble("MVN X0, #1").is_err());
+        rejects(assemble("BIC X0, X1, #1"), "use AND with the inverted mask");
+        rejects(assemble("MVN X0, #1"), "expected a register here, got `#1`");
         assert!(assemble("BIC X0, X1, X2, LSL #1").is_ok());
         assert!(assemble("MVN X0, X1, LSL #2").is_ok());
     }
@@ -6539,7 +6540,7 @@ mod tests {
         assert!(msg.contains("[-512, 504]"), "message was: {msg}");
 
         // +1536 / 8 = 192 wraps to -64: also silently in range before.
-        assert!(assemble("STP X0, X1, [SP, #1536]").is_err());
+        rejects(assemble("STP X0, X1, [SP, #1536]"), "reaches [-512, 504]");
 
         // W pairs scale by 4, halving the reach: 768 / 4 = 192 wraps too.
         let err = assemble("STP W0, W1, [SP, #768]").unwrap_err();
@@ -6593,7 +6594,7 @@ mod tests {
         let err = assemble("ADD X0, X1, X2, ROR #3").unwrap_err();
         assert!(err.to_string().contains("ROR"), "was: {err}");
         // Out-of-width amounts and junk modifiers get named.
-        assert!(assemble("ADD W0, W1, W2, LSL #32").is_err());
+        rejects(assemble("ADD W0, W1, W2, LSL #32"), "valid: 0-31");
         let err = assemble("ADD X0, X1, X2, FOO #3").unwrap_err();
         assert!(err.to_string().contains("shift modifier"), "was: {err}");
     }
@@ -6674,7 +6675,7 @@ svc 0").unwrap();
         // reach the MOVZ-shifted path first, so it is not a MOVN case.)
         assert_eq!(assemble("mov w0, #0xfffffffe").unwrap()[0], 0x1280_0020);
         // a value that fits neither MOVZ nor MOVN still needs movz+movk.
-        assert!(assemble("mov w0, #0x12345678").is_err());
+        rejects(assemble("mov w0, #0x12345678"), "needs MOVZ+MOVK");
     }
 
     #[test]
@@ -6683,9 +6684,9 @@ svc 0").unwrap();
         // then destroys the low halfword the movz just placed.
         let err = assemble("MOVK X0, #0xDEAD, #16").unwrap_err();
         assert!(err.to_string().contains("lsl"), "was: {err}");
-        assert!(assemble("MOVK X0, #0xDEAD, LSR #16").is_err());
-        assert!(assemble("MOVZ X0, #1, FOO #16").is_err());
-        assert!(assemble("MOVZ X0, #1, LSL #16, LSL #32").is_err());
+        rejects(assemble("MOVK X0, #0xDEAD, LSR #16"), "got `LSR #16`");
+        rejects(assemble("MOVZ X0, #1, FOO #16"), "got `FOO #16`");
+        rejects(assemble("MOVZ X0, #1, LSL #16, LSL #32"), "at most 3 operands");
         assert!(assemble("MOVK X0, #0xDEAD, LSL #16").is_ok());
     }
 
@@ -6700,8 +6701,8 @@ svc 0").unwrap();
         // Non-canonical amounts are GAS hard errors, never a rescale.
         let err = assemble("LDR X0, [X1, X2, LSL #2]").unwrap_err();
         assert!(err.to_string().contains("#0 or #3"), "was: {err}");
-        assert!(assemble("LDR W0, [X1, X2, LSL #3]").is_err());
-        assert!(assemble("LDR X0, [X1, W2, SXTW #7]").is_err());
+        rejects(assemble("LDR W0, [X1, X2, LSL #3]"), "by #0 or #2, got #3");
+        rejects(assemble("LDR X0, [X1, W2, SXTW #7]"), "by #0 or #3, got #7");
         // SXTW with the canonical amount still scales.
         assert!(assemble("LDR X0, [X1, W2, SXTW #3]").is_ok());
         assert!(assemble("LDR X0, [X1, W2, SXTW #0]").is_ok());
@@ -6714,8 +6715,8 @@ svc 0").unwrap();
         let err = assemble("STP X0, W1, [SP, #0]").unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("same width"), "was: {msg}");
-        assert!(assemble("STP W0, X1, [SP, #0]").is_err());
-        assert!(assemble("LDP X0, W1, [SP, #0]").is_err());
+        rejects(assemble("STP W0, X1, [SP, #0]"), "same width");
+        rejects(assemble("LDP X0, W1, [SP, #0]"), "same width");
         assert!(assemble("LDP W2, W3, [SP], #16").is_ok());
     }
 
@@ -6768,7 +6769,7 @@ svc 0").unwrap();
     #[test]
     fn assemble_error_on_unknown() {
         let result = assemble("FOOBAR X0, X1");
-        assert!(result.is_err());
+        rejects(result, "unknown mnemonic `foobar'");
     }
 
     // -- msub / madd / char literals --
@@ -6920,7 +6921,7 @@ svc 0").unwrap();
 
     #[test]
     fn assemble_ldrsw_requires_x_target() {
-        assert!(assemble("LDRSW W0, [X1, #0]").is_err());
+        rejects(assemble("LDRSW W0, [X1, #0]"), "LDRSW needs an X register");
         assert!(assemble("LDRSW X0, [X1, #0]").is_ok());
     }
 
@@ -7316,9 +7317,9 @@ svc 0").unwrap();
     fn assemble_fmov_immediate_rejects_unencodable_values() {
         // 0.1 has no exact 8-bit float form; 100.0 is out of the 2^4 range;
         // 0.0 encodes as integer zero moves, not an FMOV immediate.
-        assert!(assemble("fmov d0, 0.1").is_err());
-        assert!(assemble("fmov d0, 100.0").is_err());
-        assert!(assemble("fmov d0, 0.0").is_err());
+        rejects(assemble("fmov d0, 0.1"), "0.1 does not fit the FMOV 8-bit float immediate");
+        rejects(assemble("fmov d0, 100.0"), "100.0 does not fit");
+        rejects(assemble("fmov d0, 0.0"), "0.0 does not fit");
     }
 
     // -- single precision (S registers) --
@@ -7342,8 +7343,8 @@ svc 0").unwrap();
         let err = assemble("fadd s0, d1, s2").unwrap_err().to_string();
         assert!(err.contains("all S or all D"), "got: {err}");
         assert!(err.contains("fcvt"), "should point at fcvt: {err}");
-        assert!(assemble("fmov s0, d1").is_err());
-        assert!(assemble("fcmp s0, d1").is_err());
+        rejects(assemble("fmov s0, d1"), "use fcvt to convert between widths");
+        rejects(assemble("fcmp s0, d1"), "use fcvt to convert between widths");
     }
 
     #[test]
@@ -7978,8 +7979,8 @@ svc 0").unwrap();
 
     #[test]
     fn assemble_bic_rejects_immediate() {
-        assert!(assemble("BIC X0, X1, #0xF0").is_err());
-        assert!(assemble("BIC W0, W1, 15").is_err());
+        rejects(assemble("BIC X0, X1, #0xF0"), "use AND with the inverted mask");
+        rejects(assemble("BIC W0, W1, 15"), "use AND with the inverted mask");
     }
 
     #[test]
@@ -8024,11 +8025,11 @@ svc 0").unwrap();
     #[test]
     fn assemble_ubfx_rejects_out_of_range_fields() {
         // Field runs past the register top.
-        assert!(assemble("UBFX W0, W1, #28, #8").is_err());
+        rejects(assemble("UBFX W0, W1, #28, #8"), "UBFX field runs past the top of the register");
         // Zero width.
-        assert!(assemble("UBFX X0, X1, #4, #0").is_err());
+        rejects(assemble("UBFX X0, X1, #4, #0"), "UBFX width must be at least 1");
         // lsb outside the register.
-        assert!(assemble("UBFX W0, W1, #32, #1").is_err());
+        rejects(assemble("UBFX W0, W1, #32, #1"), "UBFX lsb is out of range");
     }
 
     // -- bitfield insert --
@@ -8140,9 +8141,9 @@ svc 0").unwrap();
 
     #[test]
     fn assemble_bfi_rejects_out_of_range_fields() {
-        assert!(assemble("BFI W0, W1, #30, #4").is_err());
-        assert!(assemble("BFI X0, X1, #0, #0").is_err());
-        assert!(assemble("BFI W0, W1, #32, #1").is_err());
+        rejects(assemble("BFI W0, W1, #30, #4"), "BFI field runs past the top of the register");
+        rejects(assemble("BFI X0, X1, #0, #0"), "BFI width must be at least 1");
+        rejects(assemble("BFI W0, W1, #32, #1"), "BFI lsb is out of range");
     }
 
     #[test]
@@ -8370,11 +8371,10 @@ svc 0").unwrap();
                 u32::from(*option),
                 "{src}: wrong option field"
             );
+            // The width rule is the table's third column, and the refusal
+            // names the extend it broke.
             let bad = format!("ldr x0, [x1, {wrong}, {keyword}]");
-            assert!(
-                assemble(&bad).is_err(),
-                "`{bad}` must be refused: the width rule is the table's third column"
-            );
+            rejects(assemble(&bad), &keyword.to_uppercase());
         }
     }
 
@@ -8468,7 +8468,7 @@ svc 0").unwrap();
         // has to reach `parse_register` to be told it is out of range,
         // rather than being silently read as an immediate offset.
         assert!(looks_like_register("x99"));
-        assert!(parse_register("x99", 1).is_err());
+        rejects(parse_register("x99", 1), "`X99` is not a register");
         assert!(!looks_like_register("pc"));
         assert!(!looks_like_register("lsl"));
     }
