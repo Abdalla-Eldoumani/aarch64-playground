@@ -2,12 +2,9 @@ import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-// Course tutorial files never write these directives; each entry notes the
-// spelling the course uses instead. Authored programs must read like course
-// work, so a hit in any shipped payload is a style regression. The emulator
-// still accepts several of them (`.type`, `.section`, `.quad`) so pasted GCC
-// output keeps assembling; this guard covers what the site authors, not what
-// the machine tolerates. docs/cpsc355-style-guide.md states the rule.
+// Directives course files never write, each noted with the spelling the course
+// uses instead (docs/cpsc355-style-guide.md). The emulator still accepts some
+// so pasted gcc output assembles; this check covers only what the site ships.
 const BANNED_DIRECTIVES = [
   ".type", // GCC function metadata; course files declare main with .global alone
   ".size", // GCC function metadata; never written by hand in course files
