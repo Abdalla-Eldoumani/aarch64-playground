@@ -1,6 +1,7 @@
-// Pins the lint squiggle at page load: the first lint of the default program
-// often lands while Monaco is still loading, and those warnings must still
-// reach the model once the editor mounts, not wait for the next edit.
+// Pins what the Monaco editor does once it mounts: the lint squiggle at page
+// load (the first lint of the default program often lands while Monaco is
+// still loading, and those warnings must still reach the model once the
+// editor mounts, not wait for the next edit), and the site theme it follows.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
@@ -78,5 +79,23 @@ describe("Editor lint markers", () => {
         expect.objectContaining({ startLineNumber: 2, endColumn: 12, message: "x0 is never read" }),
       ]),
     );
+  });
+});
+
+describe("Editor theme", () => {
+  afterEach(() => {
+    cleanup();
+    document.documentElement.removeAttribute("data-theme");
+  });
+
+  it("opens in the site's theme and follows every switch", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    document.documentElement.setAttribute("data-theme", "light");
+    render(<Editor {...base} />);
+    await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-light"));
+    document.documentElement.setAttribute("data-theme", "high-contrast");
+    await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-hc"));
+    document.documentElement.setAttribute("data-theme", "dark");
+    await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-dark"));
   });
 });
