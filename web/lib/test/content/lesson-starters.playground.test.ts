@@ -41,8 +41,8 @@ interface RunResult {
 
 /**
  * Run one program the way the servers run `./program args < stdin`: the
- * input ends after the authored seed, so a read-until-end program finishes
- * instead of waiting for a key the lesson frame would get from the student.
+ * input ends after the lesson's stdin, so a program that reads to the end
+ * finishes instead of waiting for a key the student would type.
  */
 function run(source: string, args: string[] = [], stdin?: string): RunResult {
   const emu = new Emulator();
