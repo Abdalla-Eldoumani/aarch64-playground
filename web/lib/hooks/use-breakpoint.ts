@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 /**
  * Named Tailwind breakpoints. `xs` covers everything below `sm` (640px).
@@ -19,20 +19,24 @@ function classify(width: number): Breakpoint {
   return "xs";
 }
 
+function subscribeResize(onChange: () => void): () => void {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+
 /**
- * Subscribe to window resize and return the current breakpoint. SSR-safe:
- * renders as `lg` on the server and flips to the correct value on the
- * first client effect so server-rendered HTML stays stable.
+ * The current breakpoint, tracking window resizes. The server and a hydrating
+ * render see `lg`, so server HTML stays stable; a component that mounts after
+ * hydration reads the real width on its first render. Both callers mount that
+ * way, and reading the width one effect late made every phone and tablet mount
+ * the laptop layout, lay it out, and throw it away a frame later.
  */
 export function useBreakpoint(): Breakpoint {
-  const [bp, setBp] = useState<Breakpoint>("lg");
-  useEffect(() => {
-    const update = () => setBp(classify(window.innerWidth));
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return bp;
+  return useSyncExternalStore(
+    subscribeResize,
+    () => classify(window.innerWidth),
+    (): Breakpoint => "lg",
+  );
 }
 
 export function isAtLeast(bp: Breakpoint, min: Breakpoint): boolean {
@@ -55,14 +59,12 @@ export function phoneShape(width: number, height: number): PhoneShape {
 }
 
 /** The phone arrangement for the current viewport, tracking resizes and
- *  rotation. SSR-safe: null on the server and on the first client render. */
+ *  rotation. Null on the server and in a hydrating render, like
+ *  useBreakpoint's `lg`. */
 export function usePhoneShape(): PhoneShape {
-  const [shape, setShape] = useState<PhoneShape>(null);
-  useEffect(() => {
-    const update = () => setShape(phoneShape(window.innerWidth, window.innerHeight));
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return shape;
+  return useSyncExternalStore(
+    subscribeResize,
+    () => phoneShape(window.innerWidth, window.innerHeight),
+    (): PhoneShape => null,
+  );
 }
