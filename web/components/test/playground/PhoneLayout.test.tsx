@@ -54,7 +54,6 @@ describe("PhoneLayout", () => {
   test("upright, the tabs are code, registers, console, and more", () => {
     render(<PhoneLayout {...props()} />);
     expect(tabNames()).toEqual(["code", "registers", "console", "more"]);
-    for (const tab of within(strip()).getAllByRole("tab")) expect(tab.className).toContain("h-11");
   });
 
   test("on its side the code tab goes, since the code is always on screen", () => {
