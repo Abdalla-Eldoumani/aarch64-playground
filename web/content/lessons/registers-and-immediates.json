@@ -2,7 +2,7 @@
   "title": "Registers and immediates",
   "slug": "registers-and-immediates",
   "order": 4,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Name the 31 registers and their jobs, write a constant in any of four bases, and build one too wide for a single mov.",
   "tags": [
     "registers",
@@ -20,7 +20,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## What each register is for\n\nAny of the thirty-one can hold any value, but the *calling convention*, the set of rules every function on the system agrees to follow, gives most of them a job. Those rules are what let your program call `printf` and still find its own values where it left them.\n\n| Register | Job |\n|---|---|\n| `x0` to `x7` | Pass arguments into a function; `x0` also carries the result back |\n| `x8` | Holds the address where a function should write a large result |\n| `x9` to `x15` | Temporaries: yours to use, but any call may change them |\n| `x16`, `x17` | Used by the linker on the way into a called function: avoid them |\n| `x18` | Reserved for the operating system: avoid it |\n| `x19` to `x28` | Saved registers: a function that changes one must restore it before returning, so a value kept here survives a call |\n| `x29`, named `fp` | The frame pointer: marks the current function's area of the stack |\n| `x30`, named `lr` | The link register: `bl` stores the return address here |"
+      "markdown": "## What each register is for\n\nAny of the thirty-one can hold any value, but the *calling convention*, the set of rules every function on the system agrees to follow, gives most of them a job. Those rules are what let your program call `printf` and still find its own values where it left them.\n\n| Register | Job |\n|---|---|\n| `x0` to `x7` | Pass arguments into a function; `x0` also carries the result back |\n| `x8` | Holds the address where a function should write a large result |\n| `x9` to `x15` | Temporaries: yours to use, but any call may change them |\n| `x16`, `x17` | Used by the linker (the tool that joins your code to the C library) on the way into a called function: avoid them |\n| `x18` | Reserved for the operating system: avoid it |\n| `x19` to `x28` | Saved registers: a function that changes one must restore it before returning, so a value kept here survives a call |\n| `x29`, named `fp` | The frame pointer: marks the current function's area of the stack |\n| `x30`, named `lr` | The link register: `bl` stores the return address here |"
     },
     {
       "type": "prose",
@@ -58,7 +58,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## What fits in one mov\n\nImmediates are convenient but small: only so many bits remain in a 32-bit instruction word after the opcode and the register fields, so one instruction cannot carry an arbitrary 64-bit constant.\n\n`mov` is not a single instruction either. It is an *alias*, a friendly name the assembler turns into whichever real instruction does the job: `mov x0, x1` becomes `orr x0, xzr, x1` (an OR with zero), `mov x0, sp` becomes `add x0, sp, 0`, and `mov x0, 42` becomes `movz x0, 42`. A disassembler may show you the real name.\n\nSo a `mov` with an immediate works only when the constant has one of three shapes:\n\n- a 16-bit value (0 to 65535) sitting in any one of the register's 16-bit slots (four in an `x` register, two in a `w` register), like `0x70000`\n- such a value with every bit flipped, which covers small negative numbers like `-5`\n- a block of ones that repeats at a fixed spacing across the register, like `0x00ff00ff00ff00ff` (the exact rule is fiddly, and the assembler checks it for you)\n\nThe program below uses each shape and prints `65535 458752 -5 ff00ff00ff00ff`. Change `0x70000` to `0x70001` and run it again: the assembler refuses the line, because that value needs two slots."
+      "markdown": "## What fits in one mov\n\nImmediates are convenient but small: only so many bits remain in a 32-bit instruction word after the bits that name the operation and the registers, so one instruction cannot carry an arbitrary 64-bit constant.\n\n`mov` is not a single instruction either. It is an *alias*, a friendly name the assembler turns into whichever real instruction does the job: `mov x0, x1` becomes `orr x0, xzr, x1` (an OR with zero), `mov x0, sp` becomes `add x0, sp, 0`, and `mov x0, 42` becomes `movz x0, 42`. A disassembler, a tool that turns machine code back into assembly, may show you the real name.\n\nSo a `mov` with an immediate works only when the constant has one of three shapes:\n\n- a 16-bit value (0 to 65535) sitting in any one of the register's 16-bit slots (four in an `x` register, two in a `w` register), like `0x70000`\n- such a value with every bit flipped, which covers small negative numbers like `-5`\n- a block of ones that repeats at a fixed spacing across the register, like `0x00ff00ff00ff00ff` (the exact rule is fiddly, and the assembler checks it for you)\n\nThe program below uses each shape and prints `65535 458752 -5 ff00ff00ff00ff`. Change `0x70000` to `0x70001` and run it again: the assembler refuses the line, because that value needs two slots."
     },
     {
       "type": "editor",
