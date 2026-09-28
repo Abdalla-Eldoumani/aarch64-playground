@@ -11,13 +11,9 @@ import { ThemeControl } from "@/components/chrome/ThemeControl";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 /**
- * The collapsed mobile navigation: a hamburger trigger that opens an accessible
- * slide-in drawer of the site routes plus the theme control. Hidden at md and up
- * (the wide layout shows the routes inline), so the root carries `md:hidden`.
- * Focus trapping, Escape, and focus return come from the shared useFocusTrap hook.
- *
- * `stars` arrives from SiteNav, which only has it on the server-rendered mounts;
- * without it the source row shows no count.
+ * The phone menu, hidden at md and up where the wide bar shows the routes
+ * inline. `stars` comes from SiteNav, which has it only on server-rendered
+ * mounts; without it the source row shows no count.
  */
 export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
   const pathname = usePathname();
