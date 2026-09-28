@@ -116,13 +116,25 @@ describe("placeCard", () => {
     expect(overlaps(registers, q, 200)).toBe(false);
   });
 
-  it("shrinks into the strip a tall phone target leaves, rather than cover it", () => {
-    // The phone's code view: a top bar above, the run row and tabs below.
-    const code = { top: 52, left: 0, width: 390, height: 612 };
-    const p = check(code, phone);
+  it("shrinks into the roomier strip beside a target too short to hold the card", () => {
+    const panel = { top: 130, left: 0, width: 390, height: 150 };
+    const p = check(panel, { width: 390, height: 440 });
     expect(p.side).toBe("below");
-    expect(p.maxHeight).toBe(844 - 8 - (664 + 8));
-    expect(overlaps(code, p, p.maxHeight ?? 0)).toBe(false);
+    expect(p.maxHeight).toBe(440 - 8 - (280 + 8));
+    expect(overlaps(panel, p, p.maxHeight ?? 0)).toBe(false);
+  });
+
+  it("sits whole inside a view that fills a phone, clear of the rows under it", () => {
+    // The registers view on a 390x664 phone: the top bar above it, and the
+    // status line, run controls and tabs in the 140 px below it.
+    const view = { width: 390, height: 664 };
+    const registers = { top: 44, left: 0, width: 390, height: 480 };
+    const p = check(registers, view);
+    expect(p.side).toBe("over");
+    expect(p.maxHeight).toBeNull();
+    expect(p.top).toBe(184);
+    expect(p.top + 200).toBeLessThanOrEqual(524);
+    expect(p.left).toBe(19);
   });
 
   it("covers the target only when no side can hold even a short card", () => {
