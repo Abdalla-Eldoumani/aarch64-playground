@@ -47,17 +47,13 @@ function sameLayout(a: Layout, b: Layout): boolean {
 }
 
 /**
- * A walk around the playground's own interface, one part at a time: the card
- * sits beside the part it describes, with a ring around the part. A view that
- * fills a phone leaves no room beside it, so there the card sits low over the
- * view, clear of its header. It is not modal: every control stays live, so a
- * student can press the button the card is talking about, and it steps aside
- * while a dialog or a picker's list is open.
- *
- * Offered once on a first visit, dismissible at any step, and resumed from
- * the step it was closed on. `/playground?walkthrough` opens it at the start.
- * The card lives in the top layer (the popover API), so no panel's overflow
- * or stacking can clip it; where the API is missing it is a fixed layer.
+ * A tour of the playground, one part at a time. A view that fills a phone
+ * leaves no room beside it, so there the card sits low over the view, clear
+ * of its header. It is not modal, so a student can press the button the card
+ * is talking about; it steps aside while a dialog or a picker's list is open.
+ * The card lives in the top layer (the popover API) so no panel's overflow can
+ * clip it; without the API it is a fixed layer. `/playground?walkthrough`
+ * opens it at the start.
  */
 export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps) {
   const [deepLinked] = useState(
