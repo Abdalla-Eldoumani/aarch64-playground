@@ -2,7 +2,7 @@
   "title": "Conditionals with cmp and b.cond",
   "slug": "assembly-conditionals-basics",
   "order": 10,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "How cmp sets the condition flags and how b.cond reads them to build an if, an if-else, and an else-if chain.",
   "tags": [
     "conditionals",
@@ -20,7 +20,7 @@
     },
     {
       "type": "prose",
-      "markdown": "In high-level programming languages, such as C, conditional logic can be implemented using built-in language constructs (if constructs). For example:"
+      "markdown": "In a language such as C, a decision is an `if` statement. For example:"
     },
     {
       "type": "code",
@@ -72,7 +72,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## The whole program\n\nThe code below is the complete program, including the data section, the prologue, and the epilogue. Run it and it prints `XY`, because 6 is not greater than 7. Change the 6 to 8, run it again, and it prints `XX`."
+      "markdown": "## The whole program\n\nThe code below is the complete program, including the data section, the prologue (the lines that open `main`), and the epilogue (the lines that close it). Run it and it prints `XY`, because 6 is not greater than 7. Change the 6 to 8, run it again, and it prints `XX`."
     },
     {
       "type": "editor",
