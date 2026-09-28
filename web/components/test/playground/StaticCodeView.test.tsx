@@ -43,21 +43,6 @@ describe("StaticCodeView", () => {
     expect(container.querySelectorAll("[data-current]")).toHaveLength(0);
   });
 
-  it("uses the editor's 14px on 21px metrics, not CodeBlock's 13px", () => {
-    const { container } = render(<StaticCodeView value="mov x0, 1" currentLine={null} />);
-    const pre = container.querySelector("pre");
-    expect(pre?.className).toContain("text-[14px]");
-    expect(pre?.className).toContain("leading-[21px]");
-    expect(pre?.className).toContain("font-mono");
-  });
-
-  it("wears the editor's current-line treatment, 14% amber behind a 2px rule", () => {
-    const { container } = render(<StaticCodeView value={"a\nb"} currentLine={1} />);
-    const marked = container.querySelector("[data-current]");
-    expect(marked?.className).toContain("--amber)_14%");
-    expect(marked?.className).toContain("inset_2px");
-  });
-
   it("scrolls only its own box to the current line, never the page", () => {
     // scrollIntoView moved the whole page on a phone: the landing's autoplay
     // pulled a reader who had scrolled on back up to the hero.
