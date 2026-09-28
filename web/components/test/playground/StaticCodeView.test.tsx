@@ -1,6 +1,6 @@
 // Pins the static hero code view: the gutter, the ONE-based current line (the
-// hub's numbering, not CodeBlock's zero-based one), the editor's metrics and
-// current-line treatment, the reveal, and the shared highlighter's colors.
+// hub's numbering, not CodeBlock's zero-based one), scrolling to that line,
+// and the shared highlighter's colors.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render } from "@testing-library/react";
