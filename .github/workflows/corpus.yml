@@ -1,14 +1,10 @@
 name: corpus
 
-# Rebuilds the C corpus with a cross compiler and qemu-user at all three
-# tiers (-O0, -O2 with the corpus flags, plain -O2) and fails when the
-# rebuilt programs behave differently from the tracked references
-# (stdout or exit code), so a toolchain change fails this run instead of
-# going unnoticed. Assembly text is expected to differ (the references
-# were recorded with the course server's own gcc) and is reported, never
-# failed on. The second job replays the two optimized tiers in the
-# emulator: the per-PR gate replays only -O0, because the other two
-# triple its time.
+# Rebuilds the C corpus with a cross gcc and qemu-user and fails when a
+# program's output or exit code no longer matches the tracked references, so
+# a toolchain change cannot go unnoticed. Assembly differing from the course
+# server's gcc output is only reported. The second job replays the two -O2
+# tiers in the emulator, which pull requests skip as they triple its time.
 on:
   schedule:
     - cron: "0 6 * * 1"
