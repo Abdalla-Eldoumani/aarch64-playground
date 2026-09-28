@@ -29,7 +29,7 @@ describe("Toolbar", () => {
     expect(screen.getByRole("group", { name: "share and tools" })).toBeTruthy();
   });
 
-  it("gives every control a visible accessible name (no unlabeled overflow)", () => {
+  it("gives every control a visible, accessible name", () => {
     setup();
     for (const name of [
       "share program",
@@ -44,7 +44,7 @@ describe("Toolbar", () => {
     }
   });
 
-  it("opens the command palette from a visible control (discovery without a shortcut)", () => {
+  it("opens the command palette from a visible button, not only a shortcut", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "commands" }));
     expect(props.onOpenCommandPalette).toHaveBeenCalledTimes(1);
