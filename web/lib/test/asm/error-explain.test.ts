@@ -55,8 +55,8 @@ describe("explainError", () => {
   });
 
   it("explains the step ceiling as a runaway loop or an unsaved lr", () => {
-    // The second pitfall's fault half: greet calls printf without saving
-    // lr, so it returns into itself. On csarm the same program never stops.
+    // The unsaved-lr case: greet calls printf without saving lr, so it
+    // returns into itself. On csarm the same program never stops.
     const e = explainError(
       "stopped after 10 million steps, which is the playground's ceiling. The usual cause is a loop whose exit condition never becomes true: check that the counter is actually changing, and that the branch condition is the one you meant (b.le against b.lt, b.ne against b.eq)",
     );
@@ -66,7 +66,7 @@ describe("explainError", () => {
   });
 
   it("returns null when no tailored block exists, so the raw message renders", () => {
-    // // The emulator's own wording carries the remedy in these cases, so
+    // The emulator's own wording carries the remedy in these cases, so
     // there is no generic fallback.
     expect(explainError("nope, just nope")).toBeNull();
     expect(explainError("empty value in this list: remove the extra comma")).toBeNull();
@@ -100,7 +100,7 @@ describe("errorHoverMarkdown", () => {
     expect(rest).toContain("*fix:* did you mean `mov` or `mvn`?");
   });
 
-  it("escapes ld's quoting when the explainer has nothing to add", () => {
+  it("escapes GAS's quoting when the explainer has nothing to add", () => {
     const message = "unknown mnemonic `frobnicate' -- `frobnicate x0'";
     const md = errorHoverMarkdown(message);
     expect(md).not.toMatch(unescapedBacktick);
