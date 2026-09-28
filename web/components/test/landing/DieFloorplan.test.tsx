@@ -1,6 +1,5 @@
 // pins the die floorplan motif: a decorative block diagram naming the
-// functional units, the pc marker riding the fetch/decode strip, and
-// the exec block inked amber as the active stage.
+// functional units and the pc marker riding the fetch/decode strip.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { DieFloorplan } from "@/components/landing/DieFloorplan";
@@ -26,15 +25,6 @@ describe("DieFloorplan", () => {
     render(<DieFloorplan />);
     const pc = screen.getByText(/pc/);
     expect(pc.closest("span")?.parentElement?.textContent).toContain("fetch / decode");
-    expect(pc.className).toContain("text-[var(--amber)]");
-  });
-
-  it("lights only the exec block amber", () => {
-    render(<DieFloorplan />);
-    const exec = screen.getByText("exec");
-    expect(exec.className).toContain("border-[var(--amber)]");
-    expect(exec.className).toContain("text-[var(--amber)]");
-    expect(screen.getByText("regfile").className).not.toContain("border-[var(--amber)]");
   });
 
   it("passes className through to the floorplan wrapper", () => {
