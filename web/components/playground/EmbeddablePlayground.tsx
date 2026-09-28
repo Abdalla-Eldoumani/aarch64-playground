@@ -33,12 +33,10 @@ import {
 } from "@/components/playground/MultiFileTabs";
 import { useSourceFiles } from "@/lib/hooks/use-source-files";
 import { fontsSettled } from "@/components/playground/fonts-settled";
-// The playground's own half of this shell, and everything only it renders:
-// dynamic, so the landing hero (which mounts the same component in embed
-// chrome) never ships the full debugger.
-// The chunk and the web fonts are awaited together: mounting in the fallback
-// face and taking the swap afterwards re-wraps the header band and moves the
-// editor section (fonts-settled.ts has the measurement).
+// Dynamic, so the landing hero, which mounts this component in embed chrome,
+// never ships the full debugger. It waits for the web fonts too: mounting in
+// the fallback face and swapping later re-wraps the header band and moves the
+// editor (fonts-settled.ts has the measurement).
 const FullChromeSurface = dynamic(
   () =>
     Promise.all([
@@ -58,19 +56,16 @@ import { resolveLine } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
 /**
- * The single shared emulator surface. The full playground, the landing hero,
- * the /learn lessons, and the /practice exercises all compose this one
- * component: it OWNS the single `useEmulator()` hub and renders every panel
- * internally, so the hub's ~30 fields never cross a component boundary. The
- * chrome prop selects the configuration; the full playground is the maximal
- * one.
+ * One emulator surface for the playground, the landing hero, lessons, and
+ * exercises. It owns the `useEmulator()` hub and renders the panels itself;
+ * the hub crosses one boundary only, into FullChromeSurface. `chrome` picks
+ * which controls and panels show.
  */
 export type EmbeddableChrome = "full" | "embed" | "checker";
 
 /**
- * The outcome slice the host reads for in-place output and the future
- * outcome checker. Exactly these ten fields mirror the hub; this is the
- * single definition consumers import (no redeclaration elsewhere).
+ * The ten machine fields a host reads, for its own output and for the
+ * practice checker. Defined once here; consumers import it.
  */
 export type EmbeddableState = {
   registers: string[];
@@ -133,13 +128,9 @@ export type EmbeddablePlaygroundProps = {
   fromShare?: boolean;
   /** Hero = read-only; lessons and exercises editable. */
   readOnly?: boolean;
-  /**
-   * Embed/checker chrome only: render the program through StaticCodeView
-   * instead of the Monaco editor, so the code text is in the server HTML and
-   * the editor never enters the host page's graph. The landing hero takes it.
-   * Read-only by construction (the view has no input path), so passing it
-   * without `readOnly` is a caller mistake and warns in development.
-   */
+  /** Embed and checker only: show the program in StaticCodeView instead of
+   *  Monaco, so the code is in the server HTML and the landing hero never
+   *  loads the editor. The view takes no input, so pass `readOnly` too. */
   staticEditor?: boolean;
   /** Embed chrome: the register file the host's program writes (the reference
    *  bench knows it). Given, the registers panel carries the d and v views and
@@ -167,7 +158,8 @@ export type EmbeddablePlaygroundProps = {
   /** Every editor buffer value, including the first. The practice checker
    *  persists the student's work from here; nothing else listens. */
   onSourceChange?: (source: string) => void;
-  /** Checker Check button; the evaluation itself lands in a later milestone. */
+  /** Checker's Check button: gets the machine state after a run of the
+   *  current source. */
   onCheck?: (state: EmbeddableState) => void;
   // Page-chrome hooks: the host renders these modals and owns the theme;
   // the component's full-chrome header triggers them so there is no
@@ -216,10 +208,8 @@ function nameForRecents(source: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Inner core: mounted only after the lazy trigger fires, so the hub (and the
-// worker / WASM it instantiates) never spins up before the component is
-// actually engaged. useEmulator cannot be called conditionally, which is why
-// the engage gate lives in the outer component and the hub lives here.
+// Inner core: mounted only once engaged, so the hub and its worker never start
+// early. useEmulator cannot be called conditionally, so the gate lives outside.
 // ---------------------------------------------------------------------------
 
 type EmbeddableCoreProps = EmbeddablePlaygroundProps & {
@@ -283,12 +273,9 @@ function EmbeddableCore({
   );
   const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
   const [activeFile, setActiveFile] = useState<number>(-1);
-  // The workspace as the machine last saw it. Every combined-string line the
-  // MACHINE produces (the current-line marker, assembly errors, a runtime
-  // fault's line) is numbered against this, not against whatever the student
-  // has typed since. Resolving those against the live buffers made the marker
-  // change FILES on an unrelated edit, and let an error land in the wrong tab
-  // while its own assemble was still in flight.
+  // The workspace as the machine last saw it. Lines the machine reports
+  // (current line, errors, faults) resolve against this, not the live buffers,
+  // or an unrelated edit moved the marker or an error into another file.
   const [assembledLayout, setAssembledLayout] = useState<{
     main: string;
     extras: SourceFile[];
@@ -300,12 +287,8 @@ function EmbeddableCore({
     setExtraFiles(startFiles);
   }, [startFiles, setExtraFiles]);
 
-  // Jump-to-error: when an assemble or a line-carrying runtime fault
-  // lands, the editor switches to the owning file, then reveals and
-  // focuses the offending line. Nonce so the same line re-fires when the
-  // student re-assembles unchanged. Combined-string lines resolve through
-  // the file map so an error inside an extra file lands in that tab, not
-  // past the end of main.asm.
+  // Jump to the first error in the file that owns it. The nonce re-fires the
+  // jump when the student re-assembles unchanged code.
   const [errorFocus, setErrorFocus] = useState<{ line: number; nonce: number } | null>(null);
   // Read through a ref, not the layout state, so the jump keeps its single
   // dependency on the errors themselves.
@@ -400,20 +383,14 @@ function EmbeddableCore({
       if (chrome === "full" && prev.trim().length > 0 && prev !== payload.source) {
         recent.push(nameForRecents(prev), prev);
       }
-      // A fresh program starts on a fresh machine: registers, memory, console,
-      // exit code, stdin queue, and VFS all clear. Breakpoints too: reset keeps
-      // them for the SAME program, but a different program must not inherit
-      // another's gutter dots and CPU addresses (when the new program is
-      // shorter, those addresses were unreachable by any click and only a
-      // reload recovered).
+      // A new program starts on a clean machine, breakpoints included: reset
+      // keeps them for the same program, but a shorter new one could inherit
+      // dots no click can reach.
       emuRef.current.clearAllBreakpoints();
       emuRef.current.reset();
-      // The payload's stdin and fixtures become this program's seeds. Which
-      // of them actually reach the machine is the working set's call: the
-      // full playground drops stdin seeds (a reading program should block and
-      // pull the student to the console) and merges fixtures into the home
-      // directory, while embed and checker keep authored seeds and replace
-      // the VFS strictly.
+      // The payload's stdin and files become this program's seeds; the working
+      // set decides which reach the machine (the full playground drops stdin so
+      // a reading program waits for the student at the console).
       seedFromPayload(payload);
       setSource(payload.source);
       // A program handoff replaces the whole workspace: stale helper
@@ -431,13 +408,9 @@ function EmbeddableCore({
     [chrome, recent, seedFromPayload, setExtraFiles],
   );
 
-  // Push the current buffer onto the recent list whenever the user
-  // assembles, and concatenate any extra files so `bl func` resolves across
-  // files (the linker operates on one string). On success, re-apply the
-  // program's input seeds: the assemble reset the machine, and the seeded
-  // stdin and VFS files must be in place before the run. Returns the
-  // verdict so a composite action can stop at a failed assemble; the
-  // button and palette callers ignore it.
+  // Joins the helper files onto main so `bl func` resolves across files, and
+  // re-applies the input seeds after a success, since assembling reset the
+  // machine. Returns whether it worked so assemble-and-run can stop there.
   const assembleWithHistory = useCallback(async (): Promise<boolean> => {
     // The assemble resets the machine and empties the console, so a
     // previous session's watermark points at bytes that are gone.
@@ -470,18 +443,10 @@ function EmbeddableCore({
   ]);
 
 
-  // The reduced embed/checker chrome has no separate Assemble control, so its
-  // primary Run must assemble first; otherwise runUntilBreak executes over
-  // empty memory and nothing the student wrote runs. Assemble when nothing is
-  // loaded yet (fresh or post-reset, instructions empty), the source or the
-  // args changed since the last run (the ref holds both, as `runKey`), or the
-  // machine has halted (Run on a finished program means run it again from the
-  // start), awaiting the hub so the backend is loaded before run. A failed
-  // assemble skips the run, and a successful one re-applies the program's
-  // input seeds: the assemble reset the machine, so seeded stdin and VFS files
-  // must be back in place before the run. Only a blocked or paused unchanged
-  // program resumes without re-assembling.
-  // `fromTop` is Ctrl+Enter's assemble-and-run.
+  // Embed and checker have no assemble button, so run assembles first when
+  // nothing is loaded, the source or args changed (`runKey`), or the program
+  // finished; only a paused or blocked unchanged program resumes. A failed
+  // assemble skips the run. `fromTop` is Ctrl+Enter's assemble-and-run.
   const lastRunSourceRef = useRef<string | null>(null);
   const runKey = `${argsText}\n${source}`;
   const runEmbed = useCallback(async (fromTop = false) => {
@@ -689,18 +654,11 @@ function EmbeddableCore({
     [],
   );
 
-  // The checker's Check must evaluate a snapshot that matches the CURRENT
-  // source, not whatever the last Run left behind. Otherwise a stale snapshot
-  // can PASS on code the student already edited away, or every result fails on
-  // zeroed pre-run state before any Run. Reuse runEmbed's assemble-if-stale
-  // guard (the shared lastRunSourceRef): when nothing has run yet or the source
-  // or args changed since the last run, assemble + run it to completion first,
-  // then snapshot; an unchanged program that already ran to its end is checked
-  // as-is. The run loop is bounded by the emulator's own step ceiling; the
-  // wall-clock poll is only a safety net, and reads the live hub through emuRef
-  // so a per-render new hub identity is always observed. Check grades the
-  // authored args, never the box: the expected output was written for them,
-  // and the box is there to try others with Run.
+  // Check grades a run of the current source, never what a stale run left
+  // behind, which could pass code the student already changed. It uses the
+  // authored args, not the box's: the expected output was written for them.
+  // The emulator bounds the run; the 10 s poll reads emuRef, since the hub is
+  // a new object every render, and is only a safety net.
   const checkKey = `${startArgs ?? ""}\n${source}`;
   const checkEmbed = useCallback(async () => {
     // A run that stopped short of its end (parked on a read, paused, faulted)
@@ -1116,16 +1074,10 @@ export const EmbeddablePlayground = forwardRef<
       {engaged ? (
         <EmbeddableCore {...props} registerHandle={registerHandle} />
       ) : (
-        // Only embed and checker reach this branch (full chrome engages on
-        // mount), and it paints the SAME grid the engaged render paints: the
-        // program in the editor area, both panes in their initial state, the
-        // control band below. Withholding them moved the host page's layout
-        // the moment the hub arrived. A static-editor embed draws its real
-        // program here, so the code text is in the server HTML and is the
-        // host page's largest element rather than a placeholder a client-side
-        // chain has to replace; every other configuration keeps the loading
-        // beat inside the editor area. The controls engage rather than
-        // no-op, the way the wrapper's own listeners do.
+        // Embed and checker only. It paints the same grid the engaged render
+        // does, so the host page does not shift when the hub arrives, and a
+        // static-editor embed draws its real program so the code is in the
+        // server HTML. Its controls engage the hub.
         <EmbedLayout
           showRun={showRun}
           showReset={showReset}
