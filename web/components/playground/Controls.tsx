@@ -88,6 +88,7 @@ export function Controls({
           onClick={onAssemble}
           disabled={isAssembling}
           aria-label="assemble"
+          data-walkthrough="assemble"
           aria-busy={isAssembling}
           aria-keyshortcuts="F6"
           title="F6"
@@ -100,6 +101,7 @@ export function Controls({
           variant="primary"
           onClick={isRunning ? onPause : onRun}
           aria-label={isRunning ? "pause" : "run"}
+          data-walkthrough="run"
           aria-keyshortcuts="F5"
           title="F5"
           className={share("flex-1")}
@@ -116,6 +118,7 @@ export function Controls({
           variant="secondary"
           onClick={onStep}
           aria-label="step"
+          data-walkthrough="step"
           aria-keyshortcuts="F10"
           title="F10"
           className={share("flex-1")}
