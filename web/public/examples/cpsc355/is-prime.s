@@ -29,7 +29,7 @@ is_prime:
         tst     w0, 1                   // b.eq fires when bit 0 is clear, so n is even
         b.eq    not_prime
 
-        // Trial division from 3, step 2
+        // Try the odd divisors 3, 5, 7, ...
         mov     w9, w0                  // w9 = n
         mov     w10, 3                  // w10 = divisor
         b       prime_test
