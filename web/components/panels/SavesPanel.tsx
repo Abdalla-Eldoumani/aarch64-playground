@@ -170,7 +170,7 @@ export function SavesPanel({
             } else if (result.added === 0 && result.skipped > 0) {
               toast.error(`no bookmarks imported: all ${result.skipped} entries were invalid or already saved`);
             } else {
-              toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
+              toast.show(`imported ${result.added}, skipped ${result.skipped}`);
             }
           } catch {
             toast.error("invalid bookmark bundle");
@@ -246,11 +246,6 @@ export function SavesPanel({
                     args: s.args,
                     stdin: s.stdin,
                   });
-                  // Drive the backend through assemble + stdin push +
-                  // step-to-count so the live CPU lands at the same
-                  // execution point the bookmark captured. Toast
-                  // surfaces the result so the student sees what
-                  // happened.
                   try {
                     const verdict = await onRestoreBookmark({
                       source: s.source,
