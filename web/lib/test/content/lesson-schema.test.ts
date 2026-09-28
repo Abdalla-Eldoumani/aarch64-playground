@@ -82,7 +82,7 @@ describe("validateLesson (malformed metadata)", () => {
     );
   });
 
-  test("rejects a non-kebab slug", () => {
+  test("rejects a slug with capitals or spaces", () => {
     expect(rejectError({ ...validLesson(), slug: "Not Kebab" })).toMatch(/slug/);
     expect(rejectError({ ...validLesson(), slug: "has spaces" })).toMatch(/slug/);
   });
@@ -171,7 +171,7 @@ describe("validateLesson (message quality on malformed shapes)", () => {
     expect(rejectError({ ...validLesson(), summary: 42 })).toMatch(/summary/);
   });
 
-  test("rejects slugs with uppercase, doubled, leading, or trailing dashes", () => {
+  test("rejects slugs with capitals, or with doubled, leading, or trailing dashes", () => {
     for (const slug of ["UPPER", "a--b", "-lead", "trail-"]) {
       expect(rejectError({ ...validLesson(), slug })).toMatch(/slug/);
     }
