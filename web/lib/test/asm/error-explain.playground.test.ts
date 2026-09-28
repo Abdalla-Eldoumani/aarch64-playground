@@ -154,7 +154,7 @@ describe("error guidance for the messages the emulator really sends", () => {
   });
 
   it("recognizes argv overflow", () => {
-    expect(explained(withBody(""), ["x".repeat(5000)]).styleSection).toBe("hosted runtime");
+    expect(explained(withBody(""), ["x".repeat(5000)]).styleSection).toBe("C library and system calls");
   });
 
   it("recognizes an undefined name in an immediate, and warns about -lm for the math names", () => {
