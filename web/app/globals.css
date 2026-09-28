@@ -124,7 +124,7 @@
   --amber:          #FFC247;
   --amber-dim:      #6B4A00;
   --cyan:           #5AD7F0;
-  --cyan-dim:       #2C9FB8;
+  --cyan-dim:       #13606F;  /* fills under --text-primary: 7.2:1, AAA */
   --on-cyan:        #00181E;
 
   --success:        #5CF06B;
