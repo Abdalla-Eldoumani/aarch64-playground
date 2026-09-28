@@ -95,8 +95,8 @@ tab. The walls live in the Rust core and hold however the program arrived
   the 8 MiB stack and the 16 MiB heap window can be fully touched with
   headroom. A store past the cap faults, and the step converts that fault
   to a halt.
-- Host-runtime caps so one libc or syscall call cannot allocate without bound
-  from a guest-supplied size: `write` reads into a growable buffer instead of
+- Caps in the C library functions and syscalls, so one call cannot allocate
+  without bound from a size the program passes in: `write` reads into a growable buffer instead of
   pre-reserving its count, and `printf` clamps field width and precision
   (`MAX_FIELD_WIDTH`).
 - Virtual-filesystem walls sized against the step-back snapshot ring, which
@@ -114,8 +114,8 @@ tab. The walls live in the Rust core and hold however the program arrived
   same programs Linux kills with SIGSEGV or a bus error.
 
 Every limit halts or refuses the call with a plain-language result, never a
-panic. Proven by `emulator/tests/bounds.rs` and the hosted-runtime unit
-tests.
+panic. Proven by `emulator/tests/bounds.rs` and the unit tests for the C
+library functions and syscalls.
 
 ### Practices we follow
 
