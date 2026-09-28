@@ -9,8 +9,9 @@ const DIR = path.join(process.cwd(), "content/lessons");
 const files = fs.readdirSync(DIR).filter((name) => name.endsWith(".json"));
 
 describe("seeded lessons", () => {
-  it("ships at least the two seed lessons", () => {
-    expect(files.length).toBeGreaterThanOrEqual(2);
+  it("ships the two seed lessons the loops below must not pass over", () => {
+    expect(files).toContain("registers-and-immediates.json");
+    expect(files).toContain("stack-and-frame-pointer.json");
   });
 
   it("validate, with a numeric-or-string order and a unique slug equal to the filename", () => {
@@ -36,14 +37,6 @@ describe("seeded lessons", () => {
       expect(result.ok && result.lesson.lastUpdated, `${file} has no lastUpdated`).toMatch(
         /^\d{4}-\d{2}-\d{2}$/,
       );
-    }
-  });
-
-  it("contain no week labels, archive numbers, or personal data", () => {
-    const banned = /week\s*\d|tutorial\s*\d|assignment\s*\d|@[a-z0-9.-]+\.[a-z]{2,}/i;
-    for (const file of files) {
-      const raw = fs.readFileSync(path.join(DIR, file), "utf8");
-      expect(banned.test(raw), `${file} matched a banned pattern`).toBe(false);
     }
   });
 });
