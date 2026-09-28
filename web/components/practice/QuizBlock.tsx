@@ -1,14 +1,10 @@
 "use client";
 
 /**
- * One multiple-choice question, graded locally against the validated
- * correct index. Before a wrong answer is corrected the block shows only
- * the author's hint, never the explanation or the right option, so a
- * student cannot read their way to the answer. `onAttempt` reports each
- * submission upward for the exercise-level solved state.
- *
- * The selection is controlled when the sheet passes `value`, so the pick
- * can be saved and restored across reloads, and self-owned otherwise.
+ * One multiple-choice question. A wrong answer shows only the hint, never the
+ * explanation or the right option, so a student cannot read their way to the
+ * answer. The pick is controlled when the sheet passes `value`, so it can
+ * survive a reload.
  */
 
 import { useState, type JSX } from "react";
@@ -62,7 +58,7 @@ export function QuizBlock({
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Knowledge Check
+        Multiple Choice
       </h3>
       <p className="mb-6 text-[15px] leading-relaxed text-[var(--text-primary)]">{question}</p>
 
