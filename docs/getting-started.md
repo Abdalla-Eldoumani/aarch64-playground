@@ -1,35 +1,36 @@
-# getting started
+# Getting started
 
-A short tour for a first-time reader. The site has five places:
+This tour runs one course-style program in the playground, steps through it,
+and then points at the rest of the site. The site has five parts:
 
-- `/` the landing page, with a live mini-playground.
-- `/playground` the full emulator and visual debugger.
-- `/learn` step-by-step lessons that pair a short reading with a runnable editor.
-- `/practice` coding exercises checked by running your program, plus quizzes, fill-in-the-blank drills, and prediction sets graded on the page.
-- `/reference` the supported instructions, the calling-convention guide, and a pitfalls catalog.
+- `/`: the home page, with a short program you can step through.
+- `/playground`: the full emulator and debugger.
+- `/learn`: lessons, each with programs you can run beside the text.
+- `/practice`: coding exercises checked by running your program, plus quizzes,
+  fill-in-the-blank sets, and prediction sets graded on the page.
+- `/reference`: every supported instruction, the calling convention, and a
+  catalog of common mistakes.
 
-The rest of this page walks through the playground, then points at the other sections.
+## Open the playground
 
-## open the playground
+Go to <https://aarch64-playground.com/playground>. To run it on your own
+machine, follow the README's [Run it locally](../README.md#run-it-locally) and
+open <http://localhost:3000/playground>.
 
-Go to <https://aarch64-playground.com/playground> (or click
-"Open the playground" on the landing page). Locally, run `npm run dev` in
-`web/` and open <http://localhost:3000/playground>.
+The editor is on the left. The registers are top right, and the memory, stack,
+console, and other tabs are below them. On a phone the playground shows one
+view at a time (code, registers, console, and more), picked from the tabs
+under the run controls.
 
-You get an editor on the left, registers top-right, and a memory / stack /
-console area bottom-right. On a phone it is one pane at a time with a
-bottom tab strip.
+The first visit offers an **interface walkthrough** that points at each part
+in turn. Reopen it any time from the command palette (`Ctrl+K`), or open
+`/playground?walkthrough`.
 
-## load an example
+## Load an example
 
-Pick an example from the **load example...** menu in the header. Examples
-are grouped by stage, in the order the concepts build (first programs,
-data and memory, stack and locals, and so on), with plain names and no
-course-week labels. Choose **scores (scanf + avg)** under "Records and
-arrays": it reads three scores from stdin, stores them on the stack,
-averages them, and prints the result.
-
-An abridged look at the source:
+Open the **load example...** menu and pick **scores (scanf + avg)** under
+"Records and arrays". It reads three scores, stores them on the stack, and
+prints their average. The top of the file:
 
 ```
 define(fp, x29)
@@ -41,146 +42,106 @@ alloc = -(16 + 16) & -16
 
 .data
 fmt_prompt:     .string "Enter score %d: "
-
-.text
-.global main
-main:
-        stp     fp, lr, [sp, alloc]!
-        mov     fp, sp
 ```
 
-It is a course-style tutorial file, accepted as-is.
+It is a course-style file and runs as written: m4 aliases (`define`), stack
+offsets as symbols (`score1_s = 16`), and `printf` and `scanf` calls.
 
-## assemble and run
+## Assemble and run
 
-Hit **Assemble** (`F6`). The m4 macros expand, the assembler reads each
-section, the linker places labels and a literal pool, and the bytes load
-into memory at `0x0040_0000` (`.text`), `0x0060_0000` (`.data`), and so on.
-Step and step back stay disabled until a program assembles, and disable
-again after a reset or a failed assemble. Run follows the same rule except
-for the examples that launch in the terminal, where pressing Run assembles
-first and hands the pane over in one action.
+1. Press **assemble** (`F6`). The playground expands the m4 macros, assembles
+   each section, links the calls to `printf` and `scanf`, and loads the
+   program into memory. Errors appear on the line that caused them.
+2. Press **run** (`F5`). At the first `scanf` the console asks for input. Type
+   a number and press Enter. The run picks it up and carries on.
+3. Answer the other two prompts. The program prints the average, the controls
+   show **halted**, and the console shows `exit 0`.
 
-Hit **Run** (`F5`). At the first `bl scanf` the console area pauses for
-input: switch to the console tab, type a number, and press Enter. The run
-resumes and consumes it. What you typed appears in the transcript beside
-the prompt that asked for it, the way a terminal shows it, and stepping
-back rewinds the transcript along with the machine. After three numbers
-the program prints the average and the status bar shows it halted with
-exit code 0. (Before any output arrives the console says how to start a
-program: `F10` and `F5` on a desktop, the step and run buttons on a touch
-screen.)
+`Ctrl+Enter` assembles and runs in one step, even from inside the editor.
 
-## step and set a breakpoint
+## Step and set a breakpoint
 
-Assemble again (`F6`), then **Step** (`F10`) to advance one instruction at
-a time. (Reset clears the loaded program, so step stays disabled until the
-next assemble.) Changed registers flash, the disassembly highlights the current PC,
-and the stack updates as the prologue runs. Click a line number in the
-editor to set a breakpoint; **Run** stops there.
+1. Press **assemble** again.
+2. Press **step** (`F10`) to run one instruction. The registers it changed are
+   marked, the current line is highlighted, and the stack panel follows the
+   prologue as it builds the frame.
+3. Press **back** (`Shift+F10`) to undo the last instruction. Step back
+   reaches the last 128 instructions.
+4. Click the margin to the left of a line number to set a breakpoint there.
+   **run** stops when it reaches that line.
 
-## write your own
+The strip above the registers shows the current instruction's encoding, field
+by field, with a plain-English reading of what it does.
 
-Every instruction in the reference works, plus more; see
-[`instruction-reference.md`](instruction-reference.md). A few things that
-come in handy:
+## Pass arguments
 
-- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's plain-English line, which appends the substitutions it used as `(score1_r = w19)`. (The faded label beside each register name is the fixed ABI role, `arg0` or `fp` or `lr`, not your alias.)
-- Stack-frame slots (`score1_s = 16`) resolve to numeric offsets at assemble time, so `[fp, score1_s]` becomes `[x29, 16]`.
-- Literal loads (`ldr x0, =msg`) work without wiring: the linker adds `msg`'s address to the pool and patches the LDR.
-- C library calls (`bl printf`) work as written: the linker adds a two-instruction stub to `.text` that jumps to the playground's own `printf`.
-- Syscalls (`mov x8, 64; svc 0`) produce real output through stdout.
+Type into the **args** box, for example `hello world`. The box holds `argv[1]`
+onward. The program still gets `./program` as `argv[0]`, the way Linux runs
+it, so `argc` is 1 when the box is empty. The box remembers what you typed for
+each program.
 
-## pass arguments
+## Share a program
 
-Type into the **args** input above the Assemble bar (for example
-`hello world`). The box holds argv[1..]: the loader supplies
-`./program` as argv[0] (as Linux always does), writes the strings
-into the argv pool at `0x0080_0000`, and sets `w0 = argc`, `x1 = argv`
-on entry, so `int main(int argc, char **argv)` programs work unchanged
-(with no args at all, argc is 1, never 0). Args persist per program, so
-switching sources and coming back keeps them.
+Press **share**. The dialog shows a link with the whole program compressed
+into it. Opening the link loads the program into the editor, and nothing is
+sent to a server.
 
-## share
+When a program misbehaves and you want help, press **diagnostic bundle**. It
+shows a report of the program, its input and output, and the registers, stack,
+and memory, and copies it or a link that reopens the program.
 
-Hit **share** in the header. The dialog shows a URL with the whole program
-compressed into the hash. Opening the link loads it straight into the
-editor; nothing is sent to a server.
+## Other tools in the playground
 
-## learn, practice, reference
+- **Tutorials** walk through an example program one step at a time and check
+  the registers as you go.
+- The **term** tab is a terminal with the course workflow (`m4`, `gcc`,
+  `./program`) and a small `gdb`. See [terminal.md](terminal.md).
+- The **watches** tab evaluates expressions such as `x0`, `*x0`,
+  `[fp, score1_s]`, and `arr[2]` each time the program stops. **memwatch**
+  pins address ranges you name.
+- The **convert** tab shows one value as binary, octal, decimal, and hex,
+  signed and unsigned, and as an IEEE-754 float at 32 or 64 bits. Click a bit
+  to flip it.
+- The **saves** tab stores the machine under a name, and bookmarks that
+  survive a reload.
+- The **+** beside the file tab adds more source files. They are assembled
+  together with `main.asm`.
+- The register panel switches between the integer (`x`), floating-point (`d`),
+  and 128-bit vector (`v`) registers, each in decimal or hex. A vector
+  register splits into 8, 16, 32, or 64-bit lanes, or float lanes.
+- **theme** cycles through dark, light, and high contrast.
+- `?embed=1` on the playground's address hides everything but the editor,
+  registers, and console, for slides.
+- Once the site has loaded, it keeps working offline.
 
-- **Learn** (`/learn`): lessons that embed the same editor, so you read a
-  short section then run the code beside it. Each embed carries run, step,
-  back, and reset under the editor, and an exercise adds check. Step on an
-  embed that has not assembled yet assembles first, and a step after the
-  program halts assembles again and starts it over.
-- **Practice** (`/practice`): coding exercises graded by running your
-  program against expected behavior, where the checker never reads or
-  stores a solution, alongside quizzes, fill-in-the-blank drills, and
-  prediction sets graded right on the page. The index shows
-  the two side by side, coding exercises on the left and theory sets on
-  the right, each grouped by topic in the order the course meets them.
-  Which exercises you have solved is kept in this browser alone, so the
-  **progress** row under the columns exports that record as a small
-  `.json` file and imports one back, on this device or another. What you
-  typed is kept too: an exercise reopens with the program you left in the
-  editor and a theory set reopens with the answers you gave, and both
-  travel in that same progress file. The **restore starter** control under
-  a coding exercise puts the author's starting program back and forgets
-  what you had saved.
-- **Reference** (`/reference`): the supported instruction set, with a
-  worked encoding diagram on the ten instructions whose bit layout is
-  worth walking through, an interactive NZCV panel on the flag-setters,
-  and a filter box that `/` jumps into from anywhere on the page; a
-  calling-convention guide with a step-through frame walk; and a pitfalls
-  catalog whose examples run in place so you watch each mistake fail.
+[features.md](features.md) lists the file behind each of these.
 
-## more playground features
-
-The header and tab strip expose more. See [`features.md`](features.md)
-for the full index of where each lives.
-
-- **Tutorials** walk a topic one step at a time and verify register state with `expect` checks; progress is saved locally.
-- **Save states** (the saves tab) snapshot the CPU under a name. The run loop also records recent instructions, so **Step back** (`Shift+F10`) undoes the last one.
-- **Bookmarks** (same tab) persist across reloads: they store source, args, stdin, and step count, and restore by re-running to the saved step. Export and import as JSON to share a setup.
-- **Replay scrubber** appears once you have stepped at least twice; drag it to walk back through recent frames.
-- **Diagnostic bundle** (next to **share**) copies a markdown report of source, args, output, exit code, and register state, plus a `?bundle=` link that reopens the same state.
-- **Watch expressions** (the watches tab) evaluate a small grammar (`x0`, `*x0`, `[fp, score1_s]`, `arr[i]`) every time the CPU stops.
-- **Memory watches** (the memwatch tab) pin labelled address ranges.
-- **Base converter** (the convert tab) keeps hex, binary, decimal, and the signed and unsigned readings in sync at 8, 16, 32, or 64 bits; click a bit to flip it. Also on the reference page and in the command palette.
-- **Multi-file assembly** (the **+** by the file tab) registers extra source files, concatenated before assembly.
-- **Run-mode control** (the header's `console | terminal` switch, shown for the Miscellaneous programs) picks which surface owns the run: console keeps the classic debugger flow, terminal makes run assemble and hand the pane over in one action. `?run=terminal|console` on an `?example=` link overrides that example's default for the load.
-- **Terminal** (the term tab) is an xterm.js shell with the course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog [args]`), redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
-- **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it updates on every step.
-- **Register views**: three cells in the register panel's header switch between `x0`–`x30`, `d0`–`d31`, and the 128-bit `v0`–`v31`, and a second pair picks decimal or raw bits for whichever view is up. A value written through an `s` register reads as the float it is (suffixed `f`).
-- **Vector lanes**: the v view slices each register into `b`, `h`, `s` or `d` lanes (8, 16, 32 or 64 bits) from a third group of cells beside the view and format ones, lane 0 at the least significant end, each lane showing its unsigned hex and its signed decimal; the lanes a step moved are inked as changed. `q0`–`q31` is the same 128 bits under another name.
-- **The view follows the write**: when one register class changes, the panel switches to it, so a step that writes `d3` shows the d file and one that writes above bit 63 or names a `v` or `q` destination shows the v file. When two classes change in the same step the view stays where it is and the other cells carry a change dot.
-- **Three themes** cycle through dark, light, and high-contrast from the header.
-- **Per-panel zoom** with `Ctrl+Wheel` over a panel.
-- **Source formatter** (`Ctrl+Shift+F`) lowercases mnemonics, indents to 8 spaces, and aligns trailing comments to column 40.
-- **Embed mode** (`?embed=1`) strips the chrome to the editor, registers, and console for slide decks.
-- **Offline**: the app is a PWA, so once loaded the shell, examples, and icons work offline.
-
-## keyboard shortcuts
+## Keyboard shortcuts
 
 | Key | Action |
 | --- | --- |
 | `F6` | Assemble |
-| `Ctrl+Enter` | Assemble and run, from anywhere including the editor |
-| `F10` | Step one instruction |
-| `Shift+F10` | Step back (up to 128 instructions) |
-| `F5` | Run / pause |
+| `Ctrl+Enter` | Assemble and run |
+| `F5` | Run or pause |
+| `F10` | Step |
+| `Shift+F10` | Step back |
 | `Shift+F5` | Reset |
 | `Ctrl+K` | Command palette |
-| `Ctrl+Shift+F` | Format the source |
-| `Ctrl+S` | Nothing to save: the buffer is written continuously |
-| `Ctrl+/` | Toggle line comment (on the selected lines) |
-| `Shift+Alt+A` | Toggle block comment |
-| `Tab` | In the editor, indent or take the highlighted suggestion |
-| `Esc`, then `Tab` | Leave the editor and move to the next control |
-| `Ctrl+M` | Make `Tab` move focus out of the editor instead of indenting (press again to undo) |
-| `Ctrl+Wheel` | Zoom the panel under the pointer |
-| `?` | Keyboard shortcuts help |
+| `?` | Every shortcut |
 
-For more depth, read [`cpsc355-style-guide.md`](cpsc355-style-guide.md) or
-[`features.md`](features.md).
+## The rest of the site
+
+- **Learn**: each lesson has editors with **run**, **step**, **back**, and
+  **reset** under them, so you can change an example and run it in place.
+- **Practice**: a coding exercise gives you a starter program and a **check**
+  button. Check runs your program on the visible input and on hidden ones and
+  compares the output; it never looks at a stored answer, so any correct
+  approach passes. Your progress and answers stay in this browser; the
+  **progress** row exports them to a file and imports them on another device.
+- **Reference**: filter the instructions with the box (`/` jumps to it). Each
+  entry shows the syntax, an example, the C it matches, and the flags it sets.
+  The calling-convention guide steps through a stack frame, and each mistake
+  in the pitfalls catalog runs in place.
+
+For how course files are written, read
+[cpsc355-style-guide.md](cpsc355-style-guide.md).
