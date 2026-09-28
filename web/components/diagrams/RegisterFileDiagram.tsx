@@ -1,17 +1,9 @@
 import type { JSX } from "react";
 
 /**
- * Static AAPCS64 register-file teaching diagram: a labeled, role-grouped map of
- * x0-x30 + sp with the fp/lr (and ip0/ip1) aliases. Presentational only: no
- * runtime, no live debugger state. The interactive register view is
- * RegisterPanel. The ABI role split mirrors REGISTER_ROLES in
- * LessonMarkdown.tsx exactly (esp. x8 = indirect result, x16/x17 = ip0/ip1,
- * x18 = platform) so the hover-define, this diagram, and the calling-convention
- * guide agree. The four color families are saved-ness, read from
- * tokens: cyan = the argument/result area, danger = caller-saved (volatile
- * across a call), success = callee-saved (preserved), and a neutral border
- * tint = the special lr/sp and platform-reserved x18. --amber stays reserved
- * for surfaces where execution is implied, so this static page never spends it.
+ * Static integer register map. Its role split matches REGISTER_ROLES in
+ * LessonMarkdown.tsx so the hover definitions and this diagram agree. No
+ * amber here: amber means execution, and this diagram never runs.
  */
 
 type Family = "args" | "caller" | "callee" | "special";
@@ -22,7 +14,7 @@ interface RegisterCell {
 }
 
 interface RoleGroup {
-  /** Precise ABI role, mirrored from REGISTER_ROLES. */
+  /** The group's role in plain words; the grouping matches REGISTER_ROLES. */
   role: string;
   family: Family;
   regs: RegisterCell[];
@@ -39,13 +31,13 @@ function xrange(lo: number, hi: number): RegisterCell[] {
 const GROUPS: RoleGroup[] = [
   { role: "arguments & return", family: "args", regs: xrange(0, 7) },
   {
-    role: "indirect result / syscall",
+    role: "struct result address / syscall number",
     family: "args",
     regs: [{ name: "x8", alias: "w8" }],
   },
   { role: "caller-saved temporaries", family: "caller", regs: xrange(9, 15) },
   {
-    role: "intra-procedure scratch",
+    role: "linker temporaries",
     family: "caller",
     regs: [
       { name: "x16", alias: "ip0" },
@@ -53,7 +45,7 @@ const GROUPS: RoleGroup[] = [
     ],
   },
   {
-    role: "platform register (reserved)",
+    role: "reserved (do not use)",
     family: "special",
     regs: [{ name: "x18", alias: "w18" }],
   },
@@ -72,7 +64,7 @@ const FAMILY_TINT: Record<Family, string> = {
 };
 
 const LEGEND: { family: Family; label: string }[] = [
-  { family: "args", label: "arguments, return & indirect result (x0-x8)" },
+  { family: "args", label: "arguments, return & struct result address (x0-x8)" },
   { family: "caller", label: "caller-saved, volatile across a call (x9-x17)" },
   { family: "callee", label: "callee-saved, preserved across a call (x19-x29)" },
   { family: "special", label: "platform-reserved x18, link register & stack pointer" },
