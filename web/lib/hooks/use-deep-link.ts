@@ -23,10 +23,9 @@ export interface DeepLink {
 }
 
 /**
- * The bundle codec's read, taken as an argument rather than imported.
- * Decoding is what pulls lz-string in, and the landing hero reaches this
- * module through EmbeddablePlayground -> useLaunchMode -> playground-handoff
- * without ever decoding a bundle; only the playground route supplies one.
+ * The bundle codec's read, taken as an argument rather than imported: share.ts
+ * and playground-handoff import this module, and neither should carry the
+ * codec (diagnostic-bundle.ts), which loads only for a `?bundle=` URL.
  */
 export type BundleDecoder = (value: string | null) => BundleReadResult;
 
