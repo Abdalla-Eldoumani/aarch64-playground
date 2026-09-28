@@ -35,31 +35,18 @@ env:
   # out here because the cargo caches below depend on it.
   CARGO_INCREMENTAL: 0
   NEXT_TELEMETRY_DISABLED: 1
-  # One source for the node major so the node_modules cache keys can never
-  # serve modules installed under a different node, and one each for the
-  # rust toolchain and wasm-pack so a bump rolls every cargo and wasm
-  # cache instead of leaving them restoring another compiler's artifacts.
-  # The two rust pins match scripts/vercel-build.sh, so CI tests the
-  # compiler that ships.
+  # These pins are in the cache keys, so a bump starts fresh caches instead
+  # of restoring ones built by another version. The Rust and wasm-pack pins
+  # match scripts/vercel-build.sh, so CI tests the compiler that ships.
   NODE_VERSION: "24"
   RUST_TOOLCHAIN: "1.96.0"
   WASM_PACK_VERSION: "0.14.0"
 
-# How a run is laid out:
-# - Every job starts at once, and its first step asks
-#   .github/actions/changed-paths whether this run needs it. On a pull
-#   request whose files cannot affect the job, the job skips its remaining
-#   steps and passes, so a docs change builds and tests nothing. Pushes and
-#   the weekly run test everything. A filter job in front would let the
-#   others be skipped whole, but every job would then wait for it to finish
-#   and for a runner of its own, several seconds on every run.
-# - wasm looks the bundles up in the cache and builds them only on a miss.
-#   Every job that needs them restores them itself, or on a miss sets itself
-#   up first and then waits for the wasm job's upload.
-# - Every cache is restored on every run but saved only on pushes and the
-#   weekly run: those are the scopes a pull request can restore from, and a
-#   pull request's own saves would serve nothing but its own later runs.
-# - ci waits for all of it and is the one required status check.
+# Each job first asks .github/actions/changed-paths whether this run needs
+# it; on a pull request that cannot affect it, the job skips its remaining
+# steps and passes. A filter job in front would make every job wait for it
+# and for a runner of its own. Caches are saved only on pushes and the
+# weekly run: those are the scopes a pull request can restore from.
 jobs:
   # The wasm-bundles action finds this job by its name, so a rename goes in
   # both places.
@@ -161,18 +148,10 @@ jobs:
             emulator/target
           key: ${{ steps.cargo.outputs.cache-primary-key }}
 
-  # The corpus gate replays 101 gcc-compiled programs and was nearly all
-  # of the cargo runtime, so the suite is partitioned the way the vitest
-  # shards below are: one job runs every test except that gate, and three
-  # more slice the corpus programs round-robin (CORPUS_SHARD, read by the
-  # test itself; every program runs exactly once across the union). The
-  # other half of the speedup lives in emulator/Cargo.toml: the test
-  # profile runs at opt-level 1 with overflow checks and debug assertions
-  # still on, because an unoptimized walk of the interpreter loop was
-  # minutes of pure constant factor. Splitting cargo test further buys
-  # nothing: its floor is the compile plus simd_behaviour, a single test
-  # that takes nearly all of the suite's run time, and no test runner can
-  # split one test across machines.
+  # The C corpus test was nearly all of cargo test's run time, so one job
+  # runs everything else and three split the corpus programs between them
+  # (CORPUS_SHARD, read by the test). More jobs would not help: the rest is
+  # the compile plus simd_behaviour, one test no runner can split.
   rust:
     name: ${{ matrix.name }}
     runs-on: ubuntu-latest
@@ -207,13 +186,10 @@ jobs:
         with:
           toolchain: ${{ env.RUST_TOOLCHAIN }}
 
-      # Only the registry and the dependencies' build output are worth
-      # caching. A checkout makes every emulator source newer than anything
-      # restored, and with CARGO_INCREMENTAL=0 cargo then rebuilds the crate
-      # and its test binaries from scratch whatever the cache holds, so its
-      # own artifacts only made the restore slower (668 MB, 11 to 15 s). All
-      # four jobs build the same dependencies, so they share one key and
-      # whichever saves first wins.
+      # With CARGO_INCREMENTAL=0, cargo rebuilds the emulator crate after a
+      # checkout whatever the cache holds, so the cache keeps only the
+      # dependencies (the crate is dropped before the save). All four jobs
+      # build the same ones and share a key.
       - name: restore cargo cache
         id: cargo
         if: steps.paths.outputs.rust == 'true'
@@ -390,16 +366,10 @@ jobs:
         working-directory: web
         run: npm run size
 
-  # The suite is partitioned across six runners with vitest --shard; every
-  # file runs exactly once across the union. Six because the slowest shard
-  # is the critical path of the whole workflow and vitest splits by file
-  # count, not by cost: four shards left the longest one at 80 s and the
-  # merge job waiting on it.
-  # Coverage is measured only where the floors are enforced (pushes and the
-  # weekly run); a pull request runs the same tests without it. A shard
-  # cannot judge the global floor from its slice, so VITEST_SHARD defers
-  # the thresholds to the coverage job, which merges the blob reports and
-  # enforces them once.
+  # Six shards because vitest splits by file count, not cost, and four left
+  # the slowest at 80 s holding up the whole run. Coverage runs only on
+  # pushes and the weekly run; a shard cannot judge the whole-suite floor
+  # from its slice, so the coverage job merges the reports and enforces it.
   web-test:
     name: vitest shard ${{ matrix.shard }}
     runs-on: ubuntu-latest
