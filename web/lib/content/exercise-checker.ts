@@ -265,8 +265,14 @@ function evaluateStructural(assertion: StructuralAssertion, strippedSource: stri
     }
     case "forbids-literal": {
       if (typeof assertion.value === "number") {
-        // A standalone numeric token: forbidding 12 ignores 120 / 0x12.
-        const present = standaloneTokenRegex(String(assertion.value)).test(scope);
+        // A standalone numeric token: forbidding 12 ignores 120 / 0x12, but
+        // catches the same value written in hex (0xc), which is still 12.
+        const value = assertion.value;
+        const hex =
+          Number.isInteger(value) && value >= 0
+            ? new RegExp(`(?:^|[^\\w.])0x0*${value.toString(16)}(?![\\w.])`, "i")
+            : null;
+        const present = standaloneTokenRegex(String(value)).test(scope) || !!hex?.test(scope);
         return { assertion, pass: !present };
       }
       // A plain substring for a forbidden string literal.
