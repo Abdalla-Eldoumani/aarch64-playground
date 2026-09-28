@@ -1,15 +1,7 @@
 /**
- * Pull `name = <integer>` assignments out of a source file so the stack
- * panel can annotate `[fp, <offset>]` slots with the symbol name the
- * student wrote.
- *
- * The real symbol table lives in the linker; this is a best-effort
- * client-side parse that matches the cpsc 355 stack-slot convention
- * (`name_s = 16`). m4 `define(name, register)` pairs are deliberately
- * NOT parsed: they alias registers, not frame offsets, so they can
- * never name a stack slot. Only positive integer values count because
- * frame slots grow up from FP; negative values are stack-allocation
- * totals rather than slots.
+ * Reads `name = <integer>` lines so the stack panel can label `[fp, offset]`
+ * slots with the names the student wrote (`name_s = 16`). Only positive
+ * values count: slots sit above fp, and a negative value is a frame size.
  */
 export interface StackSlot {
   /** Byte offset from FP. */
