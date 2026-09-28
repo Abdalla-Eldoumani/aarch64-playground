@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import GlobalError from "./global-error";
 
@@ -22,6 +22,12 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
 
 // The report is built when the markdown builder's chunk lands, so the copy
 // button is inert for a beat after mount. Every copy case waits for it.
+// Loading the builder once up front keeps its first transform, which took
+// most of a second on a loaded machine, out of that one-second wait.
+beforeAll(async () => {
+  await import("@/lib/playground/bundle-markdown");
+});
+
 async function reportReady() {
   await waitFor(() => {
     expect(
