@@ -1,11 +1,8 @@
 /**
- * The diagnostic bundle: everything a person or an assistant needs to debug
- * one run, gathered from the machine when the student asks for it. It leaves
- * the page two ways: as the markdown report (bundle-markdown.ts, which needs
- * no compressor) and as a `?bundle=<lz>` link that reopens the program in the
- * playground. It holds playground state only: the program, what it was given,
- * what it printed, the machine, the site and emulator versions, and the
- * browser's name.
+ * Everything needed to debug one run, gathered when the student asks. It
+ * leaves as a markdown report (bundle-markdown.ts) or a `?bundle=` link that
+ * reopens the program, and holds playground state only, plus the site,
+ * emulator, and browser versions.
  */
 
 import LZString from "lz-string";
@@ -87,10 +84,9 @@ export function encodeBundle(bundle: DiagnosticBundle): string {
 }
 
 /**
- * The `?bundle=` link that reopens this program, or null when even the
- * program alone is past the cap the receiving page applies. A reopen loads
- * only the program and its input, so when the whole bundle is too long the
- * machine state stays in the report and the link carries the rest.
+ * The `?bundle=` link that reopens this program, or null when even the program
+ * alone is too long. A reopen reads only the program and its input, so the
+ * link falls back to those when the whole bundle does not fit.
  */
 export function bundleShareUrl(originUrl: string, bundle: DiagnosticBundle): string | null {
   const { source, files, args, stdin } = bundle;
@@ -190,10 +186,9 @@ function readFields(b: unknown, fields: Record<string, Check>): Record<string, u
 }
 
 /**
- * The four outcomes of reading a `?bundle=` query, mirroring `ShareReadResult`.
- * Collapsing them into null lets a truncated bundle link boot the default
- * buffer with an absent banner as the only signal, so the page surfaces corrupt
- * / too-large as a notice.
+ * The four outcomes of reading a `?bundle=` query, like `ShareReadResult`.
+ * They stay apart so a broken or oversized link shows a notice instead of
+ * quietly opening the default program.
  */
 export type BundleReadResult =
   | { kind: "none" }
@@ -201,18 +196,12 @@ export type BundleReadResult =
   | { kind: "corrupt" }
   | { kind: "too-large" };
 
-/**
- * Decode a `?bundle=...` query value, version 1 or 2, into a discriminated
- * verdict: absent (`none`), decoded and shape-valid (`ok`), oversized
- * (`too-large`), or anything else (bad encoding, malformed JSON, an unknown
- * version, a failed shape check): `corrupt`.
- */
+/** Decode a `?bundle=` value, version 1 or 2. Anything that fails to
+ *  decompress, parse, or pass the shape check is `corrupt`. */
 export function decodeBundle(value: string | null): BundleReadResult {
   if (!value) return { kind: "none" };
-  // Bomb wall: bound the raw (still-compressed) `?bundle=` fragment
-  // before lz-string runs. The cap is sized so even the quadratic
-  // worst case stays a bounded transient (see MAX_SHARE_HASH_BYTES);
-  // the post-decode ceiling below rejects anything oversized.
+  // Cap the still-compressed value before lz-string runs, so even its
+  // quadratic worst case stays small (see MAX_SHARE_HASH_BYTES).
   if (value.length > MAX_SHARE_HASH_BYTES) return { kind: "too-large" };
   try {
     const decompressed = LZString.decompressFromEncodedURIComponent(value);
