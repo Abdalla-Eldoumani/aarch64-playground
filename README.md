@@ -96,9 +96,9 @@ npm run build
 npm run start
 ```
 
-A local production server logs two 404 errors in the browser console for
-Vercel's analytics scripts, which exist only on Vercel. They do not affect
-the site.
+A local production server logs browser console errors for Vercel's two
+analytics scripts, which exist only on Vercel. In Chrome, each script logs a
+404 error and a refused-script error. The errors do not affect the site.
 
 To run the tests, see [docs/TESTING.md](docs/TESTING.md). To change the code,
 start with [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Every doc is listed in
