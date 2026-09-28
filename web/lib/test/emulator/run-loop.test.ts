@@ -194,8 +194,8 @@ describe("runChunked", () => {
   });
 
   it("paces heartbeats without pacing the chunks", async () => {
-    // Frames advance per chunk; the snapshot fan-out is what a host may
-    // want to spend less often (a worker's is a postMessage).
+    // A worker's heartbeat is a postMessage, worth sending less often; the
+    // chunks themselves must not slow down with it.
     let clock = 0;
     const { host, state } = fakeHost({
       chunk: (call) => (call === 6 ? { halted: true } : {}),
