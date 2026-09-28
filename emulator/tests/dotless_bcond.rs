@@ -1,9 +1,7 @@
 //! GAS accepts the dotless spelling of every conditional branch (`bne`,
-//! `ble`, ...) and gcc emits nothing else. The hosted pipeline once left
-//! those out of its branch-mnemonic list, so the label operand was rewritten
-//! to the label's section offset and then encoded as a pc-relative
-//! displacement: every `bne loop` in a student program jumped to
-//! pc + (loop - .text base), always forward, with no error.
+//! `ble`, ...) and gcc emits nothing else. The pipeline once missed them,
+//! so every `bne loop` in a student program silently jumped forward to the
+//! wrong address instead of back to `loop`.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
