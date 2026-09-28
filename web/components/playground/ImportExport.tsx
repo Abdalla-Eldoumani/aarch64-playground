@@ -171,7 +171,7 @@ export function ImportExport({
   );
 
   return (
-    <div className={`flex items-center gap-1 ${className}`}>
+    <div className={`flex items-center gap-1 ${className}`} data-walkthrough="export">
       <input
         ref={fileRef}
         type="file"
