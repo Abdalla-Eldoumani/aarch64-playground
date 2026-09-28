@@ -131,7 +131,7 @@ export function PhoneLayout({
       };
 
   return (
-    <div className={`phone-layout grid flex-1 min-h-0 ${grid}`}>
+    <div className={`grid flex-1 min-h-0 ${grid}`}>
       <div className={`${place.editor} flex min-h-0 min-w-0 flex-col`}>{editor}</div>
 
       <div className={`${place.status} min-w-0`}>
@@ -179,7 +179,7 @@ export function PhoneLayout({
       <div
         role="tablist"
         aria-label="playground view"
-        className={`${place.tabs} phone-tabs flex border-t border-[var(--border)] bg-[var(--bg-sunken)]`}
+        className={`${place.tabs} flex border-t border-[var(--border)] bg-[var(--bg-sunken)]`}
       >
         {tabs.map((t) => {
           const selected = side === t.id;
