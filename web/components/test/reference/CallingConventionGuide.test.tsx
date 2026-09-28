@@ -14,7 +14,7 @@ describe("CallingConventionGuide", () => {
     expect(screen.getByRole("button", { name: "next" })).toBeTruthy();
   });
 
-  it("heads the four sections with the numbered kickers, in order", () => {
+  it("heads the four sections with numbered headings, in order", () => {
     const { container } = render(<CallingConventionGuide />);
     const text = container.textContent ?? "";
     const headings = [
@@ -43,8 +43,8 @@ describe("CallingConventionGuide", () => {
     expect(text).toContain("s0");
     expect(text).toContain("fcvt");
     expect(text).toContain("no floating-point frame pointer");
-    // The vector width is named as the playground's reach, not the course's,
-    // and the callee-saved promise is pinned to the low 64 bits of v8-v15.
+    // The full vector width is marked as beyond the course, and only the low
+    // 64 bits of v8-v15 count as callee-saved.
     expect(text).toContain("The course keeps to");
     expect(text).toContain("callee-saved, but only their low 64 bits");
     expect(text).toContain("v8");
@@ -102,12 +102,10 @@ describe("CallingConventionGuide", () => {
 
   it("routes every prose block through the single LessonMarkdown path", () => {
     render(<CallingConventionGuide />);
-    // Hover-define summaries and inline-code tokens only appear when the real
-    // LessonMarkdown rendered the authored markdown; a stub would flatten the
-    // back-ticked tokens to plain text. One distinctive artifact per block:
-    // the lead and the alignment prose write `printf` as inline code, the
-    // integer prose resolves x8, the floating-point prose resolves x29, the
-    // frame prose resolves stp, and the alloc + alignment prose resolve sp.
+    // Inline code and hover summaries only appear when the real LessonMarkdown
+    // rendered the prose; a stub would flatten them. One token per block:
+    // printf (lead, alignment), x8 (integer), x29 (floating point), stp
+    // (frame), sp (alloc, alignment).
     expect(
       screen.getAllByText("printf", { selector: "code" }).length,
     ).toBeGreaterThanOrEqual(2);
