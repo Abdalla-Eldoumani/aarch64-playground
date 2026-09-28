@@ -2,7 +2,7 @@
   "title": "Quiz: arrays and structures",
   "slug": "quiz-basic-arrays",
   "order": 87,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "arrays",
   "difficulty": "intro",
   "variant": "quiz",
@@ -17,7 +17,7 @@
         "In the .bss section, alongside the global variables"
       ],
       "correctAnswer": 1,
-      "explanation": "A local array is just another local variable, so the prologue reserves one contiguous block for it in the stack frame and the elements are reached by an offset from x29. A global array is different: it is placed in .data or .bss and lasts for the whole run.",
+      "explanation": "A local array is just another local variable, so the function's setup code (its prologue) reserves one contiguous block for it in the stack frame and the elements are reached by an offset from x29. A global array is different: it is placed in .data or .bss and lasts for the whole run.",
       "hint": "Local variables live exactly as long as the frame that holds them."
     },
     {
@@ -65,7 +65,7 @@
         "arr + 16 * 2"
       ],
       "correctAnswer": 1,
-      "explanation": "A long is 8 bytes on 64-bit Linux, so element 2 begins 16 bytes past the base: arr + 2 * 8. Using 2 * 4 applies the 4-byte int stride, so it would land on element 1 instead of element 2.",
+      "explanation": "A long is 8 bytes on 64-bit Linux, so element 2 begins 16 bytes past the base: arr + 2 * 8. Using 2 * 4 scales by the 4-byte size of an int, so it would land on element 1 instead of element 2.",
       "hint": "Work out the byte size of a long first, then scale the index by it."
     }
   ]
