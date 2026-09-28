@@ -1,12 +1,10 @@
 name: refresh stars
 
-# The nav's star count is read once per production build, so it only moves
-# when production redeploys. This asks Vercel for a fresh production build of
-# main through a deploy hook when someone stars the repository, and once a
-# week so the count also catches unstars. Each deployment keys the count's
-# fetch cache on its own id, so a rebuild of the same commit still reads the
-# live number. GitHub runs watch and schedule events only from the default
-# branch, so this workflow does nothing until it is on main.
+# The nav's star count is read once per production build, so it only moves on
+# a redeploy. This triggers one through a Vercel deploy hook on each new star
+# and weekly, to catch unstars. The count's cache is keyed per deployment, so
+# rebuilding the same commit still reads the live number. GitHub fires watch
+# and schedule events only from the default branch.
 on:
   watch:
     types: [started]
