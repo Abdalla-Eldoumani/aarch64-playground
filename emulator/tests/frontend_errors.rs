@@ -14,6 +14,14 @@ fn assemble_err(src: &str) -> String {
     }
 }
 
+/// Assemble and load without running, so a test can read what landed where.
+fn loaded(src: &str) -> Cpu {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).unwrap_or_else(|e| panic!("should assemble: {e}"));
+    cpu.load_linked_image(&image).expect("load");
+    cpu
+}
+
 #[test]
 fn ldr_eq_outside_text_is_rejected_not_panicked() {
     // A missing .text used to panic the wasm module: pass 1d sized the
@@ -335,7 +343,6 @@ ret
 fn exponent_floats_lex_in_double_and_float_lists() {
     // `.double 1e5` was "invalid integer literal `1e5`"; `.double 1e-3`
     // quoted text the student never typed ("1e").
-    let cpu = Cpu::new();
     let src = ".data
 d: .double 1e5
 e: .double 1e-3
@@ -345,7 +352,12 @@ f: .float 2E4
 main:
 ret
 ";
-    assert!(assemble_hosted(src, &cpu.host).is_ok(), "exponent floats should assemble");
+    let cpu = loaded(src);
+    let at = |name: &str| cpu.resolve_label(name).expect(name);
+    // The IEEE-754 patterns of 1e5 and 1e-3 as doubles and 2e4 as a single.
+    assert_eq!(cpu.mem.read_u64(at("d")).unwrap(), 0x40F8_6A00_0000_0000);
+    assert_eq!(cpu.mem.read_u64(at("e")).unwrap(), 0x3F50_624D_D2F1_A9FC);
+    assert_eq!(cpu.mem.read_u32(at("f")).unwrap(), 0x469C_4000);
 }
 
 #[test]
@@ -415,7 +427,6 @@ ret
 fn dotted_local_labels_work_in_data_slots() {
     // `.quad .L2` is literal GCC jump-table output; the deferral test
     // only knew Ident and Dot, so DirectiveIdent fell into the evaluator.
-    let cpu = Cpu::new();
     let src = ".text
                .global main
                main:
@@ -425,7 +436,11 @@ fn dotted_local_labels_work_in_data_slots() {
                .data
                table: .quad .L2
 ";
-    assert!(assemble_hosted(src, &cpu.host).is_ok(), ".quad .L2 should assemble");
+    let cpu = loaded(src);
+    let table = cpu.resolve_label("table").expect("table");
+    // .L2 is the word after main's ret, so the slot holds main + 4.
+    let main = cpu.resolve_label("main").expect("main");
+    assert_eq!(cpu.mem.read_u64(table).unwrap(), main + 4);
 }
 
 #[test]
@@ -745,8 +760,10 @@ fn data_before_text_still_assembles() {
                bl printf\n\
                mov x0, 0\n\
                ret\n";
-    let cpu = Cpu::new();
-    assert!(assemble_hosted(src, &cpu.host).is_ok());
+    // Built and run, the .data-first program prints its string.
+    let mut cpu = loaded(src);
+    cpu.run_until_break(10_000).expect("run");
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "hi\n");
 }
 /// Both of these used to overflow the wasm stack rather than return an
 /// error. A wasm stack overflow is unrecoverable: the trap skips
