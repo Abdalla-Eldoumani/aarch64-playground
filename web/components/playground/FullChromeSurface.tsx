@@ -159,8 +159,7 @@ function confirmImport(what: string, replaced: string[]): boolean {
  * The playground's own half of the shared shell: the header band, the files
  * strip, the three-column resizable layout with its eight machine views, the
  * controls, the tutorials, the interface walkthrough, and the two hooks only
- * this surface has a use for, the
- * launch mode and the terminal drive.
+ * this surface has a use for, the launch mode and the terminal drive.
  *
  * Its own module, reached through dynamic(), because everything named above is
  * full-chrome only while the shell is what the landing hero mounts: reaching
