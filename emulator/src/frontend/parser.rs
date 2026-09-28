@@ -1,14 +1,8 @@
-//! Section-aware parser. Runs after m4 expansion and lexing. Produces a
+//! Section-aware parser. Runs after m4 expansion and lexing and produces a
 //! `Program` with sections, labels, globals, and aliases.
 //!
-//! Instruction encoding is deferred to the linker: we hold each instruction
-//! as a raw token slice and its original line number, because the token
-//! stream contains enough information to encode once the symbol table
-//! (labels, section base addresses) is final.
-//!
-//! Data directive expressions evaluate eagerly with an empty resolver; a
-//! slot that names a label defers, holding its raw tokens for the linker to
-//! fold once the symbol table is final (GCC jump tables rely on this).
+//! Instructions, and data values that name a label, stay as raw tokens for
+//! the linker: they can only be encoded once every label has an address.
 
 use std::collections::HashMap;
 
@@ -39,21 +33,16 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
     Ok(prog)
 }
 
-/// Apply GAS `name .req register` aliases textually, after m4 and before
-/// lexing. Course assignment files alias both general and FP registers
-/// this way (`fp .req x29`, `sum .req d19`). A definition takes effect on
-/// the lines after it; the definition line itself is blanked, not removed,
-/// so line numbers stay aligned with the editor. m4 has already stripped
-/// comments, so a whitespace split sees exactly the definition's three
-/// words. Substitution is the same token-boundary, string-literal-safe
-/// walk m4 defines use, so an alias works anywhere a register can appear
-/// and never rewrites `.string` text. The alias target is taken as
-/// written; a target that is not a register surfaces as the normal
-/// unknown-register error at the first use site.
+/// Apply GAS `name .req register` aliases as text, after m4 and before
+/// lexing (`fp .req x29`, `sum .req d19`). An alias applies from the line
+/// after its definition, and the definition line is blanked, not removed,
+/// so line numbers match the editor. m4 has already stripped comments, so
+/// a definition splits into exactly three words. Substitution reuses m4's
+/// walk, so an alias never rewrites `.string` text, and a target that is
+/// not a register fails as an unknown register where it is first used.
 ///
-/// Expansion is bounded exactly the way m4's is. This pass runs on
-/// already-expanded text, where a chain of aliases each naming the one
-/// before it materializes gigabytes before the assembler sees a line.
+/// Expansion is capped the same way m4's is: this runs on already-expanded
+/// text, where a chain of aliases can grow to gigabytes.
 fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), EmuError> {
     // Fast path: nothing to do for the overwhelmingly common case.
     if !text.contains(".req") {
@@ -266,11 +255,10 @@ fn parse_line(
 }
 
 /// Every directive spelling `parse_directive` recognizes, aliases included.
-/// `.equ`/`.set` are listed but rejected: the parser answers them with the
-/// teaching message that points at `NAME = expression`, which is a real
-/// answer rather than "unknown directive". `detect_hosted_mode` in lib.rs decides from this list which
-/// programs take the hosted path, and `every_directive_reaches_an_arm`
-/// proves no entry falls through to the unknown-directive arm.
+/// `.equ`/`.set` are listed but answered with a message pointing at
+/// `NAME = expression`, which helps more than "unknown directive".
+/// `detect_hosted_mode` in lib.rs reads this list, and
+/// `every_directive_reaches_an_arm` checks no entry falls through.
 pub const DIRECTIVES: &[&str] = &[
     // sections
     ".text", ".data", ".bss", ".rodata", ".section",
@@ -554,13 +542,10 @@ fn emit_int_list(
     // symbol lists) report a baffling "end of input" for a file that ends
     // nowhere near this line.
     reject_empty_groups(&exprs, rest, line)?;
-    // A value that names a symbol or `.` cannot be computed here: label
-    // addresses exist only after the linker places every section. Course
-    // pointer tables (`.dword label_january, ...`) are the motivating
-    // case, and dotted local labels (`.quad .L2`, GCC jump tables) lex as
-    // DirectiveIdent. Defer the whole list so slot addressing stays
-    // contiguous; pure-constant lists keep the immediate Bytes path and
-    // its parse-time error reporting.
+    // A value naming a label or `.` waits for the linker, which alone knows
+    // addresses (`.dword label_january, ...`; `.quad .L2` lexes as a
+    // DirectiveIdent). The whole list waits so its slots stay together;
+    // an all-constant list becomes bytes here and reports errors here.
     let needs_link_resolution = exprs.iter().any(|group| {
         group.iter().any(|t| {
             matches!(
@@ -1334,14 +1319,10 @@ mod tests {
 
     #[test]
     fn every_directive_reaches_an_arm() {
-        // Feed each listed spelling a plausible operand and check what comes
-        // back is never the unknown-directive fallthrough. What else it says
-        // does not matter: `.equ`/`.set` answer with the teaching message,
-        // which is the point of listing them. So this fails on exactly one
-        // thing: a name in DIRECTIVES the match no longer has an arm for.
-        //
-        // First pin that the probe reaches the fallthrough at all, so a
-        // directive that died earlier could not pass the walk vacuously.
+        // Each listed spelling, given a plausible operand, must never reach
+        // the unknown-directive arm; any other error (`.equ`/`.set`) is fine.
+        // First check the probe can reach that arm at all, so the walk
+        // cannot pass without testing anything.
         let unknown = parse(".nosuchthing 1\n").unwrap_err().to_string();
         assert!(
             unknown.contains("unknown directive"),
