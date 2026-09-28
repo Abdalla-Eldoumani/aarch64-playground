@@ -153,7 +153,7 @@ let yieldChannel: MessageChannel | null = null;
  * than the chunk it separates. setTimeout is the fallback where no
  * MessageChannel exists.
  */
-function yieldToEventLoop(): Promise<void> {
+export function yieldToEventLoop(): Promise<void> {
   const channel = ensureYieldChannel();
   if (!channel) {
     return new Promise<void>((resolve) => setTimeout(resolve, 0));
