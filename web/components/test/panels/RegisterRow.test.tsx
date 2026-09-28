@@ -23,8 +23,8 @@ describe("RegisterRow", () => {
 
   it("drives the write flash and value tint from --changed when changed", () => {
     const { container } = render(<RegisterRow name="X2" value="0x2a" changed />);
-    // the row plays the reduced-motion-safe reg-flash keyframe (its color comes
-    // from --changed in globals.css) and the value carries the --changed tint
+    // jsdom plays no keyframes and the flash takes its colour from globals.css,
+    // so the class names are what this can check.
     const row = container.firstElementChild as HTMLElement;
     expect(row.className).toContain("anim-reg-flash");
     expect(screen.getByText("0x2a").className).toContain("text-[var(--changed)]");
