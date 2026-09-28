@@ -2,7 +2,7 @@ import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ErrorPage from "./error";
 
-// Pins the route error boundary: the fault-card register, the retry prop, and
+// Pins the route error page: the fault card's wording, the retry prop, and
 // the copied markdown report.
 
 afterEach(() => {
@@ -17,10 +17,10 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
   return error;
 }
 
-// The report is built when the markdown builder's chunk lands, so the copy
-// button is inert for a beat after mount. Every copy case waits for it.
-// Loading the builder once up front keeps its first transform, which took
-// most of a second on a loaded machine, out of that one-second wait.
+// The report is built once the markdown builder's code loads, so the copy
+// button stays disabled briefly after mount. Every copy case waits for it.
+// Loading the builder once up front keeps its first load, which took most
+// of a second on a busy machine, out of that one-second wait.
 beforeAll(async () => {
   await import("@/lib/playground/bundle-markdown");
 });
@@ -36,7 +36,7 @@ async function reportReady() {
 }
 
 describe("route error page", () => {
-  it("announces the fault in the 404's register", () => {
+  it("announces the fault in the same style as the 404", () => {
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
     expect(screen.getByText("runtime fault")).toBeTruthy();
     expect(screen.getByText("0x00000500")).toBeTruthy();
