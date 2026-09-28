@@ -661,6 +661,7 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
 
     fn kinds(tokens: &[Token]) -> Vec<TokenKind> {
         tokens.iter().map(|t| t.kind.clone()).collect()
@@ -873,7 +874,7 @@ mod tests {
 
     #[test]
     fn unknown_escape_errors() {
-        assert!(lex("'\\q'", 1).is_err());
+        rejects(lex("'\\q'", 1), "unknown escape \\q");
     }
 
     #[test]
@@ -985,7 +986,7 @@ mod tests {
 
     #[test]
     fn unknown_char_errors() {
-        assert!(lex("$", 1).is_err());
+        rejects(lex("$", 1), "unexpected character `$`");
     }
 
     #[test]
@@ -1009,7 +1010,7 @@ mod tests {
 
     #[test]
     fn single_lt_without_match_errors() {
-        assert!(lex("<", 1).is_err());
+        rejects(lex("<", 1), "did you mean '<<'?");
     }
 
     #[test]
