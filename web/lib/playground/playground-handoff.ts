@@ -15,28 +15,21 @@ import {
 } from "@/lib/playground/upload-guard";
 
 /**
- * Delivery of a program payload into the playground: the boot-time
- * precedence, the post-mount reconciliation that catches client-side
- * navigations (the router updates window.location at commit, after the
- * boot state was captured during render), and the example fetch with its
- * input fixtures. Everything here is pure or fetch-driven so the page
- * component stays thin and the decisions are table-testable.
+ * How a program reaches the playground: which source wins at boot, a second
+ * pass after mount that catches client-side navigations (the URL changes
+ * after the boot state was read), and the example fetch with its inputs.
  */
 
 /**
- * Which surface owns the pane at run press: a live terminal session
- * ("terminal") or the classic console flow ("console"). It is NOT a statement
- * about whether the program may ever own the pane: a raw-mode program still
- * takes the terminal mid-run under either value, and `./name` still runs
- * anything in the pane.
+ * Where a run starts when run is pressed: the terminal pane or the console.
+ * It never limits the program: one that switches to raw mode still takes the
+ * terminal mid-run, and `./name` runs anything in the pane.
  */
 export type LaunchMode = "terminal" | "console";
 
 /**
- * Decode a launch value that came from outside the type system: the
- * persisted key (which held `"1"` / `"0"` before the mode had two names)
- * or any other stored string. Only the two known "terminal" spellings
- * resolve to terminal; everything else, absent included, is console.
+ * Read a stored launch value. The key held `"1"` / `"0"` before the mode had
+ * two names, so "terminal" and "1" mean terminal; anything else is console.
  */
 export function decodeLaunch(value: string | null | undefined): LaunchMode {
   return value === "terminal" || value === "1" ? "terminal" : "console";
@@ -82,20 +75,18 @@ export interface PlaygroundBoot {
   cursor?: { line: number; column: number };
   fromShare: boolean;
   fromBundle: boolean;
-  /** Set when the URL carried OUR share prefix but the payload failed:
-   *  the boot fell back to autosave/default and the page must say so --
-   *  an absent "loaded from a share link" banner is not a signal anyone
-   *  notices. */
+  /** Set when the URL carried our share prefix but the payload failed: the
+   *  boot fell back to autosave or the default, and the page must say so,
+   *  since nobody notices a missing "loaded from a share link" banner. */
   shareError?: "corrupt" | "too-large";
   /** Same idea for a `?bundle=` deep-link that failed to decode. */
   bundleError?: "corrupt" | "too-large";
 }
 
 /**
- * The bundle decoder for a URL that actually carries one. Importing it
- * statically would put diagnostic-bundle (and lz-string's decompressor
- * behind it) on every page that reaches this module, the landing hero
- * included, for a parameter almost no load carries.
+ * The bundle decoder, loaded only for a URL that has `?bundle=`. A static
+ * import would put lz-string on every page that reaches this module, the
+ * landing hero included.
  */
 export async function loadBundleDecoder(
   search: string,
@@ -107,12 +98,10 @@ export async function loadBundleDecoder(
 }
 
 /**
- * Resolve the starter buffer from the URL actually visible at render
- * time. Precedence: a diagnostic bundle deep-link, then a share hash,
- * then the autosaved buffer, then the cold-load default. The bundle
- * branch needs a decoder passed in: a render pass has nothing to await
- * loadBundleDecoder with, so the playground route boots without one and
- * lets the post-mount pass deliver the bundle.
+ * The starting program at render time: a `?bundle=` link, then a share link,
+ * then the autosave, then the default. Render cannot await loadBundleDecoder,
+ * so the playground route boots without it and the pass after mount delivers
+ * the bundle.
  */
 export function resolveBoot(
   search: string,
@@ -163,14 +152,9 @@ export type HandoffDecision =
   | null;
 
 /**
- * Decide what the post-mount pass must still deliver. A bundle or share payload
- * the boot already consumed returns null (hard load, nothing to do); one the
- * boot missed (client-side navigation read the previous URL) is returned for
- * delivery. An example stem is always delivered here (the boot never fetches),
- * but only when no share-state payload is in the URL, so a link carrying both
- * never overwrites the richer payload with the example file. This is the pass
- * that delivers a `?bundle=` link: it runs after mount, so its caller can await
- * loadBundleDecoder and hand the decoder in.
+ * What the pass after mount must still deliver: a bundle or share the boot
+ * missed, or an example (only this pass fetches, and a bundle or share in the
+ * same URL wins). It can await the decoder, so a `?bundle=` link lands here.
  */
 export function resolveHandoff(
   boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError" | "bundleError">,
@@ -257,18 +241,11 @@ export const EXAMPLE_INTERACTIVE: Record<string, true> = {
   deadzone: true,
 };
 
-/** Examples that present a different face per launch mode: run them in the
- *  console and they take one extra argument, the word `console`, and print
- *  plain line-at-a-time output the console's plain-text scrollback can
- *  actually render; run them in the terminal and they take no arguments and
- *  draw their full-screen ANSI face. The token is always the same word --
- *  this table only marks who takes it.
- *
- *  The rule the playground applies from it: for a stem listed here the mode
- *  OWNS the args box, at load and on every run-mode flip. That overrides the
- *  fixture args EXAMPLE_INPUTS seeds (temp-convert is in both tables), and it
- *  stops at the student: a box edited to anything other than the two seeded
- *  forms or the payload's own value is theirs and is left alone. */
+/** Examples with two faces: in the console they take the argument `console`
+ *  and print plain lines; in the terminal they take none and draw a full
+ *  screen. The mode sets their args box on load and on each mode change,
+ *  over EXAMPLE_INPUTS (temp-convert is in both), unless the student typed
+ *  something of their own there. */
 export const EXAMPLE_MODE_ARGS: Record<string, true> = {
   calc: true,
   "temp-convert": true,
@@ -276,11 +253,8 @@ export const EXAMPLE_MODE_ARGS: Record<string, true> = {
 };
 
 /**
- * The args a mode-args example runs with under `mode`: the console face
- * takes the single `console` token, the terminal face takes nothing.
- * The emulator owns argv[0] (it prepends `./program` on every load), so
- * the box holds argv[1..] only. Null for a stem the table does not list,
- * meaning "the mode has no opinion here; whatever seeded the box stands".
+ * The args box for `stem` under `mode`, or null when the mode does not set
+ * it. The box never holds argv[0]: the emulator adds `./program` itself.
  */
 export function modeArgsFor(
   stem: string | null | undefined,
@@ -346,10 +320,8 @@ export const EXAMPLE_FILES: Record<string, string[]> = {
 };
 
 /**
- * Which examples carry input fixtures (`<stem>.args`, `<stem>.stdin`,
- * `<stem>.vfs.json` under the fixtures directory). Kept in exact sync
- * with the fixtures directory by a test, so a new fixture cannot land
- * without the loader delivering it.
+ * Examples with input files (`<stem>.args`, `.stdin`, `.vfs.json` in the
+ * fixtures directory). A test keeps this in sync with that directory.
  */
 export const EXAMPLE_INPUTS: Record<
   string,
@@ -370,10 +342,9 @@ export const EXAMPLE_INPUTS: Record<
 };
 
 /**
- * Parse and bound a `<stem>.vfs.json` fixture: a flat JSON object of file name
- * to text content. Anything outside that shape, or outside the size caps,
- * throws, and the caller treats the payload as undeliverable rather than
- * seeding a partial or hostile file set.
+ * Parse a `<stem>.vfs.json` fixture: a flat object of file name to text. Any
+ * other shape, or anything past the size caps, throws, so a partial file set
+ * never loads.
  */
 export function parseVfsFixture(raw: string): Record<string, string> {
   let parsed: unknown;
@@ -414,10 +385,9 @@ async function fetchFixture(stem: string, ext: string): Promise<string> {
 }
 
 /**
- * Fetch an example program and every input fixture it declares, bounded
- * by the same caps as user uploads. Throws on a missing file, an
- * oversize payload, or a malformed fixture; the caller keeps the current
- * buffer in that case.
+ * Fetch an example and its input files under the same caps as an upload.
+ * Throws on a missing, oversized, or malformed file, and the caller keeps
+ * the current program.
  */
 export async function fetchExample(stem: string): Promise<HandoffPayload> {
   if (!STEM_PATTERN.test(stem)) {
