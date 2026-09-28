@@ -1,12 +1,9 @@
 "use client";
 
 /**
- * One fill-in-the-blank question: the code renders around a native input
- * embedded at the `___` marker (the schema guarantees exactly one), and the
- * attempt passes when the trimmed, case-folded input matches any accepted
- * string. Before a wrong answer is corrected the block shows only the
- * author's hint, never the explanation or the accepted answers. `onAttempt`
- * reports each submission upward for the exercise-level solved state.
+ * One fill-in-the-blank question, with the input at the `___` marker (the
+ * schema guarantees exactly one). A wrong answer shows only the author's
+ * hint, never the explanation or the accepted answers.
  */
 
 import { useId, useState, type JSX } from "react";
