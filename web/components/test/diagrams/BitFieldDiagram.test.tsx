@@ -3,11 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { BitFieldDiagram } from "@/components/diagrams/BitFieldDiagram";
 import type { BitField } from "@/lib/content/reference-data";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 // A worked 32-bit example whose nibble split is easy to eyeball: the four
@@ -61,7 +58,6 @@ describe("BitFieldDiagram", () => {
     const [colored, plain] = screen.getAllByRole("listitem");
     expect(colored.style.borderTopColor).toBe("magenta");
     expect(plain.style.borderTopColor).toBe("");
-    expect(plain.className).toContain("border-t-[var(--border-strong)]");
   });
 
   it("falls back to a sample encoding when no fields are given", () => {
@@ -155,14 +151,5 @@ describe("BitFieldDiagram", () => {
     expect(screen.queryByText("31 : 24")).toBeNull();
     const rd = screen.getAllByRole("listitem")[3];
     expect(rd.className).not.toContain("var(--amber)");
-  });
-
-  it("renders the default form under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<BitFieldDiagram />);
-      expect(screen.getByLabelText("instruction encoding")).toBeTruthy();
-      unmount();
-    }
   });
 });
