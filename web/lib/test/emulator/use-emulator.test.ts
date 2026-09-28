@@ -11,9 +11,8 @@ import type {
   StepResultPayload,
 } from "@/lib/worker/protocol";
 
-// Holder for the fake backend. The hoisted `@/lib/backend` mock reads it
-// lazily inside `pickBackend`, so each test installs its own backend before
-// rendering the hook.
+// The hoisted backend mock reads this lazily inside `pickBackend`, so each
+// test installs its own backend before rendering the hook.
 const h = vi.hoisted(() => ({ backend: undefined as unknown }));
 
 vi.mock("@/lib/emulator/backend", () => ({
@@ -177,11 +176,9 @@ interface BackendCalls {
   getMemory: Array<[number, number]>;
 }
 
-// Fake backend in the established harness shape: snapshots fire through the
-// listener BEFORE the operation promise resolves (mirroring
-// MainThreadBackend.notifyAndReturn / WorkerClient), so the hook's
-// applySnapshot runs while currentLineRef/latestSnapRef are read by the
-// step/run callbacks.
+// Like MainThreadBackend and WorkerClient, the fake fires each snapshot at the
+// listener BEFORE the call's promise resolves, so the hook has applied it by
+// the time the step and run callbacks read it.
 function makeBackend(config: Partial<BackendConfig> = {}) {
   const cfg: BackendConfig = {
     instructionCount: 5,
