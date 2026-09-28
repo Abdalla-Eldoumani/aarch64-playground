@@ -33,7 +33,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
 import { InstructionReference } from "@/components/reference/InstructionReference";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
-// Four categories, six entries: one carries a worked encoding and an
+// Five categories, seven entries: one carries a worked encoding and an
 // intrinsic (add), two set flags (cmp, which has the flag panel, and adcs,
 // which does not), one writes a vector register (addv), the others are plain.
 // Distinct syntax/example strings make the detail unambiguous.
@@ -235,7 +235,7 @@ describe("InstructionReference", () => {
     expect((link.getAttribute("href") ?? "").startsWith("/playground#p2=")).toBe(true);
   });
 
-  it("runs the example in place with the same payload the deep link carries", async () => {
+  it("runs the example in place with the same program the playground link opens", async () => {
     render(<InstructionReference instructions={FIXTURE} />);
     fireEvent.click(
       screen.getByRole("button", { name: "run this example: mov" }),
@@ -245,7 +245,7 @@ describe("InstructionReference", () => {
     expect(embed.getAttribute("data-startsource")).toBe(
       playgroundSource(FIXTURE[0]),
     );
-    // The live bench replaces the static example block until closed.
+    // The running example replaces the static code block until it is closed.
     fireEvent.click(
       screen.getByRole("button", { name: "close the live example for mov" }),
     );
@@ -254,7 +254,7 @@ describe("InstructionReference", () => {
     expect(detail.textContent).toContain("mov x0, x1");
   });
 
-  it("selecting another instruction retires the live example", async () => {
+  it("selecting another instruction closes the live example", async () => {
     render(<InstructionReference instructions={FIXTURE} />);
     fireEvent.click(
       screen.getByRole("button", { name: "run this example: mov" }),
@@ -351,7 +351,7 @@ describe("InstructionReference", () => {
       );
     }
     expect(within(movFlags).getByText("does not set flags")).toBeTruthy();
-    // cmp sets nzcv: the chips take ink and the note flips
+    // cmp sets nzcv: the chips brighten and the note changes
     fireEvent.click(screen.getByRole("button", { name: "cmp" }));
     const cmpFlags = screen.getByRole("group", { name: "cmp flags" });
     expect(within(cmpFlags).getByText("N").className).toContain(
