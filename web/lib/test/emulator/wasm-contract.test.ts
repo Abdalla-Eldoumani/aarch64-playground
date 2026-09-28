@@ -3,13 +3,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// The wrapper contract the web layer leans on, pinned against the real
-// node-target emulator: step_back restores registers and memory, breakpoints
-// stop at the exact pc the line map can name, save/load round-trips machine
-// state including the VFS, scanf blocks until stdin arrives, argv lands where
-// main reads it, fmov shows in the FP surface, and str reports its dirty
-// range. Every expected value is derived by hand in the comments, never by
-// running the code path under test.
+// Pins the emulator calls the web layer relies on, against the real node
+// build. Every expected value is worked out by hand in the comments, never by
+// running the code under test.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator, memoryMap } = nodeRequire(
