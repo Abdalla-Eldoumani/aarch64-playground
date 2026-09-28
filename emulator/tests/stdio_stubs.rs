@@ -1,8 +1,8 @@
-//! End-to-end contracts for the FILE*-level stdio stubs (fopen /
-//! fprintf / fclose over the VFS), the shape assignment log-file
-//! programs use: fopen("file", "w"), fprintf per record, one fclose.
-//! Plus the three standard streams, which are linkable symbols naming
-//! loader-written words rather than descriptors fopen handed out.
+//! Tests for fopen, fprintf and fclose writing to the emulator's in-memory
+//! files, the way assignment programs write a log file: fopen("file", "w"),
+//! one fprintf per record, one fclose. Also covers stdin, stdout and
+//! stderr, which are symbols for words the loader fills in, not handles
+//! that fopen returned.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -301,8 +301,8 @@ main:
 #[test]
 fn fclose_of_a_standard_stream_succeeds_without_closing_it() {
     // A student who calls fclose on stdout must not lose the rest of the
-    // program's output: fd 0/1/2 are not fopen descriptors, so there is
-    // nothing to drop.
+    // program's output: fopen never opened stdout, so there is nothing to
+    // close.
     let source = r#"
 define(fp, x29)
 define(lr, x30)
