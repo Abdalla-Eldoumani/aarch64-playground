@@ -2,11 +2,11 @@
   "title": "Quiz: external data",
   "slug": "quiz-advance-external-data",
   "order": 104,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "external-data",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Symbol scope, PC-relative address formation with `adrp` and `add`, section permissions, and indexing an array of pointers.",
+  "prompt": "Variable scope, building an address relative to the program counter with `adrp` and `add`, section permissions, and indexing an array of pointers.",
   "questions": [
     {
       "question": "In C, how does the scope of a static local variable differ from the scope of a static global variable?",
