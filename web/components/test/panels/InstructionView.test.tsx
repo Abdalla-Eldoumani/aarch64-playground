@@ -1,7 +1,7 @@
-// pins the disassembly table: the pc row carries its marker and amber
-// treatment, and a listing too large to hand the browser whole renders as a
-// fixed window that follows the program counter instead of a quarter-million
-// rows (the linker's 1 MiB .text window allows 262,144 instructions).
+// pins the disassembly table: the pc row carries its marker, and a listing
+// too large to hand the browser whole renders as a fixed window that follows
+// the program counter instead of a quarter-million rows (the linker's 1 MiB
+// .text window allows 262,144 instructions).
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import {
@@ -43,7 +43,7 @@ describe("InstructionView", () => {
     expect(marked[0].textContent).toContain("nop 1");
   });
 
-  it("windows a listing larger than the row budget and says what it is showing", () => {
+  it("shows one block of a listing too long to render whole, and says which rows", () => {
     const total = INSTRUCTION_WINDOW * 4 + 10;
     render(<InstructionView instructions={listing(total)} pc={CODE_BASE} />);
     expect(bodyRowCount()).toBe(INSTRUCTION_WINDOW);
@@ -75,9 +75,9 @@ describe("InstructionView", () => {
     expect(screen.getByText("nop 0")).toBeTruthy();
   });
 
-  it("marks and follows the anchor when the pc is off the listing", () => {
+  it("marks and follows the call site when the pc is off the listing", () => {
     const total = INSTRUCTION_WINDOW * 4 + 10;
-    // Inside a libc call the pc is a trampoline word the listing does not
+    // Inside a libc call the pc points at emulator code the listing does not
     // hold, so the marker and the window follow the call site instead of
     // parking at the top for all three steps.
     render(
