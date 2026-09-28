@@ -1,9 +1,6 @@
-// The shell's view of the machine: what `./program`, `gcc`, and gdb-lite
-// actually do to the hub. The contracts pinned here are the ones the module's
-// comments name: argv[0] belongs to the emulator, the home directory is
-// re-seeded after every tool assemble, output is reported as the DELTA over
-// the editor's scrollback, a `< file` redirect gets the same stdin cap as
-// every other ingress, and a run waits for the machine to actually stop.
+// The terminal's `./program`, `gcc`, and gdb-lite drive the same emulator as
+// the editor, so these cases pin the rules for sharing it: argv[0], the home
+// directory, output, stdin, and waiting for a run to stop.
 import { describe, expect, it, vi } from "vitest";
 import { makeHub } from "@/components/test/playground/helpers/emulator-hub";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
