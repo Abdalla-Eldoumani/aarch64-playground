@@ -1,15 +1,8 @@
 /**
- * Maps assembler / runtime error messages from the Rust side onto
- * teaching blocks ({what, why, fix, styleSection}). Used by the editor's
- * error marker to surface context the student can act on, plus a link to
- * the relevant section of `docs/cpsc355-style-guide.md`.
- *
- * The Rust side sends flat strings via wasm-bindgen. Assemble-stage
- * errors arrive as the BARE inner message (the wasm boundary strips the
- * "X error at line N:" Display prefix and ships the line separately), so
- * every predicate here matches on substrings of the inner text; the
- * prefix regex below only serves strings that arrive Display-formatted
- * (runtime aborts pass through Display unchanged).
+ * Turns an assembler or runtime error into a teaching block (what, why, fix,
+ * and a style-guide section). Assemble errors arrive without their
+ * "X error at line N:" prefix, so every check matches a substring of the inner
+ * message; the prefix regex below only serves a message that still has it.
  */
 import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
 
@@ -44,8 +37,8 @@ export interface ErrorExplanation {
 export function explainError(message: string): ErrorExplanation | null {
   const lower = message.toLowerCase();
 
-  // The five top-level prefix-matched variants come first; assembler /
-  // parser / preprocess / link errors then dispatch on the inner detail.
+  // Whole-message variants come first; assembler / parser / preprocess /
+  // link errors then dispatch on the inner detail.
   if (lower.includes("ran past the last instruction")) {
     return {
       what: "Execution walked off the end of the program: the last instruction ran and nothing said stop.",
@@ -57,7 +50,7 @@ export function explainError(message: string): ErrorExplanation | null {
   if (lower.startsWith("unknown instruction")) {
     return {
       what: "The emulator's decoder did not recognize this 32-bit word as any AArch64 instruction it implements.",
-      why: "Execution usually got here by branching somewhere that holds data, not code: a branch to a data label, a wrong jump-table entry, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
+      why: "Execution usually got here by branching somewhere that holds data, not code: a branch to a data label, a `br` through a register holding the wrong address, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
       fix: "Check where the shown address falls: if it is in .data/.rodata, find the branch that took you there; if it is in .text, compare the mnemonic against the instruction reference.",
       styleSection: "general",
     };
@@ -67,7 +60,7 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: `The CPU tried to ${isWrite ? "write to" : "read from"} an address that is not mapped (no .text/.data/.rodata/.bss/.stack page covers it).`,
       why: "Most often a base register holds an offset rather than an address, or `ldr xN, =label` was forgotten so the register stays at 0.",
-      fix: "Watch the base register in the watch panel. If it is a small number (0..255), you wrote `mov` where you meant `ldr =`; if it is near 0xFFFF_0000, you tried to call a host stub directly without the BL trampoline (the linker handles that automatically for `bl printf` and friends).",
+      fix: "Watch the base register in the watch panel. If it is a small number (0..255), you wrote `mov` where you meant `ldr =`; if it is near 0xFFFF_0000, it points at the playground's C library code, which a program reaches only by calling it (`bl printf` and friends).",
       styleSection: "addressing modes",
     };
   }
@@ -88,7 +81,7 @@ export function explainError(message: string): ErrorExplanation | null {
     // rounding advice read as a repeat.
     return {
       what: "A load or store used sp as its base (or a libc call ran) while sp was off the 16-byte boundary.",
-      why: "Linux turns on the AArch64 stack-alignment check (SA0): every sp-based access faults with a bus error when sp is not a multiple of 16, and AAPCS64 requires the boundary at every bl. The playground stops exactly where the course servers do.",
+      why: "Linux turns on the AArch64 stack-alignment check: every sp-based access faults with a bus error when sp is not a multiple of 16, and the calling convention requires that boundary at every bl. The playground stops exactly where the course servers do.",
       fix: "The line to change is the last one above this stop that moved sp: a `sub sp`, or an `stp` ending in `]!`.",
       styleSection: "general",
     };
@@ -121,9 +114,9 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (lower.startsWith("stack overflow")) {
     return {
-      what: "sp moved more than 8 MiB below the stack base (0x80000000, growing down), far past any legitimate frame chain.",
+      what: "sp moved more than 8 MiB below the stack base (0x80000000, growing down), far deeper than any real chain of calls goes.",
       why: "Recursion with no reachable base case is the usual cause; a prologue that repeats without its epilogue, or sp loaded from a register that was never set up, gets here too.",
-      fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue with the same dealloc.",
+      fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue that frees the same amount.",
       styleSection: "general",
     };
   }
@@ -176,7 +169,7 @@ export function explainError(message: string): ErrorExplanation | null {
   if (detail.includes("m4 recursion exceeded")) {
     return {
       what: "m4 kept rewriting the same text round after round, so a macro expands into something that expands back into it.",
-      why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never reach a fixed point. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
+      why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never stop expanding. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
       fix: "Give each alias one definition, in one place: keep the `define(fp, x29)` / `define(lr, x30)` block at the top of the combined program and delete the repeats the other files brought with them.",
       styleSection: "m4 preprocessing",
     };
@@ -192,14 +185,14 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: "A label or alias used in this expression is not defined anywhere in the source.",
       why: "Either a typo (the alias was defined as `score1_r` but used as `score_1_r`) or a section ordering issue where a forward reference points at code never reached by the assembler.",
-      fix: "Search the source for the exact identifier; m4 substitution is whole-token and case-sensitive. For numeric constants, prefer `name = expr` over `define()` so the linker can fold the value. The libc math names go the other way: `pow`, `sqrt`, `sin`, `cos`, `tan`, `log` and `exp` resolve here, but on the course servers `gcc` only links them with `-lm` on the command line.",
+      fix: "Search the source for the exact identifier; m4 substitution is whole-token and case-sensitive. For numeric constants, prefer `name = expr` over `define()` so the linker can work out the value. The libc math names go the other way: `pow`, `sqrt`, `sin`, `cos`, `tan`, `log` and `exp` resolve here, but on the course servers `gcc` only links them with `-lm` on the command line.",
       styleSection: "naming conventions",
     };
   }
   if (detail.includes("immediate") && detail.includes("range")) {
     return {
       what: "An immediate value did not fit in the bit field of the instruction encoding.",
-      why: "AArch64 movz/movk encode 16 bits at a time; mov-wide-immediate paths split the constant across hw shifts. Branch immediates are also bounded (BL is 26 bits, B.cond is 19, CBZ is 19).",
+      why: "AArch64 movz/movk encode 16 bits at a time, so a larger constant is built in 16-bit pieces with shifts. Branch offsets have limits too (BL has 26 bits, B.cond 19, CBZ 19).",
       fix: "Use `ldr xN, =value` for any immediate that doesn't fit, or split into a movz + movk pair. The linker's literal pool keeps the value in .text right after the program.",
       styleSection: "literal pool",
     };
@@ -207,7 +200,7 @@ export function explainError(message: string): ErrorExplanation | null {
   if (detail.includes("unbalanced") && detail.includes("bracket")) {
     return {
       what: "An addressing-mode bracket `[...]` did not close.",
-      why: "The lexer counts `[` and `]` to find the inner operand list. A missing `]` or an extra `[` inside an expression both throw off the count.",
+      why: "The assembler counts `[` and `]` to find the inner operand list. A missing `]` or an extra `[` inside an expression both throw off the count.",
       fix: "Count brackets across the offending line; pre-indexed forms end with `]!`, post-indexed forms close `]` then comma-separate the immediate.",
       styleSection: "addressing modes",
     };
@@ -215,7 +208,7 @@ export function explainError(message: string): ErrorExplanation | null {
   if (detail.includes("expected") && (detail.includes("register") || detail.includes("operand"))) {
     return {
       what: "The assembler reached an operand slot expecting a register or constant and saw something else (often a directive name or a stray character).",
-      why: "The parser is line-oriented; if the previous line forgot a separator the next ident gets eaten as the operand.",
+      why: "The assembler reads line by line; if the previous line is missing a separator, the next name gets read as the operand.",
       fix: "Re-check the line above the reported one for a missing comma, label colon, or directive opener like `.word`.",
       styleSection: "general",
     };
@@ -280,7 +273,7 @@ export function explainError(message: string): ErrorExplanation | null {
     (detail.includes("escape") && (detail.includes("invalid") || detail.includes("incomplete")))
   ) {
     return {
-      what: "A string or character literal contains a backslash sequence the lexer does not recognize.",
+      what: "A string or character literal contains a backslash sequence the assembler does not recognize.",
       why: "Only the standard escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` exist. A Windows path like \"C:\\dir\" reads `\\d` as an escape.",
       fix: "Double every literal backslash (`C:\\\\dir`), or rewrite the data as raw bytes with `.byte 0xAB, 0xCD, ...`.",
       styleSection: "naming conventions",
