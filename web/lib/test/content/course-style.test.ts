@@ -50,6 +50,12 @@ function walk(dir: string, ext: string): string[] {
 
 const rel = (file: string): string => path.relative(process.cwd(), file);
 
+// Every lesson and exercise file, read once as the suite loads: with every
+// test worker busy, one pass over them took seconds inside a test.
+const CONTENT = ["content/lessons", "content/exercises"]
+  .flatMap((dir) => walk(path.join(process.cwd(), dir), ".json"))
+  .map((file) => ({ file: rel(file), raw: fs.readFileSync(file, "utf8") }));
+
 describe("authored programs stay inside the course directive vocabulary", () => {
   it("reads each banned name as literal text, not regex syntax", () => {
     const re = literalAlternation([".a+b", ".c\\d"]);
@@ -60,13 +66,8 @@ describe("authored programs stay inside the course directive vocabulary", () => 
   });
 
   it("lessons and exercises carry no banned directive", () => {
-    const files = ["content/lessons", "content/exercises"].flatMap((dir) =>
-      walk(path.join(process.cwd(), dir), ".json"),
-    );
-    expect(files.length).toBeGreaterThanOrEqual(4);
-    for (const file of files) {
-      assertClean(rel(file), fs.readFileSync(file, "utf8"));
-    }
+    expect(CONTENT.length).toBeGreaterThanOrEqual(4);
+    for (const { file, raw } of CONTENT) assertClean(file, raw);
   });
 
   it("public example programs carry no banned directive", () => {
@@ -102,12 +103,8 @@ describe("authored programs stay inside the course directive vocabulary", () => 
 describe("authored content stays anonymous and undated", () => {
   it("lessons and exercises carry no week labels, archive numbers, or personal data", () => {
     const banned = /week\s*\d|tutorial\s*\d|assignment\s*\d|@[a-z0-9.-]+\.[a-z]{2,}/i;
-    const files = ["content/lessons", "content/exercises"].flatMap((dir) =>
-      walk(path.join(process.cwd(), dir), ".json"),
-    );
-    for (const file of files) {
-      const raw = fs.readFileSync(file, "utf8");
-      expect(banned.test(raw), `${rel(file)} matched a banned pattern`).toBe(false);
+    for (const { file, raw } of CONTENT) {
+      expect(banned.test(raw), `${file} matched a banned pattern`).toBe(false);
     }
   });
 });
