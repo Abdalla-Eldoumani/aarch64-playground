@@ -27,7 +27,7 @@ describe("describeLine", () => {
     // The cmp summary names the instruction it stands for in code quotes,
     // which only the Markdown hover card can render.
     const cmp = describeLine("    cmp x0, x1");
-    expect(cmp).toContain("SUBS ZR, Rn, op2");
+    expect(cmp).toContain("Same as SUBS with the zero register");
     expect(cmp).not.toContain("`");
     const ldp = describeLine("    ldp x29, x30, [sp], 16");
     expect(ldp).toContain("LDP Xt1, Xt2");
