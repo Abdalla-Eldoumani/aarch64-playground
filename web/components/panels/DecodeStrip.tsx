@@ -13,13 +13,8 @@ export interface DecodeStripProps {
   encodingHex?: string | null;
   /** Compact drops the field row's per-cell meanings (the hero embed header). */
   compact?: boolean;
-  /**
-   * Set while the pc sits inside a hosted libc call: the strip drops the
-   * field row and the gloss (the word under the pc is a trampoline or a
-   * synthetic stub, neither of which is anything the student wrote) and
-   * explains where execution is instead. `waiting` is the blocked variant:
-   * the call is parked on a read.
-   */
+  /** Set while the pc is inside a libc call, whose code the student did not
+   *  write; `waiting` means the call is blocked on a read. */
   externalCall?: { name: string; waiting: boolean } | null;
   /**
    * Whether a program is in the machine. The cold prompt belongs to the
@@ -30,16 +25,10 @@ export interface DecodeStripProps {
 }
 
 /**
- * The live decode strip: renders the instruction under the program counter as
- * its actual 32-bit encoding, sliced into labeled field boxes, with the
- * plain-language gloss underneath. The destination field (the register the machine is about to write) reads
- * amber (the machine acting), and the whole field row re-latches on every
- * step (`anim-decode-latch`, static under reduced motion). Field layouts
- * come from lib/decode-fields, which is pinned to the real assembler by its
- * tests; unrecognized words render as one unsplit box so the strip never
- * invents structure. Inside a hosted libc call the encoding under the pc is
- * not the student's code at all, so the strip swaps both for a card naming
- * the call.
+ * The instruction under the pc: its 32-bit encoding cut into labeled fields,
+ * and a plain-language line. An unrecognized word stays one box so the strip
+ * never invents structure; inside a libc call the word is not the student's
+ * code, so a card naming the call replaces both.
  */
 export function DecodeStrip({
   source,
@@ -175,12 +164,8 @@ export function DecodeStrip({
       ) : null}
 
       {externalCall ? null : gloss ? (
-        // Keyed by the line so each step replays the register-write flash on
-        // the gloss: the strip is machine state, and it pulses with the same
-        // --changed tint as a written register. Under prefers-reduced-motion
-        // the class is inert and the updated text alone carries the change.
-        // inline-block so the flash layer measures this box; an inline span
-        // would hand it the line box instead.
+        // Keyed by the line so each step replays the flash a written register
+        // gets. inline-block so the flash measures this box, not the line box.
         <span
           key={currentLine}
           className="anim-reg-flash -mx-1 inline-block rounded-[var(--radius-control)] px-1 font-mono text-[13px] leading-[1.6] text-[var(--text-primary)] break-words"
