@@ -8,7 +8,7 @@ import type { LessonBlock } from "@/lib/content/lesson-schema";
 afterEach(() => cleanup());
 
 describe("LessonMarkdown", () => {
-  it("gives an h2 a slugified id matching the toc", () => {
+  it("gives an h2 a slugified id matching the table of contents", () => {
     const { container } = render(<LessonMarkdown markdown="## Moving Values" />);
     const h2 = container.querySelector("h2");
     expect(h2).not.toBeNull();
@@ -36,7 +36,7 @@ describe("LessonMarkdown", () => {
     }
   });
 
-  it("makes a known instruction a focusable hover-define carrying its summary", () => {
+  it("makes a known instruction a focusable hover definition carrying its summary", () => {
     const { container } = render(
       <LessonMarkdown markdown="use the `mov` instruction" />,
     );
@@ -49,7 +49,7 @@ describe("LessonMarkdown", () => {
     expect(label + title).toContain(expected);
   });
 
-  it("renders an unknown token as plain code with no hover affordance", () => {
+  it("renders an unknown token as plain code with no hover definition", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `zzz` token is plain" />,
     );
@@ -58,19 +58,19 @@ describe("LessonMarkdown", () => {
     expect(code?.textContent).toBe("zzz");
   });
 
-  it("renders an unlabeled multi-line fenced block as block code, not an inline hover-define", () => {
+  it("renders an unlabeled multi-line fenced block as block code, not an inline hover definition", () => {
     const markdown = ["```", "mov x0, 1", "add x1, x1, 2", "```"].join("\n");
     const { container } = render(<LessonMarkdown markdown={markdown} />);
     // The fence lands in a <pre>, and its <code> takes the plain block style,
     // not the inline-code chrome.
     expect(container.querySelector("pre")).not.toBeNull();
     expect(container.querySelector("pre code")?.className).toBe("font-mono");
-    // No hover-define affordance is attached anywhere inside the fence.
+    // A code listing is not a word to define, so nothing inside it hovers.
     expect(container.querySelector('[tabindex="0"]')).toBeNull();
     expect(container.querySelector('[role="note"]')).toBeNull();
   });
 
-  it("makes a register a focusable hover-define with a non-empty role", () => {
+  it("makes a register a focusable hover definition that names its role", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `x0` register holds an argument" />,
     );
@@ -82,7 +82,7 @@ describe("LessonMarkdown", () => {
     expect((label + title).length).toBeGreaterThan(0);
   });
 
-  it("keeps a formatted heading's id equal to the toc's id", () => {
+  it("keeps a formatted heading's id equal to its table of contents id", () => {
     const markdown = "## the `mov` instruction";
     const { container } = render(<LessonMarkdown markdown={markdown} />);
     const h2 = container.querySelector("h2");
@@ -92,7 +92,7 @@ describe("LessonMarkdown", () => {
     expect(h2?.id).toBe(tocId);
   });
 
-  it("renders a gfm table inside a sideways scroller", () => {
+  it("renders a markdown table inside a sideways scroller", () => {
     const markdown = [
       "| Specifier | Bytes |",
       "| --- | ---: |",
