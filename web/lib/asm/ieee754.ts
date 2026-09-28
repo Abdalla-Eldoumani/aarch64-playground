@@ -1,10 +1,8 @@
 /**
- * The IEEE-754 reading of a 32-bit (single) or 64-bit (double) bit pattern:
- * its sign, exponent, and fraction fields, its class, and its value. The
- * pattern stays the one source of truth, the same unsigned BigInt that
- * base-convert holds. DataView turns it into a JS number only for display,
- * and every decimal-to-bits step rounds with exact BigInt fractions: going
- * through a JS double first rounds twice and can land one bit off at 32 bits.
+ * The IEEE-754 reading of a 32- or 64-bit pattern: fields, class and value.
+ * The pattern (base-convert's BigInt) stays the source of truth, and decimal
+ * input rounds with exact BigInt fractions, because going through a JS double
+ * rounds twice and can land one bit off at 32 bits.
  */
 
 import type { ParseOutcome, Width } from "@/lib/asm/base-convert";
@@ -152,12 +150,11 @@ function bracketingDecimals(exact: string, digits: number): string[] {
 }
 
 /**
- * The shortest decimal that reads back to exactly these bits, the way JS,
- * Python, and Java print floats. A 64-bit pattern is a JS number, so its
- * own toString is already shortest. A 32-bit one tries 1 to 9 significant
- * digits and, at each, both decimals either side of the value: at a power
- * of two the gap below is half the gap above, so the nearer one can miss
- * while the one past it still reads back.
+ * The shortest decimal that reads back to exactly these bits, as JS, Python
+ * and Java print floats. A 64-bit pattern is a JS number, whose toString is
+ * already shortest. A 32-bit one tries 1 to 9 digits, both neighbours at each:
+ * at a power of two the gap below is half the gap above, so the nearer can
+ * miss while the farther still reads back.
  */
 export function formatFloatValue(bits: bigint, width: FloatWidth): string {
   const kind = classify(bits, width);
