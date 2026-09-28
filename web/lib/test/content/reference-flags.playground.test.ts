@@ -5,14 +5,10 @@ import { createRequire } from "node:module";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
-// The reference badges each instruction "sets nzcv" or "does not set flags".
-// This runs every entry's own example on the real node-target emulator and
-// checks the claim where the instruction executes: just before each line that
-// uses the mnemonic, two lines force NZCV to a known value (cmp xzr, xzr sets
-// Z and C, so the ccmp's ne fails and it writes its literal), then the flags
-// are read after that one instruction steps. Two different values are forced
-// in two runs, so an instruction that writes the flags cannot match both by
-// luck, and one that leaves them alone must hand both back untouched.
+// Each example runs with the flags forced to a known value just before the
+// instruction (cmp xzr, xzr sets Z and C, so the ccmp's ne fails and it writes
+// its literal). Two runs force opposite values, so a flag setter cannot match
+// both by luck, and an instruction that leaves the flags must hand both back.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
@@ -66,7 +62,7 @@ function observe(mnemonic: string, program: string, value: number) {
 }
 
 describe("the reference's flag badges match the machine", () => {
-  it("names at least one flag setter and one that leaves the flags alone", () => {
+  it("names 15 flag setters and at least one instruction that leaves the flags alone", () => {
     expect(REFERENCE_INSTRUCTIONS.filter((i) => i.setsFlags).length).toBe(15);
     expect(REFERENCE_INSTRUCTIONS.some((i) => !i.setsFlags)).toBe(true);
   });
