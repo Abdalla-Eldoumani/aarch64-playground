@@ -3,13 +3,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { validateLesson } from "@/lib/content/lesson-schema";
 
-// Vitest runs from web/, so the real content directory is cwd-relative. The
-// shipped seed must validate headlessly and carry no week labels.
+// Vitest runs from web/, so the content directory is relative to it.
 const DIR = path.join(process.cwd(), "content/lessons");
 const files = fs.readdirSync(DIR).filter((name) => name.endsWith(".json"));
 
 describe("seeded lessons", () => {
-  it("ships the two seed lessons the loops below must not pass over", () => {
+  it("ships the two seed lessons, so the loops below have files to check", () => {
     expect(files).toContain("registers-and-immediates.json");
     expect(files).toContain("stack-and-frame-pointer.json");
   });
