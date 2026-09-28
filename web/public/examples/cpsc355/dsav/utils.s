@@ -3,8 +3,8 @@
 define(fp, x29)
 define(lr, x30)
 
-// ui.s draws by role; this file names only the one it uses. Each file
-// assembles on its own, so the constant is repeated rather than shared.
+// ui.s picks colours by role number; this file needs only the faint one.
+// Each file assembles on its own, so the constant is repeated, not shared.
     UI_ROLE_FAINT = 2
 
     .data
@@ -23,8 +23,9 @@ msg_row_blank:      .string "                                                   
 invalid_input_msg:  .string "[23;25H[38;5;211mInvalid input! Please try again.[0m"
 input_prompt:       .string "> "
 save_input_pos:     .string "[s"        // remember where typing begins
-// Back to the input spot, blanking the rejected entry with a bounded run
-// of spaces. Erase-to-end-of-line would take the frame's right wall.
+// Back to the input spot, blanking the rejected entry with a fixed number
+// of spaces. Erasing to the end of the line would also wipe the frame's
+// right wall.
 restore_input_pos:  .string "[u                [u"
 
 input_buffer:       .skip 64
@@ -57,7 +58,7 @@ delay_us:
     ret
 
 // read_int() -> w0 = value, w1 = 1 on success, 0 on end of input
-// remembers where typing begins; a bad line is flushed, the complaint
+// remembers where typing begins; a bad line is thrown away, the complaint
 // lands on the fixed message row under the menu, and the cursor comes
 // back to the same spot, so retries never scroll the menu away
     .global read_int
@@ -70,12 +71,12 @@ read_int:
     bl      printf
 
 read_int_retry:
-    sub     sp, sp, 16                      // scratch slot for scanf
+    sub     sp, sp, 16                      // stack space for scanf to fill
     mov     x1, sp
     ldr     x0, =int_fmt
     bl      scanf
 
-    cmp     w0, 1                           // items converted
+    cmp     w0, 1                           // scanf returns how many values it read
     b.ne    read_int_no_value
 
     ldr     w19, [sp]                       // hold the value across the calls
@@ -90,7 +91,7 @@ read_int_no_value:
     cmp     w0, 0                           // negative means end of input
     b.lt    read_int_eof
 
-    bl      clear_input_buffer              // flush the bad line
+    bl      clear_input_buffer              // throw away the bad line
     bl      read_int_complain
     b       read_int_retry
 
@@ -141,15 +142,9 @@ read_int_clear_message:
 
 // read_int_range(w0 = min, w1 = max) -> w0 = value in range,
 //                                       w1 = 1 typed, 0 at end of input
-// reprompts in place until a number in [min, max] is entered; the
-// complaint sits on the line under the prompt and stays put. End of
-// input answers min, which is the back/exit choice on every menu, so
-// a closed stdin walks the program out instead of spinning on a prompt
-// nobody can answer.
-//
-// A menu can read w0 alone: min is its back choice either way. A prompt
-// asking for a VALUE cannot: min is a real answer there, so taking it would
-// commit a number nobody typed. Those callers check w1.
+// asks again until a number in [min, max] is typed. End of input returns
+// min, the back/exit choice on every menu, so the program exits instead of
+// looping. A prompt for a value must check w1: there min is a real answer.
     .global read_int_range
 read_int_range:
     stp     fp, lr, [sp, -48]!
@@ -218,7 +213,8 @@ wait_for_enter:
     ldp     fp, lr, [sp], 16
     ret
 
-// clear_input_buffer() - eat characters up to newline or eof
+// clear_input_buffer() - read and drop characters up to the newline or
+// end of input (eof)
     .global clear_input_buffer
 clear_input_buffer:
     stp     fp, lr, [sp, -16]!
