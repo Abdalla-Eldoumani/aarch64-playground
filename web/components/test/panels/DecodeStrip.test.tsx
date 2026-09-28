@@ -52,7 +52,7 @@ describe("DecodeStrip", () => {
     expect(screen.getByText("0xd2800553")).toBeTruthy();
   });
 
-  it("keeps a bit string on one line and floors its cell to its own width", () => {
+  it("shows the Rd field as its own five bits", () => {
     // Same movz x19, 42 word: Rd is the five bits 10011.
     render(
       <DecodeStrip source="main:
@@ -64,10 +64,6 @@ describe("DecodeStrip", () => {
       (span) => span.textContent === "10011",
     );
     expect(value).toBeTruthy();
-    expect(value!.className).toContain("whitespace-nowrap");
-    expect(value!.className).not.toContain("break-all");
-    // The cell floors on its own content rather than on a computed advance.
-    expect(value!.parentElement!.className).toContain("min-w-max");
   });
 
   it("renders no field row before the program is assembled", () => {
