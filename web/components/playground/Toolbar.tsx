@@ -42,10 +42,8 @@ function GroupLabel({ children }: { children: ReactNode }) {
 }
 
 /**
- * The playground's labeled toolbar: one "tools" group (share, diagnostic
- * bundle, tutorials, theme, source, and the command-palette opener), so
- * every action is visible and named. The run controls (Assemble / Run / Step /
- * Back / Reset) keep their dedicated bottom bar.
+ * Every tool is a visible, named button, so none depends on a shortcut. The
+ * run controls keep their own bar at the bottom.
  */
 export function Toolbar({
   onShare,
