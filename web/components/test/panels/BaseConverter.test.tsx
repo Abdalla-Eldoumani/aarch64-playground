@@ -63,7 +63,7 @@ describe("BaseConverter sync", () => {
     expect(field("hex").value).toBe("64");
   });
 
-  it("keeps the typed text as-is until blur, then reformats", () => {
+  it("keeps the typed text as-is until the field loses focus, then reformats", () => {
     render(<BaseConverter />);
     pickWidth(8);
     const hex = field("hex");
@@ -134,7 +134,7 @@ describe("BaseConverter overflow and bad input", () => {
     }
   });
 
-  it("blur resolves a held message back to the hint", () => {
+  it("leaving the field drops a held message and shows the hint again", () => {
     render(<BaseConverter />);
     pickWidth(8);
     const unsigned = field("unsigned");
@@ -439,7 +439,7 @@ describe("BaseConverter persistence", () => {
     ).toBe("true");
   });
 
-  it("falls back to a 32-bit zero when the stored blob is junk", () => {
+  it("falls back to a 32-bit zero when the saved state is junk", () => {
     window.localStorage.setItem(
       "aarch64-playground:base-converter",
       '{"width":13,"hex":"zzz"}',
