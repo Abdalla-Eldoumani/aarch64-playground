@@ -96,7 +96,8 @@ everything else compiles and tests on native.
    stdin, VFS, FDs, exit code), and re-maps the baseline stack/code/data
    pages. Then `load_linked_image` (hosted) or `load_program`
    (bare-metal) writes the bytes to the section bases; the hosted loader
-   also stashes the `__main_return` sentinel in LR.
+   also puts the address of the `__main_return` stub in LR, so the `ret`
+   that ends `main` lands there.
 5. step / run call `cpu.step()`, which returns a `StepOutcome`
    (`Advance`, `Halted`, `WaitingForInput`, `Sleeping(ns)`,
    `Exited(code)`). The run loop pauses on `WaitingForInput` and resumes
@@ -269,7 +270,10 @@ invariant on wasm32 that traps in `__rdl_dealloc`. Keep page buffers
 `Vec<u8>`-based and avoid dropping them on hot paths.
 
 Unaligned LDR/STR succeed (matching Linux userspace with `SCTLR.A = 0`),
-so no access path raises `UnalignedAccess`.
+so no access path raises `UnalignedAccess`. The one alignment check is on
+`sp` itself: a load or store based on `sp`, or a libc call, while `sp` is
+not a multiple of 16 raises `SpAlignmentFault`, the bus error Linux gives
+it.
 
 The layout itself is published: the module-level `memoryMap` export in
 [`lib.rs`](../emulator/src/lib.rs) returns the address bands in order (the
@@ -279,7 +283,7 @@ memory panel reads it once at load, so its jump list and its "in .data"
 label cannot drift from the bases; a native test pins every row to its
 constant.
 
-## Hosted runtime
+## Library calls and syscalls
 
 `SVC #0` reads `x8` and dispatches into
 [`hosted/syscalls.rs`](../emulator/src/hosted/syscalls.rs): read, write,
@@ -289,14 +293,16 @@ halt (bare-metal compatibility).
 
 BL/BLR into `[0xFFFF_0000, 0xFFFF_1000)` dispatches the hosted libc:
 the stdio family (printf, sprintf, snprintf, scanf, puts, putchar,
-getchar, fflush, fopen, fprintf, fgets, fputs, fclose, with `stdin`/
+getchar, fflush, fopen, fprintf, fgets, fputs, fclose, putc, fputc,
+getc, fwrite, with `stdin`/
 `stdout`/`stderr` as linkable symbols naming loader-written FILE*
 words), the string family (strlen, strcmp, strncmp, strcpy, strncpy,
 strcat, strchr, strstr, strtok, memset, memcpy, memcmp, memmove),
 conversions and ctype (atoi, atof, strtol, abs, labs, isdigit, isalpha,
 isspace, toupper, tolower, plus the `__ctype_b_loc` classification table
 gcc lowers the is* macros to), the allocator (malloc, free, calloc,
-realloc), rand/srand/time/exit/usleep, and the libm subset (sqrt, pow,
+realloc), rand/srand/time/exit/usleep, qsort and bsearch (which call
+back into the program's comparator), and the libm subset (sqrt, pow,
 sin, cos, tan, log, log10, exp, floor, fabs, fmod), which takes its
 arguments in `d0` (and `d1` for pow and fmod) and returns in `d0`.
 malloc and friends run over a fixed 16 MiB heap window at `0x0090_0000`
@@ -314,7 +320,7 @@ call's argument, or returned from `main`, and the flags read by a
 conditional branch, select, compare, or carry. Storing such a register
 or copying it into another is not a use: the note waits for the read
 that is, and then names the copy. Whole-vector reads earn no note. `main`
-returning (a `ret` with the sentinel in LR) halts the CPU with `x0` as
+returning (a `ret` to the `__main_return` stub) halts the CPU with `x0` as
 the exit code.
 
 A hosted call costs three steps on addresses the program does not hold: the
@@ -469,15 +475,16 @@ contexts (except localhost), and browsers without
 1. Assembly/pipeline errors: `EmuError::{AssemblyError, PreprocError,
    ParseError, LinkError}`, each with `original_line`. Shown as a red
    Monaco marker and in the bottom error strip.
-2. Runtime errors: `UnknownInstruction`, `MemoryFault`, `StackOverflow`,
-   `ArgvTooLarge`, and `RuntimeError` (the hosted runtime's own wording
-   for an unsupported syscall or a failing libc stub). Shown in the error
+2. Runtime errors: `UnknownInstruction`, `MemoryFault`,
+   `NullPointerAccess`, `SpAlignmentFault`, `StackOverflow`,
+   `ArgvTooLarge`, and `RuntimeError` (the emulator's own wording for an
+   unsupported syscall or a failing libc stub). Shown in the error
    strip; the CPU is marked halted.
 3. WASM load failure: caught in `use-emulator.ts` and shown in place of
    the loading screen.
 4. A React render that throws: [`web/app/error.tsx`](../web/app/error.tsx)
    for a route, `global-error.tsx` when the root layout itself fails. Both
-   wear the 404's fault-card register, offer a retry, and copy a small
+   use the 404 page's fault-card style, offer a retry, and copy a small
    markdown report (message, digest, route, autosaved source) built with
    `bundleToMarkdown`, imported on demand from
    `lib/playground/bundle-markdown.ts` so neither boundary pulls in the
