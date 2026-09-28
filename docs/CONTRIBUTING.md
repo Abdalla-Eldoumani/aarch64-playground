@@ -13,7 +13,7 @@ While you work, run the site from `web/` with:
 npm run dev:all
 ```
 
-It runs the dev server and, if [cargo-watch](https://crates.io/crates/cargo-watch)
+It runs the dev server and, if [cargo-watch](https://github.com/watchexec/cargo-watch)
 is installed, rebuilds the emulator whenever a file under `emulator/src`
 changes. Without cargo-watch it prints how to install it and runs the dev
 server alone. Then rebuild by hand after a Rust change, from the repository
