@@ -32,7 +32,7 @@ const FIX = vi.hoisted(() => {
       title: "other tutorial",
       summary: "a one step fixture",
       sourcePath: "/examples/cpsc355/other.s",
-      steps: [{ title: "only step", body: "solo" }],
+      steps: [{ title: "only step", body: "solo", expect: { reg: "w0", value: 3 } }],
     },
   ];
   return { tutorials };
@@ -195,6 +195,15 @@ describe("TutorialRunner expected-register check", () => {
   it("marks not yet when the register holds something else", () => {
     openOnExpectStep(() => "5");
     expect(screen.getByText("[not yet, actual 5]")).toBeTruthy();
+  });
+
+  it("reads a w name as the low 32 bits of the x register the getter returns", () => {
+    // fixture-b's only step expects w0 = 3; the upper half holds leftovers.
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ "fixture-b": 0 }));
+    renderRunner({ getRegister: () => "0xffffffff00000003" });
+    fireEvent.click(screen.getByRole("combobox", { name: "tutorial" }));
+    fireEvent.pointerDown(screen.getByText("other tutorial"));
+    expect(screen.getByText("[ok, actual 3]")).toBeTruthy();
   });
 
   it("marks not read when no live state is available", () => {
