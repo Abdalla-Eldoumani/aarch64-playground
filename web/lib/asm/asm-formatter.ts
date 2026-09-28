@@ -1,20 +1,9 @@
 /**
- * Lightweight AArch64 source formatter for the cpsc 355 corpus.
- *
- * Goals:
- *   - Lowercase mnemonics so the corpus reads consistently regardless of
- *     student typing.
- *   - Indent instructions to a consistent column and pad the mnemonic so
- *     operands line up vertically across consecutive lines.
- *   - Keep labels, directives, m4 `define(...)`, and `name = expr`
- *     assignments at column 0 (the cpsc 355 convention).
- *   - Preserve trailing comments after the code (with a single space
- *     gap when the code already extends past the alignment column,
- *     otherwise pad up to `COMMENT_COLUMN`).
- *   - Be idempotent: `formatAsm(formatAsm(x)) === formatAsm(x)`.
- *
- * Not in scope: instruction-level rewriting (e.g. expanding aliases),
- * pseudo-op normalisation, or reordering.
+ * Lays out AArch64 source the way the course writes it: mnemonics lowercased;
+ * labels, directives, m4 defines and `name = expr` at column 0; instructions
+ * indented with their operands lined up. It must stay idempotent (formatting
+ * twice changes nothing), and it never expands aliases or reorders
+ * instructions.
  */
 
 const INSTRUCTION_INDENT = "        "; // 8 spaces
@@ -23,8 +12,8 @@ const COMMENT_COLUMN = 40;
 
 function splitOffComment(line: string): { code: string; comment: string | null } {
   // Strip a trailing line comment without disturbing comments inside
-  // string literals. The cpsc 355 corpus only uses `//` and `;` as
-  // comment markers.
+  // string literals. Course programs only use `//` and `;` as comment
+  // markers.
   let inString = false;
   for (let i = 0; i < line.length; i++) {
     const c = line[i];
