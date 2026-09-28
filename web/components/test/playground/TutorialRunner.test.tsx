@@ -1,8 +1,8 @@
 // pins the tutorial runner: a non-modal panel that walks fixture steps with
 // clamped back/next, persists per-tutorial progress through the real
-// localStorage store, fetches the backing source on demand (surfacing
-// fetch failures inline), and verifies expected-register checks as
-// OK / no / ? against the live getter.
+// localStorage store, fetches the backing source on demand (showing
+// fetch failures inline), and marks expected-register checks as
+// ok / not yet / not read against the live getter.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TutorialRunner } from "@/components/playground/TutorialRunner";
@@ -159,7 +159,7 @@ describe("TutorialRunner load source", () => {
     expect(onLoadSnippet).toHaveBeenCalledWith("mov x0, 1", "fixture tutorial", "3 4", "7\n");
   });
 
-  it("surfaces an http failure inline and loads nothing", async () => {
+  it("shows an http failure inline and loads nothing", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" }),
@@ -171,7 +171,7 @@ describe("TutorialRunner load source", () => {
     expect(onLoadSnippet).not.toHaveBeenCalled();
   });
 
-  it("surfaces a network failure's message", async () => {
+  it("shows a network failure's message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
     renderRunner();
     fireEvent.click(screen.getByRole("button", { name: "load source" }));
