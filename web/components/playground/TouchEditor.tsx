@@ -180,6 +180,7 @@ export function TouchEditor({
       <div
         className="flex-shrink-0 w-11 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-sunken)] select-none relative"
         role="presentation"
+        data-walkthrough="gutter"
       >
         <div
           ref={gutterRef}
