@@ -2,7 +2,7 @@
   "title": "Shifts, sign extension, and bitfields",
   "slug": "shifts-and-bitfields",
   "order": 15,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Shift and rotate bits, widen narrow values with sign or zero extension, and pack or unpack fields with bfi and ubfx.",
   "tags": [
     "bitwise",
@@ -24,7 +24,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Watching each shift\n\nThe program below applies each shift to a small value and prints the result. Each value sits in `w9` only until the `printf` call, so a scratch register is enough."
+      "markdown": "## Watching each shift\n\nThe program below applies each shift to a small value and prints the result. Each value is needed in `w9` only until the `printf` call, so it does not matter that `printf` may change `w9`."
     },
     {
       "type": "editor",
