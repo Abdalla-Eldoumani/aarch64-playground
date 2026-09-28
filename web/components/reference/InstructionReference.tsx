@@ -1,32 +1,10 @@
 "use client";
 
 /**
- * The two-pane instruction reference. The left pane is a sticky, filterable,
- * keyboard-navigable index grouped by category; the right pane is the
- * per-instruction detail, laid out as the datasheet reads: the mnemonic with
- * its plain-language summary (through the shared sanitizing Markdown renderer,
- * so register tokens keep their hover-defines), the syntax as a bordered mono
- * chip, the full-width encoding bit-field with bit-range headers when the
- * instruction has one (with the worked field bits when the data authors them),
- * the C equivalent as a code block with its intrinsic under it, and an NZCV
- * flags row driven by the data's setsFlags; the try-in-playground link
- * composes the shared share-hash and sits quietly at the top right of the
- * detail. Every entry can also run its worked example in place: "run this
- * example" swaps the static block for the one shared EmbeddablePlayground
- * seeded with the same playgroundSource payload the deep link carries, its
- * registers panel opened on the file the example writes, so reading and
- * running are one surface (the embed is dynamically imported and mounts only
- * on demand, keeping the route light). The compares FlagEffect can model
- * additionally render that panel with a fragment link over to b.cond, and the
- * b.cond entry renders the CondCodeExplorer that unpacks each condition code; the link is
- * a plain `#b-cond` anchor because a hashchange already clears the pick and
- * hands selection back to the fragment store below.
- * Data arrives as a prop and the type is the only import
- * from the data module, so this stays decoupled from the emulator. Selecting
- * an instruction reflects a stable per-mnemonic id into the URL fragment so a
- * detail is permalinkable; the fragment is read through useSyncExternalStore
- * so the first client render matches the server and then restores the
- * selection after hydration.
+ * The two-pane instruction reference: a filterable index and one
+ * instruction's detail. Data arrives as a prop, so this stays decoupled from
+ * the emulator. The pick is written to the URL fragment so a detail can be
+ * linked to, and read after hydration so the first render matches the server.
  */
 
 import {
@@ -423,7 +401,7 @@ export function InstructionReference({
                 aria-label={`try in playground: ${current.mnemonic}`}
                 className={ACTION_LINK}
               >
-                run example <span aria-hidden="true">{"\u2197"}</span>
+                try in playground <span aria-hidden="true">{"\u2197"}</span>
               </Link>
             </header>
 
