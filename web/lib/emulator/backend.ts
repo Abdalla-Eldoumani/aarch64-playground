@@ -18,8 +18,8 @@ import { spawnEmulatorWorker } from "@/lib/worker/client";
 import { safeGetItem } from "@/lib/playground/safe-storage";
 
 /**
- * Async surface every emulator backend exposes. WorkerBackend serves
- * this from a separate thread; MainThreadBackend wraps the in-process
+ * Async surface every emulator backend exposes. WorkerClient (lib/worker)
+ * serves this from a separate thread; MainThreadBackend wraps the in-process
  * EmulatorInstance with Promise.resolve so useEmulator can treat both
  * paths identically.
  */
@@ -76,7 +76,7 @@ export interface EmulatorBackend {
 
 /**
  * MainThreadBackend wraps EmulatorInstance to expose the same async
- * surface as WorkerBackend. State snapshots are constructed on the
+ * surface as WorkerClient. State snapshots are constructed on the
  * main thread after each call. Used as a fallback when Worker is
  * unavailable (SSR, sandboxed iframes) and for tests.
  */
