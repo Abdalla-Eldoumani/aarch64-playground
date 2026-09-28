@@ -225,7 +225,8 @@ export interface Placement {
   /** Set when the room beside the target is shorter than the card, which
    *  then scrolls instead of covering the target. */
   maxHeight: number | null;
-  /** "over" is the last resort: nowhere beside the target has room. */
+  /** "over" sits inside the target: nowhere beside it has room for the
+   *  whole card. */
   side: "below" | "above" | "right" | "left" | "over";
 }
 
@@ -242,7 +243,9 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Ma
  * Put a card of `card` size next to `target` without covering it: below,
  * above, right, then left, whichever has room first. When none has room for
  * the whole card, the roomiest side takes a shorter (scrolling) or narrower
- * card, and only when no side can hold even that does it sit over the target.
+ * card, unless that would cut the text and the target is big enough to hold
+ * the whole card: then, and when no side can hold even a short card, the card
+ * sits over the middle of the target.
  */
 export function placeCard(
   target: Box,
@@ -262,6 +265,9 @@ export function placeCard(
   };
   const fullHeight = view.height - 2 * MARGIN;
   const sideTop = (height: number) => clamp(target.top, MARGIN, view.height - MARGIN - height);
+  // The part of the target on screen, which is where an "over" card goes.
+  const shownTop = Math.max(target.top, MARGIN);
+  const shownBottom = Math.min(bottom, view.height - MARGIN);
 
   const at = (side: Placement["side"], w: number, h: number, maxHeight: number | null): Placement => {
     switch (side) {
@@ -274,7 +280,15 @@ export function placeCard(
       case "left":
         return { side, width: w, maxHeight, left: target.left - GAP - w, top: sideTop(h) };
       default:
-        return { side, width: w, maxHeight, left: alignedLeft, top: view.height - MARGIN - h };
+        // Centred, so a control at the view's edge (the console's input
+        // box) stays uncovered.
+        return {
+          side,
+          width: w,
+          maxHeight,
+          left: clamp(target.left + (target.width - w) / 2, MARGIN, view.width - MARGIN - w),
+          top: clamp((shownTop + shownBottom - h) / 2, MARGIN, view.height - MARGIN - h),
+        };
     }
   };
 
@@ -296,7 +310,13 @@ export function placeCard(
     if (w >= MIN_WIDTH && h >= MIN_HEIGHT) options.push({ side, area: w * h, w, h });
   }
   const best = options.sort((a, b) => b.area - a.area)[0];
-  if (best) return at(best.side, best.w, best.h, best.h < card.height ? best.h : null);
+  // A phone's registers or console view fills the screen but for a strip,
+  // and a card cut to that strip shows its title and one line. Covering part
+  // of such a view is the smaller loss.
+  const holdsCard = shownBottom - shownTop - 2 * GAP >= card.height && target.width >= width;
+  if (best && (best.h === card.height || !holdsCard)) {
+    return at(best.side, best.w, best.h, best.h < card.height ? best.h : null);
+  }
 
   const h = Math.min(card.height, fullHeight);
   return at("over", width, h, h < card.height ? h : null);
