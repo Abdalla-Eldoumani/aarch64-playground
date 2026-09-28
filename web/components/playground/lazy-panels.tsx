@@ -59,3 +59,7 @@ export const TutorialRunner = dynamic(
   () => import("@/components/playground/TutorialRunner").then((m) => m.TutorialRunner),
   { ssr: false },
 );
+export const InterfaceWalkthrough = dynamic(
+  () => import("@/components/playground/InterfaceWalkthrough").then((m) => m.InterfaceWalkthrough),
+  { ssr: false },
+);
