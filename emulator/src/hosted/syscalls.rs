@@ -489,6 +489,7 @@ pub fn sys_lseek(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
     use crate::cpu::OpenFile;
     use crate::memory::Memory;
     use crate::registers::RegisterFile;
@@ -619,7 +620,7 @@ mod tests {
     #[test]
     fn unsupported_syscall_errors() {
         let mut h = Host::new();
-        assert!(dispatch(999, &mut h.ctx()).is_err());
+        rejects(dispatch(999, &mut h.ctx()), "syscall 999 (x8) is not supported");
     }
 
     // -- VFS syscalls --
@@ -799,7 +800,7 @@ mod tests {
         h.regs.write_gpr(0, true, 1); // stdout
         h.regs.write_gpr(1, true, 0x0060_0000); // one mapped page
         h.regs.write_gpr(2, true, u32::MAX as u64); // huge count
-        assert!(dispatch(SYS_WRITE, &mut h.ctx()).is_err());
+        rejects(dispatch(SYS_WRITE, &mut h.ctx()), "memory fault: the program tried to read");
     }
 
     #[test]
