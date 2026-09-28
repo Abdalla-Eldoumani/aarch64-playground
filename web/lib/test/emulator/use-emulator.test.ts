@@ -1396,53 +1396,29 @@ describe("useEmulator backend passthroughs", () => {
     expect(fake.calls.uploadVfsFile).toEqual([["notes.bin", data]]);
   });
 
-  it("readVfsFile returns the backend bytes", async () => {
-    const fake = makeBackend({ readVfsBytes: new Uint8Array([7, 8, 9]) });
+  // One forwarding check for the three pass-through reads; the only logic
+  // of the hub's own is unwrapping delete's { removed, snapshot } reply.
+  it("forwards file reads, deletes and label lookups to the backend", async () => {
+    const fake = makeBackend({
+      readVfsBytes: new Uint8Array([7, 8, 9]),
+      deleteVfsRemoved: false,
+      resolveLabelValue: null,
+    });
     const { result } = await mountLoaded(fake);
     let bytes: Uint8Array = new Uint8Array();
+    let removed: boolean | undefined;
+    let addr: number | null = 0;
     await act(async () => {
       bytes = await result.current.readVfsFile("notes.bin");
+      removed = await result.current.deleteVfsFile("missing.bin");
+      addr = await result.current.resolveLabel("ghost");
     });
     expect(Array.from(bytes)).toEqual([7, 8, 9]);
+    expect(removed).toBe(false);
+    expect(addr).toBeNull();
     expect(fake.calls.readVfsFile).toEqual(["notes.bin"]);
-  });
-
-  it("deleteVfsFile reports whether a file was removed", async () => {
-    const removed = makeBackend({ deleteVfsRemoved: true });
-    const view1 = await mountLoaded(removed);
-    let r1: boolean | undefined;
-    await act(async () => {
-      r1 = await view1.result.current.deleteVfsFile("a.bin");
-    });
-    expect(r1).toBe(true);
-    cleanup();
-
-    const missing = makeBackend({ deleteVfsRemoved: false });
-    const view2 = await mountLoaded(missing);
-    let r2: boolean | undefined;
-    await act(async () => {
-      r2 = await view2.result.current.deleteVfsFile("missing.bin");
-    });
-    expect(r2).toBe(false);
-  });
-
-  it("resolveLabel returns an address or null", async () => {
-    const found = makeBackend({ resolveLabelValue: 0x400010 });
-    const view1 = await mountLoaded(found);
-    let addr: number | null = null;
-    await act(async () => {
-      addr = await view1.result.current.resolveLabel("main");
-    });
-    expect(addr).toBe(0x400010);
-    cleanup();
-
-    const absent = makeBackend({ resolveLabelValue: null });
-    const view2 = await mountLoaded(absent);
-    let missing: number | null = 0;
-    await act(async () => {
-      missing = await view2.result.current.resolveLabel("ghost");
-    });
-    expect(missing).toBeNull();
+    expect(fake.calls.deleteVfsFile).toEqual(["missing.bin"]);
+    expect(fake.calls.resolveLabel).toEqual(["ghost"]);
   });
 
   it("clearConsole empties the buffers and calls the backend", async () => {
