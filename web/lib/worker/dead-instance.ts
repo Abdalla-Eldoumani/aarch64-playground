@@ -1,15 +1,10 @@
 /**
- * Whether an error means the wasm instance is unusable from here on.
- *
- * Assemble and runtime diagnostics arrive through the worker's one catch
- * and are entirely normal: treating those as fatal would throw away the
- * student's registers, console and VFS on a typo. Only the signatures that
- * mean the guard is latched or the module trapped count: a wasm trap skips
- * wasm-bindgen's borrow-guard Drop, so the guard stays latched and every
- * later call throws on it.
- *
- * It lives beside the worker rather than inside it so the rule is tested on
- * its own, error by error, apart from the worker's message handling.
+ * Whether an error leaves the wasm instance unusable. Assemble and runtime
+ * errors are normal and must not wipe the student's state on a typo; only a
+ * trap counts, or the borrow guard it leaves stuck: a trap skips wasm-bindgen's
+ * borrow-guard cleanup, so every later call fails on it. Kept outside the
+ * worker so the rule is tested on its own, apart from the worker's message
+ * handling.
  */
 export function isDeadInstance(e: unknown): boolean {
   if (typeof WebAssembly !== "undefined" && e instanceof WebAssembly.RuntimeError) {
