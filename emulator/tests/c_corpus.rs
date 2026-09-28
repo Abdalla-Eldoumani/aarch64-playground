@@ -1,7 +1,7 @@
 //! The C corpus: small C programs compiled by gcc at three optimization
-//! levels, their assembly replayed here, their stdout and exit codes required to match what a
-//! real AArch64 Linux machine produced. The references and the method
-//! live in c-corpus/README.md; regeneration is c-corpus/tools/sanitize.py.
+//! levels. Each one's assembly runs here and must print the same output and
+//! exit with the same code as on a real AArch64 Linux machine. The method
+//! is in c-corpus/README.md; c-corpus/tools/sanitize.py rebuilds the corpus.
 //!
 //! Programs are discovered by directory scan, so adding one is a set of
 //! files, not an edit here.
@@ -128,12 +128,9 @@ fn check_tier(infix: &str) -> TierResult {
     stems.sort();
     assert!(stems.len() >= CORPUS_SIZE, "corpus shrank: {} programs", stems.len());
 
-    // CI slices the corpus across parallel runners: CORPUS_SHARD=i/n takes
-    // every nth program starting at the ith of the sorted list, so the
-    // union of the shards is exactly the corpus and no program runs twice.
-    // The count guard above sits before the slice on purpose (a shrunken
-    // corpus must fail every shard, not just the one missing a program),
-    // and a plain local `cargo test` still runs every program.
+    // CI splits the corpus across runners with CORPUS_SHARD=i/n (every nth
+    // program from the ith). The size check stays above the split so a
+    // shrunken corpus fails every shard, not only the one missing a program.
     if let Some(spec) = std::env::var("CORPUS_SHARD").ok().filter(|s| !s.is_empty()) {
         let parsed = spec
             .split_once('/')
