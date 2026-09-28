@@ -11,7 +11,7 @@ const config: Config = {
         mono: ["JetBrains Mono", "Fira Code", "Consolas", "monospace"],
       },
       // The rounded scale resolves to the radius tokens, so the corner
-      // doctrine in globals.css holds everywhere a utility is used and
+      // rules in globals.css hold everywhere a utility is used and
       // no element can carry a framework default.
       borderRadius: {
         none: "0",
