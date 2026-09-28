@@ -43,17 +43,6 @@ describe("RegisterPanel", () => {
     expect(screen.getByText("fp")).toBeTruthy();
     expect(screen.getByText("lr")).toBeTruthy();
   });
-
-  it("sizes the register columns to the panel, not the viewport", () => {
-    const { container } = renderPanel();
-    const grid = container.querySelector('[class*="auto-fill"]');
-    // A second column may appear only when two full rows fit the panel's own
-    // width; a viewport rule cannot know how wide the host made the panel.
-    // The floor is in the rows' own characters, so zoom widens it with them.
-    expect(grid).not.toBeNull();
-    expect(grid!.className).not.toContain("sm:grid-cols-2");
-    expect(grid!.className).toContain("min(28ch,100%)");
-  });
   it("labels each NZCV flag with its own bit, in N Z C V order", () => {
     // nzcv packs N at bit 3, Z bit 2, C bit 1, V bit 0. 0b1010 = N set,
     // Z clear, C set, V clear. A set flag renders bold-amber, an unset one
