@@ -79,8 +79,8 @@ describe("loadAllLessons", () => {
   });
 });
 
-// The index projection is why the learn payload is small: the bodies are
-// almost all of a lesson's weight and the index never reads a block.
+// The learn page sends only these rows to the browser, and the bodies are
+// almost all of a lesson's size.
 describe("loadLessonIndex", () => {
   it("carries every field the index renders and no other", () => {
     makeDir();
