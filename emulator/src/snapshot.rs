@@ -1,18 +1,13 @@
-//! Snapshot ring buffer that powers step-back.
+//! The ring of saved CPU states behind step-back.
 //!
-//! Each `Snapshot` captures the CPU state that's needed to undo one
-//! instruction: registers, memory (all mapped pages), the halt/exit
-//! flags, the VFS/open-files tables, and the stdin queue with its
-//! cooked-tty echo state. The stdout and stderr BUFFERS are intentionally
-//! NOT rolled back (clearing output that the student already saw is more
-//! confusing than keeping it), but the display COUNTERS beside them are,
-//! so a host that tracks how much of each stream it has shown can unprint
-//! exactly what a rolled-back step wrote. The output-flood budget is a
-//! third thing again and is never restored.
+//! Each `Snapshot` holds what undoing one instruction needs: registers,
+//! memory, the halt and exit flags, the virtual files and open
+//! descriptors, and the stdin queue with its echo state. The stdout and stderr buffers are not rolled back
+//! (erasing output the student already saw confuses more than it helps),
+//! but the counters beside them are, so the host can take back exactly what
+//! an undone step printed. The output-flood budget is never restored.
 //!
-//! The ring stores at most `capacity` snapshots. Pushing past capacity
-//! drops the oldest frame (so step-back always reaches the newest `N`
-//! instructions).
+//! The ring keeps at most `capacity` frames and drops the oldest past that.
 
 use std::collections::{HashMap, VecDeque};
 
