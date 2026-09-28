@@ -6721,12 +6721,18 @@ svc 0").unwrap();
 
     #[test]
     fn pair_offset_boundaries_encode() {
-        assert!(assemble("STP X0, X1, [SP, #-512]").is_ok());
-        assert!(assemble("STP X0, X1, [SP, #504]").is_ok());
-        assert!(assemble("STP W0, W1, [SP, #-256]").is_ok());
-        assert!(assemble("STP W0, W1, [SP, #252]").is_ok());
-        assert!(assemble("STP X0, X1, [SP, #-520]").is_err());
-        assert!(assemble("STP X0, X1, [SP, #512]").is_err());
+        // imm7 holds the offset over the register size, so the ends of the
+        // range are imm7 = -64 (0b1000000) and +63. Words worked by hand:
+        // opc | 101 0 010 0 | imm7 << 15 | Rt2 << 10 | Rn(sp) << 5 | Rt.
+        let word = |src: &str| assemble(src).unwrap()[0];
+        assert_eq!(word("STP X0, X1, [SP, #-512]"), 0xA920_07E0);
+        assert_eq!(word("STP X0, X1, [SP, #504]"), 0xA91F_87E0);
+        assert_eq!(word("STP W0, W1, [SP, #-256]"), 0x2920_07E0);
+        assert_eq!(word("STP W0, W1, [SP, #252]"), 0x291F_87E0);
+        for past in ["STP X0, X1, [SP, #-520]", "STP X0, X1, [SP, #512]"] {
+            let msg = assemble(past).unwrap_err().to_string();
+            assert!(msg.contains("[-512, 504]"), "{past}: {msg}");
+        }
     }
 
     #[test]
