@@ -57,6 +57,14 @@ describe("theme token contrast", () => {
       expect(contrast(t["amber-dim"], t["text-primary"])).toBeGreaterThanOrEqual(4.5);
     });
 
+    it(`${theme}: the filled cyan-dim buttons clear their bar under their label`, () => {
+      // The panels' and dialogs' primary buttons (share, bundle, tutorials,
+      // saves, watches) paint bg-[var(--cyan-dim)] under
+      // text-[var(--text-primary)]; high-contrast shipped that pair at 3.1:1.
+      const bar = theme === "high-contrast" ? 7 : 4.5;
+      expect(contrast(t["cyan-dim"], t["text-primary"])).toBeGreaterThanOrEqual(bar);
+    });
+
     it(`${theme}: primary and secondary ink clear AA on both surfaces`, () => {
       for (const ink of ["text-primary", "text-secondary"]) {
         for (const surface of ["bg-base", "bg-panel"]) {
