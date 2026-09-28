@@ -1,14 +1,8 @@
 import { INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
 
 /**
- * Pure suggestion engine for the Monaco completion provider.
- *
- * The provider passes us the source, the current line up to the cursor,
- * and the cursor's column-within-line position. We classify the context
- * (directive / mnemonic / operand / branch target) and return a ranked
- * list. The Monaco wrapper translates each suggestion into a
- * `CompletionItem` shape, so this module stays test-friendly without a
- * Monaco dependency.
+ * Editor completions, kept free of Monaco so tests can call them directly; the
+ * Monaco wrapper turns each suggestion into a `CompletionItem`.
  */
 
 export interface CompletionContext {
@@ -73,7 +67,7 @@ const LIBC: Suggestion[] = [
   "fflush", "fopen", "fprintf", "fgets", "fputs", "fclose",
   "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp",
   "floor", "fabs", "fmod", "sincos",
-].map((name) => ({ label: name, kind: "libc", detail: "host stub" }));
+].map((name) => ({ label: name, kind: "libc", detail: "C library function" }));
 
 function instructionSuggestions(): Suggestion[] {
   return Object.keys(INSTRUCTION_DOCS).map((m) => ({
