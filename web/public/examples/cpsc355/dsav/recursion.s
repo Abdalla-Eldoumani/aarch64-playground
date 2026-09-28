@@ -1,9 +1,9 @@
 // recursion.s - towers of hanoi, with the call stack drawn beside it
 //
-// rec_hanoi calls itself, and the frame
-// the assembler pushes for that call is the frame the side panel draws. The
-// panel mirrors that frame, growing as the calls go down and unwinding as
-// they return. The move counter arrives at 2^n - 1.
+// rec_hanoi calls itself, and each call pushes a stack frame: the block of
+// stack memory that holds its saved registers. The side panel mirrors those
+// frames, growing as the calls go down and unwinding as they return. The
+// move counter ends at 2^n - 1, the fewest moves possible.
 
 define(fp, x29)
 define(lr, x30)
@@ -220,7 +220,7 @@ rec_hold:
     ldr     x0, =rec_speed
     ldr     w0, [x0]
     lsr     w0, w0, w19
-    cmp     w0, 15                          // below this nothing reads
+    cmp     w0, 15                          // any shorter is too fast to see
     b.ge    rec_hold_wait
     mov     w0, 15
 rec_hold_wait:
@@ -241,8 +241,8 @@ rec_gate:
     ldr     w0, [x0]
     cbz     w0, rec_gate_timed
 
-    // the message row, on the same terms as wait_for_enter: inside the
-    // frame, so the prompt never eats the left wall
+    // the message row, placed where wait_for_enter puts it: inside the
+    // border, so the prompt never covers its left edge
     mov     w0, 23
     mov     w1, 2
     mov     w2, 78
@@ -416,8 +416,8 @@ rec_pegs_out:
     ldp     fp, lr, [sp], 80
     ret
 
-// rec_draw_stack() - the frames the solver is holding, the
-// deepest one first because that is the call currently running
+// rec_draw_stack() - the frames the solver is holding, the first call on
+// top and each deeper call one row below, the running one highlighted
 rec_draw_stack:
     stp     fp, lr, [sp, -96]!
     mov     fp, sp
