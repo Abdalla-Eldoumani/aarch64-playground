@@ -10,13 +10,9 @@ const OPTIONS: { value: Theme; label: string }[] = [
 ];
 
 /**
- * Three-way theme selector (dark / light / high-contrast) that drives the shared
- * useTheme hook, so it introduces no second theme store and reuses the existing
- * cycle order and persistence. One segmented control (a bordered strip with
- * hairline separators) rather than three loose pills, so the selector reads as
- * a single instrument switch. The active cell reads cyan and carries
- * aria-pressed; the rest stay quiet until hovered. `comfortable` gives 44px
- * targets for the mobile drawer; `compact` is the smaller top-bar size.
+ * Drives the shared useTheme hook, so there is no second theme store. One
+ * bordered strip rather than three pills, so it reads as a single switch.
+ * `comfortable` gives the mobile drawer 44px targets.
  */
 export function ThemeControl({
   size = "compact",
