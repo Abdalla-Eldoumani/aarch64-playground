@@ -60,8 +60,8 @@ describe("ConsolePanel stdin validation", () => {
   });
 
   it("submits without the echo flag when the host opts out", () => {
-    // The checker chrome grades the live stdout on its unchanged-source
-    // fast path; an echoed byte there would fail a correct program.
+    // The exercise checker grades the live output when the source has not
+    // changed; an echoed byte there would fail a correct program.
     const { pushStdin, input } = setup({ echoStdin: false });
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form")!);
@@ -79,7 +79,7 @@ describe("ConsolePanel stdin validation", () => {
     expect(closeStdin).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects an over-cap stdin submission without reaching the emulator", () => {
+  it("rejects a stdin line over the size cap before it reaches the emulator", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const onInputSent = vi.fn();
     const { pushStdin, input } = setup({ onInputSent });
@@ -123,7 +123,7 @@ describe("ConsolePanel vfs upload", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("rejects an over-cap upload with the guard message and never touches the vfs", () => {
+  it("rejects an upload over the size cap with the guard message and never touches the vfs", () => {
     const { uploadVfsFile } = setup();
     const big = new File(["x"], "huge.bin");
     // The size guard runs synchronously off file.size, before the bytes are read.
@@ -169,7 +169,7 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
   });
 
-  it("shows a zero exit code (the != null edge, not falsiness)", () => {
+  it("shows an exit code of 0, which a truthy check would hide", () => {
     setup({ exitCode: 0 });
     expect(screen.getByText("exit 0")).toBeTruthy();
   });
@@ -226,7 +226,7 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
   });
 
-  it("swaps the idle hint to touch copy on a coarse pointer", () => {
+  it("words the idle hint for tapping on a touch screen", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: query.includes("coarse"),
       media: query,
@@ -305,7 +305,7 @@ describe("ConsolePanel output a terminal session produced", () => {
 
   it("drops the screen codes a program sent before it claimed the terminal", () => {
     // Hide the cursor, clear, home: written in cooked mode, a moment before
-    // the raw-mode switch that pins the watermark.
+    // the raw-mode switch that marks where the terminal took over.
     const esc = String.fromCharCode(27);
     const prelude = `${esc}[?25l${esc}[2J${esc}[Hloading\n`;
     const { container } = render(
@@ -327,7 +327,7 @@ describe("ConsolePanel output a terminal session produced", () => {
     expect(container.textContent).not.toContain("[?25l");
   });
 
-  it("renders a classic run byte for byte with no watermark", () => {
+  it("renders a run the terminal never took over byte for byte, with no note", () => {
     setup({ stdout: "sum = 10\n", stderr: "" });
     expect(screen.getByText(/sum = 10/)).toBeTruthy();
     expect(screen.queryByText(NOTE)).toBeNull();
