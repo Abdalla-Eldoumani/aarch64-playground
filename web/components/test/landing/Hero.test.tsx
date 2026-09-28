@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 describe("Hero", () => {
-  it("deep-links the primary CTA into the playground with an example preloaded", () => {
+  it("points the main link at the playground with an example preloaded", () => {
     render(<Hero />);
     const cta = screen.getByRole("link", {
       name: /open this example in the playground/i,
@@ -41,7 +41,7 @@ describe("Hero", () => {
     // The hero is the one surface that draws its program without the editor,
     // so the landing never loads Monaco.
     expect(embed.props!.staticEditor).toBeTruthy();
-    // The walk keeps its two-button frame: no step, no back.
+    // The autoplay was built for two buttons, so no step and no back.
     expect(embed.props!.showStep).toBe(false);
     expect(embed.props!.showBack).toBe(false);
     // The start program is fed from the single landing-content source, not
