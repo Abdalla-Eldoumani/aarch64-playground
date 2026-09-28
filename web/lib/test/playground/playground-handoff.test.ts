@@ -89,7 +89,7 @@ describe("loadBundleDecoder", () => {
 });
 
 describe("resolveHandoff", () => {
-  it("returns nothing when the boot already consumed the payload (hard load)", () => {
+  it("returns nothing when the boot already consumed the payload (full page load)", () => {
     expect(
       resolveHandoff({ fromShare: true, fromBundle: false }, "", SHARE_HASH),
     ).toBeNull();
@@ -232,8 +232,8 @@ describe("fetchExample", () => {
   it("carries the stem separately from the label the loader overwrites", async () => {
     stubFetch({ "/examples/cpsc355/snake.s": "src" });
     const payload = await fetchExample("snake");
-    // The example loader spreads this payload and replaces `label` with the
-    // human name; `stem` is what survives to answer the offer table.
+    // The example loader replaces `label` with the display name, so `stem` is
+    // what is left to look the example up in the launch tables.
     const delivered = { ...payload, label: "snake (playable)" };
     expect(delivered.stem).toBe("snake");
   });
@@ -395,9 +395,9 @@ describe("EXAMPLE_INPUTS manifest", () => {
 
 describe("launch tables", () => {
   it("names exactly the two default-terminal examples", () => {
-    // Both draw a full-screen ANSI frame that the console's plain-text
-    // scrollback would render as escape-sequence garbage. Every other example
-    // defaults to console.
+    // Both redraw the whole screen with terminal escape codes, which the
+    // plain-text console would show as garbage. Every other example starts in
+    // the console.
     expect(Object.keys(EXAMPLE_TERMINAL).sort()).toEqual(["dsav", "two-sum"]);
   });
 
@@ -413,9 +413,8 @@ describe("launch tables", () => {
   });
 
   it("offers the control for every example that defaults to the terminal", () => {
-    // The default-owner table is a subset of the offer set: an example
-    // whose default is terminal with no way to see or change it would leave
-    // the student stuck in the terminal.
+    // An example that starts in the terminal with no visible mode choice
+    // would leave the student stuck there.
     for (const stem of Object.keys(EXAMPLE_TERMINAL)) {
       expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
     }
@@ -448,8 +447,8 @@ describe("the per-mode args table", () => {
   });
 
   it("is a subset of the stems the run-mode control is offered for", () => {
-    // The mode owns the args box for these; a stem with no visible control
-    // could never flip the box back.
+    // The mode sets the args box for these; with no visible mode choice the
+    // student could never switch the box back.
     for (const stem of Object.keys(EXAMPLE_MODE_ARGS)) {
       expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
     }
@@ -462,13 +461,13 @@ describe("the per-mode args table", () => {
     }
   });
 
-  it("hands the console face the token and the terminal face nothing", () => {
+  it("gives console mode the token and terminal mode nothing", () => {
     expect(modeArgsFor("calc", "console")).toBe("console");
     expect(modeArgsFor("calc", "terminal")).toBe("");
     expect(modeArgsFor("temp-convert", "console")).toBe("console");
     expect(modeArgsFor("two-sum", "console")).toBe("console");
-    // The pre-argv0 seed, kept only so the playground can migrate a
-    // returning student's persisted box.
+    // The box value from before the emulator supplied argv[0], kept only so
+    // a returning student's saved args box can be updated.
     expect(legacyModeArgsFor("calc")).toBe("./calc console");
     expect(legacyModeArgsFor("command-line-args")).toBeNull();
   });
@@ -490,7 +489,7 @@ describe("decodeLaunch", () => {
   });
 
   it("reads the old boolean key a returning student's browser already holds", () => {
-    // The key predates the two-value mode: "1" meant the takeover.
+    // The key predates the two mode names: "1" meant terminal.
     expect(decodeLaunch("1")).toBe("terminal");
     expect(decodeLaunch("0")).toBe("console");
   });
