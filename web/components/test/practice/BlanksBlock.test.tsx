@@ -22,7 +22,7 @@ describe("BlanksBlock", () => {
     expect(check.disabled).toBe(true);
   });
 
-  it("accepts a match against any accepted string, ignoring case and whitespace", () => {
+  it("accepts any listed answer, ignoring case and surrounding spaces", () => {
     const onAttempt = vi.fn();
     render(<BlanksBlock {...PROPS} onAttempt={onAttempt} />);
     fireEvent.change(screen.getByLabelText(PROPS.prompt), { target: { value: "  LDRB " } });
