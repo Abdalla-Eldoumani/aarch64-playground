@@ -209,3 +209,15 @@ describe("TutorialRunner expected-register check", () => {
     expect(screen.getByText(/a = 47/)).toBeTruthy();
   });
 });
+
+describe("TutorialRunner and the interface walkthrough", () => {
+  it("starts the walkthrough from its own button, and hides it with no handler", () => {
+    const onStartWalkthrough = vi.fn();
+    renderRunner({ onStartWalkthrough });
+    fireEvent.click(screen.getByRole("button", { name: "interface walkthrough" }));
+    expect(onStartWalkthrough).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderRunner();
+    expect(screen.queryByRole("button", { name: "interface walkthrough" })).toBeNull();
+  });
+});
