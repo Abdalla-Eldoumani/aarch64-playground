@@ -3,11 +3,8 @@
 @tailwind utilities;
 
 /* =============================================================================
-   aarch64 playground: design tokens v2
-   One system, two densities. Amber = the machine acting. Cyan = you acting.
-   One semantic token drives each state across all three themes. The 32-bit
-   instruction word runs through the field boxes, bit rulers, and blueprint
-   paper.
+   Design tokens. Amber is the machine acting, cyan is you acting. One token
+   drives each state across all three themes.
 ============================================================================= */
 
 /* ----- DARK · primary surface (default) ----- */
@@ -146,12 +143,8 @@
 }
 
 /* =============================================================================
-   TYPE: IBM Plex Sans (UI/display), JetBrains Mono (signature), Source Serif 4
-   (editorial leads + margin notes). next/font binds --font-sans/--font-mono/
-   --font-serif on <html> to the self-hosted hashed families (layout.tsx); the
-   --type-* shorthands reference those vars so they resolve to the self-hosted
-   fonts. The family vars are not redeclared here: that would shadow
-   next/font.
+   TYPE. next/font sets --font-sans, --font-mono and --font-serif on <html>
+   (layout.tsx). They are not redeclared here, which would shadow next/font.
 ============================================================================= */
 :root {
   --type-display:  700 64px/1.03  var(--font-sans);   /* tracking -0.03em  */
@@ -170,20 +163,17 @@
 
 /* =============================================================================
    SPACE · RADII · ELEVATION · MOTION
-   Every .anim-* class below reads its duration from these tokens, so retiming
-   the system is a one-line change here. The lone exception is the mobile pane
-   fade, pinned at 50ms so a mid-debug pane switch lands rather than eases.
+   Each .anim-* class takes its duration from these tokens. The one exception,
+   the 50ms mobile pane fade, is fixed so a pane switch lands instead of easing.
 ============================================================================= */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
 
-  /* Corner doctrine: machine-facing chrome (toolbars, tabs, panels,
-     register and memory rows, chips, panel micro-inputs) is square
-     (--radius-control), and the Tailwind rounded/rounded-sm scale resolves
-     to it, so the rule holds by token. The soft edge survives on text
-     inputs and primary action buttons (--radius-action), cards
-     (--radius-card), and dialogs (--radius-modal). */
+  /* Corner doctrine: machine-facing chrome (toolbars, tabs, panels, rows,
+     chips) is square, and Tailwind's rounded scale resolves to these tokens so
+     the rule holds everywhere. Text inputs, primary buttons, cards and dialogs
+     keep a soft edge. */
   --radius-control: 0px;
   --radius-action:  4px;
   --radius-card:    8px;
@@ -242,10 +232,8 @@ body {
 
 /* =============================================================================
    BLUEPRINT PAPER
-   A faint 24px cell grid on page roots (landing, learn, practice, reference).
-   Never on the playground main surface: the debugger stays flat. In
-   high-contrast --grid-line is transparent, so the helper is self-disabling
-   there.
+   A faint grid for the reading pages, never the playground, where the debugger
+   stays flat. High-contrast turns it off through a transparent --grid-line.
 ============================================================================= */
 .paper {
   background-color: var(--bg-base);
@@ -269,18 +257,11 @@ body {
   to   { opacity: 1; }
 }
 
-/* Register write flash: the 2px write bar strikes in wide and settles,
-   like a latch closing: no background wash and no rounded pill. The end state
-   equals the static bar the changed row carries, so the settle reads as one
-   motion. Amber-driven so it follows the theme.
-
-   The four machine animations draw on a ::before layer and animate transform
-   and opacity only: box-shadow and border-color keyframes paint, and 31
-   register rows re-flashing on every step put that paint on the main thread.
-   The layer rests at scaleX(0) / opacity 0, so where the animation does
-   not run (under prefers-reduced-motion, and before the landing arms its
-   boot stagger) nothing is drawn at all and the static bar is the only
-   cue. */
+/* The four machine animations draw on a ::before layer and animate only
+   transform and opacity: box-shadow and border-color keyframes repaint, and 31
+   register rows flashing on every step put that work on the main thread. The
+   layer rests at scaleX(0), so where no animation runs nothing is drawn and the
+   row's static bar is the only cue. */
 .anim-reg-flash,
 .anim-boot-flash,
 .anim-run-breathe,
@@ -363,17 +344,10 @@ body {
   85%      { transform: translateX(1px); }
 }
 
-/* Decode-strip re-latch: when the decode panel re-renders on a step, every
-   field box's border flashes from amber back to the resting hairline, the
-   fields latching the new instruction word. The destination field stays amber
-   via its own inline styling. Static under prefers-reduced-motion: the fields
-   simply swap.
-
-   border-color is a paint property, so the amber is an overlay ring that fades
-   out against the box's own resting border instead. inset: 0 keeps the ring
-   inside the border box: a negative inset would sit exactly on the border but
-   would also push a permanent pixel of scrollable overflow into the field
-   row's overflow-x-auto strip. */
+/* Decode-strip re-latch: the field boxes flash amber on each step. The amber
+   is an overlay ring that fades, because animating border-color repaints.
+   inset: 0 keeps the ring inside the border box; a negative inset would add a
+   pixel of scrollable overflow to the field row. */
 .anim-decode-latch::before {
   content: "";
   position: absolute;
@@ -411,13 +385,9 @@ body {
     animation: reg-strike calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
   }
   .boot-flash-armed .anim-boot-flash::before {
-    /* Power-on write: a landing row flashes once with the register-write
-       tint, staggered per row via --boot-delay so the block reads as values
-       landing in a register file, top to bottom. Content never moves or
-       hides, so there is no layout shift; under prefers-reduced-motion the
-       rows are simply static. The armed class arrives after mount, so the
-       stagger answers hydration and never the first paint. `backwards` holds
-       the from-frame through the delay. */
+    /* Staggered by --boot-delay so the landing rows light top to bottom. The
+       armed class arrives after mount, so the stagger starts after hydration,
+       not on first paint; `backwards` holds the first frame through the delay. */
     animation: boot-strike calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
     animation-delay: var(--boot-delay, 0ms);
     animation-fill-mode: backwards;
@@ -456,12 +426,8 @@ body {
 
 /* =============================================================================
    SKIP LINK
-   The first focusable element in the document (root layout), pointing at the
-   single <main id="main"> every route renders. Clipped to a screen-reader-only
-   box until focus, then a fixed mono chip in the top-left: fixed rather than
-   in flow because the nav's backdrop-blur and the debugger's header band would
-   both paint over an in-flow control. z-index sits above the highest overlay
-   in the app (z-[80]) so the chip is never covered while it has focus.
+   Hidden until focused, then fixed, because the nav's blur and the debugger's
+   header would paint over it in flow. z-index 100 clears the top overlay (80).
 ============================================================================= */
 .skip-link {
   position: absolute;
@@ -503,11 +469,8 @@ body {
 
 /* =============================================================================
    PHONES AND TOUCH SCREENS
-   The playground's phone arrangement (components/playground/PhoneLayout) is
-   chosen by the same bounds as this query: under 768px wide, or under 500px
-   tall, which is a phone on its side. Its own top bar carries the home link
-   and the site links, so the site bar steps aside and the code gets its
-   height.
+   These bounds match PhoneLayout's (under 500px tall is a phone on its side).
+   Its own top bar carries the site links, so the site nav steps aside.
 ============================================================================= */
 @media (max-width: 767.98px), (max-height: 499.98px) {
   .playground-site-nav {
@@ -516,12 +479,9 @@ body {
 }
 
 @media (pointer: coarse) {
-  /* 44px is the least a fingertip hits reliably. Dense controls a mouse
-     handles at 24px (zoom steps, the files strip, the tool row) carry this
-     class, so they grow on a touch screen and keep their size under a mouse.
-     A min size wins over a fixed h-6 or w-6. The class is doubled because
-     Tailwind emits its variant utilities (sm:min-h-0) after this file's own
-     rules, and a single class would lose to them. */
+  /* 44px is the least a fingertip hits reliably, so dense 24px controls grow
+     only on touch. The class is doubled because Tailwind emits its variant
+     utilities (sm:min-h-0) after this file, and a single class would lose. */
   .touch-target.touch-target {
     min-height: 44px;
     min-width: 44px;
@@ -565,26 +525,13 @@ html:has([data-install-tip]) {
 
 /* =============================================================================
    EMBEDDED PLAYGROUND LAYOUT
-   The hero, lesson, and exercise embeds render at whatever width their host
-   gives them (a wide hero, a prose measure), so the arrangement is chosen by
-   container queries against the embed itself, not viewport breakpoints.
-   Under 38rem: a vertical stack, editor first and largest.
-   38rem to 56rem: a full-width editor over full-width registers over the
-   console, so the editor keeps real line length inside a reading column and
-   the register file gets the whole measure to lay its columns out in. 38rem
-   sits below the narrowest prose measure the site produces (the exercise
-   column at 691px), so every reading column gets that arrangement and only
-   true phone widths keep the even stack.
-   56rem and up: the editor beside a registers-over-console rail.
-   The base stack doubles as the fallback where container queries are
-   unsupported.
+   The host sets an embed's width, so container queries on the embed pick the
+   arrangement. 38rem sits below the narrowest reading column (691px), and the
+   base stack is the fallback where container queries are unsupported.
 ============================================================================= */
-/* The host frame every embed but the hero sits in. On a phone a fixed 560px
-   frame is most of the viewport before the page's own chrome, so the height
-   follows the small viewport instead: svh is the collapsed-toolbar height, so
-   the frame never hides under a mobile browser's expanding bar, and the vh
-   line above it is the fallback for engines that drop the svh declaration.
-   The floor keeps a landscape phone from squeezing the editor to nothing. */
+/* On a phone a fixed 560px frame fills the screen, so it follows the small
+   viewport: svh never hides under an expanding browser bar, the vh line is the
+   fallback, and the floor keeps a landscape phone's editor usable. */
 @media (max-width: 639.98px) {
   .embed-frame {
     height: min(72vh, 560px);
@@ -646,13 +593,9 @@ html:has([data-install-tip]) {
     border-bottom: 1px solid var(--border);
   }
 }
-/* On a phone-width screen, or on a touch screen (a tablet, where the stacked
-   console was too short for its 44px input row), a frame under 56rem shows
-   one pane at a time behind the view switch, with the status line and its
-   register peek under it. Under a mouse on a wider screen, a narrow frame
-   keeps its stacked panes, which are tall enough there. The editor is
-   hidden, not removed, so its caret and undo survive a switch.
-   After the 38rem and 56rem bands, so it wins over them. */
+/* One pane at a time on a phone or touch screen, where the stacked console was
+   too short for its 44px input row. The editor is hidden, not removed, so its
+   caret and undo survive a switch. Placed after the bands so it wins. */
 @media (max-width: 639.98px), (pointer: coarse) {
   @container (max-width: 55.98rem) {
     .embed-view {
@@ -718,19 +661,10 @@ html:has([data-install-tip]) {
 
 /* =============================================================================
    MONACO BUTTON TOOLTIPS
-   Monaco renders the hover for a widget button (the find widget's close, say)
-   through its context-view service, which positions the card by setting a
-   left offset and then lets the box shrink to fit whatever room is left
-   between that offset and the container's right edge. Against the right edge
-   of the editor pane that room is 120px, too narrow for "Close
-   (Shift+Escape)", so the label wrapped to a second line and the taller card
-   covered the 16px button it belonged to: elementFromPoint returned the card
-   and the click never reached the button, leaving the widget with no working
-   close. Sizing the card to its content instead lets it stay one line and
-   clear of the button, capped so a long label still wraps rather than running
-   off the page. The override has to win over the inline width the service
-   writes, and it is scoped to hover cards so context menus keep their own
-   measured width.
+   Monaco squeezes a hover card against the editor's right edge, so a long
+   label wrapped and the taller card covered the find widget's close button,
+   taking its clicks. Sized to content it stays on one line; !important beats
+   Monaco's inline width, and :has() leaves context menus their own width.
 ============================================================================= */
 .context-view.monaco-component:has(.workbench-hover) {
   width: max-content !important;
