@@ -1,7 +1,6 @@
-// The palette's action table: the row set never shrinks with the machine's
-// state, the blocked guards live in the table (so a palette row no-ops exactly
-// where the disabled button does), and a row that would do nothing says why in
-// its description instead of disappearing.
+// The palette's command list: no row disappears as the machine's state
+// changes, a row does nothing exactly where its disabled button would, and a
+// row that would do nothing says why in its description.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPaletteCommands, type PaletteDeps } from "@/lib/playground/palette-commands";
 import type { Action } from "@/lib/playground/commands";
@@ -92,7 +91,7 @@ describe("the row set", () => {
 });
 
 describe("the blocked guards", () => {
-  it("swallows step, step back, and run while a read is parked", () => {
+  it("ignores step, step back, and run while the program waits for input", () => {
     const deps = makeDeps({ blocked: true });
     const actions = buildPaletteCommands(deps);
     row(actions, "step").run();
@@ -127,7 +126,7 @@ describe("the blocked guards", () => {
 });
 
 describe("the descriptions that carry the reason", () => {
-  it("names the parked read ahead of every other reason", () => {
+  it("names the wait for input ahead of every other reason", () => {
     const actions = buildPaletteCommands(
       makeDeps({ blocked: true, programLoaded: false, canStepBack: false, launchable: true }),
     );
@@ -200,7 +199,7 @@ describe("start in the terminal", () => {
     expect(deps.launchInteractive).toHaveBeenCalledTimes(1);
   });
 
-  it("stays in the list but no-ops for a console program", () => {
+  it("stays in the list but does nothing for a console program", () => {
     const deps = makeDeps({ launchable: false });
     const actions = buildPaletteCommands(deps);
     expect(row(actions, "launch-terminal").description).toBe(
