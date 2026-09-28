@@ -1,6 +1,5 @@
-// pins the zoom control contract: minus/percent/plus wired to the three
-// callbacks, the middle button both showing the rounded percentage and
-// announcing it in its reset label.
+// The middle button both shows the zoom and resets it, so its label has to
+// say both for a screen reader.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { ZoomControl } from "@/components/ui/ZoomControl";
