@@ -84,7 +84,7 @@ describe("TutorialRunner open and close", () => {
     // A full-screen modal caught every tap, so a step that said "step, then
     // watch x19" could not be followed.
     renderRunner();
-    const panel = screen.getByRole("dialog", { name: "guided tutorial" });
+    const panel = screen.getByRole("dialog", { name: "tutorials" });
     expect(panel.getAttribute("aria-modal")).toBe("false");
     expect(panel.className).not.toContain("inset-0");
     expect(screen.getByText("a three step fixture")).toBeTruthy();
@@ -97,7 +97,7 @@ describe("TutorialRunner open and close", () => {
     fireEvent.click(screen.getByText("read the prologue"));
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "close" }));
-    fireEvent.keyDown(screen.getByRole("dialog", { name: "guided tutorial" }), { key: "Escape" });
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "tutorials" }), { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(2);
     // An Escape meant for the editor elsewhere on the page leaves it open.
     fireEvent.keyDown(document, { key: "Escape" });
