@@ -54,7 +54,7 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "Shift+F5", description: "reset" },
   { keys: "Ctrl+K", description: "open command palette" },
   { keys: "Ctrl+Shift+F", description: "format the source" },
-  { keys: "Ctrl+S", description: "nothing to save: the buffer is written continuously" },
+  { keys: "Ctrl+S", description: "nothing to save: your code saves as you type" },
   { keys: "Ctrl+/", description: "toggle line comment" },
   { keys: "Shift+Alt+A", description: "toggle block comment" },
   { keys: "Tab", description: "in the editor, indent or take the highlighted suggestion" },
@@ -100,12 +100,10 @@ function withRun(payload: HandoffPayload, run: LaunchMode | undefined): HandoffP
   return run ? { ...payload, launch: run } : payload;
 }
 
-// Resolve the starter buffer once on mount. Precedence: a diagnostic
-// bundle deep-link, then a share hash, then the autosaved buffer, then
-// the cold-load default. This runs during render, so on a client-side
-// navigation it can only see the PREVIOUS route's URL; the post-mount
-// effect below re-reads the committed URL and delivers whatever this
-// pass missed. Theme / embed / example are always applied after mount.
+// Precedence: a diagnostic bundle link, a share hash, the autosave, then the
+// default. This runs during render, so after a client-side navigation it sees
+// the PREVIOUS route's URL; the effect below re-reads the committed URL and
+// delivers what this pass missed. Theme, embed and examples wait for mount.
 function initialBoot(): PlaygroundBoot {
   if (typeof window === "undefined") {
     return {
@@ -165,14 +163,10 @@ export default function Home() {
     setShareOpen(true);
   }, []);
 
-  // Deep-link bootstrap (post-mount): a pinned theme, plus whatever
-  // program payload the render-time boot could not deliver. Effects run
-  // after the router commits the URL, so this pass sees the REAL
-  // destination even on a client-side navigation, where initialBoot read
-  // the previous route and fell back to the autosave. Examples are always
-  // delivered here (they need a fetch), with their args, stdin, and VFS
-  // fixtures riding along; a failed or oversize fetch keeps the booted
-  // buffer.
+  // After mount: a pinned theme, plus any program the render-time boot missed.
+  // Effects run after the router commits the URL, so this pass sees the real
+  // destination even on a client-side navigation. Examples always arrive here
+  // (they need a fetch); a failed or oversize fetch keeps the booted buffer.
   // The delivery URL this pass already handled. `boot` is captured once, so
   // without it a second pass over a NEW hash would ask resolveHandoff about
   // a payload the FIRST one consumed and be told there is nothing to do.
@@ -181,12 +175,10 @@ export default function Home() {
     if (typeof window === "undefined") return;
     const dl = parseDeepLink(window.location.search);
     if (dl.theme) setTheme(dl.theme);
-    // Boot failures surface through the playground component's toast
-    // binding (see EmbeddablePlaygroundHandle.notifyError): the page
-    // entry's own react-hot-toast is a separate module instance in the
-    // production chunk graph and its dispatches never reach the mounted
-    // Toaster. Deferred a beat so the handle is registered even if this
-    // effect wins the mount race.
+    // Boot failures go through EmbeddablePlaygroundHandle.notifyError: this
+    // page's react-hot-toast is a separate module instance in production and
+    // never reaches the mounted Toaster. Deferred so the handle is registered
+    // even if this effect runs first.
     const timers: Array<ReturnType<typeof setTimeout>> = [];
     const toastSoon = (message: string) => {
       // 1.5s: past the first paint, so the notice lands when the student
@@ -198,17 +190,15 @@ export default function Home() {
     if (boot.shareError) {
       toastSoon(
         boot.shareError === "too-large"
-          ? "that share link is too large to load, so your own buffer is still here"
-          : "that share link is damaged, usually a partial copy. your own buffer is still here; ask the sender for the link again",
+          ? "that share link is too large to load, so your own code is still here"
+          : "that share link is damaged, usually a partial copy. your own code is still here; ask the sender for the link again",
       );
     }
-    // A bundle failure is reported by the delivery pass below, not here: the
-    // boot render has no decoder, so a hard `?bundle=` load is reported here
-    // instead. The bundle decoder is fetched only for a URL that carries one,
-    // so the delivery runs a beat behind this effect. Pinned before the await:
-    // the URL can change under a deferred pass, and this one must deliver the
-    // URL it was started for or the change handler below delivers the new one a
-    // second time.
+    // A bundle failure is reported by this delivery pass, not the check above:
+    // the boot render has no decoder, which loads only for a URL carrying a
+    // bundle. The URL is pinned before the await so this pass delivers the URL
+    // it started for; otherwise the change handler below would deliver a newer
+    // one a second time.
     const bootSearch = window.location.search;
     const bootHash = window.location.hash;
     void (async () => {
@@ -223,8 +213,8 @@ export default function Home() {
       } else if (handoff?.kind === "bundle-error") {
         toastSoon(
           handoff.reason === "too-large"
-            ? "that diagnostic-bundle link is too large to load, so your own buffer is still here"
-            : "that diagnostic-bundle link is damaged, usually a partial copy. your own buffer is still here; ask the sender for the link again",
+            ? "that diagnostic-bundle link is too large to load, so your own code is still here"
+            : "that diagnostic-bundle link is damaged, usually a partial copy. your own code is still here; ask the sender for the link again",
         );
       } else if (handoff?.kind === "example") {
         // fetchExample's failures are already student-readable ("invalid
