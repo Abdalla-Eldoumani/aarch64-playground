@@ -57,18 +57,11 @@ const SECONDARY =
   `${SHARE} min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
 
 /**
- * The reduced embed / checker chrome: editor, registers, console, and a
- * minimal control set. Full-only panels (and their code) never load here.
- * The three-pane arrangement comes from the container-driven embed-grid areas
- * in globals.css, so each host's own width (a prose measure, a wide hero)
- * picks the layout rather than the viewport.
- *
- * A frame narrower than 38rem (a phone) shows one pane at a time behind a
- * code | registers | console switch, with a status line under it that peeks
- * at the registers the last step wrote: stacked three high, the register pane
- * got under 100px, all of it header, so no register row was ever in view.
- * The switch and the status line exist at every width and CSS shows them
- * only in a narrow frame.
+ * The embedded frame: code, registers, console, and a few controls. The
+ * embed-grid rules in globals.css follow the frame's own width, not the
+ * viewport. Under 38rem it shows one pane at a time behind a switch, since
+ * three stacked panes left the registers no room for a row; CSS hides the
+ * switch and the status line in a wider frame.
  */
 export function EmbedLayout({
   editor,
