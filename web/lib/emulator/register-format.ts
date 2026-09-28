@@ -1,14 +1,7 @@
 /**
- * The text a register view prints for a register's bits, in one place so the
- * x, d, and v views follow the same rules:
- *
- * - hex mode prints hex and nothing else;
- * - an integer in decimal prints its signed value, plus the unsigned value
- *   only when the two differ (a negative), so most rows stay one line;
- * - a float prints the shortest decimal that reads back to the same bits.
- *
- * Every reader takes the panel's `0x...` text and degrades to zero on junk
- * rather than throwing inside a render.
+ * Register text in one place so the x, d, and v views follow the same rules.
+ * Readers take the panel's `0x...` text and return zero on junk rather than
+ * throw during a render.
  */
 
 import { formatSigned, truncate, type Width } from "@/lib/asm/base-convert";
@@ -49,12 +42,10 @@ export function floatText(bits: bigint, width: FloatWidth): string {
 }
 
 /**
- * The d view's decimal. An `s` write zeroes bits 63:32, so a pattern that
- * lives only in the low 32 bits is read as the single-precision float the
- * program put there, a finite one suffixed `f` the way C writes it; read as
- * a double, those bits would be a meaningless subnormal near 1e-314. When
- * the caller knows the register was written as a d, `asDouble` keeps the
- * double reading, subnormal or not.
+ * The d view's decimal. An `s` write zeroes the top 32 bits, so a value only
+ * in the low 32 bits reads as the float the program stored (a finite one
+ * suffixed `f`, as in C), not a meaningless double near 1e-314. `asDouble`
+ * forces the double.
  */
 export function fpRegisterText(hex: string, asDouble = false): string {
   const bits = parseBits(hex, 64);
