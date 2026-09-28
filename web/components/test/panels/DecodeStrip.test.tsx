@@ -10,7 +10,7 @@ describe("DecodeStrip", () => {
     expect(screen.getByText("current instruction")).toBeTruthy();
   });
 
-  it("renders the mono gloss for the line the CPU is on", () => {
+  it("explains the line the CPU is on in words", () => {
     const source = "main:\n    mov x0, 1\n    svc 0\n";
     render(<DecodeStrip source={source} currentLine={2} />);
     const text = screen.getByLabelText("current instruction").textContent ?? "";
@@ -18,7 +18,7 @@ describe("DecodeStrip", () => {
     expect(text.toLowerCase()).toContain("copy register");
   });
 
-  it("inlines m4 alias resolutions into the gloss", () => {
+  it("shows the register each m4 name stands for inside the explanation", () => {
     const source = [
       "define(score1_r, w19)",
       ".text",
@@ -36,7 +36,7 @@ describe("DecodeStrip", () => {
     expect(text.toLowerCase()).toContain("step the program");
   });
 
-  it("renders the field row for the encoding and lights the destination", () => {
+  it("renders the encoding's bit fields and names the destination register", () => {
     // movz x19, 42: machine word taken from the emulator's disassembly.
     render(
       <DecodeStrip source="main:\n    mov x19, 42\n" currentLine={2} encodingHex="0xd2800553" />,
@@ -73,8 +73,8 @@ describe("DecodeStrip", () => {
 });
 
 describe("DecodeStrip external-call card", () => {
-  // The three steps a `bl printf` costs land on a trampoline and a synthetic
-  // stub, so the strip has no encoding and no line of the student's to gloss.
+  // The three steps a `bl printf` takes run in the emulator's own code, not
+  // the student's, so the strip has no encoding and no line to explain.
   const CALL_SOURCE = "main:\n    ldr x0, =msg\n    bl printf\n";
 
   it("names the call and says who runs it", () => {
@@ -109,7 +109,7 @@ describe("DecodeStrip external-call card", () => {
     expect(text).not.toContain("returns on a later step");
   });
 
-  it("replaces the field row and the gloss while the call is on", () => {
+  it("replaces the bit fields and the explanation while the call runs", () => {
     const { rerender } = render(
       <DecodeStrip
         source={CALL_SOURCE}
@@ -139,7 +139,7 @@ describe("DecodeStrip external-call card", () => {
     expect(after).not.toContain("external call");
   });
 
-  it("keeps the cold prompt for the empty machine only", () => {
+  it("shows the step prompt only before the program starts", () => {
     const { rerender } = render(
       <DecodeStrip source={CALL_SOURCE} currentLine={null} sessionStarted={false} />,
     );
@@ -147,8 +147,8 @@ describe("DecodeStrip external-call card", () => {
       (screen.getByLabelText("current instruction").textContent ?? "").toLowerCase(),
     ).toContain("step the program");
 
-    // Mid-session with nothing to gloss (an address the map cannot name and
-    // no call context): silence, not an instruction to step.
+    // Mid-run with nothing to explain (an address the map cannot name and no
+    // call in progress): stay quiet rather than tell the student to step.
     rerender(<DecodeStrip source={CALL_SOURCE} currentLine={null} sessionStarted />);
     expect(
       (screen.getByLabelText("current instruction").textContent ?? "").toLowerCase(),
