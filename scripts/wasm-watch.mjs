@@ -1,12 +1,8 @@
 #!/usr/bin/env node
 /*
- * Entrypoint for `npm run wasm:watch`. Rebuilds the WASM module on every
- * change under emulator/src via cargo-watch.
- *
- * cargo-watch is an optional dev tool. When it is not installed we print the
- * one-line install hint and exit 0, so `npm run dev:all` (which runs this
- * under `concurrently --kill-others-on-fail`) keeps the web dev server up
- * instead of tearing it down over a missing optional dependency.
+ * cargo-watch is optional: without it we print the install hint and exit 0,
+ * so `npm run dev:all` (concurrently --kill-others-on-fail) keeps the web dev
+ * server running.
  */
 import { spawn, spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
