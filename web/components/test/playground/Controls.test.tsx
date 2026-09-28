@@ -71,7 +71,7 @@ describe("Controls", () => {
     expect(document.querySelector("kbd")).toBeNull();
   });
 
-  it("renders the five control buttons in canonical order", () => {
+  it("renders the five buttons as assemble, run, step, back, reset", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -163,11 +163,8 @@ describe("Controls", () => {
   });
 
   it("shakes once per new error, and only on a new one", () => {
-    // The ~200ms decaying shake is the motion spec's error cue; the message
-    // beside it is plain text plus a recovery hint. The class animates only
-    // outside prefers-reduced-motion, and the alert is keyed by the message,
-    // so a new error replays the one-shot shake while a re-render of the same
-    // error does not.
+    // The alert is keyed by its message, so a new error remounts it and plays
+    // the one-shot shake again, while the same error re-rendered does not.
     const h = allHandlers();
     const withError = (error: string) => (
       <Controls
