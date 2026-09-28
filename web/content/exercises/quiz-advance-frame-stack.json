@@ -2,11 +2,11 @@
   "title": "Quiz: memory and the stack",
   "slug": "quiz-advance-frame-stack",
   "order": 94,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "memory",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Register-offset addressing with sign extension and shifts, plus the pre-indexed and post-indexed forms that build and tear down a frame record.",
+  "prompt": "Register-offset addressing with sign extension and shifts, plus the pre-indexed and post-indexed forms that save and restore the frame record, the x29 and x30 pair.",
   "questions": [
     {
       "question": "What does the addressing mode [x29, w21, sxtw] accomplish?",
@@ -29,7 +29,7 @@
         "Using lr minus the block size."
       ],
       "correctAnswer": 2,
-      "explanation": "Block-local variables are allocated below the frame record by decrementing sp, so they sit at lower addresses than the frame record. They are read and written through fp with a negative offset, which keeps their addresses stable even if sp moves again inside the block.",
+      "explanation": "Block-local variables are allocated below the frame record by decrementing sp, so they sit at lower addresses than the frame record. They are read and written through fp (x29, the frame pointer) with a negative offset, which keeps their addresses stable even if sp moves again inside the block.",
       "hint": "The variable sits below the frame record, so its offset from fp is negative."
     },
     {
@@ -65,7 +65,7 @@
         "[base, xm, uxtw]"
       ],
       "correctAnswer": 2,
-      "explanation": "A register offset is scaled with a left shift, not a multiply. Shifting left by 3 multiplies the index by 2^3, which is 8, so [base, xm, lsl 3] steps the offset one doubleword per index value.",
+      "explanation": "A register offset is scaled with a left shift, not a multiply. Shifting left by 3 multiplies the index by 2^3, which is 8, so [base, xm, lsl 3] steps the offset one 8-byte doubleword per index value.",
       "hint": "A left shift by 3 multiplies a value by 2^3."
     }
   ]
