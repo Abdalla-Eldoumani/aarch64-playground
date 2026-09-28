@@ -1,9 +1,9 @@
 name: check
 
-# integration is the batch branch: feature branches open their pull
-# requests against it, and a pull request can only restore caches saved on
-# its base branch or on main, so pushes to integration run here too and
-# leave warm caches behind for every feature branch that follows.
+# integration collects a batch of changes before one pull request takes them
+# to main. A pull request can restore only the caches saved on its base
+# branch or on main, so pushes to integration run here too and leave warm
+# caches for the pull requests based on it.
 on:
   push:
     branches: [main, integration]
