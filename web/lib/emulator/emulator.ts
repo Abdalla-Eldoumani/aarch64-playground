@@ -21,9 +21,9 @@ export interface StepResult {
   halted: boolean;
   error: string | null;
   /**
-   * Editor line the runtime error resolves to through the authoritative
-   * line map (LR-4 recovers the call site for host-stub faults). Null on
-   * success and on wasm builds that predate the field.
+   * Editor line the runtime error maps to; a fault inside a library call
+   * reports the line that made the call. Null on success and on wasm builds
+   * that predate the field.
    */
   error_line: number | null;
   outcome: StepOutcome;
@@ -458,10 +458,8 @@ export async function loadEmulator(): Promise<EmulatorInstance> {
 }
 
 /**
- * Hosted-mode detection routed through the Rust source of truth. The WASM
- * module is the only place that decides, so no TS regex list can drift from
- * the Rust one. First call awaits the WASM load; subsequent calls use the
- * cached module so latency is just the wasm-bindgen marshalling.
+ * Hosted-mode detection asks the wasm module, the one place that decides,
+ * so no TypeScript copy of the rule can drift from the Rust one.
  */
 export async function detectHostedMode(source: string): Promise<boolean> {
   const wasm = await ensureWasmModule();
@@ -469,11 +467,9 @@ export async function detectHostedMode(source: string): Promise<boolean> {
 }
 
 /**
- * The emulator's address bands, read from the module-level `memoryMap`
- * export (mirroring `detectHostedMode`: fixed for the life of the module,
- * so the caller reads it once and keeps it). Returns [] on a wasm build
- * that predates the export, which is the memory panel's cue to fall back to
- * its own section list instead of labelling addresses it cannot verify.
+ * The emulator's address bands, fixed for the life of the module, so read
+ * once and kept. [] on an older wasm build, which tells the memory panel to
+ * use its own section list rather than label addresses it cannot check.
  */
 export async function loadMemoryMap(): Promise<MemoryRegion[]> {
   const wasm = await ensureWasmModule();
