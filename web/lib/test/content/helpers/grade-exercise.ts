@@ -39,8 +39,17 @@ export function codingExercise(slug: string): WriteExercise {
   return exercise;
 }
 
-/** Run to completion with the input then end of input, snapshotted in the checker's hex format. */
-export function runToSnapshot(source: string, args: string[] = [], stdin?: string): CheckerSnapshot {
+/**
+ * Run to completion with the input then end of input, snapshotted in the
+ * checker's hex format. `maxSteps` lets a test cut short a wrong program that
+ * would otherwise print until the output cap stops it.
+ */
+export function runToSnapshot(
+  source: string,
+  args: string[] = [],
+  stdin?: string,
+  maxSteps = 5_000_000,
+): CheckerSnapshot {
   const emu = new Emulator();
   try {
     emu.assemble_and_load_with_args(source, args);
@@ -48,7 +57,9 @@ export function runToSnapshot(source: string, args: string[] = [], stdin?: strin
     emu.close_stdin();
     // run_until_break returns control on halt/break/error/cap, so the loop is
     // bounded by its count, never by the program.
-    for (let i = 0; i < 50 && !emu.is_halted(); i++) emu.run_until_break(100000);
+    for (let ran = 0; ran < maxSteps && !emu.is_halted(); ran += 100000) {
+      emu.run_until_break(Math.min(100000, maxSteps - ran));
+    }
     const hex = (v: bigint): string => "0x" + BigInt(v).toString(16).padStart(16, "0");
     const registers = Array.from({ length: 31 }, (_, i) => hex(emu.get_register(i)));
     const ec = emu.get_exit_code();
@@ -72,10 +83,10 @@ export interface Grade {
 }
 
 /** Grade one program on an exercise: the visible checks, then every hidden input. */
-export async function grade(exercise: WriteExercise, source: string): Promise<Grade> {
+export async function grade(exercise: WriteExercise, source: string, maxSteps?: number): Promise<Grade> {
   const visible = checkExercise(
     exercise.acceptance,
-    runToSnapshot(source, parseArgs(exercise.args ?? ""), exercise.stdin),
+    runToSnapshot(source, parseArgs(exercise.args ?? ""), exercise.stdin, maxSteps),
     source,
   );
   if (!visible.pass) return { pass: false, why: `visible run: ${visible.summary}` };
