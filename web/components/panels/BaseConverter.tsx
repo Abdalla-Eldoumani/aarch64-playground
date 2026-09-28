@@ -118,14 +118,10 @@ interface Message {
 }
 
 /**
- * Hex, octal, binary, decimal, and two's complement, kept in sync as the user
- * types into any of them, plus the IEEE-754 reading at 32 and 64 bits. The
- * canonical value is the bit pattern (lib/asm/base-convert, lib/asm/ieee754);
- * a field being typed in keeps the user's raw text until blur, and text that
- * cannot be a value gets a message right under that field while the last good
- * value stands. Everything here is the user acting, so the accents are cyan;
- * the one amber mark is the sign-bit cap, which is the machine's reading of
- * the pattern, not something the user pressed.
+ * The bit pattern is the one value; every field is a view of it. A field keeps
+ * its raw text until blur, so bad input gets a message while the last good
+ * value stands. Accents are cyan (the user acting) except the amber sign-bit
+ * cap, which is the machine's reading of the pattern.
  */
 export function BaseConverter({
   className = "",
