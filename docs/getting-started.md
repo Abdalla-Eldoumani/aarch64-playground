@@ -97,8 +97,9 @@ and memory, and copies it or a link that reopens the program.
 - The **term** tab is a terminal with the course workflow (`m4`, `gcc`,
   `./program`) and a small `gdb`. See [terminal.md](terminal.md).
 - The **watches** tab evaluates expressions such as `x0`, `*x0`,
-  `[fp, score1_s]`, and `arr[2]` each time the program stops. **memwatch**
-  pins address ranges you name.
+  `[fp, score1_s]`, and `arr[2]` each time the program stops. Name registers
+  directly (`w19`); an m4 alias such as `score1_r` is not understood there.
+  **memwatch** pins address ranges you name.
 - The **convert** tab shows one value as binary, octal, decimal, and hex,
   signed and unsigned, and as an IEEE-754 float at 32 or 64 bits. Click a bit
   to flip it.
