@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aliasPairs, describeLine, extractAliases } from "@/lib/asm/explain-line";
 
 describe("describeLine", () => {
-  it("resolves a known mnemonic to its course-voice summary", () => {
+  it("describes a known mnemonic with its one-line summary", () => {
     const out = describeLine("    mov x0, 1");
     expect(out).not.toBeNull();
     expect(out!.toLowerCase()).toContain("mov");
@@ -55,7 +55,7 @@ describe("extractAliases", () => {
   });
 
   it("does not match a define whose body spans lines", () => {
-    // The emulator's m4 pass is line-based; the gloss must agree.
+    // The emulator's m4 pass reads one line at a time; the explanation must agree.
     const aliases = extractAliases("define(fp,\nx29)\n");
     expect(aliases.fp).toBeUndefined();
   });
