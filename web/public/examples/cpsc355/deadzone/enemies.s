@@ -1,6 +1,7 @@
-// Enemies: a fixed pool of zombies, runners and tanks that spawn from the
-// screen edges, walk toward the player, and advance the wave when enough die.
-// Also holds the linear congruential generator the whole game draws from.
+// Enemies: zombies, runners and tanks kept in a fixed pool (an array of
+// reusable slots). They spawn from the screen edges, walk toward the player,
+// and advance the wave when enough die. Also holds the game's random number
+// generator, an LCG (linear congruential generator): next = a * current + c.
 
 // Enemy structure offsets
 ENEMY_ACTIVE = 0                                // Active flag (1 byte)
@@ -656,7 +657,7 @@ collision_loop:
                 // One live enemy accounted for
                 sub     w3, w3, 1
 
-                // Single-axis reject before touching the second coordinate
+                // Check X first and skip Y when X already differs
                 ldrsh   w2, [x0, ENEMY_X]
                 cmp     w2, w19
                 b.ne    collision_seen
