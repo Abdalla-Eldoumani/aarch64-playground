@@ -2,11 +2,11 @@
   "title": "Fill in the blank: floating point",
   "slug": "blanks-floating-point",
   "order": 110,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "floating-point",
   "difficulty": "core",
   "variant": "blanks",
-  "prompt": "Fill in the missing directive, mnemonics, and gdb command used to declare floating-point values in memory, convert an integer to single precision, and compare and negate in the FP registers.",
+  "prompt": "Fill in the missing directive, mnemonics, and gdb command used to declare floating-point values in memory, convert an integer to single precision, and compare and negate in the floating-point (FP) registers.",
   "blanks": [
     {
       "prompt": "Reserve and initialize four bytes in the .data section holding the single-precision value 5.0.",
@@ -43,7 +43,7 @@
       "blanks": [
         "fcmp"
       ],
-      "explanation": "fcmp Sn, Sm compares the two registers and writes NZCV, so a following conditional branch such as b.ge acts on the result. If either operand is NaN the comparison is unordered, which sets C and V.",
+      "explanation": "fcmp Sn, Sm compares the two registers and writes NZCV, so a following conditional branch such as b.ge acts on the result. If either operand is NaN (not a number) the comparison is unordered, which sets C and V.",
       "hint": "Floating-point compare."
     },
     {
