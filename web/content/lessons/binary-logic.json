@@ -2,7 +2,7 @@
   "title": "Binary logic: masks, flags, and tst",
   "slug": "binary-logic",
   "order": 14,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Set, clear, flip and test chosen bits of a register with orr, bic, eor, and and tst, using masks.",
   "tags": [
     "binary logic",
@@ -20,7 +20,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## And, or, exclusive or, not\n\nEach logic operation takes one bit from each operand and gives one bit back:\n\n| a | b | a AND b | a OR b | a XOR b |\n|---|---|---|---|---|\n| 0 | 0 | 0 | 0 | 0 |\n| 0 | 1 | 0 | 1 | 1 |\n| 1 | 0 | 0 | 1 | 1 |\n| 1 | 1 | 1 | 1 | 0 |\n\nAND is 1 only in the rows where a and b are both 1. OR is 1 whenever at least one of them is. *Exclusive or* (XOR) gives 1 where the two bits differ. NOT takes a single bit and flips it. Applied to whole registers, `1100` AND `1010` is `1000`, OR is `1110`, and XOR is `0110`.\n\nA64 spells these as instructions, each working on all 32 bits of a `w` register or all 64 bits of an `x` register at once:\n\n| instruction | result |\n|---|---|\n| `and d, n, m` | n AND m |\n| `orr d, n, m` | n OR m |\n| `eor d, n, m` | n XOR m |\n| `bic d, n, m` | n AND (NOT m), called bit clear |\n| `orn d, n, m` | n OR (NOT m) |\n| `eon d, n, m` | n XOR (NOT m) |\n| `mvn d, m` | NOT m |\n\nTwo familiar instructions are logic instructions underneath: `mov x19, x20` is `orr x19, xzr, x20` (OR with zero changes nothing), and `mvn` is `orn` with the zero register as its first source."
+      "markdown": "## And, or, exclusive or, not\n\nEach logic operation takes one bit from each operand and gives one bit back:\n\n| a | b | a AND b | a OR b | a XOR b |\n|---|---|---|---|---|\n| 0 | 0 | 0 | 0 | 0 |\n| 0 | 1 | 0 | 1 | 1 |\n| 1 | 0 | 0 | 1 | 1 |\n| 1 | 1 | 1 | 1 | 0 |\n\nAND is 1 only in the rows where a and b are both 1. OR is 1 whenever at least one of them is. *Exclusive or* (XOR) gives 1 where the two bits differ. NOT takes a single bit and flips it. Applied to whole registers, `1100` AND `1010` is `1000`, OR is `1110`, and XOR is `0110`.\n\nAArch64 spells these as instructions, each working on all 32 bits of a `w` register or all 64 bits of an `x` register at once:\n\n| instruction | result |\n|---|---|\n| `and d, n, m` | n AND m |\n| `orr d, n, m` | n OR m |\n| `eor d, n, m` | n XOR m |\n| `bic d, n, m` | n AND (NOT m), called bit clear |\n| `orn d, n, m` | n OR (NOT m) |\n| `eon d, n, m` | n XOR (NOT m) |\n| `mvn d, m` | NOT m |\n\nTwo familiar instructions are logic instructions underneath: `mov x19, x20` is `orr x19, xzr, x20` (OR with zero changes nothing), and `mvn` is `orn` with the zero register as its first source."
     },
     {
       "type": "prose",
@@ -28,7 +28,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Status effects as flags\n\nA game might keep a character's status effects as four flags in one word:\n\n| bit | mask | effect |\n|---|---|---|\n| 0 | `0x1` | poisoned |\n| 1 | `0x2` | invisible |\n| 2 | `0x4` | flying |\n| 3 | `0x8` | shielded |\n\nThe program below gives each mask an m4 name, so the code says `POISONED` instead of `0x1`. In `FLYING | SHIELDED`, the `|` means OR, worked out by the assembler before the program runs, so that operand is the constant `0xc`. `bic` takes its mask from a register here, so the mask goes into `w9` first.\n\nThe status word has to survive every `printf` call, so it lives in `w19`. This `main` uses `w19` without saving it first, as the programs in these lessons do. A subroutine you write yourself has to save any of x19 to x28 that it changes."
+      "markdown": "## Status effects as flags\n\nA game might keep a character's status effects as four flags in one word:\n\n| bit | mask | effect |\n|---|---|---|\n| 0 | `0x1` | poisoned |\n| 1 | `0x2` | invisible |\n| 2 | `0x4` | flying |\n| 3 | `0x8` | shielded |\n\nThe program below names each mask with `define`, so the code says `POISONED` instead of `0x1`. In `FLYING | SHIELDED`, the `|` means OR, worked out by the assembler before the program runs, so that operand is the constant `0xc`. `bic` takes its mask from a register here, so the mask goes into `w9` first.\n\nThe status word has to survive every `printf` call, so it lives in `w19`. This `main` uses `w19` without saving it first, as the programs in these lessons do. A subroutine you write yourself has to save any of x19 to x28 that it changes."
     },
     {
       "type": "editor",
