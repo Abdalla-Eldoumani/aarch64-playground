@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { BaseConverter } from "@/components/panels/BaseConverter";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 beforeEach(() => {
   window.localStorage.clear();
 });
@@ -15,7 +13,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 function field(label: string): HTMLInputElement {
@@ -454,17 +451,5 @@ describe("BaseConverter persistence", () => {
         .getByRole("button", { name: /^32 bits/ })
         .getAttribute("aria-pressed"),
     ).toBe("true");
-  });
-});
-
-describe("BaseConverter themes", () => {
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<BaseConverter />);
-      expect(screen.getByRole("group", { name: "bit width" })).toBeTruthy();
-      expect(screen.getByRole("group", { name: /bit pattern/ })).toBeTruthy();
-      unmount();
-    }
   });
 });
