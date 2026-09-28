@@ -30,6 +30,7 @@ const DOM_LIB_TESTS = [
   "lib/test/playground/solved-state.test.ts",
   "lib/test/playground/use-terminal-drive.test.ts",
   "lib/test/playground/use-working-set.test.ts",
+  "lib/test/playground/walkthrough.test.ts",
 ];
 
 export default defineConfig({
