@@ -204,7 +204,7 @@ describe("InteractiveExerciseView saved answers", () => {
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "3" } });
     expect(storedAnswer("trace-the-adds")).toMatchObject({ kind: "predict", answers: ["3"] });
   });
-  it("keeps a question that was checked and right answered across a reload", () => {
+  it("keeps a checked, correctly answered question across a reload", () => {
     render(<InteractiveExerciseView exercise={QUIZ} />);
     fireEvent.click(screen.getByRole("button", { name: "x29" }));
     fireEvent.click(screen.getAllByRole("button", { name: "check answer" })[0]);
