@@ -1,17 +1,12 @@
-//! scanf implementation. Supports `%d %u %x %s %c %f` with maximum
-//! field widths honored (`%4s` writes at most 4 bytes plus NUL, `%2d`
-//! parses at most 2 digits), plus literal whitespace in the format
-//! matching any number of input whitespace characters. Pointer varargs
-//! follow AAPCS64 (x1..x7 then the caller's stack), sharing printf's
-//! walker.
+//! scanf: `%d %i %u %x %s %c %f` with field widths honored (`%4s` writes
+//! at most 4 bytes plus NUL), and whitespace in the format matching any run
+//! of input whitespace. Pointer arguments come through the `VarargWalker`
+//! printf uses (x1..x7, then the caller's stack).
 //!
-//! When stdin runs out mid-field, scanf returns `NeedInput` WITHOUT
-//! consuming the partial match. The caller pauses the run loop; on
-//! resume, scanf re-parses from the original offset so the student's
-//! input arrives as one logical read.
-//!
-//! Return convention (x0): the number of fields successfully matched,
-//! or -1 on early end-of-input before any field.
+//! When stdin runs out mid-field, scanf returns `NeedInput` without using
+//! up the partial match, and reads again from where it started once input
+//! arrives, so the student's input lands as one read. x0 returns the
+//! fields matched, or -1 when input ended before the first one.
 
 use crate::errors::EmuError;
 use crate::hosted::printf::read_c_string;
