@@ -1,4 +1,4 @@
-# CPSC 355 playground
+# AArch64 Playground
 
 A browser-based AArch64 (ARMv8) assembly emulator and visual debugger for
 CPSC 355 at the University of Calgary. Paste an unmodified course tutorial,
@@ -25,17 +25,18 @@ Live at <https://aarch64-playground.com>.
 - **Practice** (`/practice`): coding exercises checked by running your
   program against expected behavior (registers, exit code, stdout), never
   against a stored answer, so any correct approach passes; plus quizzes,
-  fill-in-the-blank drills, and mental-trace prediction sets graded right
-  on the page.
+  fill-in-the-blank drills, and prediction sets where you work out by hand
+  what a piece of code does, all graded right on the page.
 - **Reference** (`/reference`): a searchable reference for all 398
   mnemonics the assembler accepts, with worked encodings and interactive
   flag panels, a calling-convention guide with a step-through frame walk,
   and a pitfalls catalog with runnable examples, kept in sync with what the
   emulator supports.
-- **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
-  sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
-  AAPCS64 `printf`/`scanf` path and the wider libc surface that student and
-  gcc-compiled code reach for, Linux syscalls via `svc 0`, argc/argv on
+- **Programs run as they do on the course server**: m4 register-alias
+  macros, GAS directives and sections, frame-pointer prologues, the
+  `ldr xN, =label` literal pool, `printf`/`scanf` called the standard AArch64
+  way (AAPCS64) and the rest of the C library that student and gcc-compiled
+  code calls, Linux syscalls via `svc 0`, argc/argv on
   entry, and single- and double-precision floating point (the `s`/`d`
   register views with `fcvt` between them). Beyond the course's own
   instructions it assembles what gcc reaches for: conditional compares, the
@@ -46,19 +47,20 @@ Live at <https://aarch64-playground.com>.
   base set assembles and runs too: the 128-bit `v0`–`v31` file, the lane
   arrangements over it, the by-element and permute forms, and the
   `LD1`-`LD4` structure loads and stores, with six vector example programs
-  to read. Every form is held to a capture taken on the course server, both
-  the word GNU `as` produces and the bytes the instruction moves; the
-  extension families that server refuses without an architecture directive
-  stay out, listed by ARM feature name in the instruction reference. A
-  tracked corpus of fifty gcc-compiled C programs is replayed against real
-  AArch64 server outputs byte for byte: at `-O0` as a gate on every change,
-  and at `-O2` as a coverage map of the forms the optimizer emits.
+  to read. Every form is checked against what the course server produces:
+  the 32-bit instruction word from GNU `as`, and the bytes the instruction
+  moves when it runs; the extension families that server refuses without an
+  architecture directive stay out, listed by ARM feature name in the
+  instruction reference. Fifty gcc-compiled C programs run here and must
+  match a real AArch64 server's output byte for byte: at `-O0` every change
+  has to pass them, and at `-O2` they track the extra forms the optimizer
+  emits.
 - **Fully client-side and installable**: runs offline as a PWA. The emulator
-  runs in a Web Worker with a main-thread fallback, and is bounded so a
-  runaway program halts cleanly instead of freezing the tab. The landing
-  page ships no editor code at all: it draws its program as static text, and
-  the editor arrives only when you open the playground or an embed you can
-  type into.
+  runs in a Web Worker with a main-thread fallback, and has step and memory
+  limits, so a runaway program stops cleanly instead of freezing the tab.
+  The landing page ships no editor code at all: it draws its program as
+  static text, and the editor arrives only when you open the playground or
+  an embed you can type into.
 
 ## Quickstart
 
