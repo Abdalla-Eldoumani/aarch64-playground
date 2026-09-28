@@ -1,25 +1,19 @@
-//! m4 preprocessing for cpsc 355 source. Supports a narrow subset:
+//! m4 preprocessing for CPSC 355 source. Supports a narrow subset:
 //!
-//!   * define(NAME, BODY): whole-token substitution of NAME with BODY
-//!     anywhere it appears later in the source. Use for register aliases
+//!   * define(NAME, BODY) and undefine(NAME): whole-token substitution of
+//!     NAME on the lines below it. Use for register aliases
 //!     (`define(score1_r, w19)`), not for numeric values.
-//!   * NAME = EXPRESSION at top level. Recorded separately and left in the
-//!     expanded output as-is so the parser can produce a symbol-assignment
-//!     item whose body is evaluated at that exact point in the section.
-//!     This matters for `msg_len = . - msg - 1` where `.` means "the byte
-//!     offset at the line of the assignment", not "wherever msg_len is
-//!     eventually used".
-//!   * Recursive expansion to a fixed point, bounded at 32 rounds so loops
-//!     fail loudly instead of hanging.
-//!   * // and ; line comments stripped before substitution, so comment text
-//!     never participates.
-//!   * Source map tracking: expand() returns a line map so later errors
-//!     point at the original source line the student wrote, even for lines
-//!     that were substituted or emptied.
+//!   * NAME = EXPRESSION lines pass through untouched, so the parser can
+//!     evaluate them where they sit: in `msg_len = . - msg - 1`, `.` is
+//!     the address of that line, not of wherever msg_len is used.
+//!   * Expansion repeats until nothing changes, capped at 32 rounds so a
+//!     loop fails with an error instead of hanging.
+//!   * Comments are stripped first, so comment text never expands.
+//!   * Line numbers stay aligned, so errors point at the line the student
+//!     wrote.
 //!
 //! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting) fails with
-//! an "unsupported m4 construct" error at the offending line. The tutorial
-//! corpus sticks to the subset above.
+//! an "unsupported m4 construct" error at the offending line.
 
 use std::collections::HashMap;
 
@@ -60,12 +54,9 @@ pub struct Expanded {
     /// text so it can pin each one to the right section/offset.
     pub assignments: HashMap<String, String>,
     /// Every `define()`/`undefine()` in source order: `(1-based line, name,
-    /// body)` with `None` for an undefine. `defines` collapses a redefined
-    /// name onto its LAST body, which is the wrong answer for anything
-    /// that reports a binding against a source line: a warning about
-    /// `define(size, w19)` would quote `w21` when a later stretch of the
-    /// file rebinds the name. Readers that care about a line walk
-    /// these instead, through `define_body_at`.
+    /// body)` with `None` for an undefine. `defines` keeps only a name's
+    /// LAST body, so a warning about `define(size, w19)` would quote a later
+    /// `w21`; anything reporting against a line reads `define_body_at`.
     pub define_events: Vec<(usize, String, Option<String>)>,
     /// Names whose bindings are windowed (redefined or undefined) rather
     /// than file-wide. For every other name `defines` is exact everywhere.
@@ -73,10 +64,9 @@ pub struct Expanded {
 }
 
 impl Expanded {
-    /// The `define()` body in effect for `name` at 1-based source `line`,
-    /// mirroring expansion's own rule: a name defined once and never
-    /// undefined binds across the whole file (so forward references work),
-    /// while a redefined or undefined name binds only over its own window.
+    /// The `define()` body in effect for `name` at 1-based source `line`. A
+    /// name defined once and never undefined binds across the whole file; a
+    /// redefined or undefined name binds only over its own stretch.
     pub fn define_body_at(&self, name: &str, line: usize) -> Option<&str> {
         if !self.windowed.contains(name) {
             return self.defines.get(name).map(String::as_str);
@@ -162,13 +152,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         stripped.push(without_comment.to_string());
     }
 
-    // Classify the names. A name defined once and never undefined
-    // substitutes across the whole file, so forward references keep
-    // working (the playground's long-standing convenience). A name that
-    // is redefined or undefined follows GNU m4's sequential windows
-    // instead: per-function register aliases like `define(size, w19)` ...
-    // `undefine(`size')` ... `define(size, w21)` must take each body only
-    // over its own stretch of the file.
+    // Find the names defined more than once or undefined, such as
+    // per-function aliases (`define(size, w19)` ... `define(size, w21)`).
     let mut define_count: HashMap<&str, usize> = HashMap::new();
     let mut undefined_names: std::collections::HashSet<&str> =
         std::collections::HashSet::new();
@@ -198,15 +183,11 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     }
     let mut current: HashMap<String, String> = HashMap::new();
 
-    // Pass 2: substitute `define()` aliases only. Assignment aliases are
-    // left untouched so the parser sees `name = expr` verbatim. GNU m4 is
-    // strictly sequential: a define binds only the text below it, and a
-    // forward reference stays unexpanded (and then fails to assemble,
-    // exactly as it does on the course servers), so `current` starts
-    // empty and picks every binding up (and drops it on undefine) as the
-    // walk passes its line. A whole-file map would serve forward
-    // references here, which makes code work in the playground that the
-    // servers reject.
+    // Pass 2: substitute `define()` aliases only; `name = expr` lines stay
+    // verbatim for the parser. GNU m4 is sequential: a define binds only
+    // the text below it, so a use above it stays unexpanded and fails to
+    // assemble, as on the course servers. `current` picks each binding up
+    // (and drops it on undefine) as the walk reaches its line.
     let mut events = define_events.iter().peekable();
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
@@ -282,13 +263,11 @@ fn expand_recursively(
     Ok(current)
 }
 
-/// One expansion round with the per-line byte cap applied DURING the
-/// substitution. Materializing the whole result and measuring it
-/// afterwards lets a chain that multiplies its input every round allocate
-/// the full expansion first: a body that reaches 10^11 bytes needs ~100 GB
-/// before the cap can fire, which on wasm32 is an allocation abort, not an
-/// error message. The ceiling never drops below the input, so a line that
-/// is already long but does not grow still passes.
+/// One expansion round with the per-line byte cap checked while the line
+/// is built. Measuring the finished line would let a chain that multiplies
+/// every round allocate gigabytes first, which aborts wasm instead of
+/// giving an error. The cap never drops below the input's length, so a long
+/// line that does not grow still passes.
 fn substitute_bounded(
     line: &str,
     defines: &HashMap<String, String>,
@@ -333,13 +312,11 @@ pub(crate) fn substitute_once_gnu(
     substitute_pass(line, defines, limit, false)
 }
 
-/// Everything outside an identifier is copied as a byte-exact slice of the
-/// input, never widened through `as char`: widening a byte >= 0x80 (a
-/// latin-1 promotion) re-encodes it as two UTF-8 bytes, so a single pasted
-/// NBSP or accented letter doubled every round and expansion could never
-/// reach its fixed point. Slice boundaries here always sit on ASCII bytes
-/// (quotes, identifier edges, `#`) or the end of the line, so the slicing
-/// is UTF-8 safe even while the scan itself walks raw bytes.
+/// Text outside an identifier is copied as a byte slice of the input, never
+/// through `as char`, which re-encodes a byte >= 0x80 as two UTF-8 bytes:
+/// one pasted accented letter then doubled every round and expansion never
+/// settled. Slices start and end on ASCII bytes or the line end, so
+/// slicing stays UTF-8 safe while the scan walks raw bytes.
 fn substitute_pass(
     line: &str,
     defines: &HashMap<String, String>,
@@ -409,14 +386,11 @@ fn substitute_pass(
     Some(out)
 }
 
-/// Blank C-style `/* ... */` block comments across the whole source,
-/// keeping every newline inside them so line numbers stay aligned with
-/// the editor. String and char literals are respected; `//` line comments
-/// are copied through untouched (the per-line `strip_comment` below owns
-/// them), so a `/*` inside one never opens a block. Literal state resets
-/// at each newline because both literal forms are single-line in
-/// assembly, which keeps a stray quote from poisoning the rest of the
-/// file.
+/// Blank `/* ... */` comments across the whole source, keeping their
+/// newlines so line numbers match the editor. A `/*` inside a literal or a
+/// `//` comment (left for `strip_comment`) never opens a block. Literal
+/// state resets at each newline because assembly literals are single-line,
+/// so one stray quote cannot swallow the rest of the file.
 fn strip_block_comments(source: &str) -> Result<String, EmuError> {
     if !source.contains("/*") {
         return Ok(source.to_string());
