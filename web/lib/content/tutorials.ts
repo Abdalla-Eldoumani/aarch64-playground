@@ -186,9 +186,9 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Verify the result",
         body:
-          "After find_max returns, w20 holds the max. The final printf formats it. Step past the printf and check w0 in the register panel: it should be 70.",
+          "find_max returns the max in w0, and main copies it into w20 at once, because printf returns the number of characters it printed in w0. Step past the final printf and check w20 in the register panel: it should be 70, while w0 now holds 14, the length of `Max value: 70` and its newline.",
         highlight: { start: 89, end: 96 },
-        expect: { reg: "w0", value: 70, note: "max of arr is 70" },
+        expect: { reg: "w20", value: 70, note: "max of arr is 70" },
       },
     ],
   },
