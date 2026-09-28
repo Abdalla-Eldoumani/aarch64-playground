@@ -1,22 +1,8 @@
 /**
- * localStorage behind one window guard and one try/catch, for every surface
- * that persists something: the panels, the generic hooks, the workspace
- * stores, the backend picker.
- *
- * Both defenses are needed at every site. There is no `window` during SSR, and
- * a real browser can still throw on the property access itself (a sandboxed
- * iframe, a third-party context with site data blocked) or on the write (quota,
- * private mode). Hand-rolled per module, five call sites carried the try/catch
- * and no window guard.
- *
- * A read degrades to null, so a caller's "nothing stored" path covers a
- * broken store too. A write reports whether the value actually reached
- * storage: swallowing that let a named save render the STALE record as if
- * the update had landed. Removal has no caller that can act on the outcome,
- * so it stays void.
- *
- * localStorage only. Nothing here uses sessionStorage; add it when something
- * does, rather than mirroring an API no one calls.
+ * localStorage behind a window check and a try/catch: there is no `window`
+ * on the server, and a browser can throw on any access (sandboxed iframe,
+ * blocked site data, full quota, private mode). Reads fall back to null;
+ * writes return whether they landed, so a failed save never shows as saved.
  */
 
 export function safeGetItem(key: string): string | null {
@@ -50,10 +36,8 @@ export function safeRemoveItem(key: string): void {
 }
 
 /**
- * Every key currently in localStorage, for the one store that is spread
- * across a key per record (the per-exercise practice answers) and has to
- * find them all to build an export. Degrades to an empty list, so a caller
- * reads "nothing stored" from a broken store too.
+ * Every localStorage key, so the practice answers (one key per exercise) can
+ * all be found for an export. A broken store reads as empty.
  */
 export function safeKeys(): string[] {
   if (typeof window === "undefined") return [];
