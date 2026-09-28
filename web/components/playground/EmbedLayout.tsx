@@ -59,9 +59,10 @@ const SECONDARY =
 /**
  * The embedded frame: code, registers, console, and a few controls. The
  * embed-grid rules in globals.css follow the frame's own width, not the
- * viewport. Under 38rem it shows one pane at a time behind a switch, since
- * three stacked panes left the registers no room for a row; CSS hides the
- * switch and the status line in a wider frame.
+ * viewport. A frame under 56rem on a screen under 640px or a touch screen
+ * shows one pane at a time behind a switch, since stacked panes there left no
+ * room for a register row or the console's input; CSS hides the switch and
+ * the status line everywhere else.
  */
 export function EmbedLayout({
   editor,
