@@ -3,11 +3,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 /**
- * WCAG contrast over the pairs components actually compose, read from the
- * real stylesheet. Token-level fg-on-surface checks never see a background
- * TOKEN paired with a text token (the memory panel's changed-byte cell
- * paints bg-[--amber-dim] under text-[--text-primary]), which is exactly
- * how the high-contrast theme once shipped a 2.8:1 highlight.
+ * WCAG contrast for the background and text pairs components actually
+ * compose, read from the real stylesheet. Checking text only against the
+ * page backgrounds is how high-contrast once shipped a 2.8:1 highlight.
  */
 
 // Line endings normalized so the block lookups hold on a CRLF checkout.
@@ -51,13 +49,13 @@ describe("theme token contrast", () => {
   for (const [theme, selector] of Object.entries(THEMES)) {
     const t = themeTokens(selector);
 
-    it(`${theme}: the changed-byte highlight clears AA under its text`, () => {
+    it(`${theme}: the changed-byte highlight keeps 4.5:1 contrast with its text`, () => {
       // MemoryPanel.tsx composes bg-[var(--amber-dim)] with
       // text-[var(--text-primary)] on the byte that just changed.
       expect(contrast(t["amber-dim"], t["text-primary"])).toBeGreaterThanOrEqual(4.5);
     });
 
-    it(`${theme}: the filled cyan-dim buttons clear their bar under their label`, () => {
+    it(`${theme}: the filled cyan-dim buttons keep 4.5:1 contrast with their label, 7:1 in high-contrast`, () => {
       // The panels' and dialogs' primary buttons (share, bundle, tutorials,
       // saves, watches) paint bg-[var(--cyan-dim)] under
       // text-[var(--text-primary)]; high-contrast shipped that pair at 3.1:1.
@@ -65,7 +63,7 @@ describe("theme token contrast", () => {
       expect(contrast(t["cyan-dim"], t["text-primary"])).toBeGreaterThanOrEqual(bar);
     });
 
-    it(`${theme}: primary and secondary ink clear AA on both surfaces`, () => {
+    it(`${theme}: primary and secondary text keep 4.5:1 contrast on both backgrounds`, () => {
       for (const ink of ["text-primary", "text-secondary"]) {
         for (const surface of ["bg-base", "bg-panel"]) {
           expect(
