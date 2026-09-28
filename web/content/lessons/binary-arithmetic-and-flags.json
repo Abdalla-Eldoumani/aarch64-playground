@@ -2,7 +2,7 @@
   "title": "Binary arithmetic: flags, carries, and wide numbers",
   "slug": "binary-arithmetic-and-flags",
   "order": 16,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Predict the N, Z, C and V flags after an add or a subtract, pick a signed or an unsigned branch, and add numbers wider than 64 bits.",
   "tags": [
     "binary arithmetic",
@@ -132,7 +132,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Multiplying with shifts and adds\n\nLong multiplication is simpler in binary than in decimal because each digit of the multiplier is 0 or 1. A 0 digit adds nothing. A 1 digit at bit position k adds the multiplicand shifted left k places, which is the multiplicand times 2^k. 11 is `1011` in binary, so 13 x 11 works out like this:"
+      "markdown": "## Multiplying with shifts and adds\n\nLong multiplication is simpler in binary than in decimal because each digit of the multiplier (the number you multiply by) is 0 or 1. A 0 digit adds nothing. A 1 digit at bit position k adds the multiplicand (the number being multiplied) shifted left k places, which is the multiplicand times 2^k. 11 is `1011` in binary, so 13 x 11 works out like this:"
     },
     {
       "type": "code",
