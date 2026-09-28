@@ -1,13 +1,9 @@
 import type { Action } from "@/lib/playground/commands";
 
 /**
- * Everything the palette table needs to read or call. It is a parameter
- * rather than a hub reference because the table is the one part of the
- * playground shell with no state of its own: the machine facts arrive as
- * plain booleans, the effects arrive as callbacks, and the builder stays a
- * pure function of them. The guards below (a blocked read swallows step,
- * back, and run) belong to the table, not to its caller: the palette rows
- * must no-op exactly where the disabled buttons do.
+ * Everything the palette rows read or call, passed in so the builder stays a
+ * pure function. The guards (a blocked read swallows step, back, and run) live
+ * here so a row does nothing exactly where its disabled button does nothing.
  */
 export type PaletteDeps = {
   /** Machine is parked on a read; step / back / run cannot pass it. */
@@ -51,18 +47,16 @@ function downloadSource(source: string, filename: string): void {
 }
 
 /**
- * The command palette's rows, rebuilt each time the palette opens so a
- * description can name the state the machine is actually in. Rows are never
- * dropped for being unavailable: a row that only sometimes exists is
- * unfindable by the student who saw it once, so the description carries the
- * reason it would do nothing instead.
+ * Rebuilt each time the palette opens so a description can name the current
+ * state. An unavailable row stays and says why it would do nothing: a row that
+ * only sometimes exists is one a student cannot find again.
  */
 export function buildPaletteCommands(deps: PaletteDeps): Action[] {
   return [
     {
       id: "assemble",
       label: "Assemble",
-      description: "parse source and load into memory",
+      description: "turn the source into machine code and load it into memory",
       shortcut: "F6",
       run: () => deps.assemble(),
     },
@@ -97,11 +91,8 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "run",
       label: "Run",
-      // The list is rebuilt every time the palette opens, so the
-      // description can name the surface this program's run lands in
-      // rather than describing only the console flow. In terminal mode
-      // with nothing assembled, run IS the launch, so it says so
-      // instead of sending the student to the assemble button.
+      // In terminal mode with nothing assembled, run is the launch, so it
+      // says so instead of sending the student to the assemble button.
       description: deps.blocked
         ? "(waiting for stdin; feed the console first)"
         : deps.launchable
@@ -184,14 +175,14 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "help",
       label: "Keyboard shortcuts",
-      description: "open the shortcuts help modal",
+      description: "list every keyboard shortcut",
       shortcut: "?",
       run: () => deps.openShortcuts(),
     },
     {
       id: "import-file",
       label: "Import file",
-      description: "open the file picker and load assembly into the active buffer",
+      description: "load an assembly file from your computer into the open tab",
       run: () => {
         // ImportExport marks its hidden picker with this attribute; matching on
         // the accept list instead let the two drift and the row find no input.
@@ -204,19 +195,19 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "download-asm",
       label: "Download as .asm",
-      description: "save the current buffer to your computer",
+      description: "save main.asm to your computer as program.asm",
       run: () => downloadSource(deps.source, "program.asm"),
     },
     {
       id: "download-s",
       label: "Download as .s",
-      description: "save the current buffer with the .s extension",
+      description: "save main.asm to your computer as program.s",
       run: () => downloadSource(deps.source, "program.s"),
     },
     {
       id: "copy-source",
       label: "Copy source to clipboard",
-      description: "copy the current buffer for pasting elsewhere",
+      description: "copy main.asm for pasting elsewhere",
       run: () => {
         void navigator.clipboard?.writeText(deps.source);
       },
@@ -224,7 +215,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "open-source",
       label: "View source on GitHub",
-      description: "open the playground repo in a new tab",
+      description: "open the playground's code on GitHub in a new tab",
       run: () => {
         window.open(
           "https://github.com/Abdalla-Eldoumani/aarch64-playground",
