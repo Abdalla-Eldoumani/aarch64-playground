@@ -10,7 +10,7 @@
 <text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">04 · ADDRESS SPACE</text>
 <text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">Where a program lives while it runs</text>
 <line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
-<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 4/4</text>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · diagram 4 of 4</text>
 <rect x="40" y="120" width="150" height="46" fill="#F6EBD3" stroke="#81520C"/>
 <text x="115.0" y="147.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">host stubs</text>
 <text x="204" y="132" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0xFFFF_1000</text>
@@ -53,13 +53,13 @@
 <text x="115.0" y="535.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">.text</text>
 <text x="204" y="520" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0050_0000</text>
 <text x="204" y="550" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0040_0000</text>
-<text x="310" y="535.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">1 MiB window; entry at main, LR seeded with __main_return</text>
+<text x="310" y="535.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">1 MiB window; entry at main; LR points at a stub that ends the run when main returns</text>
 <rect x="40" y="554" width="150" height="46" fill="#FFFFFF" stroke="#14161A"/>
 <text x="115.0" y="581.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">null page</text>
 <text x="204" y="566" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0000_1000</text>
 <text x="204" y="596" font-size="10.5" fill="#8A929C" font-weight="400" text-anchor="start">0x0000_0000</text>
 <text x="310" y="581.0" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">never mapped: a load or store here faults like Linux (SIGSEGV)</text>
 <text x="40" y="626" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Memory is a sparse map of 4 KiB pages keyed by page base: the first write to a page maps it, and a page a snapshot frame</text>
-<text x="40" y="642" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">still shares is copied on write. Unaligned loads and stores succeed, as on Linux userspace; a misaligned sp at a libc call is a bus error.</text>
+<text x="40" y="642" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">still shares is copied on write. Unaligned loads and stores succeed as on Linux; a load or store through a misaligned sp, or a libc call made with one, is a bus error.</text>
 <text x="40" y="658" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">The memory panel reads this map through the memoryMap export, so its jump list cannot drift from the constants the loader uses.</text>
 </svg>
