@@ -1,12 +1,6 @@
-//! End-to-end integration tests for the hosted runtime. These
-//! build a tiny program in memory, wire up host stubs, and drive it
-//! through `Cpu::run_until_break` to prove that printf, scanf, and the
-//! write/read/exit syscalls all produce the right output once the full
-//! pipeline runs.
-//!
-//! The linker resolves `bl printf` and `ldr xN, =label` for source
-//! programs; these tests drive the same machinery with hand-built
-//! binaries, one layer at a time.
+//! The hosted runtime end to end: printf, scanf, exit, and the write and
+//! exit syscalls, first on hand-built machine code so each layer is checked
+//! on its own, then on source through the full assembler and linker.
 
 use aarch64_emulator::cpu::{Cpu, CODE_BASE, STACK_BASE};
 use aarch64_emulator::hosted::libc;
@@ -55,11 +49,9 @@ fn load_imm64(rd: u8, value: u64, out: &mut Vec<u32>) {
 
 #[test]
 fn printf_spills_ninth_int_arg_to_stack() {
-    // AAPCS64: x0 = fmt, x1..x7 = vararg ints 1..7. Beyond x7, ints
-    // spill to the stack starting at SP+0, advancing 8 bytes per arg.
-    // 3 doubles all fit in d0..d2 so no fp spill happens here; this
-    // test exercises the int-spill path the corpus would otherwise
-    // never reach.
+    // Past x7, integer arguments go on the stack from SP, 8 bytes each. The
+    // three doubles fit in d0..d2, so only the integer spill runs here, a
+    // path the example programs never reach.
     let mut cpu = Cpu::new();
     let printf_addr = cpu.host.register("printf", printf::printf);
 
@@ -100,11 +92,9 @@ fn printf_spills_ninth_int_arg_to_stack() {
 
 #[test]
 fn printf_int_and_float_spill_share_stack_cursor() {
-    // The shared-NSAA case: enough ints AND enough doubles to spill
-    // both register files, so the walker must advance ONE stack
-    // cursor (not two independent ones). With the old code each type
-    // had its own (idx-8)*8 formula and the spilled int + spilled
-    // double would collide at SP+0.
+    // Enough ints and doubles to spill both kinds, so both must share one
+    // stack cursor. With a cursor per kind, int 8 and double 9 both landed
+    // at SP+0.
     let mut cpu = Cpu::new();
     let printf_addr = cpu.host.register("printf", printf::printf);
 
@@ -278,8 +268,8 @@ fn run_source(source: &str) -> (String, Option<i64>, bool) {
 
 #[test]
 fn hosted_pipeline_runs_hello_world_via_syscall() {
-    // Minimal week-13-flavored source: .data string, ldr xN, =label,
-    // write syscall, halt.
+    // The smallest hosted program: a .data string, `ldr xN, =label`, the
+    // write syscall, then exit.
     let src = r#"
 .text
 .global main
@@ -380,11 +370,8 @@ fn bare_metal_style_svc_zero_with_x8_zero_still_halts() {
 
 #[test]
 fn hosted_pipeline_frame_locals_via_assignment_alias() {
-    // Regression for frame-local addressing through a `name = expr` alias
-    // (`score2_s = 20`). The pipeline resolves the alias at the point it
-    // appears in the section walk, and `lower_operands` then substitutes
-    // the numeric offset into the LDR so the legacy encoder can accept
-    // the scaled unsigned offset form.
+    // A frame offset named with `name = expr` (`score2_s = 20`) has to
+    // become a number before the ldr/str that uses it is encoded.
     let src = r#"
 define(fp, x29)
 define(lr, x30)
@@ -469,9 +456,8 @@ main:
 
 #[test]
 fn hosted_pipeline_string_literal_containing_bl_is_left_alone() {
-    // `.string "bl printf"` lives in `.rodata` as `Item::Bytes`, so the
-    // redirect never sees those tokens; this regression-pins that the
-    // bytes survive verbatim regardless of what trampolines exist.
+    // A `bl printf` inside a string is data: the call redirect must leave
+    // those bytes alone whatever trampolines exist.
     let src = r#"
 .text
 .global main
@@ -496,10 +482,8 @@ fake_bl:
 
 #[test]
 fn hosted_pipeline_main_return_halts_with_exit_code() {
-    // Programs that fall off the end of `main` via `ret` expect the
-    // runtime to treat that as `exit(w0)`. The loader stashes a sentinel
-    // `__main_return` host-stub address in LR so the final `ret` lands
-    // on a stub that halts with the caller's w0 as the exit code.
+    // A `ret` from main acts as `exit(w0)`: the loader points LR at a stub
+    // that halts with w0 as the exit code.
     let src = r#"
 .text
 .global main
@@ -517,9 +501,8 @@ main:
 
 #[test]
 fn step_back_restores_registers_and_memory() {
-    // Three movz instructions walking w0 from 0->1->2->3. Stepping
-    // forward three times sets x0=3; stepping back twice should put
-    // x0 back at 1 and then back at 0. PC should track too.
+    // Four movz set x0 to 0, 1, 2, 3 in turn. Stepping back must restore
+    // both x0 and pc.
     let mut cpu = Cpu::new();
     let movz0 = 0xD280_0000; // movz x0, #0
     let movz1 = 0xD280_0020; // movz x0, #1
@@ -552,8 +535,7 @@ fn step_back_restores_registers_and_memory() {
 fn step_back_restores_memory_writes() {
     // STR w1, [x0] writes to memory; step-back should unwrite it.
     let mut cpu = Cpu::new();
-    // movz x0, #0x7000 (lsl #16) then a write. Keep it simple: hand-
-    // build a tiny program that stores at address 0x00700000.
+    // x0 and x1 are set directly, so the program is just the store.
     cpu.regs.write_gpr(0, true, 0x0070_0000);
     cpu.regs.write_gpr(1, true, 0xDEAD_BEEF);
     // STR W1, [X0, #0]: 0xB900_0001
