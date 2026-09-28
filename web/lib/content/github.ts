@@ -12,13 +12,10 @@ const STARS_ENDPOINT = `https://api.github.com/repos/${REPO_URL.replace(
   "",
 )}`;
 
-// The build-time fetch cache lives in .next/cache, which Vercel restores from
-// one build to the next, and a force-cached response is kept for a year. On
-// its own that would freeze the count at the first build. The deployment's id
-// is put in the query string, which GitHub ignores, so every deployment has
-// its own cache key and reads the count afresh. The id, not the commit: a
-// deploy hook rebuilds the same commit, and a commit key would hand that
-// rebuild the cached count. A local build has no id and keys on "local".
+// Vercel keeps the fetch cache between builds, which would freeze the count
+// at the first build. The deployment id in the query (GitHub ignores it) gives
+// each deploy a fresh read; a commit key would not, since a deploy hook
+// rebuilds the same commit.
 const STARS_URL = `${STARS_ENDPOINT}?deploy=${process.env.VERCEL_DEPLOYMENT_ID ?? "local"}`;
 
 /**
@@ -31,17 +28,11 @@ export async function fetchStarCount(): Promise<number | null> {
   try {
     const response = await fetch(STARS_URL, {
       headers: { Accept: "application/vnd.github+json" },
-      // Read once per build and baked into the prerendered pages, so every
-      // route stays a static file and no visitor request ever reaches this
-      // call. The count refreshes on the next production deploy (the cache
-      // key above), and .github/workflows/refresh-stars.yml asks for one on
-      // every new star and once a week, so no code push is needed. A
-      // revalidate interval here would turn every route that renders the nav
-      // into an ISR page regenerated on the server.
+      // Read once per build so every route stays a static file; the
+      // refresh-stars workflow deploys on each new star and weekly. A
+      // revalidate here would make the server regenerate every page.
       cache: "force-cache",
-      // A hanging GitHub must never stall a prerender: this fetch runs inside
-      // the build of every content route, and the catch below already renders
-      // the icon-only fallback on a timeout.
+      // A slow GitHub must not stall the build; a timeout falls back to the icon.
       signal: AbortSignal.timeout(3000),
     });
     if (!response.ok) return null;
