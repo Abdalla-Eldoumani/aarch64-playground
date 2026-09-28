@@ -52,17 +52,10 @@ function EditorSlot({ host }: { host: HTMLElement }) {
 }
 
 /**
- * Which arrangement the full playground wears. Four of them, and the choice is
- * the whole of this component's job: resizable splits from laptop up, two
- * fixed half-width columns at tablet (each one a vertical split of its own,
- * under its own persistence key), and the phone layout, upright or on its
- * side. Every pane arrives as a rendered node, so the shell keeps the hub and
- * this keeps the geometry.
- *
- * The editor is rendered once, into a node of its own that each arrangement
- * attaches where it wants it. Switching arrangements (a rotation, a window
- * dragged across a breakpoint) moves that node instead of remounting the
- * editor, so the code's caret, scroll, and undo history come along.
+ * Picks the full playground's arrangement for the screen size. The editor
+ * renders once into a node of its own that each arrangement attaches, so a
+ * rotation or a resize across a breakpoint moves it without a remount and the
+ * caret, scroll, and undo history survive.
  */
 export function FullLayout({
   breakpoint,
@@ -95,7 +88,7 @@ export function FullLayout({
         // composed inside the landing hero, lessons, exercises, and the
         // reference, all of which already sit inside their page's main. The
         // /playground route supplies the one main around it.
-        <section aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
+        <section aria-label="AArch64 Playground" className="flex-1 min-h-0 flex flex-col">
           <PhoneLayout
             shape={phone}
             editor={placed}
@@ -112,7 +105,7 @@ export function FullLayout({
         </section>
       ) : (
         <>
-          <section aria-label="cpsc 355 playground" className="flex-1 min-h-0 flex flex-col">
+          <section aria-label="AArch64 Playground" className="flex-1 min-h-0 flex flex-col">
             {showResizable ? (
               <ResizableLayout
                 breakpoint={breakpoint}
