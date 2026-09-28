@@ -195,8 +195,8 @@ export function resolveHandoff(
   // Neither a usable bundle nor a usable share; report whichever failed.
   // A corrupt bundle never blocks a valid share above (boot precedence).
   if (dl.bundleError) {
-    // The boot pass already reported a hard load's failure; a client-side
-    // navigation reaches it only here.
+    // Stay quiet only when the boot pass reported it; a bundle the boot could
+    // not decode, or a client-side navigation, is reported here.
     return boot.bundleError ? null : { kind: "bundle-error", reason: dl.bundleError };
   }
   if (shared.kind === "corrupt" || shared.kind === "too-large") {
