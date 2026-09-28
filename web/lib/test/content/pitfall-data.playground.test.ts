@@ -56,9 +56,9 @@ describe("pitfall demos fail and recover exactly as taught", () => {
 
   it("16-byte stack alignment: the fault stops at the call, the fix prints 0", () => {
     const pitfall = demo("16-byte stack alignment");
-    // The push itself is legal (SA0 checks sp before writeback); the bl
-    // with sp off the boundary is where linux dies inside printf, and
-    // the playground stops there with the call-boundary wording.
+    // The push itself is legal (the stack alignment check reads sp before
+    // the push moves it); the bl with sp off the boundary is where linux
+    // dies inside printf, and the playground stops there with "at this call".
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.stdout).toBe("");
     expect(fault.halted).toBe(true);
@@ -98,7 +98,7 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     expect(fix.exitCode).toBe(0);
   });
 
-  it("off-by-one: the fault drags the sentinel into the sum, the fix stops at 15", () => {
+  it("off-by-one: the fault adds the word past the array, the fix stops at 15", () => {
     const pitfall = demo("off-by-one loop bounds");
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.stdout).toBe("sum = 10014\n");
@@ -107,7 +107,7 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     expect(fix.exitCode).toBe(0);
   });
 
-  it("local allocation: the fault stops at the first sp store, the alloc formula holds", () => {
+  it("local allocation: the fault stops at the first sp store, the fix keeps sp a multiple of 16", () => {
     const pitfall = demo("non-16-byte local allocation");
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.stdout).toBe("");
@@ -118,7 +118,7 @@ describe("pitfall demos fail and recover exactly as taught", () => {
     expect(fix.exitCode).toBe(0);
   });
 
-  it("caller-saved: the call eats the parked sum, the fix keeps 42", () => {
+  it("caller-saved: the call overwrites the sum in x9, the fix keeps 42", () => {
     const pitfall = demo("caller-saved registers do not survive a call");
     const fault = runProgram(pitfall.fault, 100_000);
     // 0xdeadbeefdeadbeef, what a library call leaves in x9, printed as a long.
@@ -132,9 +132,9 @@ describe("pitfall demos fail and recover exactly as taught", () => {
 
   it("misaligned call: the fault stops at the sp store, the fix prints the line", () => {
     const pitfall = demo("misaligned stack at a call");
-    // SA0 faults every sp-based access while sp is off the boundary, so
-    // the store to the local, not the later bl, is where linux and the
-    // playground stop this program.
+    // The alignment check faults every sp-based access while sp is off the
+    // boundary, so the store to the local, not the later bl, is where linux
+    // and the playground stop this program.
     const fault = runProgram(pitfall.fault, 100_000);
     expect(fault.stdout).toBe("");
     expect(fault.halted).toBe(true);
