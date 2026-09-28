@@ -739,6 +739,7 @@ fn stringify_tokens_space(tokens: &[Token]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
 
     fn parse_ok(src: &str) -> Program {
         parse(src).expect("parse should succeed")
@@ -1215,7 +1216,7 @@ mod tests {
 
     #[test]
     fn unknown_directive_errors() {
-        assert!(parse(".nosuch 1\n").is_err());
+        rejects(parse(".nosuch 1\n"), "unknown directive `.nosuch`");
     }
 
     #[test]
@@ -1296,13 +1297,13 @@ mod tests {
 
     #[test]
     fn balign_requires_positive_argument() {
-        assert!(parse(".text\n.balign 0\n").is_err());
-        assert!(parse(".text\n.balign -4\n").is_err());
+        rejects(parse(".text\n.balign 0\n"), ".balign needs a positive byte count");
+        rejects(parse(".text\n.balign -4\n"), ".balign needs a positive byte count");
     }
 
     #[test]
     fn skip_rejects_negative_count() {
-        assert!(parse(".bss\n.skip -1\n").is_err());
+        rejects(parse(".bss\n.skip -1\n"), ".skip needs a non-negative byte count");
     }
 
     // -- source-map correctness --
