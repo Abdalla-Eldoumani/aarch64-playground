@@ -1,37 +1,62 @@
-//! Behaviour freeze for the LDR/STR addressing-mode parser.
+//! The LDR/STR addressing-mode parser, held to GNU as.
 //!
 //! A wrong parse in `parse_addressing_mode` is a wrong ENCODING, not an
 //! error: the discriminator that tells `[x0, x1]` from `[x0, #8]` hands
 //! whatever it rejects to `parse_immediate`, so a mis-ordered check turns
 //! a register-offset load into an immediate-offset load that assembles
 //! and runs and reads the wrong address. Nothing downstream complains.
-//! So the guard is a spelling corpus whose every outcome is pinned byte
-//! for byte.
+//! So the guard is a spelling corpus whose every outcome is checked
+//! against what GNU as does with the same line.
 //!
-//! Every row's expected outcome comes from RUNNING the encoder, never
-//! from a judgment about what the encoding ought to be. The fixture is a
-//! record of what the assembler does today; a refactor that changes any
-//! row has changed behaviour, whether or not the change looks like an
-//! improvement.
+//! tests/addressing-freeze.txt is that answer: every spelling below,
+//! assembled by GNU as on csarm, with the word as encoded or the error it
+//! refused the line with. A spelling as encodes must encode to the same
+//! word here, and a spelling as refuses must be refused here. The error
+//! text is not compared: the playground words its refusals for students.
 //!
-//! Mode A (default): compare the generated corpus against
-//! tests/addressing-freeze.txt and fail listing every divergence.
-//! Mode B (`ADDRESSING_FREEZE_REWRITE=1`): rewrite the fixture from
-//! current behaviour. Regenerating is a deliberate act, never a way to
-//! make a failing mode A run pass.
+//! The rows where the encoder is known to part from as are listed in
+//! `KNOWN_GAPS` with what the encoder does instead. A listed row that
+//! changes fails too, so a fixed gap has to leave the list.
+//!
+//! `ADDRESSING_FREEZE_SPELLINGS=<file>` writes the corpus there, one
+//! spelling per line, for a new capture; the test fails while the fixture
+//! and the corpus list different spellings.
 
-use std::collections::{BTreeMap, BTreeSet};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use aarch64_emulator::assembler::encode_line_absolute;
 use aarch64_emulator::errors::EmuError;
 
 const FIXTURE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/addressing-freeze.txt");
 
-/// How much of a rejection message the fixture keeps. Long enough to name
-/// the complaint, short enough that a reworded tail does not churn the
-/// whole file.
-const MESSAGE_CHARS: usize = 60;
+/// Rows where the encoder and GNU as disagree today, with the encoder's
+/// outcome (`0xWORD`, or `ERR` for a refusal).
+const KNOWN_GAPS: &[(&str, &str)] = &[
+    // A label operand: as encodes one LDR (literal) and leaves the address
+    // to the linker. The hosted pipeline lowers `ldr reg, label` to two
+    // words before the encoder sees it (tests/server_parity.rs), so the
+    // one-line encoder never takes a label here.
+    ("ldr x1, msg", "ERR"),
+    ("ldr d1, msg", "ERR"),
+    // as sets the S bit when a byte access spells out its `lsl #0`; the
+    // encoder leaves it clear. Both load the byte at x0 + x2.
+    ("ldrb w1, [x0, x2, lsl #0]", "0x38626801"),
+    ("strb w1, [x0, x2, lsl #0]", "0x38226801"),
+    ("ldrsb w1, [x0, x2, lsl #0]", "0x38e26801"),
+    ("ldrsb x1, [x0, x2, lsl #0]", "0x38a26801"),
+    ("LDRB W1, [X0, X2, LSL #0]", "0x38626801"),
+    // as refuses UXTX on a register offset; the encoder reads it as LSL.
+    ("ldr w1, [x0, x2, uxtx #2]", "0xb8627801"),
+    ("str w1, [x0, x2, uxtx #2]", "0xb8227801"),
+    ("ldrsw x1, [x0, x2, uxtx #2]", "0xb8a27801"),
+    ("ldr s1, [x0, x2, uxtx #2]", "0xbc627801"),
+    ("str s1, [x0, x2, uxtx #2]", "0xbc227801"),
+    ("LDR S1, [X0, X2, UXTX #2]", "0xbc627801"),
+    // as refuses a shift with no amount; the encoder reads a bare `lsl`
+    // as no shift at all.
+    ("ldr x1, [x0, x1, lsl]", "0xf8616801"),
+    ("ldr d1, [x0, x1, lsl]", "0xfc616801"),
+];
 
 // ---------------------------------------------------------------------------
 // the corpus
@@ -105,11 +130,10 @@ const BASES: &[&str] = &["x0", "x15", "sp", "fp"];
 /// non-x0 bases ride this subset instead of the full cross.
 const FORM_SPREAD: &[usize] = &[0, 1, 3, 5, 6, 8, 11, 13];
 
-/// Spellings the parser is expected to turn away, plus a few it does
-/// NOT turn away today (`[sp, w1]` picks up an implicit UXTW, and
-/// `[x0, #8, #9]` silently drops the third operand). Whichever way each
-/// one goes, the fixture pins it: a rewrite that changes one of these
-/// quirks changes behaviour and shows up as a fixture diff.
+/// Malformed spellings. as refuses all but `msg` (a label, which it
+/// leaves to the linker), and the parser has to refuse them too:
+/// `[sp, w1]` once picked up an implicit UXTW and `[x0, #8, #9]` once
+/// dropped its third operand without a word.
 const REJECTS: &[&str] = &[
     "[x0, #8",
     "[x0,,x1]",
@@ -182,8 +206,8 @@ fn push(out: &mut Vec<String>, seen: &mut BTreeSet<String>, spelling: String) {
 }
 
 /// The generated spelling corpus, in fixture order. Deterministic: the
-/// same build produces the same rows in the same sequence, so a fixture
-/// diff is a behaviour diff and never a shuffle.
+/// same build produces the same rows in the same sequence, so a new
+/// capture diffs against the old one row for row, never as a shuffle.
 fn corpus() -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
     let mut seen: BTreeSet<String> = BTreeSet::new();
@@ -292,108 +316,108 @@ fn corpus() -> Vec<String> {
 }
 
 // ---------------------------------------------------------------------------
-// recording
+// comparing
 // ---------------------------------------------------------------------------
 
-/// Run one spelling through the real encoder and render the outcome.
-/// `encode_line_absolute` is the same entry the hosted linker walks
-/// `.text` through, so this is the production path, not a test-only
-/// shortcut.
-fn outcome(spelling: &str) -> String {
+/// Run one spelling through the real encoder. `encode_line_absolute` is
+/// the same entry the hosted linker walks `.text` through, so this is the
+/// production path, not a test-only shortcut.
+fn encode(spelling: &str) -> Result<u32, String> {
     let labels: HashMap<String, u64> = HashMap::new();
-    match encode_line_absolute(spelling, 0, &labels, 1) {
-        Ok(word) => format!("OK 0x{word:08X}"),
-        Err(err) => {
-            let message = match &err {
-                EmuError::AssemblyError { message, .. } => message.clone(),
-                other => other.to_string(),
-            };
-            let short: String = message
-                .chars()
-                .take(MESSAGE_CHARS)
-                .map(|c| if c.is_control() { ' ' } else { c })
-                .collect();
-            format!("ERR {short}")
-        }
-    }
+    encode_line_absolute(spelling, 0, &labels, 1).map_err(|err| match err {
+        EmuError::AssemblyError { message, .. } => message,
+        other => other.to_string(),
+    })
 }
 
-fn generate() -> Vec<(String, String)> {
-    corpus()
-        .into_iter()
-        .map(|spelling| {
-            let result = outcome(&spelling);
-            (spelling, result)
-        })
-        .collect()
+/// A word as `0xWORD`, a refusal (`None`) as `ERR`: the form the fixture
+/// and `KNOWN_GAPS` write outcomes in.
+fn short(word: Option<u32>) -> String {
+    word.map_or_else(|| "ERR".to_string(), |w| format!("0x{w:08x}"))
 }
 
-fn render_fixture(rows: &[(String, String)]) -> String {
-    let mut text = String::new();
-    for (spelling, result) in rows {
-        text.push_str(spelling);
-        text.push_str(" => ");
-        text.push_str(result);
-        text.push('\n');
-    }
-    text
-}
-
-/// Parse the fixture back. `\r` is stripped because the repository is
+/// Read the capture: `spelling => 0xWORD`, optionally followed by
+/// ` => reloc ...`, or `spelling => ERR <message>` (read as `None`). `#`
+/// lines are the header. `\r` is stripped because the repository is
 /// checked out with autocrlf on Windows and the fixture is a plain .txt.
-fn parse_fixture(text: &str) -> Vec<(String, String)> {
+fn parse_fixture(text: &str) -> Vec<(String, Option<u32>)> {
     text.lines()
         .map(|line| line.trim_end_matches('\r'))
-        .filter(|line| !line.is_empty())
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
         .map(|line| {
             let (spelling, result) = line
                 .split_once(" => ")
                 .unwrap_or_else(|| panic!("fixture row has no ` => ` separator: {line}"));
-            (spelling.to_string(), result.to_string())
+            if result.starts_with("ERR") {
+                return (spelling.to_string(), None);
+            }
+            let word = result
+                .split(' ')
+                .next()
+                .and_then(|w| w.strip_prefix("0x"))
+                .and_then(|hex| u32::from_str_radix(hex, 16).ok())
+                .unwrap_or_else(|| panic!("fixture row has no word: {line}"));
+            (spelling.to_string(), Some(word))
         })
         .collect()
 }
 
 #[test]
-fn addressing_mode_spellings_are_frozen() {
-    let rows = generate();
-    let path = std::path::Path::new(FIXTURE);
+fn addressing_mode_spellings_encode_as_gnu_as_does() {
+    let spellings = corpus();
 
-    if std::env::var("ADDRESSING_FREEZE_REWRITE").as_deref() == Ok("1") {
-        std::fs::write(path, render_fixture(&rows).as_bytes())
-            .unwrap_or_else(|e| panic!("could not write {}: {e}", path.display()));
-        eprintln!("rewrote {} with {} rows", path.display(), rows.len());
+    if let Ok(path) = std::env::var("ADDRESSING_FREEZE_SPELLINGS") {
+        std::fs::write(&path, format!("{}\n", spellings.join("\n")))
+            .unwrap_or_else(|e| panic!("could not write {path}: {e}"));
+        eprintln!("wrote {} spellings to {path}", spellings.len());
         return;
     }
 
-    let text = std::fs::read_to_string(path).unwrap_or_else(|e| {
-        panic!(
-            "could not read {}: {e}; generate it with \
-             ADDRESSING_FREEZE_REWRITE=1 cargo test --test addressing_freeze",
-            path.display()
-        )
-    });
+    let path = std::path::Path::new(FIXTURE);
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("could not read {}: {e}", path.display()));
     let fixture = parse_fixture(&text);
 
-    let recorded: BTreeMap<&str, &str> = fixture
-        .iter()
-        .map(|(s, r)| (s.as_str(), r.as_str()))
-        .collect();
-    let current: BTreeMap<&str, &str> = rows.iter().map(|(s, r)| (s.as_str(), r.as_str())).collect();
+    // The capture has to answer for exactly this corpus, in this order.
+    let listed: Vec<&str> = fixture.iter().map(|(s, _)| s.as_str()).collect();
+    let generated: Vec<&str> = spellings.iter().map(String::as_str).collect();
+    if listed != generated {
+        let missing: Vec<&&str> = generated.iter().filter(|s| !listed.contains(s)).take(10).collect();
+        let extra: Vec<&&str> = listed.iter().filter(|s| !generated.contains(s)).take(10).collect();
+        panic!(
+            "the fixture and the corpus list different spellings or orders \
+             (not captured: {missing:?}; captured but not generated: {extra:?}); \
+             capture the corpus again"
+        );
+    }
+
+    let known: HashMap<&str, &str> = KNOWN_GAPS.iter().copied().collect();
+    for spelling in known.keys() {
+        assert!(
+            generated.contains(spelling),
+            "KNOWN_GAPS lists `{spelling}`, which the corpus does not generate"
+        );
+    }
 
     let mut divergences: Vec<String> = Vec::new();
-    for (spelling, was) in &recorded {
-        match current.get(spelling) {
-            Some(now) if now == was => {}
-            Some(now) => divergences.push(format!("  {spelling}\n      was: {was}\n      now: {now}")),
-            None => divergences.push(format!("  {spelling}\n      was: {was}\n      now: <not generated>")),
-        }
-    }
-    for spelling in current.keys() {
-        if !recorded.contains_key(spelling) {
+    for (spelling, gas) in &fixture {
+        let outcome = encode(spelling);
+        let (expected, note) = match known.get(spelling.as_str()) {
+            Some(pinned) => {
+                assert_ne!(
+                    *pinned,
+                    short(*gas),
+                    "KNOWN_GAPS lists `{spelling}` with the outcome as gives it, so it is no gap"
+                );
+                (pinned.to_string(), " (a known gap)")
+            }
+            None => (short(*gas), ""),
+        };
+        if short(outcome.as_ref().ok().copied()) != expected {
+            let now = outcome.map_or_else(|m| format!("ERR {m}"), |w| short(Some(w)));
             divergences.push(format!(
-                "  {spelling}\n      was: <not in fixture>\n      now: {}",
-                current[spelling]
+                "  {spelling}\n      as:       {}\n      expected: {expected}{note}\n      now:      {now}",
+                short(*gas)
             ));
         }
     }
@@ -401,9 +425,9 @@ fn addressing_mode_spellings_are_frozen() {
     if !divergences.is_empty() {
         let shown = divergences.len().min(40);
         panic!(
-            "{} of {} frozen addressing-mode spellings changed:\n{}\n{}",
+            "{} of {} addressing-mode spellings differ from GNU as:\n{}\n{}",
             divergences.len(),
-            recorded.len(),
+            fixture.len(),
             divergences[..shown].join("\n"),
             if divergences.len() > shown {
                 format!("  ... and {} more", divergences.len() - shown)
@@ -412,14 +436,4 @@ fn addressing_mode_spellings_are_frozen() {
             }
         );
     }
-
-    // Row order is part of the fixture: a reordered corpus produces a
-    // diff nobody can read, so catch the shuffle here rather than in
-    // review.
-    let recorded_order: Vec<&str> = fixture.iter().map(|(s, _)| s.as_str()).collect();
-    let current_order: Vec<&str> = rows.iter().map(|(s, _)| s.as_str()).collect();
-    assert_eq!(
-        recorded_order, current_order,
-        "the corpus order drifted from the fixture"
-    );
 }
