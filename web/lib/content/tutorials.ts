@@ -215,9 +215,9 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Calling increment three times",
         body:
-          "main loops i_r from 1 to 3, calling increment each time. Step through the third call: the counter in memory should reach 3.",
+          "main loops i_r from 1 to 3, calling increment each time and keeping what it returns in w20, because printf then puts its own count of printed characters in w0. Step through the third call: the counter in memory reaches 3, and so does w20.",
         highlight: { start: 36, end: 56 },
-        expect: { reg: "w0", value: 3, note: "third return value" },
+        expect: { reg: "w20", value: 3, note: "third return value" },
       },
       {
         title: "Switching to argv",
