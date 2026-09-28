@@ -20,6 +20,9 @@ export interface TutorialRunnerProps {
    * `expect` clause against what the CPU actually holds.
    */
   getRegister?: (name: string) => string | null;
+  /** The walk around the interface itself, offered beside the program
+   *  tutorials so it can be found again after its first-visit offer. */
+  onStartWalkthrough?: () => void;
 }
 
 function readRegisterDecimal(name: string, getter?: (n: string) => string | null): number | null {
@@ -87,6 +90,7 @@ export function TutorialRunner({
   onClose,
   onLoadSnippet,
   getRegister,
+  onStartWalkthrough,
 }: TutorialRunnerProps) {
   const [activeId, setActiveId] = useState<string>(TUTORIALS[0]?.id ?? "");
   const [progress, setProgress] = useState(() => loadProgress());
@@ -215,6 +219,16 @@ export function TutorialRunner({
           >
             back
           </button>
+          <div className="flex-1" />
+          {onStartWalkthrough && (
+            <button
+              type="button"
+              onClick={onStartWalkthrough}
+              className="touch-target text-xs text-[var(--cyan)] hover:underline rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            >
+              interface walkthrough
+            </button>
+          )}
           <div className="flex-1" />
           <button
             type="button"
