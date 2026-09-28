@@ -1,10 +1,5 @@
-// What a student expects of the editing loop, at the component boundary:
-// Ctrl+Enter assembles and runs, reset starts an unchanged program over with
-// its breakpoints armed, the editor follows the pc only while nothing is
-// running, a dot the assemble had to drop is named, a console answer resumes
-// a run parked on the read, output behind another tab marks the console tab,
-// and a load or import over unsaved edits, in main.asm or a helper tab, asks
-// first.
+// The edit, assemble, run loop as a student meets it, tested through the
+// component with the emulator and the heavy panels mocked.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
@@ -130,7 +125,7 @@ describe("Ctrl+Enter", () => {
     expect(hub.run).not.toHaveBeenCalled();
   });
 
-  it("is the editor's own chord too, so it works with the caret in the code", async () => {
+  it("is the editor's own shortcut too, so it works with the cursor in the code", async () => {
     const hub = makeHub({ programLoaded: true });
     await mountFull(hub);
     await act(async () => {
@@ -165,7 +160,7 @@ describe("Ctrl+Enter", () => {
   });
 
   it("lets the embed's run press continue that run instead of starting it over", async () => {
-    // Stopped at a breakpoint after the chord: the program is loaded.
+    // Stopped at a breakpoint after the shortcut: the program is loaded.
     const hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0xd2800020", text: "mov x0, #1" }],
     });
@@ -209,7 +204,7 @@ describe("Ctrl+Enter", () => {
     expect(hub.run).not.toHaveBeenCalled();
   });
 
-  it("leaves a read-only embed's chord to the editor", () => {
+  it("leaves a read-only embed's shortcut to the editor", () => {
     mountEmbed(makeHub(), true);
     expect(editorProps.current!.onRunShortcut).toBeUndefined();
   });
@@ -250,7 +245,7 @@ describe("reset", () => {
     expect(hub.assemble).toHaveBeenCalledTimes(1);
   });
 
-  it("does the same from the keyboard and the palette, which reach it through the handle", async () => {
+  it("does the same from the keyboard and the command palette, which reach it through the handle", async () => {
     const hub = makeHub({ programLoaded: true });
     const { ref } = await mountFull(hub);
     await act(async () => {
@@ -298,7 +293,7 @@ describe("a breakpoint the assemble dropped", () => {
 });
 
 describe("the console", () => {
-  it("hands its answer to the hub's resume, so a run parked on a read continues", async () => {
+  it("passes its answer to resumeAfterInput, so a run waiting at a read continues", async () => {
     const hub = makeHub({ programLoaded: true });
     await mountFull(hub);
     fireEvent.click(screen.getByRole("tab", { name: /^console\b/ }));
@@ -323,7 +318,7 @@ describe("the console", () => {
     expect(screen.getByRole("tab", { name: "console" })).toBeTruthy();
   });
 
-  it("names the wait on the tab while a read is parked", async () => {
+  it("says 'waiting for input' on the tab while a read waits", async () => {
     const hub = makeHub({ programLoaded: true, blocked: true });
     await mountFull(hub);
     fireEvent.click(screen.getByRole("tab", { name: "memory" }));
