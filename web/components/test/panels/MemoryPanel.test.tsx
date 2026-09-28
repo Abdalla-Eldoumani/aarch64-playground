@@ -78,12 +78,12 @@ describe("MemoryPanel", () => {
     ]);
   });
 
-  it("renders bytes as two-digit hex and printable bytes in the ascii gutter", () => {
+  it("renders bytes as two-digit hex and printable bytes in the ascii column", () => {
     renderPanel();
     // 0x00400041 holds 0x41; its row 0x00400040..0x0040004f spells out ascii
     expect(screen.getByText("41")).toBeTruthy();
     expect(screen.getByText("@ABCDEFGHIJKLMNO")).toBeTruthy();
-    // the first row is all control bytes, so the gutter shows dots
+    // the first row is all control bytes, so the ascii column shows dots
     expect(screen.getAllByText("................").length).toBeGreaterThan(0);
   });
 
@@ -124,7 +124,7 @@ describe("MemoryPanel", () => {
     expect(screen.getByText("0x00600000")).toBeTruthy();
   });
 
-  it("tints exactly the bytes inside a dirty range", () => {
+  it("tints exactly the bytes inside a recently written range", () => {
     renderPanel([[0x00400004, 2]]);
     // bytes at +4 and +5 hold 04 and 05; +6 sits just outside the range
     expect(screen.getByText("04").className).toContain("bg-[var(--amber-dim)]");
@@ -180,7 +180,7 @@ describe("MemoryPanel region label", () => {
     expect(jumpTrigger().textContent).toContain("in stack");
   });
 
-  it("keeps the fixed stack landing when sp is outside the band", () => {
+  it("jumps to the default stack row when sp is outside the stack band", () => {
     // A reset machine parks sp at the stack base, which is the band's
     // exclusive end: there is no live frame to land on.
     renderMapped("0x0000000080000000");
@@ -189,7 +189,7 @@ describe("MemoryPanel region label", () => {
     expect(addrInput().value).toBe("0x7fffff00");
   });
 
-  it("falls back to the literal jump list and no label without the map", () => {
+  it("falls back to the panel's own jump list and no label without the map", () => {
     renderPanel();
     // Old wasm build: nothing to name, so the trigger keeps its prompt and
     // the list is the panel's own.
