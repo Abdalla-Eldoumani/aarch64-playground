@@ -3,14 +3,10 @@
 import dynamic from "next/dynamic";
 
 /**
- * The lazily loaded half of the playground's panel set. These live outside
- * EmbeddablePlayground so the shell reads as composition, and they stay in
- * ONE module because the property that matters is shared: every entry is a
- * full-chrome or heavy panel, so a multi-embed page (and the embed / checker
- * chrome, which renders none of them) never ships their code.
- *
- * Module scope on purpose: a dynamic() call re-evaluated per render would
- * hand React a new component type every time and remount the panel.
+ * The playground's heavy and full-chrome-only panels, loaded lazily so a page
+ * of embeds (and the embed and checker chrome, which render none of them)
+ * never ships their code. Module scope, because a dynamic() call per render
+ * hands React a new component type and remounts the panel.
  */
 
 export const InstructionView = dynamic(
