@@ -1,18 +1,11 @@
 "use client";
 
 /**
- * Renders one validated lesson as a reading-measure article with a table of
- * contents. Every author-Markdown surface (prose and callout bodies) flows
- * through the single sanitizing LessonMarkdown so there is no second Markdown
- * path and no raw-HTML injection; code blocks reuse the read-only CodeBlock and
- * carry an Open-in-playground deep link built with the shared buildShareHash;
- * editor blocks reuse the one EmbeddablePlayground (embed chrome), never a fork.
- * An author-supplied editor stdin is bounded by validateStdin before it reaches
- * the embed, so an oversize input is dropped at this boundary rather than
- * forwarded into the worker. The toc is built from the same extractToc the
- * renderer ids its headings with, so anchors and heading ids always agree.
- * Only a code block holding a whole program (one that defines main) gets the
- * playground link; a fragment would open to a link error.
+ * One lesson as an article with a table of contents. All author Markdown goes
+ * through LessonMarkdown, the one sanitizing renderer, so there is no raw-HTML
+ * path. Editor stdin is checked here so an oversize input never reaches the
+ * worker, and the toc comes from the same extractToc that ids the headings, so
+ * the anchors always match.
  */
 
 import type { JSX } from "react";
@@ -44,13 +37,12 @@ export function LessonArticle({
   sheetNumber = "4.x",
 }: {
   lesson: Lesson;
-  /** Datasheet coordinate for this lesson, e.g. "4.3" (position in the
-   *  sorted order); drives the kicker, the numbered TOC, and the figure
-   *  captions. Purely presentational: the lesson schema is untouched. */
+  /** The lesson's number, e.g. "4.3" (its place in the sorted order); it
+   *  numbers the kicker, the contents, and the examples. */
   sheetNumber?: string;
 }): JSX.Element {
   const toc = extractToc(lesson);
-  // Editor blocks are the numbered figures: FIGURE 4.N.k in body order.
+  // Editor blocks are the numbered examples, 4.N.k in body order.
   const editorOrdinals = new Map<number, number>();
   lesson.body.forEach((block, index) => {
     if (block.type === "editor") editorOrdinals.set(index, editorOrdinals.size + 1);
@@ -96,7 +88,7 @@ export function LessonArticle({
       </nav>
 
       <article className="w-full min-w-0">
-        <DocRule section={`sheet ${sheetNumber} · ${lesson.slug}`} context="learn" className="mb-6" />
+        <DocRule section={`lesson ${sheetNumber} · ${lesson.slug}`} context="learn" className="mb-6" />
         <Kicker number={sheetNumber} title={lesson.title} className="mb-4" />
         <h1 className="mb-8 font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           {lesson.title}
@@ -161,7 +153,7 @@ export function LessonArticle({
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                      figure {sheetNumber}.{editorOrdinals.get(index)}
+                      example {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
                         try it: run it, or step one instruction at a time
                       </span>
