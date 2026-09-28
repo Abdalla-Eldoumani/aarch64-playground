@@ -173,10 +173,13 @@ Vercel; the smoke test ignores them.
 `.github/workflows/check.yml` runs on every push and pull request to `main` and
 `integration`, and weekly. Its jobs start together, and each one first checks
 which files changed (`.github/scripts/classify-changes.js`). On a pull request
-a job with nothing to check skips its steps and passes: a docs change runs
-nothing, a lesson or example change skips lint and typecheck, and a change
-under `emulator/tests/` runs only the Rust jobs. A change to a workflow, or to
-a file no rule names, runs everything, and so does every push.
+a job with nothing to check skips its steps and passes. A docs change runs
+nothing, except the two docs the tests read. `docs/authoring-content.md` runs
+`wasm`, `corpus`, `web-build`, and `web-test`, and
+`docs/instruction-reference.md` runs those four and `rust`. A lesson or
+example change skips lint and typecheck, and a change under `emulator/tests/`
+runs only the Rust jobs. A change to a workflow, or to a file no rule names,
+runs everything, and so does every push.
 
 - `wasm`: builds both emulator bundles, or restores them from a cache keyed on
   the emulator's sources.
