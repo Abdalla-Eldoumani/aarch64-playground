@@ -46,7 +46,7 @@ describe("StackAlignment", () => {
     expect(screen.queryByText("aligned")).toBeNull();
   });
 
-  it("sub sp, sp, 32 keeps the boundary", () => {
+  it("sub sp, sp, 32 keeps sp on a 16-byte boundary", () => {
     render(<StackAlignment />);
     fireEvent.click(screen.getByRole("button", { name: SUB32 }));
     // 0x7fffff00 - 32, worked out by hand
@@ -55,7 +55,7 @@ describe("StackAlignment", () => {
     expect(screen.queryByText(MISALIGNED_NOTE)).toBeNull();
   });
 
-  it("compounds moves and the verdict follows every step", () => {
+  it("adds up several moves and rechecks alignment after each one", () => {
     render(<StackAlignment />);
     fireEvent.click(screen.getByRole("button", { name: STP }));
     fireEvent.click(screen.getByRole("button", { name: SUB24 }));
