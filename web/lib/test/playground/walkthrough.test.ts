@@ -53,8 +53,9 @@ describe("the steps", () => {
 
   it("the views a phone keeps behind its tabs point at those tabs first", () => {
     const first = (id: string) => WALKTHROUGH_STEPS.find((s) => s.id === id)?.targets[0].selector;
-    expect(first("registers")).toBe("#phone-tab-regs");
-    expect(first("console")).toBe("#phone-tab-console");
+    // Registers and console only while their view is not already up.
+    expect(first("registers")).toBe('#phone-tab-regs[aria-selected="false"]');
+    expect(first("console")).toBe('#phone-tab-console[aria-selected="false"]');
     expect(first("memory")).toBe("#phone-tab-more");
     expect(first("converter")).toBe("#phone-tab-more");
   });
