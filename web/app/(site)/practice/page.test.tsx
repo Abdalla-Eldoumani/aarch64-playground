@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import fs from "node:fs";
+import path from "node:path";
 
 // The client renderers are replaced with text markers so this test exercises the
 // server route wiring (loader -> page -> props) without pulling in the editor,
@@ -23,11 +25,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { notFound } from "next/navigation";
-import { loadAllExercises } from "@/lib/content/exercises";
 import PracticePage from "./page";
 import ExercisePage, { dynamicParams, generateStaticParams } from "./[slug]/page";
 
 const SEEDED_SLUGS = ["sum-to-n", "fix-the-loop-bound"];
+
+// Each exercise file is named after its slug, so the folder is a list
+// the loader under test did not produce.
+const FILE_SLUGS = fs
+  .readdirSync(path.join(process.cwd(), "content/exercises"))
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => name.slice(0, -".json".length));
 
 afterEach(() => {
   cleanup();
@@ -35,16 +43,16 @@ afterEach(() => {
 });
 
 describe("practice routes", () => {
-  it("statically enumerates exactly the seeded exercise slugs", () => {
+  it("statically enumerates one page per exercise file", () => {
     const slugs = generateStaticParams().map((entry) => entry.slug);
-    expect(slugs).toEqual(loadAllExercises().map((exercise) => exercise.slug));
+    expect([...slugs].sort()).toEqual([...FILE_SLUGS].sort());
     for (const slug of SEEDED_SLUGS) expect(slugs).toContain(slug);
     // dynamicParams off means only these slugs render; anything else 404s.
     expect(dynamicParams).toBe(false);
   });
 
   it("renders the index from every validated exercise", () => {
-    const expectedCount = loadAllExercises().length;
+    const expectedCount = FILE_SLUGS.length;
     render(<PracticePage />);
     expect(screen.getByText(`exercise-index:${expectedCount}`)).toBeTruthy();
   });
