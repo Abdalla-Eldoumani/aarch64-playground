@@ -1,11 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
-// page.tsx is the single keyboard-shortcut owner: it drives the playground
-// purely through the imperative handle, and Controls (full chrome only) no
-// longer binds keys. Mock the heavy surface and the page modals so the test
-// exercises only the page's keydown routing and proves each execution key
-// fires exactly once (no double-fire) with no shortcut lost.
+// page.tsx alone owns the keyboard shortcuts and drives the playground
+// through its handle; Controls binds no keys. The heavy surface and modals
+// are mocked so these tests see only the page's key routing, and can prove
+// each key fires exactly once.
 const handle = vi.hoisted(() => ({
   assemble: vi.fn(),
   assembleAndRun: vi.fn(),
@@ -51,9 +50,8 @@ vi.mock("@/components/playground/ShortcutsHelp", () => ({
 vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
 vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
 
-// Boot failures surface through the playground handle's notifyError (the
-// page entry's own toast binding is a dead module instance in prod); the
-// tests observe the handle mock.
+// Boot failures go through the handle's notifyError, because in production
+// the page's own toast import is a separate copy no Toaster listens to.
 const toastError = () => handle.notifyError as ReturnType<typeof vi.fn>;
 
 import Home from "./page";
@@ -139,7 +137,7 @@ describe("the help key", () => {
 });
 
 describe("page boot and handoff", () => {
-  it("boots a hard-loaded share hash into the start buffer without re-delivery", () => {
+  it("boots a share link from the first page load into the start buffer, without loading it twice", () => {
     window.history.replaceState(
       {},
       "",
@@ -153,7 +151,7 @@ describe("page boot and handoff", () => {
     expect(handle.loadProgram).not.toHaveBeenCalled();
   });
 
-  it("boots the autosave when no handoff is in the URL", () => {
+  it("boots the autosave when the URL carries no program", () => {
     window.localStorage.setItem(
       "aarch64-playground:auto-save:current",
       "// my saved work",
@@ -238,7 +236,7 @@ describe("page boot and handoff", () => {
     expect(payload.launch).toBeUndefined();
   });
 
-  it("ignores ?run= with no ?example=: there is no program to own", async () => {
+  it("ignores ?run= with no ?example=, since there is no program to apply it to", async () => {
     window.history.replaceState({}, "", "/playground?run=terminal");
     render(<Home />);
     // No delivery at all: the autosaved buffer is not a program handoff.
