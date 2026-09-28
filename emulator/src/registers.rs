@@ -22,12 +22,10 @@ pub enum Condition {
     AL = 0b1110,
 }
 
-/// The condition-code table: primary spelling, alias spellings, and the 4-bit
-/// encoding. This is the one place the set is written down; the assembler's
-/// `parse_condition` and conditional-branch dispatch, the hosted pipeline's
-/// branch recognizer, and the drift tests all walk it. NV (0b1111) is left
-/// out on purpose: GAS accepts it nowhere the course reaches, and `from_u8`
-/// folds it onto AL the way the hardware executes it.
+/// Condition codes: primary spelling, aliases, and the 4-bit encoding. The
+/// one list the assembler, the hosted pipeline, and the drift tests all
+/// read. NV (0b1111) is left out: GAS rejects it in every form the course
+/// uses, and `from_u8` runs it as AL, as the hardware does.
 pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
     ("EQ", &[], 0b0000),
     ("NE", &[], 0b0001),
@@ -46,15 +44,11 @@ pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
     ("AL", &[], 0b1110),
 ];
 
-/// The register spellings that name an index without an `x`/`w` prefix and
-/// digits: the alias, the register number it resolves to, and whether it
-/// reads as the 64-bit view. GNU as predefines all five, so course
-/// prologues written with bare `fp`/`lr` assemble without a
-/// `define(fp, x29)` line. This is the one place the set is written down:
-/// the assembler's `parse_register` and `looks_like_register`, the hosted
-/// pipeline's `is_register_or_shift_keyword`, and the linter's
-/// `is_reserved_name` all read it. Spellings are uppercase; every consumer
-/// compares case-insensitively.
+/// Register names without an `x`/`w` and a number: the alias, the register
+/// it names, and whether it is the 64-bit view. GNU as predefines all five,
+/// so a prologue using bare `fp`/`lr` assembles without `define(fp, x29)`.
+/// The one list the assembler, the hosted pipeline, and the linter read.
+/// Spellings are uppercase; every reader compares case-insensitively.
 pub const REG_ALIASES: &[(&str, u8, bool)] = &[
     ("SP", 31, true),
     ("XZR", 31, true),
