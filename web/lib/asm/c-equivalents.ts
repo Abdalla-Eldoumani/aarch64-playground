@@ -1,26 +1,16 @@
 /**
- * The C equivalent of every instruction the playground assembles, shown on
- * the reference page and, when it fits on one short line, in the editor's
- * hover card.
+ * The C equivalent of every instruction the playground assembles, for the
+ * reference page and, when it fits on one short line, the hover card.
  *
- * Each entry is plain C that computes what the instruction computes. A form is
- * one block: its first line is a comment that declares the operands as C
- * variables (`// .8b: int8_t Vd[8], Vn[8], Vm[8]` reads "the .8b arrangement,
- * eight signed bytes per register"), then the code. Blocks are separated by a
- * blank line. Registers keep their assembly names: Rd, Rn and Rm for the
- * general registers, Vd, Vn and Vm for vector registers as arrays of lanes,
- * and Bd, Hd, Sd and Dd for the 8, 16, 32 and 64-bit views of a SIMD&FP
- * register. `cond` is the condition an instruction names, true or false for
- * the flags it reads, and N, Z, C and V are the four condition flags.
+ * One block per form, blank-line separated: a comment declaring the operands
+ * as C variables (`// .8b: int8_t Vd[8], Vn[8], Vm[8]`), then the code.
+ * Registers keep their assembly names, `cond` is the condition the instruction
+ * names, and N, Z, C, V are the flags. The C relies on gcc's sign-filling `>>`
+ * and on a narrowing store keeping the low bits. Intrinsics come from
+ * arm_neon.h (vector) and arm_acle.h (the `__` ones).
  *
- * The C relies on two things gcc defines: `>>` on a negative value shifts in
- * copies of the sign bit, and storing an int into a narrower signed type keeps
- * its low bits. An intrinsic is a C function the compiler turns into one
- * instruction: the vector ones come from arm_neon.h and the `__` ones from
- * arm_acle.h.
- *
- * Kept apart from instruction-docs.ts so the pages that only need the one-line
- * summaries (lessons, the completion list) never load this text.
+ * Kept apart from instruction-docs.ts so pages that only need the one-line
+ * summaries never load this text.
  */
 export interface CEquivalent {
   /** Plain C, one blank-line-separated block per form. */
