@@ -2,7 +2,7 @@
   "title": "Strings, pointer arrays, and argv",
   "slug": "strings-and-command-line-arguments",
   "order": 24,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Handle text as bytes: character codes, strings that end in a zero byte, tables of string addresses, and the arguments main receives.",
   "tags": [
     "strings",
@@ -45,7 +45,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## An array of pointers to strings\n\nStrings differ in length, so they cannot sit in a table where every entry has the same size. Their addresses can, since every address is 8 bytes. `.dword` stores 8-byte values, and a label written as a value stands for its address, so this line builds a table of four addresses, 32 bytes in all:\n\n```text\nphrases_m:  .dword hello_m, bonjour_m, hola_m, salaam_m\n```\n\nEntry `i` starts at `phrases_m + i * 8`, so the index is scaled by 8: `ldr x2, [table_r, pick_r, SXTW 3]` (a left shift by 3 multiplies by 8). What comes back is an address, ready for `%s`, and one `ldrb` through it reads the first letter. `.balign 8` in front of the table puts each address on an 8-byte boundary.\n\nWith `PICK` set to 2 the program prints `phrase 2 is hola, first letter h`. Change the `define` to 0, 1 or 3 and run it again."
+      "markdown": "## An array of pointers to strings\n\nStrings differ in length, so they cannot sit in a table where every entry has the same size. Their addresses can, since every address is 8 bytes. `.dword` stores 8-byte values, and a label written as a value stands for its address, so this line builds a table of four addresses, 32 bytes in all:\n\n```text\nphrases_m:  .dword hello_m, bonjour_m, hola_m, salaam_m\n```\n\nEntry `i` starts at `phrases_m + i * 8`, so the index is scaled by 8: `ldr x2, [table_r, pick_r, SXTW 3]` (a left shift by 3 multiplies by 8). What comes back is an address, ready for `%s`, and one `ldrb` through it reads the first letter. `.balign 8` in front of the table starts it at an address that is a multiple of 8.\n\nWith `PICK` set to 2 the program prints `phrase 2 is hola, first letter h`. Change the `define` to 0, 1 or 3 and run it again."
     },
     {
       "type": "editor",
