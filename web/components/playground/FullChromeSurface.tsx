@@ -66,13 +66,9 @@ import { useToast } from "@/components/ui/Toast";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 /**
- * The handful of full-chrome actions the shell defers to. The shell owns the
- * program buffer and the imperative handle, but some of what it does to them
- * (adopting a payload's launch, dropping the console watermark, resetting
- * through a live terminal session) exists only on this surface, and this
- * surface loads lazily. So it publishes them upward when it mounts and the
- * shell reads them through a ref, falling back to the plain machine where they
- * are absent (embed and checker, which never load this module).
+ * The full-chrome actions the shell defers to. This surface loads lazily, so
+ * it publishes them upward on mount and the shell reads them through a ref,
+ * falling back to the plain machine in embed and checker.
  */
 export type FullChromeBridge = {
   /** A program handoff landed: adopt its launch and return the value the args
@@ -156,20 +152,10 @@ function confirmImport(what: string, replaced: string[]): boolean {
 }
 
 /**
- * The playground's own half of the shared shell: the header band, the files
- * strip, the three-column resizable layout with its eight machine views, the
- * controls, the tutorials, the interface walkthrough, and the two hooks only
- * this surface has a use for, the launch mode and the terminal drive.
- *
- * Its own module, reached through dynamic(), because everything named above is
- * full-chrome only while the shell is what the landing hero mounts: reaching
- * it statically put react-resizable-panels, the terminal drive, the launch
- * tables and (through those) lz-string in the landing's script list for a
- * surface the landing never renders.
- *
- * The shell hands its state down and reads the few full-only actions back
- * through the bridge. The hub crosses exactly one boundary, into here, because
- * the two hooks below cannot be called anywhere else.
+ * The playground's own half of the shared shell. Its own module, loaded
+ * through dynamic(), so the landing hero, which mounts the shell, never ships
+ * the layouts, the terminal drive, or the launch tables. The hub crosses into
+ * here because the launch-mode and terminal-drive hooks live nowhere else.
  */
 export function FullChromeSurface({
   emu,
@@ -338,13 +324,10 @@ export function FullChromeSurface({
     terminalTabActive: shownPane === "term",
     requestPane,
   });
-  // The one-action interactive launch: assemble, then hand the pane over.
-  // Reached from the palette's launch action and from a run press in terminal
-  // mode with nothing assembled. It bypasses handleRun's finished-screen guard
-  // on purpose: that guard protects a completed program's output, and this just
-  // replaced the program with a freshly assembled one. The order matters: the
-  // assemble must land before the nonce, or the drive's programLoaded standdown
-  // tears the session down at once.
+  // Assemble, then hand the terminal pane over. It skips handleRun's guard on
+  // purpose: that guard protects a finished program's output, and this program
+  // is new. The assemble must land first, or the drive's programLoaded check
+  // ends the new session at once.
   const launchInteractive = useCallback(async () => {
     const ok = await assembleWithHistory();
     // The failure already renders in Controls' error box, and the pane is
@@ -393,13 +376,10 @@ export function FullChromeSurface({
     if (await assembleWithHistory()) emuRef.current.run();
   }, [launchMode, launchInteractive, assembleWithHistory, emuRef]);
 
-  // Reset starts the same program over. The machine is cleared either way;
-  // when the workspace is still exactly what was assembled it is assembled
-  // again at once, so the breakpoints stay armed and run and step stay live
-  // instead of demanding an assemble. An edited workspace waits for the
-  // student's own assemble. A live terminal session only stands down: a
-  // reassemble under it would let its resume latch start the new program
-  // with no key pressed.
+  // Reset starts the same program over: an unedited workspace is assembled
+  // again at once so breakpoints stay armed and run and step stay live. An
+  // edited one waits for the student. A live terminal session only stops,
+  // since a reassemble under it would start the program with no key pressed.
   const restartProgram = useCallback(() => {
     const wasLoaded = emuRef.current.programLoaded;
     resetMachine();
@@ -494,14 +474,9 @@ export function FullChromeSurface({
   const machineMain = assembledLayout?.main ?? source;
   const machineExtras = assembledLayout?.extras ?? extraFiles;
 
-  // The decode strip reads the line under the pc out of the source it is
-  // handed, and `emu.currentLine` is a COMBINED-string line. Handing it
-  // main.asm alone indexed past the end for any pc inside a helper, so the
-  // gloss fell to its placeholder for the whole of a multi-file program, and
-  // helper `define` aliases never labelled a register. Keyed on the pin alone,
-  // so the concatenation happens once per assemble rather than on every
-  // keystroke of a large workspace. Nothing is pinned before the first
-  // assemble, and with no program there is no line to gloss.
+  // The decode strip needs the combined source, since `emu.currentLine`
+  // counts across every file: main.asm alone lost the gloss inside a helper.
+  // Built from the pin, so it joins once per assemble, not per keystroke.
   const pinnedCombined = useMemo(() => {
     if (!assembledLayout) return null;
     return assembledLayout.extras.length > 0
@@ -537,13 +512,11 @@ export function FullChromeSurface({
     const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
     return loc.file === activeFile ? loc.line : null;
   }, [emu.currentLine, machineMain, machineExtras, activeFile]);
-  // Follow execution into the file it is in: a step into a helper's function,
-  // or a stop there, brings that helper's tab forward, and the editor then
-  // reveals the line. Keyed on the pc's line, so a tab the student picks
-  // while paused stays picked. Not while a run drives (the pc crosses files
-  // many times a second), not before the first step (assembling from a
-  // helper tab must not yank the student to main's entry), and never onto a
-  // tab closed since the assemble.
+  // Bring forward the tab the pc is in after a step or a stop. Not during a
+  // run (the pc crosses files many times a second), not before the first
+  // step (assembling from a helper tab must not jump to main's entry), and
+  // never onto a tab closed since the assemble; keyed on the pc's line so a
+  // tab picked while paused stays picked.
   const executing = emu.stepCount > 0 && !emu.isRunning;
   useEffect(() => {
     if (emu.currentLine == null || !executing) return;
@@ -563,13 +536,9 @@ export function FullChromeSurface({
     },
     [emu, activeFile, sourceRef, extraFilesRef],
   );
-  // Breakpoints live in the hub as COMBINED-string lines, so inserting five
-  // lines in main.asm re-numbers every dot in every helper below it. Nothing
-  // re-anchored them: the dots slid into the wrong file on screen, and the
-  // next assemble re-keyed the stale numbers through a fresh line map onto
-  // instructions they never belonged to. Only the SHAPE of the workspace can
-  // move a line, so the re-anchor is keyed on line counts and typing inside a
-  // line costs nothing.
+  // Breakpoints are combined-source lines, so adding lines to main.asm shifts
+  // every dot in the helpers after it; this re-anchors them. Only line counts
+  // can move a line, so it is keyed on those and typing within a line is free.
   const layoutShape = useMemo(() => workspaceShape(source, extraFiles), [
     source,
     extraFiles,
@@ -577,12 +546,10 @@ export function FullChromeSurface({
   // Seeded with the workspace as it stands at mount (the strip rehydrates
   // from storage), so the first pass has nothing to move.
   const bpLayoutRef = useRef<Workspace>({ main: source, extras: extraFiles });
-  // The shell's own latest-value refs are synced from ITS effects, and a
-  // child's effects run before its parent's, so the hub and the workspace read
-  // through them here would both be one render stale, and a re-anchor keyed on
-  // the shape gets exactly one chance at each change. This mirror is written
-  // from the effect declared immediately above the reader, and effects in one
-  // component run in declaration order.
+  // Not the shell's refs: a child's effects run before its parent's, so they
+  // would be a render stale here, and the re-anchor gets one chance at each
+  // change. This mirror's effect runs just before its reader, since effects in
+  // one component run in declaration order.
   const latestRef = useRef({
     machine: emu,
     workspace: { main: source, extras: extraFiles } as Workspace,
