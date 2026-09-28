@@ -4,19 +4,10 @@ import { useEffect, useState } from "react";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
- * The last resort: the error boundary for the root layout itself. Per the Next
- * contract it replaces the whole document, so it renders its own <html> and
- * <body>. Because the root layout never ran, none of what the layout installs
- * is available here: no globals.css custom properties, no next/font
- * variables, no theme attribute on <html>.
- *
- * So this file is the one documented exception to the "colors come from tokens"
- * rule: every value below is the literal dark-theme token from
- * app/globals.css, restated because `var(--bg-base)` would resolve to nothing
- * on a page whose stylesheet may not have loaded. When a token moves in
- * globals.css, move it here too. Fonts fall back to generic stacks for the
- * same reason. It wears the same fault-card register as the 404 and the route
- * error page.
+ * The error boundary for the root layout itself. It replaces the whole
+ * document, so the stylesheet, font variables and theme may all be missing:
+ * the colors below restate the dark tokens from app/globals.css and must move
+ * with them, and the fonts fall back to generic stacks.
  */
 
 const BG_BASE = "#0B0C10";
@@ -54,12 +45,9 @@ export default function GlobalError({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "ok" | "error">("idle");
 
-  // The report is the whole bundle format, and this boundary needs it only
-  // when the button is pressed, so the builder arrives through a dynamic
-  // import: reaching it statically put the format in the script list of every
-  // document, including the landing's. It is built as soon as the chunk lands
-  // rather than inside the handler, so the clipboard write still happens in
-  // the same task as the press.
+  // Imported on demand, since a static import put the report builder in every
+  // page's scripts. The report is built as soon as it loads, not in the click
+  // handler, so the clipboard write happens in the same task as the press.
   const [report, setReport] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
