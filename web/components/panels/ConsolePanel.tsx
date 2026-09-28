@@ -15,13 +15,9 @@ interface ConsolePanelProps {
    *  keystrokes in the terminal, so this console's stdin box would send
    *  into a session it cannot see. Disabled, with a pointer to the tab. */
   ownedByTerminal?: boolean;
-  /** Where in `stdout` a terminal-owned session began, or null when no
-   *  session has taken this program over. The session's own bytes were
-   *  written to the pane, which is a real terminal; this scrollback is
-   *  plain text, so a full-screen program's escape sequences land here as
-   *  literal garbage. Everything up to the watermark printed before the
-   *  takeover and stays; the rest is one note pointing at the tab it
-   *  happened in. */
+  /** Where in `stdout` a terminal session took the program over, or null.
+   *  This scrollback is plain text, where a full-screen program's escape
+   *  sequences print as garbage, so later output becomes one note naming the tab. */
   terminalOwnedFrom?: number | null;
   exitCode: number | null;
   vfsFiles: string[];
