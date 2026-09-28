@@ -2,7 +2,7 @@
   "title": "Fill in the blank: subroutines",
   "slug": "blanks-subroutines",
   "order": 100,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "subroutines",
   "difficulty": "core",
   "variant": "blanks",
@@ -14,7 +14,7 @@
       "blanks": [
         "bl"
       ],
-      "explanation": "bl branches to the label and writes the address of the following instruction into x30, the link register. That saved return address lets one copy of the code serve every call site instead of being pasted into each one, which is what makes it a closed subroutine.",
+      "explanation": "bl branches to the label and writes the address of the following instruction into x30, the link register. That saved return address lets one copy of the code serve every place that calls it instead of being pasted into each one, which is what makes it a closed subroutine.",
       "hint": "Branch with Link."
     },
     {
@@ -27,12 +27,12 @@
       "hint": "Store Pair."
     },
     {
-      "prompt": "The caller has reserved space at sp for a structure the subroutine will fill in. Complete the line that passes that address in the indirect result location register.",
+      "prompt": "The caller has reserved space at sp for a structure the subroutine will fill in. Complete the line that passes that address in the register set aside for a result returned through memory.",
       "code": "mov ___, sp",
       "blanks": [
         "x8"
       ],
-      "explanation": "A result too large to come back in x0 and x1 is returned indirectly: the caller allocates the memory, puts its address in x8, and the subroutine writes the result through that pointer. x8 sits one past x0 through x7, the argument registers, and the ABI reserves it for exactly this job.",
+      "explanation": "A result too large to come back in x0 and x1 is returned indirectly: the caller allocates the memory, puts its address in x8, and the subroutine writes the result through that pointer. x8 sits one past x0 through x7, the argument registers, and the calling rules keep it for exactly this job.",
       "hint": "It sits one register past the last argument register."
     },
     {
