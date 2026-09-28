@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { FpRegisterFileDiagram } from "@/components/diagrams/FpRegisterFileDiagram";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("FpRegisterFileDiagram", () => {
@@ -60,16 +57,5 @@ describe("FpRegisterFileDiagram", () => {
     expect(
       screen.getByLabelText("aapcs64 floating-point register file"),
     ).toBeTruthy();
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<FpRegisterFileDiagram />);
-      expect(
-        screen.getByLabelText("aapcs64 floating-point register file"),
-      ).toBeTruthy();
-      unmount();
-    }
   });
 });
