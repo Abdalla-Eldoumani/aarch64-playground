@@ -1,31 +1,10 @@
 "use client";
 
 /**
- * The single-exercise layout, as a two-column datasheet: a 420px statement
- * column (kicker, serif title, prompt, SPECIFICATION table, behavior-check
- * disclaimer) beside a work column (the shared embeddable editor in checker
- * chrome and a RESULTS panel). Below `lg` the columns stack: statement, then
- * editor, then results.
- *
- * The prompt renders through the single sanitizing LessonMarkdown, and the
- * editor is the shared EmbeddablePlayground in `chrome="checker"`.
- * The Check button fires `onCheck(snapshot)`; the handler runs `checkExercise`
- * against the snapshot and the live student source (read through the embed ref),
- * so structural checks see what the student actually wrote. When that passes,
- * the exercise's hidden inputs run on a machine of their own (never the one on
- * screen), and only a program that passes every one is marked solved. Each
- * check press brings the RESULTS panel into view with the smallest scroll.
- *
- * No answer leak: the specification table describes the shape of each check (no
- * expected values); the RESULTS panel shows expected-vs-actual for the visible
- * run, only the input and the student's own output for a hidden one, and the
- * view never holds or renders a reference solution. An author/student stdin
- * is bounded by validateStdin before it reaches the embed.
- *
- * The editor buffer survives a reload: it starts from the answer saved for
- * this slug when there is one (otherwise the author's starter), writes back
- * debounced, and the restore control puts the starter back and forgets the
- * saved answer, so an explicit restore is never undone by the store.
+ * One coding exercise. Nothing here may leak the answer: the specification
+ * names only the shape of each check, a hidden input shows the input and the
+ * student's own output but never the expected one, and the view never holds
+ * a reference solution.
  */
 
 import { useCallback, useEffect, useId, useRef, useState, type JSX, type ReactNode } from "react";
@@ -297,7 +276,7 @@ export function ExerciseView({
 }: {
   /** The emulator-backed coding variants only; interactive variants render through InteractiveExerciseView. */
   exercise: WriteExercise;
-  /** Datasheet coordinate, e.g. "5.2"; the [slug] page derives it from the sorted order. */
+  /** The sheet number, e.g. "5.2"; the [slug] page derives it from the sorted order. */
   sheetNumber?: string;
 }): JSX.Element {
   const [result, setResult] = useState<CheckResult | null>(null);
