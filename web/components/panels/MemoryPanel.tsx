@@ -95,9 +95,7 @@ export function MemoryPanel({
   const [lastGoodAddr, setLastGoodAddr] = useState(0x00400000);
   const [rows] = useState(DEFAULT_ROWS);
   const zoom = useZoom("memory");
-  // 16 bytes/row reads naturally on a desktop monospace grid; below sm
-  // the row overflows the viewport, so collapse to 8/row, still
-  // 16-byte aligned so addresses stay in even multiples.
+  // A 16-byte row overflows the screen below sm, so phones get 8 per row.
   const bp = useBreakpoint();
   const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
 
@@ -219,7 +217,7 @@ export function MemoryPanel({
                     </td>
                   );
                 })}
-                {/* pad if data is short */}
+                {/* bytes still on their way from the emulator show as ".." */}
                 {Array.from(
                   { length: bytesPerRow - rowBytes.length },
                   (_, i) => (
