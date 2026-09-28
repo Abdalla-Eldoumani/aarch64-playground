@@ -1,14 +1,10 @@
-//! The C-locale character classification glibc exposes twice: as the
-//! `is*`/`to*` functions a `bl isdigit` reaches, and as the lookup table
-//! behind them. gcc lowers the `<ctype.h>` MACROS to
-//! `(*__ctype_b_loc())[c] & mask`, so a program compiled from C (and
-//! any student copying that idiom into assembly) never calls `isdigit`
-//! at all; it calls `__ctype_b_loc` once and indexes the table. Both
-//! spellings answer from `class_of` here, so they can never disagree.
-//!
-//! The table itself is written into the loader's stdio globals page (see
-//! stdio.rs) on every load, because the pointer `__ctype_b_loc` returns
-//! has to address real guest memory the program can load through.
+//! C-locale character classes, offered the two ways glibc offers them: the
+//! `is*`/`to*` functions (`bl isdigit`) and the lookup table behind them.
+//! gcc turns the `<ctype.h>` macros into `(*__ctype_b_loc())[c] & mask`,
+//! so code compiled from C indexes the table and never calls `isdigit`.
+//! Both answer from `class_of`, so they never disagree. The loader writes
+//! the table into the stdio globals page (stdio.rs) because the program
+//! loads through the pointer `__ctype_b_loc` returns.
 
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
@@ -139,13 +135,11 @@ pub fn isspace(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     class_stub(ctx, IS_SPACE)
 }
 
-/// The case rule at table index `c`: the 26 letters shift case and every
-/// other value passes through. The negative half mirrors the high half
-/// the way `class_of` does, so index -2 and index 254 name the same byte
-/// and both answer 254; EOF is glibc's one carve-out and answers -1, so
-/// `toupper(getchar())` still ends a loop. Single source of truth for
-/// both the conversion tables and the `toupper`/`tolower` stubs, which
-/// glibc keeps in step.
+/// The case rule at table index `c`: the 26 letters change case and every
+/// other value passes through. The negative half mirrors the high half as
+/// in `class_of` (-2 and 254 both answer 254); EOF answers -1, so
+/// `toupper(getchar())` still ends a loop. The conversion tables and the
+/// `toupper`/`tolower` stubs both use it, as glibc keeps them in step.
 pub fn convert_byte(c: i32, to_upper: bool) -> i32 {
     if c == EOF || !(TABLE_FIRST_INDEX..=TABLE_LAST_INDEX).contains(&c) {
         return c;
