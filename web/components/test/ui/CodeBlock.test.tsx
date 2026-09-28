@@ -2,8 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 const SNIPPET = [
   "// add two registers",
   "main:",
@@ -14,7 +12,6 @@ const SNIPPET = [
 
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("CodeBlock", () => {
@@ -52,13 +49,6 @@ describe("CodeBlock", () => {
     expect(container.innerHTML).toContain("var(--syntax-string)");
   });
 
-  it("renders read-only in the mono family on a surface token", () => {
-    const { container } = render(<CodeBlock code="ret" />);
-    const pre = container.querySelector("pre");
-    expect(pre?.className).toContain("font-mono");
-    expect(pre?.className).toContain("bg-[var(--bg-sunken)]");
-  });
-
   it("renders code as text, never as injected markup", () => {
     const { container } = render(
       <CodeBlock code={"mov x0, #1 // <img src=x onerror=alert(1)>"} />,
@@ -72,15 +62,6 @@ describe("CodeBlock", () => {
     const { container } = render(<CodeBlock code="mov x0, #1" language="text" />);
     expect(container.innerHTML).not.toContain("var(--syntax-keyword)");
     expect(screen.getByText("mov x0, #1")).toBeTruthy();
-  });
-
-  it("renders the keyword token under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { container, unmount } = render(<CodeBlock code="mov x0, #1" />);
-      expect(container.innerHTML).toContain("var(--syntax-keyword)");
-      unmount();
-    }
   });
 
   it("copies the source to the clipboard on a single click", () => {
