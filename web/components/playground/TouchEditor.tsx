@@ -207,7 +207,6 @@ export function TouchEditor({
               <button
                 key={n}
                 type="button"
-                data-line-toggle=""
                 onClick={() => onToggleBreakpoint(n)}
                 className={`block w-full h-6 leading-6 text-right pr-2 text-[12px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] ${cls}`}
                 aria-label={
