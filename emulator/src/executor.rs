@@ -1514,8 +1514,8 @@ fn fp_min<T: FpOperand>(a: T, b: T) -> T {
 
 /// FMAXNM / FMINNM are IEEE maxNum / minNum: a QUIET NaN operand is
 /// treated as missing, which the pseudocode does by standing an infinity
-/// in its place before running FPMax. A signalling one is not missing -
-/// it falls through and propagates, quieted, like any other operand -
+/// in its place before running FPMax. A signalling one is not missing:
+/// it falls through and propagates, quieted, like any other operand,
 /// and two quiet NaNs leave nothing to stand in for either. The
 /// signed-zero rule is FMAX's, so the numeric case delegates rather than
 /// restating it.
@@ -1611,12 +1611,10 @@ fn exec_simd_copy(
 // ---------------------------------------------------------------------------
 //
 // Every lane operation below works at the lane's OWN width: the value is
-// masked back to `esize` bytes before it is stored, and the arithmetic
-// that gets there is explicitly wrapping or saturating. The three places
-// a wider intermediate is right are the ones the instruction defines that
-// way - the halving adds compute in one extra bit, the saturating forms
-// have to see the overflow they clamp, and the doubling multiplies take
-// the high half of a double-width product - and each says so at its arm.
+// masked back to `esize` bytes before it is stored, and the arithmetic is
+// explicitly wrapping or saturating. A wider intermediate appears only
+// where the instruction defines one (the halving adds, the saturating
+// forms, the doubling multiplies), and each such arm says so.
 
 /// All-ones over `esize` bytes: the mask a lane result is stored under,
 /// and the value a lane compare writes when it holds.
