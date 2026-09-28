@@ -1,19 +1,15 @@
 //! The LDR/STR addressing-mode parser, held to GNU as.
 //!
-//! A wrong parse in `parse_addressing_mode` is a wrong ENCODING, not an
-//! error: the discriminator that tells `[x0, x1]` from `[x0, #8]` hands
-//! whatever it rejects to `parse_immediate`, so a mis-ordered check turns
-//! a register-offset load into an immediate-offset load that assembles
-//! and runs and reads the wrong address. Nothing downstream complains.
-//! So the guard is a spelling corpus whose every outcome is checked
-//! against what GNU as does with the same line.
+//! A misparse in `parse_addressing_mode` is a wrong encoding, not an
+//! error: with its checks out of order, `[x0, x1]` reads as an immediate
+//! offset and the load still assembles, runs, and reads the wrong address.
+//! So every spelling below is checked against what GNU as does with it.
 //!
-//! tests/addressing-freeze.txt is that answer: every spelling below,
-//! assembled by GNU as on csarm, with the word GNU as encoded or the error
-//! it refused the line with. A spelling GNU as encodes must encode to the
-//! same word here, and a spelling it refuses must be refused here. The
-//! error text is not compared: the playground words its refusals for
-//! students.
+//! tests/addressing-freeze.txt holds GNU as's answer for each spelling,
+//! captured on csarm: the word it encoded, or the error it refused with.
+//! The encoder must give the same word where GNU as encodes and refuse
+//! where it refuses. Error text is not compared, since the playground
+//! words its refusals for students.
 //!
 //! The rows where the encoder is known to differ from GNU as are listed in
 //! `KNOWN_GAPS` with what the encoder does instead. A listed row that
@@ -157,14 +153,10 @@ const REJECTS: &[&str] = &[
     "[x0]!extra",
 ];
 
-/// Spellings that only exist to pin the ORDER the forms are checked in.
-/// Each one is ambiguous under some other order: `[x0]!!` is a writeback
-/// or a malformed tail depending on whether the `!` is looked at first,
-/// `[x0] #8` is a post-index only because a non-empty tail is enough,
-/// `[[x0]]` hinges on the first `]` winning over the last. Nobody writes
-/// these on purpose; they are here because the order that resolves
-/// them was undocumented, and a rewrite that reorders the checks changes
-/// what they encode to without changing anything that looks wrong.
+/// Spellings that only pin the order the forms are checked in. Each reads
+/// differently under another order (`[x0]!!` is a writeback or a bad tail
+/// depending on which is checked first), so a rewrite that reorders the
+/// checks changes what they encode to without anything looking wrong.
 const ORDER_QUIRKS: &[&str] = &[
     "[x0, x1, lsl, #3]",
     "[x0, x1, lsl #3, junk]",
@@ -261,12 +253,10 @@ fn corpus() -> Vec<String> {
         }
     }
 
-    // 5. per-width scale edges. The unsigned-offset form scales the
-    // immediate by the access width, so the last in-range value, the
-    // first out-of-range one, and a misaligned one are three different
-    // code paths, and the misaligned/negative ones silently fall
-    // through to the unscaled LDUR/STUR encoding, the silent case this
-    // file was written for.
+    // 5. per-width edges. The unsigned offset form counts in access-size
+    // units, so the last in-range value, the first out of range and a
+    // misaligned one each take a different path; misaligned and negative
+    // ones quietly fall through to LDUR/STUR, the case this file exists for.
     for (prefix, scale, pair) in INSTS {
         let offsets: Vec<i64> = if *pair {
             vec![63 * scale, 64 * scale, -64 * scale, -65 * scale, scale + 1]
