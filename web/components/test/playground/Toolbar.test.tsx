@@ -7,7 +7,7 @@ afterEach(() => cleanup());
 function setup(overrides: Partial<ToolbarProps> = {}) {
   const props: ToolbarProps = {
     onShare: vi.fn(),
-    onTour: vi.fn(),
+    onTutorials: vi.fn(),
     onToggleTheme: vi.fn(),
     buildDiagnostic: vi.fn(async () => ({ source: "" })),
     onOpenCommandPalette: vi.fn(),
@@ -34,7 +34,7 @@ describe("Toolbar", () => {
     for (const name of [
       "share program",
       "diagnostic bundle",
-      "start guided tour",
+      "tutorials",
       "toggle theme",
       // The palette opener's name is its visible label (WCAG label-in-name);
       // the title carries the longer description.
@@ -50,5 +50,9 @@ describe("Toolbar", () => {
     expect(props.onOpenCommandPalette).toHaveBeenCalledTimes(1);
   });
 
-
+  it("opens the tutorials from the button named for them", () => {
+    const props = setup();
+    fireEvent.click(screen.getByRole("button", { name: "tutorials" }));
+    expect(props.onTutorials).toHaveBeenCalledTimes(1);
+  });
 });
