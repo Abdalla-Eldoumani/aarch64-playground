@@ -21,7 +21,7 @@ describe("PredictionBlock", () => {
     expect(screen.getByLabelText(PROPS.question)).toBeTruthy();
   });
 
-  it("grades the answer trimmed and case-folded", () => {
+  it("ignores surrounding spaces and letter case when grading", () => {
     const onAttempt = vi.fn();
     render(<PredictionBlock {...PROPS} onAttempt={onAttempt} />);
     fireEvent.change(screen.getByLabelText(PROPS.question), { target: { value: " 0X1010 " } });
