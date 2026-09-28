@@ -2,7 +2,7 @@
   "title": "The stack and the frame pointer",
   "slug": "stack-and-frame-pointer",
   "order": 18,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "summary": "Open a stack frame that saves fp and lr, keep locals at fp offsets, read input straight into them, and keep sp 16-byte aligned.",
   "tags": [
     "stack",
@@ -34,7 +34,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## The prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step each. `stp fp, lr, [sp, alloc]!` is a pre-index store: it first adds `alloc` to `sp`, and since `alloc` is negative (-32 in the program below), that moves `sp` down by 32 bytes; then it stores `fp` and `lr` at the address `sp` now holds. The epilogue's `ldp fp, lr, [sp], dealloc` is a post-index load: it reads the two back, then adds `dealloc` (32) to lift `sp` back up. Between the two, `mov fp, sp` anchors the frame. The program below prints `n = 5`."
+      "markdown": "## The prologue and epilogue\n\nA function that calls other functions opens with a *prologue* and closes with an *epilogue*. The prologue saves the caller's frame pointer and the return address, then claims space for the new frame; the epilogue restores them and hands control back.\n\nThe pair instructions do this in one step each. `stp fp, lr, [sp, alloc]!` is a pre-index store: it first adds `alloc` to `sp`, and since `alloc` is negative (-32 in the program below), that moves `sp` down by 32 bytes; then it stores `fp` and `lr` at the address `sp` now holds. The epilogue's `ldp fp, lr, [sp], dealloc` is a post-index load: it reads the two back, then adds `dealloc` (32) to lift `sp` back up. Between the two, `mov fp, sp` points `fp` at the new frame. The program below prints `n = 5`."
     },
     {
       "type": "code",
