@@ -1,12 +1,9 @@
 // heap.s - binary min-heap, drawn as a tree and as an array
 //
-// The tree on the top half and the strip on the bottom half are painted
-// from the same fifteen words. A sift moves a value in both at once: the
-// picture drawn on paper and the memory the machine keeps are one object
-// addressed two ways.
-//
-// heap_sort_array runs the same sift with nothing drawn, so the sorting
-// module can borrow it.
+// The tree (top half) and the strip (bottom half) are painted from the same
+// fifteen words, so a sift, which moves a value up or down until no parent
+// is larger than its children, changes both at once. heap_sort_array sifts
+// a max-heap (no parent smaller) with nothing drawn, for the sorting module.
 
 define(fp, x29)
 define(lr, x30)
@@ -16,8 +13,8 @@ define(lr, x30)
 
     heap_capacity = 15
 
-// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here so
-// this file also assembles on its own, the way the web build feeds it.
+// Colour role numbers mirror ui.s's UI_ROLE_* set. They are repeated here
+// because each file is assembled on its own and cannot see names set in ui.s.
     HEAP_ROLE_TEXT  = 0
     HEAP_ROLE_DIM   = 1
     HEAP_ROLE_FAINT = 2
@@ -1241,7 +1238,8 @@ heap_peek_done:
     ret
 
 // heap_build_interactive() - scatter random values, then sink every
-// parent from the bottom up. n/2 sinks, so building costs O(n).
+// parent from the bottom up. n/2 sinks, most of them short, so building
+// costs O(n).
 heap_build_interactive:
     stp     fp, lr, [sp, -48]!
     mov     fp, sp
@@ -1451,8 +1449,8 @@ heap_sort_done:
     ret
 
 // heap_sink_max(x0 = base, w1 = heap size, w2 = slot to sink)
-// The sift-down with nothing drawn: no calls, so scratch registers are
-// enough.
+// The sift-down with nothing drawn. It makes no calls, so nothing can
+// overwrite w3-w7 and no x19-x28 register needs saving.
 heap_sink_max:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
