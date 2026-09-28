@@ -790,5 +790,7 @@ finishes on the next step.
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
 - SVE and SME
+- Numeric local labels: a label such as `1:` and a branch to it such as
+  `b 1f` or `b 1b` are refused. Give the label a name.
 
-If you hit one of these and need it, see [`CONTRIBUTING.md`](CONTRIBUTING.md) for how to add it.
+To add one of these, follow [Add an instruction](CONTRIBUTING.md#add-an-instruction).
