@@ -1,15 +1,8 @@
 /**
- * Slices a 32-bit A64 machine word into its named encoding fields for the
- * live decode strip. This is a presentation-side field mapper, not a second
- * decoder: it recognizes the instruction classes the emulator supports and
- * returns the field layout (label, bit width, the actual bits, and a decoded
- * meaning for the register fields), plus which field the instruction writes
- * so the strip can light the destination amber. Unrecognized words fall back
- * to a single unsplit field rather than a guessed layout.
- *
- * Every layout is validated in decode-fields.test.ts by re-concatenating the
- * sliced bits and comparing against machine words produced by the real
- * assembler, so the boundaries here cannot drift from the emulator silently.
+ * Splits a 32-bit machine word into its named encoding fields for the live
+ * decode strip. It only labels bits and is not a second decoder, so a word
+ * outside the known classes stays one field rather than a guessed layout.
+ * decode-fields.test.ts checks each layout against real assembler output.
  */
 
 export interface DecodedField {
@@ -698,7 +691,7 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
-  // // Fallback: one unsplit word for anything outside the mapped classes (FP
-  // data processing, system ops, data words).
+  // Fallback: one unsplit word for anything outside the mapped classes (the
+  // other FP ops, system ops, data words).
   return slice(w, [{ label: "word", hi: 31, lo: 0, kind: "opcode" }], null);
 }
