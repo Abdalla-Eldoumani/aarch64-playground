@@ -6,13 +6,10 @@ import { loadAllExercises } from "@/lib/content/exercises";
 import type { PredictionExercise } from "@/lib/content/exercise-schema";
 import { typedAnswerIsRight } from "@/lib/content/theory-answers";
 
-// Every prediction whose answer the machine can show is run here, and the
-// value it shows is marked by the same check a student's typed answer gets.
-// A question set at an address no program owns (sp = 0x8000, a table at
-// 0x1000) runs at a real address and reports the same distance from it. The
-// questions about conventions or sizes on paper (which register carries a
-// hidden pointer, how many pad bytes a frame leaves) have nothing to run and
-// are left to their explanations.
+// What the machine shows is marked by the same check a student's typed answer
+// gets. A question set at a made-up address (sp = 0x8000) runs at a real one
+// and reports the same distance from it. Questions about conventions or sizes
+// on paper have nothing to run.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
@@ -332,7 +329,7 @@ describe("prediction answers match what the machine does", () => {
         "predict-frame-stack[7]", // pad bytes a frame leaves
         "predict-subroutines[1]", // stack space for ten int arguments
         "predict-subroutines[2]", // a leaf function's frame
-        "predict-subroutines[3]", // the indirect result register
+        "predict-subroutines[3]", // the register that carries a returned struct's address
       ].sort(),
     );
   });
