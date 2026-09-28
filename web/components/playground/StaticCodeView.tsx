@@ -15,21 +15,9 @@ export interface StaticCodeViewProps {
 }
 
 /**
- * A read-only, syntax-colored, current-line-marked view of one program with a
- * line-number gutter: everything the landing hero showed through Monaco, and
- * none of Monaco. It server-renders, so the hero's code text is in the initial
- * HTML rather than a placeholder a client-side chain has to replace.
- *
- * The metrics are pinned to the editor's, not inherited: 14px text on a 21px
- * line (`--type-code` in globals.css, `fontSize: 14` in Editor.tsx), the
- * resolved `--font-mono` stack that `.font-mono` carries, and a 40px gutter
- * matching Monaco's `lineNumbersMinChars: 3` plus its glyph margin. Reusing
- * CodeBlock's 13px would reflow the hero. The current-line treatment restates
- * Editor.tsx's, a 14% amber wash behind a 2px amber left rule, rather than
- * CodeBlock's quieter 10% and 3px.
- *
- * Code renders as text spans only, with no HTML-string path, so a
- * caller-supplied program cannot inject markup.
+ * The hero's code without Monaco: it server-renders, so the code is in the
+ * first HTML. Sizes match Editor.tsx, not CodeBlock's 13px, so the hero keeps
+ * its layout. Code renders as text spans, so a program cannot inject markup.
  */
 export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
   const lines = value.replace(/\n$/, "").split("\n");
