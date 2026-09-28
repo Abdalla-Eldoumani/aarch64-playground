@@ -165,8 +165,10 @@ SITE=http://localhost:3000/playground npm run smoke:firefox
 ```
 
 The first command downloads Playwright's Firefox, once per machine. A local
-server logs two errors for Vercel's analytics scripts, which exist only on
-Vercel; the smoke test ignores them.
+server logs errors for Vercel's two analytics scripts, which exist only on
+Vercel. In Chrome, each script logs a 404 error and a refused-script error.
+In Firefox, each logs one blocked-script error, which the smoke test prints
+and ignores.
 
 ## What CI runs
 
