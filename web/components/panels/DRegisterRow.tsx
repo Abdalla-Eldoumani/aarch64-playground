@@ -3,13 +3,9 @@
 import { fpRegisterText } from "@/lib/emulator/register-format";
 
 /**
- * One floating-point register row: name / alias / value columns matching
- * RegisterRow's grammar and sizing. Decimal mode shows the double decoded
- * from the register's raw IEEE-754 bits (or the float, for a pattern an `s`
- * write left); hex mode shows the raw bits and nothing else. On a write the
- * row plays the same write-bar strike as the integer rows, with the amber
- * edge bar; under prefers-reduced-motion the `--changed` ink alone carries
- * the state.
+ * One floating-point register row, laid out like RegisterRow. Decimal mode
+ * reads the raw bits as a double, or as a float when an `s` write left them.
+ * Under reduced motion the `--changed` ink alone marks a write.
  */
 export interface DRegisterRowProps {
   /** Register index 0-31 (d0-d31). */
