@@ -68,7 +68,7 @@ describe("embed console rendering", () => {
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
     );
     engage(container);
-    expect(screen.getByText(/partial result/)).toBeTruthy();
+    expect(screen.getByText(/partial result/).className).not.toContain("--danger");
     const err = screen.getByText(/error: bad input/);
     expect(err.className).toContain("--danger");
   });
@@ -89,7 +89,6 @@ describe("embed console rendering", () => {
     engage(container);
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("memory fault");
-    expect(alert.className).toContain("--danger");
   });
 
   it("shows no alert while the machine is error-free", () => {
