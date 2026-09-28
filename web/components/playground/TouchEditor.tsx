@@ -43,14 +43,9 @@ const TEXT_METRICS =
   "font-mono text-[16px] leading-6 whitespace-pre pl-2 pr-3 [tab-size:4] [font-variant-ligatures:none]";
 
 /**
- * The editor for touch screens (and very narrow windows): a real `<textarea>`
- * the phone's own keyboard, selection handles, and dictation all work with,
- * laid over a coloured copy of the same text. The textarea's glyphs are
- * transparent, so the student reads the coloured layer and types into the
- * native control. Beside it, a gutter of line numbers that toggle breakpoints,
- * and under both, bands for the executing line and for lines the assembler
- * rejected. Lines do not wrap; an edge fade says when a line runs past the
- * right side.
+ * The editor for touch screens and very narrow windows: a real `<textarea>`,
+ * so the phone's own keyboard, selection handles, and dictation all work,
+ * with transparent glyphs over a coloured copy of the same text.
  */
 export function TouchEditor({
   value,
