@@ -17,7 +17,7 @@ export interface SelectOption {
 }
 
 export interface SelectGroup {
-  /** Optional group header, rendered in the datasheet label voice. */
+  /** Optional group header. */
   label?: string;
   options: SelectOption[];
 }
@@ -61,19 +61,10 @@ const SHEET =
   "[@media(pointer:coarse)]:!inset-x-0 [@media(pointer:coarse)]:!top-auto [@media(pointer:coarse)]:!bottom-0 [@media(pointer:coarse)]:!max-h-[70dvh] [@media(pointer:coarse)]:rounded-b-none [@media(pointer:coarse)]:border-x-0 [@media(pointer:coarse)]:border-b-0 [@media(pointer:coarse)]:pb-[calc(0.5rem+var(--safe-bottom))]";
 
 /**
- * Custom select: a collapsed-listbox replacement for the native `<select>`,
- * so the popover chrome, group headers, and option rows draw from the design
- * tokens in every theme instead of the platform default. Keyboard behavior
- * follows the WAI-ARIA collapsed listbox pattern: focus stays on the trigger,
- * ArrowUp/Down move the active option (aria-activedescendant), Home/End jump,
- * Enter or Space selects, Escape closes, and printable characters type-ahead
- * to the next matching option. Outside pointer-down closes without selecting.
- *
- * The open list is portaled to the body and placed against the trigger with
- * fixed coordinates, so no scrolling or clipping ancestor (the playground's
- * header band, a short panel) can cut it off; it opens upward when the room
- * below is short. On a touch screen it is a bottom sheet over a backdrop
- * instead, with rows a finger can hit.
+ * Replaces the native `<select>` so the open list follows the site's theme,
+ * with the WAI-ARIA collapsed listbox keyboard model. The list is portaled to
+ * the body at fixed coordinates so no clipping parent (the playground header,
+ * a short panel) can cut it off; on a touch screen it is a bottom sheet.
  */
 export function Select({
   placeholder,
@@ -139,10 +130,8 @@ export function Select({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open, close]);
 
-  // Place the list against the trigger: below it, or above it when the room
-  // below is short and the room above is larger, and shifted left so it never
-  // runs off the right edge. Re-placed on any scroll or resize while open,
-  // since fixed coordinates do not follow the trigger by themselves.
+  // Fixed coordinates do not follow the trigger on their own, so the list is
+  // re-placed on every scroll or resize while open.
   const place = useCallback(() => {
     const trigger = triggerRef.current;
     if (!trigger) return;
