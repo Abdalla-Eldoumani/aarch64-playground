@@ -82,7 +82,7 @@ export interface TerminalProgramIO {
 /**
  * Hooks the terminal needs from the surrounding playground: VFS, the
  * emulator backend, register reads, and a label resolver. Tests pass in
- * stubbed implementations; the production wiring sits in TerminalPane.
+ * stubbed implementations; production builds it in createTerminalContext.
  */
 export interface DispatchContext {
   /** Lower-level VFS handle (rare; helpers below are usually enough). */
@@ -140,31 +140,31 @@ export interface DispatchContext {
 const HELP_LINES = [
   "available commands:",
   "  m4 prog.asm > prog.s              expand m4 macros, exactly like the course toolchain",
-  "  gcc prog.s -o prog                assemble a VFS file into an executable",
+  "  gcc prog.s -o prog                assemble a .s file into an executable",
   "  ./prog [args]                     run an executable built with gcc",
-  "  ./program [args]                  run the editor's currently-loaded program",
-  "  ./program < file                  feed stdin from a VFS file",
-  "  ./program > file                  capture stdout into a VFS file",
-  "  cat <file>                        print a VFS file",
-  "  ls                                list VFS files",
-  "  ls -l                             list VFS files with byte counts",
-  "  cp <src> <dst>                    copy a VFS file",
-  "  rm <file>                         remove a VFS file",
-  "  mv <old> <new>                    rename a VFS file",
-  "  upload                            open the host file picker to add a file to the VFS",
-  "  clear                             clear the terminal scrollback",
-  "  reset                             reset the emulator state (VFS preserved)",
-  "  gdb help                          show the gdb-lite command list",
+  "  ./program [args]                  run the program in the editor",
+  "  ./program < file                  read stdin from a file",
+  "  ./program > file                  save stdout to a file",
+  "  cat <file>                        print a file",
+  "  ls                                list files",
+  "  ls -l                             list files with their sizes in bytes",
+  "  cp <src> <dst>                    copy a file",
+  "  rm <file>                         remove a file",
+  "  mv <old> <new>                    rename a file",
+  "  upload                            add a file from your computer",
+  "  clear                             clear the terminal",
+  "  reset                             reset the machine (your files stay)",
+  "  gdb help                          list the gdb-lite commands",
 ];
 
 const GDB_HELP_LINES = [
   "gdb-lite commands:",
   "  gdb n | gdb s                     step one instruction",
-  "  gdb c                             continue to halt or breakpoint",
-  "  gdb b <label>                     set a breakpoint at a labeled address",
+  "  gdb c                             continue until the program ends or hits a breakpoint",
+  "  gdb b <label>                     set a breakpoint at a label",
   "  gdb p $xN                         print register N's value in hex",
   "  gdb info registers                print every register",
-  "  gdb x/Ni $pc                      disassemble N words at the current PC",
+  "  gdb x/Ni $pc                      show N instruction words in hex from the current PC",
   "  gdb bt                            print a one-frame backtrace (current PC)",
 ];
 
@@ -397,7 +397,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
 }
 
 async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
-  // Accepts `x/Ni $pc` (N words at PC). an unrecognized format falls back to 4.
+  // Accepts `x/Ni $pc` (N words at PC). An unrecognized format falls back to 4.
   const fmt = args[0];
   const target = args[1];
   if (!target || !target.startsWith("$")) {
