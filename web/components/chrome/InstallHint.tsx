@@ -40,6 +40,7 @@ export function InstallHint() {
   return (
     <aside
       aria-label="install tip"
+      data-install-tip=""
       className="fixed inset-x-3 bottom-[calc(0.75rem+var(--safe-bottom))] z-40 flex items-start gap-2 rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-2 pl-4 pr-1 [box-shadow:var(--shadow-overlay)] sm:left-auto sm:w-[24rem]"
     >
       <p className="flex-1 py-1.5 font-sans text-[14px] leading-snug text-[var(--text-primary)]">
