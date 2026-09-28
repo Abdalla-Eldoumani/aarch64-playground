@@ -42,7 +42,7 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
 // Capture the tutorial's props so tests can drive onLoadSnippet, the snippet
-// handoff contract, without walking the real tour UI.
+// handoff contract, without walking the real tutorials UI.
 const tutorialProps = vi.hoisted(() => ({
   current: null as null | {
     onLoadSnippet: (
