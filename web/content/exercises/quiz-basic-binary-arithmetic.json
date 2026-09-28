@@ -2,11 +2,11 @@
   "title": "Quiz: binary arithmetic",
   "slug": "quiz-basic-binary-arithmetic",
   "order": 77,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "binary-arithmetic",
   "difficulty": "intro",
   "variant": "quiz",
-  "prompt": "How a CPU does integer arithmetic in fixed-size registers: modulus wraparound, subtraction through negation, the meaning of a carry out, `adc` for extended precision, and the iterative multiplication algorithm.",
+  "prompt": "How a CPU does integer arithmetic in fixed-size registers: modulus wraparound, subtraction through negation, the meaning of a carry out, `adc` for extended precision (values wider than one register), and the iterative multiplication algorithm.",
   "questions": [
     {
       "question": "What kind of arithmetic does a CPU normally do, given that every integer result has to fit in a fixed-size register?",
@@ -25,7 +25,7 @@
       "options": [
         "By using a separate dedicated subtractor circuit",
         "By shifting the bits right and truncating",
-        "By negating the subtrahend and then adding",
+        "By negating the value being subtracted and then adding",
         "By taking the one's complement and discarding the carry in"
       ],
       "correctAnswer": 2,
