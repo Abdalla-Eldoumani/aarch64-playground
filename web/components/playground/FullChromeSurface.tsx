@@ -95,7 +95,7 @@ export type FullChromeBridge = {
   launchable: () => boolean;
   launchInteractive: () => void;
   openConverter: () => void;
-  openTour: () => void;
+  openTutorials: () => void;
 };
 
 export interface FullChromeSurfaceProps {
@@ -156,7 +156,7 @@ function confirmImport(what: string, replaced: string[]): boolean {
 /**
  * The playground's own half of the shared shell: the header band, the files
  * strip, the three-column resizable layout with its eight machine views, the
- * controls, the tour, and the two hooks only this surface has a use for, the
+ * controls, the tutorials, and the two hooks only this surface has a use for, the
  * launch mode and the terminal drive.
  *
  * Its own module, reached through dynamic(), because everything named above is
@@ -460,7 +460,7 @@ export function FullChromeSurface({
       launchable: () => liveRef.current.launchable,
       launchInteractive: () => void liveRef.current.launchInteractive(),
       openConverter: () => requestPane("convert"),
-      openTour: () => setTutorialOpen(true),
+      openTutorials: () => setTutorialOpen(true),
     };
     registerBridge(bridge);
     return () => registerBridge(null);
@@ -985,7 +985,7 @@ export function FullChromeSurface({
             : null
         }
         onShare={() => onOpenShareDialog?.()}
-        onTour={() => setTutorialOpen(true)}
+        onTutorials={() => setTutorialOpen(true)}
         onToggleTheme={() => onToggleTheme?.()}
         buildDiagnostic={buildDiagnostic}
         onOpenCommandPalette={() => onOpenCommandPalette?.()}
