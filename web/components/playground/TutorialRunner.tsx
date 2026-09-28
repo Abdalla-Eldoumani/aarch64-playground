@@ -30,12 +30,14 @@ function readRegisterDecimal(name: string, getter?: (n: string) => string | null
   const raw = getter(name);
   if (raw == null) return null;
   // Accept hex (0x...) or decimal.
-  if (raw.startsWith("0x") || raw.startsWith("0X")) {
-    const big = BigInt(raw);
-    return Number.parseInt(big.toString(), 10);
+  let value: bigint;
+  try {
+    value = BigInt(raw.trim());
+  } catch {
+    return null;
   }
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  // The getter hands back the whole x register; a w name means its low half.
+  return Number(/^w/i.test(name) ? BigInt.asUintN(32, value) : value);
 }
 
 function ExpectedRegisterCheck({
