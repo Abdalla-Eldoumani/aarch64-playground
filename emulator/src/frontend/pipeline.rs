@@ -1,14 +1,11 @@
-//! Full-stack assembly pipeline for hosted cpsc 355 source. Runs the
-//! parser, resolves labels across every section, allocates a literal pool
-//! for `ldr xN, =expr` pseudo-instructions, and emits a `LinkedImage`
-//! that the CPU loader writes into memory as-is.
+//! The assembler and linker for hosted CPSC 355 source: parses, gives every
+//! label an address, builds the literal pool for `ldr xN, =expr`, and
+//! returns a `LinkedImage` the CPU loader writes into memory as-is.
 //!
-//! Ordinary instructions reconstruct their post-m4 source line from
-//! `Program::expanded_source` (indexed by `original_line`) and go through
-//! `assembler::encode_line_absolute`, so every encoding the legacy
-//! assembler already knows about keeps working unchanged. `ldr xN, =expr`
-//! is the one pseudo that needs special handling, since the legacy
-//! encoder doesn't recognize `=` in operands.
+//! Ordinary instructions go back through `assembler::encode_line_absolute`
+//! as their post-m4 source line, so every encoding the older assembler
+//! knows keeps working. `ldr xN, =expr` is handled here because that
+//! encoder does not accept `=` in an operand.
 
 use std::collections::HashMap;
 
@@ -37,22 +34,14 @@ pub struct LinkedImage {
     /// the trampolines start at least 4 bytes later, so this address is
     /// never a legitimate branch target.
     pub text_end: u64,
-    /// Resolved label -> absolute address for every label the linker
-    /// saw (instructions, data symbols, m4 expression symbols, plus
-    /// the synthetic `__tramp_<libc>` trampolines). Used by the
-    /// `gdb b <label>` terminal command and any future symbolic
-    /// debugger surface.
+    /// Label -> absolute address for every label the linker saw, plus the
+    /// `__tramp_<libc>` trampolines. The terminal's `gdb b <label>` reads it.
     pub symbols: HashMap<String, u64>,
-    /// Authoritative address -> editor-source-line map. For every
-    /// `.text` instruction emitted at `pc`, this holds `(pc,
-    /// original_line)` where `original_line` is the 1-based EDITOR
-    /// (pre-m4) line. m4 keeps line numbers aligned (`define()` lines
-    /// expand to empty lines), so `original_line` is the line the
-    /// student actually wrote. The debugger marker, the disassembly
-    /// text, and breakpoint placement key off this instead of counting
-    /// non-label source lines (which double-counts data/macro/directive
-    /// lines and drifts on complex programs). Trampolines and the
-    /// literal pool get no entries.
+    /// `(pc, line)` for every `.text` instruction, where `line` is the
+    /// 1-based line in the editor (m4 keeps lines aligned). The debugger
+    /// marker, the disassembly and breakpoints key off this; counting
+    /// non-label source lines instead drifts on data, macro and directive
+    /// lines. Trampolines and the literal pool get no entries.
     pub line_map: Vec<(u64, u32)>,
     /// Address of the first host-call trampoline, and the stub each 8-byte
     /// slot jumps to in emission order (slot `i` lives at
@@ -74,14 +63,11 @@ pub struct LinkedImage {
 type PoolKey = (String, Option<u64>);
 
 /// Every value a `name = expr` equate takes, keyed by name, as
-/// `(1-based source line, value)` pairs in no particular order.
-///
-/// GAS treats `=` as `.set`, which is POSITIONAL: a use takes the most
-/// recent definition above it, and a use above every definition takes the
-/// first one (both verified against aarch64-linux-gnu-as). Two files
-/// concatenated into one workspace can each write `len = . - msg` against
-/// their own string. A single stored value would be handed to both files'
-/// uses. Labels stay file-wide, as they are in GAS.
+/// `(1-based source line, value)` pairs in no particular order. GAS treats
+/// `=` as `.set`, which is positional: a use takes the nearest definition
+/// above it, or the first one when it sits above them all (verified
+/// against aarch64-linux-gnu-as). So two files in one workspace can each
+/// write `len = . - msg`. Labels stay file-wide, as in GAS.
 type EquateDefs = HashMap<String, Vec<(usize, u64)>>;
 
 /// The value `name` holds at 1-based source `line`. Equates resolve
@@ -236,20 +222,15 @@ struct Emission {
     data_spans: Vec<(u64, u64)>,
 }
 
-/// Pass 1a: place labels at section base + running byte offset, and
-/// collect `name = expr` assignments with the address where they
-/// appear so the linker can evaluate `. - msg - 1` and similar bodies
-/// in the right place. Assignments that resolve against the symbols
-/// seen so far fold immediately: `.skip STACKSIZE * 4` needs its
-/// equate during this very walk; the rest wait for pass 1c's rounds.
-/// Reserve sizes resolved here are kept for pass 2, which must walk
-/// the identical layout.
+/// Pass 1a: give each label its section base plus running offset, and
+/// record each `name = expr` with the address it sits at, so `. - msg - 1`
+/// means that spot. An assignment that already resolves is folded now,
+/// since `.skip STACKSIZE * 4` needs it during this walk; the rest wait
+/// for pass 1c. Reserve sizes are kept so pass 2 walks the same layout.
 ///
-/// Section bases sit one `cpu::SECTION_WINDOW` apart
-/// (SectionKind::default_base), so any section that outgrows the window
-/// silently runs into the next one's addresses: two labels on one
-/// address, stores clobbering unrelated variables. Checked during this
-/// walk, where the offending line is still known.
+/// Sections sit one `cpu::SECTION_WINDOW` apart, so a section that
+/// outgrows it would silently share addresses with the next one. The check
+/// runs here, while the offending line is known.
 fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
     let mut symbols: HashMap<String, u64> = HashMap::new();
     let mut equates: EquateDefs = HashMap::new();
@@ -377,7 +358,7 @@ fn collect_and_place(prog: &Program) -> Result<Layout, EmuError> {
                     message: format!(
                         "{} has grown past its 1 MiB window ({} bytes so far) and would \
                          overlap the next section's addresses. Shrink the data or .skip \
-                         reservations (check any size equate for a typo)",
+                         reservations (check any `NAME = ...` size for a typo)",
                         section.kind.name(),
                         offset
                     ),
@@ -459,16 +440,14 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
             *here as i64,
             *line,
         )?;
-        // Unreachable in practice: the fixpoint loop already failed this
+        // Unreachable in practice: the rounds above already failed this
         // assignment against the same symbol table.
     }
 
-    // Pin each equate's flat-table value to its FIRST definition by SOURCE
-    // line. The flat table is what every non-positional reader gets
-    // (`LinkedImage.symbols`, the legacy encoder's label lookup), and the
-    // passes above fill it in walk order (which is section order, not
-    // source order), so a redefined name could otherwise land there with
-    // whichever definition the linker happened to reach first.
+    // Pin each equate's flat-table value to its first definition by source
+    // line. The passes above fill the table in section order, not source
+    // order, and the readers that ignore position (`LinkedImage.symbols`,
+    // the older encoder's label lookup) read only this table.
     for (name, defs) in &layout.equates {
         if let Some((_, value)) = defs.iter().min_by_key(|(line, _)| *line) {
             layout.symbols.insert(name.clone(), *value);
@@ -478,13 +457,11 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
     Ok(())
 }
 
-/// Pass 1d: scan .text instructions for `ldr xN, =expr` to size the
-/// literal pool, and for `bl <hostname>` calls that need a trampoline
-/// because direct BL cannot reach the 0xFFFF_0000 host-stub range.
-/// Keyed by operand text plus, for a `.`-relative expression, the
-/// address of the LDR itself. `ldr x0, =. + 8` is a different constant
-/// at every site, so sharing one slot by text hands the second site the
-/// first one's value.
+/// Pass 1d: scan .text for `ldr xN, =expr` to size the literal pool, and
+/// for `bl <libc function>` calls, which need a trampoline because BL
+/// cannot reach the 0xFFFF_0000 host-stub range. A slot is keyed by the
+/// operand text plus, for a `.`-relative expression, the LDR's own address:
+/// `ldr x0, =. + 8` is a different constant at every site.
 fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuError> {
     let mut pool_slots: HashMap<PoolKey, u64> = HashMap::new();
     let mut pool_values: Vec<u64> = Vec::new();
@@ -550,15 +527,11 @@ fn size_literal_pool(prog: &Program, layout: &mut Layout) -> Result<Pool, EmuErr
         }
     }
 
-    // Each trampoline is two instructions (LDR X16, <pool slot>; BR X16)
-    // = 8 bytes. They sit between .text and the literal pool so BL's
-    // imm26 range easily reaches them, and so their LDR literal's imm19
-    // reaches the pool entries that hold the real host stub addresses.
-    // `+ 8` (not `+ 7`): always leave a gap of at least 4 bytes between
-    // the last real instruction and the first trampoline, so sequential
-    // fall-through can be told apart from a `bl printf` arriving at a
-    // trampoline. With plain 8-alignment an 8-aligned .text falls straight
-    // into the first trampoline and calls that libc function.
+    // Each trampoline is `LDR X16, <pool slot>; BR X16`, 8 bytes, placed
+    // between .text and the pool so both the BL and the LDR reach. `+ 8`
+    // (not `+ 7`) leaves at least 4 bytes after the last instruction, so
+    // running off the end of .text is told apart from a `bl printf`; with
+    // plain 8-alignment it would fall into the first trampoline.
     let tramp_base = CODE_BASE + ((layout.text_len + 8) & !7);
     let tramp_bytes = (host_trampolines.len() as u64) * 8;
     let pool_base = tramp_base + tramp_bytes;
@@ -685,13 +658,10 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     offset += (exprs.len() * width) as u64;
                 }
                 Item::Instruction { tokens, original_line } => {
-                    // Pass 1d (literal pool + trampolines) only scans
-                    // .text, so an instruction landing anywhere else has
-                    // no pool slot and no trampoline: `ldr xN, =sym`
-                    // would panic on a missing key and `bl printf` would
-                    // truncate its offset into a garbage branch. On the course
-                    // toolchain code outside .text faults at runtime;
-                    // here we say what is missing while the line is known.
+                    // Pass 1d only scans .text, so code elsewhere has no pool
+                    // slot or trampoline (`ldr xN, =sym` would panic, `bl
+                    // printf` would branch to garbage). The course toolchain
+                    // faults at run time; here we say so while the line is known.
                     if section.kind != SectionKind::Text {
                         return Err(EmuError::AssemblyError {
                             line: *original_line,
@@ -704,18 +674,14 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                     }
                     let pc = base + offset;
                     if let Some((reg, label_text)) = extract_ldr_label_load(tokens) {
-                        // GAS encodes `ldr reg, label` as one LDR
-                        // (literal), and the servers' linker resolves it
-                        // because ld packs the sections a few KB apart.
-                        // Here .data and .bss sit 2-3 MiB from .text,
-                        // past imm19's 1 MiB reach, so the linker
-                        // lowers it to two words: the label's address
-                        // arrives from the literal pool (a real LDR
-                        // (literal), always in reach), then an ordinary
-                        // load through it. The X view of the destination
-                        // doubles as the address register; the s/d forms
-                        // borrow x16, the same scratch the libc
-                        // trampolines already claim.
+                        // GAS encodes `ldr reg, label` as one LDR (literal),
+                        // which works on the servers because ld packs the
+                        // sections a few KB apart. Here .data and .bss sit
+                        // 2-3 MiB from .text, past its 1 MiB reach, so it
+                        // becomes two words: load the label's address from
+                        // the literal pool, then load through it. X/W
+                        // destinations hold the address themselves; s/d
+                        // forms borrow x16, as the libc trampolines do.
                         let addr_reg: u8 = match parse_ldr_dest(&reg) {
                             Some(LdrDest::Gpr { idx }) => idx,
                             Some(LdrDest::Fp) => 16,
@@ -813,8 +779,8 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                             if tokens_owned.len() > 2 {
                                 return Err(EmuError::AssemblyError {
                                     line: *original_line,
-                                    message: "bl takes a single label with no addend; \
-                                              branch to the label directly"
+                                    message: "bl takes a plain label, with no `+` or `-` \
+                                              offset; branch to the label directly"
                                         .into(),
                                 });
                             }
@@ -1046,17 +1012,13 @@ fn parse_ldr_dest(reg: &str) -> Option<LdrDest> {
     }
 }
 
-/// Render a token slice back to source text. Every `TokenKind` gets an
-/// arm on purpose: a catch-all arm drops whole tokens, so `ldr x0, =.Lmsg`
-/// (a DirectiveIdent) then produces an empty operand and two different
-/// operands collapse onto one literal-pool key. The
-/// match stays exhaustive so a new token kind is a compile error here
-/// instead of a silent hole.
+/// Render a token slice back to source text. The match has no catch-all
+/// arm on purpose: one once dropped `.Lmsg` (a DirectiveIdent), leaving an
+/// empty operand, so two operands shared one literal-pool key. A new token
+/// kind is now a compile error here.
 ///
-/// Spacing follows GAS: nothing after an opening bracket or brace and
-/// nothing before a closing one or a comma, and inside a register list
-/// nothing at all except after the commas, so `{v0.16b, v1.16b}` and the
-/// range form `{v0.16b-v3.16b}` come back out as they went in.
+/// Spacing follows GAS, so `{v0.16b, v1.16b}` and the range form
+/// `{v0.16b-v3.16b}` come back out as they went in.
 fn stringify_tokens(tokens: &[crate::frontend::lexer::Token]) -> String {
     let mut out = String::new();
     let mut brace_depth: usize = 0;
@@ -1145,7 +1107,7 @@ fn parse_ldr_eq_rt(
     let (sf, idx_str) = match first {
         'X' => (true, &reg[1..]),
         'W' => (false, &reg[1..]),
-        _ => return Err(err(line, &format!("bad register `{reg}` in LDR =pseudo"))),
+        _ => return Err(err(line, &format!("`ldr {reg}, =...` needs an x or w register"))),
     };
     let idx: u8 = idx_str
         .parse()
@@ -1252,21 +1214,15 @@ fn try_evaluate_at(
 }
 
 /// How deep `[`...`]` nesting may go before an operand is refused.
-/// `rewrite_operand` and `rewrite_operand_list` call each other once per
-/// bracket level, so `[[[[...]]]]` recurses without bound. A wasm stack
-/// overflow is unrecoverable (the trap skips wasm-bindgen's borrow-guard
-/// Drop and every later call fails on the stuck borrow flag), so depth is
-/// counted and refused long before the stack is at risk. This mirrors
-/// `expr::MAX_EXPR_DEPTH`, which guards the same hazard on the expression
-/// side. Real addressing modes nest one level.
+/// `rewrite_operand` and `rewrite_operand_list` recurse once per level, and
+/// a wasm stack overflow cannot be recovered from (every later call fails),
+/// so depth is capped as `expr::MAX_EXPR_DEPTH` caps expressions. Real
+/// addressing modes nest one level.
 const MAX_OPERAND_DEPTH: usize = 32;
 
-/// Walk the operand tail of an instruction line, evaluate any expression
-/// that resolves to a constant, and rewrite it as a plain numeric literal
-/// so the legacy assembler's `parse_immediate` can consume it. Register
-/// operands (x0, w3, sp, d5, ...) and shift keywords (LSL, SXTW) pass
-/// through unchanged because the expression evaluator returns None when
-/// it cannot fold them into a constant.
+/// Rewrite each operand expression that resolves to a constant as a plain
+/// number, so the older assembler's `parse_immediate` can read it.
+/// Registers and shift keywords (LSL, SXTW) pass through unchanged.
 fn lower_operands(
     line: &str,
     pc: u64,
@@ -1618,13 +1574,9 @@ fn is_host_address(addr: u64) -> bool {
     (HOST_STUB_BASE..HOST_STUB_BASE + 0x1_0000).contains(&addr)
 }
 
-/// Token-based BL redirect. When the line is `bl <ident>` (or the tail
-/// call `b <ident>`) and `<ident>` names a host stub with a registered
-/// trampoline, mutate `tokens[1]` from `Ident(name)` to
-/// `Ident("__tramp_<name>")`. Returns true when the rewrite happened.
-/// Operates on the lexer's already-tokenized instruction so trailing
-/// comments (stripped by m4) and tab whitespace (already collapsed by the
-/// lexer) cannot break the match the way the raw-string version did.
+/// Point `bl <name>` (or the tail call `b <name>`) at `__tramp_<name>` when
+/// `name` has a trampoline; true when it did. It works on tokens, so a tab
+/// after `bl` cannot break the match the way the old string version did.
 pub(crate) fn redirect_bl_to_trampoline_tokens(
     tokens: &mut [crate::frontend::lexer::Token],
     tramp_addr: &HashMap<String, u64>,
