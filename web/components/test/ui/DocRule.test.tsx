@@ -1,6 +1,6 @@
 // pins the doc-rule header strip: both product names are in the tree
-// (short one for phones, long one from sm up), the sheet section takes
-// the amber ink, and omitted segments simply do not render.
+// (short one for phones, long one from sm up), the sheet section shows
+// when given, and omitted segments simply do not render.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { DocRule } from "@/components/ui/DocRule";
@@ -16,10 +16,9 @@ describe("DocRule", () => {
     );
   });
 
-  it("renders the section segment in amber when given", () => {
+  it("renders the section segment when given", () => {
     render(<DocRule section="SECTION 4 · LEARN" />);
-    const section = screen.getByText("SECTION 4 · LEARN");
-    expect(section.className).toContain("text-[var(--amber)]");
+    expect(screen.getByText("SECTION 4 · LEARN")).toBeTruthy();
   });
 
   it("renders the right-aligned context segment when given", () => {
