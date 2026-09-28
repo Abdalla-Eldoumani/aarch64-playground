@@ -1,12 +1,6 @@
 /**
- * Machine values as the hex text the panels and the terminal print;
- * parse-address.ts reads it back.
- *
- * Three shapes cover every readout: a 64-bit word (registers, sp/fp, a
- * stack slot, the pc in a diagnostic), a 32-bit word (an address column,
- * an instruction encoding), and a single byte (hex dumps). Restating the
- * `toString(16).padStart(...)` pair per call site is how the same field
- * ended up padded in one panel and bare in another.
+ * Hex text for machine values, kept in one place so a field never prints
+ * padded in one panel and bare in another; parse-address.ts reads it back.
  */
 
 const MASK_64 = 0xffff_ffff_ffff_ffffn;
@@ -20,11 +14,9 @@ export function formatWord64(value: number | bigint): string {
 }
 
 /**
- * `0x` + at least 8 nibbles. A negative reads as its unsigned 32-bit pattern
- * (a word assembled with `|` from four bytes is a signed int32). A value too
- * wide for 32 bits keeps its extra digits instead of truncating: the memory
- * panel's address box is unbounded, and showing a typed 0x100000000 as
- * 0x00000000 would point the reader at the wrong place.
+ * `0x` + at least 8 nibbles. A negative (a word built with `|` from four
+ * bytes) reads as its unsigned pattern; a wider value keeps its extra digits,
+ * since showing a typed 0x100000000 as 0x00000000 points at the wrong place.
  */
 export function formatWord32(value: number): string {
   const bits = value < 0 ? value >>> 0 : value;
