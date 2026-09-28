@@ -2,7 +2,7 @@
   "title": "Quiz: floating point",
   "slug": "quiz-advance-floating-point",
   "order": 109,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "floating-point",
   "difficulty": "challenge",
   "variant": "quiz",
@@ -45,15 +45,15 @@
       "hint": "Read the mnemonic as float convert, nearest, signed."
     },
     {
-      "question": "The instruction fmsub Dd, Dn, Dm, Da executes. Which formula does it apply?",
+      "question": "The instruction fmsub d4, d5, d6, d7 executes. Which formula does it apply?",
       "options": [
-        "Dd = (Da - Dn) * Dm",
-        "Dd = (Dn * Dm) - Da",
-        "Dd = -(Da * Dn * Dm)",
-        "Dd = Da - (Dn * Dm)"
+        "d4 = (d7 - d5) * d6",
+        "d4 = (d5 * d6) - d7",
+        "d4 = -(d7 * d5 * d6)",
+        "d4 = d7 - (d5 * d6)"
       ],
       "correctAnswer": 3,
-      "explanation": "fmsub subtracts the product of the first two source registers from the fourth operand, so Dd = Da - (Dn * Dm). It is a fused operation, meaning the product is not rounded before the subtraction, and fmadd is the same shape with the product added instead.",
+      "explanation": "fmsub subtracts the product of the first two source registers from the fourth operand, so d4 = d7 - (d5 * d6). It is a fused operation, meaning the product is not rounded before the subtraction, and fmadd is the same shape with the product added instead.",
       "hint": "The last operand is the value being subtracted from, not the value being subtracted."
     },
     {
