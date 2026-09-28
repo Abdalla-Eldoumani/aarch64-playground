@@ -245,7 +245,7 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Ma
  * the whole card, the roomiest side takes a shorter (scrolling) or narrower
  * card, unless that would cut the text and the target is big enough to hold
  * the whole card: then, and when no side can hold even a short card, the card
- * sits over the middle of the target.
+ * sits over the target, below its header.
  */
 export function placeCard(
   target: Box,
@@ -279,16 +279,21 @@ export function placeCard(
         return { side, width: w, maxHeight, left: right + GAP, top: sideTop(h) };
       case "left":
         return { side, width: w, maxHeight, left: target.left - GAP - w, top: sideTop(h) };
-      default:
-        // Centred, so a control at the view's edge (the console's input
-        // box) stays uncovered.
+      default: {
+        // A view keeps its controls in a header (dec and hex) and sometimes
+        // a row at its foot (the console's input box), so the card leaves
+        // twice as much of the view above it as below. A fixed guess: a view
+        // with controls in its middle would need them measured.
+        const spare = shownBottom - shownTop - h;
+        const top = shownTop + (spare > 0 ? (spare * 2) / 3 : spare / 2);
         return {
           side,
           width: w,
           maxHeight,
           left: clamp(target.left + (target.width - w) / 2, MARGIN, view.width - MARGIN - w),
-          top: clamp((shownTop + shownBottom - h) / 2, MARGIN, view.height - MARGIN - h),
+          top: clamp(top, MARGIN, view.height - MARGIN - h),
         };
+      }
     }
   };
 
