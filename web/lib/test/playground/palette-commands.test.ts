@@ -25,6 +25,7 @@ function makeDeps(overrides: Partial<PaletteDeps> = {}): PaletteDeps {
     openShare: vi.fn(),
     openShortcuts: vi.fn(),
     openTutorials: vi.fn(),
+    openWalkthrough: vi.fn(),
     openConverter: vi.fn(),
     toggleTheme: vi.fn(),
     ...overrides,
@@ -49,6 +50,7 @@ const EVERY_ID = [
   "reset",
   "share",
   "tutorials",
+  "walkthrough",
   "base-converter",
   "toggle-theme",
   "format-source",
@@ -289,12 +291,14 @@ describe("the plain pass-through rows", () => {
     const actions = buildPaletteCommands(deps);
     row(actions, "share").run();
     row(actions, "tutorials").run();
+    row(actions, "walkthrough").run();
     row(actions, "base-converter").run();
     row(actions, "toggle-theme").run();
     row(actions, "format-source").run();
     row(actions, "help").run();
     expect(deps.openShare).toHaveBeenCalledTimes(1);
     expect(deps.openTutorials).toHaveBeenCalledTimes(1);
+    expect(deps.openWalkthrough).toHaveBeenCalledTimes(1);
     expect(deps.openConverter).toHaveBeenCalledTimes(1);
     expect(deps.toggleTheme).toHaveBeenCalledTimes(1);
     expect(deps.formatSource).toHaveBeenCalledTimes(1);
