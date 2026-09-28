@@ -64,6 +64,7 @@ export function Toolbar({
           type="button"
           onClick={onShare}
           aria-label="share program"
+          data-walkthrough="share"
           className={`${CONTROL} ${INACTIVE}`}
         >
           share
@@ -72,6 +73,7 @@ export function Toolbar({
         <button
           type="button"
           onClick={onTutorials}
+          data-walkthrough="tutorials"
           className={`${CONTROL} ${INACTIVE}`}
         >
           tutorials
@@ -94,6 +96,7 @@ export function Toolbar({
           // by CSS from data-keys so the button's text stays the bare word.
           aria-label="commands"
           title="open the command palette (Ctrl+K)"
+          data-walkthrough="commands"
           className={`${CONTROL} ${INACTIVE}`}
         >
           commands
