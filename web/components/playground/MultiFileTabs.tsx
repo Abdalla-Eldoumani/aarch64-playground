@@ -70,6 +70,7 @@ export function MultiFileTabs({
     <div
       role="group"
       aria-label="source files"
+      data-walkthrough="files"
       className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px] [@media(pointer:coarse)]:text-[12px]"
     >
       <span className="text-[var(--text-secondary)] mr-1">files:</span>
