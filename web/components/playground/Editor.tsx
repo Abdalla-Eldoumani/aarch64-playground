@@ -15,6 +15,8 @@ import { LINE_COMMENT } from "@/lib/asm/line-comment";
 import { useToast } from "@/components/ui/Toast";
 import { TouchEditor } from "@/components/playground/TouchEditor";
 import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playground/upload-guard";
+import { yieldToEventLoop } from "@/lib/emulator/run-loop";
+import { MONACO_FEATURES } from "@/components/playground/monaco-features";
 
 // The editor runtime is vendored from the monaco-editor dependency instead
 // of fetched from the loader's default CDN: the installed PWA has to keep
@@ -57,7 +59,18 @@ function loadMonaco(): Promise<void> {
     // be asked for. They share a chunk name so the budget still measures
     // one file, and they are ordered the way monaco's own all-in entry
     // orders them: contributions first, the API that reads them second.
+    //
+    // Run as one import, that is a quarter of a second of script on a laptop
+    // and several times that on a slow phone, and a click or a key that lands
+    // in it waits for all of it. So each feature runs in a task of its own,
+    // and register.all then has nothing left to run but a feature the list
+    // has not caught up with.
+    for (const load of MONACO_FEATURES) {
+      await load();
+      await yieldToEventLoop();
+    }
     await import(/* webpackChunkName: "monaco" */ "monaco-editor/features/register.all");
+    await yieldToEventLoop();
     const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
     loader.config({ monaco });
   })();
