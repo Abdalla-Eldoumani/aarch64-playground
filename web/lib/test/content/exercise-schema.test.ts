@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vitest";
 import { validateExercise, type WriteExercise } from "@/lib/content/exercise-schema";
 
-/** A complete, valid exercise exercising every optional field and assertion kind. */
+/** A valid coding exercise for each test to change one part of. */
 function validExercise() {
   return {
     title: "Sum Two Numbers",
@@ -100,7 +100,7 @@ describe("validateExercise (malformed metadata)", () => {
     expect(rejectError(rest)).toMatch(/title/);
   });
 
-  test("rejects a non-kebab slug", () => {
+  test("rejects a slug with capitals or spaces", () => {
     expect(rejectError({ ...validExercise(), slug: "Not Kebab" })).toMatch(/slug/);
     expect(rejectError({ ...validExercise(), slug: "has spaces" })).toMatch(/slug/);
   });
@@ -439,7 +439,7 @@ describe("validateExercise (interactive variants)", () => {
     );
   });
 
-  test("accepts a blanks question and pins exactly one ___ marker in its code", () => {
+  test("accepts a blanks question and requires exactly one ___ marker in its code", () => {
     expect(validateExercise(validBlanks()).ok).toBe(true);
     const noMarker = { ...validBlanks().blanks[0], code: "ldrb w20, [x29, 16]" };
     expect(rejectError({ ...validBlanks(), blanks: [noMarker] })).toMatch(/blanks\[0\]: code/);
