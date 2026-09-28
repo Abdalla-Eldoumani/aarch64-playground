@@ -116,9 +116,16 @@ describe("PhoneLayout", () => {
     expect(onPaneShown).toHaveBeenLastCalledWith("console");
   });
 
-  test("marks the console tab while the program waits for input", () => {
-    render(<PhoneLayout {...props({ consoleBlocked: true })} />);
+  test("marks the console tab while the program waits for input, and only then", () => {
+    const { rerender } = render(<PhoneLayout {...props({ consoleBlocked: true })} />);
     expect(within(strip()).getByRole("tab", { name: "console, waiting for input" })).toBeTruthy();
+    // Nothing to flag once the console itself is on screen.
+    fireEvent.click(within(strip()).getByRole("tab", { name: "console, waiting for input" }));
+    expect(within(strip()).getByRole("tab", { name: "console" })).toBeTruthy();
+    fireEvent.click(within(strip()).getByRole("tab", { name: "code" }));
+    rerender(<PhoneLayout {...props({ consoleBlocked: false })} />);
+    expect(within(strip()).getByRole("tab", { name: "console" })).toBeTruthy();
+    expect(within(strip()).queryByRole("tab", { name: /waiting/ })).toBeNull();
   });
 
   test("keeps the terminal mounted once opened, so a session survives a switch", () => {
