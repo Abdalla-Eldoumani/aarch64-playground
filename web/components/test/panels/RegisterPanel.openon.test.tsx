@@ -1,6 +1,6 @@
-// Pins openOn: a host that knows which file its program writes (the reference
-// bench) opens the panel there, over the student's stored choice, and without
-// storing its own.
+// Pins openOn: a host that knows which registers its program writes (the
+// reference bench) opens the panel on that view, over the student's stored
+// choice, and without storing its own.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import type { RegView } from "@/lib/emulator/emulator-state";
@@ -35,7 +35,7 @@ const pressed = (name: string) =>
   screen.getByRole("button", { name }).getAttribute("aria-pressed");
 
 describe("RegisterPanel openOn", () => {
-  it("opens on the named file over the stored one, and stores nothing", () => {
+  it("opens on the named view over the stored one, and stores nothing", () => {
     window.localStorage.setItem("aarch64-playground:regfile-view", "x");
     render(panel("v"));
     expect(pressed("v0–v31")).toBe("true");
