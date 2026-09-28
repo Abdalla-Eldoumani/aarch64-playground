@@ -25,8 +25,8 @@ score3_s = 24
   });
 
   it("ignores assignments with expression bodies", () => {
-    // `alloc = -(16 + 16) & -16` isn't a plain integer; the client-side
-    // parser skips it (the linker resolves it properly at assemble time).
+    // `alloc = -(16 + 16) & -16` is not a plain integer, so this parser
+    // skips it; the assembler still works it out.
     const slots = parseFrameSlots("alloc = -(16 + 16) & -16\nx_s = 8\n");
     expect(slots).toEqual([{ offset: 8, name: "x_s" }]);
   });
