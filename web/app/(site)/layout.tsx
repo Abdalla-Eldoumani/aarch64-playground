@@ -4,12 +4,9 @@ import { InstallHint } from "@/components/chrome/InstallHint";
 import { CropMarks } from "@/components/ui/CropMarks";
 import { fetchStarCount } from "@/lib/content/github";
 
-// The content route group ((site) adds no URL segment) gives every content page
-// the persistent full nav and footer in normal document flow. Its own min-h-dvh
-// column holds the height context regardless of the body, and the flex-1 main
-// pushes the footer to the bottom on short pages. Per-route pages own metadata.
-// Reading surfaces sit on the blueprint paper (.paper) with crop marks in the
-// corners. The playground route keeps its own flat layout.
+// The column carries its own min-h-dvh so the flex-1 main keeps the footer at
+// the bottom of a short page whatever the body does. The playground sits
+// outside this group and keeps its own flat layout.
 export default async function SiteLayout({
   children,
 }: {
