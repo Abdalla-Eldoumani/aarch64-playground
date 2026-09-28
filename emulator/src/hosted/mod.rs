@@ -1,13 +1,10 @@
-//! Hosted-runtime dispatch: libc stubs, syscalls, and the virtual FS that
-//! turn the bare-metal interpreter into a "plausibly Linux" environment
-//! for cpsc 355 programs. Organized so the assembler/linker can ask
-//! "what address should a `bl printf` resolve to?" and the executor can
-//! ask "was this BL to a host address? if so, run the stub".
+//! The C library calls, Linux syscalls and in-memory files a CPSC 355
+//! program uses, run by the emulator itself. The linker asks "what address
+//! does `bl printf` go to?" and the executor asks "did this BL land on one
+//! of those addresses? then run that function".
 //!
-//! Stub entries live at synthetic addresses starting at
-//! `cpu::HOST_STUB_BASE` (`0xFFFF_0000`), 16 bytes apart. The address
-//! range never overlaps .text/.data/.bss/.rodata or the stack, so there's
-//! no way for a well-formed program to collide with it accidentally.
+//! Those addresses start at `cpu::HOST_STUB_BASE` (`0xFFFF_0000`), 16 bytes
+//! apart, a range that never overlaps .text/.data/.bss/.rodata or the stack.
 
 use crate::cpu::{HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE};
 use crate::errors::EmuError;
