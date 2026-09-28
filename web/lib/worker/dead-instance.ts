@@ -8,9 +8,8 @@
  * wasm-bindgen's borrow-guard Drop, so the guard stays latched and every
  * later call throws on it.
  *
- * It lives beside the worker rather than inside it because the worker entry
- * cannot be imported under vitest (module-scope `self.addEventListener`, and
- * a wasm glue import the bundler pins by literal URL)
+ * It lives beside the worker rather than inside it so the rule is tested on
+ * its own, error by error, apart from the worker's message handling.
  */
 export function isDeadInstance(e: unknown): boolean {
   if (typeof WebAssembly !== "undefined" && e instanceof WebAssembly.RuntimeError) {
