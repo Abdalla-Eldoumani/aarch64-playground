@@ -1,15 +1,9 @@
 /**
- * Build-time, server-only exercise loader. The `node:fs` / `node:path` imports are
- * the server-only guard: Next refuses to bundle node built-ins into a Client
- * Component, so a client module that imports this file fails the build. That is
- * an equivalent of `import "server-only"` without adding the `server-only`
- * package, which would break the no-new-deps fence and this module's own unit
- * test. Only server components import this; client renderers receive
- * already-validated exercises as props.
- *
- * Every file is validated by `validateExercise` at load. Invalid JSON or invalid
- * content throws an `Error` that names the offending file, so unvalidated
- * content can never reach a renderer or the checker.
+ * Build-time exercise loader. Importing node:fs keeps it server-only: Next
+ * will not bundle node built-ins into a client component, so a client import
+ * fails the build, without the `server-only` package that would break this
+ * module's unit test. A bad file throws with its name, so unchecked content
+ * never reaches a renderer or the checker.
  */
 
 import fs from "node:fs";
@@ -25,12 +19,9 @@ import { compareByOrder } from "@/lib/content/content-order";
 const DEFAULT_DIR = path.join(process.cwd(), "content/exercises");
 
 /**
- * Read, parse, and validate every `*.json` exercise in `dir` (defaults to the
- * real content directory). Returns the valid exercises sorted by `order`. Throws
- * a named `Error` on unparseable JSON, on content that fails `validateExercise`,
- * or on a duplicate slug. An absent directory is treated as empty so the build
- * does not crash before any exercise is authored. The `dir` parameter exists
- * only for testability; production callers pass nothing.
+ * Every `*.json` exercise in `dir`, validated and sorted by `order`. Throws on
+ * bad JSON, invalid content, or a duplicate slug. A missing directory counts
+ * as empty so the build runs before any exercise exists. `dir` is for tests.
  */
 export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
   if (!fs.existsSync(dir)) return [];
