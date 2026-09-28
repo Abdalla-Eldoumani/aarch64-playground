@@ -1,14 +1,8 @@
 /**
- * The seven recurring CPSC 355 traps: the catalog's card content plus a
- * runnable fault/fix program pair per trap. Everything here is authored
- * payload, kept in one data module so the course-style guard
- * (course-style.test.ts) can raw-scan it and the behavioral test
- * (pitfall-data.playground.test.ts) can assemble and run every program on the
- * real emulator: each fault misbehaves observably (a printed misalignment,
- * a run that never returns, a wild-address fault, a wrong sum,
- * a value a callee scratched away) and each fix runs clean. The wrong/right
- * snippets are the compact card illustrations; fault/fix are complete
- * course-style programs for the run-it-live embed.
+ * The seven common traps: card text plus a runnable fault and fix program for
+ * each. One data module, so course-style.test.ts can scan it and
+ * pitfall-data.playground.test.ts can run every program, proving each fault
+ * misbehaves visibly and each fix runs clean.
  */
 
 export interface Pitfall {
@@ -103,7 +97,7 @@ main:
         ldp     fp, lr, [sp], 16
         ret`,
     watch:
-      "the fault prints once, then ret jumps back into greet because lr still points there: the run spins until the step budget stops it, and no exit code ever arrives. the fix exits 0.",
+      "the fault prints once, then ret jumps back into greet because lr still points there: the run loops until the playground's step limit stops it, and no exit code ever arrives. the fix exits 0.",
     fault: `// the fault: greet never saves lr, then calls printf
 define(fp, x29)
 define(lr, x30)
@@ -163,7 +157,7 @@ greet:
         sxtw    x0, w0
         ldr     x3, [x4, x0, lsl #3]`,
     watch:
-      "the fault treats -1 as 4294967295, walks off to a wild address, and the load faults. the fix sign-extends the index and reads the real neighbor: 200.",
+      "the fault treats -1 as 4294967295, so the address lands far outside the array and the load faults. the fix sign-extends the index and reads the real neighbor: 200.",
     fault: `// the fault: an int index that went negative is used unextended
 define(fp, x29)
 define(lr, x30)
@@ -393,7 +387,7 @@ main:
   {
     title: "caller-saved registers do not survive a call",
     cause:
-      "a routine you call may overwrite x9-x15, so a value that must live across the call belongs in a callee-saved register.",
+      "a routine you call may overwrite x9-x15, so a value that must live across the call belongs in a callee-saved register (x19-x28): a routine that changes one must restore it before it returns.",
     wrong: `        mov     x9, 42
         bl      announce
         mov     x1, x9`,
@@ -403,7 +397,7 @@ main:
         mov     x1, x19
         ldr     x19, [fp, 16]`,
     watch:
-      "the fault prints sum = -2401053088876216593: the printf inside announce left 0xdeadbeefdeadbeef in x9, as any call may, and the console notes the read. the fix keeps the sum in x19 and prints 42.",
+      "the fault prints sum = -2401053088876216593: the printf inside announce left 0xdeadbeefdeadbeef in x9, as any call may, and a console note names the call that overwrote it. the fix keeps the sum in x19 and prints 42.",
     fault: `// the fault: the sum lives in x9, and the routine it calls uses x9 too
 define(fp, x29)
 define(lr, x30)
