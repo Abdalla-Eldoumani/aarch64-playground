@@ -1,10 +1,7 @@
-// The persistent home-directory contract, at the component boundary: the
-// full playground hydrates the persisted working set into the machine,
-// stages every user write back into the store, merges a program's fixtures
-// over (never instead of) the working set, and re-seeds files across
-// assemble's machine reset. Embed chrome never touches the store. The
-// persistence module is mocked; its own IDB behavior is pinned in
-// lib/vfs-persist.test.ts.
+// The full playground keeps the student's files between visits, and every
+// assemble wipes the machine, so the saved files must be loaded back each
+// time. The storage module is mocked; lib/test/playground/vfs-persist.test.ts
+// covers it.
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
@@ -33,8 +30,8 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
 
-// Capture the terminal context so the tests can drive writeVfs and deleteVfs,
-// the staged write paths, without an xterm.
+// Capture the terminal context so the tests can call writeVfs and deleteVfs,
+// the terminal's file writes, without an xterm.
 const terminalProps = vi.hoisted(() => ({
   current: null as null | {
     buildContext: () => {
@@ -123,8 +120,8 @@ afterEach(() => {
   setWidth(1024);
 });
 
-describe("the persistent working set (full chrome)", () => {
-  it("hydrates persisted files into the machine and re-seeds them across assemble", async () => {
+describe("the student's saved files (full chrome)", () => {
+  it("loads saved files into the machine and loads them again after an assemble", async () => {
     persistMock.loadPersistedVfs.mockImplementation(async () => ({
       "notes.txt": "keep me\n",
     }));
@@ -138,7 +135,7 @@ describe("the persistent working set (full chrome)", () => {
     await waitFor(() =>
       expect(uploads(hub)).toContainEqual(["notes.txt", "keep me\n"]),
     );
-    // Assemble resets the machine; the working set must come back.
+    // Assemble resets the machine; the saved files must come back.
     vi.mocked(hub.uploadVfsFile).mockClear();
     await act(async () => {
       ref.current!.assemble();
@@ -148,7 +145,7 @@ describe("the persistent working set (full chrome)", () => {
     );
   });
 
-  it("stages a terminal write into the store and the machine", async () => {
+  it("saves a file written from the terminal to storage and the machine", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     setWidth(800);
@@ -168,7 +165,7 @@ describe("the persistent working set (full chrome)", () => {
     );
   });
 
-  it("removes a deleted file from the persisted set", async () => {
+  it("removes a deleted file from the saved files", async () => {
     persistMock.loadPersistedVfs.mockImplementation(async () => ({
       "a.txt": "1",
       "b.txt": "2",
@@ -191,7 +188,7 @@ describe("the persistent working set (full chrome)", () => {
     );
   });
 
-  it("merges a program's fixtures over the working set instead of replacing it", async () => {
+  it("adds a program's own files to the saved files instead of replacing them", async () => {
     persistMock.loadPersistedVfs.mockImplementation(async () => ({
       "mine.txt": "student file",
     }));
@@ -223,8 +220,8 @@ describe("the persistent working set (full chrome)", () => {
   });
 });
 
-describe("the terminal toolchain and the working set", () => {
-  it("gcc reseeds the home directory after its machine wipe", async () => {
+describe("the terminal's gcc and run commands and the saved files", () => {
+  it("gcc loads the home directory back after it wipes the machine", async () => {
     persistMock.loadPersistedVfs.mockImplementation(async () => ({
       "notes.txt": "keep me\n",
     }));
@@ -243,14 +240,14 @@ describe("the terminal toolchain and the working set", () => {
     await act(async () => {
       await terminal.buildContext().assembleSource("mov x0, 0\nsvc 0\n");
     });
-    // The tool-channel assemble ran (not the marker-painting one), and
-    // the student's files came back after the wipe.
+    // The terminal's assemble ran (not the editor's, which moves the line
+    // marker), and the student's files came back after the wipe.
     expect(hub.assembleForTool).toHaveBeenCalled();
     expect(hub.assemble).not.toHaveBeenCalled();
     expect(uploads(hub)).toContainEqual(["notes.txt", "keep me\n"]);
   });
 
-  it("a failing gcc reports the precise line and message from the verdict", async () => {
+  it("a failing gcc reports the exact line and message from the assembler", async () => {
     const hub: Hub = makeHub({
       assembleForTool: vi.fn().mockResolvedValue({
         success: false,
@@ -276,7 +273,7 @@ describe("the terminal toolchain and the working set", () => {
     expect(hub.assemble).not.toHaveBeenCalled();
   });
 
-  it("a terminal program run reseeds the home directory before running", async () => {
+  it("a terminal run loads the home directory back before running", async () => {
     persistMock.loadPersistedVfs.mockImplementation(async () => ({
       "input.txt": "1 2 3\n",
     }));
@@ -301,8 +298,8 @@ describe("the terminal toolchain and the working set", () => {
   });
 });
 
-describe("the working set stays out of reduced chromes", () => {
-  it("never reads or writes the store from embed chrome", async () => {
+describe("embed frames leave the saved files alone", () => {
+  it("never reads or writes storage from embed chrome", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -310,8 +307,8 @@ describe("the working set stays out of reduced chromes", () => {
       <EmbeddablePlayground ref={ref} chrome="embed" startSource="mov x0, 1" />,
     );
     engage(container);
-    // A lesson figure's program delivery, fixtures included: the machine
-    // gets the file, the store stays untouched.
+    // A lesson loads a program with its own file: the machine gets the file,
+    // storage stays untouched.
     act(() => {
       ref.current!.loadProgram({
         source: "mov x0, 2",
