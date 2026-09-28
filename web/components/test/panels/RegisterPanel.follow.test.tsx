@@ -1,9 +1,6 @@
-// Pins how the register list follows a write: it scrolls its own box (never
-// the page) just far enough to show the written row, switches to the v view
-// for a vector write, holds still for 5 s after the student scrolls, jumps
-// instantly under reduced motion, stands down when "follow changes" is off,
-// waits out a run, shows the row again when its box settles shorter just
-// after, and says each write once through a polite status region.
+// The list follows each write inside its own box, never the page, and gives
+// way to the student: a recent scroll, a run, or the follow changes switch
+// holds it still.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
@@ -145,7 +142,7 @@ function status(): string {
 }
 
 describe("RegisterPanel follows the write", () => {
-  it("scrolls its own box just far enough to show a row below the fold", () => {
+  it("scrolls its own box just far enough to show a row out of view", () => {
     const pageScroll = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     const { rerender } = mount();
     rerender(panel({ changedRegs: new Set([28]), registers: withRegister(28, "0x000000000000001c") }));
@@ -506,7 +503,7 @@ describe("RegisterPanel announces a write", () => {
     expect(second).not.toBe(first);
   });
 
-  it("says nothing about what a library call leaves in the vector file", () => {
+  it("says nothing about what a library call leaves in the vector registers", () => {
     const { rerender } = mount();
     const vecs = [...VECS];
     vecs[3] = "0xdeadbeefdeadbeefdeadbeefdeadbeef";
