@@ -6,8 +6,8 @@ import { runHeadless } from "@/lib/emulator/headless-run";
 import { isSolved } from "@/lib/playground/solved-state";
 import { readShareHash } from "@/lib/playground/share";
 
-// readShareHash returns a discriminated verdict; these tests only
-// care about the ok payload.
+// readShareHash returns either a state or the reason it failed; these tests
+// only need the state.
 function okShareState(hash: string) {
   const r = readShareHash(hash);
   if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
@@ -184,7 +184,7 @@ describe("ExerciseView", () => {
     expect(screen.getByText(/the prompt body text here/i)).toBeTruthy();
   });
 
-  it("renders a shape-only specification table and never the expected values", () => {
+  it("lists what the program must do in the specification, never the expected values", () => {
     render(<ExerciseView exercise={writeExercise} />);
     const criteria = screen.getByRole("region", { name: /specification/i });
     const text = criteria.textContent ?? "";
@@ -250,7 +250,7 @@ describe("ExerciseView", () => {
     expect(isSolved("write-exercise")).toBe(true);
   });
 
-  it("on a failing check shows expected-vs-actual, the failed structural label, and does not mark solved", () => {
+  it("on a failing check shows expected and actual values and the failed rule, and does not mark solved", () => {
     render(<ExerciseView exercise={writeExercise} />);
 
     fireEvent.click(screen.getByRole("button", { name: /check/i }));
@@ -265,7 +265,7 @@ describe("ExerciseView", () => {
     expect(isSolved("write-exercise")).toBe(false);
   });
 
-  it("forwards an in-cap stdin to the embed and drops an oversize one", () => {
+  it("forwards stdin within the size limit to the embed and drops an oversize one", () => {
     const withStdin: Exercise = { ...writeExercise, slug: "stdin-ok", stdin: "queued input" };
     const { unmount } = render(<ExerciseView exercise={withStdin} />);
     expect(screen.getByTestId("embed").getAttribute("data-startstdin")).toBe("queued input");
@@ -484,7 +484,7 @@ describe("ExerciseView hidden inputs", () => {
   });
 });
 
-describe("ExerciseView command line and shortcut rules", () => {
+describe("ExerciseView arguments and instruction rules", () => {
   it("gives the embed an args box only when the exercise takes arguments", () => {
     const { unmount } = render(<ExerciseView exercise={{ ...writeExercise, args: "12 7" }} />);
     expect(screen.getByTestId("embed").getAttribute("data-showargs")).toBe("1");
