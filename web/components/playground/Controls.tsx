@@ -208,13 +208,11 @@ export function Controls({
 }
 
 function Shortcut({ keys }: { keys: string }) {
-  // Hidden on a touch screen, which has no F keys to press. Inherit the
-  // button's text color via currentColor so the chip reads on both
-  // the cyan-filled primaries and the surface-toned secondaries, at full
-  // strength so it clears WCAG AA on the filled cyan. CSS draws the key from
-  // data-keys: written as text, it made the visible label "assemble F6"
-  // against the name "assemble", which fails label-in-name even with the chip
-  // aria-hidden. aria-keyshortcuts carries the key for AT.
+  // Hidden on touch screens, which have no F keys. currentColor at full
+  // strength keeps the chip readable (WCAG AA) on both button styles. CSS
+  // draws the key from data-keys: as text, even aria-hidden, it made the
+  // visible label "assemble F6" against the name "assemble", which fails
+  // label-in-name.
   return (
     <kbd
       aria-hidden="true"
