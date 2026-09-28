@@ -7,12 +7,10 @@ import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 const DISMISSED_KEY = "aarch64-playground:install-hint-dismissed";
 
 /**
- * Whether this visit is Safari on an iPhone or iPad, outside an installed
- * copy, with the tip not yet dismissed. iOS offers no install prompt of its
- * own, so without the tip a student never learns the playground can live on
- * the home screen (no offline promise: the service worker holds only what a
- * visit fetched). iPadOS reports itself as a Mac, so a Mac with a touch
- * screen counts too. Other iOS browsers and in-app views are left
+ * iOS offers no install prompt, so without this tip a student never learns the
+ * site can live on the home screen. It promises nothing about offline use: the
+ * service worker holds only what a visit fetched. iPadOS reports itself as a
+ * Mac, hence the touch check. Other iOS browsers and in-app views are left
  * out: their menus differ, and an in-app view cannot install at all.
  */
 function wantsHint(): boolean {
