@@ -152,6 +152,7 @@ export function PlaygroundHeaderBand({
           onClick={() => setSheetOpen(true)}
           aria-label="menu"
           aria-haspopup="dialog"
+          data-walkthrough="menu"
           aria-expanded={sheetOpen}
           className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
         >
