@@ -62,7 +62,7 @@ describe("RegisterPanel d-register view", () => {
     expect(window.localStorage.getItem("aarch64-playground:regfile-fp-hex")).toBe("1");
   });
 
-  it("lands a returning student back on the file the two-view flag stored", () => {
+  it("opens the d view when an older version saved the choice as \"1\"", () => {
     window.localStorage.setItem("aarch64-playground:regfile-view", "1");
     renderPanel();
     expect(screen.getByText("D0")).toBeTruthy();
