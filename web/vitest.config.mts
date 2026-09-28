@@ -84,13 +84,16 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text-summary"],
+      // Everything that ships, whether or not a test imports it: without a
+      // list, a module no test reached was left out of the count entirely.
+      include: ["app/**/*.{ts,tsx}", "components/**/*.{ts,tsx}", "lib/**/*.{ts,tsx}"],
       exclude: [
         "**/*.test.{ts,tsx}",
         "**/*.d.ts",
+        "components/test/**",
+        "lib/test/**",
         "lib/wasm/**",
         "lib/wasm-node/**",
-        "vitest.config.mts",
-        "vitest.setup.ts",
       ],
       // A floor so coverage cannot silently regress. Set a few points below
       // current so an ordinary change does not trip it; raise as coverage grows.
