@@ -1,12 +1,8 @@
-//! The libm subset a numeric cpsc 355 program reaches for. Every stub
-//! takes its double argument in `d0` (`pow` and `fmod` take a second in
-//! `d1`) and returns its result in `d0`: the AAPCS64 floating-point
-//! convention `atof` already follows.
-//!
-//! The bodies are Rust's f64 intrinsics, which are the IEEE-754
-//! operations glibc's libm computes: `sqrt` of a negative is NaN, `log`
-//! of zero is negative infinity, `log` of a negative is NaN. Nothing
-//! here sets `errno`, because the emulator has none to set.
+//! The math library functions a CPSC 355 program calls. Each takes its
+//! double in `d0` (`pow` and `fmod` take a second in `d1`) and returns in
+//! `d0`. Rust's f64 functions give the same IEEE-754 answers glibc does
+//! (`sqrt(-1)` is NaN, `log(0)` is negative infinity), and nothing sets
+//! `errno`, because the emulator has none.
 
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
