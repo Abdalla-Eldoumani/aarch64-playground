@@ -53,7 +53,7 @@ It is a course-style tutorial file, accepted as-is.
 
 ## assemble and run
 
-Hit **Assemble** (`F6`). The m4 expander runs, the frontend parses each
+Hit **Assemble** (`F6`). The m4 macros expand, the assembler reads each
 section, the linker places labels and a literal pool, and the bytes load
 into memory at `0x0040_0000` (`.text`), `0x0060_0000` (`.data`), and so on.
 Step and step back stay disabled until a program assembles, and disable
@@ -85,10 +85,10 @@ Every instruction in the reference works, plus more; see
 [`instruction-reference.md`](instruction-reference.md). A few things that
 come in handy:
 
-- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's gloss, which appends the substitutions it used as `(score1_r = w19)`. (The faded label beside each register name is the fixed ABI role, `arg0` or `fp` or `lr`, not your alias.)
+- Register aliases (`define(score1_r, w19)`) resolve in the decode strip's plain-English line, which appends the substitutions it used as `(score1_r = w19)`. (The faded label beside each register name is the fixed ABI role, `arg0` or `fp` or `lr`, not your alias.)
 - Stack-frame slots (`score1_s = 16`) resolve to numeric offsets at assemble time, so `[fp, score1_s]` becomes `[x29, 16]`.
 - Literal loads (`ldr x0, =msg`) work without wiring: the linker adds `msg`'s address to the pool and patches the LDR.
-- Host calls (`bl printf`) route through a per-host trampoline the linker plants in `.text`.
+- C library calls (`bl printf`) work as written: the linker adds a two-instruction stub to `.text` that jumps to the playground's own `printf`.
 - Syscalls (`mov x8, 64; svc 0`) produce real output through stdout.
 
 ## pass arguments
@@ -117,7 +117,7 @@ editor; nothing is sent to a server.
 - **Practice** (`/practice`): coding exercises graded by running your
   program against expected behavior, where the checker never reads or
   stores a solution, alongside quizzes, fill-in-the-blank drills, and
-  mental-trace prediction sets graded right on the page. The index shows
+  prediction sets graded right on the page. The index shows
   the two side by side, coding exercises on the left and theory sets on
   the right, each grouped by topic in the order the course meets them.
   Which exercises you have solved is kept in this browser alone, so the
@@ -151,7 +151,7 @@ for the full index of where each lives.
 - **Multi-file assembly** (the **+** by the file tab) registers extra source files, concatenated before assembly.
 - **Run-mode control** (the header's `console | terminal` switch, shown for the Miscellaneous programs) picks which surface owns the run: console keeps the classic debugger flow, terminal makes run assemble and hand the pane over in one action. `?run=terminal|console` on an `?example=` link overrides that example's default for the load.
 - **Terminal** (the term tab) is an xterm.js shell with the course toolchain (`m4 f.asm > f.s`, `gcc f.s -o prog`, `./prog [args]`), redirections, basic VFS commands, and a `gdb` subset. See [`terminal.md`](terminal.md).
-- **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it re-latches on every step.
+- **Decode strip** above the registers shows the instruction under the pc as its actual encoding fields, with the destination field lit amber; it updates on every step.
 - **Register views**: three cells in the register panel's header switch between `x0`–`x30`, `d0`–`d31`, and the 128-bit `v0`–`v31`, and a second pair picks decimal or raw bits for whichever view is up. A value written through an `s` register reads as the float it is (suffixed `f`).
 - **Vector lanes**: the v view slices each register into `b`, `h`, `s` or `d` lanes (8, 16, 32 or 64 bits) from a third group of cells beside the view and format ones, lane 0 at the least significant end, each lane showing its unsigned hex and its signed decimal; the lanes a step moved are inked as changed. `q0`–`q31` is the same 128 bits under another name.
 - **The view follows the write**: when one register class changes, the panel switches to it, so a step that writes `d3` shows the d file and one that writes above bit 63 or names a `v` or `q` destination shows the v file. When two classes change in the same step the view stays where it is and the other cells carry a change dot.
