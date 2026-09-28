@@ -23,8 +23,9 @@ describe("worker fatal-error classification", () => {
   });
 
   it("leaves the machine alone for the diagnostics students see every day", () => {
-    // These arrive through the same catch. Dropping the instance for one
-    // of them would throw away the session on an ordinary mistake.
+    // Most of these come back as result values, but any that is thrown lands
+    // in the same catch, and dropping the instance for it would throw away
+    // the session on an ordinary mistake.
     for (const message of [
       "assembly error at line 3: unknown mnemonic `MOVE`: check the spelling",
       "link error at line 0: no entry point. Define `main:`",
