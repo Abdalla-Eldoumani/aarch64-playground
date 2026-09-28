@@ -1,23 +1,9 @@
 /**
- * Client-only persistence for what a student actually typed into an
- * exercise: the editor buffer of a coding exercise, and the selections or
- * typed answers of a theory set. One localStorage key per slug, so a
- * single oversized answer cannot cost every other exercise its record and
- * a cleared exercise is one removal.
- *
- * Modeled on solved-state.ts, which stores the tick beside this: every
- * stored value is treated as untrusted on read (another tab, an older
- * build, or a hand-edited store can hold anything), a malformed entry is
- * ignored rather than thrown on, and every function is SSR-safe and never
- * throws through the shared safe-storage helpers.
- *
- * The solved tick says an exercise was passed; this says what the student
- * wrote, so nobody retypes an answer after a reload. A coding exercise's
- * check RESULT is deliberately not stored: the tick already carries it, and a
- * stored verdict would outlive the source it graded. A theory set does keep
- * which questions were checked and right (`graded`), because each one locks
- * once right and the answer it locked on is stored beside it; the sheet opens
- * those questions answered instead of asking for them again.
+ * What a student typed into an exercise, so nobody retypes it after a reload.
+ * One localStorage key per slug, so one oversized answer cannot cost the others
+ * their record. A coding exercise's check result is not stored (the solved tick
+ * carries it, and a stored verdict would outlive the code it graded); a theory
+ * set keeps `graded`, since a right answer locks and should reopen answered.
  */
 
 import {
@@ -39,7 +25,7 @@ export const MAX_ANSWER_CHARS = 64 * 1024;
 /**
  * The work itself, one arm per surface. The theory arms carry the block's
  * own answer shape: an option index (null before a pick) for the quiz, the
- * typed string for blanks and mental-trace predictions.
+ * typed text for blanks and predictions.
  */
 export type AnswerBody =
   | { kind: "write"; source: string }
@@ -123,9 +109,8 @@ export function readAnswer(slug: string): StoredAnswer | null {
 }
 
 /**
- * Store a record as given, cap included. Import uses this to keep the
- * exporting device's `updatedAt`; a live surface goes through saveAnswer.
- * An over-cap record is dropped rather than truncated: half an answer is
+ * Store a record as given, so an import keeps the exporting device's
+ * `updatedAt`. An over-cap record is dropped, not cut short: half an answer is
  * worse than none, and the surface that wrote it still holds the whole one.
  */
 export function putAnswer(slug: string, answer: StoredAnswer): boolean {
