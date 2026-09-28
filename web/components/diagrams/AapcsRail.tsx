@@ -1,14 +1,9 @@
 import type { JSX } from "react";
 
 /**
- * The reference page's AAPCS64 register-file rail: a narrow stacked column of
- * bordered rows mapping the register file to its ABI roles, tinted by the
- * site's two-pole logic: cyan for the registers that are yours to pass and
- * receive, amber for the ones the callee must preserve, a 60% fade for the
- * platform registers to leave alone. Purely presentational: the twelve rows
- * are the content (the full AAPCS64 role map), so they live here rather than
- * in a data module, and nothing reads live debugger state. Token-only, so all
- * three themes resolve from the same markup.
+ * The reference page's register rail. Cyan: registers you pass values in;
+ * amber: ones the callee must preserve; faded: ones to leave alone. The rows
+ * are the content, so they live here rather than in a data module.
  */
 
 type Tint = "cyan" | "neutral" | "muted" | "amber" | "amber-strong";
@@ -25,9 +20,9 @@ interface RailRow {
 
 const ROWS: RailRow[] = [
   { range: "x0 – x7", note: "arguments · results", tint: "cyan" },
-  { range: "x8", note: "indirect result", tint: "neutral" },
+  { range: "x8", note: "struct result address", tint: "neutral" },
   { range: "x9 – x15", note: "caller-saved temps", tint: "neutral" },
-  { range: "x16 – x18", note: "platform · avoid", tint: "muted" },
+  { range: "x16 – x18", note: "reserved · avoid", tint: "muted" },
   { range: "x19 – x28", note: "callee-saved", tint: "amber" },
   { range: "x29 · x30", note: "fp · lr (the frame record)", tint: "amber-strong" },
   { range: "d0 – d7", note: "float args · results", tint: "cyan" },
