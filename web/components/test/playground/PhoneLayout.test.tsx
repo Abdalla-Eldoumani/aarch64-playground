@@ -1,7 +1,7 @@
 // Pins the phone layout: four tabs upright (three on its side, where the code
 // is always showing), the editor kept mounted and only hidden behind another
-// view, the status line with its register peek, host pane requests, the
-// console's waiting dot, and a tab choice that survives a rotation.
+// view, the status line with its register peek, pane requests from the
+// parent, the console's waiting dot, and a tab choice that survives a rotation.
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { PhoneLayout, type PhoneLayoutProps } from "@/components/playground/PhoneLayout";
@@ -97,7 +97,7 @@ describe("PhoneLayout", () => {
     expect(screen.getByRole("status").textContent).toBe("finished · exit 0 · 55 steps");
   });
 
-  test("a host request brings a view under more forward", () => {
+  test("a request from the parent opens a view under more", () => {
     const { rerender } = render(<PhoneLayout {...props()} />);
     expect(screen.queryByTestId("conv")).toBeNull();
     rerender(<PhoneLayout {...props({ paneRequest: { pane: "convert", nonce: 1 } })} />);
@@ -108,7 +108,7 @@ describe("PhoneLayout", () => {
     expect(screen.queryByTestId("conv")).toBeNull();
   });
 
-  test("reports the view on screen to the host", () => {
+  test("reports the view on screen to the parent", () => {
     const onPaneShown = vi.fn();
     render(<PhoneLayout {...props({ onPaneShown })} />);
     expect(onPaneShown).toHaveBeenLastCalledWith("code");
