@@ -1,37 +1,23 @@
-// Differential server-parity sweep: every program the site ships is run
-// twice, once through the WASM emulator (the node-target build, driven the
-// way scripts/verify-corpus.js drives it) and once through the real course
-// toolchain on csarm (`m4 | gcc`, then the binary), and the two sides are
-// compared byte for byte on stdout, exit code, and the files the program
-// wrote.
+// Runs every program the site ships twice, once in the emulator (the
+// node-target build) and once with the course toolchain on csarm
+// (`m4 | gcc`, then the binary), and compares stdout, exit code, and the
+// files each run wrote, byte for byte.
 //
-// The program set is derived from the tree on every run, never from a
-// checked-in list: the shipped examples plus their fixtures, every lesson
-// editor starter, every write / identify-bug exercise starter, the two
-// starters in docs/authoring-content.md, every reference-entry payload the
-// try-in-playground link carries, both halves of every pitfall, and the
-// landing hero. A program that lands in any of those sources is swept the
-// next time this runs, with no edit here.
-//
-// Scratch lives OUTSIDE the tree (default: aarch64-playground-parity under
-// the OS temp directory, override with PARITY_SCRATCH): one directory per
-// program holding program.s, stdin, args, its vfs files, and meta.json,
-// plus results/ from each side and the report.
+// The program list is read from the tree on every run, never kept as a
+// copy, so a new example, lesson, exercise, reference entry, or pitfall is
+// swept with no edit here. Scratch files go under the OS temp directory
+// (override with PARITY_SCRATCH), never into the repository.
 //
 // Usage:
-//   node scripts/parity-sweep.js                  enumerate, both sides, compare
-//   node scripts/parity-sweep.js --playground-only enumerate + emulator side only
-//   node scripts/parity-sweep.js --server-only     reuse a downloaded csarm
-//                                                  results directory and compare
-//   node scripts/parity-sweep.js --reuse-remote    rerun the csarm side over the
-//                                                  tree already uploaded there
+//   node scripts/parity-sweep.js                  both sides, then compare
+//   node scripts/parity-sweep.js --playground-only emulator side only
+//   node scripts/parity-sweep.js --server-only     compare against csarm results
+//                                                  already in <scratch>/server-results/
+//   node scripts/parity-sweep.js --reuse-remote    rerun on csarm over the
+//                                                  programs already there
 //   node scripts/parity-sweep.js --no-report       skip writing report.md
 //
-// --server-only consumes what a previous full run downloaded (or what was
-// copied in by hand into <scratch>/server-results/); it still runs the
-// emulator side, because that side is free and the comparison needs it.
-//
-// Requires web/lib/wasm-node (wasm-pack build --target nodejs --out-dir
+// Needs web/lib/wasm-node (wasm-pack build --target nodejs --out-dir
 // ../web/lib/wasm-node from emulator/) and, for the server side, key-based
 // ssh to csarm.
 
@@ -132,11 +118,10 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 // terminal face: assembled and linked on both sides, never compared byte
 // for byte).
 
-// The three examples that wear a plain console face under the `console`
-// argv token drive that face here with the scripted session from
-// emulator/tests/filler_examples.rs, so their output is comparable rather
-// than a full-screen ANSI frame. temp-convert is absent: it already carries
-// a one-shot `.args` fixture, which is the deterministic face it ships.
+// Examples with a console mode run it here (argv `console`) with the
+// scripted session from emulator/tests/filler_examples.rs, so their output
+// can be compared instead of a full-screen terminal frame. temp-convert is
+// left out: its `.args` fixture already gives it a one-shot run.
 const CONSOLE_FACE_DRIVES = {
   calc: "2+3*4\nsqrt(9)\ndeg\nsin(30)\n5/0\nq\n",
   "two-sum": "4\n2\n1000\n7\n11\n15\n9\n",
@@ -547,12 +532,9 @@ function runServerSide(programs) {
     step = scp([runnerPath, `${SSH_HOST}:~/${REMOTE_ROOT}/`], SSH_CALL_TIMEOUT_MS);
     if (step.status !== 0) throw new Error(`runner upload failed: ${step.stderr || step.error}`);
   } else {
-    // A stale tree from a previous sweep would leave orphan results, so the
-    // remote root is emptied before the upload rather than merged into. Best
-    // effort: csarm's home is on NFS, and a file an interrupted run still
-    // holds open lingers as a .nfsXXXX handle that nothing can unlink yet.
-    // The upload overwrites everything that matters, so a leftover is a
-    // warning rather than the end of the sweep.
+    // Emptied, not merged into, so a previous sweep leaves no stray results.
+    // Best effort: on csarm's NFS home a file an interrupted run still holds
+    // open cannot be removed yet, and the upload overwrites all that matters.
     step = ssh(`mkdir -p ~/${REMOTE_ROOT} && find ~/${REMOTE_ROOT} -mindepth 1 -delete; exit 0`);
     if ((step.stderr || "").trim()) console.log("  note: remote wipe left something behind");
     console.log(`  uploading ${programs.length} program directories`);
