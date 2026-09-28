@@ -74,7 +74,17 @@ describe("registerServiceWorker", () => {
       value: "complete",
       configurable: true,
     });
-    expect(() => registerServiceWorker()).not.toThrow();
-    await Promise.resolve();
+    // The rejection lands after registerServiceWorker returns, so what counts
+    // is that nothing reaches the process as an unhandled rejection.
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      registerServiceWorker();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(register).toHaveBeenCalledTimes(1);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 });
