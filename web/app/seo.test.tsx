@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { Metadata } from "next";
 
-// The client views are markers: this file reads route metadata and the
+// The client views are stubbed out: this file reads route metadata and the
 // ld+json the routes render, not the views. The star lookup would reach
 // the network.
 vi.mock("@/components/landing/Hero", () => ({ Hero: () => null }));
