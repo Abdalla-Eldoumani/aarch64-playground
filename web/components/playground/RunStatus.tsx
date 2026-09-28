@@ -63,7 +63,6 @@ export function RunStatus(props: RunStatusProps) {
       {showPeek && programLoaded ? (
         <button
           type="button"
-          data-register-peek=""
           onClick={onOpenRegisters}
           aria-label={props.isRunning ? "open the registers" : `last step wrote ${spoken}. open the registers`}
           className="flex h-11 min-w-[44px] flex-1 items-center gap-1.5 overflow-hidden rounded-[var(--radius-control)] px-2 text-left focus:outline-none focus-visible:[box-shadow:var(--ring)]"
@@ -88,7 +87,7 @@ export function RunStatus(props: RunStatusProps) {
       ) : (
         <span className="flex-1" />
       )}
-      <p role="status" data-run-status="" className={`shrink-0 font-mono text-[12px] ${tone}`}>
+      <p role="status" className={`shrink-0 font-mono text-[12px] ${tone}`}>
         {text}
       </p>
     </div>
