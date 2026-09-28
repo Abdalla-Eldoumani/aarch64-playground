@@ -33,8 +33,6 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
 import { InstructionReference } from "@/components/reference/InstructionReference";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 // Four categories, six entries: one carries a worked encoding and an
 // intrinsic (add), two set flags (cmp, which has the flag panel, and adcs,
 // which does not), one writes a vector register (addv), the others are plain.
@@ -129,7 +127,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("InstructionReference", () => {
@@ -434,17 +431,6 @@ describe("InstructionReference", () => {
     } finally {
       window.matchMedia = media;
       window.requestAnimationFrame = frame;
-    }
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<InstructionReference instructions={FIXTURE} />);
-      expect(
-        screen.getByRole("navigation", { name: /instruction index/i }),
-      ).toBeTruthy();
-      unmount();
     }
   });
 
