@@ -26,12 +26,8 @@ function makeSnapshot(): StateSnapshot {
   };
 }
 
-/**
- * The actual worker isn't loadable inside vitest jsdom (the WASM
- * module needs a browser context). These tests exercise the protocol
- * layer with a mock Worker so the message id matching, error
- * propagation, and pending-request cleanup are covered.
- */
+// The real worker's WASM needs a browser, so a mock Worker stands in and the
+// client's message handling is tested on its own.
 function makeMockWorker() {
   const listeners: Record<string, Array<(e: unknown) => void>> = {
     message: [],
@@ -192,7 +188,7 @@ describe("WorkerClient", () => {
     expect(cb).toHaveBeenCalledTimes(1);
   });
 
-  test("each request gets a unique monotonic id", async () => {
+  test("each request gets a unique id that only goes up", async () => {
     const { w, posted } = makeMockWorker();
     const client = new WorkerClient(w);
     void client.step();
@@ -270,9 +266,7 @@ describe("WorkerClient", () => {
   });
 });
 
-// Drives one method through the post/resolve round trip: invoke it, grab the
-// matching posted request, fire its ok response, and hand back both so a test
-// asserts the wire shape and the resolved value in one place.
+// A fresh client per call, so posted[0] is always this call's request.
 function call(invoke: (c: WorkerClient) => Promise<unknown>) {
   const { w, posted, fire } = makeMockWorker();
   const client = new WorkerClient(w);
