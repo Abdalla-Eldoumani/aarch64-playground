@@ -33,9 +33,9 @@ describe("reference route", () => {
     expect(metadata.twitter).toBeTruthy();
   });
 
-  it("carries the shared cover on its restated cards", () => {
-    // Cards do not deep-merge across segments, so a route that restates its
-    // card without the image would unfurl with no cover.
+  it("keeps the shared cover image on the share cards it sets", () => {
+    // Next.js does not merge a route's share card with the parent's, so a
+    // route that sets its own card without the image shares with no picture.
     expect(metadata.openGraph?.images).toEqual([SHARE_CARD_IMAGE]);
     expect(metadata.twitter?.images).toEqual([SHARE_CARD_IMAGE]);
     expect(
