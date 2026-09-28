@@ -26,13 +26,9 @@ export type TerminalContextDeps = {
 };
 
 /**
- * The shell's view of the machine: the VFS, the course toolchain (m4, gcc,
- * `./name`), gdb-lite's stepping and register reads, and the editor's own
- * program behind `./program`.
- *
- * Rebuilt on demand rather than held, and every read goes through the deps'
- * refs, so the context is a thin adapter with no state of its own and the
- * terminal pane never re-initializes underneath an open session.
+ * The terminal's view of the machine. Every read goes through the deps' refs,
+ * so the context holds no state, can be rebuilt on demand, and never resets
+ * the terminal pane under an open session.
  */
 export function createTerminalContext(deps: TerminalContextDeps): DispatchContext {
   const { machine, applySeeds, driveForeground } = deps;
@@ -60,13 +56,10 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     const priorErr = machine.current.stderr;
     const since = (now: string, before: string) =>
       now.startsWith(before) ? now.slice(before.length) : now;
-    // Tool-channel assemble: the terminal's program must not paint the
-    // editor's error markers, and the verdict comes back directly. The
-    // assemble wiped the machine, home directory included, so put the
-    // working set back whatever the outcome.
-    // args[0] is the `./name` the terminal displays; the emulator owns
-    // argv[0] and re-adds it, so only argv[1..] goes through. Passing
-    // the whole array would double the program name.
+    // The tool assemble keeps the editor's error markers clean and returns
+    // the verdict directly, but wipes the home directory, so the working set
+    // goes back whatever the outcome. The emulator adds argv[0] itself, so
+    // passing args[0] too would double the program name.
     const verdict = await machine.current.assembleForTool(text, args.slice(1), workspace);
     applySeeds();
     if (!verdict.success) {
