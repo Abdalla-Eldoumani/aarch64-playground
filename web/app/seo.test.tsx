@@ -292,10 +292,10 @@ describe("llms.txt", () => {
 
   it("gives out only https links, and site links only on the bare domain", () => {
     for (const link of links) {
-      expect(link).toMatch(/^https:\/\//);
-      if (link.includes("aarch64-playground.com")) {
-        expect(link).toMatch(/^https:\/\/aarch64-playground\.com\//);
-      }
+      const { protocol, hostname } = new URL(link);
+      expect(protocol, link).toBe("https:");
+      // A site link names the bare domain, never a subdomain such as www.
+      expect(hostname.endsWith(".aarch64-playground.com"), link).toBe(false);
     }
   });
 
