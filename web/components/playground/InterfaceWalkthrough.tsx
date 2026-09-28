@@ -231,7 +231,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
         aria-labelledby={titleId}
         aria-describedby={bodyId}
         onKeyDown={onKeyDown}
-        className="fixed flex flex-col rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-panel)] text-[var(--text-primary)] [box-shadow:var(--shadow-overlay)]"
+        className="fixed flex flex-col rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-panel)] font-sans text-[var(--text-primary)] [box-shadow:var(--shadow-overlay)]"
         style={{
           top: card?.top ?? 8,
           left: card?.left ?? 8,
