@@ -1,19 +1,9 @@
 "use client";
 
 /**
- * The condition-code explorer for the b.cond reference entry. Ten chips:
- * the course's condition codes grouped either-sign / signed / unsigned, and
- * a detail card that answers, for the picked code: the question it asks after
- * `cmp a, b`, the exact flag formula, why that formula answers the question,
- * and the C reading. Below, a live compare: the student types the two
- * operands and the panel shows the four flags with the ones this code ignores
- * dimmed, then the taken / falls-through verdict. Picking a code and typing
- * operands is the user acting (cyan); the computed flags and the verdict are
- * the machine acting (amber). The flag math is computeIntFlags from
- * lib/emulator/flag-math (the same NZCV rules the executor applies), and
- * operands are fixed at the 32-bit w registers; the width story lives in the
- * FlagEffect panel on the flag-setting entries. Native buttons and inputs; no
- * animation, so reduced motion needs no fallback.
+ * The b.cond explorer. Flag math is computeIntFlags, the same NZCV rules the
+ * emulator runs. Operands stay 32-bit because FlagEffect already covers width.
+ * No animation, so no reduced-motion fallback.
  */
 
 import { useId, useState, type JSX } from "react";
