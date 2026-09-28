@@ -97,7 +97,7 @@ describe("CallingConventionGuide", () => {
     expect(text).toContain("16-byte");
     expect(text).toContain("x19");
     // a phrase only the authored prose carries, in neither diagram
-    expect(text).toContain("indirect result address");
+    expect(text).toContain("a result too big for");
   });
 
   it("routes every prose block through the single LessonMarkdown path", () => {
@@ -112,7 +112,7 @@ describe("CallingConventionGuide", () => {
       screen.getAllByText("printf", { selector: "code" }).length,
     ).toBeGreaterThanOrEqual(2);
     expect(
-      screen.getAllByLabelText(/indirect-result register \(x8\)/i).length,
+      screen.getAllByLabelText(/system call number \(x8\)/i).length,
     ).toBeGreaterThan(0);
     expect(
       screen.getAllByLabelText(/frame pointer \(x29 \/ fp\)/i).length,
