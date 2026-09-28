@@ -2,7 +2,7 @@
   "title": "Fill in the blank: ARMv8 assembly",
   "slug": "blanks-armv8",
   "order": 85,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-28",
   "topic": "armv8",
   "difficulty": "core",
   "variant": "blanks",
@@ -42,7 +42,7 @@
       "blanks": [
         "ge"
       ],
-      "explanation": "The guard branches on the complement of the loop condition, so x19 < 10 becomes b.ge done. ge is the signed test; the unsigned counterpart would be b.hs.",
+      "explanation": "The test at the top branches on the opposite of the loop condition, so x19 < 10 becomes b.ge done. ge is the signed test; the unsigned counterpart would be b.hs.",
       "hint": "Signed greater than or equal."
     },
     {
