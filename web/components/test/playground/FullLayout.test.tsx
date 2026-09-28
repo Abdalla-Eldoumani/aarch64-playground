@@ -1,5 +1,5 @@
 // pins which arrangement each viewport gets and, at tablet, that the two
-// half-width columns are real vertical splits: same grips, same labels, and
+// half-width columns are real vertical splits: same handles, same labels, and
 // their own persistence keys, so a tablet reader's sizes never land on the
 // laptop layout's entries. Also pins that the editor survives a change of
 // arrangement: it is the same node before and after.
@@ -181,7 +181,7 @@ describe("FullLayout", () => {
     expect(panel("panel-tabs").textContent).toBe("TABS");
   });
 
-  it("wears the same two grips the laptop layout wears", () => {
+  it("has the same two resize handles as the laptop layout", () => {
     renderLayout("md");
     const labels = Array.from(document.querySelectorAll('[role="separator"]')).map(
       (el) => el.getAttribute("aria-label"),
@@ -198,7 +198,7 @@ describe("FullLayout", () => {
     }
   });
 
-  it("opens the tablet columns on the authored splits", () => {
+  it("opens the tablet columns at their default sizes", () => {
     renderLayout("md");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-disasm").getAttribute("data-size")).toBe("30%");
@@ -220,7 +220,7 @@ describe("FullLayout", () => {
     window.localStorage.setItem(`${KEY}md-left`, "[85,15]");
     window.localStorage.setItem(`${KEY}md-right`, "[20,80]");
     renderLayout("md");
-    // The Panels open on the authored split; the stored one is pushed
+    // The Panels open on the default split; the stored one is pushed
     // through each group's handle once the storage read has run.
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-regs").getAttribute("data-size")).toBe("56%");
