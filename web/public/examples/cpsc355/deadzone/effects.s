@@ -29,7 +29,7 @@ SHAKE_DURATION = 8                              // Frames of screen shake
 
                 .data
 
-// Particle pool (128 * 8 = 1024 bytes)
+// Particle pool: a fixed array of reusable slots (128 * 8 = 1024 bytes)
                 .balign 8
 particle_pool:  .skip   MAX_PARTICLES * PARTICLE_SIZE
 
@@ -206,7 +206,7 @@ update_dmgnums_done:
                 ret
 
 // effects_update_shake - Update screen shake
-// Generates random offset and decays intensity
+// Picks a new random offset each frame until the timer runs out
 effects_update_shake:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
@@ -225,7 +225,7 @@ effects_update_shake:
                 add     x0, x0, :lo12:shake_intensity
                 ldr     w2, [x0]                  // Get intensity
 
-                // Random X offset: -intensity to +intensity
+                // Random X offset: -intensity to intensity + 1
                 add     w0, w2, 1
                 add     w0, w0, w0                // Range = intensity * 2 + 2
                 bl      random_range
@@ -416,9 +416,9 @@ effects_cursor_move:
                 add     w19, w19, w2
                 add     w20, w20, w3
 
-                // Clamp inside the arena, not just inside the screen: a shake
-                // large enough to push a particle out of the field would
-                // otherwise scatter it across the marquee or the status bar.
+                // Keep the position inside the arena, not just the screen: a
+                // shake large enough to push a particle out of the field would
+                // otherwise scatter it across the title row or the status bar.
                 mov     w0, PLAY_LEFT
                 cmp     w19, w0
                 csel    w19, w0, w19, lt
@@ -442,7 +442,7 @@ effects_cursor_move:
                 ret
 
 // effects_spawn_explosion - Spawn death explosion at position
-// Parameters: w0 = x, w1 = y, w2 = enemy_type
+// Parameters: w0 = x, w1 = y, w2 = enemy_type (saved but not used)
                 .global effects_spawn_explosion
 effects_spawn_explosion:
                 stp     fp, lr, [sp, -48]!
@@ -567,7 +567,7 @@ find_dmgnum_slot:
                 b       find_dmgnum_slot
 
 found_dmgnum_slot:
-                // One column left of the hit, so the glyph is not covered
+                // One column left of the hit, so the number does not cover what was hit
                 sub     w19, w19, 1
                 strh    w19, [x0, DMGNUM_X]
                 strh    w20, [x0, DMGNUM_Y]
