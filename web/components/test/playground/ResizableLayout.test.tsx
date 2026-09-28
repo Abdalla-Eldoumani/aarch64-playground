@@ -1,13 +1,6 @@
-// pins what the laptop layout itself owns, with the panel library mocked
-// away: the four-pane arrangement (an outer horizontal split, a vertical
-// split inside each column), which slot each child lands in, the three
-// localStorage keys the breakpoint prop derives, the size mapping in both
-// directions (a persisted array becomes the panes' default sizes, and a
-// finished drag is written back by panel id, with a missing id keeping the
-// size it already had rather than collapsing the pane to zero), and the grip
-// on every seam: its name, the band it draws, and the double-click that puts
-// its group back to the authored split. Keyboard resizing belongs to the
-// library and is pinned against the real one in ResizableLayout.keyboard.test.tsx.
+// Covers what the laptop layout owns, with the panel library mocked away.
+// Keyboard resizing belongs to the library, so it is tested against the real
+// one in ResizableLayout.keyboard.test.tsx.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -47,8 +40,8 @@ vi.mock("react-resizable-panels", async () => {
     }) => {
       // The real group reports its layout the moment it can measure itself,
       // and on a column that gets its height a beat after first render that
-      // lands BEFORE the parent's storage read. A layout effect is the same
-      // seam: it runs ahead of every passive effect above it.
+      // lands BEFORE the parent's storage read. A layout effect keeps that
+      // order: it runs ahead of every passive effect above it.
       const reported = useRef(false);
       useLayoutEffect(() => {
         if (reported.current) return;
@@ -368,7 +361,7 @@ describe("ResizableLayout", () => {
     expect(window.localStorage.getItem(`${KEY}lg`)).toBe("[30,70]");
   });
 
-  it("stands the library's own double-click down so the two cannot fight", () => {
+  it("turns off the library's own double-click so the two resets cannot conflict", () => {
     // The library's reset takes a panel back to its `defaultSize`, which here
     // is the PERSISTED size; the authored split is ours to restore.
     renderLayout();
@@ -377,7 +370,7 @@ describe("ResizableLayout", () => {
     );
     expect(flags).toEqual(["off", "off", "off"]);
   });
-  it("pushes a stored split onto the group the first render could not carry", () => {
+  it("applies a stored split to the group after it mounts", () => {
     // useLayoutPersistence reads localStorage in an effect, and the library
     // reads defaultLayout only at mount, so the stored sizes have to be put
     // on the mounted group by hand or a reload loses them.
