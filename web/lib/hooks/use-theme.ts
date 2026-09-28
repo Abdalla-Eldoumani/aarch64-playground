@@ -58,11 +58,10 @@ function getServerSnapshot(): Theme {
 }
 
 /**
- * Persist-aware theme state shared across every consumer. Reflects the current
- * theme as a `data-theme` attribute on the root `<html>` element so CSS vars
- * respond via the `[data-theme="..."]` selectors in `globals.css`. Returns the
- * current theme, a cycle function (dark -> light -> high-contrast -> dark), and
- * a direct setter so deep-links can pin a theme on mount.
+ * The theme, shared by every consumer and mirrored onto `<html data-theme>`
+ * for the selectors in `globals.css`. Returns the theme, a cycle (dark ->
+ * light -> high-contrast), and a setter so a deep link can pin a theme on
+ * mount.
  */
 export function useTheme(): [Theme, () => void, (next: Theme) => void] {
   const theme = useSyncExternalStore(subscribe, read, getServerSnapshot);
