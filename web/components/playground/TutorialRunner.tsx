@@ -135,7 +135,7 @@ export function TutorialRunner({
       ref={ref}
       role="dialog"
       aria-modal="false"
-      aria-label="guided tutorial"
+      aria-label="tutorials"
       // Escape inside the panel closes it; the editor keeps its own Escape.
       onKeyDown={(e) => {
         if (e.key === "Escape") onClose();
