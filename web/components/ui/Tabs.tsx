@@ -21,10 +21,8 @@ export interface TabsProps {
 }
 
 /**
- * The base tab strip every screen draws from. Owns the full WAI-ARIA tabs
- * structure (tablist / tab / tabpanel): the selected tab is marked with the cyan
- * token (the active-route indicator), carries a roving tabindex, and the arrow
- * keys move selection so the keyboard reaches every tab. Each tab is 44px tall.
+ * The shared tab strip, with the WAI-ARIA tabs roles and a roving tabindex so
+ * the arrow keys reach every tab.
  */
 export function Tabs({
   items,
