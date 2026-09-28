@@ -65,7 +65,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
         <thead>
           <tr className="text-[var(--text-secondary)]">
             <th className="text-left">address</th>
-            <th className="text-left pl-4">value (u64)</th>
+            <th className="text-left pl-4">value (64-bit)</th>
             <th className="hidden sm:table-cell text-left pl-4">label</th>
           </tr>
         </thead>
