@@ -560,6 +560,10 @@ html:has([data-install-tip]) {
     margin: 0 auto;
     padding: 0.5rem 0.75rem;
   }
+  /* Clear of the install tip, which holds the same edge while it shows. */
+  html:has([data-install-tip]) .term-card {
+    bottom: calc(7rem + var(--safe-bottom));
+  }
 }
 
 /* =============================================================================
