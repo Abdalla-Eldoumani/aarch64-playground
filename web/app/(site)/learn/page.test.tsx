@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import fs from "node:fs";
+import path from "node:path";
 
 // The client renderers are replaced with text markers so this test exercises the
 // server route wiring (loader -> page -> props) without pulling in the editor,
@@ -23,11 +25,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { notFound } from "next/navigation";
-import { loadAllLessons } from "@/lib/content/lessons";
 import LearnPage from "./page";
 import LessonPage, { dynamicParams, generateStaticParams } from "./[slug]/page";
 
 const SEEDED_SLUGS = ["registers-and-immediates", "stack-and-frame-pointer"];
+
+// Each lesson file is named after its slug, so the folder is a list
+// the loader under test did not produce.
+const FILE_SLUGS = fs
+  .readdirSync(path.join(process.cwd(), "content/lessons"))
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => name.slice(0, -".json".length));
 
 afterEach(() => {
   cleanup();
@@ -35,16 +43,16 @@ afterEach(() => {
 });
 
 describe("learn routes", () => {
-  it("statically enumerates exactly the seeded lesson slugs", () => {
+  it("statically enumerates one page per lesson file", () => {
     const slugs = generateStaticParams().map((entry) => entry.slug);
-    expect(slugs).toEqual(loadAllLessons().map((lesson) => lesson.slug));
+    expect([...slugs].sort()).toEqual([...FILE_SLUGS].sort());
     for (const slug of SEEDED_SLUGS) expect(slugs).toContain(slug);
     // dynamicParams off means only these slugs render; anything else 404s.
     expect(dynamicParams).toBe(false);
   });
 
   it("renders the index from every validated lesson", () => {
-    const expectedCount = loadAllLessons().length;
+    const expectedCount = FILE_SLUGS.length;
     render(<LearnPage />);
     expect(screen.getByText(`lesson-index:${expectedCount}`)).toBeTruthy();
   });
