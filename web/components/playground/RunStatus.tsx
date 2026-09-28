@@ -34,11 +34,8 @@ function statusText(p: RunStatusProps): string {
 }
 
 /**
- * The phone's one-line run status, with a peek at the registers the last step
- * wrote beside it. On a phone the register file lives on its own tab, so
- * stepping showed code or effect but never both; the peek puts the writes
- * under the code, and tapping it opens the full file. The status line is the
- * sign a run finished, which the code view otherwise never gave.
+ * On a phone the registers sit on their own tab, so this line shows the last
+ * step's writes under the code and is the only sign there that a run finished.
  */
 export function RunStatus(props: RunStatusProps) {
   const { programLoaded, registers, sp, changedRegs, showPeek, onOpenRegisters } = props;
