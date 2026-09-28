@@ -40,6 +40,7 @@ import type { SourceFilesBackup } from "@/lib/hooks/use-source-files";
 import {
   BaseConverter,
   InstructionView,
+  InterfaceWalkthrough,
   MemoryPanel,
   MemoryWatches,
   ReplayScrubber,
@@ -96,6 +97,7 @@ export type FullChromeBridge = {
   launchInteractive: () => void;
   openConverter: () => void;
   openTutorials: () => void;
+  openWalkthrough: () => void;
 };
 
 export interface FullChromeSurfaceProps {
@@ -156,7 +158,8 @@ function confirmImport(what: string, replaced: string[]): boolean {
 /**
  * The playground's own half of the shared shell: the header band, the files
  * strip, the three-column resizable layout with its eight machine views, the
- * controls, the tutorials, and the two hooks only this surface has a use for, the
+ * controls, the tutorials, the interface walkthrough, and the two hooks only
+ * this surface has a use for, the
  * launch mode and the terminal drive.
  *
  * Its own module, reached through dynamic(), because everything named above is
@@ -219,6 +222,9 @@ export function FullChromeSurface({
   }, []);
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  // Each bump opens the walkthrough where the student left it.
+  const [walkthroughRequest, setWalkthroughRequest] = useState(0);
+  const openWalkthrough = useCallback(() => setWalkthroughRequest((n) => n + 1), []);
   // Who owns the pane when this program's run is pressed: a live terminal
   // session (the visualizer example, or the student's own choice) or the
   // classic console flow. The hook owns the persistence, the example stem
@@ -461,10 +467,11 @@ export function FullChromeSurface({
       launchInteractive: () => void liveRef.current.launchInteractive(),
       openConverter: () => requestPane("convert"),
       openTutorials: () => setTutorialOpen(true),
+      openWalkthrough,
     };
     registerBridge(bridge);
     return () => registerBridge(null);
-  }, [registerBridge, requestPane]);
+  }, [registerBridge, requestPane, openWalkthrough]);
 
   // Editor wiring: main buffer vs an extra file tab.
   const isMain = activeFile === -1;
@@ -671,7 +678,7 @@ export function FullChromeSurface({
           );
         }}
       />
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0" data-walkthrough="editor">
         <Editor
           value={editorValue}
           onChange={onEditorChange}
@@ -720,7 +727,7 @@ export function FullChromeSurface({
 
   const regsBlock = (
     <ErrorBoundary label="registers">
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col" data-walkthrough="registers">
         {/* The always-on decode strip heads the registers column: the
             plain-language gloss plus the live bit-field view of the word under
             the program counter. */}
@@ -964,6 +971,9 @@ export function FullChromeSurface({
 
   return (
     <>
+      {/* Ahead of the header band, so the first-visit offer is the first
+          stop a Tab from the top reaches. */}
+      <InterfaceWalkthrough openRequest={walkthroughRequest} />
       <PlaygroundHeaderBand
         compact={phone !== null}
         onLoadProgram={loadProgramWithConfirm}
@@ -1045,6 +1055,10 @@ export function FullChromeSurface({
           // and re-apply the previous program's inputs instead.
           loadProgram({ source: src, label, args, stdin });
           setTutorialOpen(false);
+        }}
+        onStartWalkthrough={() => {
+          setTutorialOpen(false);
+          openWalkthrough();
         }}
         getRegister={(name) => {
           const lower = name.toLowerCase();
