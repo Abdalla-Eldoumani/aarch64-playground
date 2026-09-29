@@ -63,9 +63,9 @@ beforeEach(() => {
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
     this: Element,
   ) {
-    if (this.getAttribute("role") === "region") return rect(BOX_TOP, boxHeight);
+    if (this.getAttribute("aria-label") === "register values") return rect(BOX_TOP, boxHeight);
     const grid = this.parentElement;
-    if (grid?.parentElement?.getAttribute("role") === "region") {
+    if (grid?.parentElement?.getAttribute("aria-label") === "register values") {
       const line = Array.prototype.indexOf.call(grid.children, this);
       return rect(BOX_TOP + line * ROW - scrollTop, ROW);
     }
@@ -118,7 +118,7 @@ function panel(props: PanelProps = {}) {
  *  re-renders while the rows remount on every write. */
 function mount() {
   const view = render(panel());
-  const box = screen.getByRole("region", { name: "register values" });
+  const box = screen.getByRole("group", { name: "register values" });
   Object.defineProperty(box, "scrollHeight", { configurable: true, value: 700 });
   Object.defineProperty(box, "clientHeight", { configurable: true, get: () => boxHeight });
   Object.defineProperty(box, "scrollTop", {
@@ -295,7 +295,7 @@ describe("RegisterPanel follows the write", () => {
     expect(status()).toBe("");
     expect(scrollCalls).toEqual([]);
     expect(screen.getByRole("button", { name: "v0–v31" }).getAttribute("aria-pressed")).toBe("true");
-    const box = screen.getByRole("region", { name: "register values" });
+    const box = screen.getByRole("group", { name: "register values" });
     expect(box.querySelector(".anim-reg-flash")).toBeNull();
     expect(box.innerHTML).not.toContain("var(--changed)");
   });
@@ -332,7 +332,7 @@ describe("RegisterPanel in a host pane shorter than itself", () => {
         paneTop = options.top ?? paneTop;
       },
     });
-    const box = screen.getByRole("region", { name: "register values" });
+    const box = screen.getByRole("group", { name: "register values" });
     Object.defineProperty(box, "scrollHeight", { configurable: true, value: 700 });
     Object.defineProperty(box, "clientHeight", { configurable: true, value: BOX_HEIGHT });
     Object.defineProperty(box, "scrollTop", { configurable: true, get: () => scrollTop });
