@@ -41,8 +41,15 @@ export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
 
   return (
     // `relative` makes this box the lines' offsetParent, so their offsetTop
-    // is measured from the top of the scrolled content.
-    <div ref={boxRef} className="relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)]">
+    // is measured from the top of the scrolled content. It holds no control,
+    // so it takes focus itself: otherwise a keyboard cannot scroll it.
+    <div
+      ref={boxRef}
+      role="group"
+      aria-label="program source"
+      tabIndex={0}
+      className="relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+    >
       <pre className="min-w-full font-mono text-[14px] leading-[21px] text-[var(--text-primary)]">
         <code>
           {lines.map((line, index) => {
