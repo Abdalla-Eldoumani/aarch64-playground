@@ -52,6 +52,9 @@ interface RegisterPanelProps {
   /** A run is streaming snapshots. The list holds still and says nothing
    *  until it stops, then follows what the snapshot it stopped on wrote. */
   running?: boolean;
+  /** The label's heading level, one below the host's own section heading, so
+   *  an embedded panel reads as part of that section rather than a sibling. */
+  headingLevel?: 2 | 3 | 4;
 }
 
 // nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
@@ -400,7 +403,9 @@ export function RegisterPanel({
   source,
   currentLine = null,
   running = false,
+  headingLevel = 2,
 }: RegisterPanelProps) {
+  const Heading = `h${headingLevel}` as const;
   // 16 nibbles like every other row: PC renders through the same RegisterRow
   // as x0-x30 and SP, whose values are already 64-bit wide, so PC uses the
   // same width as the rest of the column.
@@ -714,9 +719,9 @@ export function RegisterPanel({
           room. The view cells name the panel anyway. */}
       <div className="shrink-0 px-2 pt-1 [container-type:inline-size]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <h2 className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)] [@container(max-width:500px)]:sr-only">
+          <Heading className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)] [@container(max-width:500px)]:sr-only">
             regfile
-          </h2>
+          </Heading>
           {hasFp ? (
             <div
               role="group"
