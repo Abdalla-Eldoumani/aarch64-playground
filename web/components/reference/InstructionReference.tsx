@@ -473,6 +473,7 @@ export function InstructionReference({
                   startSource={playgroundSource(current)}
                   readOnly={false}
                   registerView={current.registerView}
+                  registerHeadingLevel={3}
                 />
               </div>
             ) : (
