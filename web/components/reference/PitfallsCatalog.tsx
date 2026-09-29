@@ -120,6 +120,7 @@ export function PitfallsCatalog({
                       openHere.variant === "fault" ? pitfall.fault : pitfall.fix
                     }
                     readOnly={false}
+                    registerHeadingLevel={4}
                   />
                 </div>
               </div>
