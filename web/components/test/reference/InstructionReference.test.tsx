@@ -20,12 +20,14 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
     chrome?: string;
     startSource?: string;
     registerView?: string;
+    registerHeadingLevel?: number;
   }) => (
     <div
       data-testid="embed"
       data-chrome={props.chrome}
       data-startsource={props.startSource}
       data-registerview={props.registerView}
+      data-headinglevel={props.registerHeadingLevel}
     />
   ),
 }));
@@ -331,6 +333,8 @@ describe("InstructionReference", () => {
     );
     const embed = await screen.findByTestId("embed");
     expect(embed.getAttribute("data-registerview")).toBe("v");
+    // The entry is an h2, so the panel label inside it is an h3.
+    expect(embed.getAttribute("data-headinglevel")).toBe("3");
   });
 
   it("badges every flag setter, not only the ones with a flag panel", () => {
