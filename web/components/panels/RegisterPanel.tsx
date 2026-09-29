@@ -54,7 +54,7 @@ interface RegisterPanelProps {
   running?: boolean;
   /** The label's heading level, one below the host's own section heading, so
    *  an embedded panel reads as part of that section rather than a sibling. */
-  headingLevel?: 2 | 3 | 4;
+  headingLevel?: 2 | 3;
 }
 
 // nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
