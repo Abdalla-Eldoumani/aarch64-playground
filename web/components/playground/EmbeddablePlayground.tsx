@@ -137,6 +137,9 @@ export type EmbeddablePlaygroundProps = {
    *  bench knows it). Given, the registers panel carries the d and v views and
    *  opens on this one; left out, it shows the x registers alone. */
   registerView?: RegView;
+  /** Embed chrome: the registers panel's heading level, one below the host's
+   *  section heading (a lesson or reference entry passes 3). Defaults to 2. */
+  registerHeadingLevel?: 2 | 3 | 4;
   /** Landing hero only: once the hub engages, assemble the start program and
    *  step it on a timer with no user action. Off by default, so full and
    *  checker chrome are unchanged. Suppressed under prefers-reduced-motion. */
@@ -228,6 +231,7 @@ function EmbeddableCore({
   readOnly,
   staticEditor,
   registerView,
+  registerHeadingLevel,
   autoplay,
   autoplaySteps = 8,
   showRun = true,
@@ -870,6 +874,7 @@ function EmbeddableCore({
             pc={emu.pc}
             nzcv={emu.nzcv}
             running={emu.isRunning}
+            headingLevel={registerHeadingLevel}
           />
         }
         console={
@@ -945,6 +950,7 @@ export const EmbeddablePlayground = forwardRef<
     startArgs,
     className,
     staticEditor,
+    registerHeadingLevel,
     showRun = true,
     showReset = true,
     showStep = true,
@@ -1113,6 +1119,7 @@ export const EmbeddablePlayground = forwardRef<
               sp={IDLE_CPU_VIEW.sp}
               pc={IDLE_CPU_VIEW.pc}
               nzcv={IDLE_CPU_VIEW.nzcv}
+              headingLevel={registerHeadingLevel}
             />
           }
           console={
