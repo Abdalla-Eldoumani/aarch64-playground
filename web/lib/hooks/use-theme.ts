@@ -66,9 +66,10 @@ function getServerSnapshot(): Theme {
 export function useTheme(): [Theme, () => void, (next: Theme) => void] {
   const theme = useSyncExternalStore(subscribe, read, getServerSnapshot);
 
-  // Nothing sets `data-theme` before hydration, so mirror the resolved theme
-  // onto the document on mount. The write is idempotent, so multiple mounted
-  // consumers stay consistent.
+  // The pre-paint script in app/layout.tsx sets `data-theme` only for a saved
+  // or OS-light theme, so mirror the resolved theme onto the document on mount
+  // and save it, keeping the store and the page in step. The write is
+  // idempotent, so multiple mounted consumers stay consistent.
   useEffect(() => {
     if (typeof document === "undefined") return;
     const resolved = read();
