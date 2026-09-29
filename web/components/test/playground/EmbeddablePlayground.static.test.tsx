@@ -104,6 +104,17 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByRole("heading", { name: "regfile", level: 2 })).toBeNull();
   });
 
+  it("gives focus back to the same control after focus engages the frame", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    const before = screen.getByRole("group", { name: "register values" });
+    act(() => before.focus());
+    const after = screen.getByRole("group", { name: "register values" });
+    // The live panes replaced the pre-engage copy, so the focus had to move.
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
   it("still shows 'loading editor...' for an embed without staticEditor", () => {
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly />);
     expect(screen.getByText("loading editor...")).toBeTruthy();
