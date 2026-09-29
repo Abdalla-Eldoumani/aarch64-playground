@@ -149,6 +149,7 @@ export function LessonArticle({
                       startArgs={block.args}
                       startStdin={safeStdin(block.stdin)}
                       readOnly={false}
+                      registerHeadingLevel={3}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-4">
