@@ -23,6 +23,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
     startSource?: string;
     startArgs?: string;
     startStdin?: string;
+    registerHeadingLevel?: number;
   }) => (
     <div
       data-testid="embed"
@@ -30,6 +31,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
       data-startsource={props.startSource}
       data-startargs={props.startArgs}
       data-startstdin={props.startStdin}
+      data-headinglevel={props.registerHeadingLevel}
     />
   ),
 }));
@@ -185,6 +187,8 @@ describe("LessonArticle", () => {
     render(<LessonArticle lesson={fullLesson} />);
     const embed = screen.getByTestId("embed");
     expect(embed.getAttribute("data-chrome")).toBe("embed");
+    // Lesson sections are h2, so the panel label inside one is an h3.
+    expect(embed.getAttribute("data-headinglevel")).toBe("3");
     expect(embed.getAttribute("data-startsource")).toBe("// starter program\nret");
     expect(embed.getAttribute("data-startargs")).toBe("1 2");
   });
