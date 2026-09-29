@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { renderToStaticMarkup } from "react-dom/server";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { ThemeControl } from "@/components/chrome/ThemeControl";
 
 afterEach(() => cleanup());
@@ -35,6 +36,25 @@ describe("ThemeControl", () => {
     expect(html).toContain('aria-label="dark theme"');
     expect(html).not.toContain('aria-pressed="true"');
     expect(html.match(/aria-pressed="false"/g)).toHaveLength(3);
+  });
+
+  it("hydrates that HTML with nothing logged, then presses the resolved theme", async () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<ThemeControl />);
+    document.body.appendChild(container);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const recovered: unknown[] = [];
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, <ThemeControl />, { onRecoverableError: (e) => recovered.push(e) });
+    });
+    expect(recovered).toEqual([]);
+    expect(logged.mock.calls.map((c) => String(c[0]))).toEqual([]);
+    const pressed = [...container.querySelectorAll('button[aria-pressed="true"]')].map((b) => b.getAttribute("aria-label"));
+    expect(pressed).toEqual([`${document.documentElement.getAttribute("data-theme")} theme`]);
+    logged.mockRestore();
+    act(() => root?.unmount());
+    container.remove();
   });
 
   it("selecting light sets data-theme=light and moves aria-pressed", () => {
