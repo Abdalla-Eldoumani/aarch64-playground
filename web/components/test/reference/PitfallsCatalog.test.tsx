@@ -99,8 +99,10 @@ describe("PitfallsCatalog", () => {
     const embed = await findEmbed();
     expect(embed.getAttribute("data-chrome")).toBe("embed");
     expect(embed.getAttribute("data-startsource")).toBe(PITFALLS[0].fault);
-    // Each pitfall is an h3, so the panel label inside it is an h4.
-    expect(embed.getAttribute("data-headinglevel")).toBe("4");
+    // Each pitfall is an h2 under the page's h1, so the panel label inside it
+    // is an h3.
+    expect(screen.getByRole("heading", { name: PITFALLS[0].title, level: 2 })).toBeTruthy();
+    expect(embed.getAttribute("data-headinglevel")).toBe("3");
     expect(screen.getByText(PITFALLS[0].watch)).toBeTruthy();
   });
 
