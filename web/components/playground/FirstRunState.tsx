@@ -17,7 +17,7 @@ export interface FirstRunStateProps {
 export function FirstRunState({ onAssemble }: FirstRunStateProps) {
   return (
     <div
-      className="h-full w-full flex flex-col items-center justify-center gap-4 px-6 py-8 text-center"
+      className="min-h-full w-full flex flex-col items-center justify-center gap-4 px-6 py-8 text-center"
       aria-label="no program assembled"
     >
       <p className="font-serif text-[19px] leading-relaxed text-[var(--text-primary)]">
