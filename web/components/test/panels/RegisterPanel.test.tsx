@@ -25,6 +25,24 @@ afterEach(() => {
 });
 
 describe("RegisterPanel", () => {
+  it("labels itself with an h2 by default and at the level a host asks for", () => {
+    renderPanel();
+    expect(screen.getByRole("heading", { name: "regfile", level: 2 })).toBeTruthy();
+    cleanup();
+    render(
+      <RegisterPanel
+        registers={registers}
+        changedRegs={new Set()}
+        sp="0x0000fffffffff000"
+        pc={0x400000}
+        nzcv={0}
+        headingLevel={3}
+      />,
+    );
+    expect(screen.getByRole("heading", { name: "regfile", level: 3 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
+  });
+
   it("renders all 31 general registers plus SP and PC with full values", () => {
     renderPanel();
     expect(screen.getByText("X0")).toBeTruthy();
