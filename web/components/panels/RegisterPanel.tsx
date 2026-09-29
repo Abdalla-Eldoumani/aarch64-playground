@@ -841,13 +841,14 @@ export function RegisterPanel({
           keeps at least three rows (19px each at 12px): in a lesson frame on
           a phone the list shrank to nothing, so the frame's pane scrolls
           instead. A named group rather than a region: a lesson holds several
-          embeds, and identical region landmarks cannot be told apart. */}
+          embeds, and identical region landmarks cannot be told apart. The
+          focus outline sits inside the box, where the pane cannot clip it. */}
       <div
         ref={bodyRef}
         role="group"
         aria-label="register values"
         tabIndex={0}
-        className="min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        className="min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
         onWheel={(e) => {
           if (!e.ctrlKey) markUserScroll();
         }}
