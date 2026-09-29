@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { ThemeControl } from "@/components/chrome/ThemeControl";
 
 afterEach(() => cleanup());
@@ -27,6 +28,13 @@ describe("ThemeControl", () => {
     // matchMedia is stubbed to "not light" and localStorage is cleared, so the
     // hook's default resolves to dark.
     expect(pressed[0].getAttribute("aria-label")).toBe("dark theme");
+  });
+
+  it("presses no option in the server HTML, since the server cannot know the theme", () => {
+    const html = renderToStaticMarkup(<ThemeControl />);
+    expect(html).toContain('aria-label="dark theme"');
+    expect(html).not.toContain('aria-pressed="true"');
+    expect(html.match(/aria-pressed="false"/g)).toHaveLength(3);
   });
 
   it("selecting light sets data-theme=light and moves aria-pressed", () => {
