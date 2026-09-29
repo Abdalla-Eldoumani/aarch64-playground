@@ -3,7 +3,7 @@
 // and the shared highlighter's colors.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
 
 // jsdom implements no scrollIntoView, so every render that marks a line needs
@@ -28,6 +28,14 @@ describe("StaticCodeView", () => {
     expect(
       rows(container).map((row) => row.querySelector("[aria-hidden]")?.textContent),
     ).toEqual(["1", "2", "3"]);
+  });
+
+  it("lets a keyboard reach the scroll box, which holds no control of its own", () => {
+    render(<StaticCodeView value={"a\nb\nc"} currentLine={null} />);
+    const box = screen.getByRole("group", { name: "program source" });
+    expect(box.getAttribute("tabindex")).toBe("0");
+    box.focus();
+    expect(document.activeElement).toBe(box);
   });
 
   it("marks the one-based currentLine, not the line at that index", () => {
