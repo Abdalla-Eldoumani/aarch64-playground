@@ -42,13 +42,14 @@ export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
   return (
     // `relative` makes this box the lines' offsetParent, so their offsetTop
     // is measured from the top of the scrolled content. It holds no control,
-    // so it takes focus itself: otherwise a keyboard cannot scroll it.
+    // so it takes focus itself: otherwise a keyboard cannot scroll it. The
+    // focus outline sits inside the box, where the embed frame cannot clip it.
     <div
       ref={boxRef}
       role="group"
       aria-label="program source"
       tabIndex={0}
-      className="relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+      className="relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
     >
       <pre className="min-w-full font-mono text-[14px] leading-[21px] text-[var(--text-primary)]">
         <code>
