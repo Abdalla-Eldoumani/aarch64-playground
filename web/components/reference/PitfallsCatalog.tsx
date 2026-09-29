@@ -61,9 +61,9 @@ export function PitfallsCatalog({
         const openHere = open?.index === index ? open : null;
         return (
           <article key={pitfall.title} className="flex flex-col gap-3">
-            <h3 className="text-[19px] font-semibold text-[var(--text-primary)]">
+            <h2 className="text-[19px] font-semibold text-[var(--text-primary)]">
               {pitfall.title}
-            </h3>
+            </h2>
             <div className="grid gap-3 sm:grid-cols-2">
               <div className={WRONG_PANEL}>
                 <p className={LABEL_CLASS}>wrong</p>
@@ -120,7 +120,7 @@ export function PitfallsCatalog({
                       openHere.variant === "fault" ? pitfall.fault : pitfall.fix
                     }
                     readOnly={false}
-                    registerHeadingLevel={4}
+                    registerHeadingLevel={3}
                   />
                 </div>
               </div>
