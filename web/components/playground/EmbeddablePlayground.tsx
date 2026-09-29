@@ -180,11 +180,14 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
 }
 
 // What names a control across the swap from the pre-engage panes to the live
-// ones: its accessible label, or a plain button's text.
+// ones: its accessible label, a field's <label> text, or a plain button's text.
 function focusKey(target: EventTarget | null): string | null {
   if (!(target instanceof HTMLElement)) return null;
   const label = target.getAttribute("aria-label");
   if (label !== null) return label;
+  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+    return target.labels?.[0]?.textContent?.trim() || null;
+  }
   return target.tagName === "BUTTON" ? target.textContent?.trim() || null : null;
 }
 
@@ -986,7 +989,7 @@ export const EmbeddablePlayground = forwardRef<
     refocusRef.current = null;
     const node = wrapperRef.current;
     if (!engaged || key === null || !node || node.contains(document.activeElement)) return;
-    Array.from(node.querySelectorAll<HTMLElement>("[aria-label], button"))
+    Array.from(node.querySelectorAll<HTMLElement>("[aria-label], button, input, textarea"))
       .find((el) => focusKey(el) === key)
       ?.focus();
   }, [engaged]);
