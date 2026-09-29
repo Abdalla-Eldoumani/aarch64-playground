@@ -1,6 +1,20 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import { useTheme, type Theme } from "@/lib/hooks/use-theme";
+
+// The server cannot see the stored or OS theme, so its HTML presses no option
+// rather than a guess that the page's own colours may contradict until
+// hydration.
+function subscribe(): () => void {
+  return () => {};
+}
+function hydratedOnClient(): boolean {
+  return true;
+}
+function hydratedOnServer(): boolean {
+  return false;
+}
 
 // Short visible labels; the aria-label always carries the full "<value> theme".
 const OPTIONS: { value: Theme; label: string }[] = [
@@ -22,6 +36,7 @@ export function ThemeControl({
   className?: string;
 }) {
   const [theme, , setTheme] = useTheme();
+  const hydrated = useSyncExternalStore(subscribe, hydratedOnClient, hydratedOnServer);
   const sizing =
     size === "comfortable"
       ? "min-h-[44px] px-3 text-[13px]"
@@ -34,7 +49,7 @@ export function ThemeControl({
       className={`inline-flex items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)] ${className}`}
     >
       {OPTIONS.map(({ value, label }, index) => {
-        const active = theme === value;
+        const active = hydrated && theme === value;
         return (
           <button
             key={value}
