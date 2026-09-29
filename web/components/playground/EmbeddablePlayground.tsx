@@ -179,6 +179,15 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+// What names a control across the swap from the pre-engage panes to the live
+// ones: its accessible label, or a plain button's text.
+function focusKey(target: EventTarget | null): string | null {
+  if (!(target instanceof HTMLElement)) return null;
+  const label = target.getAttribute("aria-label");
+  if (label !== null) return label;
+  return target.tagName === "BUTTON" ? target.textContent?.trim() || null : null;
+}
+
 // Frozen empties for the pre-engage panes, at module scope so the pre-engage
 // render hands the panels the same objects every time and never remounts them
 // on a parent re-render.
@@ -967,6 +976,21 @@ export const EmbeddablePlayground = forwardRef<
   // so is a press on any pre-engage control.
   const engage = useCallback(() => setEngaged(true), []);
 
+  // Focus that engages the frame sits on a pre-engage copy of a control, and
+  // the swap to the live panes unmounts it, dropping a keyboard or screen
+  // reader user back to the page. The same control in the live panes takes
+  // the focus back.
+  const refocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const key = refocusRef.current;
+    refocusRef.current = null;
+    const node = wrapperRef.current;
+    if (!engaged || key === null || !node || node.contains(document.activeElement)) return;
+    Array.from(node.querySelectorAll<HTMLElement>("[aria-label], button"))
+      .find((el) => focusKey(el) === key)
+      ?.focus();
+  }, [engaged]);
+
   const innerHandleRef = useRef<EmbeddablePlaygroundHandle | null>(null);
   const pendingRef = useRef<Array<(handle: EmbeddablePlaygroundHandle) => void>>([]);
 
@@ -1025,10 +1049,14 @@ export const EmbeddablePlayground = forwardRef<
       });
       observer.observe(node);
     }
+    const engageOnFocus = (event: FocusEvent) => {
+      refocusRef.current = focusKey(event.target);
+      engage();
+    };
     node.addEventListener("mousedown", engage, { once: true });
     node.addEventListener("touchstart", engage, { once: true });
     node.addEventListener("keydown", engage, { once: true });
-    node.addEventListener("focusin", engage, { once: true });
+    node.addEventListener("focusin", engageOnFocus, { once: true });
     return () => {
       observer?.disconnect();
       // A callback that survives the unmount would setEngaged on a gone tree.
@@ -1039,7 +1067,7 @@ export const EmbeddablePlayground = forwardRef<
       node.removeEventListener("mousedown", engage);
       node.removeEventListener("touchstart", engage);
       node.removeEventListener("keydown", engage);
-      node.removeEventListener("focusin", engage);
+      node.removeEventListener("focusin", engageOnFocus);
     };
   }, [engaged, engage]);
 
