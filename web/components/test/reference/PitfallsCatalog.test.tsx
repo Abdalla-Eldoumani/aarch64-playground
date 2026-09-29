@@ -5,11 +5,12 @@ import { PITFALLS } from "@/lib/content/pitfall-data";
 // Stub the shared embeddable with a light marker that echoes the props the
 // catalog feeds it, so the test never instantiates Monaco or the WASM worker.
 vi.mock("@/components/playground/EmbeddablePlayground", () => ({
-  EmbeddablePlayground: (props: { chrome?: string; startSource?: string }) => (
+  EmbeddablePlayground: (props: { chrome?: string; startSource?: string; registerHeadingLevel?: number }) => (
     <div
       data-testid="embed"
       data-chrome={props.chrome}
       data-startsource={props.startSource}
+      data-headinglevel={props.registerHeadingLevel}
     />
   ),
 }));
@@ -98,6 +99,8 @@ describe("PitfallsCatalog", () => {
     const embed = await findEmbed();
     expect(embed.getAttribute("data-chrome")).toBe("embed");
     expect(embed.getAttribute("data-startsource")).toBe(PITFALLS[0].fault);
+    // Each pitfall is an h3, so the panel label inside it is an h4.
+    expect(embed.getAttribute("data-headinglevel")).toBe("4");
     expect(screen.getByText(PITFALLS[0].watch)).toBeTruthy();
   });
 
