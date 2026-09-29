@@ -93,6 +93,17 @@ describe("EmbeddablePlayground staticEditor", () => {
     );
   });
 
+  it("passes the host's heading level to the registers label before and after engaging", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor registerHeadingLevel={3} />,
+    );
+    expect(screen.getByRole("heading", { name: "regfile", level: 3 })).toBeTruthy();
+    engage(container);
+    expect(screen.getByRole("heading", { name: "regfile", level: 3 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "regfile", level: 2 })).toBeNull();
+  });
+
   it("still shows 'loading editor...' for an embed without staticEditor", () => {
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly />);
     expect(screen.getByText("loading editor...")).toBeTruthy();
