@@ -3,7 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 // Monaco stays stubbed (jsdom must never instantiate the editor); the static
 // view and the two panes are the real components, because whether they render
@@ -111,6 +111,29 @@ describe("EmbeddablePlayground staticEditor", () => {
     act(() => before.focus());
     const after = screen.getByRole("group", { name: "register values" });
     // The live panes replaced the pre-engage copy, so the focus had to move.
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  it("gives focus back to a field named only by its <label>", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(
+      <EmbeddablePlayground chrome="checker" startSource={SRC} startArgs="1 2" showArgs readOnly staticEditor />,
+    );
+    const before = screen.getByLabelText("args");
+    act(() => before.focus());
+    const after = screen.getByLabelText("args");
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  it("gives focus back to a button named only by its text", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    const tab = () => within(screen.getByRole("group", { name: "view" })).getByRole("button", { name: "console" });
+    const before = tab();
+    act(() => before.focus());
+    const after = tab();
     expect(after).not.toBe(before);
     expect(document.activeElement).toBe(after);
   });
