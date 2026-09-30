@@ -1349,9 +1349,11 @@ fn rewrite_operand(
     // GAS relocation specifier `:lo12:SYM` (the second half of an
     // `adrp`/`add :lo12:` address pair) resolves to the low 12 bits of the
     // symbol's address so the legacy `add` encoder sees a plain immediate.
-    if let Some(sym) = trimmed
+    // GAS takes it with or without the `#` an immediate may carry.
+    let unhashed = trimmed.strip_prefix('#').unwrap_or(trimmed).trim_start();
+    if let Some(sym) = unhashed
         .strip_prefix(":lo12:")
-        .or_else(|| trimmed.strip_prefix(":LO12:"))
+        .or_else(|| unhashed.strip_prefix(":LO12:"))
     {
         let name = sym.trim();
         if is_bare_identifier(name) {
