@@ -2,7 +2,7 @@
 
 Every instruction the playground understands. If it isn't listed here, the assembler will reject it with an `unknown mnemonic` error.
 
-Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/`WZR`. Immediates can be written decimal (`#42`), hex (`#0x2a`), or binary (`#0b101010`). The `#` is conventional and optional: `add x0, x1, 8` and `movk x4, 0x10, lsl 16` assemble exactly like their hashed forms, so GCC's immediates, which never carry the hash, need no edit (a whole `gcc -S` file still needs the few edits under [GCC output compatibility](#gcc-output-compatibility)). Labels end with a colon.
+Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/`WZR`. Immediates can be written decimal (`#42`), hex (`#0x2a`), or binary (`#0b101010`). The `#` is conventional and optional: `add x0, x1, 8` and `movk x4, 0x10, lsl 16` assemble exactly like their hashed forms, so GCC's immediates, which never carry the hash, need no edit (a whole `gcc -S` file still needs the few edits under [GCC output compatibility](#gcc-output-compatibility)). Labels end with a colon. A numeric label such as `1:` may be defined many times: `1b` names the nearest `1:` above the reference and `1f` the nearest one below, as in GAS.
 
 ## Data processing
 
@@ -127,7 +127,7 @@ Addressing modes:
 - **pre-index**: `[Xn, #imm]!` (writes the new address back into Xn)
 - **post-index**: `[Xn], #imm` (uses the base, then updates Xn)
 - **register offset**: `[Xn, Xm]` (LSL by access size) or `[Xn, Wm, SXTW #k]`
-- **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc.
+- **register offset with extend**: `[Xn, Wm, UXTW]`, `[Xn, Xm, LSL #3]`, `[Xn, Xm, SXTX]`, etc. An `LSL` needs its amount, and `UXTX` is refused (write `LSL`), as GAS refuses both.
 
 Unaligned access succeeds (SCTLR.A = 0), as on AArch64 Linux. The sign-extending loads (`LDRSB` / `LDRSH` / `LDRSW`) take every addressing form the plain loads do: the scaled unsigned offset, the unscaled form for a negative or unaligned offset, pre- and post-index writeback, and the register-offset forms. So do the SIMD&FP data moves (`LDR`/`STR` with a `Bt`, `Ht`, `St`, `Dt` or `Qt` target), register offset included, with the same extend keywords and the same "scale by the access width" rule.
 
@@ -641,7 +641,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `.word` / `.4byte` | Four bytes little-endian.                        |
 | `.quad` / `.dword` / `.xword` / `.8byte` | Eight bytes little-endian. Course files write `.dword`; AArch64 GCC writes `.xword` for every 8-byte value, numbers and addresses alike; `.quad` is the name the GAS manual gives. Values may name labels (`table: .dword msg_one, msg_two`): each slot receives the label's absolute address at link time, which is how assignment-style pointer tables are built and then indexed with `ldr Xt, [table, Wi, SXTW 3]`. |
 | `.double`     | IEEE 754 double (use `0r3.14` literal form).          |
-| `.float`      | IEEE 754 float.                                       |
+| `.float` / `.single` | IEEE 754 float.                                |
 | `.string` / `.asciz` | Null-terminated string.                        |
 | `.ascii`      | String, no null terminator.                           |
 | `.type` / `.size` | Accepted and ignored, so the ones GCC writes need no edit. |
@@ -663,9 +663,10 @@ An address in the unmapped first page faults here exactly as it does for
 | Form                     | Notes                                                |
 | ------------------------ | ---------------------------------------------------- |
 | `define(NAME, BODY)`     | Token-boundary substitution. Use for register aliases. |
+| `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line. |
 | `NAME = EXPRESSION`      | Symbol assignment. `.` is the address at the line where the assignment appears. |
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick anywhere except ``undefine(`NAME')``, whose m4 quotes are legal. Undefining a name ends that define's reach at that line, so an alias can be rebound per function.
+`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick outside a `define` or ``undefine(`NAME')``. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
 
 ## GCC output compatibility
 
@@ -677,8 +678,7 @@ A whole `-S` file still needs these edits before it assembles:
 - Write `.set NAME, VALUE` as `NAME = VALUE`.
 - Replace `.local NAME` plus `.comm NAME, SIZE, ALIGN` with `.balign ALIGN`, `NAME:`, and `.skip SIZE` in `.bss`.
 - Write a `.base64` string out as `.byte` rows.
-- Drop the `#` in front of `:lo12:` inside an address: `ldr d0, [x0, :lo12:.LC0]`, not `[x0, #:lo12:.LC0]`.
-- Call `scanf` and `strtol` by those names where glibc's headers renamed them `__isoc99_scanf` or `__isoc23_strtol`.
+- Call `strtol` by that name where glibc's headers renamed it `__isoc23_strtol`.
 
 ## C library functions
 
@@ -688,7 +688,7 @@ Built into the playground, so `bl` reaches them with no setup:
 | -------- | -------------------------------------------------------- |
 | `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. |
 | `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
-| `scanf`  | `%d %u %x %s %c %f`; returns `WaitingForInput` when stdin runs dry. |
+| `scanf`  | `%d %u %x %s %c %f`; returns `WaitingForInput` when stdin runs dry. `__isoc99_scanf`, the name `gcc -S` writes, is the same function. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
 | `fgets` / `fputs`              | Line in, string out, over stdin/stdout/stderr or a virtual file. `fgets` keeps the newline and answers NULL at end of input. |
 | `putc` / `fputc` / `getc` / `fwrite` | One byte out, one byte in, and a block of `size * n` bytes out, over the same streams. Optimized GCC output calls these where the C wrote `putchar`, `getchar` or `fputs`. |
@@ -790,7 +790,5 @@ finishes on the next step.
 - Atomics (`LDAR`, `STXR`, `LDXR`, `STLR`)
 - `SWP`, `CAS`, load-acquire / store-release
 - SVE and SME
-- Numeric local labels: a label such as `1:` and a branch to it such as
-  `b 1f` or `b 1b` are refused. Give the label a name.
 
 To add one of these, follow [Add an instruction](CONTRIBUTING.md#add-an-instruction).
