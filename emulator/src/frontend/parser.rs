@@ -18,6 +18,7 @@ use crate::errors::EmuError;
 pub fn parse(source: &str) -> Result<Program, EmuError> {
     let expanded = expand(source)?;
     let (text, req_aliases) = apply_req_aliases(&expanded.text)?;
+    let text = name_local_labels(&text)?;
     let mut prog = Program::new();
     prog.aliases = expanded.defines;
     prog.aliases.extend(req_aliases);
@@ -105,6 +106,98 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
         }
     }
     Ok((out, aliases))
+}
+
+/// GAS's numeric local labels: `N:` may be defined any number of times,
+/// and `Nb` / `Nf` name the nearest definition above or below. Each
+/// definition gets a name of its own here, before lexing, so everything
+/// after this sees ordinary labels. m4 has already stripped comments;
+/// string and character literals are copied as they are.
+pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
+    let name = |n: &str, k: usize| format!(".L{n}_fb{k}");
+    // Definitions of each number so far, and the forward references,
+    // checked once every definition has been counted.
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    let mut forward: Vec<(&str, usize, usize)> = Vec::new();
+    let mut out = String::with_capacity(text.len());
+    for (idx, line) in text.split('\n').enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        let b = line.as_bytes();
+        let mut i = 0;
+        // Only labels so far on this line, so `N:` defines one.
+        let mut label_place = true;
+        while i < b.len() {
+            let start = i;
+            if b[i] == b'"' || b[i] == b'\'' {
+                i += 1;
+                while i < b.len() {
+                    i += 1;
+                    if b[i - 1] == b'\\' {
+                        i += 1;
+                    } else if b[i - 1] == b[start] {
+                        break;
+                    }
+                }
+                out.push_str(&line[start..i.min(b.len())]);
+                label_place = false;
+                continue;
+            }
+            if !is_word(b[i]) {
+                while i < b.len() && !is_word(b[i]) && b[i] != b'"' && b[i] != b'\'' {
+                    label_place &= b[i].is_ascii_whitespace() || b[i] == b':';
+                    i += 1;
+                }
+                out.push_str(&line[start..i]);
+                continue;
+            }
+            while i < b.len() && is_word(b[i]) {
+                i += 1;
+            }
+            let word = &line[start..i];
+            let (digits, last) = word.split_at(word.len() - 1);
+            let colon = b.get(i) == Some(&b':');
+            if label_place && colon && word.bytes().all(|c| c.is_ascii_digit()) {
+                let count = seen.entry(word).or_insert(0);
+                *count += 1;
+                out.push_str(&name(word, *count));
+            } else if !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && (last == "b" || last == "f") {
+                let count = seen.get(digits).copied().unwrap_or(0);
+                if last == "b" && count == 0 {
+                    return Err(err(
+                        idx + 1,
+                        &format!(
+                            "backward ref to unknown label \"{digits}:\"\n`{word}` names the \
+                             nearest `{digits}:` above this line, and there is none: add one \
+                             above, or write `{digits}f` for the next one below"
+                        ),
+                    ));
+                }
+                let k = if last == "b" { count } else { count + 1 };
+                if last == "f" {
+                    forward.push((digits, k, idx + 1));
+                }
+                out.push_str(&name(digits, k));
+                label_place = false;
+            } else {
+                out.push_str(word);
+                label_place &= colon;
+            }
+        }
+    }
+    if let Some((n, k, line)) = forward.into_iter().find(|(n, k, _)| seen.get(n).copied().unwrap_or(0) < *k) {
+        return Err(err(
+            line,
+            &format!(
+                "local label `\"{n}\" (instance number {k} of a fb label)' is not defined\n\
+                 `{n}f` names the next `{n}:` below this line, and there is none: add one \
+                 below, or write `{n}b` for the nearest one above"
+            ),
+        ));
+    }
+    Ok(out)
 }
 
 /// A `.req` alias name: identifier shaped, no dots (dotted names are GCC
@@ -1278,6 +1371,27 @@ mod tests {
         let mut arr = [0u8; 4];
         arr.copy_from_slice(&bytes);
         assert_eq!(f32::from_bits(u32::from_le_bytes(arr)), -2.5_f32);
+    }
+
+    #[test]
+    fn numeric_local_labels_name_the_nearest_definition() {
+        let text = name_local_labels("1: b 1f\n1: b.ne 1b\n  cbz x0, 1b\n2:\n.quad 2b, 1f\n1:").unwrap();
+        assert_eq!(
+            text,
+            ".L1_fb1: b .L1_fb2\n.L1_fb2: b.ne .L1_fb2\n  cbz x0, .L1_fb2\n.L2_fb1:\n\
+             .quad .L2_fb1, .L1_fb3\n.L1_fb3:"
+        );
+        // Numbers that are not label references keep their text.
+        let kept = "ld1 {v0.16b}, [x0], 16\n.byte 0x1b, 0b101, 1\n.string \"1: 1b\"\nmov w0, '1'\n.2byte 3";
+        assert_eq!(name_local_labels(kept).unwrap(), kept);
+    }
+
+    #[test]
+    fn a_numeric_label_with_no_definition_fails_with_gas_wording() {
+        let e = parse(".text\nmain: b 2b\n2: ret\n").unwrap_err().to_string();
+        assert!(e.contains("line 2") && e.contains("backward ref to unknown label \"2:\""), "{e}");
+        let e = parse(".text\n1: ret\nmain: cbz x0, 1f\n").unwrap_err().to_string();
+        assert!(e.contains("local label `\"1\" (instance number 2 of a fb label)' is not defined"), "{e}");
     }
 
     #[test]
