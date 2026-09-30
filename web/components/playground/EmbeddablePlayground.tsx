@@ -8,6 +8,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type RefObject,
 } from "react";
 import dynamic from "next/dynamic";
 import type { FullChromeBridge } from "@/components/playground/FullChromeSurface";
@@ -18,7 +19,11 @@ import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playg
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
-import { useAutoplay } from "@/lib/playground/use-autoplay";
+import {
+  useAutoplay,
+  type WalkCommand,
+  type WalkState,
+} from "@/lib/playground/use-autoplay";
 import { useWorkingSet } from "@/lib/playground/use-working-set";
 import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
@@ -114,6 +119,9 @@ export type EmbeddablePlaygroundHandle = {
    *  toasts dispatched there never reach the mounted Toaster; this component's
    *  binding reaches it. */
   notifyError(message: string): void;
+  /** The landing hero's walk: pause, resume, replay, or (under reduced
+   *  motion) take one step. A no-op on every surface without autoplay. */
+  walk(command: WalkCommand): void;
 };
 
 export type EmbeddablePlaygroundProps = {
@@ -142,10 +150,14 @@ export type EmbeddablePlaygroundProps = {
   registerHeadingLevel?: 2 | 3;
   /** Landing hero only: once the hub engages, assemble the start program and
    *  step it on a timer with no user action. Off by default, so full and
-   *  checker chrome are unchanged. Suppressed under prefers-reduced-motion. */
+   *  checker chrome are unchanged. Under prefers-reduced-motion it waits for
+   *  the handle's `walk("step")` instead. */
   autoplay?: boolean;
   /** How many steps the autoplay walk takes (clamped to a small ceiling). */
   autoplaySteps?: number;
+  /** Told each time the autoplay walk's state changes, so the host can label
+   *  its pause and replay control. */
+  onAutoplayChange?: (state: WalkState) => void;
   showRun?: boolean;
   showReset?: boolean;
   /** Embed/checker step and back. On by default; the hero's autoplay frame
@@ -230,6 +242,8 @@ function nameForRecents(source: string): string {
 
 type EmbeddableCoreProps = EmbeddablePlaygroundProps & {
   registerHandle: (handle: EmbeddablePlaygroundHandle | null) => void;
+  /** The outer wrapper, which the autoplay walk watches to hold off screen. */
+  frameRef: RefObject<HTMLDivElement | null>;
 };
 
 function EmbeddableCore({
@@ -246,6 +260,7 @@ function EmbeddableCore({
   registerHeadingLevel,
   autoplay,
   autoplaySteps = 8,
+  onAutoplayChange,
   showRun = true,
   showReset = true,
   showStep = true,
@@ -260,6 +275,7 @@ function EmbeddableCore({
   onOpenShareDialog,
   onToggleTheme,
   registerHandle,
+  frameRef,
 }: EmbeddableCoreProps) {
   const emu = useEmulator();
   // The hub as a latest-value ref (synced in the effect further down, with
@@ -616,7 +632,7 @@ function EmbeddableCore({
 
   // Autoplay: the landing hero's hands-off walk. The hub reaches it as emuRef,
   // never as a render value; the reason is in the hook.
-  useAutoplay({
+  const walk = useAutoplay({
     enabled: Boolean(autoplay),
     steps: autoplaySteps,
     machineLoaded: emu.isLoaded,
@@ -624,6 +640,8 @@ function EmbeddableCore({
     source,
     args: argsText,
     applySeeds,
+    frame: frameRef,
+    onChange: onAutoplayChange,
   });
 
   // Mirror exactly the ten outcome fields to the host whenever any of them
@@ -746,10 +764,11 @@ function EmbeddableCore({
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
       getCommands: () => buildCommandsRef.current(),
+      walk,
     }),
     // `toast` is referentially stable (useToast memoizes it); notifyError
     // reads it, so it belongs in the dependency list.
-    [loadSource, runProgram, resetMachine, toast, handleStepBack],
+    [loadSource, runProgram, resetMachine, toast, handleStepBack, walk],
   );
 
   // Register the handle only once the hub is loaded, so a queued host action
@@ -1096,6 +1115,7 @@ export const EmbeddablePlayground = forwardRef<
       getCursor: () =>
         innerHandleRef.current?.getCursor() ?? { line: 1, column: 1 },
       getCommands: () => innerHandleRef.current?.getCommands() ?? [],
+      walk: (command: WalkCommand) => runOrQueue((handle) => handle.walk(command)),
     }),
     [runOrQueue, startSource, startArgs],
   );
@@ -1110,7 +1130,7 @@ export const EmbeddablePlayground = forwardRef<
       className={joinClasses("flex flex-col flex-1 min-h-0", className)}
     >
       {engaged ? (
-        <EmbeddableCore {...props} registerHandle={registerHandle} />
+        <EmbeddableCore {...props} registerHandle={registerHandle} frameRef={wrapperRef} />
       ) : (
         // Embed and checker only. It paints the same grid the engaged render
         // does, so the host page does not shift when the hub arrives, and a
