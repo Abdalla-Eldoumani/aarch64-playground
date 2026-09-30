@@ -159,6 +159,27 @@ fn uppercase_mnemonic_with_brackets() {
 }
 
 #[test]
+fn backward_reference_to_a_missing_numeric_label() {
+    run_case("local-label-no-backward");
+}
+
+#[test]
+fn forward_reference_to_a_missing_numeric_label() {
+    // GAS names no line for this one; the playground marks the reference.
+    run_case("local-label-no-forward");
+}
+
+#[test]
+fn movi_immediate_out_of_range() {
+    run_case("movi-range");
+}
+
+#[test]
+fn fcmp_against_a_nonzero_immediate() {
+    run_case("fcmp-immediate");
+}
+
+#[test]
 fn missing_ldr_of_the_format_string() {
     run_case("missing-ldr-fmt");
 }
