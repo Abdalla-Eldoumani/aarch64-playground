@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
 import { stripEscapeSequences } from "@/lib/terminal/input-state";
+import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 
 interface ConsolePanelProps {
   stdout: string;
@@ -34,6 +35,9 @@ interface ConsolePanelProps {
   /** Whether the empty state names F10 and F5. Only the playground page binds
    *  them, so the embeds point at their buttons instead. */
   keyHints?: boolean;
+  /** When new output may scroll the box; the landing demo waits for a reader
+   *  who is scrolling the page. Straight away by default. */
+  holdScroll?: ScrollHold;
   /** Signal end-of-input (wired to ctrl-d in the stdin box). */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
@@ -61,6 +65,7 @@ export function ConsolePanel({
   onInputSent,
   echoStdin = true,
   keyHints = true,
+  holdScroll = scrollNow,
   closeStdin,
   uploadVfsFile,
   clearConsole,
@@ -96,11 +101,14 @@ export function ConsolePanel({
   }, []);
 
   // Auto-scroll on new output unless the user has scrolled up.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !autoScrollRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [stdout, stderr, notes]);
+  useEffect(
+    () =>
+      holdScroll(() => {
+        const el = scrollRef.current;
+        if (el && autoScrollRef.current) el.scrollTop = el.scrollHeight;
+      }),
+    [stdout, stderr, notes, holdScroll],
+  );
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -206,7 +214,7 @@ export function ConsolePanel({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-auto px-2 py-1 font-mono whitespace-pre-wrap"
+        className="inner-scroll flex-1 min-h-0 overflow-auto px-2 py-1 font-mono whitespace-pre-wrap"
       >
         {shownStdout && <span>{shownStdout}</span>}
         {terminalOwnedFrom != null && (
