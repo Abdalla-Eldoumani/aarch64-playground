@@ -594,6 +594,9 @@ impl Cpu {
         // stashes this address in LR so `ret` from main halts cleanly
         // with x0 as the exit code.
         cpu.host.register("__main_return", crate::hosted::libc::main_return);
+        // The name gcc -S writes for scanf. Registered last so no other
+        // stub's address moves.
+        cpu.host.register("__isoc99_scanf", crate::hosted::scanf::scanf);
         cpu.regs.write_sp(STACK_BASE);
         cpu.regs.write_pc(CODE_BASE);
 
