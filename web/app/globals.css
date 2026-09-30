@@ -624,6 +624,12 @@ html:has([data-install-tip]) {
     }
   }
 }
+/* The landing demo steps on its own. Until the reader clicks, taps or focuses
+   into it, a wheel or a swipe over its scroll boxes passes through them and
+   scrolls the page; the walk still moves the boxes from script. */
+[data-hands-off] .inner-scroll {
+  pointer-events: none;
+}
 
 ::-webkit-scrollbar {
   width: 6px;
