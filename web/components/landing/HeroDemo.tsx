@@ -1,0 +1,122 @@
+"use client";
+
+import { useRef, useState } from "react";
+import {
+  EmbeddablePlayground,
+  type EmbeddablePlaygroundHandle,
+} from "@/components/playground/EmbeddablePlayground";
+import type { WalkCommand, WalkState } from "@/lib/playground/use-autoplay";
+import { HERO_PROGRAM } from "@/lib/content/landing-content";
+
+// What the title bar's control says, and asks the walk for, in each state.
+// The accessible name keeps the visible word first, so a voice command that
+// reads the button still reaches it.
+const CONTROL: Record<WalkState, { label: string; name: string; command: WalkCommand }> = {
+  playing: { label: "pause", name: "pause the demo", command: "pause" },
+  paused: { label: "play", name: "play the demo", command: "resume" },
+  done: { label: "replay", name: "replay the demo", command: "replay" },
+  stepping: { label: "step through it", name: "step through it", command: "step" },
+};
+
+const CONTROL_CLASS =
+  "touch-target inline-flex min-h-[28px] items-center border border-[var(--border-strong)] px-2.5 " +
+  "font-mono text-[12px] font-medium text-[var(--cyan)] transition-colors " +
+  "hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+
+/**
+ * The hero's live demo: the embeddable playground walking the hero program,
+ * framed as an instrument with its own pause and replay control.
+ */
+export function HeroDemo() {
+  const demo = useRef<EmbeddablePlaygroundHandle>(null);
+  // Null until the walk reports, which is after hydration. Until then CSS
+  // picks the control that matches the reader's motion setting, so the first
+  // paint already shows the right one.
+  const [walk, setWalk] = useState<WalkState | null>(null);
+  const control = (state: WalkState, className = "") => (
+    <button
+      type="button"
+      aria-label={CONTROL[state].name}
+      onClick={() => demo.current?.walk(CONTROL[state].command)}
+      className={`${CONTROL_CLASS} ${className}`}
+    >
+      {CONTROL[state].label}
+    </button>
+  );
+
+  return (
+    <div className="relative px-0 sm:px-2.5">
+      <span
+        aria-hidden="true"
+        className="absolute bottom-6 left-0 top-6 hidden w-2.5 sm:block"
+        style={{
+          background:
+            "repeating-linear-gradient(180deg, var(--border-strong) 0 8px, transparent 8px 24px)",
+        }}
+      />
+      <span
+        aria-hidden="true"
+        className="absolute bottom-6 right-0 top-6 hidden w-2.5 sm:block"
+        style={{
+          background:
+            "repeating-linear-gradient(180deg, var(--border-strong) 0 8px, transparent 8px 24px)",
+        }}
+      />
+      <div className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)] [box-shadow:var(--shadow-frame)]">
+        <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-base)] px-4 py-1.5">
+          <span aria-hidden="true" className="inline-flex h-[12px]">
+            {[10, 5, 5, 5].map((width, index) => (
+              <span
+                key={index}
+                className={`inline-block border-y border-r border-[var(--border-strong)] ${
+                  index === 0 ? "border-l" : ""
+                } ${index === 2 ? "bg-[var(--amber)]" : ""}`}
+                style={{ width, height: 12 }}
+              />
+            ))}
+          </span>
+          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+            live demo
+          </span>
+          {/* Sits after the name, not at the far end, so a label that grows
+              from "pause" to "step through it" moves nothing beside it. */}
+          {walk === null ? (
+            <>
+              {control("playing", "motion-reduce:hidden")}
+              {control("stepping", "hidden motion-reduce:inline-flex")}
+            </>
+          ) : (
+            control(walk)
+          )}
+          <span className="ml-auto hidden font-mono text-[10px] text-[var(--text-tertiary)] sm:inline">
+            <span className="motion-reduce:hidden">one instruction every 450 ms</span>
+            <span className="hidden motion-reduce:inline">one instruction per press</span>
+          </span>
+        </div>
+        {/* One fixed embed height at every breakpoint, so the page cannot
+            shift as the emulator loads; the embed arranges itself to fit. */}
+        <div className="flex h-[560px] flex-col">
+          <EmbeddablePlayground
+            ref={demo}
+            chrome="embed"
+            startSource={HERO_PROGRAM}
+            autoplay
+            // The walk reaches the program's svc on step 9, so the hero prints
+            // its line into the embed console during the autoplay.
+            autoplaySteps={10}
+            onAutoplayChange={setWalk}
+            readOnly
+            // A demonstration needs no editing surface, so the hero draws
+            // its program with the static view: the code is in the server
+            // HTML and the landing never loads the editor at all.
+            staticEditor
+            // The walk has its own control in the title bar, so the frame
+            // keeps run and reset and leaves out step and back.
+            showStep={false}
+            showBack={false}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
