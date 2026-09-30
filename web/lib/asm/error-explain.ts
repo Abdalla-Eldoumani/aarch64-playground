@@ -159,6 +159,11 @@ export function explainError(message: string): ErrorExplanation | null {
   const inner = message.match(/^(?:assembly|preprocess|parse|link) error at line \d+: (.*)$/i);
   const detail = inner ? inner[1].toLowerCase() : lower;
 
+  // GAS's own refusal of a movi or fcmp operand, with the emulator's advice
+  // on the line below it; the generic immediate and operand advice further
+  // down would contradict that line.
+  if (/^immediate (value out of range|zero expected)\b.* at operand \d+ -- `/.test(detail)) return null;
+
   if (detail.includes("unsupported m4 construct")) {
     return {
       what: "m4 saw a construct outside the playground's narrow subset (define + name=expr only).",
