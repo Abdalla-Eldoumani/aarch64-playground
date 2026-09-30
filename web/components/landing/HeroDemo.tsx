@@ -67,7 +67,7 @@ export function HeroDemo() {
         }}
       />
       <div className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)] [box-shadow:var(--shadow-frame)]">
-        <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-base)] px-4 py-1.5 sm:gap-3">
+        <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-base)] px-3 py-1.5 sm:gap-3 sm:px-4">
           <span aria-hidden="true" className="inline-flex h-[12px]">
             {[10, 5, 5, 5].map((width, index) => (
               <span
