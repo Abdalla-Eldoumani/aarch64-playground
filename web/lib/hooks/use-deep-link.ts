@@ -1,5 +1,5 @@
-"use client";
-
+// Pure functions, so no "use client": the landing builds its playground link
+// on the server through share.ts, and the directive would ship this file there.
 import type {
   BundleReadResult,
   DiagnosticBundle,
