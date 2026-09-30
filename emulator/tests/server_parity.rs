@@ -1271,6 +1271,43 @@ main:   stp     x29, x30, [sp, -16]!
     assert_eq!((line, message.lines().next()), (12, Some(gas)), "the editor");
 }
 
+// A known difference, kept on purpose. csarm assembles each file on its own,
+// so a label without `.global` stays in its file and this pair fails to link:
+// "undefined reference to `helper'". The playground joins a program's files
+// into one source, as m4's include() does, which is how the shipped
+// multi-file survivor game is built, so every label reaches every file.
+#[test]
+fn joined_files_share_labels_without_global() {
+    let main = r#"// main calls helper, which lives in helper.s.
+
+        .text
+fmt:    .string "helper returned %ld\n"
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     x0, 20
+        bl      helper
+        mov     x1, x0
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let helper = r#"// helper doubles x0. It has no .global line.
+
+        .text
+        .balign 4
+helper: add     x0, x0, x0
+        ret
+"#;
+    // The join the playground's files strip makes.
+    let joined = format!("{main}\n// ---- helper.s ----\n{helper}");
+    let (_, out) = run_with_stdin(&joined, "");
+    assert_eq!(out, "helper returned 40\n");
+}
+
 // gcc aligns functions and loop heads with `.p2align 5,,15`: pad to 2^5
 // bytes, but only when that takes 15 bytes or fewer. The padding is
 // executed in .text, so it must be no-ops. Each distance below is where
