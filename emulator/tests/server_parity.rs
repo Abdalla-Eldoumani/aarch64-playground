@@ -997,6 +997,167 @@ main:
     assert_eq!(out, "-2 1122334455667788 -3 70000 36\n");
 }
 
+// GAS's numeric local labels: `1:` may be defined any number of times, and
+// `1b` / `1f` name the nearest definition above or below, in .text and in
+// .data alike. The program and its output are the csarm run's.
+#[test]
+fn numeric_local_labels_name_the_nearest_definition() {
+    let source = r#"
+        .data
+        .balign 8
+2:      .quad   40                      // a local label in .data
+10:     .quad   2                       // a two-digit one
+
+        .text
+fmt:    .string "sum %ld, count %ld, data %ld\n"
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+
+        mov     x19, 0                  // sum of 5 + 4 + 3 + 2 + 1
+        mov     x20, 5
+1:      add     x19, x19, x20
+        subs    x20, x20, 1
+        b.ne    1b                      // the 1: just above
+
+        cbz     x19, 1f                 // never taken: the next 1: below
+        mov     x21, 3
+1:      sub     x21, x21, 1             // a second 1:
+        cbnz    x21, 1b                 // the nearest 1: above is this one
+        b       3f
+        mov     x19, 99                 // skipped
+3:      ldr     x9, =2b                 // the 2: in .data, above this line
+        ldr     x22, [x9]
+        ldr     x9, =10b
+        ldr     x10, [x9]
+        add     x22, x22, x10
+
+        ldr     x0, =fmt
+        mov     x1, x19
+        mov     x2, x21
+        mov     x3, x22
+        bl      printf
+
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "sum 15, count 0, data 42\n");
+}
+
+// `:lo12:` with its `#`, inside an address and as an add immediate, next
+// to the older spelling without it. Output from the csarm run.
+#[test]
+fn lo12_takes_the_immediate_hash_like_gnu_as() {
+    let source = r#"
+        .data
+        .balign 8
+count:  .word   1234
+        .balign 8                       // an 8-byte load needs an 8-aligned :lo12:
+total:  .quad   -5
+
+        .text
+fmt:    .string "%d %d %ld %d\n"
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+
+        adrp    x9, count
+        ldr     w1, [x9, #:lo12:count]  // the word at count
+        add     x10, x9, #:lo12:count   // count's address
+        ldr     w2, [x10]
+        adrp    x11, total
+        ldr     x3, [x11, #:lo12:total]
+        ldr     w4, [x9, :lo12:count]   // the same load without the #
+
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "1234 1234 -5 1234\n");
+}
+
+// `.single` is GNU as's other spelling of `.float`. Output from csarm,
+// the bits of 1.5 included.
+#[test]
+fn single_stores_the_same_bytes_as_float() {
+    let source = r#"
+        .data
+        .balign 4
+vals:   .single 1.5, -2.25
+same:   .float  1.5
+whole:  .single 3
+
+        .text
+fmt:    .string "%.2f %.2f %.2f bits %x %x\n"
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+
+        ldr     x9, =vals
+        ldr     s0, [x9]
+        ldr     s1, [x9, 4]
+        ldr     x10, =whole
+        ldr     s2, [x10]
+        fcvt    d0, s0
+        fcvt    d1, s1
+        fcvt    d2, s2
+        ldr     w1, [x9]                // 1.5 as .single
+        ldr     x11, =same
+        ldr     w2, [x11]               // 1.5 as .float
+
+        ldr     x0, =fmt
+        bl      printf
+
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "1.50 -2.25 3.00 bits 3fc00000 3fc00000\n");
+}
+
+// gcc -S names scanf `__isoc99_scanf`; a call by that name reads the same
+// way. Input and output from the csarm run.
+#[test]
+fn isoc99_scanf_is_scanf() {
+    let source = r#"
+        .text
+fmt_in: .string "%ld %ld"
+fmt_out: .string "read %d values: %ld + %ld = %ld\n"
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -32]!
+        mov     x29, sp
+
+        ldr     x0, =fmt_in
+        add     x1, x29, 16
+        add     x2, x29, 24
+        bl      __isoc99_scanf
+
+        mov     w1, w0                  // how many scanf filled
+        ldr     x2, [x29, 16]
+        ldr     x3, [x29, 24]
+        add     x4, x2, x3
+        ldr     x0, =fmt_out
+        bl      printf
+
+        mov     w0, 0
+        ldp     x29, x30, [sp], 32
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "40 2\n");
+    assert_eq!(out, "read 2 values: 40 + 2 = 42\n");
+}
+
 // gcc aligns functions and loop heads with `.p2align 5,,15`: pad to 2^5
 // bytes, but only when that takes 15 bytes or fewer. The padding is
 // executed in .text, so it must be no-ops. Each distance below is where
