@@ -3,17 +3,20 @@
 //!   * define(NAME, BODY) and undefine(NAME): whole-token substitution of
 //!     NAME on the lines below it. Use for register aliases
 //!     (`define(score1_r, w19)`), not for numeric values.
+//!   * Macros with arguments: `NAME(a, b)` puts `a` and `b` where the body
+//!     says `$1` and `$2`. A define may quote its body (`define(sq,
+//!     `mul $1, $1, $1')`), which keeps the commas and may span lines.
 //!   * NAME = EXPRESSION lines pass through untouched, so the parser can
 //!     evaluate them where they sit: in `msg_len = . - msg - 1`, `.` is
 //!     the address of that line, not of wherever msg_len is used.
 //!   * Expansion repeats until nothing changes, capped at 32 rounds so a
 //!     loop fails with an error instead of hanging.
 //!   * Comments are stripped first, so comment text never expands.
-//!   * Line numbers stay aligned, so errors point at the line the student
-//!     wrote.
+//!   * Every output line maps back to the source line that produced it;
+//!     they stay equal until a macro body spanning lines is expanded.
 //!
-//! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting) fails with
-//! an "unsupported m4 construct" error at the offending line.
+//! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting outside a
+//! define) fails with an "unsupported m4 construct" error at its line.
 
 use std::collections::HashMap;
 
@@ -102,18 +105,34 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
     let mut define_events: Vec<(usize, String, Option<String>)> = Vec::new();
-    for (idx, raw) in source.lines().enumerate() {
+    let lines: Vec<&str> = source.lines().collect();
+    // Lines still inside a define that started above.
+    let mut skip = 0;
+    for (idx, raw) in lines.iter().enumerate() {
         let line_num = idx + 1;
+        if skip > 0 {
+            skip -= 1;
+            stripped.push(String::new());
+            continue;
+        }
         let without_comment = strip_comment(raw);
         let trimmed = without_comment.trim();
         // undefine parses before the backtick gate: GNU m4 requires its
-        // argument quoted (`undefine(`name')`), so the quote is legal
-        // exactly here and nowhere else.
+        // argument quoted (`undefine(`name')`), so the quote is legal here.
         if let Some(names) = parse_undefine(trimmed) {
             for name in names {
                 define_events.push((idx, name, None));
             }
             stripped.push(String::new());
+            continue;
+        }
+        // The other place a quote is legal: a define's arguments, where a
+        // quoted body keeps its commas and may run over several lines.
+        if raw.contains('`') && is_attempted_define(raw.trim_start()) {
+            let (name, body, used) = parse_quoted_define(&lines[idx..], line_num)?;
+            define_events.push((idx, name, Some(body)));
+            stripped.push(String::new());
+            skip = used - 1;
             continue;
         }
         if let Some(kw) = detect_unsupported(trimmed) {
@@ -221,8 +240,12 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                 ),
             });
         }
+        // A macro body that spans lines gives one source line several;
+        // each of them maps back to the line that called the macro.
+        for _ in 0..=expanded.bytes().filter(|&c| c == b'\n').count() {
+            line_map.push(line_num);
+        }
         out.push(expanded);
-        line_map.push(line_num);
     }
 
     Ok(Expanded {
@@ -274,13 +297,26 @@ fn substitute_bounded(
     line_num: usize,
 ) -> Result<String, EmuError> {
     let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
-    substitute_once_gnu(line, defines, limit).ok_or_else(|| EmuError::PreprocError {
+    substitute_once_gnu(line, defines, limit).map_err(|stop| EmuError::PreprocError {
         line: line_num,
-        message: format!(
-            "m4 expansion grew this line past {MAX_EXPANDED_LINE_BYTES} bytes; \
-             a define() chain is expanding without settling"
-        ),
+        message: match stop {
+            Stop::Cap => format!(
+                "m4 expansion grew this line past {MAX_EXPANDED_LINE_BYTES} bytes; \
+                 a define() chain is expanding without settling"
+            ),
+            Stop::Unclosed => "a macro's arguments run past the end of the line: the \
+                               playground's m4 needs the closing `)` on the same line"
+                .to_string(),
+        },
     })
+}
+
+/// Why a substitution round stopped short.
+pub(crate) enum Stop {
+    /// The line outgrew its byte cap.
+    Cap,
+    /// A macro call's argument list has no `)` on its line.
+    Unclosed,
 }
 
 /// One token-boundary substitution pass over a line, refusing to build
@@ -294,7 +330,7 @@ pub(crate) fn substitute_once(
     defines: &HashMap<String, String>,
     limit: usize,
 ) -> Option<String> {
-    substitute_pass(line, defines, limit, true)
+    substitute_pass(line, defines, limit, true).ok()
 }
 
 /// GNU m4's view of a line: double quotes, single quotes, and backslashes
@@ -303,12 +339,13 @@ pub(crate) fn substitute_once(
 /// rewrites `.string "%d seconds"` into `"%d x22"`, and the `n` in a
 /// `"\n"` below `define(n, w19)` becomes `"\w19"`. A `#` starts an m4
 /// comment: the rest of the line is copied verbatim, unexpanded. All
-/// three behaviors verified against GNU m4 on the course toolchain.
+/// three behaviors verified against GNU m4 on the course toolchain. A
+/// name with `(` right after it takes arguments, as in GNU m4.
 pub(crate) fn substitute_once_gnu(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
-) -> Option<String> {
+) -> Result<String, Stop> {
     substitute_pass(line, defines, limit, false)
 }
 
@@ -322,21 +359,24 @@ fn substitute_pass(
     defines: &HashMap<String, String>,
     limit: usize,
     respect_literals: bool,
-) -> Option<String> {
+) -> Result<String, Stop> {
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
     while i < bytes.len() {
         if out.len() > limit {
-            return None;
+            return Err(Stop::Cap);
         }
         let b = bytes[i];
         if !respect_literals && b == b'#' {
             // GNU m4 comment: everything from `#` to the end of the line
             // passes through unexpanded, which is why the course style
-            // writes bare immediates (`mov x0, 5`, never `#alloc`).
-            out.push_str(&line[i..]);
-            break;
+            // writes bare immediates (`mov x0, 5`, never `#alloc`). A
+            // macro body can put several lines into one.
+            let end = line[i..].find('\n').map_or(line.len(), |n| i + n);
+            out.push_str(&line[i..end]);
+            i = end;
+            continue;
         }
         if respect_literals && (b == b'"' || b == b'\'') {
             // Copy a string or char literal verbatim, including the
@@ -366,6 +406,17 @@ fn substitute_pass(
             }
             let ident = &line[start..i];
             match defines.get(ident) {
+                // GNU m4 takes arguments whenever `(` follows the name
+                // directly, whether or not the body uses them.
+                Some(body) if !respect_literals => {
+                    let mut args: Vec<&str> = Vec::new();
+                    if bytes.get(i) == Some(&b'(') {
+                        let close = closing_paren(&line[i..]).ok_or(Stop::Unclosed)?;
+                        args = split_args(&line[i + 1..i + close]);
+                        i += close + 1;
+                    }
+                    fill_args(body, ident, &args, &mut out, limit)?;
+                }
                 Some(body) => out.push_str(body),
                 None => out.push_str(ident),
             }
@@ -383,7 +434,85 @@ fn substitute_pass(
         }
         out.push_str(&line[start..i]);
     }
-    Some(out)
+    Ok(out)
+}
+
+/// Where the `)` closing the `(` that `s` starts with sits, if on this line.
+fn closing_paren(s: &str) -> Option<usize> {
+    let mut depth = 0usize;
+    for (i, c) in s.bytes().enumerate() {
+        match c {
+            b'(' => depth += 1,
+            b')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            b'\n' => return None,
+            _ => {}
+        }
+    }
+    None
+}
+
+/// A call's arguments: split at the commas outside nested parentheses,
+/// each without its leading whitespace. `f()` has one, empty, argument.
+fn split_args(inside: &str) -> Vec<&str> {
+    let mut args = Vec::new();
+    let (mut depth, mut start) = (0usize, 0);
+    for (i, c) in inside.bytes().enumerate() {
+        match c {
+            b'(' => depth += 1,
+            b')' => depth -= 1,
+            b',' if depth == 0 => {
+                args.push(inside[start..i].trim_start());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    args.push(inside[start..].trim_start());
+    args
+}
+
+/// A macro body with a call's arguments put in, as GNU m4 does it: `$1`,
+/// `$2` and on (`$10` is the tenth), `$0` the name, `$#` how many, `$*` and
+/// `$@` all of them joined by commas. An argument not given is empty.
+fn fill_args(body: &str, name: &str, args: &[&str], out: &mut String, limit: usize) -> Result<(), Stop> {
+    let b = body.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if out.len() > limit {
+            return Err(Stop::Cap);
+        }
+        let start = i;
+        i += 1;
+        if b[start] == b'$' && i < b.len() {
+            let digits = b[i..].iter().take_while(|c| c.is_ascii_digit()).count();
+            if digits > 0 {
+                let n: usize = body[i..i + digits].parse().unwrap_or(usize::MAX);
+                out.push_str(if n == 0 { name } else { args.get(n - 1).copied().unwrap_or("") });
+                i += digits;
+                continue;
+            }
+            let whole = match b[i] {
+                b'#' => Some(args.len().to_string()),
+                b'*' | b'@' => Some(args.join(",")),
+                _ => None,
+            };
+            if let Some(text) = whole {
+                out.push_str(&text);
+                i += 1;
+                continue;
+            }
+        }
+        while i < b.len() && b[i] != b'$' {
+            i += 1;
+        }
+        out.push_str(&body[start..i]);
+    }
+    Ok(())
 }
 
 /// Blank `/* ... */` comments across the whole source, keeping their
@@ -595,12 +724,91 @@ fn parse_define(trimmed: &str) -> Option<(String, String)> {
         return None;
     }
     let (name, body) = split_top_level_comma(inside)?;
+    // GNU m4 ignores arguments past the body, with a warning.
+    let body = split_top_level_comma(body).map_or(body, |(body, _)| body);
     let name = name.trim().to_string();
     let body = body.trim().to_string();
     if name.is_empty() || !is_valid_ident(&name) {
         return None;
     }
     Some((name, body))
+}
+
+/// A define whose arguments carry m4 quotes, read as GNU m4 reads them: a
+/// quoted piece keeps its commas, parentheses and line breaks and loses one
+/// level of quotes, unquoted leading whitespace is dropped, and arguments
+/// past the body are ignored (GNU m4 warns and carries on). `lines` starts
+/// at the define; the result is the name, the body with its comments
+/// stripped, and how many lines the call spans.
+fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, String, usize), EmuError> {
+    let bad = |why: &str| EmuError::PreprocError {
+        line: line_num,
+        message: format!("malformed m4 define: {why}. Write it as `define(NAME, body)`"),
+    };
+    let first = lines[0].trim_start();
+    let first = &first[first.find('(').unwrap_or(0) + 1..];
+    let mut args: Vec<String> = vec![String::new()];
+    let (mut quotes, mut parens, mut leading) = (0usize, 0usize, true);
+    for (used, line) in lines.iter().enumerate() {
+        let text = if used == 0 { first } else { line };
+        if used > 0 && (quotes > 0 || !leading) {
+            args.last_mut().expect("args starts with one entry").push('\n');
+        }
+        for (i, c) in text.char_indices() {
+            let arg = args.last_mut().expect("args starts with one entry");
+            match c {
+                '`' => {
+                    if quotes > 0 {
+                        arg.push(c);
+                    }
+                    quotes += 1;
+                    leading = false;
+                }
+                '\'' if quotes > 0 => {
+                    quotes -= 1;
+                    if quotes > 0 {
+                        arg.push(c);
+                    }
+                }
+                _ if quotes > 0 => arg.push(c),
+                _ if leading && c.is_whitespace() => {}
+                ')' if parens == 0 => {
+                    if !strip_comment(&text[i + 1..]).trim().is_empty() {
+                        return Err(bad("unexpected text after the closing `)`"));
+                    }
+                    let [name, body, ..] = args.as_slice() else {
+                        return Err(bad("the comma between the name and the body is missing"));
+                    };
+                    if !is_valid_ident(name.trim_end()) {
+                        return Err(bad(&format!("`{}` is not a valid macro name", name.trim_end())));
+                    }
+                    // Comments leave here, as they leave every other line.
+                    let mut kept = String::with_capacity(body.len());
+                    for (j, part) in body.split('\n').enumerate() {
+                        if j > 0 {
+                            kept.push('\n');
+                        }
+                        kept.push_str(strip_comment(part));
+                    }
+                    return Ok((name.trim_end().to_string(), kept, used + 1));
+                }
+                ',' if parens == 0 => {
+                    args.push(String::new());
+                    leading = true;
+                }
+                _ => {
+                    parens = match c {
+                        '(' => parens + 1,
+                        ')' => parens - 1,
+                        _ => parens,
+                    };
+                    arg.push(c);
+                    leading = false;
+                }
+            }
+        }
+    }
+    Err(bad("the closing `)` is missing"))
 }
 
 /// `undefine(`name')` (the GNU-required quoted form) or `undefine(name)`,
@@ -1226,9 +1434,54 @@ mod tests {
     }
 
     #[test]
-    fn backtick_outside_undefine_still_errors() {
-        let err = expand("define(`fp', x29)\n").unwrap_err();
-        assert!(err.to_string().contains("backtick"));
+    fn a_define_may_quote_its_name_and_body() {
+        let r = exp("define(`fp', `x29')\nmov x0, fp\n");
+        assert_eq!(r.text, "\nmov x0, x29");
+        // Anywhere else a quote is still refused.
+        rejects(expand("mov x0, `fp'\n"), "backtick");
+    }
+
+    #[test]
+    fn a_macro_takes_its_arguments_like_gnu_m4() {
+        // The shapes of the csarm run: the count, each argument without
+        // its leading blanks, all of them joined, the tenth, and the
+        // arguments of a macro whose body never uses them.
+        let src = "define(show, `$# [$1] [$2] [$*]')\n\
+                   show(a, b,c)\nshow( pad , y )\nshow\nshow(f(1, 2), z)\n\
+                   define(tenth, `[$10]')\ntenth(1,2,3,4,5,6,7,8,9,ten)\n\
+                   define(two, first, second)\ntwo\ndefine(plain, x21)\nplain(ignored)\n";
+        let lines: Vec<String> = exp(src).text.lines().map(str::to_string).collect();
+        assert_eq!(lines[1], "3 [a] [b] [a,b,c]");
+        assert_eq!(lines[2], "2 [pad ] [y ] [pad ,y ]");
+        assert_eq!(lines[3], "0 [] [] []");
+        assert_eq!(lines[4], "2 [f(1, 2)] [z] [f(1, 2),z]");
+        assert_eq!(lines[6], "[ten]");
+        assert_eq!(lines[8], "first");
+        assert_eq!(lines[10], "x21");
+    }
+
+    #[test]
+    fn a_body_spanning_lines_maps_each_line_to_its_call() {
+        let src = "define(t_r, x19)\n\
+                   define(tri_open, `add     $1, $2, 1   // comments leave\n\
+                   \x20       lsr     $1, $1, 1')\n\
+                   mov x0, 1\n\
+                   tri_open(t_r, x20)\n";
+        let r = exp(src);
+        assert_eq!(
+            r.text,
+            "\n\n\nmov x0, 1\nadd     x19, x20, 1   \n        lsr     x19, x19, 1"
+        );
+        assert_eq!(r.line_map, vec![1, 2, 3, 4, 5, 5]);
+    }
+
+    #[test]
+    fn macro_arguments_close_on_their_own_line() {
+        rejects(
+            expand("define(sq, `mul $1, $1, $1')\nsq(x0,\n"),
+            "closing `)` on the same line",
+        );
+        rejects(expand("define(sq, `mul $1\n"), "closing `)` is missing");
     }
 
     #[test]
