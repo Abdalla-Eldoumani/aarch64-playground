@@ -743,8 +743,11 @@ fn optimized_gcc_forms_encode_to_the_words_the_servers_emit() {
         assert_eq!(got[0], expected, "{src}: got {:#010x}, GAS emits {expected:#010x}", got[0]);
     }
 
-    // GAS refuses both of these, and so does this encoder, naming what is wrong.
-    for (src, reason) in [("movi v0.8b, -129", "-128 to 255"), ("fcmp d0, #1.0", "got: #1.0")] {
+    // GAS refuses both of these, and so does this encoder, in GAS's words.
+    for (src, reason) in [
+        ("movi v0.8b, -129", "out of range -128 to 255 at operand 2 -- `movi v0.8b,-129'"),
+        ("fcmp d0, #1.0", "immediate zero expected at operand 2 -- `fcmp d0,#1.0'"),
+    ] {
         let msg = assemble(src).expect_err(src).to_string();
         assert!(msg.contains(reason), "{src}: {msg}");
     }
