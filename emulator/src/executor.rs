@@ -1,3 +1,9 @@
+//! The executor: runs one decoded `Instruction` against the registers
+//! and memory. This file holds `execute`, the one match over every
+//! instruction, `ExecResult`, which tells the CPU what to do with the PC
+//! next, and the NZCV flag helpers every class shares. The semantics of
+//! each instruction class live in the child modules below.
+
 use crate::decoder::*;
 use crate::errors::EmuError;
 use crate::memory::Memory;
