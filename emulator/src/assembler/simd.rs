@@ -200,7 +200,14 @@ pub(super) fn encode_simd_mod_imm(ops: &[&str], op: SimdImmOp, ln: usize) -> Res
         // gcc writes a byte with its top bit set sign-extended to 64 bits
         // (0xffffffffffffffe0 for 0xe0), and GAS takes it as that byte.
         if !(-128..=255).contains(&(value as i64)) {
-            return asm_err(ln, &format!("{name} takes an 8-bit immediate (-128 to 255), got {value:#x}"));
+            return asm_err(
+                ln,
+                &format!(
+                    "immediate value out of range -128 to 255 at operand 2 -- `{}'\n{name} \
+                     puts one byte in each element, so the value must fit in 8 bits: -128 to 255",
+                    gas_echo(name, &ops.join(","))
+                ),
+            );
         }
         value as u8
     };
