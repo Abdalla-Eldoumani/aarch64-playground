@@ -97,6 +97,15 @@ async function arrive() {
   await advance(0);
 }
 
+function preferReducedMotion() {
+  vi.stubGlobal("matchMedia", (query: string) => ({
+    matches: /prefers-reduced-motion:\s*reduce/.test(query),
+    media: query,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+}
+
 let scrollIntoView: ReturnType<typeof vi.fn<Element["scrollIntoView"]>>;
 
 beforeEach(() => {
@@ -208,13 +217,38 @@ describe("HeroDemo", () => {
     }
   });
 
+  // A reader can tab to the control while the emulator is still loading. The
+  // walk's first report must not swap that button for another one.
+  it.each([
+    { motion: "full", name: "pause the demo" },
+    { motion: "reduced", name: "step through it" },
+  ])(
+    "keeps focus on the control a reader reached before the walk began ($motion motion)",
+    async ({ motion, name }) => {
+      if (motion === "reduced") preferReducedMotion();
+      const { container } = render(<HeroDemo />);
+      const control = screen.getByRole("button", { name });
+      control.focus();
+      expect(document.activeElement).toBe(control);
+      await arrive();
+      if (motion === "reduced") {
+        fireEvent.click(control);
+        await advance(0);
+        fireEvent.click(control);
+        await advance(0);
+      } else {
+        await advance(450);
+      }
+      expect(markedLine(container)).toBe("14");
+      expect(document.activeElement).toBe(control);
+      expect(control.isConnected).toBe(true);
+      expect(control.hidden).toBe(false);
+      expect(control.getAttribute("aria-label")).toBe(name);
+    },
+  );
+
   it("under reduced motion never moves on its own and steps once per press", async () => {
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      matches: /prefers-reduced-motion:\s*reduce/.test(query),
-      media: query,
-      addEventListener() {},
-      removeEventListener() {},
-    }));
+    preferReducedMotion();
     const { container } = render(<HeroDemo />);
     await arrive();
     await advance(5000);
