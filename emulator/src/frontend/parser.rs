@@ -116,9 +116,10 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
 pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
     let is_word = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
     let name = |n: &str, k: usize| format!(".L{n}_fb{k}");
-    // Definitions of each number so far, and the forward references,
-    // checked once every definition has been counted.
-    let mut seen: HashMap<&str, usize> = HashMap::new();
+    // Definitions of each number so far (a program uses a handful, so a
+    // list), and the forward references, checked once all are counted.
+    let mut seen: Vec<(&str, usize)> = Vec::new();
+    let count = |seen: &[(&str, usize)], n: &str| seen.iter().find(|e| e.0 == n).map_or(0, |e| e.1);
     let mut forward: Vec<(&str, usize, usize)> = Vec::new();
     let mut out = String::with_capacity(text.len());
     for (idx, line) in text.split('\n').enumerate() {
@@ -160,22 +161,24 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
             let (digits, last) = word.split_at(word.len() - 1);
             let colon = b.get(i) == Some(&b':');
             if label_place && colon && word.bytes().all(|c| c.is_ascii_digit()) {
-                let count = seen.entry(word).or_insert(0);
-                *count += 1;
-                out.push_str(&name(word, *count));
+                let k = count(&seen, word) + 1;
+                match seen.iter_mut().find(|e| e.0 == word) {
+                    Some(e) => e.1 = k,
+                    None => seen.push((word, k)),
+                }
+                out.push_str(&name(word, k));
             } else if !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && (last == "b" || last == "f") {
-                let count = seen.get(digits).copied().unwrap_or(0);
-                if last == "b" && count == 0 {
+                let k = count(&seen, digits);
+                if last == "b" && k == 0 {
                     return Err(err(
                         idx + 1,
                         &format!(
-                            "backward ref to unknown label \"{digits}:\"\n`{word}` names the \
-                             nearest `{digits}:` above this line, and there is none: add one \
-                             above, or write `{digits}f` for the next one below"
+                            "backward ref to unknown label \"{digits}:\"\n`{word}` means the \
+                             nearest `{digits}:` above, and there is none"
                         ),
                     ));
                 }
-                let k = if last == "b" { count } else { count + 1 };
+                let k = if last == "b" { k } else { k + 1 };
                 if last == "f" {
                     forward.push((digits, k, idx + 1));
                 }
@@ -187,15 +190,16 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
             }
         }
     }
-    if let Some((n, k, line)) = forward.into_iter().find(|(n, k, _)| seen.get(n).copied().unwrap_or(0) < *k) {
-        return Err(err(
-            line,
-            &format!(
-                "local label `\"{n}\" (instance number {k} of a fb label)' is not defined\n\
-                 `{n}f` names the next `{n}:` below this line, and there is none: add one \
-                 below, or write `{n}b` for the nearest one above"
-            ),
-        ));
+    for &(n, k, line) in &forward {
+        if count(&seen, n) < k {
+            return Err(err(
+                line,
+                &format!(
+                    "local label `\"{n}\" (instance number {k} of a fb label)' is not defined\n\
+                     `{n}f` means the next `{n}:` below, and there is none"
+                ),
+            ));
+        }
     }
     Ok(out)
 }
