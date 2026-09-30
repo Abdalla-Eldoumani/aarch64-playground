@@ -17,10 +17,35 @@ use crate::errors::EmuError;
 /// `Program`.
 pub fn parse(source: &str) -> Result<Program, EmuError> {
     let expanded = expand(source)?;
-    let (text, req_aliases) = apply_req_aliases(&expanded.text)?;
+    // Everything below counts lines of m4's output, which gains lines where
+    // a macro body spans several; items and errors carry the editor's line.
+    // Tokens keep the output line, which is how the linker finds the text.
+    let map = expanded.line_map;
+    let editor_line = |line: usize| map.get(line.wrapping_sub(1)).copied().unwrap_or(line);
+    let mut prog = parse_expanded(&expanded.text, expanded.defines).map_err(|mut e| {
+        if let EmuError::ParseError { line, .. } | EmuError::PreprocError { line, .. } = &mut e {
+            *line = editor_line(*line);
+        }
+        e
+    })?;
+    for item in prog.sections.iter_mut().flat_map(|s| s.items.iter_mut()) {
+        if let Item::Label { original_line, .. }
+        | Item::SymbolAssignment { original_line, .. }
+        | Item::Instruction { original_line, .. }
+        | Item::ReserveExpr { original_line, .. }
+        | Item::DataExprs { original_line, .. } = item
+        {
+            *original_line = editor_line(*original_line);
+        }
+    }
+    Ok(prog)
+}
+
+fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Program, EmuError> {
+    let (text, req_aliases) = apply_req_aliases(text)?;
     let text = name_local_labels(&text)?;
     let mut prog = Program::new();
-    prog.aliases = expanded.defines;
+    prog.aliases = defines;
     prog.aliases.extend(req_aliases);
     prog.expanded_source = text.clone();
     let tokens = lex(&text, 1)?;
