@@ -96,8 +96,9 @@ pub(super) fn encode_ldrs(ops: &[&str], size: u8, ln: usize) -> Result<u32, EmuE
             // (`ldrsb w0, [x1, x2]`). Same S-bit rule as plain LDR/STR:
             // the only legal written amounts are 0 and log2(access bytes).
             let s_bit: u32 = match shift_amount {
-                None | Some(0) => 0,
+                None => 0,
                 Some(a) if a == size as i64 => 1,
+                Some(0) => 0,
                 Some(a) => {
                     return asm_err(
                         ln,
@@ -205,10 +206,12 @@ pub(super) fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result
             //   size | 111 0 00 | V=0 | load(2b) | 1 | Rm | option(3) | S | 10 | Rn | Rt
             // The S bit means "scale the index by the access size", so the
             // only legal written amounts are 0 and log2(access bytes),
-            // exactly what GAS enforces. `size` is that log2.
+            // exactly what GAS enforces. `size` is that log2, so a byte
+            // access that writes `#0` sets S: GAS keeps the spelling apart.
             let s_bit: u32 = match shift_amount {
-                None | Some(0) => 0,
+                None => 0,
                 Some(a) if a == size as i64 => 1,
+                Some(0) => 0,
                 Some(a) => {
                     return asm_err(
                         ln,
@@ -807,6 +810,34 @@ mod tests {
     }
 
     #[test]
+    fn a_byte_access_that_writes_its_zero_scale_sets_s() {
+        // For a byte, #0 is also log2 of the size, and GNU as sets S for it
+        // (words captured on csarm). Leaving the amount out keeps S clear.
+        assert_eq!(assemble("ldrb w1, [x0, x2, lsl #0]").unwrap()[0], 0x3862_7801);
+        assert_eq!(assemble("ldrb w1, [x0, w2, uxtw #0]").unwrap()[0], 0x3862_5801);
+        assert_eq!(assemble("strb w1, [x0, w2, sxtw #0]").unwrap()[0], 0x3822_d801);
+        assert_eq!(assemble("ldrsb w1, [x0, w2, uxtw #0]").unwrap()[0], 0x38e2_5801);
+        assert_eq!(assemble("ldrsb x1, [x0, x2, sxtx #0]").unwrap()[0], 0x38a2_f801);
+        assert_eq!(assemble("ldrb w1, [x0, w2, uxtw]").unwrap()[0], 0x3862_4801);
+        assert_eq!(assemble("ldrb w1, [x0, x2]").unwrap()[0], 0x3862_6801);
+        // Wider accesses keep S clear for #0.
+        assert_eq!(assemble("ldrh w1, [x0, w2, uxtw #0]").unwrap()[0], 0x7862_4801);
+        assert_eq!(assemble("ldr x1, [x0, x2, sxtx #0]").unwrap()[0], 0xf862_e801);
+    }
+
+    #[test]
+    fn an_address_refuses_uxtx_and_a_bare_lsl_like_gnu_as() {
+        rejects(assemble("ldr w1, [x0, x2, uxtx]"), "write lsl");
+        rejects(assemble("ldr x1, [x0, x2, uxtx #3]"), "write lsl");
+        rejects(assemble("ldr q1, [x0, x2, uxtx #4]"), "write lsl");
+        rejects(assemble("ldrb w1, [x0, x2, lsl]"), "lsl needs its amount");
+        rejects(assemble("str x1, [x0, x2, LSL]"), "lsl needs its amount");
+        // An extend may still leave its amount out.
+        assert_eq!(assemble("ldr x1, [x0, x2, sxtx]").unwrap()[0], 0xf862_e801);
+        assert_eq!(assemble("ldr w1, [x0, w2, sxtw]").unwrap()[0], 0xb862_c801);
+    }
+
+    #[test]
     fn mixed_width_pairs_are_rejected() {
         // GAS rejects these; accepting them stores the wrong width and
         // both registers reload garbage.
@@ -925,10 +956,14 @@ mod tests {
         use crate::decoder::{ExtendType, Instruction, LdStOffset};
         for (keyword, option, needs_x) in LDST_EXTENDS {
             let (right, wrong) = if *needs_x { ("x2", "w2") } else { ("w2", "x2") };
-            let src = format!("ldr x0, [x1, {right}, {keyword}]");
+            let src = format!("ldr x0, [x1, {right}, {keyword} #0]");
+            // Option 0b011 has two names, and GNU as takes only `lsl` in
+            // an address.
+            if *keyword == "uxtx" {
+                rejects(assemble(&src), "write lsl");
+                continue;
+            }
             let word = assemble(&src).unwrap()[0];
-            // Option 0b011 has two spellings and decodes as the first one
-            // the table lists, so `uxtx` comes back as Lsl.
             let expected = match *keyword {
                 "uxtw" => ExtendType::Uxtw,
                 "sxtw" => ExtendType::Sxtw,
