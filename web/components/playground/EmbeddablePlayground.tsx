@@ -1017,9 +1017,11 @@ export const EmbeddablePlayground = forwardRef<
     refocusRef.current = null;
     const node = wrapperRef.current;
     if (!engaged || key === null || !node || node.contains(document.activeElement)) return;
+    // The live copy sits where the pressed one did, so the page never needs
+    // to move for it.
     Array.from(node.querySelectorAll<HTMLElement>("[aria-label], button, input, textarea"))
       .find((el) => focusKey(el) === key)
-      ?.focus();
+      ?.focus({ preventScroll: true });
   }, [engaged]);
 
   // An autoplay frame keeps its scroll boxes out of the reader's way until the
