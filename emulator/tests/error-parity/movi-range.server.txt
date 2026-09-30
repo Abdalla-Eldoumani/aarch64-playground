@@ -1,0 +1,4 @@
+$ gcc movi-range.s -o program
+movi-range.s: Assembler messages:
+movi-range.s:8: Error: immediate value out of range -128 to 255 at operand 2 -- `movi v0.8b,-129'
+[exit 1]
