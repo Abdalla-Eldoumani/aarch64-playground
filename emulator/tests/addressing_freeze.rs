@@ -35,25 +35,6 @@ const KNOWN_GAPS: &[(&str, &str)] = &[
     // one-line encoder never takes a label here.
     ("ldr x1, msg", "ERR"),
     ("ldr d1, msg", "ERR"),
-    // GNU as sets the S bit when a byte access spells out its `lsl #0`;
-    // the encoder leaves it clear. Both load the byte at x0 + x2.
-    ("ldrb w1, [x0, x2, lsl #0]", "0x38626801"),
-    ("strb w1, [x0, x2, lsl #0]", "0x38226801"),
-    ("ldrsb w1, [x0, x2, lsl #0]", "0x38e26801"),
-    ("ldrsb x1, [x0, x2, lsl #0]", "0x38a26801"),
-    ("LDRB W1, [X0, X2, LSL #0]", "0x38626801"),
-    // GNU as refuses UXTX on a register offset; the encoder reads it as
-    // LSL.
-    ("ldr w1, [x0, x2, uxtx #2]", "0xb8627801"),
-    ("str w1, [x0, x2, uxtx #2]", "0xb8227801"),
-    ("ldrsw x1, [x0, x2, uxtx #2]", "0xb8a27801"),
-    ("ldr s1, [x0, x2, uxtx #2]", "0xbc627801"),
-    ("str s1, [x0, x2, uxtx #2]", "0xbc227801"),
-    ("LDR S1, [X0, X2, UXTX #2]", "0xbc627801"),
-    // GNU as refuses a shift with no amount; the encoder reads a bare
-    // `lsl` as no shift at all.
-    ("ldr x1, [x0, x1, lsl]", "0xf8616801"),
-    ("ldr d1, [x0, x1, lsl]", "0xfc616801"),
 ];
 
 // ---------------------------------------------------------------------------
