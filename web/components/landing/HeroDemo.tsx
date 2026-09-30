@@ -19,7 +19,7 @@ const CONTROL: Record<WalkState, { label: string; name: string; command: WalkCom
 };
 
 const CONTROL_CLASS =
-  "touch-target min-h-[28px] items-center border border-[var(--border-strong)] px-2.5 " +
+  "touch-target min-h-[28px] items-center whitespace-nowrap border border-[var(--border-strong)] px-2.5 " +
   "font-mono text-[12px] font-medium text-[var(--cyan)] transition-colors " +
   "hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
@@ -67,7 +67,7 @@ export function HeroDemo() {
         }}
       />
       <div className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)] [box-shadow:var(--shadow-frame)]">
-        <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-base)] px-4 py-1.5">
+        <div className="flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-base)] px-4 py-1.5 sm:gap-3">
           <span aria-hidden="true" className="inline-flex h-[12px]">
             {[10, 5, 5, 5].map((width, index) => (
               <span
@@ -79,7 +79,7 @@ export function HeroDemo() {
               />
             ))}
           </span>
-          <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+          <span className="whitespace-nowrap font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
             live demo
           </span>
           {/* Sits after the name, not at the far end, so a label that grows
