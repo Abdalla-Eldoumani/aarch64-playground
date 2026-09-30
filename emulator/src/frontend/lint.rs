@@ -201,7 +201,8 @@ fn scan_line_for_hygiene(
                              or drop the `#`"
                         ),
                     });
-                } else if i < bytes.len() && bytes[i] == b'(' {
+                } else if i < bytes.len() && bytes[i] == b'(' && !body.contains('$') {
+                    // A body that reads `$1` is meant to be called this way.
                     warnings.push(LintWarning {
                         line,
                         message: format!(
@@ -583,6 +584,17 @@ mod tests {
         let w = lint_lines(src);
         assert_eq!(w.len(), 1, "{w:?}");
         assert_eq!(w[0].0, 6, "{w:?}");
+    }
+
+    #[test]
+    fn an_argument_macro_is_meant_to_be_called_and_an_alias_is_not() {
+        // A body that reads `$1` wants its arguments; a register alias
+        // right before `(` still loses the text in the parentheses.
+        let src = "define(sq, `mul $1, $1, $1')\ndefine(t_r, x19)\n.text\nmain:\nsq(x0)\nmov t_r(1), 2\nret\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 6);
+        assert!(w[0].1.contains("`t_r(`"), "{}", w[0].1);
     }
 
     #[test]
