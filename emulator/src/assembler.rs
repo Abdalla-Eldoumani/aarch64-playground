@@ -8238,7 +8238,7 @@ svc 0").unwrap();
             .expect("the dispatch match must be findable");
         let region = &source[start..];
         let end = region
-            .find("\n        _ => asm_err(")
+            .find("\n        _ => Err(unknown_mnemonic(")
             .expect("the dispatch's fallthrough arm must be findable");
         let region = &region[..end];
 
