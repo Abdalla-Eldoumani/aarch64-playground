@@ -1,13 +1,17 @@
-"use client";
-
 import Link from "next/link";
-import { EmbeddablePlayground } from "@/components/playground/EmbeddablePlayground";
 import { DieFloorplan } from "@/components/landing/DieFloorplan";
+import { HeroDemo } from "@/components/landing/HeroDemo";
 import { HERO_PROGRAM } from "@/lib/content/landing-content";
+import { buildShareHash } from "@/lib/playground/share";
+
+// The program the demo walks, as a playground link. It is built on the
+// server, so the landing ships the finished href and never the codec.
+const PLAYGROUND_HREF = `/playground${buildShareHash({ source: HERO_PROGRAM })}`;
 
 /**
- * The landing hero. The embed brings its own loading state and reduced-motion
- * fallback, so the hero adds no motion of its own; it only frames it.
+ * The landing hero. A server component: only the demo frame (HeroDemo) ships
+ * script. The embed brings its own loading state and reduced-motion fallback,
+ * so the hero adds no motion of its own; it only frames it.
  */
 export function Hero() {
   return (
@@ -41,70 +45,11 @@ export function Hero() {
         <DieFloorplan className="mt-2 hidden lg:grid" />
       </div>
 
-      {/* One fixed embed height at every breakpoint, so the page cannot
-          shift as the editor and emulator load; the embed arranges itself
-          to fit. */}
-      <div className="relative px-0 sm:px-2.5">
-        <span
-          aria-hidden="true"
-          className="absolute bottom-6 left-0 top-6 hidden w-2.5 sm:block"
-          style={{
-            background:
-              "repeating-linear-gradient(180deg, var(--border-strong) 0 8px, transparent 8px 24px)",
-          }}
-        />
-        <span
-          aria-hidden="true"
-          className="absolute bottom-6 right-0 top-6 hidden w-2.5 sm:block"
-          style={{
-            background:
-              "repeating-linear-gradient(180deg, var(--border-strong) 0 8px, transparent 8px 24px)",
-          }}
-        />
-        <div className="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)] [box-shadow:var(--shadow-frame)]">
-          <div className="flex items-center gap-3 border-b border-[var(--border)] bg-[var(--bg-base)] px-4 py-2.5">
-            <span aria-hidden="true" className="inline-flex h-[12px]">
-              {[10, 5, 5, 5].map((width, index) => (
-                <span
-                  key={index}
-                  className={`inline-block border-y border-r border-[var(--border-strong)] ${
-                    index === 0 ? "border-l" : ""
-                  } ${index === 2 ? "bg-[var(--amber)]" : ""}`}
-                  style={{ width, height: 12 }}
-                />
-              ))}
-            </span>
-            <span className="font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
-              live demo
-            </span>
-            <span className="ml-auto hidden font-mono text-[10px] text-[var(--text-tertiary)] sm:inline">
-              one instruction every 450 ms
-            </span>
-          </div>
-          <div className="flex h-[560px] flex-col">
-            <EmbeddablePlayground
-              chrome="embed"
-              startSource={HERO_PROGRAM}
-              autoplay
-              // The walk reaches the program's svc on step 9, so the hero prints
-              // its line into the embed console during the autoplay.
-              autoplaySteps={10}
-              readOnly
-              // A demonstration needs no editing surface, so the hero draws
-              // its program with the static view: the code is in the server
-              // HTML and the landing never loads the editor at all.
-              staticEditor
-              // The autoplay walk was built for a two-button frame.
-              showStep={false}
-              showBack={false}
-            />
-          </div>
-        </div>
-      </div>
+      <HeroDemo />
 
       <div className="flex flex-wrap items-center gap-4">
         <Link
-          href="/playground?example=basics"
+          href={PLAYGROUND_HREF}
           // Same hover and press grammar as the base button: the fill takes a
           // step of ink on hover and the control travels one pixel on press.
           className="inline-flex min-h-[44px] items-center justify-center rounded-[var(--radius-control)] bg-[var(--cyan)] px-5 font-sans text-sm font-semibold text-[var(--on-cyan)] transition-colors hover:bg-[color-mix(in_srgb,var(--cyan)_88%,var(--text-primary))] active:translate-y-px focus:outline-none focus-visible:[box-shadow:var(--ring)]"
