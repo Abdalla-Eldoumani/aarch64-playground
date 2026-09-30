@@ -1231,6 +1231,46 @@ main:   stp     fp, lr, [sp, -16]!
     assert_eq!(after, call_line + 1, "the lines below the call keep their numbers");
 }
 
+// A define whose quoted body spans three lines is one line of GNU m4's
+// output. So after `m4 f.asm > f.s`, gcc names line 10 of f.s, as on
+// csarm, while the editor, which assembles the source itself, marks line
+// 12. The program and the message are the csarm run's.
+#[test]
+fn a_define_spanning_lines_is_one_line_of_m4_output() {
+    use aarch64_emulator::errors::EmuError;
+    use aarch64_emulator::frontend::m4::expand;
+
+    let source = r#"// A define over three lines, then a line gas refuses: gcc names the
+// line of m4's output, which the define makes two lines shorter.
+define(tri_open, `add     $1, $2, 1
+        mul     $1, $1, $2
+        lsr     $1, $1, 1')
+
+        .text
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        movi    v0.8b, -129
+        mov     x20, 10
+        tri_open(x19, x20)
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let gas = "immediate value out of range -128 to 255 at operand 2 -- `movi v0.8b,-129'";
+    let error_at = |text: &str| match assemble_hosted(text, &Cpu::new().host).err() {
+        Some(EmuError::AssemblyError { line, message }) => (line, message),
+        other => panic!("expected an assembler error, got {other:?}"),
+    };
+    let m4_out = expand(source).expect("m4").text;
+    assert_eq!(m4_out.lines().nth(9), Some("        movi    v0.8b, -129"));
+    let (line, message) = error_at(&m4_out);
+    assert_eq!((line, message.lines().next()), (10, Some(gas)), "gcc f.s");
+    let (line, message) = error_at(source);
+    assert_eq!((line, message.lines().next()), (12, Some(gas)), "the editor");
+}
+
 // gcc aligns functions and loop heads with `.p2align 5,,15`: pad to 2^5
 // bytes, but only when that takes 15 bytes or fewer. The padding is
 // executed in .text, so it must be no-ops. Each distance below is where
