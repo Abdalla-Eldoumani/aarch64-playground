@@ -343,7 +343,7 @@ pub(super) enum AddressingMode {
         offset: Option<i64>,
         mode: IndexMode,
     },
-    /// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX|UXTX #<amount>)?]`.
+    /// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX #<amount>)?]`.
     RegOffset {
         rn: u8,
         rm: u8,
@@ -514,7 +514,7 @@ fn comma_segments(toks: &[Tok], lo: usize, hi: usize, limit: usize) -> Vec<Seg> 
     segments
 }
 
-/// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX|UXTX #<amount>)?]`, reached once
+/// `[Xn, (Wm|Xm) (, LSL|UXTW|SXTW|SXTX #<amount>)?]`, reached once
 /// the shape match has seen an index register in the offset segment.
 fn parse_reg_offset(src: &str, parts: &[Seg], ln: usize) -> Result<AddressingMode, EmuError> {
     // `parts` is the comma split of the bracket group; index 0 is the
@@ -554,16 +554,25 @@ fn parse_reg_offset(src: &str, parts: &[Seg], ln: usize) -> Result<AddressingMod
         return asm_err(ln, &format!("bad extend/shift keyword: {keyword}"));
     };
     let (option, needs_x) = (*option, *needs_x);
+    // UXTX is the architecture's name for option 011, but GNU as takes
+    // only the LSL spelling of it in an address.
+    if keyword_lower == "uxtx" {
+        return asm_err(ln, "an address cannot use uxtx: write lsl, as in [x0, x1, lsl #3]");
+    }
     // Require the extend keyword to match the Rm width ARM-spec rules:
-    // UXTW/SXTW only make sense with Wm; LSL/UXTX/SXTX with Xm. The table's
+    // UXTW/SXTW only make sense with Wm; LSL/SXTX with Xm. The table's
     // third column is that rule.
     if !needs_x && rm_is_x {
         return asm_err(ln, "UXTW/SXTW require a W index register");
     }
     if needs_x && !rm_is_x {
-        return asm_err(ln, "LSL/UXTX/SXTX require an X index register");
+        return asm_err(ln, "LSL/SXTX require an X index register");
     }
     let shift_amount = if shift_str.trim().is_empty() {
+        // An extend may leave its amount out; a shift may not.
+        if option == 0b011 {
+            return asm_err(ln, "lsl needs its amount: write lsl #0, or the scale, as in lsl #3");
+        }
         None
     } else {
         Some(parse_immediate(shift_str, ln)?)
