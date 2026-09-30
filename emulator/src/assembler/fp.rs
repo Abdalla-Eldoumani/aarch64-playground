@@ -389,8 +389,19 @@ pub(super) fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u3
     }
     let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[0], ln)?;
     // `fcmp d0, #0.0` names no second register: opc bit 3 set, Rm zero.
-    let (fm, zero) = if matches!(ops[1].trim().trim_start_matches('#'), "0" | "0.0") {
+    let imm = ops[1].trim().trim_start_matches('#');
+    let (fm, zero) = if matches!(imm, "0" | "0.0") {
         (0, 0b01000)
+    } else if imm.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '+' | '.')) {
+        let name = if signaling { "fcmpe" } else { "fcmp" };
+        return asm_err(
+            ln,
+            &format!(
+                "immediate zero expected at operand 2 -- `{}'\n{name} compares with a register \
+                 or with zero only: put {imm} in another register with fmov and compare with that",
+                gas_echo(name, &ops.join(","))
+            ),
+        );
     } else {
         let FpReg { idx, width: wm } = parse_fp_register(ops[1], ln)?;
         require_same_fp_width("fcmp", &[wn, wm], ln)?;
