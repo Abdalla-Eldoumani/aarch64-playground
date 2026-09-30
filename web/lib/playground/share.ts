@@ -1,5 +1,5 @@
-"use client";
-
+// Not a client module. The landing hero calls buildShareHash on the server
+// for its playground link, so the codec never ships on the landing.
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/hooks/use-deep-link";
 import { validateFileName } from "@/lib/playground/file-map";
