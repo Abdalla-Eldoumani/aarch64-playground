@@ -191,6 +191,10 @@ describe("ConsolePanel controls and state", () => {
     rerender(<ConsolePanel {...props} keyHints={false} />);
     expect(screen.queryByText(/F10|F5/)).toBeNull();
     expect(screen.getByText(/Press step or run under the editor/)).toBeTruthy();
+    // A frame with no step button (the landing demo) names only run.
+    rerender(<ConsolePanel {...props} keyHints={false} stepButton={false} />);
+    expect(screen.getByText(/Press run under the editor/)).toBeTruthy();
+    expect(screen.queryByText(/step or run/)).toBeNull();
   });
 
   it("shows the idle hint with no output and the stream once it arrives", () => {
