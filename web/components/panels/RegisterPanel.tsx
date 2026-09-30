@@ -23,6 +23,7 @@ import {
 } from "@/lib/emulator/register-format";
 import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
 import { DRegisterRow } from "@/components/panels/DRegisterRow";
@@ -55,6 +56,9 @@ interface RegisterPanelProps {
   /** The label's heading level, one below the host's own section heading, so
    *  an embedded panel reads as part of that section rather than a sibling. */
   headingLevel?: 2 | 3;
+  /** When the follow may move the list; the landing demo waits for a reader
+   *  who is scrolling the page. Straight away by default. */
+  holdScroll?: ScrollHold;
 }
 
 // nzcv packs N at bit 3, Z at bit 2, C at bit 1, V at bit 0 (see the
@@ -404,6 +408,7 @@ export function RegisterPanel({
   currentLine = null,
   running = false,
   headingLevel = 2,
+  holdScroll = scrollNow,
 }: RegisterPanelProps) {
   const Heading = `h${headingLevel}` as const;
   // 16 nibbles like every other row: PC renders through the same RegisterRow
@@ -616,8 +621,8 @@ export function RegisterPanel({
     // The grid's children are the rows in register order, SP at 31.
     const reveal = () =>
       revealRows(body, pending.rows.map((i) => grid.children[i]).filter((row) => row != null), smooth);
-    reveal();
-    if (pending.rows.length === 0 || typeof ResizeObserver === "undefined") return;
+    let cancelReveal = holdScroll(reveal);
+    if (pending.rows.length === 0 || typeof ResizeObserver === "undefined") return cancelReveal;
     // The decode strip above the panel can settle a frame after the step,
     // shrinking the box or the pane under a row just shown.
     const pane = hostPane(body);
@@ -628,15 +633,19 @@ export function RegisterPanel({
       boxes.forEach((box, i) => {
         heights[i] = box.clientHeight;
       });
-      if (Date.now() - userScrolledAt.current >= USER_SCROLL_HOLD_MS) reveal();
+      if (Date.now() - userScrolledAt.current >= USER_SCROLL_HOLD_MS) {
+        cancelReveal();
+        cancelReveal = holdScroll(reveal);
+      }
     });
     for (const box of boxes) observer.observe(box);
     const settled = setTimeout(() => observer.disconnect(), SETTLE_MS);
     return () => {
+      cancelReveal();
       clearTimeout(settled);
       observer.disconnect();
     };
-  }, [pending, view, running, follow]);
+  }, [pending, view, running, follow, holdScroll]);
 
   // Said once per write, and not at all mid-run. A second, identical write
   // would leave the text unchanged and unspoken, so each new write flips a
@@ -848,7 +857,7 @@ export function RegisterPanel({
         role="group"
         aria-label="register values"
         tabIndex={0}
-        className="min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+        className="inner-scroll min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
         onWheel={(e) => {
           if (!e.ctrlKey) markUserScroll();
         }}
