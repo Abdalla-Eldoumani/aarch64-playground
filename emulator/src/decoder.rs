@@ -1,3 +1,10 @@
+//! The decoder: one 32-bit instruction word in, one typed `Instruction`
+//! out. This file holds `decode` and its top-level group dispatch, the
+//! `Instruction` enum, the operand enums, and the scalar operation tables
+//! the assembler reads too. The class decoders, the SIMD tables and the
+//! `format` printer live in the child modules below; the `pub use` lines
+//! re-export what they make public, so callers reach it all as `decoder`.
+
 use crate::errors::EmuError;
 use crate::registers::{Condition, ShiftType};
 
