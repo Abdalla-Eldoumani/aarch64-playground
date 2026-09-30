@@ -272,7 +272,7 @@ pub const DIRECTIVES: &[&str] = &[
     ".byte", ".hword", ".short", ".2byte", ".word", ".4byte", ".quad", ".dword", ".xword",
     ".8byte",
     // floats
-    ".double", ".float",
+    ".double", ".float", ".single",
     // recognized, answered with the "write NAME = expression" message
     ".equ", ".set",
 ];
@@ -456,7 +456,7 @@ fn parse_directive(
         // AArch64 gcc writes `.xword` for every 8-byte value. Same emission.
         ".quad" | ".dword" | ".xword" | ".8byte" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
-        ".float" => emit_float_list(rest, prog, *current, line, false),
+        ".float" | ".single" => emit_float_list(rest, prog, *current, line, false),
         // Constants are supported, just not under these spellings; say so
         // instead of calling the directive unknown.
         ".equ" | ".set" => Err(err(
@@ -1281,6 +1281,18 @@ mod tests {
     }
 
     #[test]
+    fn single_is_gnu_as_spelling_of_float() {
+        // The words GNU as wrote for each line on csarm.
+        let p = parse_ok(".data\n.single 1.5, -2.25\n.single 3\n.single 0r1.5\n");
+        let bytes = section_bytes(&p, SectionKind::Data);
+        let words: Vec<u32> = bytes
+            .chunks(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        assert_eq!(words, [0x3fc0_0000, 0xc010_0000, 0x4040_0000, 0x3fc0_0000]);
+    }
+
+    #[test]
     fn balign_requires_positive_argument() {
         rejects(parse(".text\n.balign 0\n"), ".balign needs a positive byte count");
         rejects(parse(".text\n.balign -4\n"), ".balign needs a positive byte count");
@@ -1336,7 +1348,7 @@ mod tests {
                 ".string" | ".asciz" | ".ascii" => " \"hi\"",
                 ".byte" | ".hword" | ".short" | ".2byte" | ".word" | ".4byte" | ".quad"
                 | ".dword" | ".xword" | ".8byte" => " 1",
-                ".double" | ".float" => " 1.0",
+                ".double" | ".float" | ".single" => " 1.0",
                 ".equ" | ".set" => " SIZE, 40",
                 _ => "",
             };
