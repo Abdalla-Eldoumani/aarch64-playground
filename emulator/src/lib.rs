@@ -27,7 +27,7 @@ use cpu::{Cpu, StepOutcome};
 /// new stub is registered without being named here.
 pub const HOSTED_LIBC_NAMES: &[&str] = &[
     // console and formatted output
-    "printf", "scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
+    "printf", "scanf", "__isoc99_scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
     // strings
     "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strchr",
     "strstr", "strtok", "memset", "memcpy", "memmove", "memcmp",
