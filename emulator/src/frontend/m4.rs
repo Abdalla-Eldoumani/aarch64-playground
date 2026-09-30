@@ -13,7 +13,7 @@
 //!     loop fails with an error instead of hanging.
 //!   * Comments are stripped first, so comment text never expands.
 //!   * Every output line maps back to the source line that produced it;
-//!     they stay equal until a macro body spanning lines is expanded.
+//!     they stay equal until a define or a macro body spans lines.
 //!
 //! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting outside a
 //! define) fails with an "unsupported m4 construct" error at its line.
@@ -40,13 +40,15 @@ pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
 pub struct Expanded {
-    /// Expanded source. `define()` lines become empty so line numbers stay
-    /// aligned; `name = expr` assignments stay intact so the parser can
-    /// turn them into symbol assignments at their original offset.
+    /// Expanded source, line for line what GNU m4 writes: a `define()`
+    /// becomes one empty line even when its quoted body spans several, so
+    /// a later error names the line of this text the server's gcc names.
+    /// `name = expr` assignments stay intact so the parser can turn them
+    /// into symbol assignments at their original offset.
     pub text: String,
     /// `line_map[i]` is the 1-based original source line that produced the
-    /// 1-based expanded line `i + 1`. Identity for this pass since output
-    /// stays aligned; surfaced so later stages can still ask the question.
+    /// 1-based expanded line `i + 1`: how the parser and the lint get back
+    /// to editor lines once a define or a macro body spans lines.
     pub line_map: Vec<usize>,
     /// `define()` aliases. The UI reads this to label physical registers
     /// with the names the student wrote (define(score1_r, w19) surfaces as
@@ -100,7 +102,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // whole file first is what makes forward references work across
     // later substitution.
     let mut assignments: HashMap<String, String> = HashMap::new();
-    let mut stripped: Vec<String> = Vec::new();
+    // Each kept line with its 0-based source line: a define spanning lines
+    // keeps only its first, as GNU m4 writes one line for the whole call.
+    let mut stripped: Vec<(usize, String)> = Vec::new();
     // Every define/undefine in source order: (line index, name, body;
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
@@ -112,7 +116,6 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         let line_num = idx + 1;
         if skip > 0 {
             skip -= 1;
-            stripped.push(String::new());
             continue;
         }
         let without_comment = strip_comment(raw);
@@ -123,7 +126,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             for name in names {
                 define_events.push((idx, name, None));
             }
-            stripped.push(String::new());
+            stripped.push((idx, String::new()));
             continue;
         }
         // The other place a quote is legal: a define's arguments, where a
@@ -131,7 +134,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
             let (name, body, used) = parse_quoted_define(&lines[idx..], line_num)?;
             define_events.push((idx, name, Some(body)));
-            stripped.push(String::new());
+            stripped.push((idx, String::new()));
             skip = used - 1;
             continue;
         }
@@ -143,7 +146,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         }
         if let Some((name, body)) = parse_define(trimmed) {
             define_events.push((idx, name, Some(body)));
-            stripped.push(String::new());
+            stripped.push((idx, String::new()));
             continue;
         }
         // The line got past both define gates (the keyword and the paren)
@@ -165,10 +168,10 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // a symbol-assignment item at this exact section offset. The
             // expression body may reference `.` or labels whose meaning
             // depends on where the assignment appears in the source.
-            stripped.push(without_comment.to_string());
+            stripped.push((idx, without_comment.to_string()));
             continue;
         }
-        stripped.push(without_comment.to_string());
+        stripped.push((idx, without_comment.to_string()));
     }
 
     // Find the names defined more than once or undefined, such as
@@ -211,8 +214,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
-    for (idx, line) in stripped.iter().enumerate() {
-        let line_num = idx + 1;
+    for (idx, line) in &stripped {
+        let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
             if *event_idx > idx {
                 break;
@@ -1468,11 +1471,12 @@ mod tests {
                    mov x0, 1\n\
                    tri_open(t_r, x20)\n";
         let r = exp(src);
+        // The define over lines 2 and 3 writes one empty line, as GNU m4's does.
         assert_eq!(
             r.text,
-            "\n\n\nmov x0, 1\nadd     x19, x20, 1   \n        lsr     x19, x19, 1"
+            "\n\nmov x0, 1\nadd     x19, x20, 1   \n        lsr     x19, x19, 1"
         );
-        assert_eq!(r.line_map, vec![1, 2, 3, 4, 5, 5]);
+        assert_eq!(r.line_map, vec![1, 2, 4, 5, 5]);
     }
 
     #[test]
