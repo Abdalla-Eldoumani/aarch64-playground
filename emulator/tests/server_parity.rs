@@ -1158,6 +1158,79 @@ main:   stp     x29, x30, [sp, -32]!
     assert_eq!(out, "read 2 values: 40 + 2 = 42\n");
 }
 
+// m4 macros with arguments, as GNU m4 expands them: a quoted body over
+// three lines (an open subroutine), `$#` and `$*`, blanks before an
+// argument dropped, the tenth argument, arguments past a define's body
+// ignored, and arguments a body never uses swallowed. The program and its
+// output are the csarm run's.
+#[test]
+fn m4_macros_take_arguments_like_gnu_m4() {
+    let source = r#"// m4 macros that take arguments: $1 and $2 in the body stand for the
+// arguments of each use, $# counts them and $* lists them.
+
+define(fp, x29)
+define(lr, x30)
+define(t_r, x19)
+define(k_r, x20)
+
+define(tri_open, `add     $1, $2, 1
+        mul     $1, $1, $2
+        lsr     $1, $1, 1')
+define(show, `.string "$# [$1] [$2] [$*]\n"')
+define(tenth, `[$10]')
+define(two, first, second)
+define(plain, x21)
+
+        .text
+fmt:    .string "tri(%ld) = %ld, %ld\n"
+msg1:   show(a, b,c)
+msg2:   show( pad , y )
+msg3:   show
+msg4:   show(f(1, 2), z)
+msg5:   .string "tenth(1,2,3,4,5,6,7,8,9,ten) two plain(ignored)\n"
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     k_r, 10
+        tri_open(t_r, k_r)
+        mov     plain(skipped), 7
+        ldr     x0, =fmt
+        mov     x1, k_r
+        mov     x2, t_r
+        mov     x3, x21
+        bl      printf
+
+        ldr     x0, =msg1
+        bl      printf
+        ldr     x0, =msg2
+        bl      printf
+        ldr     x0, =msg3
+        bl      printf
+        ldr     x0, =msg4
+        bl      printf
+        ldr     x0, =msg5
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(
+        out,
+        "tri(10) = 55, 7\n3 [a] [b] [a,b,c]\n2 [pad ] [y ] [pad ,y ]\n0 [] [] []\n\
+         2 [f(1, 2)] [z] [f(1, 2),z]\n[ten] first x21\n"
+    );
+    // The three lines the macro wrote all step as the line that used it.
+    let image = assemble_hosted(source, &Cpu::new().host).expect("assemble");
+    let call_line = source.lines().position(|l| l.contains("tri_open(t_r")).unwrap() as u32 + 1;
+    assert_eq!(image.line_map.iter().filter(|(_, line)| *line == call_line).count(), 3);
+    let after = image.line_map.iter().find(|(_, line)| *line > call_line).unwrap().1;
+    assert_eq!(after, call_line + 1, "the lines below the call keep their numbers");
+}
+
 // gcc aligns functions and loop heads with `.p2align 5,,15`: pad to 2^5
 // bytes, but only when that takes 15 bytes or fewer. The padding is
 // executed in .text, so it must be no-ops. Each distance below is where
