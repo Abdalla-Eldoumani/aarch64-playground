@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { KIND_CLASS, tokenizeLine } from "@/lib/asm/highlight-arm64";
+import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 
 export interface StaticCodeViewProps {
   /** The source to render. Never edited: this view has no input path. */
@@ -12,6 +13,9 @@ export interface StaticCodeViewProps {
    * `highlightLine`. Null while nothing is loaded.
    */
   currentLine: number | null;
+  /** When the pc follow may move the box; the landing demo waits for a
+   *  reader who is scrolling the page. Straight away by default. */
+  holdScroll?: ScrollHold;
 }
 
 /**
@@ -19,7 +23,11 @@ export interface StaticCodeViewProps {
  * first HTML. Sizes match Editor.tsx, not CodeBlock's 13px, so the hero keeps
  * its layout. Code renders as text spans, so a program cannot inject markup.
  */
-export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
+export function StaticCodeView({
+  value,
+  currentLine,
+  holdScroll = scrollNow,
+}: StaticCodeViewProps) {
   const lines = value.replace(/\n$/, "").split("\n");
   const boxRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLSpanElement>(null);
@@ -29,15 +37,19 @@ export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
   // own scrollTop is written rather than calling scrollIntoView, which also
   // scrolls the page: on a phone the autoplay yanked a reader who had
   // scrolled past the hero back up to it every half second.
-  useEffect(() => {
-    const box = boxRef.current;
-    const line = activeRef.current;
-    if (!box || !line) return;
-    const top = line.offsetTop;
-    const bottom = top + line.offsetHeight;
-    if (top < box.scrollTop) box.scrollTop = top;
-    else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
-  }, [currentLine]);
+  useEffect(
+    () =>
+      holdScroll(() => {
+        const box = boxRef.current;
+        const line = activeRef.current;
+        if (!box || !line) return;
+        const top = line.offsetTop;
+        const bottom = top + line.offsetHeight;
+        if (top < box.scrollTop) box.scrollTop = top;
+        else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
+      }),
+    [currentLine, holdScroll],
+  );
 
   return (
     // `relative` makes this box the lines' offsetParent, so their offsetTop
@@ -49,7 +61,7 @@ export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
       role="group"
       aria-label="program source"
       tabIndex={0}
-      className="relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+      className="inner-scroll relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
     >
       <pre className="min-w-full font-mono text-[14px] leading-[21px] text-[var(--text-primary)]">
         <code>
