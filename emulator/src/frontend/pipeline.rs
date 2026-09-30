@@ -38,8 +38,8 @@ pub struct LinkedImage {
     /// `__tramp_<libc>` trampolines. The terminal's `gdb b <label>` reads it.
     pub symbols: HashMap<String, u64>,
     /// `(pc, line)` for every `.text` instruction, where `line` is the
-    /// 1-based line in the editor (m4 keeps lines aligned). The debugger
-    /// marker, the disassembly and breakpoints key off this; counting
+    /// 1-based line in the editor (the parser maps m4's lines back). The
+    /// debugger marker, the disassembly and breakpoints key off this; counting
     /// non-label source lines instead drifts on data, macro and directive
     /// lines. Trampolines and the literal pool get no entries.
     pub line_map: Vec<(u64, u32)>,
