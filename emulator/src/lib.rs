@@ -728,8 +728,9 @@ impl Emulator {
     }
 
     /// Run only the m4 pass, as `assemble_and_load` would, for the terminal's
-    /// `m4 file.asm > file.s` step. `define()` lines are left blank so line
-    /// numbers still match. Returns `{ success, text?, error?, error_line? }`.
+    /// `m4 file.asm > file.s` step. Each `define()` leaves one blank line, as
+    /// GNU m4 does, so `gcc file.s` names the lines the server's gcc names.
+    /// Returns `{ success, text?, error?, error_line? }`.
     pub fn m4_expand(&self, source: &str) -> JsValue {
         match frontend::m4::expand(source) {
             Ok(expanded) => serde_wasm_bindgen::to_value(&M4ResultJs {
