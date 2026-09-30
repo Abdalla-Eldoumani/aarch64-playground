@@ -244,6 +244,8 @@ describe("HeroDemo", () => {
       expect(control.isConnected).toBe(true);
       expect(control.hidden).toBe(false);
       expect(control.getAttribute("aria-label")).toBe(name);
+      // The other setting's button has left the accessibility tree.
+      expect(screen.getAllByRole("button", { name: /the demo$|^step through it$/ })).toEqual([control]);
     },
   );
 
