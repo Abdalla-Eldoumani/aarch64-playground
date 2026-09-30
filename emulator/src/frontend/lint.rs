@@ -41,8 +41,13 @@ pub fn lint(source: &str) -> Vec<LintWarning> {
         return Vec::new();
     };
     let mut warnings = Vec::new();
-    macro_hygiene(source, &expanded, &mut warnings);
     frame_balance(&expanded, &mut warnings);
+    // The frame walk counts m4's output lines, which a macro body spanning
+    // lines pushes past the editor's.
+    for w in &mut warnings {
+        w.line = expanded.line_map.get(w.line.wrapping_sub(1)).copied().unwrap_or(w.line);
+    }
+    macro_hygiene(source, &expanded, &mut warnings);
     warnings.sort_by_key(|w| w.line);
     warnings
 }
@@ -568,6 +573,16 @@ mod tests {
         assert_eq!(w.len(), 1, "{w:?}");
         assert_eq!(w[0].0, 7);
         assert!(w[0].1.contains("16 bytes"), "{}", w[0].1);
+    }
+
+    #[test]
+    fn a_frame_warning_below_a_multi_line_macro_lands_on_its_editor_line() {
+        // The macro's second line pushes every output line below it down
+        // by one; the warning still marks the `ldp` the student wrote.
+        let src = "define(two, `mov x0, 1\n  mov x1, 2')\n.text\nmain:\ntwo\nldp x29, x30, [sp], 16\nret\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 6, "{w:?}");
     }
 
     #[test]
