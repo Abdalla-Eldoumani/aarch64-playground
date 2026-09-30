@@ -9,6 +9,11 @@ import { parseArgs } from "@/lib/playground/args";
 const AUTOPLAY_STEP_MS = 450;
 const AUTOPLAY_MAX_STEPS = 10;
 
+// How long the demo keeps its boxes still after the reader's last wheel turn
+// or touch anywhere on the page. A box that scrolls under a moving finger or
+// pointer reads as the page fighting back.
+const READER_STILL_MS = 1000;
+
 /** The two machine calls the walk makes; the rest of the hub is none of its
  *  business. */
 export interface AutoplayMachine {
@@ -219,3 +224,51 @@ export function useAutoplay(params: AutoplayParams): (command: WalkCommand) => v
   return useCallback((command: WalkCommand) => commandRef.current(command), []);
 }
 
+/**
+ * Runs a box scroll now, or once the reader has been still long enough; the
+ * returned function cancels a scroll still waiting.
+ */
+export type ScrollHold = (move: () => void) => () => void;
+
+/** The hold every surface without a demo walk uses: scroll straight away. */
+export const scrollNow: ScrollHold = (move) => {
+  move();
+  return () => {};
+};
+
+/**
+ * The demo's box scrolls wait until the reader's wheel and touch input
+ * anywhere on the page has been still for a second, so nothing moves under a
+ * reader who is scrolling past. Disabled, it never waits.
+ */
+export function useScrollHold(enabled: boolean): ScrollHold {
+  const lastInput = useRef(-Infinity);
+  useEffect(() => {
+    if (!enabled) return;
+    const mark = () => {
+      lastInput.current = Date.now();
+    };
+    const options = { capture: true, passive: true } as const;
+    const types = ["wheel", "touchstart", "touchmove"] as const;
+    for (const type of types) window.addEventListener(type, mark, options);
+    return () => {
+      for (const type of types) window.removeEventListener(type, mark, options);
+    };
+  }, [enabled]);
+  return useCallback<ScrollHold>((move) => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const attempt = () => {
+      const wait = lastInput.current + READER_STILL_MS - Date.now();
+      if (wait > 0) {
+        timer = setTimeout(attempt, wait);
+        return;
+      }
+      timer = null;
+      move();
+    };
+    attempt();
+    return () => {
+      if (timer !== null) clearTimeout(timer);
+    };
+  }, []);
+}
