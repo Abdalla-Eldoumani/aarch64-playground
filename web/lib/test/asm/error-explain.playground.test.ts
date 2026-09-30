@@ -73,9 +73,16 @@ describe("error guidance for the programs the course server rejects", () => {
     expect(cases.length).toBeGreaterThanOrEqual(11);
   });
 
-  // These two carry all their guidance in the message's own second line,
-  // which is what the editor shows when the explainer adds nothing.
-  const MESSAGE_ONLY = ["duplicate-label", "missing-ldr-fmt"];
+  // These carry all their guidance in the message's own second line, which
+  // is what the editor shows when the explainer adds nothing.
+  const MESSAGE_ONLY = [
+    "duplicate-label",
+    "missing-ldr-fmt",
+    "local-label-no-backward",
+    "local-label-no-forward",
+    "movi-range",
+    "fcmp-immediate",
+  ];
 
   it.each(cases)("%s opens with the server's line and gets guidance", (name) => {
     const source = fs.readFileSync(path.join(PARITY_DIR, `${name}.s`), "utf8");
