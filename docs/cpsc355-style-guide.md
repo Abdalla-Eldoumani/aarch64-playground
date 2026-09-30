@@ -6,11 +6,14 @@ in the editor link to the sections below.
 
 ## m4 preprocessing
 
-Two forms are recognized:
+Three forms are recognized:
 
 ```
 define(fp, x29)                 // token-boundary substitution
 define(score1_r, w19)
+
+define(sq, `mul $1, $1, $1')    // a macro with arguments
+sq(x20)                         // becomes mul x20, x20, x20
 
 alloc = -(16 + 16) & -16        // expression symbol, evaluated at this
                                  // point in the section walk
@@ -20,6 +23,11 @@ msg_len = . - msg - 1
 - `define(NAME, BODY)` substitutes every standalone `NAME` with `BODY`
   in the rest of the source. Expansion repeats until nothing changes, up
   to 32 rounds, before the playground reports a cycle.
+- `NAME(ARG, ...)` uses a macro with arguments: `$1`, `$2`, and so on in
+  the body take the arguments, `$#` their count, and `$*` all of them.
+  Quote a body that holds commas or spans lines, as `sq` does above. The
+  arguments of a use close on its own line, and a body that spans lines
+  steps as the one line that used it.
 - `NAME = EXPRESSION` records a symbol evaluated where it appears. `.` is
   the address of the assignment line, so `msg_len = . - msg - 1` is the
   length of string `msg` minus its null terminator, wherever `msg_len` is
@@ -28,8 +36,8 @@ msg_len = . - msg - 1
 Comments strip before substitution: `//` to end of line.
 
 `ifdef`, `ifelse`, `forloop`, and `dnl` are rejected with a clear error
-rather than silently ignored, and so is a backtick anywhere except
-``undefine(`NAME')``, whose m4 quotes are legal. Undefining a name ends that
+rather than silently ignored, and so is a backtick outside a `define` or
+``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends that
 define's reach at that line, so an alias can be rebound per function.
 
 ### Where GNU m4's text-level rules bite
