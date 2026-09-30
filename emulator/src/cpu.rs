@@ -1,3 +1,9 @@
+//! The CPU: the `Cpu` state and `step`, which fetches, decodes and
+//! executes one instruction and records what changed. This file also
+//! holds the memory-layout and limit constants and the result types a
+//! host reads back. Loading, the limit checks, system calls and I/O, and
+//! run control between steps live in the child modules below.
+
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::decoder;
