@@ -579,14 +579,20 @@ const UNKNOWN_MNEMONIC_HINT: &str =
 /// to add: the name table would cost the wasm about 2 KB compressed, and
 /// nothing else in it needs one.
 fn unknown_mnemonic(mnemonic: &str, operands: &str, ln: usize) -> EmuError {
+    let echo = gas_echo(mnemonic, operands);
     let mnemonic = mnemonic.to_ascii_lowercase();
-    let squeezed: Vec<&str> = operands.split(',').map(str::trim).collect();
-    let echo = if operands.is_empty() {
-        mnemonic.clone()
-    } else {
-        format!("{mnemonic} {}", squeezed.join(","))
-    };
     asm_error(ln, &format!("unknown mnemonic `{mnemonic}' -- `{echo}'\n{UNKNOWN_MNEMONIC_HINT}"))
+}
+
+/// A line as GAS quotes it back after an error: the mnemonic lowercased,
+/// the spaces after its commas squeezed out.
+fn gas_echo(mnemonic: &str, operands: &str) -> String {
+    let mnemonic = mnemonic.to_ascii_lowercase();
+    if operands.is_empty() {
+        return mnemonic;
+    }
+    let squeezed: Vec<&str> = operands.split(',').map(str::trim).collect();
+    format!("{mnemonic} {}", squeezed.join(","))
 }
 
 /// A branch, address, literal-pool constant, or data slot naming a label
