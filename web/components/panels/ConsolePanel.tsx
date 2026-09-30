@@ -35,6 +35,9 @@ interface ConsolePanelProps {
   /** Whether the empty state names F10 and F5. Only the playground page binds
    *  them, so the embeds point at their buttons instead. */
   keyHints?: boolean;
+  /** Whether the frame has a step button, so the empty state names only the
+   *  buttons a reader can find. The landing demo has none. */
+  stepButton?: boolean;
   /** When new output may scroll the box; the landing demo waits for a reader
    *  who is scrolling the page. Straight away by default. */
   holdScroll?: ScrollHold;
@@ -65,6 +68,7 @@ export function ConsolePanel({
   onInputSent,
   echoStdin = true,
   keyHints = true,
+  stepButton = true,
   holdScroll = scrollNow,
   closeStdin,
   uploadVfsFile,
@@ -149,6 +153,7 @@ export function ConsolePanel({
     terminalOwnedFrom == null
       ? stdout
       : stripEscapeSequences(stdout.slice(0, terminalOwnedFrom));
+  const buttons = stepButton ? "step or run" : "run";
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -240,10 +245,10 @@ export function ConsolePanel({
             </p>
             <p className="font-sans text-[11px] text-[var(--text-secondary)]">
               {coarsePointer
-                ? "Tap step or run under the editor, or feed stdin from the box below."
+                ? `Tap ${buttons} under the editor, or feed stdin from the box below.`
                 : keyHints
                   ? "Step with F10, run with F5, or feed stdin from the box below."
-                  : "Press step or run under the editor, or feed stdin from the box below."}
+                  : `Press ${buttons} under the editor, or feed stdin from the box below.`}
             </p>
           </div>
         )}
