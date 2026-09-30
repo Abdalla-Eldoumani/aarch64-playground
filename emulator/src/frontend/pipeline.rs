@@ -754,8 +754,10 @@ fn emit_image(prog: &Program, layout: &Layout, pool: &Pool) -> Result<Emission, 
                         let mut tokens_owned = tokens.clone();
                         let redirected =
                             redirect_bl_to_trampoline_tokens(&mut tokens_owned, tramp_addr);
+                        // By the token's line, not the editor's: a macro
+                        // body spanning lines puts several on one.
                         let raw = expanded_lines
-                            .get(original_line - 1)
+                            .get(tokens[0].line - 1)
                             .copied()
                             .unwrap_or("");
                         let stripped = strip_leading_labels(raw);
