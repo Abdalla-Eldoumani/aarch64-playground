@@ -1,3 +1,11 @@
+//! The instruction encoder: one line of assembly in, one 32-bit word out.
+//! `assemble` runs it over bare-metal source; the hosted pipeline calls
+//! `encode_line_absolute` for each ordinary instruction. This file holds
+//! the entry points, `SUPPORTED_MNEMONICS`, the `encode_line` dispatch,
+//! and the error builders every encoder shares. Operand parsing and the
+//! encoders, by instruction class, live in the child modules below; each
+//! starts with `use super::*`, so the imports here serve them too.
+
 use std::collections::HashMap;
 
 use crate::decoder::{
