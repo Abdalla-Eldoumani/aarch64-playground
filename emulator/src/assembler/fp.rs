@@ -389,8 +389,14 @@ pub(super) fn encode_fcmp(ops: &[&str], signaling: bool, ln: usize) -> Result<u3
     }
     let FpReg { idx: fn_, width: wn } = parse_fp_register(ops[0], ln)?;
     // `fcmp d0, #0.0` names no second register: opc bit 3 set, Rm zero.
+    // GAS takes any spelling whose bits are zero (`0.00`, `0e0`, the hex
+    // pattern `0x0`), so -0.0, with its sign bit set, is refused.
     let imm = ops[1].trim().trim_start_matches('#');
-    let (fm, zero) = if matches!(imm, "0" | "0.0") {
+    let bits = match imm.strip_prefix("0x") {
+        Some(hex) => u64::from_str_radix(hex, 16).ok(),
+        None => imm.parse::<f64>().ok().map(f64::to_bits),
+    };
+    let (fm, zero) = if bits == Some(0) {
         (0, 0b01000)
     } else if imm.starts_with(|c: char| c.is_ascii_digit() || matches!(c, '-' | '+' | '.')) {
         let name = if signaling { "fcmpe" } else { "fcmp" };
