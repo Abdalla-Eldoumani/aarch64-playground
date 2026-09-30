@@ -53,7 +53,7 @@ use branch::*;
 /// sees the line.
 pub fn assemble(source: &str) -> Result<Vec<u32>, EmuError> {
     let expanded = crate::frontend::m4::expand(source)?;
-    assemble_expanded(&expanded.text)
+    assemble_expanded(&crate::frontend::parser::name_local_labels(&expanded.text)?)
 }
 
 /// Pre-m4 entry point used by tests that want to exercise the raw encoder
@@ -668,6 +668,17 @@ mod tests {
         cpu.run_until_break(100).unwrap();
 
         assert_eq!(cpu.regs.read_gpr(0, true), 0);
+        assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn numeric_local_labels_work_without_sections_too() {
+        let source = "mov x0, 3\nmov x1, 0\n1: add x1, x1, 2\nsubs x0, x0, 1\nb.ne 1b\ncbz x0, 1f\nmov x1, 99\n1: svc 0\n";
+        let code = assemble(source).unwrap();
+        let mut cpu = Cpu::new();
+        cpu.load_program(&code);
+        cpu.run_until_break(100).unwrap();
+        assert_eq!(cpu.regs.read_gpr(1, true), 6);
         assert!(cpu.is_halted());
     }
 
