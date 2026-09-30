@@ -46,14 +46,21 @@ use branch::*;
 ///
 /// Runs m4 expansion first so `define(fp, x29)` and `name = expr` aliases
 /// from cpsc 355 source expand before the single-pass encoder sees them.
-/// The expansion is line-aligned with the input, so encoder errors still
-/// carry the original (pre-expansion) line number. Expression-level
-/// numeric substitutions in operands are the hosted pipeline's job;
-/// `frontend::pipeline::lower_operands` folds them before this encoder
-/// sees the line.
+/// A define or a macro body spanning lines moves m4's output lines off the
+/// editor's, so an error's line goes back through `line_map`.
+/// Expression-level numeric substitutions in operands are the hosted
+/// pipeline's job; `frontend::pipeline::lower_operands` folds them before
+/// this encoder sees the line.
 pub fn assemble(source: &str) -> Result<Vec<u32>, EmuError> {
     let expanded = crate::frontend::m4::expand(source)?;
-    assemble_expanded(&crate::frontend::parser::name_local_labels(&expanded.text)?)
+    crate::frontend::parser::name_local_labels(&expanded.text)
+        .and_then(|text| assemble_expanded(&text))
+        .map_err(|mut e| {
+            if let EmuError::AssemblyError { line, .. } | EmuError::ParseError { line, .. } = &mut e {
+                *line = expanded.line_map.get(line.wrapping_sub(1)).copied().unwrap_or(*line);
+            }
+            e
+        })
 }
 
 /// Pre-m4 entry point used by tests that want to exercise the raw encoder
@@ -774,6 +781,17 @@ svc 0").unwrap();
                 assert_eq!(line, 2);
             }
             other => panic!("expected PreprocError at line 2, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_error_below_a_define_spanning_lines_names_the_editor_line() {
+        // m4 writes the define as one line, so `movi` is its line 3.
+        let err = assemble("define(inc, `add $1, $1, 1\nadd $1, $1, 1')\nmov x0, 1\nmovi v0.8b, 256\n")
+            .unwrap_err();
+        match err {
+            EmuError::AssemblyError { line, .. } => assert_eq!(line, 4),
+            other => panic!("expected an AssemblyError at line 4, got {other:?}"),
         }
     }
 
