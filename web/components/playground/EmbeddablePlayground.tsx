@@ -21,6 +21,7 @@ import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
 import {
   useAutoplay,
+  useScrollHold,
   type WalkCommand,
   type WalkState,
 } from "@/lib/playground/use-autoplay";
@@ -643,6 +644,8 @@ function EmbeddableCore({
     frame: frameRef,
     onChange: onAutoplayChange,
   });
+  // The walk's own box scrolls wait for a reader who is scrolling the page.
+  const holdScroll = useScrollHold(Boolean(autoplay));
 
   // Mirror exactly the ten outcome fields to the host whenever any of them
   // changes. Keyed only on those fields so unrelated hub churn (breakpoints,
@@ -877,7 +880,11 @@ function EmbeddableCore({
         hasOutput={emu.stdout.length + emu.stderr.length > 0}
         editor={
           staticEditor ? (
-            <StaticCodeView value={source} currentLine={emu.currentLine} />
+            <StaticCodeView
+              value={source}
+              currentLine={emu.currentLine}
+              holdScroll={holdScroll}
+            />
           ) : (
             <Editor
               value={source}
@@ -906,6 +913,7 @@ function EmbeddableCore({
             nzcv={emu.nzcv}
             running={emu.isRunning}
             headingLevel={registerHeadingLevel}
+            holdScroll={holdScroll}
           />
         }
         console={
@@ -920,6 +928,7 @@ function EmbeddableCore({
             onInputSent={emu.resumeAfterInput}
             echoStdin={chrome !== "checker"}
             keyHints={false}
+            holdScroll={holdScroll}
             closeStdin={emu.closeStdin}
             uploadVfsFile={stageVfsFile}
             clearConsole={emu.clearConsole}
@@ -1012,6 +1021,23 @@ export const EmbeddablePlayground = forwardRef<
       .find((el) => focusKey(el) === key)
       ?.focus();
   }, [engaged]);
+
+  // An autoplay frame keeps its scroll boxes out of the reader's way until the
+  // reader reaches in with a click, a tap, or focus (globals.css,
+  // data-hands-off). A swipe or a wheel turn over the frame fires no click.
+  const [readerIn, setReaderIn] = useState(false);
+  const handsOff = Boolean(props.autoplay) && !readerIn;
+  useEffect(() => {
+    const node = wrapperRef.current;
+    if (!handsOff || !node) return;
+    const reachIn = () => setReaderIn(true);
+    node.addEventListener("click", reachIn);
+    node.addEventListener("focusin", reachIn);
+    return () => {
+      node.removeEventListener("click", reachIn);
+      node.removeEventListener("focusin", reachIn);
+    };
+  }, [handsOff]);
 
   const innerHandleRef = useRef<EmbeddablePlaygroundHandle | null>(null);
   const pendingRef = useRef<Array<(handle: EmbeddablePlaygroundHandle) => void>>([]);
@@ -1127,6 +1153,7 @@ export const EmbeddablePlayground = forwardRef<
     <div
       ref={wrapperRef}
       data-embed={chrome === "embed" ? "1" : undefined}
+      data-hands-off={handsOff || undefined}
       className={joinClasses("flex flex-col flex-1 min-h-0", className)}
     >
       {engaged ? (
