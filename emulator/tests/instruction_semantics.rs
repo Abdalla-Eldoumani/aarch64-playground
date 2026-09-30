@@ -753,6 +753,25 @@ fn optimized_gcc_forms_encode_to_the_words_the_servers_emit() {
     }
 }
 
+/// fcmp takes zero in any spelling GAS reads as +0.0, and refuses -0.0,
+/// whose sign bit is set. The word and the refusal are GAS 2.46.1's on the
+/// course servers; the hosted pipeline must pass each spelling through.
+#[test]
+fn fcmp_takes_every_spelling_of_positive_zero() {
+    use aarch64_emulator::assembler::assemble as encode;
+
+    for line in ["fcmp d0, #0.00", "fcmp d0, #0e0", "fcmp d0, #0x0"] {
+        let got = encode(line).unwrap_or_else(|e| panic!("{line}: {e}"));
+        assert_eq!(got[0], 0x1e60_2008, "{line}: got {:#010x}", got[0]);
+        let src = format!(".text\n.global main\nmain:\n    {line}\n    ret\n");
+        let image = assemble_hosted(&src, &Cpu::new().host).unwrap_or_else(|e| panic!("{line}: {e}"));
+        let (_, text) = image.writes.iter().find(|(at, _)| *at == image.text_base).expect(".text");
+        assert_eq!(text[..4], 0x1e60_2008u32.to_le_bytes(), "{line} in a program");
+    }
+    let msg = encode("fcmp d0, #-0.0").expect_err("-0.0").to_string();
+    assert!(msg.contains("immediate zero expected at operand 2 -- `fcmp d0,#-0.0'"), "{msg}");
+}
+
 /// The same forms decode back and compute what the hardware computes.
 #[test]
 fn optimized_gcc_forms_run_to_the_right_values() {
