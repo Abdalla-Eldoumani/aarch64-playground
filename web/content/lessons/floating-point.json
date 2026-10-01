@@ -2,7 +2,7 @@
   "title": "Floating point: the other register file",
   "slug": "floating-point",
   "order": 26,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Load, compute with, convert, compare, and print single and double values, and pass them to and from functions in d0 to d7.",
   "tags": [
     "floating point",
@@ -95,6 +95,11 @@
       "type": "callout",
       "variant": "pitfall",
       "markdown": "The step of 0.25 and the limit of 1.0 go through `d16`, which any call may change. That is why the loop sets `d16` again just before each use, and never counts on it across `bl lerp` or `bl printf`. A value that must outlive a call belongs in `d8` to `d15`, saved in the prologue (the function's opening lines), or in memory."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [fcvtzs drops the fraction; it does not round](/reference#pitfall-fcvtzs-rounds-toward-zero)\n- [printf reads a double from d0, never from x1](/reference#pitfall-printf-reads-doubles-from-d)\n- [Widen a float to a double before printf](/reference#pitfall-widen-a-float-for-printf)"
     },
     {
       "type": "prose",
