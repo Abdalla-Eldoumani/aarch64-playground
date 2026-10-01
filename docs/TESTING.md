@@ -181,7 +181,14 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 `docs/instruction-reference.md` runs those four and `rust`. A lesson or
 example change skips lint and typecheck, and a change under `emulator/tests/`
 runs only the Rust jobs. A change to a workflow, or to a file no rule names,
-runs everything, and so does every push.
+runs everything, and so do a push to `main`, the weekly run, and the pull
+request from `integration` to `main`.
+
+A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
+it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that
+pull requests into `integration` restore. The pull request from `integration`
+to `main` tests the same changes, so a push to `integration` with no such pull
+request open runs no tests.
 
 - `wasm`: builds both emulator bundles, or restores them from a cache keyed on
   the emulator's sources.
@@ -192,8 +199,9 @@ runs everything, and so does every push.
   30 days from its expiry date, `npm run lint`, and `npm run typecheck`.
 - `web-build`: `npm run build` and `npm run size`.
 - `web-test`: `npm test` split into six shards.
-- `coverage`: on pushes and the weekly run only, merges the shards' coverage
-  and fails if it drops below the floors in `web/vitest.config.mts`.
+- `coverage`: on pushes to `main`, the weekly run, and the pull request from
+  `integration` only, merges the shards' coverage and fails if it drops below
+  the floors in `web/vitest.config.mts`.
 - `ci`: fails if any job above failed or was cancelled. It is the one check a
   pull request needs to pass.
 
