@@ -18,7 +18,7 @@ steps in [Run it locally](#run-it-locally).
   registers, the stack, and memory update.
 - Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
   on files kept in the browser.
-- Read 29 lessons, each with programs you can run in place.
+- Read 32 lessons, each with programs you can run in place.
 - Practice with 67 coding exercises, checked by running your program on hidden
   inputs, and 44 sets of quizzes, fill-in-the-blank questions, and output
   predictions.
