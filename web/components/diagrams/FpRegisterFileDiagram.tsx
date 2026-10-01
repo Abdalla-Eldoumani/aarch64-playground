@@ -30,10 +30,11 @@ const FAMILY_TINT: Record<FpFamily, string> = {
   caller: "var(--border-strong)",
 };
 
-const LEGEND: { family: FpFamily; label: string }[] = [
-  { family: "args", label: "arguments & result (v0-v7)" },
-  { family: "callee", label: "callee-saved, bits 63:0 only (v8-v15)" },
-  { family: "caller", label: "caller-saved temporaries (v16-v31)" },
+// The range sits apart so it never wraps: 320px broke "(v16-" from "v31)".
+const LEGEND: { family: FpFamily; label: string; range: string }[] = [
+  { family: "args", label: "arguments & result", range: "(v0-v7)" },
+  { family: "callee", label: "callee-saved, bits 63:0 only", range: "(v8-v15)" },
+  { family: "caller", label: "caller-saved temporaries", range: "(v16-v31)" },
 ];
 
 // A half the call keeps: solid amber. A half it may change: a dashed outline
@@ -69,7 +70,10 @@ export function FpRegisterFileDiagram({
                 backgroundColor: `color-mix(in srgb, ${FAMILY_TINT[item.family]} 35%, transparent)`,
               }}
             />
-            {item.label}
+            <span>
+              {item.label}{" "}
+              <span className="whitespace-nowrap">{item.range}</span>
+            </span>
           </li>
         ))}
         <li className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
