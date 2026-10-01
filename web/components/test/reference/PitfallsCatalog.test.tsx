@@ -159,6 +159,24 @@ describe("PitfallsCatalog", { timeout: 15_000 }, () => {
     expect(document.activeElement).toBe(box);
   });
 
+  it("focuses the filter box only after the cards are back, so it stays on screen", () => {
+    renderCatalog();
+    const box = screen.getByRole("searchbox");
+    fireEvent.change(box, { target: { value: "no such mistake" } });
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    // Focused while the list is still empty, the box scrolls out of view when
+    // the cards land: the browser keeps the footer where it was.
+    const calls: { cards: number; preventScroll?: boolean }[] = [];
+    const focus = box.focus.bind(box);
+    box.focus = (options?: FocusOptions) => {
+      calls.push({ cards: document.querySelectorAll("article").length, preventScroll: options?.preventScroll });
+      focus(options);
+    };
+    fireEvent.click(screen.getByRole("button", { name: "clear the filters" }));
+    expect(calls).toEqual([{ cards: 36, preventScroll: undefined }]);
+    expect(document.activeElement).toBe(box);
+  });
+
   it("keeps spellcheck, autocorrect, and autocapitalize off in the filter", () => {
     renderCatalog();
     const box = screen.getByRole("searchbox");
