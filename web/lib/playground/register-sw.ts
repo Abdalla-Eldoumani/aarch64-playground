@@ -13,7 +13,9 @@ export function registerServiceWorker(): void {
   if (!isSecure) return;
   const run = () => {
     navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
+      // The worker imports its build's file list, and a new list is what
+      // starts an update, so the update check must never read a cached copy.
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .catch(() => {
         // Registration failures are non-fatal: the app still works online
         // without the cache layer.
