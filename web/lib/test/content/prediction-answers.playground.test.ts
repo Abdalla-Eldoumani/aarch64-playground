@@ -98,6 +98,41 @@ const ROWS: Row[] = [
   },
   { slug: "predict-binary-logic", index: 3, uses: ["sxtb w19, w20"], body: "mov w20, 0xFF\nsxtb w19, w20", read: (m) => hex32(m.get_register(19)) },
   {
+    slug: "predict-branching",
+    index: 0,
+    uses: ["csel w0, w1, w2, hi"],
+    body: "mov w1, -5\nmov w2, 3\ncmp w1, w2\ncsel w0, w1, w2, hi",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-branching",
+    index: 1,
+    uses: ["cinc w0, w0, eq", "cinc w0, w0, gt", "cset w2, lt"],
+    body: "mov w0, 5\nmov w1, 4\ncmp w1, 4\ncinc w0, w0, eq\ncmp w1, 9\ncinc w0, w0, gt\ncset w2, lt\nadd w0, w0, w2",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-branching",
+    index: 2,
+    uses: ["cbnz w2, out", "b.gt bigger"],
+    body: "mov w0, 0\nmov w1, 5\nmov w2, 0\ncmp w1, 2\ncbnz w2, out\nb.gt bigger\nmov w0, 1\nb out\nbigger:\nmov w0, 2\nout:",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-branching",
+    index: 3,
+    uses: ["cbz w20, out", "cbnz w20, loop"],
+    body: "mov w19, 0\nmov w20, 6\ncbz w20, out\nloop:\nadd w19, w19, w20\nsub w20, w20, 2\ncbnz w20, loop\nout:",
+    read: (m) => signed32(m.get_register(19)),
+  },
+  {
+    slug: "predict-branching",
+    index: 4,
+    uses: ["csinc w6, w4, w5, ge"],
+    body: "mov w4, 10\nmov w5, 20\ncmp w4, w5\ncsinc w6, w4, w5, ge",
+    read: (m) => signed32(m.get_register(6)),
+  },
+  {
     slug: "predict-external-data",
     index: 0,
     uses: ["a_m:    .hword 23", "b_m:    .word 42", "c_m:    .dword 0"],
@@ -261,6 +296,91 @@ const ROWS: Row[] = [
     body: "ldr x29, =byte\nldrb w20, [x29]",
     after: "        .data\nbyte:   .byte 0xff\n",
     read: (m) => hex32(m.get_register(20)),
+  },
+  {
+    slug: "predict-functions",
+    index: 0,
+    uses: ["str x19, [sp, 16]", "mov w19, w0", "bl sum", "add w0, w0, w19"],
+    body: "mov w0, 4\nbl sum",
+    after:
+      "sum:\n        stp x29, x30, [sp, -32]!\n        mov x29, sp\n        str x19, [sp, 16]\n        mov w19, w0\n        cbz w0, back\n        sub w0, w0, 1\n        bl sum\n        add w0, w0, w19\nback:\n        ldr x19, [sp, 16]\n        ldp x29, x30, [sp], 32\n        ret\n",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-functions",
+    index: 1,
+    uses: ["stp x29, x30, [sp, -32]!", "stp x19, x20, [sp, 16]"],
+    // keep is called from sp rather than 0x8000; x20's marker lands the same distance below it.
+    body: "mov x20, 0x5a5a\nbl keep",
+    after:
+      "keep:\n        stp x29, x30, [sp, -32]!\n        mov x29, sp\n        stp x19, x20, [sp, 16]\n        ldp x19, x20, [sp, 16]\n        ldp x29, x30, [sp], 32\n        ret\n",
+    read: (m, sp) => {
+      const below = new DataView(m.get_memory_range(Number(sp) - 64, 64).buffer);
+      const slot = [0, 1, 2, 3, 4, 5, 6, 7].find((i) => below.getBigUint64(8 * i, true) === 0x5a5an);
+      return slot === undefined ? "x20 never stored" : hex(0x8000 - 64 + 8 * slot);
+    },
+  },
+  {
+    slug: "predict-functions",
+    index: 2,
+    uses: ["mov w19, 50", "bl triple", "mov w19, 3", "mul w0, w0, w19"],
+    body: "mov w19, 50\nmov w0, 6\nbl triple\nadd w0, w0, w19",
+    after: "triple:\n        mov w19, 3\n        mul w0, w0, w19\n        ret\n",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-functions",
+    index: 3,
+    uses: ["stp x29, x30, [sp, -32]!", "bl g", "stp x29, x30, [sp, -16]!"],
+    // g copies [x29] into x9 right after its mov; f is called from sp rather than 0x8000.
+    body: "bl f",
+    after:
+      "f:\n        stp x29, x30, [sp, -32]!\n        mov x29, sp\n        bl g\n        ldp x29, x30, [sp], 32\n        ret\ng:\n        stp x29, x30, [sp, -16]!\n        mov x29, sp\n        ldr x9, [x29]\n        ldp x29, x30, [sp], 16\n        ret\n",
+    read: (m, sp) => hex(0x8000n + (m.get_register(9) - sp)),
+  },
+  {
+    slug: "predict-functions",
+    index: 4,
+    uses: ["mov w9, w0", "bl total", "add w0, w0, w9"],
+    body: "mov w0, 3\nbl total",
+    after:
+      "total:\n        stp x29, x30, [sp, -16]!\n        mov x29, sp\n        mov w9, w0\n        cbz w0, back\n        sub w0, w0, 1\n        bl total\n        add w0, w0, w9\nback:\n        ldp x29, x30, [sp], 16\n        ret\n",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-loops",
+    index: 0,
+    uses: ["add w20, w20, 2", "b.le body"],
+    body: "mov w19, 0\nmov w20, 1\nb test\nbody:\nadd w19, w19, w20\nadd w20, w20, 2\ntest:\ncmp w20, 9\nb.le body",
+    read: (m) => signed32(m.get_register(19)),
+  },
+  {
+    slug: "predict-loops",
+    index: 1,
+    uses: ["mov w20, 12", "b.lt again"],
+    body: "mov w19, 0\nmov w20, 12\nagain:\nadd w19, w19, 1\nadd w20, w20, 1\ncmp w20, 10\nb.lt again",
+    read: (m) => signed32(m.get_register(19)),
+  },
+  {
+    slug: "predict-loops",
+    index: 2,
+    uses: ["add w20, w20, 4", "b.lt body"],
+    body: "mov w20, 0\nb test\nbody:\nadd w20, w20, 4\ntest:\ncmp w20, 10\nb.lt body",
+    read: (m) => signed32(m.get_register(20)),
+  },
+  {
+    slug: "predict-loops",
+    index: 3,
+    uses: ["b.le col_top", "b.lt row_top"],
+    body: "mov w19, 0\nmov w20, 0\nrow_top:\nmov w21, 0\ncol_top:\nadd w19, w19, 1\nadd w21, w21, 1\ncmp w21, w20\nb.le col_top\nadd w20, w20, 1\ncmp w20, 4\nb.lt row_top",
+    read: (m) => signed32(m.get_register(19)),
+  },
+  {
+    slug: "predict-loops",
+    index: 4,
+    uses: ["mov w20, -2", "b.lo loop"],
+    body: "mov w19, 0\nmov w20, -2\nloop:\nadd w19, w19, 1\nadd w20, w20, 1\ncmp w20, 2\nb.lo loop",
+    read: (m) => signed32(m.get_register(19)),
   },
   {
     slug: "predict-subroutines",
