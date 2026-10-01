@@ -62,6 +62,53 @@ describe("useFocusTrap", () => {
   });
 });
 
+describe("useFocusTrap and a double press of Enter or Space", () => {
+  function KeyedModal({ onKey }: { onKey: (key: string) => void }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useFocusTrap(true, ref, () => {});
+    return (
+      <div ref={ref}>
+        <button data-testid="first" onKeyDown={(e) => onKey(e.key)}>
+          close
+        </button>
+      </div>
+    );
+  }
+
+  test("holds back Enter and Space right after opening", () => {
+    const onKey = vi.fn();
+    render(<KeyedModal onKey={onKey} />);
+    const first = screen.getByTestId("first");
+    expect(document.activeElement).toBe(first);
+    fireEvent.keyDown(first, { key: "Enter" });
+    fireEvent.keyDown(first, { key: " " });
+    expect(onKey).not.toHaveBeenCalled();
+  });
+
+  test("lets them through once the reader presses another key", () => {
+    const onKey = vi.fn();
+    render(<KeyedModal onKey={onKey} />);
+    const first = screen.getByTestId("first");
+    fireEvent.keyDown(first, { key: "ArrowDown" });
+    fireEvent.keyDown(first, { key: "Enter" });
+    expect(onKey).toHaveBeenLastCalledWith("Enter");
+  });
+
+  test("lets them through once the double-press interval has passed", () => {
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const onKey = vi.fn();
+      render(<KeyedModal onKey={onKey} />);
+      now += 600;
+      fireEvent.keyDown(screen.getByTestId("first"), { key: "Enter" });
+      expect(onKey).toHaveBeenCalledWith("Enter");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+});
+
 describe("closeOnBackdropClick", () => {
   test("a single click closes, the second click of a double press does not", () => {
     const onClose = vi.fn();
