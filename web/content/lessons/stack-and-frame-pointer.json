@@ -121,7 +121,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Stack of plates](/practice/stack-of-plates): four locals at named frame offsets, loaded back top first.\n- [The leaky frame](/practice/the-leaky-frame): a program that crashes because `sp` loses its alignment. Find the line and fix it.\n- [Three in a row](/practice/three-in-a-row): three locals in the frame, filled by `scanf` and printed smallest first.\n- [Quiz: memory and the stack (core)](/practice/quiz-inter-frame-stack) and [challenge](/practice/quiz-advance-frame-stack): frame layout, locals made inside a block, and alignment.\n- [Predict: memory and the stack (challenge)](/practice/predict-frame-stack): work out frame sizes, padding, and the address a store writes to."
+      "markdown": "## Practice\n\n- [Stack of plates](/practice/stack-of-plates): four locals at named frame offsets, loaded back top first.\n- [The leaky frame](/practice/the-leaky-frame): a program that crashes because `sp` loses its alignment. Find the line and fix it.\n- [Three in a row](/practice/three-in-a-row): three locals in the frame, filled by `scanf` and printed smallest first.\n- [Intermediate quiz: memory and the stack](/practice/quiz-inter-frame-stack) and [challenge](/practice/quiz-advance-frame-stack): frame layout, locals made inside a block, and alignment.\n- [Predict: memory and the stack (challenge)](/practice/predict-frame-stack): work out frame sizes, padding, and the address a store writes to."
     }
   ]
 }
