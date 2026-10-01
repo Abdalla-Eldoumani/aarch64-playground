@@ -105,13 +105,24 @@ describe("DiagnosticBundle", () => {
   });
 
   it("stays open when a double press's second click lands on the backdrop", async () => {
-    await openDialog();
-    const dialog = screen.getByRole("dialog", { name: "Diagnostic bundle" });
-    fireEvent.click(dialog, { detail: 2 });
-    expect(screen.getByRole("dialog", { name: "Diagnostic bundle" })).toBeTruthy();
-    // A single click on the backdrop still closes it.
-    fireEvent.click(dialog, { detail: 1 });
-    expect(screen.queryByRole("dialog")).toBeNull();
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      await openDialog();
+      const dialog = screen.getByRole("dialog", { name: "Diagnostic bundle" });
+      // A mouse's second click, then a touch screen's second tap (detail 1,
+      // but inside the double-press interval).
+      fireEvent.click(dialog, { detail: 2 });
+      now += 200;
+      fireEvent.click(dialog, { detail: 1 });
+      expect(screen.getByRole("dialog", { name: "Diagnostic bundle" })).toBeTruthy();
+      // A single click on the backdrop later still closes it.
+      now += 600;
+      fireEvent.click(dialog, { detail: 1 });
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("closes on Escape and hands focus back to the button", async () => {
