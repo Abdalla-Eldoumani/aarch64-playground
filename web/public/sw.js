@@ -85,10 +85,14 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(openPage(event, url.pathname));
   } else if (FILES.has(url.pathname)) {
     event.respondWith(openFile(req));
+  } else if (req.headers.get("RSC") === "1") {
+    // The router's page data, which is not cached. Offline, an empty 204
+    // makes Next drop a prefetch and turn a link click into a full page
+    // load, which openPage answers, where a failed fetch would log errors.
+    event.respondWith(fetch(req).catch(() => new Response(null, { status: 204 })));
   }
-  // Anything else, such as the page data the router prefetches, goes to the
-  // network untouched. Offline, the router then falls back to a full page
-  // load, which openPage answers.
+  // Anything else, such as the analytics scripts, goes to the network
+  // untouched.
 });
 
 async function openFile(req) {
