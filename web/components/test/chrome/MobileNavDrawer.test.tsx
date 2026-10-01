@@ -68,4 +68,12 @@ describe("MobileNavDrawer", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByRole("group", { name: "theme" })).toBeTruthy();
   });
+
+  // The short-window playground band drops the site bar at every width, so
+  // its menu cannot hide at md.
+  it("shows at every width when asked to", () => {
+    const { container } = render(<MobileNavDrawer everywhere />);
+    expect(container.firstElementChild?.className ?? "").not.toContain("md:hidden");
+    expect(screen.getByRole("button", { name: "open navigation" })).toBeTruthy();
+  });
 });
