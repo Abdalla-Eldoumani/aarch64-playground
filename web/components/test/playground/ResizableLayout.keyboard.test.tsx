@@ -96,9 +96,9 @@ describe("ResizableLayout keyboard resizing", () => {
     const seam = screen.getByLabelText("resize registers and tabs");
     seam.focus();
 
-    // The registers open at 56; one keystep is 5.
+    // The registers open at 60; one keystep is 5.
     fireEvent.keyDown(seam, { key: "ArrowDown" });
-    expect(seam.getAttribute("aria-valuenow")).toBe("61");
+    expect(seam.getAttribute("aria-valuenow")).toBe("65");
   });
 
   it("writes a keyboard resize through to storage like a drag", () => {
