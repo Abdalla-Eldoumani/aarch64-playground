@@ -335,9 +335,10 @@ pub(super) fn exec_fp_to_int(
     Ok(ExecResult::Advance)
 }
 
-/// The rounding mode and the saturation rails of one FCVT, shared by the
-/// general-register forms above and the vector lanes below: `wide` is a
-/// 64-bit destination, `fbits` the fixed-point scale.
+/// The rounding mode and the saturation rails of one FCVT, shared by
+/// `exec_fp_to_int` above and the vector lanes (`fp_to_int_lane` in
+/// simd_fp.rs): `wide` is a 64-bit destination, `fbits` the fixed-point
+/// scale.
 pub(super) fn fp_to_int(op: FpToIntOp, value: f64, fbits: u8, wide: bool) -> u64 {
     let mut value = value;
     let sf = wide;
