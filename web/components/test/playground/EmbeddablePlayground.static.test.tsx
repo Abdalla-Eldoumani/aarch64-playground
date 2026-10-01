@@ -104,6 +104,38 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByRole("heading", { name: "regfile", level: 2 })).toBeNull();
   });
 
+  // The press engages the frame, and the swap to the live panes takes the
+  // pressed button away before its click lands: a phone needed a second tap.
+  it("runs on the press that engages the frame, once the hub loads", async () => {
+    const hub = makeHub({ isLoaded: false, assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    const { rerender } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
+    );
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    });
+    expect(hub.run).not.toHaveBeenCalled();
+    const loaded = { ...hub, isLoaded: true };
+    useEmulatorMock.mockReturnValue(loaded);
+    await act(async () => {
+      rerender(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    });
+    expect(loaded.assemble).toHaveBeenCalledTimes(1);
+    expect(loaded.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("only wakes the frame for a press that is not run, step or check", async () => {
+    const hub = makeHub({ assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "reset" }));
+    });
+    expect(hub.assemble).not.toHaveBeenCalled();
+    expect(hub.run).not.toHaveBeenCalled();
+  });
+
   it("gives focus back to the same control after focus engages the frame", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
