@@ -203,7 +203,7 @@ export function Band({
           {label}
         </span>
         <span
-          className={`font-mono text-[11px] ${
+          className={`font-mono text-[12px] ${
             ghost ? "text-[var(--text-tertiary)]" : "text-[var(--text-secondary)]"
           }`}
         >
@@ -215,7 +215,7 @@ export function Band({
           {markers.map((marker) => (
             <span
               key={marker}
-              className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+              className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
               style={POINTER_STYLE}
             >
               {marker}
