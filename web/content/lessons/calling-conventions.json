@@ -2,7 +2,7 @@
   "title": "Subroutines: saved registers, pointers, and big arguments",
   "slug": "calling-conventions",
   "order": 22,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "Keep the registers a caller counts on, hand back answers through pointers, pass a ninth argument on the stack, and return a large struct through x8.",
   "tags": [
     "subroutines",
@@ -119,7 +119,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [The forgetful helper](/practice/the-forgetful-helper): a helper breaks a register its caller needs.\n- [The leaky frame](/practice/the-leaky-frame): a frame breaks the alignment rule.\n- [Two answers, one call](/practice/two-answers-one-call): hand back a quotient and a remainder through pointers.\n- [Return to sender](/practice/return-to-sender): return a struct too big for `x0` and `x1` through the address in `x8`.\n- [Advanced quiz: subroutines](/practice/quiz-advance-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): the rules in this lesson."
+      "markdown": "## Practice\n\n- [The forgetful helper](/practice/the-forgetful-helper): a helper breaks a register its caller needs.\n- [The leaky frame](/practice/the-leaky-frame): a frame breaks the alignment rule.\n- [Two answers, one call](/practice/two-answers-one-call): hand back a quotient and a remainder through pointers.\n- [Return to sender](/practice/return-to-sender): return a struct too big for `x0` and `x1` through the address in `x8`.\n- [Advanced quiz: subroutines](/practice/quiz-advance-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): the rules in this lesson.\n- [Intermediate quiz: functions](/practice/quiz-inter-functions) and [Predict: functions (challenge)](/practice/predict-functions): saving `x19` in every call of a recursive function, and what a helper that forgets to restore it costs its caller."
     }
   ]
 }
