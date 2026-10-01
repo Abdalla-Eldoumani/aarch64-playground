@@ -128,17 +128,54 @@ describe("useFocusTrap and a double press of Enter or Space", () => {
 });
 
 describe("closeOnBackdropClick", () => {
-  test("a single click closes, the second click of a double press does not", () => {
-    const onClose = vi.fn();
-    render(<div data-testid="backdrop" onClick={closeOnBackdropClick(onClose)} />);
-    const backdrop = screen.getByTestId("backdrop");
-    fireEvent.click(backdrop, { detail: 2 });
-    fireEvent.click(backdrop, { detail: 3 });
-    expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(backdrop, { detail: 1 });
-    expect(onClose).toHaveBeenCalledTimes(1);
-    // A click with no press count (an assistive tool's synthetic click) still closes.
-    fireEvent.click(backdrop, { detail: 0 });
-    expect(onClose).toHaveBeenCalledTimes(2);
+  function Dialog({ onClose }: { onClose: () => void }) {
+    const ref = useRef<HTMLDivElement>(null);
+    useFocusTrap(true, ref, onClose);
+    return (
+      <div data-testid="backdrop" onClick={closeOnBackdropClick(onClose)}>
+        <div ref={ref}>
+          <button>close</button>
+        </div>
+      </div>
+    );
+  }
+
+  test("a single click closes, the second click of a mouse double press does not", () => {
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const onClose = vi.fn();
+      render(<Dialog onClose={onClose} />);
+      now += 600;
+      const backdrop = screen.getByTestId("backdrop");
+      fireEvent.click(backdrop, { detail: 2 });
+      fireEvent.click(backdrop, { detail: 3 });
+      expect(onClose).not.toHaveBeenCalled();
+      fireEvent.click(backdrop, { detail: 1 });
+      expect(onClose).toHaveBeenCalledTimes(1);
+      // A click with no press count (an assistive tool's synthetic click) still closes.
+      fireEvent.click(backdrop, { detail: 0 });
+      expect(onClose).toHaveBeenCalledTimes(2);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  // A touch screen's second tap of a double tap can report detail 1.
+  test("a click within the double-press interval of the opening does not close", () => {
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const onClose = vi.fn();
+      render(<Dialog onClose={onClose} />);
+      now += 200;
+      fireEvent.click(screen.getByTestId("backdrop"), { detail: 1 });
+      expect(onClose).not.toHaveBeenCalled();
+      now += 400;
+      fireEvent.click(screen.getByTestId("backdrop"), { detail: 1 });
+      expect(onClose).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
