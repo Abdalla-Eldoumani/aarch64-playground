@@ -96,7 +96,9 @@ repository root.
 | Feature | Files |
 | --- | --- |
 | Web app manifest | `web/app/manifest.ts` |
-| Service worker | `web/public/sw.js`, `web/lib/playground/register-sw.ts`, `web/components/chrome/RegisterSW.tsx` |
+| Service worker and its build-time file list | `web/public/sw.js`, `scripts/write-precache-list.js`, `web/lib/playground/register-sw.ts`, `web/components/chrome/RegisterSW.tsx` |
+| Save every page for offline | `web/components/chrome/SaveOffline.tsx`, `web/lib/playground/offline-status.ts` |
+| The page an unsaved address shows offline | `web/app/(site)/offline/page.tsx` |
 | Offline badge and the iPhone install tip | `web/components/chrome/OfflineBadge.tsx`, `InstallHint.tsx` |
 
 ## The emulator
