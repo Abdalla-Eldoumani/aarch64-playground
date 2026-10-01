@@ -659,7 +659,7 @@ export function RegisterPanel({
   // enough to wrap "x0–x30" onto two lines and push the second cell out of
   // the group's overflow-hidden box.
   const segmentCell =
-    "shrink-0 whitespace-nowrap px-2 py-0.5 font-mono text-[10px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10";
+    "shrink-0 whitespace-nowrap px-2 py-0.5 font-mono text-[12px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10";
   const groupShell =
     "inline-flex shrink-0 items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]";
   const selectedCell = "bg-[var(--cyan)] text-[var(--on-cyan)]";
@@ -728,7 +728,7 @@ export function RegisterPanel({
           room. The view cells name the panel anyway. */}
       <div className="shrink-0 px-2 pt-1 [container-type:inline-size]">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <Heading className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)] [@container(max-width:500px)]:sr-only">
+          <Heading className="font-mono font-medium uppercase tracking-[0.14em] text-[12px] text-[var(--text-secondary)] [@container(max-width:500px)]:sr-only">
             regfile
           </Heading>
           {hasFp ? (
@@ -819,7 +819,7 @@ export function RegisterPanel({
           </div>
           <div className="ml-auto flex items-center gap-2">
             <label
-              className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap font-mono text-[10px] text-[var(--text-secondary)] ${touchTall}`}
+              className={`flex cursor-pointer items-center gap-1.5 whitespace-nowrap font-mono text-[12px] text-[var(--text-secondary)] ${touchTall}`}
             >
               <input
                 type="checkbox"
