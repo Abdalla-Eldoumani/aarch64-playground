@@ -135,6 +135,15 @@ describe("loadExerciseIndex", () => {
     expect(blurb.endsWith("...")).toBe(true);
   });
 
+  it("never clips a blurb inside a code span, which would leave a bare backtick", () => {
+    makeDir();
+    // The 140-character cut lands inside `a_long_name`: the clip steps back
+    // to before the span, so the row renders no stray backtick.
+    const prompt = `${"word ".repeat(26)}and \`a_long_name\` after`;
+    write("a.json", exerciseJson({ slug: "first", prompt }));
+    expect(loadExerciseIndex(dir)[0].blurb).toBe(`${"word ".repeat(26)}and...`);
+  });
+
   it("keeps the same order and count as loadAllExercises", () => {
     makeDir();
     write("a.json", exerciseJson({ slug: "second", order: 2 }));
