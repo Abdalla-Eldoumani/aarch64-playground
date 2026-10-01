@@ -1,5 +1,5 @@
-//! Constant-expression evaluator used by the parser and the linker. Shape
-//! of the grammar, lowest precedence first:
+//! Constant expressions for the parser and the linker, lowest precedence
+//! first:
 //!
 //! ```text
 //! or    := xor ('|' xor)*
@@ -12,15 +12,9 @@
 //! primary := IntLit | CharLit | Ident | '.' | '(' or ')'
 //! ```
 //!
-//! `.` resolves to the caller-supplied current address. Symbols resolve via
-//! the caller-supplied closure; returning `None` produces an
-//! undefined-symbol error, which the linker catches when it needs a second
-//! pass for forward references.
-//!
-//! Arithmetic is i64 with wrapping semantics on `+`, `-`, `*`. Division and
-//! remainder by zero error out. Shift amounts must be in 0..64. Encountering
-//! a `FloatLit` in an expression is an error: floats only appear in data
-//! directives like `.double`, never in integer offsets.
+//! An unknown symbol is an error rather than a guess, so the linker can
+//! retry it once every label is placed. A float is refused: only data
+//! directives such as `.double` take one.
 
 use super::lexer::{Token, TokenKind};
 use crate::errors::EmuError;
