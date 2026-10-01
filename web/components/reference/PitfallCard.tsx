@@ -25,10 +25,12 @@ const EmbeddablePlayground = dynamic(
   { ssr: false, loading: () => null },
 );
 
+// min-w-0 lets a panel shrink below its longest code line, which then
+// scrolls inside its block instead of pushing the page sideways on a phone.
 const WRONG_PANEL =
-  "flex flex-col gap-1.5 rounded-[var(--radius-card)] border-l-4 border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] p-3";
+  "flex min-w-0 flex-col gap-1.5 rounded-[var(--radius-card)] border-l-4 border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] p-3";
 const RIGHT_PANEL =
-  "flex flex-col gap-1.5 rounded-[var(--radius-card)] border-l-4 border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] p-3";
+  "flex min-w-0 flex-col gap-1.5 rounded-[var(--radius-card)] border-l-4 border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] p-3";
 const LABEL_CLASS =
   "text-[12px] font-semibold uppercase tracking-wide text-[var(--text-primary)]";
 const LINK_CLASS =
