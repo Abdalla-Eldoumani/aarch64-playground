@@ -62,12 +62,12 @@ const GROUP_LABEL =
   "px-2 [font:var(--type-label)] uppercase tracking-wide text-[var(--text-tertiary)]";
 // The datasheet section label: ENCODING, C EQUIVALENT, FLAGS, and the category.
 const LABEL =
-  "font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]";
+  "font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]";
 // The bordered mono chip that carries the syntax and the C-equivalent lines.
 const CHIP =
   "self-start rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-1.5 font-mono text-[var(--text-primary)]";
 const ACTION_LINK =
-  "ml-auto inline-flex min-h-[44px] items-center gap-1 font-mono text-[11px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+  "ml-auto inline-flex min-h-[44px] items-center gap-1 font-mono text-[12px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 // NZCV in register order, the four condition-flag chips of the FLAGS row.
 const NZCV = ["N", "Z", "C", "V"] as const;
 const PERMALINK =
@@ -311,7 +311,7 @@ export function InstructionReference({
           />
           <kbd
             aria-hidden="true"
-            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 [@media(pointer:coarse)]:hidden rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[10px] leading-none text-[var(--text-tertiary)]"
+            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 [@media(pointer:coarse)]:hidden rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[12px] leading-none text-[var(--text-tertiary)]"
           >
             /
           </kbd>
@@ -450,7 +450,7 @@ export function InstructionReference({
                 {NZCV.map((flag) => (
                   <span
                     key={flag}
-                    className={`flex h-5 w-5 items-center justify-center rounded-[3px] border font-mono text-[10px] ${
+                    className={`flex h-5 w-5 items-center justify-center rounded-[3px] border font-mono text-[12px] ${
                       current.setsFlags
                         ? "border-[var(--border-strong)] text-[var(--text-secondary)]"
                         : "border-[var(--border)] text-[var(--text-tertiary)]"
