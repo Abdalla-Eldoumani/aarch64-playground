@@ -91,7 +91,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Count the lines](/practice/count-the-lines): read standard input with the `read` system call instead of `scanf`.\n- [High score keeper](/practice/high-score-keeper): keep a record in a file with `openat`, `read`, `write` and `close`.\n- [Echo the sum](/practice/echo-the-sum): read input the library way, with `scanf`.\n- [Quiz: ARMv8 assembly (challenge)](/practice/quiz-advance-armv8): asks about exception levels."
+      "markdown": "## Practice\n\n- [Count the lines](/practice/count-the-lines): read standard input with the `read` system call instead of `scanf`.\n- [High score keeper](/practice/high-score-keeper): keep a record in a file with `openat`, `read`, `write` and `close`.\n- [Echo the sum](/practice/echo-the-sum): read input the library way, with `scanf`.\n- [Advanced quiz: ARMv8 assembly](/practice/quiz-advance-armv8): asks about exception levels."
     }
   ]
 }
