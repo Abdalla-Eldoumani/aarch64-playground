@@ -2,7 +2,7 @@
   "title": "Post-test loops",
   "slug": "post-test-loop",
   "order": 12,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-10-01",
   "summary": "How to build a do-while loop, where the body runs once before the first test, and when that changes what a loop prints.",
   "tags": [
     "loops",
@@ -116,7 +116,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [Reverse the digits](/practice/reverse-the-digits): peel digits off a number until none are left.\n- [Guess the number](/practice/guess-the-number): read guesses until one hits. The body runs before the test, so a post-test loop fits.\n- [The multiplication table](/practice/the-multiplication-table): one loop inside another.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): a counting loop with an else-if chain inside it."
+      "markdown": "## Practice\n\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [Reverse the digits](/practice/reverse-the-digits): peel digits off a number until none are left.\n- [Guess the number](/practice/guess-the-number): read guesses until one hits. The body runs before the test, so a post-test loop fits.\n- [The multiplication table](/practice/the-multiplication-table): one loop inside another.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): a counting loop with an else-if chain inside it.\n- [Basic quiz: loops](/practice/quiz-basic-loops), then [core](/practice/quiz-inter-loops): pre-test against post-test, loops inside loops, `break`, and calls inside a loop body. The core quiz's `cbnz` question comes with the next lesson.\n- [Predict: loops (challenge)](/practice/predict-loops): trace counting loops, a post-test loop, a loop inside a loop, and an unsigned test."
     }
   ]
 }
