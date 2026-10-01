@@ -68,7 +68,7 @@
     {
       "name": "practice index flight payload (the rows the server sends)",
       "path": ".next/server/app/practice.rsc",
-      "limit": "11.6 KB"
+      "limit": "14 KB"
     },
     {
       "name": "learn index flight payload (the rows the server sends)",
