@@ -14,7 +14,7 @@ export function Kicker({
 }) {
   return (
     <div className={`flex items-baseline gap-3 ${className}`}>
-      <span className="font-mono text-[11px] font-semibold uppercase leading-[1.4] tracking-[0.18em]">
+      <span className="font-mono text-[12px] font-semibold uppercase leading-[1.4] tracking-[0.18em]">
         <span className="text-[var(--amber)]">{number}</span>
         <span className="text-[var(--text-tertiary)]"> · {title}</span>
       </span>
