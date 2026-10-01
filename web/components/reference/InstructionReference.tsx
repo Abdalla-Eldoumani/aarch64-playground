@@ -28,6 +28,7 @@ import { CondCodeExplorer } from "@/components/diagrams/CondCodeExplorer";
 import { buildShareHash } from "@/lib/playground/share";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
 import { playgroundSource } from "@/lib/playground/playground-source";
+import { referenceId } from "@/lib/content/site";
 
 // The emulator surface loads only when an example is run in place, so
 // browsing the reference never ships or mounts the embed's chunk.
@@ -38,15 +39,6 @@ const EmbeddablePlayground = dynamic(
     ),
   { ssr: false, loading: () => null },
 );
-
-/**
- * Stable, fragment-safe id for a mnemonic: lowercased with dots turned into
- * dashes so `b.cond` becomes `b-cond`. The one helper drives the element id, the
- * URL fragment written on select, and the on-load lookup, so the three agree.
- */
-function hashId(mnemonic: string): string {
-  return mnemonic.toLowerCase().replace(/\./g, "-");
-}
 
 /** Below lg the detail sits under the whole index, some 14,000px down on a
  *  phone, so a pick there has to bring it into view or nothing seems to
@@ -149,7 +141,7 @@ export function InstructionReference({
     if (picked !== null && instructions.some((i) => i.mnemonic === picked)) {
       return picked;
     }
-    const fromFragment = instructions.find((i) => hashId(i.mnemonic) === fragment);
+    const fromFragment = instructions.find((i) => referenceId(i.mnemonic) === fragment);
     if (fromFragment) return fromFragment.mnemonic;
     return instructions[0]?.mnemonic ?? "";
   }, [picked, fragment, instructions]);
@@ -175,7 +167,7 @@ export function InstructionReference({
     if (typeof window === "undefined") return;
     const raw = window.location.hash.replace(/^#/, "");
     if (!raw) return;
-    const match = instructions.find((i) => hashId(i.mnemonic) === raw);
+    const match = instructions.find((i) => referenceId(i.mnemonic) === raw);
     if (!match) return;
     // A link to one instruction wants its detail; beside the index that is
     // already on screen, under it the detail has to be brought up.
@@ -224,7 +216,7 @@ export function InstructionReference({
     setPicked(mnemonic);
     setActivePick(mnemonic);
     if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `#${hashId(mnemonic)}`);
+      window.history.replaceState(null, "", `#${referenceId(mnemonic)}`);
     }
     if (stacked()) {
       reveal(detailRef.current, "start");
@@ -345,7 +337,7 @@ export function InstructionReference({
                       <li key={instruction.mnemonic}>
                         <button
                           type="button"
-                          id={hashId(instruction.mnemonic)}
+                          id={referenceId(instruction.mnemonic)}
                           ref={(node) => {
                             itemRefs.current[instruction.mnemonic] = node;
                           }}
@@ -378,7 +370,7 @@ export function InstructionReference({
         onClick={(event) => {
           const href = (event.target as Element).closest?.('a[href^="#"]')?.getAttribute("href");
           if (!href || !stacked()) return;
-          if (!instructions.some((i) => hashId(i.mnemonic) === href.slice(1))) return;
+          if (!instructions.some((i) => referenceId(i.mnemonic) === href.slice(1))) return;
           requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" }));
         }}
         // Clear of the site bar when a pick scrolls it into view.
@@ -519,17 +511,17 @@ export function InstructionReference({
               <FlagEffect
                 key={current.mnemonic}
                 mnemonic={current.mnemonic as FlagMnemonic}
-                condHref={`#${hashId("b.cond")}`}
+                condHref={`#${referenceId("b.cond")}`}
               />
             )}
 
             {current.mnemonic === "b.cond" && <CondCodeExplorer />}
 
             <a
-              href={`#${hashId(current.mnemonic)}`}
+              href={`#${referenceId(current.mnemonic)}`}
               className={`${PERMALINK} self-start`}
             >
-              #{hashId(current.mnemonic)}
+              #{referenceId(current.mnemonic)}
             </a>
           </>
         )}
