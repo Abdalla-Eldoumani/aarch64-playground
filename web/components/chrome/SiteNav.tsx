@@ -56,8 +56,9 @@ export function SiteNav({
       aria-label="primary"
       // The full nav floats over the blueprint paper, so it takes a
       // translucent base with a backdrop blur (the artboards' rgba band);
-      // the slim playground nav stays opaque over the flat debugger.
-      className={`safe-area-top w-full border-b border-[var(--border)] ${
+      // the slim playground nav stays opaque over the flat debugger. The top
+      // padding is the notch's safe area, so no py-* belongs on this bar.
+      className={`pt-[var(--safe-top)] w-full border-b border-[var(--border)] ${
         full
           ? "h-14 bg-[color-mix(in_srgb,var(--bg-base)_72%,transparent)] backdrop-blur-md md:h-16"
           : "h-14 bg-[var(--bg-base)] md:h-12"
