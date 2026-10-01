@@ -1,0 +1,81 @@
+{
+  "title": "Vectors: one instruction, many numbers",
+  "slug": "vector-registers",
+  "order": 26.5,
+  "lastUpdated": "2026-10-01",
+  "summary": "Read a 128-bit v register as lanes of bytes, halfwords, words or doublewords, and add, multiply, or total every lane with one instruction.",
+  "tags": [
+    "registers",
+    "floating point"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Arrays in memory, in one and two dimensions](/learn/arrays-in-memory)\n- [Subroutines: saved registers, pointers, and big arguments](/learn/calling-conventions)\n- [Floating point: the other register file](/learn/floating-point)"
+    },
+    {
+      "type": "prose",
+      "markdown": "The floating-point lesson used `d0` and `s0`, the low 64 and low 32 bits of registers named `v0` to `v31`. Each `v` register is 128 bits wide: room for sixteen bytes, or four ints, at once. The *vector* instructions read those bits as a row of separate numbers, called *lanes*, and do the same operation to every lane in one instruction. The name for this is *SIMD*, single instruction, multiple data. Programs that edit images or mix sound use it heavily, because they repeat one small step on millions of values.\n\nCourse programs keep to `s` and `d`. The playground runs the vector instructions as well, so this lesson shows what the rest of the register is for."
+    },
+    {
+      "type": "prose",
+      "markdown": "## One register, many views\n\nThe scalar names each read the low bits of a `v` register as one value:\n\n| name | bits | holds |\n|---|---|---|\n| `b0` | 8 | one byte |\n| `h0` | 16 | one halfword |\n| `s0` | 32 | one single, or one int |\n| `d0` | 64 | one double, or one long |\n| `q0` | 128 | the whole register as one value |\n\nWritten as `v0` with an *arrangement* after a dot, the same 128 bits become lanes:\n\n| arrangement | lanes | bits per lane |\n|---|---|---|\n| `v0.16b` | 16 | 8 |\n| `v0.8h` | 8 | 16 |\n| `v0.4s` | 4 | 32 |\n| `v0.2d` | 2 | 64 |\n\n`v0.8b`, `v0.4h` and `v0.2s` use only the low 64 bits. One lane is named by its number in square brackets, counting from 0 at the low end: `v0.s[2]` is the third 32-bit lane."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Loading, adding, and copying lanes out\n\n- `ld1 {v0.4s}, [x9]` loads 16 bytes from the address in `x9` into the four lanes, the word at the lowest address into lane 0. `st1 {v0.4s}, [x9]` stores the lanes back the same way.\n- `add v2.4s, v0.4s, v1.4s` adds lane 0 to lane 0, lane 1 to lane 1, and so on: four separate adds in one instruction. `mul` works lane by lane in the same way. All three operands use the same arrangement.\n- `dup v3.4s, w9` copies `w9` into every lane, and `movi v1.8b, 40` puts the constant 40 in every lane.\n- `addv s5, v2.4s` adds the lanes of one register together and leaves the total in lane 0 of `v5`, which is `s5`.\n- `printf` reads only general registers for `%d`, so `mov w1, v2.s[0]` copies one lane out to `w1` first.\n\nEach of these has a reference entry with an example to run, such as [ld1](/reference#ld1), [dup](/reference#dup) and [addv](/reference#addv), and the reference's Calling convention tab covers the jobs of the `v` registers.\n\nThe program below adds two lists of four ints, multiplies the four sums by 3, and totals the sums. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "sums:    11 22 33 44\ntimes 3: 33 66 99 132\ntotal:   110\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Add two lists of four ints with one vector add, scale the sums\n// with one vector multiply, and total them with addv\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(total_r, w19)\n\n.data\nfirst:      .word 10, 20, 30, 40\nsecond:     .word 1, 2, 3, 4\nfmt_sums:   .string \"sums:    %d %d %d %d\\n\"\nfmt_times:  .string \"times 3: %d %d %d %d\\n\"\nfmt_total:  .string \"total:   %d\\n\"\n\n.bss\n.align 4\nsaved:      .skip 16                        // room for one whole v register\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x9, =first\n        ld1     {v0.4s}, [x9]               // v0 = 10, 20, 30, 40, one int per lane\n        ldr     x9, =second\n        ld1     {v1.4s}, [x9]               // v1 = 1, 2, 3, 4\n        add     v2.4s, v0.4s, v1.4s         // four adds in one instruction\n\n        mov     w9, 3\n        dup     v3.4s, w9                   // 3 in all four lanes\n        mul     v4.4s, v2.4s, v3.4s         // four multiplies in one instruction\n\n        addv    s5, v2.4s                   // s5 = the four lanes of v2 added together\n        mov     total_r, v5.s[0]\n\n        ldr     x9, =saved\n        st1     {v4.4s}, [x9]               // printf may change v4, so park it in memory\n\n        ldr     x0, =fmt_sums\n        mov     w1, v2.s[0]                 // copy each lane out to a general register\n        mov     w2, v2.s[1]\n        mov     w3, v2.s[2]\n        mov     w4, v2.s[3]\n        bl      printf\n\n        ldr     x9, =saved\n        ld1     {v4.4s}, [x9]               // bring the products back\n        ldr     x0, =fmt_times\n        mov     w1, v4.s[0]\n        mov     w2, v4.s[1]\n        mov     w3, v4.s[2]\n        mov     w4, v4.s[3]\n        bl      printf\n\n        ldr     x0, =fmt_total\n        mov     w1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sums:    11 22 33 44\ntimes 3: 33 66 99 132\ntotal:   110\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## Vectors and calls\n\nThe rule that a function must hand `d8` to `d15` back unchanged covers only the low 64 bits of `v8` to `v15`. A function you call may change their upper 64 bits, and every bit of `v0` to `v7` and `v16` to `v31`. So no `v` register is sure to keep a whole 128-bit value across `bl printf`.\n\nThat is why the program copies the total into `w19` and stores the products in memory with `st1` before its first `printf`, then loads them back with `ld1` afterward. `.align 4` before `saved` puts it on a 16-byte boundary, the size of one `v` register."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Each lane stands alone\n\nA carry never crosses from one lane into the next. Add 40 to a byte lane that holds 250, and the true answer, 290, does not fit in 8 bits, so the lane keeps 290 - 256 = 34, while the lane beside it never sees the carry. For the brightness of a pixel that wraparound is wrong: a bright pixel turns nearly black. `uqadd` (*unsigned saturating add*) stops at the largest value instead, so 250 + 40 gives 255.\n\nThe program below brightens eight pixels both ways and prints each row through a small subroutine. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "in      10  60 120 180 200 215 230 250\nadd     50 100 160 220 240 255  14  34\nuqadd   50 100 160 220 240 255 255 255\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Brighten eight pixels by 40 at once. add lets a lane wrap past 255\n// back to small numbers; uqadd stops each lane at 255 instead.\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(idx_r, w19)\ndefine(row_r, x20)\n\n.data\npixels:     .byte 10, 60, 120, 180, 200, 215, 230, 250\nfmt_name:   .string \"%-6s\"\nfmt_byte:   .string \" %3d\"\nfmt_nl:     .string \"\\n\"\nname_in:    .string \"in\"\nname_add:   .string \"add\"\nname_sat:   .string \"uqadd\"\n\n.bss\nout_add:    .skip 8\nout_sat:    .skip 8\n\n.text\n\n// print_row(x0 = name, x1 = address of 8 bytes) prints the name and the bytes\n        .balign 4\n        .global print_row\nprint_row:\n        stp     fp, lr, [sp, -32]!\n        mov     fp, sp\n        stp     x19, x20, [fp, 16]          // keep the caller's x19 and x20\n\n        mov     row_r, x1                   // the bytes, kept safe across printf\n        mov     x1, x0\n        ldr     x0, =fmt_name\n        bl      printf\n\n        mov     idx_r, 0\n        b       row_test\nrow_loop:\n        ldrb    w1, [row_r, idx_r, SXTW]    // w1 = row[idx]\n        ldr     x0, =fmt_byte\n        bl      printf\n        add     idx_r, idx_r, 1\nrow_test:\n        cmp     idx_r, 8\n        b.lt    row_loop\n\n        ldr     x0, =fmt_nl\n        bl      printf\n\n        ldp     x19, x20, [fp, 16]\n        ldp     fp, lr, [sp], 32\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x9, =pixels\n        ld1     {v0.8b}, [x9]               // eight bytes, one per lane\n        movi    v1.8b, 40                   // 40 in every lane\n        add     v2.8b, v0.8b, v1.8b         // each lane wraps past 255 on its own\n        uqadd   v3.8b, v0.8b, v1.8b         // each lane stops at 255 instead\n        ldr     x9, =out_add\n        st1     {v2.8b}, [x9]               // store the lanes back as eight bytes\n        ldr     x9, =out_sat\n        st1     {v3.8b}, [x9]\n\n        ldr     x0, =name_in\n        ldr     x1, =pixels\n        bl      print_row\n        ldr     x0, =name_add\n        ldr     x1, =out_add\n        bl      print_row\n        ldr     x0, =name_sat\n        ldr     x1, =out_sat\n        bl      print_row\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "in      10  60 120 180 200 215 230 250\nadd     50 100 160 220 240 255  14  34\nuqadd   50 100 160 220 240 255 255 255\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The pixel that held 215 lands on 255 exactly, so both rows agree there. Only the last two went past 255, and only those two differ between the rows."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. How many lanes does `v7.8h` have, and how many bits is each one?\n2. `v0.4s` holds 1, 2, 3 and 4, and `v1.4s` holds 10 in every lane. What does `v2.4s` hold after `add v2.4s, v0.4s, v1.4s`, and what does `addv s3, v2.4s` then leave in `s3`?\n3. A byte lane holds 200. What does it hold after an `add` of 100, and what after a `uqadd` of 100?\n4. A function keeps a 128-bit value in `v9` and calls `printf`. Which part of `v9` can it count on afterward?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. Eight lanes of 16 bits each.\n2. 11, 12, 13 and 14 in the four lanes, and 50 in `s3`.\n3. 44 after `add`, because 300 - 256 = 44, and 255 after `uqadd`.\n4. Only the low 64 bits, `d9`. To keep all 128 bits, store the register in memory before the call."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Basic quiz: floating point](/practice/quiz-basic-floating-point): the register file that the vectors share."
+    }
+  ]
+}
