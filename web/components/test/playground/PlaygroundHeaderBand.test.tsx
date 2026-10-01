@@ -32,6 +32,7 @@ function band(short: boolean) {
       buildDiagnostic={vi.fn(async () => ({ source: "" }))}
       onOpenCommandPalette={vi.fn()}
       onOpenShortcuts={vi.fn()}
+      onWalkthrough={vi.fn()}
     />,
   );
 }
