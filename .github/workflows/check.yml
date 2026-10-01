@@ -3,7 +3,10 @@ name: check
 # integration collects a batch of changes before one pull request takes them
 # to main. A pull request can restore only the caches saved on its base
 # branch or on main, so pushes to integration run here too and leave warm
-# caches for the pull requests based on it.
+# caches for the pull requests based on it. That push run only refills the
+# caches (the wasm and web-build jobs): the pull request into main tests the
+# same changes, and two full runs at once overran GitHub's 20 concurrent
+# jobs. So a push to integration with no pull request open runs no tests.
 on:
   push:
     branches: [main, integration]
@@ -46,7 +49,9 @@ env:
 # it; on a pull request that cannot affect it, the job skips its remaining
 # steps and passes. A filter job in front would make every job wait for it
 # and for a runner of its own. Caches are saved only on pushes and the
-# weekly run: those are the scopes a pull request can restore from.
+# weekly run: those are the scopes a pull request can restore from. The jobs
+# that only test carry an `if:` that skips a push to integration (see the
+# top), so that run never takes their runners.
 jobs:
   # The wasm-bundles action finds this job by its name, so a rename goes in
   # both places.
@@ -154,6 +159,7 @@ jobs:
   # the compile plus simd_behaviour, one test no runner can split.
   rust:
     name: ${{ matrix.name }}
+    if: github.event_name != 'push' || github.ref_name != 'integration'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
@@ -225,6 +231,7 @@ jobs:
 
   corpus:
     name: verify-corpus
+    if: github.event_name != 'push' || github.ref_name != 'integration'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -253,6 +260,7 @@ jobs:
 
   web-static:
     name: lint + typecheck + audit
+    if: github.event_name != 'push' || github.ref_name != 'integration'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -367,11 +375,14 @@ jobs:
         run: npm run size
 
   # Six shards because vitest splits by file count, not cost, and four left
-  # the slowest at 80 s holding up the whole run. Coverage runs only on
-  # pushes and the weekly run; a shard cannot judge the whole-suite floor
-  # from its slice, so the coverage job merges the reports and enforces it.
+  # the slowest at 80 s holding up the whole run. Coverage runs only where
+  # the whole suite gates a landing: main (its pushes and the weekly run) and
+  # the pull request from integration. A shard cannot judge the whole-suite
+  # floor from its slice, so the coverage job merges the reports and
+  # enforces it.
   web-test:
     name: vitest shard ${{ matrix.shard }}
+    if: github.event_name != 'push' || github.ref_name != 'integration'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -403,13 +414,14 @@ jobs:
         env:
           # A flag, not the shard index: it only tells vitest to defer the floors.
           VITEST_SHARD: "1"
-        run: npm test -- ${{ github.event_name != 'pull_request' && '--coverage --reporter=blob' || '' }} --reporter=default --shard=${{ matrix.shard }}/6
+          COVERAGE: ${{ (github.ref_name == 'main' || github.head_ref == 'integration') && 'yes' || '' }}
+        run: npm test -- ${COVERAGE:+--coverage --reporter=blob} --reporter=default --shard=${{ matrix.shard }}/6
 
       # .vitest/blob is where vitest 5 writes the blob (vitest 4 used
       # .vitest-reports). It is a dot-directory, which upload-artifact skips
       # unless told otherwise; without the flag this uploads nothing.
       - name: upload blob report
-        if: steps.paths.outputs.web == 'true' && github.event_name != 'pull_request'
+        if: steps.paths.outputs.web == 'true' && (github.ref_name == 'main' || github.head_ref == 'integration')
         uses: actions/upload-artifact@v7
         with:
           name: blob-report-${{ matrix.shard }}
@@ -422,7 +434,7 @@ jobs:
   coverage:
     name: merge shards + coverage floors
     needs: web-test
-    if: github.event_name != 'pull_request'
+    if: github.ref_name == 'main' || github.head_ref == 'integration'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -448,9 +460,11 @@ jobs:
 
   # The one required status check. It waits for every job above and fails
   # if any of them failed or was cancelled; a skipped job passes (coverage
-  # on a pull request).
+  # on a pull request). A push to integration names it apart: that run skips
+  # the tests, so its pass must never stand in for the pull request's ci on
+  # the same commit.
   ci:
-    name: ci
+    name: ${{ github.event_name == 'push' && github.ref_name == 'integration' && 'ci (cache warm-up)' || 'ci' }}
     needs: [wasm, rust, corpus, web-static, web-build, web-test, coverage]
     if: always()
     runs-on: ubuntu-latest
