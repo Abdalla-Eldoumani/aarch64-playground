@@ -100,7 +100,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Warm up the registers](/practice/warm-up-the-registers): combine three registers with an add and a subtract.\n- [Change for a twenty](/practice/change-for-a-twenty): split change into coins with `sdiv` and `msub`.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): the divide-then-`msub` remainder inside a loop. Try it after the [pre-test loop lesson](/learn/pretest-loop).\n- [Quiz: ARMv8 assembly (core)](/practice/quiz-inter-armv8), [Fill in the blank: ARMv8 assembly (core)](/practice/blanks-armv8) and [Predict: ARMv8 assembly (challenge)](/practice/predict-armv8): questions on these instructions and the registers around them."
+      "markdown": "## Practice\n\n- [Warm up the registers](/practice/warm-up-the-registers): combine three registers with an add and a subtract.\n- [Change for a twenty](/practice/change-for-a-twenty): split change into coins with `sdiv` and `msub`.\n- [Fizzbuzz, by hand](/practice/fizzbuzz-by-hand): the divide-then-`msub` remainder inside a loop. Try it after the [pre-test loop lesson](/learn/pretest-loop).\n- [Intermediate quiz: ARMv8 assembly](/practice/quiz-inter-armv8), [Fill in the blank: ARMv8 assembly (core)](/practice/blanks-armv8) and [Predict: ARMv8 assembly (challenge)](/practice/predict-armv8): questions on these instructions and the registers around them."
     }
   ]
 }
