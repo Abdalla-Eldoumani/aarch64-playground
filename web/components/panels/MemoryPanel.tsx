@@ -136,7 +136,7 @@ export function MemoryPanel({
       }}
     >
       <div className="flex items-center flex-wrap gap-2 mb-2">
-        <label htmlFor="memory-base-addr" className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
+        <label htmlFor="memory-base-addr" className="text-[var(--text-secondary)] text-[12px] uppercase tracking-wider">
           address
         </label>
         <input
@@ -173,7 +173,7 @@ export function MemoryPanel({
         />
       </div>
       {parsed == null && (
-        <div role="alert" className="text-[var(--danger)] text-[10px] mb-2">
+        <div role="alert" className="text-[var(--danger)] text-[12px] mb-2">
           address must be hex (0x...) or decimal. showing{" "}
           {formatWord32(lastGoodAddr)}
         </div>
