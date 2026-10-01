@@ -49,6 +49,21 @@ describe("LessonMarkdown", () => {
     expect(label + title).toContain(expected);
   });
 
+  it("renders an inline excerpt as a phrase: code without a hover note, a link as its text", () => {
+    const { container } = render(
+      <LessonMarkdown inline markdown="Read `mov` with **care** and [print](/learn) it" />,
+    );
+    const root = container.firstElementChild;
+    expect(root?.tagName).toBe("SPAN");
+    expect(root?.querySelector("p, div")).toBeNull();
+    expect(root?.querySelector("code")?.textContent).toBe("mov");
+    expect(root?.querySelector("strong")?.textContent).toBe("care");
+    // Inside a practice row's link a focusable note or a second link would be
+    // a control nested in a control.
+    expect(root?.querySelector("[tabindex], [role='note'], a")).toBeNull();
+    expect(root?.textContent).toBe("Read mov with care and print it");
+  });
+
   it("renders an unknown token as plain code with no hover definition", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `zzz` token is plain" />,
