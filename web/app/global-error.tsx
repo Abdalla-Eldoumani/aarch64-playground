@@ -120,7 +120,7 @@ export default function GlobalError({
               borderBottom: `1px solid ${BORDER}`,
               paddingBottom: 8,
               fontFamily: MONO,
-              fontSize: 10,
+              fontSize: 12,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
               color: TEXT_TERTIARY,
