@@ -185,7 +185,7 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       { token: "number", foreground: "6d28d9" },
       { token: "number.hex", foreground: "6d28d9" },
       { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "047857" },
+      { token: "type.identifier", foreground: "036b4d" },
     ],
     colors: {
       "editor.background": "#FFFFFF",
