@@ -12,7 +12,7 @@ interface NotFoundProps {
  * does not exist, in the assembly voice the rest of the site uses.
  */
 export function NotFound({
-  title = "page not found",
+  title = "Page not found",
   message = "the address you requested is not mapped",
   returnHref = "/playground",
   returnLabel = "return to playground",
