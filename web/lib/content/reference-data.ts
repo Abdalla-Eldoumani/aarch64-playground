@@ -1199,6 +1199,7 @@ ldr     x10, [sp, 8]            // x10 = 42
 add     sp, sp, 16`,
     gotchas: [
       "the `=label` form loads the symbol's address; read the value it points at with a second load.",
+      "memory is little-endian: the byte at the lowest address holds a value's lowest 8 bits, so `ldrb` from a word's address reads the word's low byte.",
     ],
     encoding: encLdrUoff,
     encodedAsm: "ldr x19, [x20, 16]",
