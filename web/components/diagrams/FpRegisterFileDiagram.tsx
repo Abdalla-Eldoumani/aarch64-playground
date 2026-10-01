@@ -1,34 +1,26 @@
 import type { JSX } from "react";
 
 /**
- * Static floating-point sibling of RegisterFileDiagram. d8-d15 are amber, not
- * green, because the callee-saved promise covers only the low 64 bits. Cells
- * show the course's s/d views; the vector width is left to the footer.
+ * Static role map of the 32 vector registers. Each cell is one 128-bit
+ * register drawn as two halves, bits 127:64 on the left and bits 63:0 (the d
+ * view) on the right; only the halves a call keeps are solid, so v8-v15
+ * visibly keep their low half and nothing else. The tints follow AapcsRail:
+ * cyan for arguments, amber for callee-saved.
  */
 
 type FpFamily = "args" | "callee" | "caller";
 
-interface FpCell {
-  name: string;
-  sview: string;
-}
-
 interface FpRoleGroup {
   role: string;
   family: FpFamily;
-  regs: FpCell[];
-}
-
-function drange(lo: number, hi: number): FpCell[] {
-  const cells: FpCell[] = [];
-  for (let n = lo; n <= hi; n++) cells.push({ name: `d${n}`, sview: `s${n}` });
-  return cells;
+  first: number;
+  last: number;
 }
 
 const GROUPS: FpRoleGroup[] = [
-  { role: "arguments & result", family: "args", regs: drange(0, 7) },
-  { role: "callee-saved", family: "callee", regs: drange(8, 15) },
-  { role: "caller-saved temporaries", family: "caller", regs: drange(16, 31) },
+  { role: "arguments & result", family: "args", first: 0, last: 7 },
+  { role: "callee-saved, low 64 bits only", family: "callee", first: 8, last: 15 },
+  { role: "caller-saved temporaries", family: "caller", first: 16, last: 31 },
 ];
 
 /** Saved-ness -> token. color-mix tints keep the fills theme-following. */
@@ -39,10 +31,20 @@ const FAMILY_TINT: Record<FpFamily, string> = {
 };
 
 const LEGEND: { family: FpFamily; label: string }[] = [
-  { family: "args", label: "arguments & result (d0-d7 / s0-s7)" },
-  { family: "callee", label: "callee-saved (d8-d15)" },
-  { family: "caller", label: "caller-saved temporaries (d16-d31)" },
+  { family: "args", label: "arguments & result (v0-v7)" },
+  { family: "callee", label: "callee-saved, bits 63:0 only (v8-v15)" },
+  { family: "caller", label: "caller-saved temporaries (v16-v31)" },
 ];
+
+// A half the call keeps: solid amber. A half it may change: a dashed outline
+// in tertiary ink, which keeps 3:1 against the card in every theme.
+const KEPT =
+  "h-2 rounded-[var(--radius-control)] border border-[var(--amber)] bg-[color-mix(in_srgb,var(--amber)_45%,transparent)]";
+const LOST = "h-2 rounded-[var(--radius-control)] border border-dashed border-[var(--text-tertiary)]";
+
+function range(first: number, last: number): number[] {
+  return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+}
 
 export function FpRegisterFileDiagram({
   className = "",
@@ -51,7 +53,7 @@ export function FpRegisterFileDiagram({
 }): JSX.Element {
   return (
     <section
-      aria-label="aapcs64 floating-point register file"
+      aria-label="aapcs64 vector register file"
       className={`flex flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-4 ${className}`}
     >
       <ul className="flex flex-wrap gap-x-4 gap-y-2">
@@ -70,69 +72,67 @@ export function FpRegisterFileDiagram({
             {item.label}
           </li>
         ))}
+        <li className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+          <span aria-hidden="true" className={`inline-block w-5 ${KEPT}`} />
+          kept across a call
+        </li>
+        <li className="flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+          <span aria-hidden="true" className={`inline-block w-5 ${LOST}`} />
+          a call may change it
+        </li>
       </ul>
 
       <div className="flex flex-col gap-3">
         {GROUPS.map((group) => (
           <div key={group.role} className="flex flex-col gap-1.5">
-            <h3 className="text-[11px] uppercase tracking-wider text-[var(--text-secondary)]">
+            <h3 className="text-[12px] uppercase tracking-wider text-[var(--text-secondary)]">
               {group.role}
             </h3>
             <ul className="flex flex-wrap gap-2">
-              {group.regs.map((reg) => (
-                <li
-                  key={reg.name}
-                  className="flex min-h-[44px] min-w-[3.25rem] flex-col items-center justify-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] border-t-[3px] px-3 py-2"
-                  style={{
-                    borderTopColor: FAMILY_TINT[group.family],
-                    backgroundColor: `color-mix(in srgb, ${FAMILY_TINT[group.family]} 8%, transparent)`,
-                  }}
-                >
-                  <span className="font-mono text-[13px] text-[var(--text-primary)]">
-                    {reg.name}
-                  </span>
-                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">
-                    {reg.sview}
-                  </span>
-                </li>
-              ))}
+              {range(group.first, group.last).map((n) => {
+                const keepsLow = group.family === "callee";
+                return (
+                  <li
+                    key={n}
+                    aria-label={
+                      keepsLow
+                        ? `v${n}: bits 63:0, d${n}, kept across a call; bits 127:64 may change`
+                        : `v${n}: a call may change all 128 bits`
+                    }
+                    className="flex min-h-[44px] min-w-[3.75rem] flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] border border-[var(--border)] border-t-[3px] px-3 py-2"
+                    style={{
+                      borderTopColor: FAMILY_TINT[group.family],
+                      backgroundColor: `color-mix(in srgb, ${FAMILY_TINT[group.family]} 8%, transparent)`,
+                    }}
+                  >
+                    <span className="font-mono text-[13px] text-[var(--text-primary)]">
+                      v{n}
+                    </span>
+                    <span aria-hidden="true" className="grid w-full grid-cols-2 gap-[2px]">
+                      <span className={LOST} />
+                      <span className={keepsLow ? KEPT : LOST} />
+                    </span>
+                    <span className="font-mono text-[12px] text-[var(--text-secondary)]">
+                      d{n}
+                    </span>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ))}
       </div>
 
       <p className="text-[12px] text-[var(--text-secondary)]">
-        Each register has two views the course uses:{" "}
+        {"Each cell is one 128-bit register: the left half of its bar is bits 127:64 and the right half is bits 63:0, the "}
         <span className="font-mono text-[var(--text-primary)]">dN</span>
-        {" is the 64-bit double and "}
+        {" view the course uses, whose low 32 bits are "}
         <span className="font-mono text-[var(--text-primary)]">sN</span>
-        {" is the same register's low 32 bits, the float view: "}
-        <span className="font-mono text-[var(--text-primary)]">s0</span>
-        {" and "}
-        <span className="font-mono text-[var(--text-primary)]">d0</span>
-        {" overlap. A float argument travels in "}
-        <span className="font-mono text-[var(--text-primary)]">sN</span>
-        {", a double in "}
-        <span className="font-mono text-[var(--text-primary)]">dN</span>
-        {", and "}
-        <span className="font-mono text-[var(--text-primary)]">fcvt</span>
-        {" converts between them. Whether a call keeps the register is the same in either view. There is no floating-point frame pointer."}
-      </p>
-
-      <p className="text-[12px] text-[var(--text-secondary)]">
-        {"The same 32 entries are the vector file as well: the playground accepts "}
-        <span className="font-mono text-[var(--text-primary)]">q8</span>
-        {" and vector forms such as "}
-        <span className="font-mono text-[var(--text-primary)]">v8.4s</span>
-        {", and the reference's Vector section documents them, while the course keeps to "}
-        <span className="font-mono text-[var(--text-primary)]">sN</span>
-        {" and "}
-        <span className="font-mono text-[var(--text-primary)]">dN</span>
-        {". The callee-saved promise is narrower than the register: the calling convention preserves only bits 63:0 of "}
-        <span className="font-mono text-[var(--text-primary)]">v8</span>
-        {"-"}
-        <span className="font-mono text-[var(--text-primary)]">v15</span>
-        {", exactly the dN part, so a call may change anything above bit 63."}
+        {". A call keeps only the solid halves, "}
+        <span className="font-mono text-[var(--text-primary)]">d8</span>
+        {" to "}
+        <span className="font-mono text-[var(--text-primary)]">d15</span>
+        {". There is no floating-point frame pointer."}
       </p>
     </section>
   );
