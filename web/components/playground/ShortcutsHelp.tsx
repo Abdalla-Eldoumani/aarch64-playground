@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { CREDIBILITY } from "@/lib/content/site";
 
 export interface Shortcut {
@@ -31,7 +31,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
       role="dialog"
       aria-modal="true"
       aria-label="keyboard shortcuts"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={ref}
