@@ -41,7 +41,8 @@
       "blanks": [
         "0",
         "#0",
-        "0x0"
+        "0x0",
+        "wzr"
       ],
       "explanation": "A string ends at the byte that holds 0. Comparing the loaded byte with 0 and branching when they are equal leaves the loop there. cbz w10, walk_done does the same in one instruction.",
       "hint": "The terminator holds the smallest value a byte can hold."
