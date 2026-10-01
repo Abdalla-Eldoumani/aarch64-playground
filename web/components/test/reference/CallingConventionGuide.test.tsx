@@ -188,6 +188,17 @@ describe("CallingConventionGuide", () => {
     expect(screen.queryByTestId("embed")).toBeNull();
   });
 
+  it("keeps a run button's width by swapping which label is invisible, not the text", () => {
+    render(<CallingConventionGuide />);
+    const button = screen.getByRole("button", { name: "run the whole program: the large result" });
+    const label = (text: string) => within(button).getByText(text);
+    expect(label("run the whole program").className).not.toContain("invisible");
+    expect(label("close").className).toContain("invisible");
+    fireEvent.click(button);
+    expect(label("run the whole program").className).toContain("invisible");
+    expect(label("close").className).not.toContain("invisible");
+  });
+
   it("opens each example in the playground with its whole program", () => {
     render(<CallingConventionGuide />);
     const links = screen.getAllByRole("link", { name: /Open in playground/ });
