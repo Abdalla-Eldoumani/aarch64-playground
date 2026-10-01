@@ -136,7 +136,7 @@ function isLinkRow(children: ReactNode): boolean {
   );
 }
 const LINK_CLASS =
-  "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:opacity-80 focus-visible:shadow-[var(--ring)]";
+  "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:opacity-80 focus-visible:[box-shadow:var(--ring)]";
 const PRE_CLASS =
   "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
 const INLINE_CODE_CLASS =
@@ -154,7 +154,7 @@ const TH_CLASS =
 const TD_CLASS =
   "border border-[var(--border)] px-3 py-2 align-top tabular-nums [@media(pointer:coarse)]:[&>[role=note]]:min-h-[44px] [@media(pointer:coarse)]:[&>[role=note]]:min-w-[44px] [@media(pointer:coarse)]:[&>[role=note]]:items-center";
 const HOVER_WRAP_CLASS =
-  "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
+  "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:[box-shadow:var(--ring)]";
 // `term-card` (globals.css) places the card along the bottom edge: hung off
 // the term it ran past the right edge on a phone and past the bottom edge for
 // a term low in a laptop window.
