@@ -101,7 +101,7 @@ export function RegisterFileDiagram({
       <div className="flex flex-col gap-3">
         {GROUPS.map((group) => (
           <div key={group.role} className="flex flex-col gap-1.5">
-            <h3 className="text-[11px] uppercase tracking-wider text-[var(--text-secondary)]">
+            <h3 className="text-[12px] uppercase tracking-wider text-[var(--text-secondary)]">
               {group.role}
             </h3>
             <ul className="flex flex-wrap gap-2">
@@ -117,7 +117,7 @@ export function RegisterFileDiagram({
                   <span className="font-mono text-[13px] text-[var(--text-primary)]">
                     {reg.name}
                   </span>
-                  <span className="font-mono text-[11px] text-[var(--text-secondary)]">
+                  <span className="font-mono text-[12px] text-[var(--text-secondary)]">
                     {reg.alias ?? " "}
                   </span>
                 </li>
