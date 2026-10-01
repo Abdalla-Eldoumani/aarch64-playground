@@ -90,6 +90,12 @@ describe("ShareDialog", () => {
     }
   });
 
+  it("stays open when a double press's second click lands on the backdrop", () => {
+    const onClose = renderDialog();
+    fireEvent.click(screen.getByRole("dialog", { name: "share program" }), { detail: 2 });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
     const onClose = renderDialog();
     fireEvent.click(screen.getByLabelText("shareable url"));
