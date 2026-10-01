@@ -68,3 +68,31 @@ export function usePhoneShape(): PhoneShape {
     (): PhoneShape => null,
   );
 }
+
+/**
+ * A laptop window this short (browser bars take 100 to 130px of a 768 to
+ * 900px screen) left the editor about 15 lines under the site bar, the
+ * header band and the run row, so the playground merges that chrome. The
+ * same bound is `(max-height: 760px)` in globals.css.
+ */
+export const SHORT_SCREEN_MAX_HEIGHT = 760;
+/** From this height the register list ends well above its pane's floor, so
+ *  the panes below it get the larger share. */
+export const TALL_SCREEN_MIN_HEIGHT = 1200;
+
+export type ScreenHeight = "short" | "regular" | "tall";
+
+export function screenHeight(height: number): ScreenHeight {
+  if (height <= SHORT_SCREEN_MAX_HEIGHT) return "short";
+  return height >= TALL_SCREEN_MIN_HEIGHT ? "tall" : "regular";
+}
+
+/** The window's height class, tracking resizes; "regular" on the server and
+ *  in a hydrating render. */
+export function useScreenHeight(): ScreenHeight {
+  return useSyncExternalStore(
+    subscribeResize,
+    () => screenHeight(window.innerHeight),
+    (): ScreenHeight => "regular",
+  );
+}
