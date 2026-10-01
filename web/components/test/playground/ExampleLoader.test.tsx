@@ -80,13 +80,15 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 course programs, 2 stage fillers, the 6 vector demonstrations, and
-    // the 6 playable extras under Miscellaneous.
-    expect(labels.length).toBe(28);
+    // 14 course programs, 2 stage fillers, the program the playground opens
+    // with, the 6 vector demonstrations, and the 6 playable extras under
+    // Miscellaneous.
+    expect(labels.length).toBe(29);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
     expect(labels).toContain("arithmetic");
+    expect(labels).toContain("distance from zero");
     expect(labels).toContain("copy file");
     expect(labels).toContain("triangle area (single precision)");
     expect(labels).toContain("snake");
