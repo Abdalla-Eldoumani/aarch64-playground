@@ -16,9 +16,10 @@ pub const HEAP_LIMIT: u64 = HEAP_BASE + 16 * 1024 * 1024;
 
 const ALIGN: u64 = 16;
 
-/// Allocator state. Lives on the `Cpu` and in every snapshot, like
-/// `rand_state`, so step-back and named saves restore the heap exactly.
-#[derive(Debug, Clone, PartialEq)]
+/// Allocator state. Lives on the `Cpu`; a named save copies it whole and
+/// a step-back frame logs a step's changes to it, so both restore the
+/// heap exactly.
+#[derive(Debug, PartialEq)]
 pub struct HeapState {
     /// Bump frontier: the lowest never-allocated address.
     next: u64,
@@ -26,7 +27,35 @@ pub struct HeapState {
     free: Vec<(u64, u64)>,
     /// Live allocations by address, so free() can validate its argument.
     live: std::collections::HashMap<u64, u64>,
+    /// While `recording`, the running step's changes to the three tables
+    /// above, so its step-back frame can reverse them; between steps a
+    /// spare buffer (see `record_undo`).
+    undo: HeapUndo,
+    recording: bool,
 }
+
+/// One change to the allocator's tables, as step-back reverses it.
+#[derive(Debug, Clone, PartialEq)]
+enum HeapEdit {
+    /// `next` held this.
+    Next(u64),
+    /// A block at this address became live.
+    Allocated(u64),
+    /// This block (address, size) stopped being live.
+    Released(u64, u64),
+    /// `free[i]` held this entry.
+    FreeSet(usize, (u64, u64)),
+    /// An entry went into the free list at this index.
+    FreeInserted(usize),
+    /// This entry came out of the free list at this index.
+    FreeRemoved(usize, (u64, u64)),
+}
+
+/// A step's changes to the allocator, oldest first. Copying the live-block
+/// table into every step-back frame made each step of a program holding
+/// 10,000 blocks tens of times slower; a log costs what the step changed.
+#[derive(Debug, PartialEq, Default)]
+pub struct HeapUndo(Vec<HeapEdit>);
 
 impl Default for HeapState {
     fn default() -> Self {
@@ -34,11 +63,69 @@ impl Default for HeapState {
             next: HEAP_BASE,
             free: Vec::new(),
             live: std::collections::HashMap::new(),
+            undo: HeapUndo::default(),
+            recording: false,
+        }
+    }
+}
+
+impl Clone for HeapState {
+    /// A copy (a named save) is the tables alone: the undo log belongs to
+    /// the running step, and between steps it is an empty spare.
+    fn clone(&self) -> Self {
+        HeapState {
+            next: self.next,
+            free: self.free.clone(),
+            live: self.live.clone(),
+            undo: HeapUndo::default(),
+            recording: false,
         }
     }
 }
 
 impl HeapState {
+    /// Start logging changes into `slot`'s buffer (a recycled frame's),
+    /// which trades places with this heap's spare until `finish_undo`
+    /// trades it back, filled.
+    pub fn record_undo(&mut self, slot: &mut HeapUndo) {
+        std::mem::swap(&mut self.undo, slot);
+        self.undo.0.clear();
+        self.recording = true;
+    }
+
+    /// Stop logging and trade the filled log back into `slot`.
+    pub fn finish_undo(&mut self, slot: &mut HeapUndo) {
+        if std::mem::take(&mut self.recording) {
+            std::mem::swap(&mut self.undo, slot);
+        }
+    }
+
+    /// Reverse the logged changes, newest first.
+    pub fn undo(&mut self, log: HeapUndo) {
+        for edit in log.0.into_iter().rev() {
+            match edit {
+                HeapEdit::Next(next) => self.next = next,
+                HeapEdit::Allocated(addr) => {
+                    self.live.remove(&addr);
+                }
+                HeapEdit::Released(addr, size) => {
+                    self.live.insert(addr, size);
+                }
+                HeapEdit::FreeSet(i, entry) => self.free[i] = entry,
+                HeapEdit::FreeInserted(i) => {
+                    self.free.remove(i);
+                }
+                HeapEdit::FreeRemoved(i, entry) => self.free.insert(i, entry),
+            }
+        }
+    }
+
+    fn log(&mut self, edit: HeapEdit) {
+        if self.recording {
+            self.undo.0.push(edit);
+        }
+    }
+
     /// Allocate `size` bytes (rounded up to the alignment quantum).
     /// Returns the block address, or None when the window is exhausted.
     pub fn alloc(&mut self, size: u64) -> Option<u64> {
@@ -49,10 +136,13 @@ impl HeapState {
             if block >= size {
                 if block == size {
                     self.free.remove(i);
+                    self.log(HeapEdit::FreeRemoved(i, (addr, block)));
                 } else {
+                    self.log(HeapEdit::FreeSet(i, (addr, block)));
                     self.free[i] = (addr + size, block - size);
                 }
                 self.live.insert(addr, size);
+                self.log(HeapEdit::Allocated(addr));
                 return Some(addr);
             }
         }
@@ -60,8 +150,10 @@ impl HeapState {
             return None;
         }
         let addr = self.next;
+        self.log(HeapEdit::Next(addr));
         self.next += size;
         self.live.insert(addr, size);
+        self.log(HeapEdit::Allocated(addr));
         Some(addr)
     }
 
@@ -88,16 +180,22 @@ impl HeapState {
         let Some(size) = self.live.remove(&addr) else {
             return Err(self.reject_reason(addr));
         };
+        self.log(HeapEdit::Released(addr, size));
         let at = self.free.partition_point(|&(a, _)| a < addr);
         self.free.insert(at, (addr, size));
+        self.log(HeapEdit::FreeInserted(at));
         // Coalesce with the right neighbor, then the left.
         if at + 1 < self.free.len() && self.free[at].0 + self.free[at].1 == self.free[at + 1].0 {
+            self.log(HeapEdit::FreeSet(at, self.free[at]));
             self.free[at].1 += self.free[at + 1].1;
-            self.free.remove(at + 1);
+            let gone = self.free.remove(at + 1);
+            self.log(HeapEdit::FreeRemoved(at + 1, gone));
         }
         if at > 0 && self.free[at - 1].0 + self.free[at - 1].1 == self.free[at].0 {
+            self.log(HeapEdit::FreeSet(at - 1, self.free[at - 1]));
             self.free[at - 1].1 += self.free[at].1;
-            self.free.remove(at);
+            let gone = self.free.remove(at);
+            self.log(HeapEdit::FreeRemoved(at, gone));
         }
         Ok(())
     }
@@ -406,5 +504,34 @@ mod tests {
         let b = h.alloc(0).expect("second malloc(0) is non-NULL");
         assert_ne!(a, b, "each zero-size block is distinct");
         assert_ne!(a, 0);
+    }
+
+    #[test]
+    fn undo_reverses_every_kind_of_allocator_change() {
+        // A step that splits a free block, takes one whole, bumps, and
+        // frees with merges on either side: undoing it must give back the
+        // same tables, so the next malloc answers what it did before.
+        let mut h = HeapState::default();
+        let a = h.alloc(32).unwrap();
+        let b = h.alloc(32).unwrap();
+        let c = h.alloc(32).unwrap();
+        let d = h.alloc(48).unwrap();
+        let e = h.alloc(16).unwrap();
+        h.release(a).unwrap();
+        h.release(c).unwrap();
+        let before = h.clone();
+        let mut log = HeapUndo::default();
+        h.record_undo(&mut log);
+        h.alloc(16).unwrap();
+        assert_eq!(h.alloc(32), Some(c));
+        h.alloc(64).unwrap();
+        h.release(b).unwrap();
+        h.release(d).unwrap();
+        h.release(e).unwrap();
+        h.release(c).unwrap();
+        h.finish_undo(&mut log);
+        h.undo(log);
+        assert_eq!(h, before);
+        assert_eq!(h.alloc(32), Some(a));
     }
 }
