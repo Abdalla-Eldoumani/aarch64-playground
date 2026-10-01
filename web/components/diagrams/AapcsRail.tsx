@@ -72,7 +72,7 @@ export function AapcsRail({
       aria-label="aapcs64 register file rail"
       className={`flex w-full flex-col gap-2 ${className}`}
     >
-      <h2 className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+      <h2 className="font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
         register file · aapcs64
       </h2>
       <ul className="flex flex-col gap-2">
@@ -89,11 +89,11 @@ export function AapcsRail({
             >
               {row.range}
               {row.alias && (
-                <span className="block text-[11px] font-normal">{row.alias}</span>
+                <span className="block text-[12px] font-normal">{row.alias}</span>
               )}
             </span>
             <span
-              className={`min-w-0 text-right font-mono text-[10px] uppercase leading-tight tracking-[0.06em] ${TINT[row.tint].note}`}
+              className={`min-w-0 text-right font-mono text-[12px] uppercase leading-tight tracking-[0.06em] ${TINT[row.tint].note}`}
             >
               {row.note}
             </span>
