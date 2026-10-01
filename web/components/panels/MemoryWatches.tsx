@@ -98,7 +98,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
 
   return (
     <div className="p-3 text-xs flex flex-col h-full">
-      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
+      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px] mb-2">
         memory watches
       </h2>
       <form
@@ -116,7 +116,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className="touch-target w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="touch-target w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch label"
         />
         <input
@@ -127,7 +127,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className="touch-target w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="touch-target w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[12px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch address"
         />
         <input
@@ -137,16 +137,16 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={length}
           onChange={(e) => setLength(parseInt(e.target.value, 10) || 1)}
           aria-label="watch byte length"
-          className="touch-target w-14 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)]"
+          className="touch-target w-14 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[12px] font-mono text-[var(--text-primary)]"
         />
         <button
           type="submit"
-          className="touch-target px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+          className="touch-target px-2 py-0.5 text-[12px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
           add
         </button>
         {addError && (
-          <span role="alert" className="w-full text-[10px] text-[var(--danger)]">
+          <span role="alert" className="w-full text-[12px] text-[var(--danger)]">
             {addError}
           </span>
         )}
@@ -157,7 +157,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
             <p className="font-serif text-[12px] text-[var(--text-primary)]">
               Pin an address; the bytes follow you across runs.
             </p>
-            <p className="font-sans text-[10px] text-[var(--text-secondary)]">
+            <p className="font-sans text-[12px] text-[var(--text-secondary)]">
               Pick a label, an address (hex or decimal), and a byte count, then add.
             </p>
           </div>
@@ -169,13 +169,13 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
               <li key={`${w.label}-${i}`} className="font-mono">
                 <div className="flex items-center justify-between">
                   <span className="text-[var(--text-primary)]">{w.label}</span>
-                  <span className="text-[var(--text-secondary)] text-[10px]">
+                  <span className="text-[var(--text-secondary)] text-[12px]">
                     {formatWord32(w.addr)} +{w.length}
                   </span>
                   <button
                     type="button"
                     onClick={() => remove(i)}
-                    className="touch-target text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
+                    className="touch-target text-[12px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
                     aria-label={`remove memory watch ${w.label}`}
                   >
                     x
@@ -184,7 +184,7 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
                 <div className="text-[var(--text-primary)] break-all">
                   {hexRow(bytes)}
                 </div>
-                <div className="text-[var(--text-secondary)] text-[10px]">
+                <div className="text-[var(--text-secondary)] text-[12px]">
                   {asciiRow(bytes)}
                 </div>
               </li>
