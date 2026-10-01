@@ -422,6 +422,18 @@ describe("collectDiagnostic", () => {
     expect(waiting.status).toBe("waiting for input after 5 steps");
   });
 
+  // The step cap's error writes the count with commas; the status beside it
+  // once wrote "1000000", so a report said the same number two ways.
+  it("writes a step-cap pause's count in the same form as its error", async () => {
+    const capped = await collect(
+      pausedMachine({
+        stepCount: 1_000_000,
+        error: "paused after 1,000,000 steps without finishing. press run to continue",
+      }),
+    );
+    expect(capped.status).toBe("stopped after 1,000,000 steps with the error below");
+  });
+
   it("leaves a line saying so when the machine cannot be read", async () => {
     const broken = pausedMachine({
       readMemory: async () => {
