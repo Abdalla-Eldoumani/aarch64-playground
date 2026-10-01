@@ -63,6 +63,25 @@ describe("theme token contrast", () => {
       expect(contrast(t["cyan-dim"], t["text-primary"])).toBeGreaterThanOrEqual(bar);
     });
 
+    it(`${theme}: every syntax colour keeps 4.5:1 on a code block's amber current line`, () => {
+      // CodeBlock marks the current line with 10% amber over --bg-sunken; the
+      // light label green sat at 4.36:1 there on the frame walks' first step.
+      const mix = (top: string, under: string, alpha: number) =>
+        "#" +
+        [0, 1, 2]
+          .map((i) => {
+            const channel = (hex: string) => parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16);
+            return Math.round(channel(top) * alpha + channel(under) * (1 - alpha))
+              .toString(16)
+              .padStart(2, "0");
+          })
+          .join("");
+      const line = mix(t["amber"], t["bg-sunken"], 0.1);
+      for (const ink of ["syntax-keyword", "syntax-register", "syntax-number", "syntax-comment", "syntax-label"]) {
+        expect(contrast(t[ink], line), ink).toBeGreaterThanOrEqual(4.5);
+      }
+    });
+
     it(`${theme}: primary and secondary text keep 4.5:1 contrast on both backgrounds`, () => {
       for (const ink of ["text-primary", "text-secondary"]) {
         for (const surface of ["bg-base", "bg-panel"]) {
