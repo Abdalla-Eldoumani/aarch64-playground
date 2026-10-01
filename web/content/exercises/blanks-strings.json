@@ -1,0 +1,73 @@
+{
+  "title": "Fill in the blank: strings",
+  "slug": "blanks-strings",
+  "order": 125,
+  "lastUpdated": "2026-10-01",
+  "topic": "strings",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing piece of code that stores, walks, and changes a string one byte at a time.",
+  "blanks": [
+    {
+      "prompt": "Store the word yes with no zero byte after it, as a piece that the next string in .data finishes.",
+      "code": "part_m: .___ \"yes\"",
+      "blanks": [
+        "ascii"
+      ],
+      "explanation": ".ascii stores only the character codes, here 3 bytes. The text that follows it in memory then reads as part of the same string, up to the next zero byte. .string and .asciz would add the zero byte.",
+      "hint": "It is the one text directive that adds nothing after the characters."
+    },
+    {
+      "prompt": "Load the byte at the address in x9 into w10, with the rest of w10 set to zero.",
+      "code": "___     w10, [x9]",
+      "blanks": [
+        "ldrb"
+      ],
+      "explanation": "ldrb loads a single byte, one character, and fills the rest of w10 with zeros. ldr w10 would load four bytes, four characters at once.",
+      "hint": "Add the letter for byte to the load instruction."
+    },
+    {
+      "prompt": "Store the low byte of w10 at the address in x9, then move x9 on to the next byte.",
+      "code": "___     w10, [x9], 1",
+      "blanks": [
+        "strb"
+      ],
+      "explanation": "strb stores only the lowest byte of the register, one character. The , 1 after the brackets is post-indexing: the store uses x9 as it is, then adds 1 to it, ready for the next character.",
+      "hint": "It is the store that pairs with ldrb."
+    },
+    {
+      "prompt": "Leave the loop at the byte that ends the string.",
+      "code": "ldrb    w10, [x9]\ncmp     w10, ___\nb.eq    walk_done",
+      "blanks": [
+        "0",
+        "#0",
+        "0x0"
+      ],
+      "explanation": "A string ends at the byte that holds 0. Comparing the loaded byte with 0 and branching when they are equal leaves the loop there. cbz w10, walk_done does the same in one instruction.",
+      "hint": "The terminator holds the smallest value a byte can hold."
+    },
+    {
+      "prompt": "Turn the lower-case letter in w10 into its capital.",
+      "code": "sub     w10, w10, ___",
+      "blanks": [
+        "32",
+        "0x20",
+        "'a' - 'A'",
+        "'a'-'A'"
+      ],
+      "explanation": "Each lower-case letter's code is 32 more than its capital's: a is 97 and A is 65. Subtracting 32 turns any lower-case letter into its capital, so the program checks first that w10 holds a letter from a to z.",
+      "hint": "Work out the code of a minus the code of A."
+    },
+    {
+      "prompt": "Load entry 3 of the table of string addresses whose base is in x20.",
+      "code": "ldr     x21, [x20, ___]",
+      "blanks": [
+        "24",
+        "0x18",
+        "#24"
+      ],
+      "explanation": "Every entry is an address, 8 bytes, and entries count from 0, so entry 3 starts 3 * 8 = 24 bytes past the base. What comes back in x21 is the address of that string's first byte.",
+      "hint": "Multiply the entry number by the size of one address."
+    }
+  ]
+}
