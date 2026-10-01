@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { loadExerciseIndex } from "@/lib/content/exercises";
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
+import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
 import { pageMetadata } from "@/lib/content/seo";
@@ -20,6 +21,11 @@ export default function PracticePage() {
   // and a full exercise also carries the prompt, starter, acceptance, and
   // question sets that only the detail route reads.
   const exercises = loadExerciseIndex();
+  // Rendered here, at build time, so the markdown renderer stays out of the
+  // page's script: only the finished code spans cross to the client index.
+  const blurbs = Object.fromEntries(
+    exercises.map(({ slug, blurb }) => [slug, <LessonMarkdown inline markdown={blurb} />]),
+  );
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
       <DocRule section="practice" context="cpsc 355 study aid" className="mb-8" />
@@ -31,7 +37,7 @@ export default function PracticePage() {
         In a coding exercise, Check runs your program and compares its result with what the exercise asks for. Theory sets are quizzes and short questions, graded on the page. Both follow the course from the first week to the last.
       </p>
       <div className="mt-10">
-        <ExerciseIndex exercises={exercises} />
+        <ExerciseIndex exercises={exercises} blurbs={blurbs} />
       </div>
     </section>
   );
