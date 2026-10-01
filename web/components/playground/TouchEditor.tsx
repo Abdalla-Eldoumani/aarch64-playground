@@ -167,14 +167,36 @@ export function TouchEditor({
   };
   const shown = Array.from({ length: rows }, (_, i) => first + i + 1);
 
+  // The gutter is one control, 44px wide and as tall as the editor: a button
+  // per 24px line was a target a fingertip could not hit reliably. A tap
+  // toggles the line under it; a key press (no pointer, so `detail` is 0)
+  // toggles the line the caret is on.
+  const toggleFromGutter = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const ta = taRef.current;
+    if (!ta) return;
+    const line =
+      e.detail === 0
+        ? ta.value.slice(0, ta.selectionStart).split("\n").length
+        : Math.floor(
+            (e.clientY - e.currentTarget.getBoundingClientRect().top - PAD_Y + ta.scrollTop) /
+              LINE_H,
+          ) + 1;
+    if (line >= 1 && line <= lineCount) onToggleBreakpoint(line);
+  };
+  const marked = [...breakpoints].filter((n) => n <= lineCount).sort((a, b) => a - b);
+
   // The outer box is `min-h-0 overflow-hidden` so the layers' natural height
   // (every line at 24px) cannot grow the pane and push the rest of the
   // playground off a phone screen.
   return (
     <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-base)]">
-      <div
-        className="flex-shrink-0 w-11 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-sunken)] select-none relative"
-        role="presentation"
+      <button
+        type="button"
+        onClick={toggleFromGutter}
+        aria-label={`breakpoints${
+          marked.length ? ` on line${marked.length > 1 ? "s" : ""} ${marked.join(", ")}` : ", none set"
+        }: tap a line number to set or clear one, or press Enter for the caret's line`}
+        className="flex-shrink-0 w-11 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-sunken)] select-none relative cursor-pointer focus:outline-none focus-visible:[box-shadow:inset_0_0_0_2px_var(--focus)]"
         data-walkthrough="gutter"
       >
         <div
@@ -202,21 +224,18 @@ export function TouchEditor({
                     : "text-[var(--amber)] font-bold"
                   : "text-[var(--text-secondary)]";
             return (
-              <button
+              <span
                 key={n}
-                type="button"
-                onClick={() => onToggleBreakpoint(n)}
-                className={`block w-full h-6 leading-6 text-right pr-2 text-[12px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] ${cls}`}
-                aria-label={
-                  isBreak ? `line ${n}, breakpoint set, tap to clear` : `line ${n}, tap to set breakpoint`
-                }
+                aria-hidden="true"
+                data-gutter-line={n}
+                className={`block w-full h-6 leading-6 text-right pr-2 text-[12px] tabular-nums ${cls}`}
               >
                 {isBreak ? "●" : n}
-              </button>
+              </span>
             );
           })}
         </div>
-      </div>
+      </button>
       <div className="relative flex-1 min-w-0 min-h-0 overflow-hidden">
         <div
           ref={bandsRef}
