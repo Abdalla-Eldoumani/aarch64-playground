@@ -216,7 +216,8 @@ Fields every variant carries:
   the starter gives the reader, and what the program has to do. A sentence
   that only sets a mood should become a hint ("One pass over the array is
   enough") or go. The prompt's opening sentences, without its lists and
-  code, become the page's search-result snippet.
+  code, become the page's search-result snippet, and its first line,
+  clipped at 140 characters, is the exercise's summary on `/practice`.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
   or `blanks`. The variant decides where the exercise appears: `write` and
   `identify-bug` sit in the coding column of the practice page, the other
@@ -225,6 +226,12 @@ Fields every variant carries:
 The two columns stay the same length. A test fails unless there are exactly
 as many theory sets as coding exercises, so a new coding exercise ships with
 a new theory set in the same change, and the other way round.
+
+`/practice` sends the browser one short row per exercise: the title, slug,
+order, topic, difficulty, variant, and that summary. `npm run size` fails
+once those rows pass 16 kB, and 136 exercises measured 15.2 kB, so keep a
+prompt's first line short. If a new exercise still pushes the rows over the
+limit, say so in the pull request instead of raising the limit.
 
 The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
