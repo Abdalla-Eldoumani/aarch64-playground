@@ -79,9 +79,11 @@ export function LessonArticle({
               return (
                 <div
                   key={index}
+                  // At 19px a 320px phone set the lead 27 characters to a
+                  // line; 17px there reads closer to the body's measure.
                   className={
                     index === firstProseIndex
-                      ? "max-w-2xl [&_p:first-of-type]:[font:var(--type-lead)]"
+                      ? "max-w-2xl [&_p:first-of-type]:[font:var(--type-lead)] max-sm:[&_p:first-of-type]:text-[17px]"
                       : "max-w-2xl"
                   }
                 >
