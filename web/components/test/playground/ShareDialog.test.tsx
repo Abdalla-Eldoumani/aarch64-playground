@@ -97,13 +97,22 @@ describe("ShareDialog", () => {
   });
 
   it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
-    const onClose = renderDialog();
-    fireEvent.click(screen.getByLabelText("shareable url"));
-    expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "close" }));
-    fireEvent.click(screen.getByRole("dialog", { name: "share program" }));
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(3);
+    // The backdrop ignores a click in the first half second (a double tap's
+    // second tap), so the clock moves past it before the backdrop is clicked.
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const onClose = renderDialog();
+      fireEvent.click(screen.getByLabelText("shareable url"));
+      expect(onClose).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "close" }));
+      now += 600;
+      fireEvent.click(screen.getByRole("dialog", { name: "share program" }));
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(onClose).toHaveBeenCalledTimes(3);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 
