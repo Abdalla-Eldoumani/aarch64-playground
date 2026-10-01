@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState, type JSX } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { PitfallCard, type PitfallVariant } from "@/components/reference/PitfallCard";
 import {
@@ -57,6 +57,7 @@ export function PitfallsCatalog({
   const [query, setQuery] = useState("");
   const [groups, setGroups] = useState<Set<PitfallGroup>>(new Set());
   const searchId = useId();
+  const searchRef = useRef<HTMLInputElement>(null);
   const fragment = useHashFragment();
 
   const sections = useMemo(() => {
@@ -100,9 +101,12 @@ export function PitfallsCatalog({
     });
   }
 
+  // The clear button removes itself, so focus goes to the text box instead
+  // of falling back to the top of the page.
   function clearFilters() {
     setQuery("");
     setGroups(new Set());
+    searchRef.current?.focus();
   }
 
   return (
@@ -120,6 +124,7 @@ export function PitfallsCatalog({
           filter the mistakes
         </label>
         <input
+          ref={searchRef}
           id={searchId}
           type="search"
           value={query}
