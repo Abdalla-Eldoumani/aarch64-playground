@@ -11,9 +11,9 @@ export const ARITHMETIC_PITFALLS: Pitfall[] = [
     server: "prints `average = 0` and exits normally.",
     playground: "prints the same line.",
     fix: "Test the divisor before dividing: `cbz count_r, no_marks`. The fixed program prints `no marks to average`.",
-    wrong: `        sdiv    x1, total_r, count_r`,
-    right: `        cbz     count_r, no_marks
-        sdiv    x1, total_r, count_r`,
+    wrong: `sdiv    x1, total_r, count_r`,
+    right: `cbz     count_r, no_marks
+sdiv    x1, total_r, count_r`,
     broken: {
       source: `// Averages a list of marks; this time the list is empty.
 // sdiv by zero gives 0 without any error.
@@ -101,10 +101,10 @@ done:
     server: "prints `-2147483648 / -1 = -2147483648`.",
     playground: "prints the same line.",
     fix: "Divide in 64 bits when the quotient may not fit: sign-extend with `sxtw` and use x registers. The fixed program prints `-2147483648 / -1 = 2147483648`.",
-    wrong: `        sdiv    quot_r, top_r, bottom_r`,
-    right: `        sxtw    x9, top_r
-        sxtw    x10, bottom_r
-        sdiv    quot_r, x9, x10`,
+    wrong: `sdiv    quot_r, top_r, bottom_r`,
+    right: `sxtw    x9, top_r
+sxtw    x10, bottom_r
+sdiv    quot_r, x9, x10`,
     broken: {
       source: `// Divides the most negative int by -1.
 // The true answer, 2147483648, does not fit in 32 bits.
@@ -197,9 +197,9 @@ main:
     server: "does not build: as reports an unknown mnemonic, `mod`.",
     playground: "does not build either, with the same unknown mnemonic error.",
     fix: "Divide, then multiply back and subtract in one step: `sdiv x9, a_r, b_r` and `msub x21, x9, b_r, a_r`. The fixed program prints `47 mod 5 = 2`.",
-    wrong: `        mod     x21, a_r, b_r`,
-    right: `        sdiv    x9, a_r, b_r
-        msub    x21, x9, b_r, a_r`,
+    wrong: `mod     x21, a_r, b_r`,
+    right: `sdiv    x9, a_r, b_r
+msub    x21, x9, b_r, a_r`,
     broken: {
       source: `// Prints 47 mod 5.
 // There is no mod instruction in A64.
@@ -289,11 +289,11 @@ main:
     server: "prints `mask = 0x0`: 1 << 64 came out as 1 << 0, and 1 - 1 is 0.",
     playground: "prints the same line.",
     fix: "Handle the full width on its own, since no shift gives it: all 64 bits set is `mov x1, -1`. The fixed program prints `mask = 0xffffffffffffffff`.",
-    wrong: `        lsl     x9, x9, n_r
-        sub     x1, x9, 1`,
-    right: `        cmp     n_r, 64
-        b.lo    shift_mask
-        mov     x1, -1`,
+    wrong: `lsl     x9, x9, n_r
+sub     x1, x9, 1`,
+    right: `cmp     n_r, 64
+b.lo    shift_mask
+mov     x1, -1`,
     broken: {
       source: `// Builds a mask of the low n bits as (1 << n) - 1, for n = 64.
 // The shift amount is taken modulo 64, so 64 shifts by 0.
@@ -381,9 +381,9 @@ print_mask:
     server: "does not build: as reports that operand 3, the 12, must be a register.",
     playground: "does not build either; the error asks for a register where the 12 is.",
     fix: "Load the constant into a register, then multiply. The fixed program prints `7 * 12 = 84`.",
-    wrong: `        mul     x20, x19, 12`,
-    right: `        mov     x9, 12
-        mul     x20, x19, x9`,
+    wrong: `mul     x20, x19, 12`,
+    right: `mov     x9, 12
+mul     x20, x19, x9`,
     broken: {
       source: `// Multiplies 7 by 12.
 // mul has no immediate form.
