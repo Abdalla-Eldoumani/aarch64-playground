@@ -74,7 +74,7 @@ const leadMarkdown = [
 const integerMarkdown = [
   "Every general-purpose register has two names for one storage location: `x19` is all 64 bits and `w19` is its low 32 bits, the view for an int or anything narrower. Writing the `w` form zeroes the top half. A role belongs to the register, so `w19` keeps its value across a call exactly as `x19` does.",
   "",
-  "The first eight arguments and the result travel in `x0` to `x7`. An int argument arrives in `w0` with the top half of `x0` undefined, so sign-extend it with `sxtw` before you use it as a 64-bit value. A routine you call may use `x0`-`x7` freely, so treat anything in them as gone once the call returns. `x8` holds the address for a result too big for registers, covered below, and the system call number for an `svc`.",
+  "The first eight arguments and the result travel in `x0` to `x7`. An int argument arrives in `w0` and nothing is promised about the top half of `x0`, so sign-extend it with `sxtw` before you use it as a 64-bit value. A routine you call may use `x0`-`x7` freely, so treat anything in them as gone once the call returns. `x8` holds the address for a result too big for registers, covered below, and the system call number for an `svc`.",
   "",
   "`x9` to `x15` are caller-saved temporaries: a routine you call may overwrite any of them. `x16` and `x17` can change on the way into a call, and `x18` is best left alone; the rules at the end of the page say why. `x19` to `x28` are callee-saved: a routine that writes one must restore it before returning, which makes them the place to keep a value alive across a call.",
   "",
@@ -102,7 +102,7 @@ const stackArgumentsMarkdown = [
 const structsMarkdown = [
   "A struct of up to 16 bytes travels by value, its bytes loaded into the next `x` registers as if with `ldr`: a struct of two longs arrives in `x0` and `x1`. A larger struct travels by reference. The caller copies it into its own frame and passes the copy's address, so the callee can change the copy without touching the original.",
   "",
-  "One kind of struct goes to the vector registers instead. When every member has the same floating-point type and there are at most four of them, a homogeneous floating-point aggregate (HFA), each member travels in its own register, in consecutive `v` registers: a struct of three doubles arrives in `d0`, `d1` and `d2`. If too few of `v0`-`v7` are left, the whole struct goes on the stack, never split and never into `x` registers. The same holds for up to four short vectors of one type, 8 or 16 bytes each.",
+  "One kind of struct goes to the vector registers instead. When every member has the same floating-point type and there are at most four of them, a homogeneous floating-point aggregate (HFA), each member travels in its own register, in consecutive `v` registers: a struct of three doubles arrives in `d0`, `d1` and `d2`. If too few of `v0`-`v7` are left, the whole struct goes on the stack, never split and never into `x` registers. The same holds for up to four short vectors of one size, 8 or 16 bytes each.",
 ].join("\n");
 
 const largeResultsMarkdown = [
@@ -134,7 +134,7 @@ const allocMarkdown = [
 ].join("\n");
 
 const frameChainMarkdown = [
-  "Each frame record holds the caller's `fp`, and the caller's `fp` points at the caller's own frame record. So the records form a chain from the routine running now back through every routine waiting on it, and loading `[fp]` steps one frame up. A debugger walks this chain to print a backtrace; the standard marks its end with a saved `fp` of zero.",
+  "Each frame record holds the caller's `fp`, and the caller's `fp` points at the caller's own frame record. So the records form a chain from the routine running now back through every routine waiting on it, and loading `[fp]` steps one frame up. A debugger can walk this chain to print a backtrace, and the standard marks its end with a saved `fp` of zero.",
   "",
   "Below, `main` calls `outer` and `outer` calls `inner`. Each stores the address of its own name in its frame, and `inner` follows the chain to read all three.",
 ].join("\n");
