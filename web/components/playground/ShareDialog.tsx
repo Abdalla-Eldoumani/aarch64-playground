@@ -70,14 +70,14 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           Share this program
         </h2>
         {oversize ? (
-          <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
+          <p role="alert" className="text-[12px] text-[var(--danger)] mb-2">
             this workspace is too large to share as a link (
             {size.chars.toLocaleString()} characters compressed, limit{" "}
             {size.max.toLocaleString()}). pick workspace .json from the
             export menu in the header and send that file instead.
           </p>
         ) : (
-          <p className="text-[11px] text-[var(--text-secondary)] mb-2">
+          <p className="text-[12px] text-[var(--text-secondary)] mb-2">
             the program is packed into the link itself; nothing is sent to a server.
           </p>
         )}
@@ -86,7 +86,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
             readOnly
             value={url}
             rows={4}
-            className="w-full text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
+            className="w-full text-[12px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
             onFocus={(e) => e.currentTarget.select()}
             aria-label="shareable url"
           />
