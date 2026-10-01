@@ -2,7 +2,7 @@
   "title": "Splitting a program across files",
   "slug": "separate-compilation",
   "order": 25,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-10-01",
   "summary": "Split a program into files, share labels between them with .global, and build it so the linker can join the pieces, C files included.",
   "tags": [
     "external data",
@@ -136,7 +136,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Fill in the blank: external data (core)](/practice/blanks-external-data): how to export a label.\n- [Intermediate quiz: external data](/practice/quiz-inter-external-data): the sections these files keep their data in."
+      "markdown": "## Practice\n\n- [Fill in the blank: external data (core)](/practice/blanks-external-data): how to export a label.\n- [Intermediate quiz: external data](/practice/quiz-inter-external-data): the sections these files keep their data in.\n- [Down to one digit](/practice/down-to-one-digit): write `digsum`, a function that `main` calls. The checker takes one file, so solve it there first. Then, in the playground, move `digsum` and its `.global digsum` line into a second file, copy the `define` lines it uses, and run the pair."
     }
   ]
 }
