@@ -209,6 +209,44 @@ describe("InstructionReference", () => {
     expect(screen.getByRole("button", { name: "mov" })).toBeTruthy();
   });
 
+  it("opens the first match when Enter is pressed in the filter", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    // "d" leaves add, adcs, ldr and addv, in that order.
+    fireEvent.change(input, { target: { value: "d" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByLabelText("instruction detail").textContent).toContain("add xd, xn, xm");
+    expect(screen.getByRole("button", { name: "add" }).getAttribute("aria-current")).toBe("true");
+    expect(window.location.hash).toBe("#add");
+  });
+
+  it("opens the mnemonic typed in full before an earlier row that contains it", () => {
+    render(<InstructionReference instructions={REFERENCE_INSTRUCTIONS} />);
+    const input = screen.getByLabelText(/filter/i);
+    // sub and many others come before b in the index and contain the letter.
+    fireEvent.change(input, { target: { value: "b" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const detail = screen.getByLabelText("instruction detail");
+    expect(detail.querySelector("h2")?.textContent).toBe("b");
+  });
+
+  it("leaves the selection alone on Enter when nothing matches", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    fireEvent.change(input, { target: { value: "zzz" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByLabelText("instruction detail").textContent).toContain("mov xd, xn");
+    expect(window.location.hash).toBe("");
+  });
+
+  it("keeps the phone keyboard from correcting or capitalising a typed mnemonic", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    expect(input.getAttribute("spellcheck")).toBe("false");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    expect(input.getAttribute("autocapitalize")).toBe("off");
+  });
+
   it("shows the selected instruction's syntax, example, and gotchas", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const detail = screen.getByLabelText("instruction detail");
