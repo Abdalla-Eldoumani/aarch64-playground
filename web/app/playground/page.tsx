@@ -25,10 +25,12 @@ import {
 } from "@/components/playground/EmbeddablePlayground";
 import { SiteNav } from "@/components/chrome/SiteNav";
 import { useStarCount } from "@/components/chrome/StarCount";
-// The cold-load default program is the arithmetic basics example. Import its
-// single source (the same file the example loader serves and the corpus
-// verifier checks against fixtures) so the default can never drift from it.
-import DEFAULT_SOURCE from "@/public/examples/cpsc355/basics.s?raw";
+// The cold-load default program is the distance example: a loop over an
+// array, a call to a subroutine with its own frame, and printf, in under 300
+// steps. Import its single source (the same file the example loader serves
+// and the corpus verifier checks against fixtures) so the default can never
+// drift from it.
+import DEFAULT_SOURCE from "@/public/examples/cpsc355/distance.s?raw";
 
 // The three page-level modals mount only when opened. The emulator surface
 // itself lives in EmbeddablePlayground, which owns the single hub.
