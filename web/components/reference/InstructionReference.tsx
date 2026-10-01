@@ -280,6 +280,13 @@ export function InstructionReference({
     if (event.key === "Escape") {
       event.preventDefault();
       setFilter("");
+    } else if (event.key === "Enter" && flat.length > 0) {
+      event.preventDefault();
+      // The mnemonic typed in full wins over the first row: "b" opens b, not
+      // the first mnemonic that happens to contain the letter.
+      const typed = filter.trim().toLowerCase();
+      const exact = flat.find((i) => i.mnemonic.toLowerCase() === typed);
+      openInstruction((exact ?? flat[0]).mnemonic);
     }
   }
 
