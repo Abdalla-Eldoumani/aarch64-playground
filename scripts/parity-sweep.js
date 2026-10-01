@@ -285,14 +285,14 @@ function enumerateReference(mods) {
 function enumeratePitfalls(mods) {
   const out = [];
   mods.pitfalls.PITFALLS.forEach((p, i) => {
-    for (const half of ["fault", "fix"]) {
+    for (const half of ["broken", "fixed"]) {
       out.push({
         id: `pitfall-${i + 1}-${half}`,
         source: "pitfalls",
         kind: "console",
-        program: p[half],
+        program: p[half].source,
         args: [], stdin: "", vfs: {},
-        // A fault half is authored to misbehave; parity means it misbehaves
+        // A broken half is authored to misbehave; parity means it misbehaves
         // the same way on both sides, not that it succeeds.
         note: `${p.title} (${half})`,
       });
