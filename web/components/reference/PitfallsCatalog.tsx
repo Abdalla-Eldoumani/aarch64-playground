@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type JSX } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { PitfallCard, type PitfallVariant } from "@/components/reference/PitfallCard";
 import {
@@ -102,10 +103,14 @@ export function PitfallsCatalog({
   }
 
   // The clear button removes itself, so focus goes to the text box instead
-  // of falling back to the top of the page.
+  // of falling back to the top of the page. The cards render first: focused
+  // before them, the box is scrolled off screen when they land above the
+  // footer and the browser keeps the footer in view.
   function clearFilters() {
-    setQuery("");
-    setGroups(new Set());
+    flushSync(() => {
+      setQuery("");
+      setGroups(new Set());
+    });
     searchRef.current?.focus();
   }
 
