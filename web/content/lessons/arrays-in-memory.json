@@ -2,7 +2,7 @@
   "title": "Arrays in memory, in one and two dimensions",
   "slug": "arrays-in-memory",
   "order": 19,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Reserve an array in the frame or in .bss and reach any element, in one or two dimensions, as base plus index times size.",
   "tags": [
     "arrays",
@@ -82,6 +82,11 @@
       "type": "callout",
       "variant": "note",
       "markdown": "In the print loop, `w9` and `w10` only hold a value between one call and the next, because `printf` is allowed to change them. The pointer and the count must last across every call, so they live in `ptr_r` and `k_r` (`x20` and `w21`)."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [An x load from an int array reads two ints](/reference#pitfall-x-load-reads-two-ints)\n- [.align 3 means 8 bytes; .balign 8 means 8 bytes](/reference#pitfall-align-counts-powers-of-two)"
     },
     {
       "type": "prose",
