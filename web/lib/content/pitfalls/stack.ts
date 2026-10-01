@@ -11,12 +11,12 @@ export const STACK_PITFALLS: Pitfall[] = [
     server: "prints nothing and stops with `Bus error`: printf's own `stp` through the misaligned sp faults.",
     playground: "stops at the `bl printf` with a bus error and says sp is not a multiple of 16 there.",
     fix: "Push and pop the pair with 16: `stp fp, lr, [sp, -16]!` and `ldp fp, lr, [sp], 16`. The fixed program prints `sp & 15 = 0`.",
-    wrong: `        stp     fp, lr, [sp, -8]!
-        ...
-        ldp     fp, lr, [sp], 8`,
-    right: `        stp     fp, lr, [sp, -16]!
-        ...
-        ldp     fp, lr, [sp], 16`,
+    wrong: `stp     fp, lr, [sp, -8]!
+...
+ldp     fp, lr, [sp], 8`,
+    right: `stp     fp, lr, [sp, -16]!
+...
+ldp     fp, lr, [sp], 16`,
     broken: {
       source: `// Prints the low four bits of sp, which should be 0.
 // The frame push moves sp by 8, leaving it off the 16-byte boundary.
@@ -91,8 +91,8 @@ main:
     server: "prints nothing and stops with `Bus error` at the first store through sp.",
     playground: "stops at that store with a bus error and says sp must be a multiple of 16.",
     fix: "Size the frame with the alignment formula, `alloc = -(16 + 24) & -16`, which rounds 40 up to 48. The fixed program prints `sp & 15 = 0`.",
-    wrong: `        sub     sp, sp, 24
-        str     x9, [sp, 8]`,
+    wrong: `sub     sp, sp, 24
+str     x9, [sp, 8]`,
     right: `alloc = -(16 + 24) & -16
         stp     fp, lr, [sp, alloc]!`,
     broken: {
@@ -296,12 +296,12 @@ round_up:
     server: "prints nothing and stops with `Segmentation fault`: `ret` jumped into the stack, which holds no code.",
     playground: "stops right after the `ret`: the next instruction would come from the stack, and the error says execution branched into data rather than code.",
     fix: "Mirror the `stp`: `ldp fp, lr, [sp], 16`. The fixed program prints `average = 6`.",
-    wrong: `        stp     fp, lr, [sp, -16]!
-        ...
-        ldp     lr, fp, [sp], 16`,
-    right: `        stp     fp, lr, [sp, -16]!
-        ...
-        ldp     fp, lr, [sp], 16`,
+    wrong: `stp     fp, lr, [sp, -16]!
+...
+ldp     lr, fp, [sp], 16`,
+    right: `stp     fp, lr, [sp, -16]!
+...
+ldp     fp, lr, [sp], 16`,
     broken: {
       source: `// Averages two numbers in a function with the usual frame.
 // The epilogue restores fp and lr swapped, so ret jumps into the stack.
@@ -398,13 +398,13 @@ average:
     server: "prints `sum = 25, cube = 125`: cube used x9 for its own work, as it is allowed to.",
     playground: "prints the same line. After a library call such as printf the playground also fills x0 to x18 with 0xdeadbeefdeadbeef and notes the first use of a clobbered register.",
     fix: "Keep the sum in x19, and save x19 in main's frame because main is a callee too. The fixed program prints `sum = 42, cube = 125`.",
-    wrong: `        mov     x9, 42
-        bl      cube
-        mov     x1, x9`,
-    right: `        str     x19, [fp, x19_save]
-        mov     x19, 42
-        bl      cube
-        mov     x1, x19`,
+    wrong: `mov     x9, 42
+bl      cube
+mov     x1, x9`,
+    right: `str     x19, [fp, x19_save]
+mov     x19, 42
+bl      cube
+mov     x1, x19`,
     broken: {
       source: `// Keeps a sum in x9 across a call to cube, which uses x9 itself.
 // x9 is caller-saved: a callee may change it and leave it changed.
@@ -505,12 +505,12 @@ cube:
     server: "prints `low = 1.5, high = 0.0, half = 2.5`: half saved and restored d8, and loading d8 cleared the upper 64 bits of v8.",
     playground: "prints the same line.",
     fix: "Give each double that must survive its own d register from d8 to d15, and save those in the frame. The fixed program prints `low = 1.5, high = 2.5, half = 2.5`.",
-    wrong: `        ldr     q8, [x9]
-        bl      half
-        mov     d1, v8.d[1]`,
-    right: `        ldp     d8, d9, [x9]
-        bl      half
-        fmov    d1, d9`,
+    wrong: `ldr     q8, [x9]
+bl      half
+mov     d1, v8.d[1]`,
+    right: `ldp     d8, d9, [x9]
+bl      half
+fmov    d1, d9`,
     broken: {
       source: `// Keeps two doubles in the two halves of q8 across a call to half.
 // A callee keeps only d8, the low 64 bits of v8.
@@ -631,12 +631,12 @@ half:
     server: "prints `3 is not less than 8`: `b.lt` read limit's `cmp x0, 10`, where 25 was greater.",
     playground: "prints the same line. After a library call the playground also sets the flags to a pattern no compare leaves and notes the first branch that reads them.",
     fix: "Compare after the call, or keep the answer in a callee-saved register with `cset` before it. The fixed program prints `3 is less than 8`.",
-    wrong: `        cmp     a_r, b_r
-        bl      limit
-        b.lt    report`,
-    right: `        bl      limit
-        cmp     a_r, b_r
-        b.lt    report`,
+    wrong: `cmp     a_r, b_r
+bl      limit
+b.lt    report`,
+    right: `bl      limit
+cmp     a_r, b_r
+b.lt    report`,
     broken: {
       source: `// Compares two numbers, calls limit, then branches on the compare.
 // limit runs its own cmp, so the branch reads limit's flags.
