@@ -91,6 +91,7 @@ export function FpRegisterFileDiagram({
             <ul className="flex flex-wrap gap-2">
               {range(group.first, group.last).map((n) => {
                 const keepsLow = group.family === "callee";
+                // 3.25rem cells with px-2 fit four to a row on a 320px phone.
                 return (
                   <li
                     key={n}
@@ -99,7 +100,7 @@ export function FpRegisterFileDiagram({
                         ? `v${n}: bits 63:0, d${n}, kept across a call; bits 127:64 may change`
                         : `v${n}: a call may change all 128 bits`
                     }
-                    className="flex min-h-[44px] min-w-[3.75rem] flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] border border-[var(--border)] border-t-[3px] px-3 py-2"
+                    className="flex min-h-[44px] min-w-[3.25rem] flex-col items-center justify-center gap-1 rounded-[var(--radius-control)] border border-[var(--border)] border-t-[3px] px-2 py-2"
                     style={{
                       borderTopColor: FAMILY_TINT[group.family],
                       backgroundColor: `color-mix(in srgb, ${FAMILY_TINT[group.family]} 8%, transparent)`,
