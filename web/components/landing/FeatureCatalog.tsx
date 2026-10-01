@@ -13,7 +13,7 @@ export function FeatureCatalog() {
       className="mx-auto w-full max-w-5xl px-6 py-12 sm:py-16"
     >
       <h2 id="features-heading" className="sr-only">
-        what it does
+        What it does
       </h2>
       <Kicker number="02" title="what it does" className="mb-4" />
       <ul className="grid gap-x-12 lg:grid-cols-2">
