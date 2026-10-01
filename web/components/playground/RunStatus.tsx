@@ -1,6 +1,7 @@
 "use client";
 
 import { compactHex } from "@/lib/emulator/register-format";
+import { formatSteps } from "@/lib/emulator/format-steps";
 
 export interface RunStatusProps {
   programLoaded: boolean;
@@ -27,7 +28,7 @@ function statusText(p: RunStatusProps): string {
   if (p.failed) return "stopped on an error";
   if (p.blocked) return "waiting for input";
   if (p.isRunning) return "running";
-  const steps = `${p.stepCount.toLocaleString()} ${p.stepCount === 1 ? "step" : "steps"}`;
+  const steps = formatSteps(p.stepCount);
   if (p.isHalted) return p.exitCode == null ? `finished · ${steps}` : `finished · exit ${p.exitCode} · ${steps}`;
   if (!p.programLoaded) return "not assembled";
   return p.stepCount > 0 ? steps : "ready to step";
