@@ -46,6 +46,12 @@ describe("BlanksBlock", () => {
 });
 
 describe("BlanksBlock controlled answer", () => {
+  // The blank's own outline is off, so the ring is its only focus mark.
+  it("rings the blank on keyboard focus", () => {
+    render(<BlanksBlock {...PROPS} />);
+    expect(screen.getByLabelText(PROPS.prompt).className).toContain("focus-visible:[box-shadow:var(--ring)]");
+  });
+
   it("renders the answer the sheet passes in", () => {
     render(<BlanksBlock {...PROPS} value="ldrb" onValueChange={() => {}} />);
     expect((screen.getByLabelText(PROPS.prompt) as HTMLInputElement).value).toBe("ldrb");
