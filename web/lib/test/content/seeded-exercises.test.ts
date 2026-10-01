@@ -79,9 +79,9 @@ describe("seeded exercises validate", () => {
     });
   });
 
-  it("offer at least as many coding exercises as theory sets", () => {
+  it("offer exactly as many theory sets as coding exercises", () => {
     const theory = exercises.filter((exercise) => practiceSide(exercise) === "theory");
-    expect(coding.length).toBeGreaterThanOrEqual(theory.length);
+    expect(theory.length).toBe(coding.length);
   });
 
   it("ship write and identify-bug exercises, with structural checks among them", () => {
