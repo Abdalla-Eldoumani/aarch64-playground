@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
+import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { explainError } from "@/lib/asm/error-explain";
 import { formatSteps } from "@/lib/emulator/format-steps";
 
@@ -110,7 +111,7 @@ export function Controls({
           className={share("flex-[1.4]")}
         >
           <span>{isAssembling ? "loading…" : "assemble"}</span>
-          {chips && <Shortcut keys="F6" />}
+          {chips && <ShortcutChip keys="F6" />}
         </Button>
         <Button
           variant="primary"
@@ -127,7 +128,7 @@ export function Controls({
           }
         >
           <span>{isRunning ? "pause" : "run"}</span>
-          {chips && <Shortcut keys="F5" />}
+          {chips && <ShortcutChip keys="F5" />}
         </Button>
         <Button
           variant="secondary"
@@ -140,7 +141,7 @@ export function Controls({
           disabled={!programLoaded || isRunning || isHalted || blocked}
         >
           <span>step</span>
-          {chips && <Shortcut keys="F10" />}
+          {chips && <ShortcutChip keys="F10" />}
         </Button>
         {onStepBack && (
           <Button
@@ -153,7 +154,7 @@ export function Controls({
             disabled={!programLoaded || isRunning || !canStepBack || blocked}
           >
             <span>back</span>
-            {chips && <Shortcut keys="Shift+F10" />}
+            {chips && <ShortcutChip keys="Shift+F10" />}
           </Button>
         )}
         <Button
@@ -165,7 +166,7 @@ export function Controls({
           className={share("flex-1")}
         >
           <span>reset</span>
-          {chips && <Shortcut keys="Shift+F5" />}
+          {chips && <ShortcutChip keys="Shift+F5" />}
         </Button>
 
         {/* With tools at the row's end, the count stays by the buttons and
@@ -222,20 +223,5 @@ export function Controls({
       )}
       {trailing}
     </div>
-  );
-}
-
-function Shortcut({ keys }: { keys: string }) {
-  // Hidden on touch screens, which have no F keys. currentColor at full
-  // strength keeps the chip readable (WCAG AA) on both button styles. CSS
-  // draws the key from data-keys: as text, even aria-hidden, it made the
-  // visible label "assemble F6" against the name "assemble", which fails
-  // label-in-name.
-  return (
-    <kbd
-      aria-hidden="true"
-      data-keys={keys}
-      className="hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[12px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
-    />
   );
 }
