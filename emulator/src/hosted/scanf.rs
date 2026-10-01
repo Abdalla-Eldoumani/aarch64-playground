@@ -8,6 +8,8 @@
 //! arrives, so the student's input lands as one read. x0 returns the
 //! fields matched, or -1 when input ended before the first one.
 
+use std::cell::Cell;
+
 use crate::errors::EmuError;
 use crate::hosted::printf::read_c_string;
 use crate::hosted::{HostContext, HostOutcome, VarargWalker};
@@ -248,22 +250,27 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                     in_pos += 1;
                 }
                 let limit = width.unwrap_or(usize::MAX).max(1);
-                let end = in_pos.saturating_add(limit).min(ctx.stdin.len());
-                let complete =
-                    in_pos.saturating_add(limit) <= ctx.stdin.len() || ctx.stdin_closed;
-                let (value, consumed, stalled) = parse_float(&ctx.stdin[in_pos..end], complete);
-                if stalled {
-                    return stall(ctx, in_pos, matched);
-                }
-                if consumed == 0 {
-                    break;
-                }
+                let scanned = parse_float(&ctx.stdin[in_pos..], limit, ctx.stdin_closed);
+                let (value, consumed) = match scanned {
+                    None => return stall(ctx, in_pos, matched),
+                    Some(Err(read)) => {
+                        in_pos += read;
+                        break;
+                    }
+                    Some(Ok(field)) => field,
+                };
                 in_pos += consumed;
                 if !suppress {
                     let ptr = walker.next_int(ctx);
                     if long_modifier {
                         // %lf: the pointer names a double, store 8 bytes.
                         ctx.mem.write_u64(ptr, value.to_bits())?;
+                    } else if value.is_nan() {
+                        // A cast may drop a NaN's sign and payload; glibc
+                        // keeps the sign and the payload's low 22 bits.
+                        let bits = value.to_bits();
+                        let sign = (bits >> 32) as u32 & 0x8000_0000;
+                        ctx.mem.write_u32(ptr, sign | 0x7fc0_0000 | (bits as u32 & 0x3f_ffff))?;
                     } else {
                         // %f: the pointer names a float, store 4 bytes,
                         // exactly like C's scanf.
@@ -416,56 +423,123 @@ fn parse_unsigned_int(buf: &[u8], base: u32, complete: bool) -> (u64, usize, boo
     (value, i, false)
 }
 
-fn parse_float(buf: &[u8], complete: bool) -> (f64, usize, bool) {
+/// One `%f` field, scanned the way glibc's scanf reads it: a sign, then
+/// `inf`/`infinity`, `nan`/`nan(chars)` in any case, or a decimal number.
+/// At most `width` bytes are read. None stalls: the field ran into the end
+/// of the queued input, and more may still arrive (once stdin is closed,
+/// that end is EOF). Ok is the value and the bytes it used. Err is a
+/// conversion error with the bytes glibc read before giving up: those stay
+/// read, so `1.5e` followed by a newline loses `1.5e`, and `in` loses the
+/// byte that broke the word too.
+fn parse_float(buf: &[u8], width: usize, closed: bool) -> Option<Result<(f64, usize), usize>> {
     if buf.is_empty() {
-        return (0.0, 0, true);
+        return None;
     }
-    // Accept: optional sign, digits, optional '.', digits, optional e/E+digits.
-    let mut i = 0;
-    if buf[0] == b'-' || buf[0] == b'+' {
-        i += 1;
+    let field = &buf[..buf.len().min(width)];
+    // Set when the scan asked for a byte past the field. Past the width or
+    // at EOF that byte is simply absent; past what was typed so far it may
+    // still come and change the answer.
+    let hit_end = Cell::new(false);
+    let at = |i: usize| {
+        let b = field.get(i).copied();
+        hit_end.set(hit_end.get() || b.is_none());
+        b
+    };
+    let scanned = scan_float(field, &at);
+    if hit_end.get() && !closed && width > buf.len() {
+        return None;
     }
-    let mut seen_digit = false;
-    while i < buf.len() && buf[i].is_ascii_digit() {
-        i += 1;
-        seen_digit = true;
-    }
-    if i < buf.len() && buf[i] == b'.' {
-        i += 1;
-        while i < buf.len() && buf[i].is_ascii_digit() {
-            i += 1;
-            seen_digit = true;
-        }
-    }
-    if seen_digit && i < buf.len() && (buf[i] == b'e' || buf[i] == b'E') {
-        let before_exp = i;
-        i += 1;
-        if i < buf.len() && (buf[i] == b'+' || buf[i] == b'-') {
-            i += 1;
-        }
-        let exp_start = i;
-        while i < buf.len() && buf[i].is_ascii_digit() {
-            i += 1;
-        }
-        if i == exp_start {
-            // `1.5e` with nothing after: on a soft buffer end the exponent
-            // may still arrive; otherwise back the field off to the
-            // well-formed mantissa (C behavior) instead of parsing the
-            // dangling `e` into an error that stored 0.
-            if i == buf.len() && !complete {
-                return (0.0, 0, true);
+    Some(scanned)
+}
+
+/// parse_float's reading of the field, with every byte fetched through
+/// `at` (None past the end).
+fn scan_float(field: &[u8], at: &dyn Fn(usize) -> Option<u8>) -> Result<(f64, usize), usize> {
+    let negative = field[0] == b'-';
+    let start = usize::from(negative || field[0] == b'+');
+    let sign = u64::from(negative) << 63;
+    match at(start) {
+        Some(b'i' | b'I') => {
+            let mut end = spell(at, start, b"inf")?;
+            if let Some(b'i' | b'I') = at(end) {
+                end = spell(at, end, b"inity")?;
             }
-            i = before_exp;
+            return Ok((f64::from_bits(sign | 0x7ff0_0000_0000_0000), end));
+        }
+        Some(b'n' | b'N') => {
+            let mut end = spell(at, start, b"nan")?;
+            let mut payload = 0;
+            if at(end) == Some(b'(') {
+                let mut close = end + 1;
+                loop {
+                    match at(close) {
+                        Some(b')') => break,
+                        Some(b) if b.is_ascii_alphanumeric() || b == b'_' => close += 1,
+                        Some(_) => return Err(close + 1),
+                        None => return Err(close),
+                    }
+                }
+                payload = nan_payload(&field[end + 1..close]);
+                end = close + 1;
+            }
+            let bits = sign | 0x7ff8_0000_0000_0000 | (payload & 0x0007_ffff_ffff_ffff);
+            return Ok((f64::from_bits(bits), end));
+        }
+        _ => {}
+    }
+    // Decimal: digits with at most one '.', then an exponent once a digit
+    // has come, signed only straight after the 'e'. The first byte that
+    // fits none of that ends the field without being read.
+    let (mut dot, mut digits, mut exp, mut exp_digits) = (false, false, false, false);
+    let mut end = start;
+    while let Some(b) = at(end) {
+        match b {
+            b'0'..=b'9' if exp => exp_digits = true,
+            b'0'..=b'9' => digits = true,
+            b'.' if !dot && !exp => dot = true,
+            b'e' | b'E' if digits && !exp => exp = true,
+            b'+' | b'-' if exp && matches!(field[end - 1], b'e' | b'E') => {}
+            _ => break,
+        }
+        end += 1;
+    }
+    // glibc hands what it read to strtod and fails the field unless all
+    // of it is the number.
+    if !digits || (exp && !exp_digits) {
+        return Err(end);
+    }
+    let text = std::str::from_utf8(&field[..end]).unwrap_or("");
+    Ok((text.parse().unwrap_or(0.0), end))
+}
+
+/// Reads `word` from `i` in any case: Ok(end), or Err(bytes read), where a
+/// wrong byte counts as read and a missing one does not.
+fn spell(at: &dyn Fn(usize) -> Option<u8>, i: usize, word: &[u8]) -> Result<usize, usize> {
+    for (k, &want) in word.iter().enumerate() {
+        match at(i + k) {
+            Some(b) if b.to_ascii_lowercase() == want => {}
+            Some(_) => return Err(i + k + 1),
+            None => return Err(i + k),
         }
     }
-    if !seen_digit {
-        return (0.0, 0, i == buf.len() && !complete);
+    Ok(i + word.len())
+}
+
+/// A NaN's payload, from the text inside `nan(...)`: glibc reads it as an
+/// unsigned number in C's base rules (`0x` hex, a leading 0 octal) and
+/// keeps no payload unless all of the text is that number.
+fn nan_payload(text: &[u8]) -> u64 {
+    let (digits, base) = match text {
+        [b'0', b'x' | b'X', rest @ ..] if !rest.is_empty() => (rest, 16),
+        [b'0', rest @ ..] if !rest.is_empty() => (rest, 8),
+        _ => (text, 10),
+    };
+    if digits.is_empty() || !digits.iter().all(|&b| is_digit_for_base(b, base)) {
+        return 0;
     }
-    if i == buf.len() && !complete {
-        return (0.0, 0, true);
-    }
-    let s = std::str::from_utf8(&buf[..i]).unwrap_or("");
-    (s.parse::<f64>().unwrap_or(0.0), i, false)
+    // Every byte is a digit, so only overflow fails, which glibc saturates.
+    let s = std::str::from_utf8(digits).unwrap_or("");
+    u64::from_str_radix(s, base).unwrap_or(u64::MAX)
 }
 
 fn is_digit_for_base(b: u8, base: u32) -> bool {
@@ -771,11 +845,20 @@ mod tests {
     }
 
     #[test]
-    fn dangling_exponent_backs_off_to_the_mantissa() {
-        let (v, consumed, stalled) = parse_float(b"1.5e \n", false);
-        assert!(!stalled);
-        assert_eq!(consumed, 3);
-        assert_eq!(v, 1.5);
+    fn a_dangling_exponent_fails_the_field_like_glibc() {
+        // glibc reads `1.5e`, cannot use all of it, and fails the field;
+        // the space it stopped at is left for the next read.
+        assert_eq!(parse_float(b"1.5e \n", usize::MAX, false), Some(Err(4)));
+    }
+
+    #[test]
+    fn a_word_at_the_end_of_queued_input_waits_for_more() {
+        // `inf` may still become `infinity`, and `in` may still become
+        // `inf`, so open stdin stalls; closed, the end is EOF.
+        assert_eq!(parse_float(b"inf", usize::MAX, false), None);
+        assert_eq!(parse_float(b"inf", usize::MAX, true), Some(Ok((f64::INFINITY, 3))));
+        assert_eq!(parse_float(b"in", usize::MAX, false), None);
+        assert_eq!(parse_float(b"in", usize::MAX, true), Some(Err(2)));
     }
 
     #[test]
