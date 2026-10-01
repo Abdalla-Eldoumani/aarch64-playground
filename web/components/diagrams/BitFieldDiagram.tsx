@@ -138,7 +138,7 @@ export function BitFieldDiagram({
           const dest = bitHeaders && isDestination(field);
           const rangeLine = ranges && (
             <span
-              className={`w-full truncate font-mono text-[9px] ${
+              className={`w-full truncate font-mono text-[12px] ${
                 dest ? "text-[var(--amber)]" : "text-[var(--text-tertiary)]"
               }`}
             >
@@ -188,7 +188,7 @@ export function BitFieldDiagram({
                   <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
                     {field.label}
                   </span>
-                  <span className={`w-full truncate font-mono text-[11px] ${valueInk}`}>
+                  <span className={`w-full truncate font-mono text-[12px] ${valueInk}`}>
                     {field.value}
                   </span>
                 </button>
@@ -198,7 +198,7 @@ export function BitFieldDiagram({
                   <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
                     {field.label}
                   </span>
-                  <span className={`font-mono text-[11px] ${valueInk}`}>
+                  <span className={`font-mono text-[12px] ${valueInk}`}>
                     {field.bits}
                   </span>
                 </span>
@@ -231,7 +231,7 @@ export function BitFieldDiagram({
                     );
                   })}
                 </span>
-                <span className="text-[11px] text-[var(--text-tertiary)]">
+                <span className="text-[12px] text-[var(--text-tertiary)]">
                   {nibble.hexDigit}
                 </span>
               </span>
