@@ -141,7 +141,7 @@ export function EmbedLayout({
           {args && (
             // The next run or check assembles with whatever this holds, so a
             // student can try the command lines the hidden inputs use.
-            <label className="inline-flex shrink-0 basis-full items-center gap-1.5 font-mono text-[12px] text-[var(--text-secondary)] sm:basis-auto sm:text-[11px]">
+            <label className="inline-flex shrink-0 basis-full items-center gap-1.5 font-mono text-[12px] text-[var(--text-secondary)] sm:basis-auto">
               args
               <input
                 type="text"
