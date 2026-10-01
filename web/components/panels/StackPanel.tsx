@@ -41,7 +41,7 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
       }}
     >
       <div className="flex items-center flex-wrap gap-2 mb-2">
-        <span className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
+        <span className="text-[var(--text-secondary)] text-[12px] uppercase tracking-wider">
           stack
         </span>
         <span className="font-mono text-[var(--amber)]">
