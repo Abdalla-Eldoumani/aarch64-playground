@@ -30,7 +30,10 @@ interface ExampleGroup {
 const GROUPS: ExampleGroup[] = [
   {
     label: "First programs",
-    items: [{ name: "arithmetic", stem: "basics" }],
+    items: [
+      { name: "arithmetic", stem: "basics" },
+      { name: "distance from zero", stem: "distance" },
+    ],
   },
   {
     label: "Data and memory",
