@@ -6,6 +6,7 @@ import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
 import { lessonLinks } from "@/lib/content/lesson-links";
 import { loadAllLessons } from "@/lib/content/lessons";
 import { loadExerciseIndex } from "@/lib/content/exercises";
+import { PRACTICE_TOPICS, practiceSide, type PracticeSide } from "@/lib/content/practice-topics";
 
 // The foot of every lesson: the previous and next buttons follow the sorted
 // lesson list, the last lesson hands over to practice, and the practice links
@@ -182,5 +183,51 @@ describe("lessonLinks on the shipped lessons", () => {
       }
     }
     expect(stale).toEqual([]);
+  });
+});
+
+// Topics that ship one side only, each with the reason the other side does
+// not fit. An entry whose topic gains that side fails, so the list stays true.
+const ONE_SIDED: Record<string, { missing: PracticeSide; why: string }> = {
+  architecture: {
+    missing: "code",
+    why: "buses, memory and the fetch-execute cycle are described, not programmed",
+  },
+  "binary-logic": {
+    missing: "code",
+    why: "truth tables and gates are worked by hand; the programs that use them sit under bitwise",
+  },
+};
+
+describe("practice coverage", () => {
+  it("gives every lesson at least one coding exercise and one theory set", () => {
+    const short: string[] = [];
+    for (const entry of lessons) {
+      const sides = lessonLinks(lessons, entry.slug, exercises).practice.map((group) => group.side.id);
+      for (const side of ["code", "theory"] as const) {
+        if (!sides.includes(side)) short.push(`${entry.slug} links no ${side} exercise`);
+      }
+    }
+    expect(short).toEqual([]);
+  });
+
+  it("gives every topic on the practice page both sides, apart from the listed exceptions", () => {
+    const topics = new Set([
+      ...PRACTICE_TOPICS.map((topic) => topic.id),
+      ...exercises.flatMap((row) => (row.topic ? [row.topic] : [])),
+    ]);
+    const short: string[] = [];
+    for (const topic of topics) {
+      const sides = new Set(exercises.filter((row) => row.topic === topic).map(practiceSide));
+      const expected = (["code", "theory"] as const).filter((side) => side !== ONE_SIDED[topic]?.missing);
+      for (const side of expected) {
+        if (!sides.has(side)) short.push(`${topic} has no ${side} exercise`);
+      }
+      const exception = ONE_SIDED[topic];
+      if (exception && sides.has(exception.missing)) {
+        short.push(`${topic} now has a ${exception.missing} exercise; drop it from ONE_SIDED`);
+      }
+    }
+    expect(short).toEqual([]);
   });
 });
