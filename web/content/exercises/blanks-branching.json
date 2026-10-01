@@ -1,0 +1,58 @@
+{
+  "title": "Fill in the blank: branching",
+  "slug": "blanks-branching",
+  "order": 113,
+  "lastUpdated": "2026-10-01",
+  "topic": "branching",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the instruction or condition each line needs: `csel`, `cset` and `cinc` pick a value with no branch, `cbz` guards a division, and an unsigned test skips the body of an if.",
+  "blanks": [
+    {
+      "prompt": "After cmp a_r, b_r, put the smaller of the two signed values in min_r with one instruction and no branch.",
+      "code": "___ min_r, a_r, b_r, lt",
+      "blanks": [
+        "csel"
+      ],
+      "explanation": "csel (conditional select) copies its first source when the condition holds and its second when it does not. lt holds when a_r < b_r, so min_r gets a_r then and b_r otherwise. When the two are equal either one is the smaller, so le would work as well.",
+      "hint": "Conditional select."
+    },
+    {
+      "prompt": "After cmp w0, 0, write 1 to neg_r when w0 is negative and 0 when it is not.",
+      "code": "___ neg_r, lt",
+      "blanks": [
+        "cset"
+      ],
+      "explanation": "cset (conditional set) turns a condition into a number: 1 when it holds and 0 when it does not. After cmp w0, 0, lt holds exactly when w0 is below 0.",
+      "hint": "Conditional set."
+    },
+    {
+      "prompt": "Add 1 to hits_r only when the last cmp found its two values equal, and leave hits_r as it is otherwise.",
+      "code": "___ hits_r, hits_r, eq",
+      "blanks": [
+        "cinc"
+      ],
+      "explanation": "cinc (conditional increment) writes its source plus 1 when the condition holds and the source unchanged when it does not. With eq it counts matches without a branch around an add.",
+      "hint": "Conditional increment."
+    },
+    {
+      "prompt": "Skip the division when the divisor in w20 is 0 by jumping to no_div, with no cmp in front.",
+      "code": "___ w20, no_div",
+      "blanks": [
+        "cbz"
+      ],
+      "explanation": "cbz jumps when the register it names holds 0, and it needs no cmp. The guard matters because sdiv and udiv do not stop the program on a zero divisor: they quietly write 0 as the quotient.",
+      "hint": "Compare and branch on zero."
+    },
+    {
+      "prompt": "idx_r and len_r hold unsigned values, and the C reads if (idx < len) { body }. After cmp idx_r, len_r, complete the branch that jumps past the body when the test is false.",
+      "code": "b.___ out_of_range",
+      "blanks": [
+        "hs",
+        "cs"
+      ],
+      "explanation": "To skip the body, branch on the complement of idx < len, which is idx >= len. For unsigned values that is hs (higher or same). cs (carry set) is another name for the same condition, and the assembler takes either spelling.",
+      "hint": "The unsigned version of ge."
+    }
+  ]
+}
