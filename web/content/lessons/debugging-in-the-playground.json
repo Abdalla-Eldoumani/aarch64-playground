@@ -92,7 +92,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\nEach of these programs has a bug. Find it with a breakpoint and a watch or two before you change any code.\n\n- [The overeager counter](/practice/the-overeager-counter): a countdown that prints one line too many.\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [The vanishing value](/practice/the-vanishing-value): a swap of two registers that loses one of the values.\n- [The leaky frame](/practice/the-leaky-frame): a frame whose size breaks the 16-byte rule, so the program dies before it prints."
+      "markdown": "## Practice\n\nEach of these programs has a bug. Find it with a breakpoint and a watch or two before you change any code.\n\n- [The overeager counter](/practice/the-overeager-counter): a countdown that prints one line too many.\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [The vanishing value](/practice/the-vanishing-value): a swap of two registers that loses one of the values.\n- [The leaky frame](/practice/the-leaky-frame): a frame whose size breaks the 16-byte rule, so the program dies before it prints.\n\nTo check the tools themselves:\n\n- [Basic quiz: debugging in the playground](/practice/quiz-basic-debugging): where a breakpoint stops, what reset keeps, what a watch on memory shows, and what the stack rows and the diagnostic bundle hold."
     }
   ]
 }
