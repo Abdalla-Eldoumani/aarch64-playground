@@ -11,10 +11,22 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
 }
 
 /**
+ * The click handler for a dialog's backdrop. A double press on the button
+ * that opens a dialog lands its second click on the backdrop the first one
+ * just drew, so a click that is the second of a double press (`detail` above
+ * 1) leaves the dialog open.
+ */
+export function closeOnBackdropClick(onClose: () => void): (e: { detail: number }) => void {
+  return (e) => {
+    if (e.detail <= 1) onClose();
+  };
+}
+
+/**
  * Keeps keyboard focus inside an open dialog: focus starts on its first
  * control, Tab wraps, Escape calls `onClose`, and focus goes back where it
  * was on close. The caller still renders `role="dialog" aria-modal="true"`
- * and any backdrop click.
+ * and the backdrop, whose click goes through closeOnBackdropClick.
  */
 export function useFocusTrap(
   open: boolean,
