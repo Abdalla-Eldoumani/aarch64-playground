@@ -88,9 +88,11 @@ function resultCriterion(assertion: ResultAssertion): ReactNode {
 
 /**
  * A shape-only label for one structural assertion. A forbidden number is
- * described as "computes the result" without naming it, so the table and the
- * results panel never reveal the hardcoded answer; an author forbids a string
- * only for a shortcut the prompt already names, so that one is shown.
+ * described without naming it, so the table and the results panel never
+ * reveal the hardcoded answer; an author forbids a string only for a shortcut
+ * the prompt already names, so that one is shown. The label claims only what
+ * the check tests: an untouched starter holds no literal, so a label that said
+ * "computes the result" showed a pass before the student wrote anything.
  */
 function structuralCriterion(assertion: StructuralAssertion): ReactNode {
   const where = assertion.in !== undefined && (
@@ -125,7 +127,7 @@ function structuralCriterion(assertion: StructuralAssertion): ReactNode {
       // forbidden string is a shortcut (a %o format, a banned call) the
       // prompt already names.
       return typeof assertion.value === "number" ? (
-        <>computes the result (does not hardcode it){where}</>
+        <>does not hardcode the answer{where}</>
       ) : (
         <>
           does not contain <code className={CRITERION_CODE}>{assertion.value}</code>
