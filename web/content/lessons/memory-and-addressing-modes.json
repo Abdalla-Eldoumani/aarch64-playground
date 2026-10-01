@@ -2,7 +2,7 @@
   "title": "Memory: loads, stores, and addressing modes",
   "slug": "memory-and-addressing-modes",
   "order": 17,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-30",
   "summary": "Load and store 1, 2, 4 and 8 bytes with the right extension, and reach memory through offsets, index registers, and pointers that move themselves.",
   "tags": [
     "memory and the stack"
@@ -110,6 +110,11 @@
       "type": "callout",
       "variant": "note",
       "markdown": "Keep each value at an address its own size divides evenly: a word at a multiple of 4, a doubleword at a multiple of 8. That is why `.balign 4` goes before a `.word` that follows strings, whose lengths can be anything. Linux still lets an ordinary load or store use a badly aligned address, only more slowly, but `sp` is strict: using `sp` for a memory access while it is not a multiple of 16 stops the program. The next lesson keeps `sp` aligned."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [[x19, 8] reads at x19 + 8 and leaves x19 alone](/reference#pitfall-offset-does-not-write-back)\n- [ldrb and ldrh fill with zeros; ldrsb, ldrsh, and ldrsw copy the sign](/reference#pitfall-ldrb-zero-extends)\n- [The lowest address holds the lowest byte](/reference#pitfall-little-endian-byte-order)"
     },
     {
       "type": "prose",
