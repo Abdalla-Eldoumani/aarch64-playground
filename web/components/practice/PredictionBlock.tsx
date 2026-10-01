@@ -97,7 +97,7 @@ export function PredictionBlock({
           autoCorrect="off"
           autoComplete="off"
           spellCheck={false}
-          className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors disabled:opacity-80 ${inputTone}`}
+          className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)] disabled:opacity-80 ${inputTone}`}
         />
 
         {!answered ? (
