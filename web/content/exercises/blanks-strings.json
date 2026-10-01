@@ -42,6 +42,7 @@
         "0",
         "#0",
         "0x0",
+        "#0x0",
         "wzr"
       ],
       "explanation": "A string ends at the byte that holds 0. Comparing the loaded byte with 0 and branching when they are equal leaves the loop there. cbz w10, walk_done does the same in one instruction.",
@@ -52,7 +53,9 @@
       "code": "sub     w10, w10, ___",
       "blanks": [
         "32",
+        "#32",
         "0x20",
+        "#0x20",
         "'a' - 'A'",
         "'a'-'A'"
       ],
@@ -65,7 +68,8 @@
       "blanks": [
         "24",
         "0x18",
-        "#24"
+        "#24",
+        "#0x18"
       ],
       "explanation": "Every entry is an address, 8 bytes, and entries count from 0, so entry 3 starts 3 * 8 = 24 bytes past the base. What comes back in x21 is the address of that string's first byte.",
       "hint": "Multiply the entry number by the size of one address."
