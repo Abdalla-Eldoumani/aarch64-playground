@@ -13,10 +13,18 @@ import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 /**
  * The phone menu, hidden at md and up where the wide bar shows the routes
- * inline. `stars` comes from SiteNav, which has it only on server-rendered
- * mounts; without it the source row shows no count.
+ * inline. `everywhere` keeps it at every width, for the short-window
+ * playground band that stands in for the site bar. `stars` comes from SiteNav,
+ * which has it only on server-rendered mounts; without it the source row
+ * shows no count.
  */
-export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
+export function MobileNavDrawer({
+  stars = null,
+  everywhere = false,
+}: {
+  stars?: number | null;
+  everywhere?: boolean;
+}) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -26,7 +34,7 @@ export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
   useFocusTrap(open, panelRef, () => setOpen(false));
 
   return (
-    <div className="md:hidden">
+    <div className={everywhere ? undefined : "md:hidden"}>
       {/* Trigger above the panel so the close button stays hittable over the
           overlay. */}
       <button
