@@ -30,23 +30,12 @@ function subscribe(): () => void {
   return () => {};
 }
 
-/** Puts the tip's height on the root element for the rules in globals.css
- *  that keep other things clear of it: the tip wraps to four lines on a 320px
- *  screen and three on a wider one, so no fixed offset clears it everywhere. */
-function publishHeight(tip: HTMLElement | null): (() => void) | undefined {
-  if (!tip || typeof ResizeObserver === "undefined") return;
-  const root = document.documentElement;
-  const observer = new ResizeObserver(() => {
-    root.style.setProperty("--install-tip-height", `${tip.offsetHeight}px`);
-  });
-  observer.observe(tip);
-  return () => {
-    observer.disconnect();
-    root.style.removeProperty("--install-tip-height");
-  };
-}
-
-/** A one-time tip on iOS Safari: how to add the site to the home screen. */
+/**
+ * A one-time tip on iOS Safari: how to add the site to the home screen. It
+ * sits in the page flow above the footer: floating over the bottom of the
+ * screen it covered whatever was there, the landing demo's controls among
+ * them, until it was dismissed.
+ */
 export function InstallHint() {
   // False on the server and in the hydration pass, so the markup matches.
   const eligible = useSyncExternalStore(subscribe, wantsHint, () => false);
@@ -55,10 +44,8 @@ export function InstallHint() {
 
   return (
     <aside
-      ref={publishHeight}
       aria-label="install tip"
-      data-install-tip=""
-      className="fixed inset-x-3 bottom-[calc(0.75rem+var(--safe-bottom))] z-40 flex items-start gap-2 rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-2 pl-4 pr-1 [box-shadow:var(--shadow-overlay)] sm:left-auto sm:w-[24rem]"
+      className="mx-4 mb-8 flex items-start gap-2 rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-2 pl-4 pr-1 sm:mx-auto sm:w-[28rem]"
     >
       <div className="flex-1 py-1.5">
         <p className="font-sans text-[14px] leading-snug text-[var(--text-primary)]">
