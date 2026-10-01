@@ -34,10 +34,13 @@ export function SideScroll({ as, className = "", scrollerClassName, fadeClassNam
     return () => window.removeEventListener("resize", measure);
   }, [measure, children]);
   // Chromium leaves a focused item partly past the edge, under the fade; the
-  // scroll padding (the fade's width) parks it clear of the fade.
+  // scroll padding (the fade's width) parks it clear of the fade. Keyboard
+  // focus only: a tap focuses what is under the finger, and scrolling then
+  // would slide another item under it.
   const reveal = useCallback((event: FocusEvent<HTMLElement>) => {
-    if (event.target === event.currentTarget) return;
-    event.target.scrollIntoView({ block: "nearest", inline: "nearest" });
+    const target = event.target;
+    if (target === event.currentTarget || !target.matches(":focus-visible")) return;
+    target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
   }, []);
 
   return (
