@@ -2,7 +2,7 @@
   "title": "Strings, pointer arrays, and argv",
   "slug": "strings-and-command-line-arguments",
   "order": 24,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "Handle text as bytes: character codes, strings that end in a zero byte, tables of string addresses, and the arguments main receives.",
   "tags": [
     "strings",
@@ -102,7 +102,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Count the vowels](/practice/count-the-vowels): walk a string byte by byte.\n- [Caesar's little secret](/practice/caesars-little-secret): change a string in place.\n- [Palindrome or not](/practice/palindrome-or-not): compare a word from both ends, capitals and all.\n- [argv arithmetic](/practice/argv-arithmetic): add up numbers given on the command line.\n- [Say it louder](/practice/say-it-louder): print every argument in capitals.\n- [Morse code translator](/practice/morse-code-translator): look each letter up in a table of string pointers."
+      "markdown": "## Practice\n\n- [Count the vowels](/practice/count-the-vowels): walk a string byte by byte.\n- [Caesar's little secret](/practice/caesars-little-secret): change a string in place.\n- [Palindrome or not](/practice/palindrome-or-not): compare a word from both ends, capitals and all.\n- [argv arithmetic](/practice/argv-arithmetic): add up numbers given on the command line.\n- [Say it louder](/practice/say-it-louder): print every argument in capitals.\n- [Morse code translator](/practice/morse-code-translator): look each letter up in a table of string pointers.\n- [Basic quiz: strings](/practice/quiz-basic-strings), [Fill in the blank: strings (core)](/practice/blanks-strings) and [Predict: strings (challenge)](/practice/predict-strings): character codes, the zero byte at the end, and loading and storing one byte.\n- [Basic quiz: command-line arguments](/practice/quiz-basic-argv) and [Predict: command-line arguments (challenge)](/practice/predict-argv): what `argc` counts, where each `argv` entry sits, and what `atoi` makes of an argument."
     }
   ]
 }
