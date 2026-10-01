@@ -13,6 +13,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Components } from "react-markdown";
+import { ScrollingPre } from "@/components/ui/ScrollingPre";
 import { slugify } from "@/lib/content/lesson-toc";
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 
@@ -137,7 +138,7 @@ function isLinkRow(children: ReactNode): boolean {
 const LINK_CLASS =
   "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:opacity-80 focus-visible:shadow-[var(--ring)]";
 const PRE_CLASS =
-  "my-4 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
+  "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
 const INLINE_CODE_CLASS =
   "rounded-[var(--radius-control)] bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[max(0.9em,12px)] text-[var(--syntax-keyword)]";
 // The wrapper, not the table, scrolls: a wide table on a phone scrolls
@@ -199,7 +200,11 @@ const components: Components = {
     );
   },
   pre(props) {
-    return <pre className={PRE_CLASS}>{props.children}</pre>;
+    return (
+      <ScrollingPre className="my-4" preClassName={PRE_CLASS}>
+        {props.children}
+      </ScrollingPre>
+    );
   },
   table(props) {
     return (
