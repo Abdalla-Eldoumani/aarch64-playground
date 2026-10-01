@@ -44,7 +44,7 @@ export function Callout({ type, children, className = "" }: CalloutProps) {
       className={`overflow-hidden rounded-[var(--radius-control)] border ${BORDER[type]} ${className}`}
     >
       <p
-        className={`m-0 px-4 py-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] ${BAND[type]}`}
+        className={`m-0 px-4 py-1.5 font-mono text-[12px] font-semibold uppercase tracking-[0.16em] ${BAND[type]}`}
       >
         {LABEL[type]}
       </p>
