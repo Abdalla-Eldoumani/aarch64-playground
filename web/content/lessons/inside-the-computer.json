@@ -2,7 +2,7 @@
   "title": "System architecture: what is inside the box",
   "slug": "inside-the-computer",
   "order": 2,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-10-01",
   "summary": "Name the parts of a computer, and follow one instruction as the processor fetches, decodes and runs it.",
   "tags": [
     "system architecture"
@@ -103,7 +103,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Basic quiz: system architecture](/practice/quiz-basic-architecture) and [Intermediate quiz: system architecture](/practice/quiz-inter-architecture): the parts of the machine, the bus, and the two machine designs.\n- [Fill in the blank: system architecture](/practice/blanks-architecture): the names of the parts.\n- [Advanced quiz: system architecture](/practice/quiz-advance-architecture): also asks about labels and m4, the step that runs before the assembler, which the next lesson, [Anatomy of an assembly file](/learn/anatomy-of-a-program), covers."
+      "markdown": "## Practice\n\n- [Basic quiz: system architecture](/practice/quiz-basic-architecture) and [Intermediate quiz: system architecture](/practice/quiz-inter-architecture): the parts of the machine, the bus, and the two machine designs.\n- [Fill in the blank: system architecture](/practice/blanks-architecture): the names of the parts.\n- [Advanced quiz: system architecture](/practice/quiz-advance-architecture): also asks about labels and m4, the step that runs before the assembler, which the next lesson, [Anatomy of an assembly file](/learn/anatomy-of-a-program), covers.\n- [Warm up the registers](/practice/warm-up-the-registers): the ALU at work on three values held in registers. It is the first coding exercise, and it needs the next two lessons first."
     }
   ]
 }
