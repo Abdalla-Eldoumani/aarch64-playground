@@ -330,7 +330,7 @@ export default function Home() {
     <>
       {/* A phone on its side puts its notch at a side edge, so the side
           insets are kept clear of controls and code. */}
-      <div className="flex flex-col h-dvh pl-[var(--safe-left)] pr-[var(--safe-right)]">
+      <div className="playground-shell flex flex-col h-dvh min-h-0 pl-[var(--safe-left)] pr-[var(--safe-right)]">
         {/* The phone playground's own top bar replaces the site bar (see
             .playground-site-nav in globals.css). */}
         {!isEmbed && (
