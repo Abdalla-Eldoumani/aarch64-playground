@@ -79,7 +79,8 @@ the call, with a plain message instead of a crash:
 - At most 4 MiB of output (`cpu::MAX_OUTPUT_BYTES`), and a cap on the field
   width and precision `printf` will pad to.
 - In the virtual filesystem: 4 MiB per file, 4 MiB in total, and 16 files. A
-  call past a limit returns -1, as a full disk does on Linux.
+  call past a limit fails as on a full Linux disk: a system call returns a
+  negative error number, a library call -1 or NULL.
 - A load or store in the first page, or a memory access through `sp` or a
   library call while `sp` is not a multiple of 16, stops the program, as a
   segmentation fault or bus error would on the course server.
