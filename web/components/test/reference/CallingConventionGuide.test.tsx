@@ -107,6 +107,8 @@ describe("CallingConventionGuide", () => {
     expect(body).toContain("low 32 bits");
     expect(body).toContain("nothing is promised about the top half of x0");
     expect(body).toContain("There is no register named pc");
+    expect(body).toContain("the pc moves on to the next one by itself");
+    expect(body).not.toContain("only branches change it");
     expect(body).toContain("h0 the low 16 and b0 the low 8");
     expect(body).toContain("lane 0 at the low end");
   });
@@ -156,6 +158,13 @@ describe("CallingConventionGuide", () => {
     expect(body).not.toContain("[fp, -16]");
     expect(body).toContain("[sp, alloc]!");
     expect(body).toContain("[sp], dealloc");
+  });
+
+  it("places a misaligned sp's fault at the call into printf, where the server faults", () => {
+    render(<CallingConventionGuide />);
+    const body = text();
+    expect(body).toContain("usually comes at the call into printf, in the short stub the linker puts in front of it");
+    expect(body).not.toContain("deep inside printf");
   });
 
   it("shows each example's excerpt and the server's output beside it", () => {
