@@ -158,7 +158,7 @@ impl Cpu {
     /// intentionally so a student can checkpoint, re-assemble, then
     /// restore.
     pub fn save_state(&mut self, name: impl Into<String>) {
-        let snap = Snapshot {
+        let snap = SavedState {
             regs: self.regs.clone(),
             mem: self.mem.clone(),
             halted: self.halted,
@@ -181,14 +181,9 @@ impl Cpu {
         self.snapshots.save_named(name, snap);
     }
 
-    /// Restore a previously saved state by name. Returns `true` when a
-    /// save existed and was applied.
-    pub fn load_state(&mut self, name: &str) -> bool {
-        let Some(snap) = self.snapshots.load_named(name) else {
-            return false;
-        };
-        self.regs = snap.regs;
-        self.mem = snap.mem;
+    /// Restore everything `snap` holds except registers, memory and the
+    /// heap, which go back to the caller to apply the way their form needs.
+    fn restore_from<R, M, H>(&mut self, snap: Snapshot<R, M, H>) -> (R, M, H) {
         self.halted = snap.halted;
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
@@ -200,17 +195,27 @@ impl Cpu {
         self.next_fd = snap.next_fd;
         self.rand_state = snap.rand_state;
         self.term = snap.term;
-        self.heap = snap.heap;
         self.strtok_save = snap.strtok_save;
         self.callbacks = snap.callbacks;
-        // Display counters follow the machine; the output-flood budget
-        // deliberately does not, for the same reason the step budget
-        // survives a restore.
+        // Display counters follow the machine, so a host can trim its
+        // transcript back to what the restored state had printed; the
+        // output-flood budget deliberately does not, for the same reason
+        // the step budget survives a restore.
         self.stdout_seen = snap.stdout_seen;
         self.stderr_seen = snap.stderr_seen;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
+        (snap.regs, snap.mem, snap.heap)
+    }
+
+    /// Restore a previously saved state by name. Returns `true` when a
+    /// save existed and was applied.
+    pub fn load_state(&mut self, name: &str) -> bool {
+        let Some(snap) = self.snapshots.load_named(name) else {
+            return false;
+        };
+        (self.regs, self.mem, self.heap) = self.restore_from(snap);
         // The ring still holds frames recorded AFTER this save was taken,
         // so every one of them lies in the restored machine's future:
         // stepping back into one would move the program FORWARD past the
@@ -252,30 +257,10 @@ impl Cpu {
                 StepOutcome::Advance
             };
         };
-        self.regs = snap.regs;
-        self.mem = snap.mem;
-        self.halted = snap.halted;
-        self.blocked = snap.blocked;
-        self.exit_code = snap.exit_code;
-        self.stdin = snap.stdin;
-        self.stdin_segments = snap.stdin_segments;
-        self.stdin_closed = snap.stdin_closed;
-        self.vfs = snap.vfs;
-        self.open_files = snap.open_files;
-        self.next_fd = snap.next_fd;
-        self.rand_state = snap.rand_state;
-        self.term = snap.term;
-        self.heap = snap.heap;
-        self.strtok_save = snap.strtok_save;
-        self.callbacks = snap.callbacks;
-        // What the frame printed is now un-printed as far as the display
-        // is concerned, so a host can trim its transcript back. The
-        // output-flood budget below is untouched on purpose.
-        self.stdout_seen = snap.stdout_seen;
-        self.stderr_seen = snap.stderr_seen;
-        self.pending_sleep_ns = None;
-        self.changed_regs.clear();
-        self.changed_fprs.clear();
+        let (regs, mem, heap) = self.restore_from(*snap);
+        self.regs.undo(regs);
+        self.mem.undo(mem);
+        self.heap.undo(heap);
         // Un-count the step this frame undoes and drop any abort recorded
         // after it; otherwise a step taken right after backing off the step
         // ceiling would re-halt reporting a runaway loop for an instruction
