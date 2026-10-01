@@ -67,8 +67,8 @@ const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
 const CHIP_CLASS =
   "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
-const META_CLASS = "font-mono text-[11px] text-[var(--text-tertiary)]";
-const CAPTION_CLASS = "font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
+const META_CLASS = "font-mono text-[12px] text-[var(--text-tertiary)]";
+const CAPTION_CLASS = "font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
 /** A quiet placeholder card, reused for the no-exercises and no-match states. */
 function EmptyCard({ message }: { message: string }): JSX.Element {
@@ -161,7 +161,7 @@ function ProgressRow(): JSX.Element {
   );
 
   return (
-    <div className="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
+    <div className="flex items-center gap-2 font-mono text-[12px] text-[var(--text-tertiary)]">
       <span>progress:</span>
       <button
         type="button"
@@ -241,7 +241,7 @@ function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.El
             <span className="mt-1 flex flex-wrap items-center gap-3">
               {exercise.difficulty && <span className={META_CLASS}>{exercise.difficulty}</span>}
               {isSolved && (
-                <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--success)]">
+                <span className="inline-flex items-center gap-1 font-mono text-[12px] text-[var(--success)]">
                   <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[var(--success)]" />
                   solved
                 </span>
