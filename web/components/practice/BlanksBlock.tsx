@@ -94,7 +94,7 @@ export function BlanksBlock({
           // Grows with what is typed, so a two-word answer is never clipped,
           // and never with the answer's own length, which would be a hint.
           style={{ width: `${Math.max(BLANK_MIN_CH, inputVal.length + 2)}ch` }}
-          className={`touch-target inline-block max-w-full border-b-2 px-1 py-0.5 text-center font-mono text-[14px] font-bold outline-none transition-colors ${inputTone}`}
+          className={`touch-target inline-block max-w-full border-b-2 px-1 py-0.5 text-center font-mono text-[14px] font-bold outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${inputTone}`}
         />
         {parts[1]}
       </div>
