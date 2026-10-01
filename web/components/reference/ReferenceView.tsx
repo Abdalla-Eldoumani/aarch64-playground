@@ -1,11 +1,12 @@
 "use client";
 
 /**
- * The reference page's five tabs. The pitfalls, the converter and the
- * directives guide load only when their tab opens, so the page's first
- * download stays small. A link can open a tab: #calling-convention,
- * #pitfalls or #pitfall-<slug> (at that card), #directives-and-debugger, and
- * #converter, #converter-octal or #converter-ieee754 (at that part).
+ * The reference page's five tabs. Every tab but the instructions loads only
+ * when it opens, so the page's first download stays small. A link can open a
+ * tab: #calling-convention or #calling-convention-<section> (at that
+ * section), #pitfalls or #pitfall-<slug> (at that card),
+ * #directives-and-debugger, and #converter, #converter-octal or
+ * #converter-ieee754 (at that part).
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -13,17 +14,24 @@ import dynamic from "next/dynamic";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import { AapcsRail } from "@/components/diagrams/AapcsRail";
 import { InstructionReference } from "@/components/reference/InstructionReference";
-import { CallingConventionGuide } from "@/components/reference/CallingConventionGuide";
 import type { ConverterView } from "@/components/panels/BaseConverter";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
-import { pitfallFragment, referenceId } from "@/lib/content/site";
+import { callingConventionFragment, pitfallFragment, referenceId } from "@/lib/content/site";
 import type { ReferenceInstruction } from "@/lib/content/reference-data";
 
 const BaseConverter = dynamic(
   () => import("@/components/panels/BaseConverter").then((m) => m.BaseConverter),
   { ssr: false },
 );
-// The cards carry two whole programs each, so they stay out of the route chunk.
+// The cards carry two whole programs each, and the guide seven, so both stay
+// out of the route chunk.
+const CallingConventionGuide = dynamic(
+  () =>
+    import("@/components/reference/CallingConventionGuide").then(
+      (m) => m.CallingConventionGuide,
+    ),
+  { ssr: false },
+);
 const PitfallsCatalog = dynamic(
   () => import("@/components/reference/PitfallsCatalog").then((m) => m.PitfallsCatalog),
   { ssr: false },
@@ -55,7 +63,9 @@ const CONVERTER_LINKS = new Map<string, ConverterView | undefined>([
 function tabFor(fragment: string): string | null {
   if (CONVERTER_LINKS.has(fragment)) return "converter";
   if (fragment === "pitfalls" || fragment.startsWith(pitfallFragment(""))) return "pitfalls";
-  if (fragment === "calling-convention") return "calling-convention";
+  if (fragment === "calling-convention" || fragment.startsWith(callingConventionFragment(""))) {
+    return "calling-convention";
+  }
   if (fragment === "directives-and-debugger") return "directives-and-debugger";
   return null;
 }
