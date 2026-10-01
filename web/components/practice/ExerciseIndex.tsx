@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * The practice index. Every row field renders as plain React text, never
- * markdown or HTML, so exercise content has no way to inject markup here.
+ * The practice index. Row fields render as plain React text, except the
+ * blurb, whose inline code goes through the sanitizing lesson renderer, so
+ * exercise content still has no way to inject markup here.
  */
 
 import {
@@ -31,6 +32,7 @@ import {
   topicRank,
   type PracticeSideInfo,
 } from "@/lib/content/practice-topics";
+import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
@@ -231,7 +233,9 @@ function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.El
           <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
             {exercise.title}
           </span>
-          {blurb && <span className="text-sm text-[var(--text-secondary)]">{blurb}</span>}
+          {blurb && (
+            <LessonMarkdown inline markdown={blurb} className="text-sm text-[var(--text-secondary)]" />
+          )}
           {(exercise.difficulty || isSolved) && (
             <span className="mt-1 flex flex-wrap items-center gap-3">
               {exercise.difficulty && <span className={META_CLASS}>{exercise.difficulty}</span>}
