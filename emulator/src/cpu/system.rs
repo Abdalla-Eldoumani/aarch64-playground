@@ -175,6 +175,11 @@ impl Cpu {
     /// A blocked read resumes and sees EOF; the canonical
     /// read-until-EOF loop can finally terminate.
     pub fn close_stdin(&mut self) {
+        // Input closed before the first step is a file (a redirect);
+        // ctrl-d comes later and leaves the console a terminal.
+        if self.steps_total == 0 && self.refund_steps_total == 0 {
+            self.term.stdin_is_file = true;
+        }
         self.stdin_closed = true;
         self.blocked = false;
     }
