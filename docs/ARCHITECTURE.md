@@ -146,9 +146,9 @@ so the program stops on it instead of running some other instruction.
 ![Address space: .text at 0x0040_0000, .rodata, .data and .bss in 1 MiB windows, argv at 0x0080_0000, a 16 MiB heap at 0x0090_0000, an 8 MiB stack below 0x8000_0000, and the host stubs at 0xFFFF_0000](diagrams/04-address-space.svg)
 
 Memory is a `HashMap<u64, Rc<Vec<u8>>>` of 4 KiB pages. The first write to an
-address maps its page. The step-back history shares pages with the live
-machine, and a page is copied only when it is written while an older frame
-still holds it.
+address maps its page. A named save shares pages with the live machine, and a
+page is copied only when it is written while a save still holds it. Step back
+does not copy pages at all: each step logs the bytes its writes replaced.
 
 Unaligned loads and stores work, as they do for Linux programs. The one
 alignment rule is on `sp`: a load or store through `sp`, or a library call,
@@ -192,14 +192,15 @@ lists them all.
 
 ## Step back and save states
 
-Before each step, the emulator records a frame in a ring of the last 128
-steps: the registers, memory, and the state of input, files, and the heap.
-**back** restores the newest frame. The ring stops recording, and clears,
-while a terminal program has the keyboard in raw mode and once a frame's
-input and file state passes 4 KiB, so step back never jumps over steps it did
-not record. The output is never rolled back, but the count of bytes shown is,
-so the console trims itself to what the restored frame had printed. Named
-save states live beside the ring, so stepping never pushes one out.
+Each step records a frame in a ring of the last 128 steps: what the step
+changed in the registers, memory, and the heap, and the state of input and
+files. **back** undoes the newest frame. The ring stops recording, and clears,
+while a terminal program has the keyboard in raw mode or runs live in the
+terminal pane, and once a frame's input and file state passes 4 KiB, so step
+back never jumps over steps it did not record. The output is never rolled
+back, but the count of bytes shown is, so the console trims itself to what
+the restored frame had printed. Named save states live beside the ring, so
+stepping never pushes one out.
 
 ## Keeping the page in step
 
