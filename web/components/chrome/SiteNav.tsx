@@ -113,7 +113,7 @@ export function SiteNav({
             {starCount === null ? null : (
               <span
                 aria-hidden="true"
-                className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]"
+                className="font-mono text-[12px] tabular-nums text-[var(--text-tertiary)]"
               >
                 {starCount}
               </span>
