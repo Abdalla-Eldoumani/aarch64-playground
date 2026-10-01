@@ -11,6 +11,9 @@ address, array indexing with an index register (`[x12, w9, SXTW 2]`),
 calls to `printf` and `scanf` with any number of arguments, and the Linux
 system calls `write`, `read`, `exit`, `openat`, and `close`.
 
+- `distance.s`: how far each number in an array is from zero, through
+  a loop, a call to a small subroutine, and printf; the playground
+  opens with it
 - `basics.s`: arithmetic operations
 - `globals.s`: a global variable in `.data` (load and store)
 - `locals.s`: locals on the stack (sum and product)
