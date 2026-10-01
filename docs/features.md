@@ -106,10 +106,10 @@ repository root.
 | Feature | Files |
 | --- | --- |
 | m4, lexer, parser, sections, and linker | `emulator/src/frontend/` |
-| Encoder | `emulator/src/assembler.rs` |
-| Decoder and the encoding tables | `emulator/src/decoder.rs` |
-| What each instruction does | `emulator/src/executor.rs`, `fpu.rs` |
-| Registers, memory, and the run loop | `emulator/src/registers.rs`, `memory.rs`, `cpu.rs` |
+| Encoder: the mnemonic list and dispatch, then one file per instruction class | `emulator/src/assembler.rs`, `emulator/src/assembler/` |
+| Decoder and the encoding tables, one file per instruction class | `emulator/src/decoder.rs`, `emulator/src/decoder/` |
+| What each instruction does, in the decoder's classes | `emulator/src/executor.rs`, `emulator/src/executor/`, `fpu.rs` |
+| Registers, memory, and the run loop | `emulator/src/registers.rs`, `memory.rs`, `cpu.rs`, `emulator/src/cpu/` |
 | Library calls and system calls | `emulator/src/hosted/` |
 | The functions the site calls | `emulator/src/lib.rs` |
 | The web side of the emulator (backend, worker) | `web/lib/emulator/backend.ts`, `web/lib/worker/` |
