@@ -123,13 +123,13 @@ function BundleDialog({
         >
           Diagnostic bundle
         </h2>
-        <p className="text-[11px] leading-relaxed text-[var(--text-secondary)] mb-3">
+        <p className="text-[12px] leading-relaxed text-[var(--text-secondary)] mb-3">
           a report on this run for a bug report or an AI assistant: your program, its input and
           output, and the machine&apos;s registers, stack, and memory. it holds nothing else, and
           nothing is sent anywhere; it stays on this page until you copy it.
         </p>
         {report === "failed" ? (
-          <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
+          <p role="alert" className="text-[12px] text-[var(--danger)] mb-2">
             the machine state could not be read. assemble the program again and reopen this.
           </p>
         ) : (
@@ -139,16 +139,16 @@ function BundleDialog({
             placeholder="reading the machine state..."
             aria-label="diagnostic report"
             aria-busy={ready === null}
-            className="w-full h-[min(50svh,24rem)] resize-none text-[11px] leading-snug font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            className="w-full h-[min(50svh,24rem)] resize-none text-[12px] leading-snug font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           />
         )}
         {ready && ready.link === null && (
-          <p className="text-[11px] text-[var(--text-secondary)] mt-2">
+          <p className="text-[12px] text-[var(--text-secondary)] mt-2">
             this program is too large for a link. save it with export, then workspace .json, and
             send that file with the report.
           </p>
         )}
-        <p role="status" className="text-[11px] min-h-[1.25rem] mt-2 text-[var(--text-secondary)]">
+        <p role="status" className="text-[12px] min-h-[1.25rem] mt-2 text-[var(--text-secondary)]">
           {status}
         </p>
         <div className="flex flex-wrap items-center justify-end gap-2 mt-1">
