@@ -688,7 +688,7 @@ Built into the playground, so `bl` reaches them with no setup:
 | -------- | -------------------------------------------------------- |
 | `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. |
 | `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
-| `scanf`  | `%d %u %x %s %c %f`; returns `WaitingForInput` when stdin runs dry. `__isoc99_scanf`, the name `gcc -S` writes, is the same function. |
+| `scanf`  | `%d %u %x %s %c %f`, where `%f` also reads `inf`, `infinity` and `nan` in any case, as glibc does; returns `WaitingForInput` when stdin runs dry. `__isoc99_scanf`, the name `gcc -S` writes, is the same function. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
 | `fgets` / `fputs`              | Line in, string out, over stdin/stdout/stderr or a virtual file. `fgets` keeps the newline and answers NULL at end of input. |
 | `putc` / `fputc` / `getc` / `fwrite` | One byte out, one byte in, and a block of `size * n` bytes out, over the same streams. Optimized GCC output calls these where the C wrote `putchar`, `getchar` or `fputs`. |
