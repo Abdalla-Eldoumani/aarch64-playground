@@ -1,8 +1,9 @@
 // Pins the phone fallback editor (under 480px, Monaco is replaced by a
 // textarea plus a synced gutter): the gutter numbers every line of a real
-// program, follows the textarea's scroll, and renders a bounded number of
-// buttons no matter how many lines the buffer carries.
-import { afterEach, describe, expect, it } from "vitest";
+// program, follows the textarea's scroll, renders a bounded number of rows no
+// matter how many lines the buffer carries, and is one 44px-wide control
+// that toggles the tapped line or, from the keyboard, the caret's line.
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Editor } from "@/components/playground/Editor";
 
@@ -14,25 +15,32 @@ function narrowViewport(): void {
   });
 }
 
-function renderFallback(value: string) {
+function renderFallback(
+  value: string,
+  { breakpoints = new Set<number>(), onToggleBreakpoint = () => {} } = {},
+) {
   narrowViewport();
   return render(
     <Editor
       value={value}
       onChange={() => {}}
       currentLine={null}
-      breakpoints={new Set<number>()}
-      onToggleBreakpoint={() => {}}
+      breakpoints={breakpoints}
+      onToggleBreakpoint={onToggleBreakpoint}
       assemblyErrors={[]}
     />,
   );
 }
 
-/** The line number each gutter button stands for, read off its label. */
+/** The line number each gutter row stands for. */
 function gutterLines(): number[] {
-  return screen
-    .getAllByRole("button")
-    .map((b) => Number(/^line (\d+)/.exec(b.getAttribute("aria-label") ?? "")?.[1]));
+  return Array.from(document.querySelectorAll("[data-gutter-line]")).map((row) =>
+    Number(row.getAttribute("data-gutter-line")),
+  );
+}
+
+function gutter(): HTMLElement {
+  return screen.getByRole("button", { name: /^breakpoints/ });
 }
 
 /** jsdom gives every element a zero scrollTop and clientHeight, and a plain
@@ -198,13 +206,34 @@ describe("Editor fallback gutter", () => {
     expect(document.activeElement).not.toBe(screen.getByLabelText("assembly source"));
   });
 
-  it("keeps breakpoint labels on the lines the window actually shows", () => {
+  it("keeps the numbers on the lines the window actually shows", () => {
     renderFallback("\n".repeat(49_999));
     scrollTo(24_000);
-    const first = screen.getAllByRole("button")[0];
-    expect(first.getAttribute("aria-label")).toBe(
-      `line ${gutterLines()[0]}, tap to set breakpoint`,
-    );
-    expect(first.textContent).toBe(String(gutterLines()[0]));
+    const first = document.querySelector("[data-gutter-line]");
+    expect(first?.textContent).toBe(String(gutterLines()[0]));
+  });
+
+  it("toggles the line under a tap, counting the textarea's scroll", () => {
+    const onToggleBreakpoint = vi.fn();
+    renderFallback("\n".repeat(99), { onToggleBreakpoint });
+    scrollTo(240);
+    // 12px of padding, then 24px lines: 60px down the gutter is line 3, and
+    // scrolled ten lines it is line 13.
+    vi.spyOn(gutter(), "getBoundingClientRect").mockReturnValue(new DOMRect(0, 100, 44, 400));
+    fireEvent.click(gutter(), { clientY: 160, detail: 1 });
+    expect(onToggleBreakpoint).toHaveBeenCalledWith(13);
+  });
+
+  it("toggles the caret's line from the keyboard and names the set lines", () => {
+    const onToggleBreakpoint = vi.fn();
+    renderFallback("mov x0, 1\nmov x1, 2\nmov x2, 3", {
+      breakpoints: new Set([1, 3]),
+      onToggleBreakpoint,
+    });
+    expect(gutter().getAttribute("aria-label")).toMatch(/^breakpoints on lines 1, 3:/);
+    const textarea = screen.getByLabelText("assembly source") as HTMLTextAreaElement;
+    textarea.setSelectionRange(12, 12);
+    fireEvent.click(gutter(), { detail: 0 });
+    expect(onToggleBreakpoint).toHaveBeenCalledWith(2);
   });
 });
