@@ -58,6 +58,23 @@ function downloadBytes(file) {
 }
 
 /**
+ * Prerendered files a build wrote under server/route-cache, by route. A build
+ * with a deployment adapter (Vercel sets NEXT_ADAPTER_PATH) writes them there,
+ * at <kind>/<hash of the source page>/$<route>.html or .body, instead of
+ * under server/app. The hash is Next's own, so the files are found by name.
+ */
+function routeCacheOutputs(nextDir) {
+  const cacheDir = path.join(nextDir, "server", "route-cache");
+  const byRoute = new Map();
+  if (!fs.existsSync(cacheDir)) return byRoute;
+  for (const rel of walk(cacheDir)) {
+    const match = /^[^/]+\/[^/]+\/\$(\/.+\.(?:html|body))$/.exec(rel);
+    if (match) byRoute.set(match[1], path.join(cacheDir, rel));
+  }
+  return byRoute;
+}
+
+/**
  * Reads a finished build under webDir and returns the two sets. Throws when
  * the build is missing a core page, since a worker without the playground
  * would install and then fail the reader offline.
@@ -67,6 +84,11 @@ function collectPrecache(webDir) {
   const appDir = path.join(nextDir, "server", "app");
   const build = fs.readFileSync(path.join(nextDir, "BUILD_ID"), "utf8").trim();
   const manifest = JSON.parse(fs.readFileSync(path.join(nextDir, "prerender-manifest.json"), "utf8"));
+  const cached = routeCacheOutputs(nextDir);
+  const output = (stem, ext) => {
+    const plain = path.join(appDir, `${stem}${ext}`);
+    return fs.existsSync(plain) ? plain : cached.get(`/${stem}${ext}`);
+  };
 
   const pages = [];
   const files = [];
@@ -75,10 +97,10 @@ function collectPrecache(webDir) {
     // serves them itself and they are never opened by address.
     if (route.startsWith("/_")) continue;
     const stem = route === "/" ? "index" : route.slice(1);
-    const html = path.join(appDir, `${stem}.html`);
-    const body = path.join(appDir, `${stem}.body`);
-    if (fs.existsSync(html)) pages.push({ url: address(route), file: html });
-    else if (fs.existsSync(body)) files.push({ url: address(route), file: body });
+    const html = output(stem, ".html");
+    const body = output(stem, ".body");
+    if (html) pages.push({ url: address(route), file: html });
+    else if (body) files.push({ url: address(route), file: body });
     else throw new Error(`no prerendered output for ${route}`);
   }
 
