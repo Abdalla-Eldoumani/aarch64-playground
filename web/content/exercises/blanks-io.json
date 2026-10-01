@@ -22,6 +22,7 @@
       "code": "mov     x8, ___",
       "blanks": [
         "64",
+        "#64",
         "0x40"
       ],
       "explanation": "On Linux for AArch64, write is service number 64, and svc 0 reads it from x8. read is 63, openat 56, close 57, and exit 93.",
@@ -40,7 +41,8 @@
       "prompt": "A read system call (x8 = 63) is to take up to 16 bytes from standard input. Pick the file descriptor.",
       "code": "mov     x0, ___",
       "blanks": [
-        "0"
+        "0",
+        "#0"
       ],
       "explanation": "x0 holds the file descriptor to read from, and standard input is descriptor 0. Descriptor 1 is standard output and 2 is standard error.",
       "hint": "Standard input is the first of the three descriptors every program starts with."
