@@ -41,7 +41,8 @@
       "blanks": [
         "16",
         "#16",
-        "0x10"
+        "0x10",
+        "#0x10"
       ],
       "explanation": "ubfx wd, wn, lsb, width takes width bits starting at bit lsb and puts them at the bottom of wd, with zeros above. The field starts at bit 16, so lsb is 16, and it is 8 bits wide.",
       "hint": "The first number is the bit where the field starts, and the second is how wide it is."
