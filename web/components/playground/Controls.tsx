@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { explainError } from "@/lib/asm/error-explain";
 
@@ -36,6 +37,12 @@ interface ControlsProps {
    *  step counter or halted chip, which the phone's status line carries. The
    *  phone layout pads the safe area itself. */
   compact?: boolean;
+  /** A short laptop window: the row's padding tightens and the key chips go
+   *  (each button's title and the shortcut list still carry its key), so the
+   *  header band's tools fit at the row's end. */
+  short?: boolean;
+  /** What rides at the row's end: the playground tools, in a short window. */
+  trailing?: ReactNode;
 }
 
 export function Controls({
@@ -55,6 +62,8 @@ export function Controls({
   error,
   stepCount,
   compact = false,
+  short = false,
+  trailing,
 }: ControlsProps) {
   // The step counter uses a key tied to the count so the scale-up animation
   // restarts each step without extra effects. The visible 44px controls are
@@ -69,14 +78,19 @@ export function Controls({
   // On a phone the five buttons share the row, assemble a little wider for
   // its longer word, so all five fit a 320px screen with nothing to scroll.
   const share = (weight: string) => (compact ? `${weight} min-w-0 !px-1 !text-[13px]` : undefined);
+  const chips = !compact && !short;
 
   return (
     <div
-      style={compact ? undefined : { paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
+      style={
+        compact
+          ? undefined
+          : { paddingBottom: `calc(${short ? "0.25rem" : "0.5rem"} + var(--safe-bottom))` }
+      }
       className={
         compact
           ? "flex flex-col gap-1.5 px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
-          : "flex flex-col gap-1.5 px-2 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center sm:gap-2 sm:px-4"
+          : `flex flex-col gap-1.5 px-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:px-4 ${short ? "pt-1" : "pt-2"}`
       }
     >
       {/* The assemble error is its own row under the buttons on a phone and
@@ -95,7 +109,7 @@ export function Controls({
           className={share("flex-[1.4]")}
         >
           <span>{isAssembling ? "loading…" : "assemble"}</span>
-          {!compact && <Shortcut keys="F6" />}
+          {chips && <Shortcut keys="F6" />}
         </Button>
         <Button
           variant="primary"
@@ -112,7 +126,7 @@ export function Controls({
           }
         >
           <span>{isRunning ? "pause" : "run"}</span>
-          {!compact && <Shortcut keys="F5" />}
+          {chips && <Shortcut keys="F5" />}
         </Button>
         <Button
           variant="secondary"
@@ -125,7 +139,7 @@ export function Controls({
           disabled={!programLoaded || isRunning || isHalted || blocked}
         >
           <span>step</span>
-          {!compact && <Shortcut keys="F10" />}
+          {chips && <Shortcut keys="F10" />}
         </Button>
         {onStepBack && (
           <Button
@@ -138,7 +152,7 @@ export function Controls({
             disabled={!programLoaded || isRunning || !canStepBack || blocked}
           >
             <span>back</span>
-            {!compact && <Shortcut keys="Shift+F10" />}
+            {chips && <Shortcut keys="Shift+F10" />}
           </Button>
         )}
         <Button
@@ -150,10 +164,12 @@ export function Controls({
           className={share("flex-1")}
         >
           <span>reset</span>
-          {!compact && <Shortcut keys="Shift+F5" />}
+          {chips && <Shortcut keys="Shift+F5" />}
         </Button>
 
-        {!compact && <div className="flex-1" />}
+        {/* With tools at the row's end, the count stays by the buttons and
+            the tools take the push to the right instead. */}
+        {!compact && !trailing && <div className="flex-1" />}
 
         {!compact && stepCount != null && stepCount > 0 && (
           <span
@@ -203,6 +219,7 @@ export function Controls({
           )}
         </div>
       )}
+      {trailing}
     </div>
   );
 }
