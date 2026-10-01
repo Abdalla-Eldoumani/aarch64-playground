@@ -6,10 +6,11 @@ import { createRequire } from "node:module";
 import { afterEach, describe, expect, it } from "vitest";
 
 // scripts/write-precache-list.js turns a finished build into the service
-// worker's two lists. It is CommonJS one level above web/ (vitest's cwd), so
-// it is loaded by path and run against a small build laid out on disk.
+// worker: its two lists, then the worker's code. It is CommonJS one level
+// above web/ (vitest's cwd), so it is loaded by path and run against a small
+// build laid out on disk.
 const nodeRequire = createRequire(import.meta.url);
-const { collectPrecache, renderPrecache } = nodeRequire(
+const { collectPrecache, renderWorker } = nodeRequire(
   path.join(process.cwd(), "..", "scripts", "write-precache-list.js"),
 ) as {
   collectPrecache: (webDir: string) => Record<string, unknown> & {
@@ -19,8 +20,9 @@ const { collectPrecache, renderPrecache } = nodeRequire(
     coreBytes: number;
     otherBytes: number;
   };
-  renderPrecache: (list: object) => string;
+  renderWorker: (list: object, source: string) => string;
 };
+const WORKER_SOURCE = fs.readFileSync(path.join(process.cwd(), "lib", "playground", "sw.js"), "utf8");
 
 const made: string[] = [];
 
@@ -35,10 +37,13 @@ function write(root: string, rel: string, body: string): void {
 }
 
 /** A build with the routes Next prerenders for this site, in miniature. */
-function fakeBuild(routes = ["/", "/playground", "/offline", "/learn/loops", "/_not-found", "/manifest.webmanifest"]) {
+function fakeBuild(
+  routes = ["/", "/playground", "/offline", "/learn/loops", "/_not-found", "/manifest.webmanifest"],
+  build = "abc123",
+) {
   const web = fs.mkdtempSync(path.join(os.tmpdir(), "precache-"));
   made.push(web);
-  write(web, ".next/BUILD_ID", "abc123\n");
+  write(web, ".next/BUILD_ID", `${build}\n`);
   write(
     web,
     ".next/prerender-manifest.json",
@@ -100,13 +105,24 @@ describe("the precache list", () => {
     expect(() => collectPrecache(web)).toThrow(/\/learn\/loops/);
   });
 
-  it("writes a script that hands the worker the lists and nothing else", () => {
+  it("hands the worker the lists and nothing else", () => {
     const list = collectPrecache(fakeBuild());
     const scope: { PRECACHE?: Record<string, unknown> } = {};
-    vm.runInNewContext(renderPrecache(list), { self: scope });
+    vm.runInNewContext(renderWorker(list, ""), { self: scope });
     expect(Object.keys(scope.PRECACHE ?? {}).sort()).toEqual(
       ["build", "corePages", "files", "otherBytes", "otherPages"].sort(),
     );
     expect(scope.PRECACHE?.files).toEqual(list.files);
+  });
+
+  it("writes a worker whose own bytes differ between two builds of the same code", () => {
+    // A browser starts an update only when the worker script's bytes change;
+    // Safari may not re-check a script the worker imports.
+    const first = renderWorker(collectPrecache(fakeBuild(undefined, "abc123")), WORKER_SOURCE);
+    const second = renderWorker(collectPrecache(fakeBuild(undefined, "def456")), WORKER_SOURCE);
+    expect(first).not.toBe(second);
+    expect(first.endsWith(WORKER_SOURCE)).toBe(true);
+    expect(second.endsWith(WORKER_SOURCE)).toBe(true);
+    expect(WORKER_SOURCE).not.toMatch(/importScripts/);
   });
 });
