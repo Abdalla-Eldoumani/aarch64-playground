@@ -45,9 +45,11 @@ export function CodeBlock({
     }
   }, [code]);
 
+  // Under a coarse pointer the copy button is a 44px target, two code lines
+  // tall, so the code starts below it rather than hiding a line's end.
   return (
     <div className={`relative ${className}`}>
-      <pre className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
+      <pre className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)] [@media(pointer:coarse)]:pt-14">
         <code>
           {tokenizedLines.map((tokens, lineIndex) => (
             <span
