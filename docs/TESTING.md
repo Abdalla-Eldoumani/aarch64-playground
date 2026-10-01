@@ -154,14 +154,14 @@ These are unthrottled local numbers, so compare them only with each other.
 On Windows, Lighthouse can exit with code 1 after writing its report, when it
 cannot delete its temporary Chrome folder; the report is still complete.
 
-`npm run smoke:firefox` opens a page in Firefox through Playwright, checks the
-security headers, and waits for the editor to appear. It opens `SITE`, which
-defaults to <http://localhost:3000>; the home page has no editor, so point it
-at the playground of a running `npm run start`:
+`npm run smoke:firefox` opens the playground in Firefox through Playwright,
+checks the security headers, and waits for the editor to appear. It opens
+`/playground` on the origin in `SITE`, which defaults to
+<http://localhost:3000>, so start `npm run start` first:
 
 ```bash
 npx playwright install firefox
-SITE=http://localhost:3000/playground npm run smoke:firefox
+npm run smoke:firefox
 ```
 
 The first command downloads Playwright's Firefox, once per machine. A local
