@@ -38,6 +38,9 @@ const nextConfig = {
   // Stops `next dev` from writing agent instruction files into the tree,
   // which otherwise dirties every checkout it runs in.
   agentRules: false,
+  // scripts/vercel-build.sh builds twice so the service worker written after
+  // the first build ships with the second; both must share one build id.
+  generateBuildId: async () => process.env.PLAYGROUND_BUILD_ID || null,
   headers() {
     return [
       {
