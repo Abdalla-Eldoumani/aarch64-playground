@@ -81,15 +81,24 @@ AGPL-3.0, the project's license.
    from memory. Assemble every spelling you plan to accept, read the words back
    with `objdump -d`, and record them. Advanced SIMD forms are held to
    `emulator/tests/simd-inventory.txt` by `tests/simd.rs`.
-2. Decode it: in `emulator/src/decoder.rs`, recognize the bit pattern and
-   return an `Instruction`. Test it with a hand-encoded word.
-3. Execute it: in `emulator/src/executor.rs`, add what it does. Set the flags
-   through `add_flags`, `sub_flags`, `logic_flags`, or `add_with_carry` (an
-   instruction with a carry-in needs `add_with_carry`), and return the right
-   `EmuError` on a fault.
+2. Decode it: the `Instruction` enum is in `emulator/src/decoder.rs`, and
+   each instruction class has its own file in `emulator/src/decoder/`
+   (`data_processing.rs`, `load_store.rs`, `branch.rs`, `fp.rs`, `simd.rs`,
+   `simd_fp.rs`). Recognize the bit pattern in the class's file and return
+   an `Instruction`. Test it with a hand-encoded word in `decoder/tests.rs`.
+3. Execute it: add an arm to `execute` in `emulator/src/executor.rs` and the
+   semantics in the same class's file in `emulator/src/executor/`. Set the
+   flags through `add_flags`, `sub_flags`, `logic_flags`, or `add_with_carry`
+   (an instruction with a carry-in needs `add_with_carry`), and return the
+   right `EmuError` on a fault.
 4. Assemble it: in `emulator/src/assembler.rs`, add the mnemonic to
    `SUPPORTED_MNEMONICS` and to the `match` in `encode_line`, then write the
-   encoder. Course source reaches the same encoder through `lower_operands` in
+   encoder in the fitting file in `emulator/src/assembler/` (`arith.rs`,
+   `bitwise.rs`, `load_store.rs`, `branch.rs`, `fp.rs`, or one of the
+   three `simd` files). An Advanced SIMD
+   instruction is usually one row in a table in `decoder/simd.rs` or
+   `decoder/simd_fp.rs`, which the encoder, the decoder, and the disassembler
+   all read. Course source reaches the same encoder through `lower_operands` in
    `emulator/src/frontend/pipeline.rs`. A vector operand (`v0.16b`,
    `v0.b[3]`) is read by `parse_vec_operand`; a new register spelling also
    goes in `looks_like_register`, `classify_word`,
