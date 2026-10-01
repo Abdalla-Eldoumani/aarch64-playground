@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import {
   dispatchCommand,
+  fitTable,
   type DispatchContext,
   type TerminalForegroundProgram,
   type TerminalProgramIO,
@@ -196,7 +197,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
           t.clear();
           return;
         }
-        writeLines(result.lines);
+        writeLines(result.table ? fitTable(result.lines, t.cols) : result.lines);
       } catch (err) {
         console.warn("terminal command failed:", err);
         const name = line.split(/\s+/)[0] ?? line;
@@ -218,6 +219,8 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       cursorStyle: "block",
       fontFamily: "var(--font-mono), JetBrains Mono, Consolas, monospace",
       fontSize: 13,
+      // At the default 1.0 the rows touched and clipped descenders.
+      lineHeight: 1.15,
       theme: currentXtermTheme(),
     });
     const fit = new FitAddon();
@@ -372,12 +375,16 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     // allocated exactly once per mount and survives machine re-renders.
   }, [repaintInput, runLine, writeLines, writePrompt]);
 
+  // The padding sits on a wrapper: the fit addon sizes the grid from the
+  // terminal's parent box, which would count padding of its own as columns.
   return (
-    <div
-      className="h-full w-full bg-[var(--bg-base)] overflow-hidden"
-      ref={containerRef}
-      aria-label="shell terminal"
-      role="application"
-    />
+    <div className="h-full w-full bg-[var(--bg-base)] overflow-hidden pl-2 pt-1">
+      <div
+        className="h-full w-full overflow-hidden"
+        ref={containerRef}
+        aria-label="shell terminal"
+        role="application"
+      />
+    </div>
   );
 }
