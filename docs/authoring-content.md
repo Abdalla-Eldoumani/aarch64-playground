@@ -84,7 +84,27 @@ its remaining fields:
   file` runs on the servers, and fails when the output differs, so write the
   value from a real run on the servers, never from memory.
 
-Blocks render top to bottom.
+Blocks render top to bottom. Every lesson after the first two opens with a
+`prereq` callout, and every lesson ends with a `## Check yourself` heading, a
+`note` callout holding the numbered answers, and a `## Practice` list.
+
+### the practice links
+
+`## Practice` lists the exercises and theory sets that go with the lesson,
+each with one line on what it practises. The site reads these links too:
+every `[text](/practice/<slug>)` link in a lesson's prose or callouts (code
+blocks are skipped) becomes a card in the list at the foot of the page, with
+coding exercises and theory sets apart. Tests hold the links to four rules:
+
+- A link to an exercise that does not exist fails the build.
+- The link text is the exercise's `title`, the title with its difficulty in
+  brackets, or the difficulty alone after a sibling named in full, the way
+  the foot card names it. Renaming an exercise means updating the lessons
+  that link to it.
+- Every lesson links at least one coding exercise and one theory set.
+- Every practice topic has both coding exercises and theory sets, except
+  `architecture` and `binary-logic`, which are worked by hand and have no
+  coding side.
 
 ### a worked lesson
 
@@ -158,6 +178,9 @@ main:
   ]
 }
 ```
+
+The example leaves out the opening callout and the closing sections to stay
+short. A shipped lesson needs them.
 
 ## exercises
 
