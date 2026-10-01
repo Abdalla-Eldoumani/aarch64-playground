@@ -144,6 +144,62 @@ describe("placeCard", () => {
     expect(p.side).toBe("over");
   });
 
+  // The boxes below were measured on the 320x568 iPhone SE.
+  const se = { width: 320, height: 568 };
+  const assemble = { top: 475, left: 8, width: 71, height: 44 };
+
+  it("keeps a card beside a phone's tabs off the run row above them", () => {
+    const more = { top: 523, left: 240, width: 80, height: 45 };
+    const p = placeCard(more, { width: 352, height: 212 }, se, [assemble]);
+    expect(p.side).toBe("above");
+    expect(p.top).toBe(475 - 8 - 212);
+    expect(overlaps(assemble, p, 212)).toBe(false);
+    // Without the run row to avoid, the card sat on it.
+    expect(overlaps(assemble, placeCard(more, { width: 352, height: 212 }, se), 212)).toBe(true);
+  });
+
+  it("sits over a phone's registers view under its dec and hex, clear of the run row", () => {
+    const registers = { top: 45, left: 0, width: 320, height: 385 };
+    const decHex = { top: 142, left: 8, width: 90, height: 46 };
+    const p = placeCard(registers, { width: 352, height: 255 }, se, [decHex, assemble]);
+    expect(p.side).toBe("over");
+    expect(p.maxHeight).toBeNull();
+    expect(overlaps(decHex, p, 255)).toBe(false);
+    expect(overlaps(assemble, p, 255)).toBe(false);
+    expect(p.top + 255).toBeLessThanOrEqual(568 - 8);
+  });
+
+  it("scrolls a card that no free stretch of the view can hold", () => {
+    const registers = { top: 45, left: 0, width: 320, height: 385 };
+    const header = { top: 100, left: 8, width: 300, height: 200 };
+    const p = placeCard(registers, { width: 352, height: 255 }, se, [header, assemble]);
+    expect(p.side).toBe("over");
+    expect(p.top).toBe(308);
+    expect(p.maxHeight).toBe(475 - 8 - 308);
+  });
+
+  it("lifts a card beside a turned phone's registers clear of the run row", () => {
+    // iPhone 13 on its side: the registers sit right, the run row at the
+    // foot of the editor on the left.
+    const view = { width: 750, height: 342 };
+    const registers = { top: 90, left: 412, width: 330, height: 208 };
+    const runRow = { top: 298, left: 8, width: 90, height: 44 };
+    const decHex = { top: 120, left: 420, width: 90, height: 44 };
+    const p = placeCard(registers, { width: 352, height: 243 }, view, [decHex, runRow]);
+    expect(p.side).toBe("left");
+    expect(p.top).toBe(298 - 8 - 243);
+    expect(p.maxHeight).toBeNull();
+    expect(overlaps(runRow, p, 243)).toBe(false);
+  });
+
+  it("puts the offer under a phone's menu past the files strip", () => {
+    const menu = { top: 0, left: 268, width: 52, height: 44 };
+    const files = { top: 45, left: 0, width: 320, height: 53 };
+    const p = placeCard(menu, { width: 352, height: 212 }, se, [files]);
+    expect(p.side).toBe("below");
+    expect(p.top).toBe(98 + 8);
+  });
+
   it("narrows to the viewport on a small phone", () => {
     const tab = { top: 596, left: 0, width: 90, height: 44 };
     const p = check(tab, { width: 320, height: 640 });
