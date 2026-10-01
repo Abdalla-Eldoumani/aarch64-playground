@@ -269,7 +269,8 @@ main:
         ldp     fp, lr, [sp], dealloc
         ret
 `,
-    excerpt: `        add     x8, fp, result_s            // where powers must put its result
+    excerpt: `        mov     x0, 5
+        add     x8, fp, result_s            // where powers must put its result
         bl      powers
 ...
         str     x0, [x8, p1_s]              // each field goes through x8
@@ -487,7 +488,9 @@ main:
         ldp     fp, lr, [sp], dealloc
         ret
 `,
-    excerpt: `        mov     frame_r, fp                 // start at inner's own frame record
+    excerpt: `        str     x9, [fp, name_s]
+
+        mov     frame_r, fp                 // start at inner's own frame record
         mov     depth_r, 0
         b       walk_test
 walk_loop:
