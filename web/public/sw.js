@@ -193,7 +193,6 @@ async function broadcast() {
   const saved = await cache.match(SAVED_KEY);
   const status = {
     type: "offline-status",
-    pages: otherPages.length,
     bytes: otherBytes,
     savedAt: saved ? await saved.text() : null,
     saving: progress && { ...progress },
