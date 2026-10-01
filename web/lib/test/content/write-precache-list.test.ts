@@ -36,10 +36,15 @@ function write(root: string, rel: string, body: string): void {
   fs.writeFileSync(file, body);
 }
 
-/** A build with the routes Next prerenders for this site, in miniature. */
+/**
+ * A build with the routes Next prerenders for this site, in miniature. With
+ * `adapter`, the prerendered files sit where a deployment adapter's build
+ * writes them: server/route-cache/<kind>/<hash of the source page>/$<route>.
+ */
 function fakeBuild(
   routes = ["/", "/playground", "/offline", "/learn/loops", "/_not-found", "/manifest.webmanifest"],
   build = "abc123",
+  adapter = false,
 ) {
   const web = fs.mkdtempSync(path.join(os.tmpdir(), "precache-"));
   made.push(web);
@@ -51,8 +56,12 @@ function fakeBuild(
   );
   for (const route of routes) {
     const stem = route === "/" ? "index" : route.slice(1);
-    if (route.endsWith(".webmanifest")) write(web, `.next/server/app/${stem}.body`, "{}");
-    else write(web, `.next/server/app/${stem}.html`, `<html>${"page ".repeat(50)}</html>`);
+    const handler = route.endsWith(".webmanifest");
+    const at = adapter
+      ? `.next/server/route-cache/${handler ? "APP_ROUTE" : "APP_PAGE"}/9f2c${stem.length}/$/${stem}`
+      : `.next/server/app/${stem}`;
+    if (handler) write(web, `${at}.body`, "{}");
+    else write(web, `${at}.html`, `<html>${"page ".repeat(50)}</html>`);
   }
   write(web, ".next/static/chunks/main-1.js", "console.log(1)");
   write(web, ".next/static/chunks/app/(site)/learn/[slug]/page-2.js", "console.log(2)");
@@ -93,6 +102,16 @@ describe("the precache list", () => {
     // Two pages of repeated text compress to well under their stored size.
     expect(list.otherBytes).toBeGreaterThan(0);
     expect(list.otherBytes).toBeLessThan(2 * 270);
+  });
+
+  it("finds the pages a deployment adapter's build wrote under route-cache", () => {
+    // Vercel builds with an adapter, so its prerendered files are not under
+    // server/app; a list that only looked there failed the deploy.
+    const list = collectPrecache(fakeBuild(undefined, "abc123", true));
+    expect(list.corePages).toEqual(["/offline", "/playground"]);
+    expect(list.otherPages).toEqual(["/", "/learn/loops"]);
+    expect(list.files).toContain("/manifest.webmanifest");
+    expect(list.otherBytes).toBeGreaterThan(0);
   });
 
   it("refuses a build without the playground or the offline page", () => {
