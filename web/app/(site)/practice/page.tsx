@@ -24,7 +24,7 @@ export default function PracticePage() {
   // Rendered here, at build time, so the markdown renderer stays out of the
   // page's script: only the finished code spans cross to the client index.
   const blurbs = Object.fromEntries(
-    exercises.map(({ slug, blurb }) => [slug, <LessonMarkdown inline markdown={blurb} />]),
+    exercises.map(({ slug, blurb }) => [slug, <LessonMarkdown key={slug} inline markdown={blurb} />]),
   );
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
