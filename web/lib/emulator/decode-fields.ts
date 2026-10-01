@@ -74,6 +74,11 @@ function freg(ftype: number, index: number): string {
   return `${ftype === 1 ? "d" : "s"}${index}`;
 }
 
+/** The exception-generating rows, keyed "opc,LL": brk and svc share the class. */
+const EXCEPTION_NAMES: Record<string, string> = {
+  "0,1": "svc", "0,2": "hvc", "0,3": "smc", "1,0": "brk", "2,0": "hlt",
+};
+
 /** The FP 3-source rows, indexed by (o1 << 1) | o0 as the encoding splits them. */
 const FP_MUL_ADD_NAMES = ["fmadd", "fmsub", "fnmadd", "fnmsub"];
 
@@ -291,6 +296,26 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
+  // Extract (extr, and ror with an immediate): sf 00 100111 N 0 Rm imms Rn
+  // Rd. imms is the bit of Rm:Rn the result starts at.
+  if (bits(w, 30, 29) === 0 && bits(w, 28, 23) === 0b100111 && bits(w, 21, 21) === 0) {
+    return slice(
+      w,
+      [
+        { label: "sf", hi: 31, lo: 31, kind: "opcode" },
+        { label: "00", hi: 30, lo: 29, kind: "opcode" },
+        { label: "100111", hi: 28, lo: 23, kind: "opcode" },
+        { label: "N", hi: 22, lo: 22, kind: "opcode" },
+        { label: "0", hi: 21, lo: 21, kind: "opcode" },
+        { label: "Rm", hi: 20, lo: 16, kind: "register", meaning: (x) => xreg(sf, bits(x, 20, 16)) },
+        { label: "imms", hi: 15, lo: 10, kind: "immediate", meaning: (x) => `from bit ${bits(x, 15, 10)}` },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(sf, bits(x, 9, 5)) },
+        { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(sf, bits(x, 4, 0)) },
+      ],
+      "Rd",
+    );
+  }
+
   // Data-processing 3-source (madd/msub/mul): sf 00 11011 000 Rm o0 Ra Rn Rd.
   if (bits(w, 28, 24) === 0b11011 && bits(w, 30, 29) === 0) {
     return slice(
@@ -379,6 +404,79 @@ export function decodeFields(word: number): DecodedWord {
         { label: "Rd", hi: 4, lo: 0, kind: "register", meaning: (x) => freg(ftype, bits(x, 4, 0)) },
       ],
       "Rd",
+    );
+  }
+
+  // FP compare: 000 11110 ftype 1 Rm 001000 Rn opc(5). Bit 3 of opc is
+  // the #0.0 form, whose Rm is unused; bit 4 is the signalling fcmpe. It
+  // writes flags, not a register.
+  if (
+    bits(w, 31, 29) === 0 &&
+    bits(w, 28, 24) === 0b11110 &&
+    bits(w, 21, 21) === 1 &&
+    bits(w, 15, 10) === 0b001000
+  ) {
+    const ftype = bits(w, 23, 22);
+    const zero = bits(w, 3, 3) === 1;
+    return slice(
+      w,
+      [
+        { label: "000", hi: 31, lo: 29, kind: "opcode" },
+        { label: "11110", hi: 28, lo: 24, kind: "opcode" },
+        { label: "ftype", hi: 23, lo: 22, kind: "opcode", meaning: () => (ftype === 1 ? "double" : "single") },
+        { label: "1", hi: 21, lo: 21, kind: "opcode" },
+        {
+          label: "Rm",
+          hi: 20,
+          lo: 16,
+          kind: zero ? "opcode" : "register",
+          meaning: (x) => (zero ? "unused" : freg(ftype, bits(x, 20, 16))),
+        },
+        { label: "001000", hi: 15, lo: 10, kind: "opcode" },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => freg(ftype, bits(x, 9, 5)) },
+        {
+          label: "opc",
+          hi: 4,
+          lo: 0,
+          kind: "opcode",
+          meaning: (x) => `${bits(x, 4, 4) ? "fcmpe" : "fcmp"}${zero ? " with #0.0" : ""}`,
+        },
+      ],
+      null,
+    );
+  }
+
+  // FP conditional compare: 000 11110 ftype 1 Rm cond(4) 01 Rn op nzcv.
+  // Like ccmp, the false path sets the flags to nzcv and no register is
+  // written.
+  if (
+    bits(w, 31, 29) === 0 &&
+    bits(w, 28, 24) === 0b11110 &&
+    bits(w, 21, 21) === 1 &&
+    bits(w, 11, 10) === 0b01
+  ) {
+    const ftype = bits(w, 23, 22);
+    return slice(
+      w,
+      [
+        { label: "000", hi: 31, lo: 29, kind: "opcode" },
+        { label: "11110", hi: 28, lo: 24, kind: "opcode" },
+        { label: "ftype", hi: 23, lo: 22, kind: "opcode", meaning: () => (ftype === 1 ? "double" : "single") },
+        { label: "1", hi: 21, lo: 21, kind: "opcode" },
+        { label: "Rm", hi: 20, lo: 16, kind: "register", meaning: (x) => freg(ftype, bits(x, 20, 16)) },
+        { label: "cond", hi: 15, lo: 12, kind: "opcode", meaning: (x) => COND_NAMES[bits(x, 15, 12)] },
+        { label: "01", hi: 11, lo: 10, kind: "opcode" },
+        { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => freg(ftype, bits(x, 9, 5)) },
+        { label: "op", hi: 4, lo: 4, kind: "opcode", meaning: (x) => (bits(x, 4, 4) ? "fccmpe" : "fccmp") },
+        {
+          label: "nzcv",
+          hi: 3,
+          lo: 0,
+          kind: "immediate",
+          meaning: (x) => `flags when the condition fails: ${bitString(x, 3, 0)}`,
+        },
+      ],
+      null,
     );
   }
 
@@ -477,9 +575,14 @@ export function decodeFields(word: number): DecodedWord {
   }
 
   // Load/store register pair: opc(2) 101 V 0 mode(3) L imm7 Rt2 Rn Rt.
+  // opc 01 is ldpsw on the general registers but the D width on the FP ones
+  // (V = 1), where opc 00, 01 and 10 are S, D and Q.
   if (bits(w, 29, 27) === 0b101 && bits(w, 25, 25) === 0) {
     const load = bits(w, 22, 22) === 1;
-    const wide = bits(w, 31, 31) === 1 || bits(w, 30, 30) === 1;
+    const opc = bits(w, 31, 30);
+    const fp = bits(w, 26, 26) === 1;
+    const rt = (index: number) => (fp ? `${"sdq"[opc] ?? "?"}${index}` : xreg(opc === 0 ? 0 : 1, index));
+    const loadName = !fp && opc === 0b01 ? "ldpsw" : "ldp";
     return slice(
       w,
       [
@@ -488,11 +591,11 @@ export function decodeFields(word: number): DecodedWord {
         { label: "V", hi: 26, lo: 26, kind: "opcode" },
         { label: "0", hi: 25, lo: 25, kind: "opcode" },
         { label: "mode", hi: 24, lo: 23, kind: "opcode" },
-        { label: "L", hi: 22, lo: 22, kind: "opcode", meaning: (x) => (bits(x, 22, 22) ? "ldp" : "stp") },
+        { label: "L", hi: 22, lo: 22, kind: "opcode", meaning: () => (load ? loadName : "stp") },
         { label: "imm7", hi: 21, lo: 15, kind: "immediate" },
-        { label: "Rt2", hi: 14, lo: 10, kind: "register", meaning: (x) => xreg(wide ? 1 : 0, bits(x, 14, 10)) },
+        { label: "Rt2", hi: 14, lo: 10, kind: "register", meaning: (x) => rt(bits(x, 14, 10)) },
         { label: "Rn", hi: 9, lo: 5, kind: "register", meaning: (x) => xreg(1, bits(x, 9, 5)) },
-        { label: "Rt", hi: 4, lo: 0, kind: "register", meaning: (x) => xreg(wide ? 1 : 0, bits(x, 4, 0)) },
+        { label: "Rt", hi: 4, lo: 0, kind: "register", meaning: (x) => rt(bits(x, 4, 0)) },
       ],
       load ? "Rt" : null,
     );
@@ -661,13 +764,20 @@ export function decodeFields(word: number): DecodedWord {
     );
   }
 
-  // Exception generation: 11010100 000 imm16 000 01 (svc).
+  // Exception generation: 11010100 opc imm16 000 LL (svc is opc 000 LL 01,
+  // brk opc 001 LL 00).
   if (bits(w, 31, 24) === 0b11010100) {
     return slice(
       w,
       [
         { label: "11010100", hi: 31, lo: 24, kind: "opcode" },
-        { label: "opc", hi: 23, lo: 21, kind: "opcode" },
+        {
+          label: "opc",
+          hi: 23,
+          lo: 21,
+          kind: "opcode",
+          meaning: (x) => EXCEPTION_NAMES[`${bits(x, 23, 21)},${bits(x, 1, 0)}`] ?? "reserved",
+        },
         { label: "imm16", hi: 20, lo: 5, kind: "immediate", meaning: (x) => `${bits(x, 20, 5)}` },
         { label: "op2", hi: 4, lo: 2, kind: "opcode" },
         { label: "LL", hi: 1, lo: 0, kind: "opcode" },
