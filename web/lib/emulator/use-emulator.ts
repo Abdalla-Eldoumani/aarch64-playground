@@ -344,9 +344,8 @@ export function useEmulator(): EmulatorState {
         // the scrollback as history parks it out of the counters' reach.
         preserveScrollback();
       }
-      // The backend wipes the machine on every assemble attempt, so the old
-      // program is gone the moment one starts; the flag comes back only on
-      // success. A failed assemble leaves the controls gated.
+      // The old program stops counting the moment an attempt starts; the flag
+      // comes back only on success. A failed assemble leaves the controls gated.
       markProgramLoaded(false);
       // The replay ring is the editor's scrubber history and seeking only
       // repaints React state (never the CPU), so a terminal build leaves it
@@ -357,10 +356,19 @@ export function useEmulator(): EmulatorState {
       lineMapRef.current = emptyLineMap();
       detectHostedMode(source).then(setHostedMode).catch(() => {});
 
+      // A failure can leave the old program in the machine (the bare-metal
+      // assembler clears it only on success; an empty or thrown attempt never
+      // reaches it). The reset's snapshot returns every pane to the cold-load
+      // state, and is awaited so a caller's seeds land after the wipe.
+      const fail = async (outcome: AssembleOutcome): Promise<AssembleOutcome> => {
+        setInstructions([]);
+        await backend.reset().catch(() => {});
+        return outcome;
+      };
+
       if (!hasAssemblableContent(source)) {
         if (surfaceErrors) setError("no instructions to assemble");
-        setInstructions([]);
-        return Promise.resolve({
+        return fail({
           success: false,
           error: "no instructions to assemble",
           errorLine: null,
@@ -375,9 +383,6 @@ export function useEmulator(): EmulatorState {
         .assemble(source, args)
         .then(async ({ result }): Promise<AssembleOutcome> => {
           if (!result.success) {
-            // The attempt wiped the old program, so the disassembly and the
-            // decode strip that reads it go back to their no-program state.
-            setInstructions([]);
             // A non-positive line means "no line available" (a few linker
             // errors); Monaco clamps a 0 range to line 1, which paints the
             // error onto an unrelated first line.
@@ -391,11 +396,11 @@ export function useEmulator(): EmulatorState {
               setAssemblyErrors(errors);
               setError(result.error ?? null);
             }
-            return {
+            return fail({
               success: false,
               error: result.error ?? null,
               errorLine,
-            };
+            });
           }
           const base = await backend.codeBase();
           // The marker, breakpoints, and disassembly all read this map.
@@ -435,11 +440,10 @@ export function useEmulator(): EmulatorState {
           markProgramLoaded(true);
           return { success: true, error: null, errorLine: null };
         })
-        .catch((e: unknown): AssembleOutcome => {
-          setInstructions([]);
+        .catch((e: unknown): Promise<AssembleOutcome> => {
           const message = e instanceof Error ? e.message : String(e);
           if (surfaceErrors) setError(message);
-          return { success: false, error: message, errorLine: null };
+          return fail({ success: false, error: message, errorLine: null });
         })
         .finally(() => {
           if (surfaceErrors) setIsAssembling(false);
