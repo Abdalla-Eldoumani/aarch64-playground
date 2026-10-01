@@ -3,7 +3,8 @@
 The site has no server code. Every page is a static file, and the emulator, a
 Rust interpreter compiled to WebAssembly (wasm), runs inside the browser tab.
 This doc explains how the parts fit together and why they are built this way.
-[CONTRIBUTING.md](CONTRIBUTING.md) has the folder layout and
+[Where things live](#where-things-live) says where to make the common
+changes, [CONTRIBUTING.md](CONTRIBUTING.md) has the folder layout, and
 [features.md](features.md) maps each feature to its files.
 
 ![System map: the student's page composes EmbeddablePlayground, whose useEmulator hub fans StateSnapshots out to the panels and talks to the Rust interpreter through a Web Worker](diagrams/01-system-map.svg)
@@ -17,6 +18,49 @@ This doc explains how the parts fit together and why they are built this way.
   for the tests.
 - `web/` is the Next.js site. The emulator's state lives in Rust. React reads
   it after every change and never keeps its own copy of the CPU.
+
+## Where things live
+
+Where to make the most common changes. [features.md](features.md) lists the
+files behind every feature.
+
+### The emulator
+
+The four largest modules are a parent file plus a folder of the same name:
+`decoder.rs` and `decoder/`, `executor.rs` and `executor/`, `assembler.rs`
+and `assembler/`, `cpu.rs` and `cpu/`. The parent holds the shared types and
+the dispatch, and each file in the folder holds one kind of instruction or
+one job. All paths below are under `emulator/src/`.
+
+| To change | Edit |
+| --- | --- |
+| The bits an instruction assembles to | its arm in `encode_line` (`assembler.rs`) and its encoder in `assembler/` (`arith.rs`, `bitwise.rs`, `load_store.rs`, `branch.rs`, `fp.rs`, `simd.rs`, `simd_integer.rs`, `simd_float.rs`) |
+| An Advanced SIMD encoding | its row in the tables in `decoder/simd.rs` or `decoder/simd_fp.rs`, which the encoder, the decoder, and the disassembler share |
+| How a word decodes | `decoder/`, one file per instruction class (`data_processing.rs`, `load_store.rs`, `branch.rs`, `fp.rs`, `simd.rs`, `simd_fp.rs`) |
+| What an instruction does | `executor/`, with the decoder's class names; the flag helpers are in `executor.rs` |
+| The list of accepted mnemonics | `SUPPORTED_MNEMONICS` in `assembler.rs`, kept equal to [instruction-reference.md](instruction-reference.md) by a test |
+| m4, labels, directives, and linking | `frontend/`: `m4.rs`, `lexer.rs`, `parser.rs`, `expr.rs`, `sections.rs`, `pipeline.rs` |
+| A library function such as `printf` or `malloc` | `hosted/`, one file per family: `printf.rs`, `scanf.rs`, `libc.rs`, `stdio.rs`, `heap.rs`, `math.rs`, `ctype.rs`, `callback.rs` |
+| A system call or the virtual files | `hosted/syscalls.rs` |
+| The step loop and the memory layout | `cpu.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints and step back in `cpu/control.rs` |
+| Registers or memory pages | `registers.rs`, `memory.rs` |
+| What the site can call | `lib.rs` |
+
+### Lessons, exercises, and pitfalls
+
+[authoring-content.md](authoring-content.md) has the format and the rules
+each kind of file must meet.
+
+| To change | Edit |
+| --- | --- |
+| A lesson | `web/content/lessons/<slug>.json` |
+| An exercise or a theory set | `web/content/exercises/<slug>.json`; a coding exercise's reference solution is `web/lib/test/content/exercise-solutions/<slug>.s` |
+| The practice topics and their order | `web/lib/content/practice-topics.ts` |
+| A pitfall card | `web/lib/content/pitfalls/<group>.ts`; `web/lib/content/pitfall-data.ts` joins the groups |
+| An instruction's reference entry | [instruction-reference.md](instruction-reference.md), `web/lib/content/reference-data.ts`, and the hover card in `web/lib/asm/instruction-docs.ts` |
+
+<!-- The site's rows (themes, the watch grammar, the panels, the playground
+layout) go here once its files settle. -->
 
 ## One playground component
 
