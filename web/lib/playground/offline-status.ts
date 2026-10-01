@@ -6,9 +6,8 @@ import { useSyncExternalStore } from "react";
  * when asked and whenever a save moves, so every tab shows the same state.
  */
 export interface OfflineStatus {
-  /** Pages in the "save every page" set (the playground is always saved). */
-  pages: number;
-  /** Their estimated download size, in bytes. */
+  /** The estimated download size of the "save every page" set, in bytes
+   *  (the playground is always saved). */
   bytes: number;
   /** When every page was saved under the current build, or null. */
   savedAt: Date | null;
@@ -35,7 +34,7 @@ const count = (value: unknown): value is number =>
 export function parseStatus(data: unknown): OfflineStatus | null {
   if (typeof data !== "object" || data === null) return null;
   const d = data as Record<string, unknown>;
-  if (d.type !== "offline-status" || !count(d.pages) || !count(d.bytes)) return null;
+  if (d.type !== "offline-status" || !count(d.bytes)) return null;
   let savedAt: Date | null = null;
   if (typeof d.savedAt === "string") {
     savedAt = new Date(d.savedAt);
@@ -49,7 +48,7 @@ export function parseStatus(data: unknown): OfflineStatus | null {
   }
   const failure =
     d.failure === "network" || d.failure === "storage" || d.failure === "update" ? d.failure : null;
-  return { pages: d.pages, bytes: d.bytes, savedAt, saving, failure };
+  return { bytes: d.bytes, savedAt, saving, failure };
 }
 
 function changeBetween(before: OfflineStatus | undefined, after: OfflineStatus): OfflineSnapshot["change"] {
