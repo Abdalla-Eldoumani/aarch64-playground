@@ -2,7 +2,7 @@
   "title": "Talking to the operating system: svc and files",
   "slug": "system-calls-and-files",
   "order": 27,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-10-01",
   "summary": "Ask the operating system for input and output with svc: write and read without printf, then create, fill, and read back a file, checking every result.",
   "tags": [
     "input and output"
@@ -91,7 +91,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Count the lines](/practice/count-the-lines): read standard input with the `read` system call instead of `scanf`.\n- [High score keeper](/practice/high-score-keeper): keep a record in a file with `openat`, `read`, `write` and `close`.\n- [Echo the sum](/practice/echo-the-sum): read input the library way, with `scanf`.\n- [Advanced quiz: ARMv8 assembly](/practice/quiz-advance-armv8): asks about exception levels."
+      "markdown": "## Practice\n\n- [Count the lines](/practice/count-the-lines): read standard input with the `read` system call instead of `scanf`.\n- [High score keeper](/practice/high-score-keeper): keep a record in a file with `openat`, `read`, `write` and `close`.\n- [Echo the sum](/practice/echo-the-sum): read input the library way, with `scanf`.\n- [Advanced quiz: ARMv8 assembly](/practice/quiz-advance-armv8): asks about exception levels.\n- [Basic quiz: input and output](/practice/quiz-basic-io): file descriptors, the register that picks a system call, and why `printf` and `write` can print out of order.\n- [Fill in the blank: input and output (core)](/practice/blanks-io): service numbers, descriptors, and the length `write` sends.\n- [Predict: input and output (challenge)](/practice/predict-io): what `printf`, `scanf`, `read` and `write` return."
     }
   ]
 }
