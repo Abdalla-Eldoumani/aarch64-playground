@@ -1,6 +1,6 @@
 "use client";
 
-import { createElement, useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { createElement, useCallback, useEffect, useRef, useState, type FocusEvent, type ReactNode } from "react";
 
 export interface SideScrollProps {
   /** The element that scrolls: a code box's pre, or a list laid out as a row. */
@@ -33,12 +33,18 @@ export function SideScroll({ as, className = "", scrollerClassName, fadeClassNam
     window.addEventListener("resize", measure);
     return () => window.removeEventListener("resize", measure);
   }, [measure, children]);
+  // Chromium leaves a focused item partly past the edge, under the fade; the
+  // scroll padding (the fade's width) parks it clear of the fade.
+  const reveal = useCallback((event: FocusEvent<HTMLElement>) => {
+    if (event.target === event.currentTarget) return;
+    event.target.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, []);
 
   return (
     <div className={`relative ${className}`}>
       {createElement(
         as,
-        { ref: scrollerRef, onScroll: measure, className: `overflow-x-auto ${scrollerClassName}` },
+        { ref: scrollerRef, onScroll: measure, onFocus: reveal, className: `overflow-x-auto scroll-pr-8 ${scrollerClassName}` },
         children,
       )}
       {moreRight && (
