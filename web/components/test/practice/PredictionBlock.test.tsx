@@ -57,6 +57,30 @@ describe("PredictionBlock controlled answer", () => {
     expect(onValueChange).toHaveBeenCalledWith("0x10");
   });
 
+  // A phone shows no scrollbar until a swipe, so a snippet line cut at the
+  // right edge needs a cue.
+  it("fades the snippet's right edge only while a line runs past it", () => {
+    const widths = (scroll: number, client: number) => {
+      Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => scroll });
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => client });
+    };
+    const fade = (root: HTMLElement) =>
+      root.querySelector("pre")?.parentElement?.querySelector('[aria-hidden="true"].bg-gradient-to-l');
+    try {
+      widths(600, 300);
+      const wide = render(<PredictionBlock {...PROPS} />);
+      expect(fade(wide.container)).toBeTruthy();
+      wide.unmount();
+      widths(300, 300);
+      const fits = render(<PredictionBlock {...PROPS} />);
+      expect(fade(fits.container)).toBeNull();
+    } finally {
+      // The prototype getters are jsdom's zeros; drop the overrides.
+      delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+  });
+
   it("still owns its answer when no value is passed", () => {
     render(<PredictionBlock {...PROPS} />);
     const input = screen.getByLabelText(PROPS.question) as HTMLInputElement;
