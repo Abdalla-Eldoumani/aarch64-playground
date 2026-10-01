@@ -56,13 +56,13 @@ export function InstructionView({
 
   return (
     <div className="p-3 text-xs">
-      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
+      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px] mb-2">
         disassembly
       </h2>
       {windowed && (
         <p
           role="status"
-          className="mb-2 font-mono text-[10px] text-[var(--text-tertiary)]"
+          className="mb-2 font-mono text-[12px] text-[var(--text-tertiary)]"
         >
           showing {(start + 1).toLocaleString()}-
           {(start + visible.length).toLocaleString()} of{" "}
