@@ -1,0 +1,57 @@
+{
+  "title": "Fill in the blank: loops",
+  "slug": "blanks-loops",
+  "order": 117,
+  "lastUpdated": "2026-10-01",
+  "topic": "loops",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the branches and the subtract that open a loop, close it, and count it down.",
+  "blanks": [
+    {
+      "prompt": "A pre-test loop keeps its test below the body. Complete the line above the body that sends execution to the test before the first pass.",
+      "code": "___ loop_test",
+      "blanks": [
+        "b"
+      ],
+      "explanation": "An unconditional b jumps over the body to the test, so a loop whose condition is false at the start never runs its body. Without this line execution falls straight into the body, and the loop becomes a post-test loop.",
+      "hint": "An unconditional branch, one letter long."
+    },
+    {
+      "prompt": "The test at the bottom of a pre-test loop sends execution back into the body while the signed counter i_r is at most n_r. Complete the branch after cmp i_r, n_r.",
+      "code": "b.___ loop_body",
+      "blanks": [
+        "le"
+      ],
+      "explanation": "This branch jumps back into the body, so it uses the C condition itself, i <= n, not its complement. le holds when Z is 1 or N differs from V, which after the cmp means i_r <= n_r as signed values.",
+      "hint": "Less than or equal, signed."
+    },
+    {
+      "prompt": "A guessing game asks again while the guess is wrong: do { ... } while (guess != secret). After cmp guess_r, secret_r at the bottom, complete the branch back to the top.",
+      "code": "b.___ ask",
+      "blanks": [
+        "ne"
+      ],
+      "explanation": "A do-while loop tests after the body and jumps back to the top while its condition holds. Here the condition is guess != secret, and ne holds when the last compare found two different values (Z is 0).",
+      "hint": "Not equal."
+    },
+    {
+      "prompt": "A countdown subtracts 1 from count_r at the end of each pass with sub, which leaves the flags alone. Complete the branch that goes back to tick until the count reaches 0, with no cmp in front.",
+      "code": "___ count_r, tick",
+      "blanks": [
+        "cbnz"
+      ],
+      "explanation": "cbnz (compare and branch on nonzero) tests the register itself and jumps while it is not 0. It needs no cmp, and it does not matter that sub set no flags.",
+      "hint": "Compare and branch on nonzero."
+    },
+    {
+      "prompt": "Count down with one instruction that subtracts 1 from count_r and also sets the flags, so the b.ne after it needs no cmp.",
+      "code": "___ count_r, count_r, 1",
+      "blanks": [
+        "subs"
+      ],
+      "explanation": "The s on the end makes the subtract set N, Z, C and V from its result. When count_r reaches 0, Z becomes 1 and b.ne falls through, so the loop ends without a separate cmp.",
+      "hint": "sub, with the letter that makes it set the flags."
+    }
+  ]
+}
