@@ -103,7 +103,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Quiz: system architecture (intro)](/practice/quiz-basic-architecture) and [Quiz: system architecture (core)](/practice/quiz-inter-architecture): the parts of the machine, the bus, and the two machine designs.\n- [Fill in the blank: system architecture](/practice/blanks-architecture): the names of the parts.\n- [Quiz: system architecture (challenge)](/practice/quiz-advance-architecture): also asks about labels and m4, the step that runs before the assembler, which the next lesson, [Anatomy of an assembly file](/learn/anatomy-of-a-program), covers."
+      "markdown": "## Practice\n\n- [Basic quiz: system architecture](/practice/quiz-basic-architecture) and [Intermediate quiz: system architecture](/practice/quiz-inter-architecture): the parts of the machine, the bus, and the two machine designs.\n- [Fill in the blank: system architecture](/practice/blanks-architecture): the names of the parts.\n- [Advanced quiz: system architecture](/practice/quiz-advance-architecture): also asks about labels and m4, the step that runs before the assembler, which the next lesson, [Anatomy of an assembly file](/learn/anatomy-of-a-program), covers."
     }
   ]
 }
