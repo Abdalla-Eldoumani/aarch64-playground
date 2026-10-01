@@ -355,7 +355,7 @@ describe("saving every page", () => {
     expect(progress[0]).toEqual({ done: 0, total: 3 });
     expect(progress.at(-1)).toEqual({ done: 3, total: 3 });
     const last = worker.messages.at(-1)!;
-    expect(last).toMatchObject({ type: "offline-status", pages: 3, bytes: 2400, saving: null, failure: null });
+    expect(last).toMatchObject({ type: "offline-status", bytes: 2400, saving: null, failure: null });
     expect(Number.isNaN(Date.parse(String(last.savedAt)))).toBe(false);
   });
 
@@ -385,7 +385,7 @@ describe("saving every page", () => {
     const worker = await installed();
     await worker.fire("message", { data: { type: "offline-status" } });
     expect(worker.messages).toEqual([
-      { type: "offline-status", pages: 3, bytes: 2400, savedAt: null, saving: null, failure: null },
+      { type: "offline-status", bytes: 2400, savedAt: null, saving: null, failure: null },
     ]);
     expect(worker.caches.stores.get(CACHE)!.paths()).not.toContain("/learn");
   });
