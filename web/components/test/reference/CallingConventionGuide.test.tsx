@@ -1,6 +1,6 @@
 // Pins the calling-convention guide: its thirteen sections in order with a
-// contents link to each, the AAPCS64 statements the verifier checked against
-// the spec, one runnable example at a time with the server's output beside
+// contents link to each, the statements checked against AAPCS64, one
+// runnable example at a time with the server's output beside
 // it, and links to pitfall cards that exist.
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
