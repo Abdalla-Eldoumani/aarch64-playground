@@ -338,6 +338,11 @@ interface EditorProps {
    *  "insert line below" and stops the key there, so the page's own shortcut
    *  never saw it; a surface that runs programs passes its action here. */
   onRunShortcut?: () => void;
+  /** Wrap long lines in Monaco instead of scrolling them sideways: a frame in
+   *  a reading column is too narrow for a comment at the end of a line, and
+   *  its horizontal scrollbar stays hidden until hovered. The touch editor
+   *  scrolls sideways with a visible bar either way. */
+  wrapLines?: boolean;
 }
 
 const COND_BRANCHES = [
@@ -381,6 +386,7 @@ export function Editor({
   focusRequest,
   followCurrentLine = true,
   onRunShortcut,
+  wrapLines = false,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
@@ -733,7 +739,7 @@ export function Editor({
             scrollBeyondLastLine: false,
             automaticLayout: true,
             tabSize: 4,
-            wordWrap: isCoarsePointer() ? "on" : "off",
+            wordWrap: wrapLines || isCoarsePointer() ? "on" : "off",
             // The block caret is the site's brand cursor, here in the one place
             // it is a real cursor. It blinks hard on/off; when the reader asks
             // for reduced motion it holds solid instead, same fallback as the
