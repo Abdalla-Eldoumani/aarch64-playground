@@ -178,7 +178,7 @@ export function InteractiveExerciseView({
         <LessonMarkdown markdown={exercise.prompt} />
         <p
           role="status"
-          className="font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
+          className="font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]"
         >
           {draft.graded.length} of {total} correct
         </p>
@@ -228,7 +228,7 @@ export function InteractiveExerciseView({
                 : "smooth",
             })
           }
-          className="touch-target font-mono text-[11px] [@media(pointer:coarse)]:text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] underline-offset-4 hover:text-[var(--text-primary)] hover:underline focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+          className="touch-target font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] underline-offset-4 hover:text-[var(--text-primary)] hover:underline focus:outline-none focus-visible:[box-shadow:var(--ring)]"
         >
           back to top
         </button>
