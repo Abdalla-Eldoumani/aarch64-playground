@@ -995,6 +995,7 @@ export function FullChromeSurface({
         buildDiagnostic={buildDiagnostic}
         onOpenCommandPalette={openCommandPalette}
         onOpenShortcuts={openShortcuts}
+        onWalkthrough={openWalkthrough}
       />
 
       {shareBanner && (
