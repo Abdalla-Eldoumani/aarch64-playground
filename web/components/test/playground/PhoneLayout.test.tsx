@@ -97,6 +97,30 @@ describe("PhoneLayout", () => {
     expect(screen.getByRole("status").textContent).toBe("finished · exit 0 · 55 steps");
   });
 
+  // From any tab every view is two taps away: "more", then the view.
+  test("more lists the views, and one more tap opens one", () => {
+    render(<PhoneLayout {...props()} />);
+    fireEvent.click(within(strip()).getByRole("tab", { name: "more" }));
+    const list = screen.getByRole("group", { name: "choose a view" });
+    expect(within(list).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "memory",
+      "stack",
+      "disassembly",
+      "terminal",
+      "watches",
+      "converter",
+      "memory watches",
+      "saves",
+    ]);
+    fireEvent.click(within(list).getByRole("button", { name: "converter" }));
+    expect(screen.getByTestId("conv")).toBeTruthy();
+    expect(screen.queryByRole("group", { name: "choose a view" })).toBeNull();
+    // Back on "more", the list comes first again.
+    fireEvent.click(within(strip()).getByRole("tab", { name: "more" }));
+    expect(screen.getByRole("group", { name: "choose a view" })).toBeTruthy();
+    expect(screen.queryByTestId("conv")).toBeNull();
+  });
+
   test("a request from the parent opens a view under more", () => {
     const { rerender } = render(<PhoneLayout {...props()} />);
     expect(screen.queryByTestId("conv")).toBeNull();
