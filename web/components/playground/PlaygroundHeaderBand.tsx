@@ -49,6 +49,8 @@ export interface PlaygroundHeaderBandProps {
   buildDiagnostic: () => Promise<DiagnosticBundle>;
   onOpenCommandPalette: () => void;
   onOpenShortcuts: () => void;
+  /** Starts the interface walkthrough; the phone's menu offers it directly. */
+  onWalkthrough: () => void;
   /** The phone bar: home, examples, and a menu sheet with everything else. */
   compact?: boolean;
   /** A short laptop window: the band stands in for the site bar (home link
@@ -77,6 +79,7 @@ export function PlaygroundHeaderBand({
   buildDiagnostic,
   onOpenCommandPalette,
   onOpenShortcuts,
+  onWalkthrough,
   compact = false,
   short = false,
 }: PlaygroundHeaderBandProps) {
@@ -156,6 +159,7 @@ export function PlaygroundHeaderBand({
                     buildDiagnostic={buildDiagnostic}
                     onOpenCommandPalette={fromSheet(onOpenCommandPalette)}
                     onOpenShortcuts={fromSheet(onOpenShortcuts)}
+                    onWalkthrough={fromSheet(onWalkthrough)}
                   />
                 </>
               ),
