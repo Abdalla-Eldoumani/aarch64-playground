@@ -161,4 +161,26 @@ describe("lessonLinks on the shipped lessons", () => {
       }
     }
   });
+
+  // The foot card shows each exercise's title and difficulty, so the lesson
+  // text may name a linked exercise by its title, its title with the
+  // difficulty in brackets, or the difficulty alone after a named sibling.
+  // A title the exercise no longer carries fails here.
+  it("names every linked exercise the way its foot card does", () => {
+    const bySlug = new Map(exercises.map((row) => [row.slug, row]));
+    const stale: string[] = [];
+    for (const entry of lessons) {
+      for (const block of entry.body) {
+        if (block.type !== "prose" && block.type !== "callout") continue;
+        for (const [link, text, slug] of block.markdown.matchAll(/\[([^\]]+)\]\(\/practice\/([^)\s#?]+)/g)) {
+          const row = bySlug.get(slug);
+          const names = row?.difficulty
+            ? [row.title, `${row.title} (${row.difficulty})`, row.difficulty]
+            : [row?.title];
+          if (!names.includes(text)) stale.push(`${entry.slug}: ${link})`);
+        }
+      }
+    }
+    expect(stale).toEqual([]);
+  });
 });
