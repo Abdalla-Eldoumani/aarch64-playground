@@ -139,7 +139,7 @@ export default function GlobalError({
               color: TEXT_PRIMARY,
             }}
           >
-            something broke
+            Something broke
           </h1>
 
           <p
