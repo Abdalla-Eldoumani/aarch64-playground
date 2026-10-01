@@ -13,6 +13,14 @@ describe("web manifest", () => {
     expect(m.start_url).toBe("/playground");
   });
 
+  it("offers Learn, Practice and Reference as shortcuts", () => {
+    expect(manifest().shortcuts).toEqual([
+      { name: "Learn", url: "/learn" },
+      { name: "Practice", url: "/practice" },
+      { name: "Reference", url: "/reference" },
+    ]);
+  });
+
   it("carries any-purpose icons and a separate maskable one", () => {
     const icons = manifest().icons ?? [];
     expect(icons.filter((i) => i.purpose === "any").map((i) => i.sizes)).toEqual(["192x192", "512x512"]);
