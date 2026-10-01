@@ -8,6 +8,7 @@
  */
 
 import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
+import { escapeRegExp } from "@/lib/asm/escape-regexp";
 
 export type TokenKind =
   | "keyword"
@@ -36,9 +37,7 @@ export const ARM64_MNEMONICS: ReadonlySet<string> = new Set(
  * The same set as one escaped regex alternation, for Editor.tsx's Monaco
  * keyword rule. The caller adds its own word boundaries and the `i` flag.
  */
-export const MNEMONIC_ALTERNATION: string = [...ARM64_MNEMONICS]
-  .map((m) => m.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
-  .join("|");
+export const MNEMONIC_ALTERNATION: string = [...ARM64_MNEMONICS].map(escapeRegExp).join("|");
 
 /**
  * Every register name: x/w, the SIMD&FP scalar views (b, h, s, d, q), and v
