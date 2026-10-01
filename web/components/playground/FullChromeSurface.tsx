@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
-import { useBreakpoint, usePhoneShape } from "@/lib/hooks/use-breakpoint";
+import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
@@ -26,6 +26,7 @@ import { DecodeStrip } from "@/components/panels/DecodeStrip";
 import { FirstRunState } from "@/components/playground/FirstRunState";
 import { FullLayout } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
+import { Toolbar } from "@/components/playground/Toolbar";
 import {
   RightTabs,
   type DebugPanes,
@@ -191,6 +192,9 @@ export function FullChromeSurface({
   const toast = useToast();
   const bp = useBreakpoint();
   const phone = usePhoneShape();
+  const height = useScreenHeight();
+  // A phone has its own compact chrome; the short layout is for the rest.
+  const short = height === "short" && phone === null;
   const [activeTab, setActiveTab] = useState<RightTab>("memory");
   // The view the phone layout has on screen; the desktop tab state above
   // says nothing about a phone.
@@ -911,6 +915,14 @@ export function FullChromeSurface({
       userAgent: navigator.userAgent,
     });
 
+  // The tools' actions, shared by the header band and, in a short window,
+  // the run row that carries the tools instead.
+  const openShare = () => onOpenShareDialog?.();
+  const openTutorials = () => setTutorialOpen(true);
+  const toggleTheme = () => onToggleTheme?.();
+  const openCommandPalette = () => onOpenCommandPalette?.();
+  const openShortcuts = () => onOpenShortcutsHelp?.();
+
   const controls = (
     <Controls
       onAssemble={assembleWithHistory}
@@ -932,6 +944,20 @@ export function FullChromeSurface({
       error={controlsError}
       stepCount={emu.stepCount}
       compact={phone !== null}
+      short={short}
+      trailing={
+        short ? (
+          <Toolbar
+            className="sm:ml-auto"
+            onShare={openShare}
+            onTutorials={openTutorials}
+            onToggleTheme={toggleTheme}
+            buildDiagnostic={buildDiagnostic}
+            onOpenCommandPalette={openCommandPalette}
+            onOpenShortcuts={openShortcuts}
+          />
+        ) : undefined
+      }
     />
   );
 
@@ -942,6 +968,7 @@ export function FullChromeSurface({
       <InterfaceWalkthrough openRequest={walkthroughRequest} />
       <PlaygroundHeaderBand
         compact={phone !== null}
+        short={short}
         onLoadProgram={loadProgramWithConfirm}
         source={source}
         files={extraFiles}
@@ -960,12 +987,12 @@ export function FullChromeSurface({
               }
             : null
         }
-        onShare={() => onOpenShareDialog?.()}
-        onTutorials={() => setTutorialOpen(true)}
-        onToggleTheme={() => onToggleTheme?.()}
+        onShare={openShare}
+        onTutorials={openTutorials}
+        onToggleTheme={toggleTheme}
         buildDiagnostic={buildDiagnostic}
-        onOpenCommandPalette={() => onOpenCommandPalette?.()}
-        onOpenShortcuts={() => onOpenShortcutsHelp?.()}
+        onOpenCommandPalette={openCommandPalette}
+        onOpenShortcuts={openShortcuts}
       />
 
       {shareBanner && (
@@ -987,6 +1014,7 @@ export function FullChromeSurface({
       <FullLayout
         breakpoint={bp}
         phone={phone}
+        height={height}
         editor={editorBlock}
         disassembly={disasmBlock}
         registers={regsBlock}
