@@ -242,10 +242,16 @@ function nameForRecents(source: string): string {
 // early. useEmulator cannot be called conditionally, so the gate lives outside.
 // ---------------------------------------------------------------------------
 
+/** The pre-engage controls whose press is an action, not only a wake-up. */
+type FirstPress = "run" | "step" | "check";
+const FIRST_PRESSES: readonly string[] = ["run", "step", "check"];
+
 type EmbeddableCoreProps = EmbeddablePlaygroundProps & {
   registerHandle: (handle: EmbeddablePlaygroundHandle | null) => void;
   /** The outer wrapper, which the autoplay walk watches to hold off screen. */
   frameRef: RefObject<HTMLDivElement | null>;
+  /** The control pressed before the hub existed, done once it loads. */
+  firstPress?: FirstPress | null;
 };
 
 function EmbeddableCore({
@@ -278,6 +284,7 @@ function EmbeddableCore({
   onToggleTheme,
   registerHandle,
   frameRef,
+  firstPress = null,
 }: EmbeddableCoreProps) {
   const emu = useEmulator();
   // The hub as a latest-value ref (synced in the effect further down, with
@@ -775,6 +782,19 @@ function EmbeddableCore({
     [loadSource, runProgram, resetMachine, toast, handleStepBack, walk],
   );
 
+  // A press on run, step or check before the frame engaged is that action:
+  // the swap to these live panes took the pressed button away before its
+  // click landed, so a phone needed a second tap. Done once, when the hub
+  // can run it.
+  const firstPressDone = useRef(false);
+  useEffect(() => {
+    if (!firstPress || firstPressDone.current || !emu.isLoaded) return;
+    firstPressDone.current = true;
+    if (firstPress === "run") void runEmbed();
+    else if (firstPress === "step") void stepEmbed();
+    else void checkEmbed();
+  }, [firstPress, emu.isLoaded, runEmbed, stepEmbed, checkEmbed]);
+
   // Register the handle only once the hub is loaded, so a queued host action
   // (flushed by the outer component on registration) lands on a live backend.
   // Full chrome waits for the surface's bridge too: a queued loadProgram that
@@ -1009,6 +1029,11 @@ export const EmbeddablePlayground = forwardRef<
   // A click, a tap, a key, or focus is a user asking for the machine now, and
   // so is a press on any pre-engage control.
   const engage = useCallback(() => setEngaged(true), []);
+  const [firstPress, setFirstPress] = useState<FirstPress | null>(null);
+  const pressFirst = useCallback((press: FirstPress) => {
+    setFirstPress(press);
+    setEngaged(true);
+  }, []);
 
   // Focus that engages the frame sits on a pre-engage copy of a control, and
   // the swap to the live panes unmounts it, dropping a keyboard or screen
@@ -1106,8 +1131,18 @@ export const EmbeddablePlayground = forwardRef<
       refocusRef.current = focusKey(event.target);
       engage();
     };
-    node.addEventListener("mousedown", engage, { once: true });
-    node.addEventListener("touchstart", engage, { once: true });
+    // The press itself engages, so the button it landed on is gone before
+    // its click: read which one it was here.
+    const engageOnPress = (event: Event) => {
+      const label =
+        event.target instanceof Element
+          ? event.target.closest("button")?.getAttribute("aria-label")
+          : null;
+      if (label && FIRST_PRESSES.includes(label)) setFirstPress(label as FirstPress);
+      engage();
+    };
+    node.addEventListener("mousedown", engageOnPress, { once: true });
+    node.addEventListener("touchstart", engageOnPress, { once: true });
     node.addEventListener("keydown", engage, { once: true });
     node.addEventListener("focusin", engageOnFocus, { once: true });
     return () => {
@@ -1117,8 +1152,8 @@ export const EmbeddablePlayground = forwardRef<
         cancelIdleCallback(idleHandle);
       }
       if (idleTimer !== null) clearTimeout(idleTimer);
-      node.removeEventListener("mousedown", engage);
-      node.removeEventListener("touchstart", engage);
+      node.removeEventListener("mousedown", engageOnPress);
+      node.removeEventListener("touchstart", engageOnPress);
       node.removeEventListener("keydown", engage);
       node.removeEventListener("focusin", engageOnFocus);
     };
@@ -1162,7 +1197,12 @@ export const EmbeddablePlayground = forwardRef<
       className={joinClasses("flex flex-col flex-1 min-h-0", className)}
     >
       {engaged ? (
-        <EmbeddableCore {...props} registerHandle={registerHandle} frameRef={wrapperRef} />
+        <EmbeddableCore
+          {...props}
+          registerHandle={registerHandle}
+          frameRef={wrapperRef}
+          firstPress={firstPress}
+        />
       ) : (
         // Embed and checker only. It paints the same grid the engaged render
         // does, so the host page does not shift when the hub arrives, and a
@@ -1179,11 +1219,11 @@ export const EmbeddablePlayground = forwardRef<
           canStep
           canStepBack={false}
           error={null}
-          onRun={engage}
+          onRun={() => pressFirst("run")}
           onReset={engage}
-          onStep={engage}
+          onStep={() => pressFirst("step")}
           onStepBack={engage}
-          onCheck={engage}
+          onCheck={() => pressFirst("check")}
           runStatus={IDLE_RUN_STATUS}
           hasOutput={false}
           editor={
