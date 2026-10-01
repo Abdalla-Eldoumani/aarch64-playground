@@ -1,6 +1,7 @@
 // The verdict of check.yml's ci job, the one required status check, read
 // from NEEDS (`toJSON(needs)`). Skipped passes because coverage skips itself
-// on every pull request; anything else short of success fails.
+// on most pull requests, and a push to integration skips every job that only
+// tests; anything else short of success fails.
 const PASSING = new Set(["success", "skipped"]);
 
 function failures(needs) {
