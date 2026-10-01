@@ -227,6 +227,27 @@ describe("installing a build", () => {
     expect(await worker.caches.keys()).toEqual([]);
   });
 
+  it("reuses an older build's copy of a content-named file instead of downloading it again", async () => {
+    const caches = new FakeCaches();
+    const old = await caches.open("aarch64-playground-build-one");
+    await old.put("/_next/static/chunks/main.js", new Response("kept copy"));
+    // An example keeps its address when edited, so it is always fetched.
+    await old.put("/examples/cpsc355/basics.s", new Response("old text"));
+    const fetched: string[] = [];
+    const worker = startWorker((pathname) => {
+      fetched.push(pathname);
+      return host()(pathname);
+    }, caches);
+    await worker.fire("install");
+    expect(fetched).not.toContain("/_next/static/chunks/main.js");
+    expect(fetched).toContain("/examples/cpsc355/basics.s");
+    const cache = caches.stores.get(CACHE)!;
+    expect(await (await cache.match("/_next/static/chunks/main.js"))?.text()).toBe("kept copy");
+    expect(await (await cache.match("/examples/cpsc355/basics.s"))?.text()).toBe(
+      "file /examples/cpsc355/basics.s",
+    );
+  });
+
   it("keeps every page saved across an update when the last build had them all", async () => {
     const caches = new FakeCaches();
     const old = await caches.open("aarch64-playground-build-one");
