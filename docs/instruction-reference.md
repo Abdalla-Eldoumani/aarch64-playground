@@ -754,6 +754,8 @@ finishes on the next step.
 | 113 | clock_gettime | `x0=clock_id`, `x1=timespec`            |
 | 278 | getrandom  | `x0=buf`, `x1=buflen`, `x2=flags` (deterministic, so replay matches) |
 
+A call that fails puts a negative Linux error number in `x0`, as on the server: -2 for a file that does not exist, -9 for a descriptor that is not open, -22 for a bad argument, and -25 when ioctl asks a file whether it is a terminal (stdin is a file under `./program < input`).
+
 ## NZCV flags
 
 `ADDS`, `SUBS`, `ADCS`, `SBCS`, `ANDS`, `NEGS`, `CMP`, `CMN`, `CCMP`, `CCMN`, `TST`, `FCMP` / `FCMPE`, and `FCCMP` / `FCCMPE` update the condition flags. They are visible in the register panel as `N Z C V` and used by `B.cond` / `CSEL` / `CSET` / friends.
