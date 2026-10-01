@@ -29,7 +29,7 @@ export function RunModeControl({ mode, onChange, disabled = false }: RunModeCont
       className="flex shrink-0 items-center gap-2"
       title={disabled ? "a terminal session is running" : undefined}
     >
-      <span className="hidden font-mono text-[11px] font-semibold uppercase tracking-[0.14em] whitespace-nowrap text-[var(--text-tertiary)] sm:inline">
+      <span className="hidden font-mono text-[12px] font-semibold uppercase tracking-[0.14em] whitespace-nowrap text-[var(--text-tertiary)] sm:inline">
         run in
       </span>
       <div
