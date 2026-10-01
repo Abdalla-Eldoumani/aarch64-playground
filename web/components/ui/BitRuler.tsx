@@ -27,7 +27,7 @@ export function BitRuler({ className = "" }: { className?: string }) {
         return (
           <span
             key={bit}
-            className={`absolute top-[9px] font-mono text-[9px] leading-none text-[var(--text-tertiary)] ${
+            className={`absolute top-[9px] font-mono text-[12px] leading-none text-[var(--text-tertiary)] ${
               everyEight ? "" : "hidden sm:inline"
             }`}
             style={{
