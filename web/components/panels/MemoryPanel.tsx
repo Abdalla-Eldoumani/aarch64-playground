@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseAddress } from "@/lib/emulator/parse-address";
 import { formatByte, formatWord32 } from "@/lib/emulator/format-hex";
 import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
@@ -93,7 +93,26 @@ export function MemoryPanel({
   // here instead of silently truncating to a low address whose zeros read
   // as "my .data is empty".
   const [lastGoodAddr, setLastGoodAddr] = useState(0x00400000);
-  const [rows] = useState(DEFAULT_ROWS);
+  const [rows, setRows] = useState(DEFAULT_ROWS);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // A tall pane shows more memory instead of a blank band under the dump; a
+  // short one keeps the 16 rows and scrolls. Watching the panel too catches a
+  // zoom, which changes the row height without resizing the pane.
+  useEffect(() => {
+    const root = rootRef.current;
+    const pane = root?.parentElement;
+    if (!root || !pane || typeof ResizeObserver === "undefined") return;
+    const fit = () => {
+      const rowHeight = root.querySelector("tbody tr")?.getBoundingClientRect().height ?? 0;
+      if (rowHeight <= 0) return;
+      const spare = pane.clientHeight - root.offsetHeight;
+      setRows((n) => Math.max(DEFAULT_ROWS, n + Math.floor(spare / rowHeight)));
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(pane);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
   const zoom = useZoom("memory");
   // A 16-byte row overflows the screen below sm, so phones get 8 per row.
   const bp = useBreakpoint();
@@ -126,6 +145,7 @@ export function MemoryPanel({
 
   return (
     <div
+      ref={rootRef}
       className="p-3"
       style={{ ...zoom.style, fontSize: `calc(0.75rem * var(--font-scale, 1))` }}
       onWheel={(e) => {
@@ -184,7 +204,9 @@ export function MemoryPanel({
           <tr className="text-[var(--text-secondary)]">
             <th className="text-left pr-2 sm:pr-4">addr</th>
             {Array.from({ length: bytesPerRow }, (_, i) => (
-              <th key={i} className="w-5 sm:w-6 text-center">
+              // Under sm a byte column takes its text's width: a fixed 20px
+              // one cut the ascii column off a 320px screen.
+              <th key={i} className="sm:w-6 text-center">
                 {i.toString(16).toUpperCase()}
               </th>
             ))}
