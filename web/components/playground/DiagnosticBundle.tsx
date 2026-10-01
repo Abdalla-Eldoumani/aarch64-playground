@@ -7,7 +7,7 @@ import {
   bundleShareUrl,
   type DiagnosticBundle as DiagnosticBundleData,
 } from "@/lib/playground/diagnostic-bundle";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 export interface DiagnosticBundleProps {
   /** Gathers the snapshot from the machine; called once per opening. */
@@ -110,7 +110,7 @@ function BundleDialog({
       role="dialog"
       aria-modal="true"
       aria-labelledby="diagnostic-bundle-title"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={ref}
