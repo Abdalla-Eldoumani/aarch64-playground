@@ -45,7 +45,7 @@ export function DRegisterRow({
       }`}
     >
       <span className="w-[3ch] shrink-0 text-[var(--text-secondary)]">D{index}</span>
-      <span className="w-[4ch] shrink-0 text-left text-[0.9167em] text-[var(--text-secondary)]">
+      <span className="w-[4ch] shrink-0 text-left text-[var(--text-secondary)]">
         {fpAlias(index) ?? ""}
       </span>
       <span
