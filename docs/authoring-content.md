@@ -375,6 +375,35 @@ rather than fixing them with `mov` (otherwise every case prints the same
 line), and a reference solution, `subtract-two-numbers.s`, in
 `web/lib/test/content/exercise-solutions/`.
 
+## pitfalls
+
+The common mistakes on the reference page's Pitfalls tab are TypeScript, not
+JSON: one file per group in `web/lib/content/pitfalls/` (`registers.ts`,
+`flags.ts`, and so on), joined in group order by
+`web/lib/content/pitfall-data.ts`. Each card is one object:
+
+- `slug`: the card's url-safe id. `/reference#pitfall-<slug>` opens the tab
+  at that card.
+- `title`, `mistake`, `fix`: what goes wrong and how to put it right.
+  `mistake` and `fix` are Markdown.
+- `server` and `playground`: what the course server and the playground do
+  with the broken program. The card prints them after "The broken program"
+  and "It", so each starts with a verb.
+- `wrong` and `right`: the two short snippets the card shows side by side.
+- `broken` and `fixed`: the two whole programs, each with the `stdout` the
+  course server printed and how its run ended (`ends`: an exit status, a
+  signal, still running after 10 seconds, or the build error).
+- `source`: where the rule is written down: the Arm Architecture Reference
+  Manual, the A64 instruction pages, the GNU as manual, or AAPCS64.
+- `group`, `lesson`, `reference`: the group the card sits in, the lesson that
+  teaches the rule, and the reference entry (a mnemonic, or
+  `calling convention`).
+
+Run both programs on the course server and copy what they printed into
+`stdout` and `ends`: `pitfall-data.playground.test.ts` holds the playground to
+them. The lesson a card names lists the card in a `pitfall` callout, and
+`pitfall-data.test.ts` checks that the links go both ways.
+
 ## writing the assembly
 
 Keep it idiomatic: lowercase mnemonics, register aliases with
