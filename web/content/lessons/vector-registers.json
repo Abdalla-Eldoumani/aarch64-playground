@@ -75,7 +75,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Basic quiz: floating point](/practice/quiz-basic-floating-point): the register file that the vectors share."
+      "markdown": "## Practice\n\n- [Basic quiz: floating point](/practice/quiz-basic-floating-point): the register file that the vectors share.\n- [Four lanes, one add](/practice/four-lanes-one-add): add one bonus to four scores with `ld1`, `dup` and a vector `add`, and total them with `addv`.\n- [Basic quiz: vectors](/practice/quiz-basic-vectors): lanes and arrangements, `uqadd`, `dup`, copying a lane out, and which `v` registers a call may change.\n- [Predict: vectors (challenge)](/practice/predict-vectors): what lane-by-lane adds, a saturating subtract and `addv` leave in a register."
     }
   ]
 }
