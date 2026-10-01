@@ -39,7 +39,7 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
-          keyboard shortcuts
+          Keyboard shortcuts
         </h2>
         <dl className="text-xs space-y-1.5">
           {shortcuts.map((s) => (
