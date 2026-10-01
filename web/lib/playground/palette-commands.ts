@@ -156,7 +156,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "base-converter",
       label: "Base converter",
-      description: "hex, binary, decimal, and two's complement side by side",
+      description: "hex, octal, binary, decimal, two's complement, and IEEE-754 floats side by side",
       run: () => deps.openConverter(),
     },
     {
