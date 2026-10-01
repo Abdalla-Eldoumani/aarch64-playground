@@ -314,7 +314,10 @@ name once. Each carries one question list in place of
   `{ "prompt": "...", "code": "ldr x0, ___", "blanks": ["=label"],
   "explanation": "...", "hint": "..." }`. `code` carries exactly one `___`
   marker where the input field lands, and `blanks` lists every accepted
-  answer.
+  answer. Accept every spelling that assembles to the same instruction: a
+  number as decimal, `#` decimal, hex, and `#` hex (`32`, `#32`, `0x20`,
+  `#0x20`), and a zero register as the `wzr` or `xzr` the operand's width
+  takes. Grading ignores case, so list each spelling once, in lower case.
 
 `hint` is optional everywhere and is the only feedback a wrong attempt sees;
 the explanation renders only after a correct one. Unlike the exercise
