@@ -1,8 +1,8 @@
 {
-  "title": "Quiz: floating point",
+  "title": "Basic quiz: floating point",
   "slug": "quiz-basic-floating-point",
   "order": 107,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-30",
   "topic": "floating-point",
   "difficulty": "intro",
   "variant": "quiz",
