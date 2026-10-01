@@ -72,7 +72,7 @@ export function RightTabs({
   return (
     <div className="h-full flex flex-col">
       <div
-        className="flex flex-wrap border-b border-[var(--border)] bg-[var(--bg-sunken)] overflow-x-auto"
+        className="flex flex-wrap border-b border-[var(--border)] bg-[var(--bg-sunken)] overflow-x-auto [container-type:inline-size]"
         role="tablist"
         aria-label="debug view"
       >
@@ -96,9 +96,11 @@ export function RightTabs({
               role="tab"
               aria-selected={selected}
               aria-controls={`right-panel-${tab}`}
-              // px-3 keeps the eight tabs on one row in a 1280px window's
-              // debug column; a second row came out of a short pane.
-              className={`touch-target relative min-h-[2.25rem] px-3 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+              // The eight labels take 352px. px-3 fits them on one row in a
+              // 1280px window's 573px column; a narrower strip (1024's is
+              // 458px) wrapped to a second row, so under 34rem the padding
+              // tightens to 6px.
+              className={`touch-target relative min-h-[2.25rem] px-3 py-1 text-xs transition-colors [@container(max-width:34rem)]:px-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
                   ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
