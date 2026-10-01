@@ -94,7 +94,7 @@ pub const MEMORY_CAP_MESSAGE: &str = "stopped: the program asked for more memory
 // full is a digit string a student has to count. This keeps the division
 // exact, so raising the ceiling to a value that is not a whole number of
 // millions fails the build instead of silently truncating the count.
-const _: () = assert!(MAX_TOTAL_STEPS % 1_000_000 == 0);
+const _: () = assert!(MAX_TOTAL_STEPS.is_multiple_of(1_000_000));
 
 /// Calm, plain-language abort surfaced when the cumulative step ceiling is
 /// hit. Built dynamically so the count always matches `MAX_TOTAL_STEPS`.
