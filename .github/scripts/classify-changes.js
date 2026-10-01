@@ -1,6 +1,6 @@
 // Decides which check.yml jobs a pull request needs from the files it
-// changes, read as `git diff --name-only -z` output on stdin. Pushes and
-// the weekly run pass --all and test everything.
+// changes, read as `git diff --name-only -z` output on stdin. Pushes, the
+// weekly run, and the pull request from integration pass --all instead.
 
 // Each file gets the class of the first rule it matches. A file no rule
 // matches counts as a workflow change, so a new kind of file runs every job
