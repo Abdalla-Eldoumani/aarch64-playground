@@ -250,7 +250,7 @@ pub struct ClobberOrigin {
 /// Contains X0-X30, SP, PC, and the NZCV condition flags.
 /// W-register access (32-bit) is handled by the `sf` parameter on
 /// read/write methods: internally everything is stored as 64-bit.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RegisterFile {
     gpr: [u64; 31],
     sp: u64,
@@ -269,6 +269,52 @@ pub struct RegisterFile {
     /// Per register (`FLAGS_CODE` numbering), where the leftovers in it
     /// came from; meaningful while its `clobbered` bit is set.
     clobber_origins: [ClobberOrigin; 64],
+    /// While `recording`, what the running step overwrote, so its
+    /// step-back frame can put it back; between steps a spare buffer (see
+    /// `record_undo`).
+    undo: RegUndo,
+    recording: bool,
+}
+
+/// One array entry a step overwrote, with the value it held.
+#[derive(Debug, Clone, Copy)]
+enum RegEdit {
+    Gpr(u8, u64),
+    Fpr(u8, u128),
+    Origin(u8, ClobberOrigin),
+}
+
+/// What a step changed in the register file: the small fields as they
+/// were before it, and each array entry it overwrote. Copying the whole
+/// file (1.5 KB, mostly FP registers and clobber origins a step seldom
+/// touches) into every step-back frame cost more than a simple step.
+#[derive(Debug, Default)]
+pub struct RegUndo {
+    sp: u64,
+    pc: u64,
+    nzcv: NzcvFlags,
+    clobbered: RegMask,
+    clobbered_reads: RegMask,
+    edits: Vec<RegEdit>,
+}
+
+impl Clone for RegisterFile {
+    /// A copy (a named save) is the registers alone: the undo log belongs
+    /// to the running step, and between steps it is an empty spare.
+    fn clone(&self) -> Self {
+        Self {
+            gpr: self.gpr,
+            sp: self.sp,
+            pc: self.pc,
+            nzcv: self.nzcv,
+            fpr: self.fpr,
+            clobbered: self.clobbered,
+            clobbered_reads: self.clobbered_reads.clone(),
+            clobber_origins: self.clobber_origins,
+            undo: RegUndo::default(),
+            recording: false,
+        }
+    }
 }
 
 impl RegisterFile {
@@ -283,13 +329,84 @@ impl RegisterFile {
             clobbered: RegMask::default(),
             clobbered_reads: Cell::new(RegMask::default()),
             clobber_origins: [ClobberOrigin::default(); 64],
+            undo: RegUndo::default(),
+            recording: false,
         }
+    }
+
+    /// Take the small fields into `slot`'s buffer (a recycled frame's) and
+    /// start logging every array entry a write replaces. The buffer trades
+    /// places with this file's spare until `finish_undo` trades it back.
+    pub fn record_undo(&mut self, slot: &mut RegUndo) {
+        std::mem::swap(&mut self.undo, slot);
+        let log = &mut self.undo;
+        log.sp = self.sp;
+        log.pc = self.pc;
+        log.nzcv = self.nzcv;
+        log.clobbered = self.clobbered;
+        log.clobbered_reads = self.clobbered_reads.get();
+        log.edits.clear();
+        self.recording = true;
+    }
+
+    /// Stop logging and trade the filled log back into `slot`.
+    pub fn finish_undo(&mut self, slot: &mut RegUndo) {
+        if std::mem::take(&mut self.recording) {
+            std::mem::swap(&mut self.undo, slot);
+        }
+    }
+
+    /// Put back every logged entry, newest first, and the small fields.
+    pub fn undo(&mut self, log: RegUndo) {
+        for edit in log.edits.into_iter().rev() {
+            // Each index came from a write that succeeded, so it is in
+            // range; the checks keep a bounds-check panic out of the wasm
+            // all the same.
+            match edit {
+                RegEdit::Gpr(i, old) => {
+                    if let Some(reg) = self.gpr.get_mut(usize::from(i)) {
+                        *reg = old;
+                    }
+                }
+                RegEdit::Fpr(i, old) => self.fpr[usize::from(i & 31)] = old,
+                RegEdit::Origin(i, old) => self.clobber_origins[usize::from(i & 63)] = old,
+            }
+        }
+        self.sp = log.sp;
+        self.pc = log.pc;
+        self.nzcv = log.nzcv;
+        self.clobbered = log.clobbered;
+        self.clobbered_reads.set(log.clobbered_reads);
+    }
+
+    fn log(&mut self, edit: RegEdit) {
+        if self.recording {
+            self.undo.edits.push(edit);
+        }
+    }
+
+    /// Log `fpr[index]` before a write replaces it.
+    fn log_fpr(&mut self, index: u8) {
+        self.log(RegEdit::Fpr(index, self.fpr[usize::from(index & 31)]));
     }
 
     /// Overwrite everything AAPCS64 lets a called function change: x0-x18,
     /// v0-v7 and v16-v31, bits 127:64 of v8-v15, and NZCV. `keep_x0` and
     /// `keep_v0` spare the register the return value came back in.
     pub fn clobber_caller_saved(&mut self, keep_x0: bool, keep_v0: bool, call_pc: u64) {
+        if self.recording {
+            // Everything below may change, so all of it goes in the log:
+            // a library call is one step among thousands.
+            for i in 0..31 {
+                self.log(RegEdit::Gpr(i, self.gpr[usize::from(i)]));
+            }
+            for i in 0..32 {
+                self.log_fpr(i);
+            }
+            for i in 0..64 {
+                self.log(RegEdit::Origin(i, self.clobber_origins[usize::from(i)]));
+            }
+        }
         let first = usize::from(keep_x0);
         for reg in &mut self.gpr[first..=18] {
             *reg = CLOBBER_PATTERN;
@@ -340,6 +457,7 @@ impl RegisterFile {
         if origin.copied_at == 0 {
             origin.copied_at = pc;
         }
+        self.log(RegEdit::Origin(to, self.clobber_origins[usize::from(to & 63)]));
         self.clobber_origins[usize::from(to & 63)] = origin;
         if to < 32 {
             self.clobbered.x |= 1 << to;
@@ -416,6 +534,7 @@ impl RegisterFile {
             return;
         }
         self.clobbered.x &= !(1 << index);
+        self.log(RegEdit::Gpr(index, self.gpr[index as usize]));
         self.gpr[index as usize] = if sf { value } else { value & 0xFFFF_FFFF };
     }
 
@@ -482,6 +601,7 @@ impl RegisterFile {
             return;
         }
         self.unclobber_fpr(index);
+        self.log_fpr(index);
         self.fpr[index as usize] = u128::from(value);
     }
 
@@ -504,6 +624,7 @@ impl RegisterFile {
             return;
         }
         self.unclobber_fpr(index);
+        self.log_fpr(index);
         self.fpr[index as usize] = value;
     }
 
@@ -521,6 +642,7 @@ impl RegisterFile {
             return;
         }
         self.unclobber_fpr(index);
+        self.log_fpr(index);
         self.fpr[index as usize] = match bytes {
             1 => u128::from(value as u8),
             2 => u128::from(value as u16),
@@ -555,6 +677,7 @@ impl RegisterFile {
             self.unclobber_fpr(index);
         }
         let mask = Self::lane_mask(bits);
+        self.log_fpr(index);
         let slot = &mut self.fpr[index as usize];
         *slot = (*slot & !(mask << shift)) | ((u128::from(value) & mask) << shift);
     }
@@ -879,5 +1002,35 @@ mod tests {
         assert_eq!(rf.read_fpr_lane(7, 1, 16), 0);
         rf.write_fpr_lane(7, 8, 2, 0x1234);
         assert_eq!(rf.read_fpr_q(7), 0xee0e_0d0c_0b0a_0908_aaaa_bbbb_0302_0100);
+    }
+
+    #[test]
+    fn undo_puts_back_registers_flags_and_clobber_state() {
+        let mut rf = RegisterFile::new();
+        rf.write_gpr(3, true, 33);
+        rf.write_fpr_q(4, 44);
+        rf.write_sp(0x8000);
+        rf.write_pc(0x40_0000);
+        let mut log = RegUndo::default();
+        rf.record_undo(&mut log);
+        rf.write_gpr(3, true, 1);
+        rf.write_gpr(3, false, 2);
+        rf.write_fpr_lane(4, 1, 15, 0xFF);
+        rf.write_fpr_scalar(5, 4, 7);
+        rf.write_sp(0x7FF0);
+        rf.write_pc(0x40_0004);
+        rf.set_nzcv(NzcvFlags::unpack(0b0110));
+        rf.clobber_caller_saved(false, false, 0x40_0010);
+        rf.carry_clobber(0, 20, 0x40_0014);
+        rf.finish_undo(&mut log);
+        rf.undo(log);
+        assert_eq!(rf.read_gpr(3, true), 33);
+        assert_eq!(rf.read_fpr_q(4), 44);
+        assert_eq!(rf.read_fpr_q(5), 0);
+        assert_eq!(rf.read_sp(), 0x8000);
+        assert_eq!(rf.read_pc(), 0x40_0000);
+        assert_eq!(rf.nzcv, NzcvFlags::default());
+        assert!(rf.clobbered.is_empty(), "no register holds a call's leftovers again");
+        assert_eq!(rf.clobber_origin(20).call_pc, 0);
     }
 }
