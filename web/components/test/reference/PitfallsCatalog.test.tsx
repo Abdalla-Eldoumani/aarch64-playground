@@ -148,6 +148,17 @@ describe("PitfallsCatalog", { timeout: 15_000 }, () => {
     expect(screen.queryByRole("button", { name: "clear the filters" })).toBeNull();
   });
 
+  it("moves focus to the filter box when the clear button removes itself", () => {
+    renderCatalog();
+    const box = screen.getByRole("searchbox");
+    fireEvent.change(box, { target: { value: "ldr" } });
+    const clear = screen.getByRole("button", { name: "clear the filters" });
+    clear.focus();
+    fireEvent.click(clear);
+    expect(screen.queryByRole("button", { name: "clear the filters" })).toBeNull();
+    expect(document.activeElement).toBe(box);
+  });
+
   it("keeps spellcheck, autocorrect, and autocapitalize off in the filter", () => {
     renderCatalog();
     const box = screen.getByRole("searchbox");
