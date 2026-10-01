@@ -192,7 +192,7 @@ describe("ExerciseView", () => {
     expect(text).toContain("exits with the right code");
     expect(text).toContain("prints the right output");
     expect(text).toContain("uses b.lt");
-    expect(text).toContain("computes the result (does not hardcode it)");
+    expect(text).toContain("does not hardcode the answer");
     // The expected register value and the expected stdout must never appear.
     expect(text).not.toContain("55");
     expect(text).not.toContain("sum = 55");
@@ -259,7 +259,7 @@ describe("ExerciseView", () => {
     expect(status.textContent).toContain("leaves the right value in x0");
     expect(status.textContent).toContain("expected 55, got 42");
     expect(status.textContent).toContain(
-      "computes the result (does not hardcode it): the value 55 appears literally in your program",
+      "does not hardcode the answer: the value 55 appears literally in your program",
     );
     expect(status.textContent).not.toContain("all checks passed");
     expect(isSolved("write-exercise")).toBe(false);
