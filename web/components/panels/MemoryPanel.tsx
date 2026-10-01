@@ -204,9 +204,11 @@ export function MemoryPanel({
           <tr className="text-[var(--text-secondary)]">
             <th className="text-left pr-2 sm:pr-4">addr</th>
             {Array.from({ length: bytesPerRow }, (_, i) => (
-              // Under sm a byte column takes its text's width: a fixed 20px
-              // one cut the ascii column off a 320px screen.
-              <th key={i} className="sm:w-6 text-center">
+              // A byte column takes its text's width and the full-width table
+              // spreads the columns in a wide pane. A fixed width cut the
+              // ascii column off a 320px screen and off the half-width pane
+              // of a phone on its side, since the viewport is not the pane.
+              <th key={i} className="text-center">
                 {i.toString(16).toUpperCase()}
               </th>
             ))}
