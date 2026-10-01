@@ -27,6 +27,6 @@ describe("RegisterSW", () => {
     // registration may wait for window load when the document is still loading
     window.dispatchEvent(new Event("load"));
     expect(register).toHaveBeenCalledTimes(1);
-    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/" });
+    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/", updateViaCache: "none" });
   });
 });
