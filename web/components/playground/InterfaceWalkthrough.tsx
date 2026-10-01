@@ -301,7 +301,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
               >
                 back
               </Button>
-              <span className="flex-1 text-center font-mono text-[11px] text-[var(--text-tertiary)] [@media(pointer:coarse)]:text-[12px]">
+              <span className="flex-1 text-center font-mono text-[12px] text-[var(--text-tertiary)]">
                 {mode.kind === "open" ? mode.step + 1 : 0} of {WALKTHROUGH_STEPS.length}
               </span>
               <Button
