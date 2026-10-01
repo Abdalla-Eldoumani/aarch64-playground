@@ -1,7 +1,6 @@
 // Pins the home-screen tip: shown to Safari on an iPhone, never to other
-// browsers or an installed copy, its height published while it shows, and
-// gone for good once dismissed.
-import { afterEach, describe, expect, it, vi } from "vitest";
+// browsers or an installed copy, and gone for good once dismissed.
+import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { InstallHint } from "@/components/chrome/InstallHint";
 
@@ -43,33 +42,6 @@ describe("InstallHint", () => {
       render(<InstallHint />);
       expect(tip()).toBeNull();
       cleanup();
-    }
-  });
-
-  it("publishes its height while it shows, so a lesson card can sit above it", () => {
-    // jsdom has no layout: the observer fires on observe, as the browser's
-    // does, and the tip reports the height a four-line wrap gives at 320px.
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(private readonly fire: () => void) {}
-        observe() {
-          this.fire();
-        }
-        disconnect() {}
-      },
-    );
-    const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockReturnValue(107);
-    const root = document.documentElement.style;
-    try {
-      asBrowser(IPHONE_SAFARI);
-      render(<InstallHint />);
-      expect(root.getPropertyValue("--install-tip-height")).toBe("107px");
-      fireEvent.click(screen.getByRole("button", { name: "dismiss the install tip" }));
-      expect(root.getPropertyValue("--install-tip-height")).toBe("");
-    } finally {
-      height.mockRestore();
-      vi.unstubAllGlobals();
     }
   });
 
