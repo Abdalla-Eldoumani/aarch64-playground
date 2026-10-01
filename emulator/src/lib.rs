@@ -873,9 +873,9 @@ impl Emulator {
     }
 
     /// Pause or resume the step-back snapshot ring. The terminal pane's
-    /// foreground drive pauses it for live sessions: the per-step clone
-    /// costs far more than the step, and stepping back into the middle
-    /// of a live session has no meaning. Cleared by load and reset.
+    /// foreground drive pauses it for live sessions: stepping back into
+    /// the middle of a live session has no meaning. Cleared by load and
+    /// reset.
     pub fn set_snapshots_paused(&mut self, paused: bool) {
         self.cpu.snapshots_paused = paused;
     }
