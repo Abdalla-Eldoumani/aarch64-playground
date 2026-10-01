@@ -1,19 +1,19 @@
-// pins the doc-rule header strip: both product names are in the tree
-// (short one for phones, long one from sm up), the sheet section shows
-// when given, and omitted segments simply do not render.
+// pins the doc-rule header strip: the site's one name at every width, the
+// sheet section shows when given, and omitted segments simply do not render.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { DocRule } from "@/components/ui/DocRule";
+import { SITE_NAME } from "@/lib/content/site";
 
 afterEach(() => cleanup());
 
 describe("DocRule", () => {
-  it("renders the short product code for phones and the long name from sm up", () => {
+  // Phones once read a made-up short code; the name fits a 320px screen.
+  it("names the site the same way at every width", () => {
     render(<DocRule />);
-    expect(screen.getByText("aarch64-pg").className).toContain("sm:hidden");
-    expect(screen.getByText("aarch64 playground").className).toContain(
-      "hidden sm:inline",
-    );
+    const name = screen.getByText(SITE_NAME);
+    expect(name.className).not.toMatch(/hidden/);
+    expect(screen.queryByText("aarch64-pg")).toBeNull();
   });
 
   it("renders the section segment when given", () => {
