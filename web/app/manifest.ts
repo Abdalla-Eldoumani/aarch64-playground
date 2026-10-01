@@ -1,5 +1,5 @@
 import type { MetadataRoute } from "next";
-import { SITE_NAME } from "@/lib/content/site";
+import { NAV_ROUTES, SITE_NAME } from "@/lib/content/site";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
@@ -23,5 +23,11 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "maskable",
       },
     ],
+    // A long press on the home-screen icon opens these. The playground is
+    // left out because the icon itself opens it.
+    shortcuts: NAV_ROUTES.filter((route) => route.href !== "/playground").map((route) => ({
+      name: route.label,
+      url: route.href,
+    })),
   };
 }
