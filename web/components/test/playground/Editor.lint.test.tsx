@@ -2,7 +2,8 @@
 // load (the first lint of the default program often lands while Monaco is
 // still loading, and those warnings must still reach the model once the
 // editor mounts, not wait for the next edit), the site theme it follows,
-// when it wraps long lines, and when the hover card fetches its C line.
+// when it wraps long lines, how its hover cards and colour swatches draw,
+// and when the hover card fetches its C line.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
@@ -53,7 +54,7 @@ const fake = vi.hoisted(() => {
     KeyMod: { CtrlCmd: 2048, Shift: 1024 },
     Range: class {},
   };
-  return { state, model, editor, monaco, options: null as null | { wordWrap?: string } };
+  return { state, model, editor, monaco, options: null as null | Record<string, unknown> };
 });
 
 // The factory runs when the module is first imported, so the flag says when
@@ -72,7 +73,7 @@ vi.mock("@monaco-editor/react", () => ({
     options,
   }: {
     onMount: (editor: unknown, monaco: unknown) => void;
-    options: { wordWrap?: string };
+    options: Record<string, unknown>;
   }) {
     fake.options = options;
     useEffect(() => onMount(fake.editor, fake.monaco), [onMount]);
@@ -121,6 +122,22 @@ describe("Editor line wrap", () => {
     await waitFor(() => expect(fake.options?.wordWrap).toBe("on"));
     rerender(<Editor {...base} />);
     await waitFor(() => expect(fake.options?.wordWrap).toBe("off"));
+  });
+});
+
+describe("Editor overlays", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  // `#112` in a vector example read as a CSS colour and drew a swatch, and a
+  // frame's overflow cut hover cards that ran past its edge.
+  it("draws no colour swatch and fixes hover cards to the window", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    render(<Editor {...base} />);
+    await waitFor(() => expect(fake.options).not.toBeNull());
+    expect(fake.options?.defaultColorDecorators).toBe("never");
+    expect(fake.options?.fixedOverflowWidgets).toBe(true);
   });
 });
 
