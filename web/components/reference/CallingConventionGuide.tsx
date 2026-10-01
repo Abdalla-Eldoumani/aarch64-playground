@@ -78,7 +78,7 @@ const integerMarkdown = [
   "",
   "`x9` to `x15` are caller-saved temporaries: a routine you call may overwrite any of them. `x16` and `x17` can change on the way into a call, and `x18` is best left alone; the rules at the end of the page say why. `x19` to `x28` are callee-saved: a routine that writes one must restore it before returning, which makes them the place to keep a value alive across a call.",
   "",
-  "`x29` is the frame pointer, `fp`, and `x30` the link register, `lr`. `sp` is the stack pointer, and `xzr` reads as zero and discards writes. There is no register named `pc` that an instruction can read or write: only branches change it, and `bl` also copies the address of the next instruction into `lr`, which is how the routine it calls knows where to return.",
+  "`x29` is the frame pointer, `fp`, and `x30` the link register, `lr`. `sp` is the stack pointer, and `xzr` reads as zero and discards writes. There is no register named `pc` that an instruction can read or write. After each instruction the `pc` moves on to the next one by itself, and only a branch sends it anywhere else, apart from the kernel taking over on an `svc` or a fault. `bl` branches and also copies the address of the next instruction into `lr`, which is how the routine it calls knows where to return.",
 ].join("\n");
 
 const vectorNamesMarkdown = [
