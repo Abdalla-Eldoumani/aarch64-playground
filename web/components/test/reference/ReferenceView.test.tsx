@@ -3,9 +3,9 @@ import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
 
 // The three section renderers are replaced with text markers so this test
 // exercises only the shell's wiring (which tab is active -> which section fills
-// the panel) without pulling in the markdown, diagram, or share stacks. The
-// Instructions marker echoes the instruction count it receives, so the
-// assertion proves the prop actually flowed through.
+// the panel, and which fragment opens which tab) without pulling in the
+// markdown, diagram, or share stacks. The Instructions marker echoes the
+// instruction count it receives, so the assertion proves the prop flowed through.
 vi.mock("@/components/reference/InstructionReference", () => ({
   InstructionReference: ({ instructions }: { instructions: unknown[] }) =>
     `instruction-reference:${instructions.length}`,
@@ -13,8 +13,10 @@ vi.mock("@/components/reference/InstructionReference", () => ({
 vi.mock("@/components/reference/CallingConventionGuide", () => ({
   CallingConventionGuide: () => "calling-convention-guide",
 }));
+// The catalog marker echoes the lesson titles it receives.
 vi.mock("@/components/reference/PitfallsCatalog", () => ({
-  PitfallsCatalog: () => "pitfalls-catalog",
+  PitfallsCatalog: ({ lessonTitles }: { lessonTitles: Record<string, string> }) =>
+    `pitfalls-catalog:${Object.keys(lessonTitles).join(",")}`,
 }));
 // The converter marker echoes the view it was opened at, so the fragment
 // wiring is visible without the real widget.
@@ -37,16 +39,28 @@ const INSTRUCTIONS: ReferenceInstruction[] = [
     registerView: "x",
   },
   {
-    mnemonic: "add",
-    category: "Data processing",
-    syntax: "add xd, xn, xm",
-    summary: "add two values",
-    example: "add x0, x1, x2",
-    cExample: "Rd = Rn + Rm;",
+    mnemonic: "b.cond",
+    category: "Branches",
+    syntax: "b.cond label",
+    summary: "branch when the condition holds",
+    example: "b.eq done",
+    cExample: "if (cond) goto label;",
     setsFlags: false,
     registerView: "x",
   },
 ];
+const LESSON_TITLES = { subroutines: "Writing your own subroutines" };
+const CATALOG = "pitfalls-catalog:subroutines";
+
+function renderView() {
+  return render(<ReferenceView instructions={INSTRUCTIONS} lessonTitles={LESSON_TITLES} />);
+}
+
+function activeTab(): string | null {
+  return screen
+    .getAllByRole("tab")
+    .find((tab) => tab.getAttribute("aria-selected") === "true")?.textContent ?? null;
+}
 
 afterEach(() => {
   cleanup();
@@ -64,7 +78,7 @@ function followFragment(fragment: string): void {
 
 describe("ReferenceView", () => {
   it("renders the four reference tabs with Instructions active by default", () => {
-    render(<ReferenceView instructions={INSTRUCTIONS} />);
+    renderView();
     expect(
       screen.getByRole("tablist", { name: "reference sections" }),
     ).toBeTruthy();
@@ -75,16 +89,14 @@ describe("ReferenceView", () => {
       "Pitfalls",
       "Converter",
     ]);
-    expect(
-      screen.getByRole("tab", { name: "Instructions" }).getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(activeTab()).toBe("Instructions");
     expect(
       screen.getByText(`instruction-reference:${INSTRUCTIONS.length}`),
     ).toBeTruthy();
   });
 
-  it("swaps the panel section when another tab is clicked", () => {
-    render(<ReferenceView instructions={INSTRUCTIONS} />);
+  it("swaps the panel section when another tab is clicked", async () => {
+    renderView();
 
     fireEvent.click(screen.getByRole("tab", { name: "Calling convention" }));
     expect(screen.getByText("calling-convention-guide")).toBeTruthy();
@@ -93,12 +105,14 @@ describe("ReferenceView", () => {
     ).toBeNull();
 
     fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
-    expect(screen.getByText("pitfalls-catalog")).toBeTruthy();
+    // The catalog arrives asynchronously behind next/dynamic, with the
+    // lesson titles it links to.
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
     expect(screen.queryByText("calling-convention-guide")).toBeNull();
   });
 
   it("mounts the base converter behind its tab", async () => {
-    render(<ReferenceView instructions={INSTRUCTIONS} />);
+    renderView();
     fireEvent.click(screen.getByRole("tab", { name: "Converter" }));
     // The widget arrives asynchronously behind next/dynamic.
     expect(await screen.findByText("base-converter-widget:none")).toBeTruthy();
@@ -115,51 +129,94 @@ describe("ReferenceView", () => {
       ["#converter-ieee754", "ieee754"],
     ] as const) {
       window.history.replaceState(null, "", fragment);
-      const { unmount } = render(<ReferenceView instructions={INSTRUCTIONS} />);
-      expect(
-        screen.getByRole("tab", { name: "Converter" }).getAttribute("aria-selected"),
-      ).toBe("true");
+      const { unmount } = renderView();
+      expect(activeTab()).toBe("Converter");
       expect(await screen.findByText(`base-converter-widget:${view}`)).toBeTruthy();
       unmount();
     }
   });
 
-  it("a converter link followed later wins over a tab pick; other fragments do not", async () => {
-    render(<ReferenceView instructions={INSTRUCTIONS} />);
-    fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
+  it("opens the pitfalls for #pitfalls and for a link to one card", async () => {
+    for (const fragment of ["#pitfalls", "#pitfall-there-is-no-x31"]) {
+      window.history.replaceState(null, "", fragment);
+      const { unmount } = renderView();
+      expect(activeTab()).toBe("Pitfalls");
+      expect(await screen.findByText(CATALOG)).toBeTruthy();
+      unmount();
+    }
+  });
 
-    // An instruction fragment belongs to the instruction list.
-    followFragment("#add");
-    expect(screen.getByText("pitfalls-catalog")).toBeTruthy();
+  it("opens the calling convention for #calling-convention", () => {
+    window.history.replaceState(null, "", "#calling-convention");
+    renderView();
+    expect(activeTab()).toBe("Calling convention");
+    expect(screen.getByText("calling-convention-guide")).toBeTruthy();
+  });
+
+  it("a link followed later wins over a tab pick when it names a tab or an instruction", async () => {
+    renderView();
+    fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
+
+    // A pitfall card's reference link: the instruction list opens on it.
+    followFragment("#b-cond");
+    expect(activeTab()).toBe("Instructions");
 
     followFragment("#converter-ieee754");
     expect(await screen.findByText("base-converter-widget:ieee754")).toBeTruthy();
 
-    followFragment("#converter-octal");
-    expect(await screen.findByText("base-converter-widget:octal")).toBeTruthy();
+    followFragment("#calling-convention");
+    expect(screen.getByText("calling-convention-guide")).toBeTruthy();
+
+    followFragment("#pitfall-there-is-no-x31");
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
+  });
+
+  it("leaves the tab alone for a fragment that names nothing here", async () => {
+    renderView();
+    fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
+    // The skip link's target.
+    followFragment("#main");
+    expect(activeTab()).toBe("Pitfalls");
+  });
+
+  it("drops the fragment on a tab pick, so following the same link again still lands", async () => {
+    window.history.replaceState(null, "", "/reference#b-cond");
+    renderView();
+    expect(activeTab()).toBe("Instructions");
+
+    fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
+    expect(window.location.hash).toBe("");
+    expect(window.location.pathname).toBe("/reference");
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
+
+    followFragment("#b-cond");
+    expect(activeTab()).toBe("Instructions");
+  });
+
+  it("keeps the fragment when the open tab is pressed again", () => {
+    window.history.replaceState(null, "", "/reference#b-cond");
+    renderView();
+    fireEvent.click(screen.getByRole("tab", { name: "Instructions" }));
+    expect(window.location.hash).toBe("#b-cond");
   });
 
   it("ignores a fragment named after an inherited object key", () => {
     window.history.replaceState(null, "", "#constructor");
-    render(<ReferenceView instructions={INSTRUCTIONS} />);
-    expect(
-      screen.getByRole("tab", { name: "Instructions" }).getAttribute("aria-selected"),
-    ).toBe("true");
+    renderView();
+    expect(activeTab()).toBe("Instructions");
   });
 
-  it("moves between sections with the arrow keys", () => {
-    render(<ReferenceView instructions={INSTRUCTIONS} />);
+  it("moves between sections with the arrow keys", async () => {
+    renderView();
     const tablist = screen.getByRole("tablist");
 
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
-    expect(
-      screen
-        .getByRole("tab", { name: "Calling convention" })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
+    expect(activeTab()).toBe("Calling convention");
     expect(screen.getByText("calling-convention-guide")).toBeTruthy();
 
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
-    expect(screen.getByText("pitfalls-catalog")).toBeTruthy();
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
   });
 });
