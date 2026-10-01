@@ -59,8 +59,8 @@ const nextConfig = {
   webpack: (config) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
     // `?raw` imports load a file's contents as a string at build time, so
-    // the cold-load default program can be sourced from the single
-    // basics.s fixture instead of a duplicated literal.
+    // the cold-load default program can be sourced from its single
+    // example file instead of a duplicated literal.
     config.module.rules.push({ resourceQuery: /raw/, type: "asset/source" });
     // xterm's runtime is one 330 kB module, so Next's own splitting names its
     // chunk after a hash of its path, which moves with the package layout and
