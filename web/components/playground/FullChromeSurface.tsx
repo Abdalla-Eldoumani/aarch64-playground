@@ -723,7 +723,9 @@ export function FullChromeSurface({
           currentStep={emu.stepCount}
           onSeek={emu.seekReplay}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        {/* A phone on its side left the list no height under the decode
+            strip; the floor makes the phone's view scroll to it instead. */}
+        <div className={`flex-1 overflow-auto ${phone ? "min-h-[13rem]" : "min-h-0"}`}>
           <RegisterPanel
             registers={emu.registers}
             changedRegs={emu.changedRegs}
