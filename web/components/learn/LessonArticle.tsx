@@ -92,7 +92,7 @@ export function LessonArticle({
       </nav>
 
       <article className="w-full min-w-0">
-        <DocRule section={`lesson ${sheetNumber} · ${lesson.slug}`} context="learn" className="mb-6" />
+        <DocRule section={`lesson ${sheetNumber} · ${lesson.title}`} context="learn" className="mb-6" />
         <Kicker number={sheetNumber} title={lesson.title} className="mb-4" />
         <h1 className="mb-8 font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           {lesson.title}
