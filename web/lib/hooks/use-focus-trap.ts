@@ -10,21 +10,26 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
   return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE_SEL));
 }
 
-/**
- * The click handler for a dialog's backdrop. A double press on the button
- * that opens a dialog lands its second click on the backdrop the first one
- * just drew, so a click that is the second of a double press (`detail` above
- * 1) leaves the dialog open.
- */
-export function closeOnBackdropClick(onClose: () => void): (e: { detail: number }) => void {
-  return (e) => {
-    if (e.detail <= 1) onClose();
-  };
-}
-
 /** The usual double-click interval: a second press this soon after the
  *  first belongs to the same double press. */
 const DOUBLE_PRESS_MS = 500;
+
+/** When a trapped dialog last opened. */
+let lastOpenedAt = Number.NEGATIVE_INFINITY;
+
+/**
+ * The click handler for a dialog's backdrop. A double press on the button
+ * that opens a dialog lands its second click on the backdrop the first one
+ * just drew, so that click leaves the dialog open. A mouse counts its clicks
+ * in `detail`; a touch screen's second tap can still say 1, so a click within
+ * the double-press interval of the opening counts as one too.
+ */
+export function closeOnBackdropClick(onClose: () => void): (e: { detail: number }) => void {
+  return (e) => {
+    if (e.detail > 1 || performance.now() - lastOpenedAt < DOUBLE_PRESS_MS) return;
+    onClose();
+  };
+}
 
 /**
  * Keeps keyboard focus inside an open dialog: focus starts on its first
@@ -48,6 +53,7 @@ export function useFocusTrap(
     const focusables = getFocusables(ref.current);
     focusables[0]?.focus();
     const openedAt = performance.now();
+    lastOpenedAt = openedAt;
     let armed = true;
     // Capture on the document runs before React's own key handlers.
     const swallowSecondPress = (e: Event) => {
