@@ -437,7 +437,7 @@ export function BaseConverter({
                     className={`touch-target h-6 w-5 rounded-sm border font-mono text-[12px] leading-none transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                       on
                         ? "border-[var(--cyan)] bg-[var(--bg-elevated)] font-semibold text-[var(--cyan)]"
-                        : "border-[var(--border)] bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:border-[var(--cyan-dim)]"
+                        : "border-[var(--border)] bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:border-[var(--cyan)]"
                     } ${isSign ? "border-t-2 border-t-[var(--amber)]" : ""}`}
                   >
                     {on ? 1 : 0}
