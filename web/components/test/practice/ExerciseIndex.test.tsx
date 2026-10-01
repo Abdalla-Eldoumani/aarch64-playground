@@ -178,8 +178,8 @@ describe("ExerciseIndex", () => {
     expect(screen.queryByText("Beta Exercise")).toBeNull();
   });
 
-  // `focus-visible:shadow-[var(--ring)]` compiles to a shadow colour with no
-  // shadow, so a keyboard user saw no ring; the box-shadow form paints one.
+  // Tailwind reads a shadow utility over var(--ring) as a shadow colour and
+  // paints no ring, so the ring has to be set as the box-shadow itself.
   it("rings the search box and the difficulty chips on keyboard focus", () => {
     render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const controls = [
