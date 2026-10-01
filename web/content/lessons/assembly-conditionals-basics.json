@@ -2,7 +2,7 @@
   "title": "Conditionals with cmp and b.cond",
   "slug": "assembly-conditionals-basics",
   "order": 10,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "How cmp sets the condition flags and how b.cond reads them to build an if, an if-else, and an else-if chain.",
   "tags": [
     "conditionals",
@@ -156,7 +156,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [The absolute truth](/practice/the-absolute-truth): an if with no else that flips the sign of a negative number.\n- [Pick the bigger one](/practice/pick-the-bigger-one): one comparison decides which of two values to print.\n- [Rock, paper, scissors referee](/practice/rock-paper-scissors-referee): an if-else chain that names the winner of one round."
+      "markdown": "## Practice\n\n- [The absolute truth](/practice/the-absolute-truth): an if with no else that flips the sign of a negative number.\n- [Pick the bigger one](/practice/pick-the-bigger-one): one comparison decides which of two values to print.\n- [Rock, paper, scissors referee](/practice/rock-paper-scissors-referee): an if-else chain that names the winner of one round.\n- [Basic quiz: branching](/practice/quiz-basic-branching): what `cmp` leaves in the flags, complemented conditions, and signed against unsigned. Its `cbz` and `csel` questions come with [Decisions in one instruction: csel, cinc, and cbz](/learn/csel-and-cbz), three lessons on."
     }
   ]
 }
