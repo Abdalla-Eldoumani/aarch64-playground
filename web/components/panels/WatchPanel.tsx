@@ -135,6 +135,9 @@ export function WatchPanel({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           placeholder="x0 or [fp, score1_s] or arr[2]"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className="touch-target flex-1 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch expression"
         />
