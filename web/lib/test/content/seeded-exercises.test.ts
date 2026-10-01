@@ -43,6 +43,36 @@ describe("seeded exercises validate", () => {
     });
   });
 
+  // The index lists every set by title, so two rows with one name cannot be
+  // told apart; the same goes for two questions with one prompt in a set.
+  it("give every exercise a title no other exercise uses", () => {
+    const owner = new Map<string, string>();
+    for (const { slug, title } of exercises) {
+      const key = title.trim().toLowerCase();
+      expect(owner.get(key), `${slug} reuses the title of ${owner.get(key)}`).toBeUndefined();
+      owner.set(key, slug);
+    }
+  });
+
+  it("give every question in a theory set its own prompt", () => {
+    for (const exercise of exercises) {
+      const prompts =
+        exercise.variant === "quiz"
+          ? exercise.questions.map((question) => question.question)
+          : exercise.variant === "prediction"
+            ? exercise.predictions.map((question) => question.question)
+            : exercise.variant === "blanks"
+              ? exercise.blanks.map((question) => question.prompt)
+              : [];
+      const seen = new Set<string>();
+      for (const prompt of prompts) {
+        const key = prompt.trim().toLowerCase();
+        expect(seen.has(key), `${exercise.slug} repeats the prompt "${prompt}"`).toBe(false);
+        seen.add(key);
+      }
+    }
+  });
+
   it("carry the date their content last changed, which the sitemap prints", () => {
     files.forEach((file, index) => {
       expect(exercises[index].lastUpdated, `${file} has no lastUpdated`).toMatch(/^\d{4}-\d{2}-\d{2}$/);
