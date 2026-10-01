@@ -2,7 +2,7 @@
   "title": "Subroutines: saved registers, pointers, and big arguments",
   "slug": "calling-conventions",
   "order": 22,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Keep the registers a caller counts on, hand back answers through pointers, pass a ninth argument on the stack, and return a large struct through x8.",
   "tags": [
     "subroutines",
@@ -102,6 +102,11 @@
         "stdout": "50000 seconds is 13 h 53 min 20 s\n",
         "exitCode": 0
       }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [x9 to x15 do not survive a call](/reference#pitfall-caller-saved-registers)\n- [A call keeps d8 to d15, not the rest of v8 to v15](/reference#pitfall-only-d8-survives-a-call)\n- [The flags do not survive a call](/reference#pitfall-flags-do-not-survive-a-call)\n- [x16 and x17 can change on the way into a call](/reference#pitfall-x16-x17-change-across-bl)"
     },
     {
       "type": "prose",
