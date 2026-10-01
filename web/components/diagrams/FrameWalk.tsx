@@ -171,7 +171,7 @@ const TINT_STYLE = {
 
 /** Non-breaking spaces inside each [fp, 16]: a phone broke it after the comma. */
 const keepOperandsWhole = (text: string) =>
-  text.replace(/\[[^\]]*\]/g, (operand) => operand.replace(/ /g, " "));
+  text.replace(/\[[^\]]*\]/g, (operand) => operand.replace(/ /g, "\u00a0"));
 
 /** One stack band. Unique by label within a stack. */
 export interface BandProps {
