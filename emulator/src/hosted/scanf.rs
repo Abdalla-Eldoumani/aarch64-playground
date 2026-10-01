@@ -25,9 +25,8 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, "scanf's format string")?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
 
-    // Snapshot stdin so we can roll back if we stall mid-field.
-    let original_stdin = ctx.stdin.clone();
-
+    // Bytes read so far. Nothing leaves stdin until the call finishes, so
+    // a stall mid-field re-reads from the start once input arrives.
     let mut in_pos: usize = 0;
     // Pointer args follow AAPCS64 varargs: x1..x7 then the stack spill.
     let mut walker = VarargWalker { gp_idx: 1, fp_idx: 0, stack_off: 0 };
@@ -50,7 +49,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         if c != '%' {
             // Literal character: must match exactly.
             if in_pos >= ctx.stdin.len() {
-                return stall(ctx, original_stdin, matched);
+                return stall(ctx, in_pos, matched);
             }
             if ctx.stdin[in_pos] as char != c {
                 break;
@@ -95,7 +94,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         match conv {
             '%' => {
                 if in_pos >= ctx.stdin.len() {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 if ctx.stdin[in_pos] as char != '%' {
                     break;
@@ -108,7 +107,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 // saturating: a huge `%<big>c` width made `in_pos + count`
                 // wrap and then slice out of order, panicking the instance.
                 if in_pos.saturating_add(count) > ctx.stdin.len() {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 let start = in_pos;
                 in_pos += count;
@@ -134,7 +133,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 let (value, consumed, stalled) =
                     parse_signed_int(&ctx.stdin[in_pos..end], conv == 'i', complete);
                 if stalled {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 if consumed == 0 {
                     break;
@@ -163,7 +162,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 let (value, consumed, stalled) =
                     parse_unsigned_int(&ctx.stdin[in_pos..end], 10, complete);
                 if stalled {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 if consumed == 0 {
                     break;
@@ -192,7 +191,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 let (value, consumed, stalled) =
                     parse_unsigned_int(&ctx.stdin[in_pos..end], 16, complete);
                 if stalled {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 if consumed == 0 {
                     break;
@@ -216,7 +215,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                     in_pos += 1;
                 }
                 if in_pos >= ctx.stdin.len() {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 let limit = width.unwrap_or(usize::MAX).max(1);
                 let start = in_pos;
@@ -230,7 +229,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                 // with field width to spare: more of it may still arrive.
                 // A width-terminated token is complete by definition.
                 if in_pos == ctx.stdin.len() && in_pos - start < limit {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 if !suppress {
                     let ptr = walker.next_int(ctx);
@@ -254,7 +253,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                     in_pos.saturating_add(limit) <= ctx.stdin.len() || ctx.stdin_closed;
                 let (value, consumed, stalled) = parse_float(&ctx.stdin[in_pos..end], complete);
                 if stalled {
-                    return stall(ctx, original_stdin, matched);
+                    return stall(ctx, in_pos, matched);
                 }
                 if consumed == 0 {
                     break;
@@ -285,14 +284,14 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 fn stall(
     ctx: &mut HostContext<'_>,
-    original: Vec<u8>,
+    in_pos: usize,
     matched: i64,
 ) -> Result<HostOutcome, EmuError> {
-    // Restore so the next invocation re-parses from the start.
-    *ctx.stdin = original;
     // With stdin closed no more input can ever arrive: finish the call
-    // with the fields that matched, or C's EOF (-1) when none did.
+    // with the fields that matched, or C's EOF (-1) when none did, and
+    // keep what was read (the whitespace before EOF stays read in glibc).
     if ctx.stdin_closed {
+        ctx.stdin.drain(..in_pos);
         let ret = if matched > 0 { matched } else { -1 };
         ctx.regs.write_gpr(0, true, ret as u64);
         return Ok(HostOutcome::Continue);
