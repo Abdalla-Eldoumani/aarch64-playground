@@ -1373,3 +1373,347 @@ t3:     nop
     let (_, out) = run_with_stdin(source, "");
     assert_eq!(out, "8 32 48 8 16 17 20\n");
 }
+
+/// Reads one field with the format in place of FORMAT, then prints what
+/// scanf returned, the 8 bytes at the destination (0x55 wherever nothing
+/// was stored), and every byte of input it left.
+const SCANF_PROBE: &str = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+        .balign 8
+value:      .quad   0x5555555555555555
+fmt_in:     .string "FORMAT"
+fmt_out:    .string "ret=%d bits=%016lx rest=["
+fmt_end:    .string "]\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_in
+        ldr     x1, =value
+        bl      scanf
+
+        mov     w1, w0
+        ldr     x9, =value
+        ldr     x2, [x9]
+        ldr     x0, =fmt_out
+        bl      printf
+
+rest:   bl      getchar
+        cmp     w0, -1
+        b.eq    done
+        bl      putchar
+        b       rest
+
+done:   ldr     x0, =fmt_end
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+// glibc's scanf reads `inf`, `infinity` and `nan` in any case, with a
+// sign, and a NaN payload in parentheses. A field it cannot use whole
+// (`in`, `1.5e`, `nan(1 2)`) fails and keeps what it read, and `%f` stores
+// a 4-byte float. Each row is the server's output for that input.
+#[test]
+fn scanf_f_reads_inf_and_nan_like_glibc() {
+    let none = "5555555555555555";
+    let rows = [
+        ("%lf", "inf\n", "ret=1 bits=7ff0000000000000 rest=[\n]\n".to_string()),
+        ("%lf", "INF\n", "ret=1 bits=7ff0000000000000 rest=[\n]\n".into()),
+        ("%lf", "-Infinity\n", "ret=1 bits=fff0000000000000 rest=[\n]\n".into()),
+        ("%lf", "   -inf 7\n", "ret=1 bits=fff0000000000000 rest=[ 7\n]\n".into()),
+        ("%lf", "infinityx\n", "ret=1 bits=7ff0000000000000 rest=[x\n]\n".into()),
+        ("%lf", "inf5\n", "ret=1 bits=7ff0000000000000 rest=[5\n]\n".into()),
+        ("%lf", "infin\n", format!("ret=0 bits={none} rest=[]\n")),
+        ("%lf", "in\n", format!("ret=0 bits={none} rest=[]\n")),
+        ("%3lf", "infinity\n", "ret=1 bits=7ff0000000000000 rest=[inity\n]\n".into()),
+        ("%4lf", "infinity\n", format!("ret=0 bits={none} rest=[nity\n]\n")),
+        ("%lf", "nan\n", "ret=1 bits=7ff8000000000000 rest=[\n]\n".into()),
+        ("%lf", "NaN\n", "ret=1 bits=7ff8000000000000 rest=[\n]\n".into()),
+        ("%lf", "-nan\n", "ret=1 bits=fff8000000000000 rest=[\n]\n".into()),
+        ("%lf", "nanx\n", "ret=1 bits=7ff8000000000000 rest=[x\n]\n".into()),
+        ("%lf", "nan(123)\n", "ret=1 bits=7ff800000000007b rest=[\n]\n".into()),
+        ("%lf", "nan(0x7b)\n", "ret=1 bits=7ff800000000007b rest=[\n]\n".into()),
+        ("%lf", "nan(017)\n", "ret=1 bits=7ff800000000000f rest=[\n]\n".into()),
+        ("%lf", "nan(a_Z9)\n", "ret=1 bits=7ff8000000000000 rest=[\n]\n".into()),
+        ("%lf", "nan(1 2)\n", format!("ret=0 bits={none} rest=[2)\n]\n")),
+        ("%f", "inf\n", "ret=1 bits=555555557f800000 rest=[\n]\n".into()),
+        ("%f", "-nan\n", "ret=1 bits=55555555ffc00000 rest=[\n]\n".into()),
+        ("%f", "nan(123)\n", "ret=1 bits=555555557fc0007b rest=[\n]\n".into()),
+        ("%lf", "2.5\n", "ret=1 bits=4004000000000000 rest=[\n]\n".into()),
+        ("%lf", "1.5e\n", format!("ret=0 bits={none} rest=[\n]\n")),
+        ("%lf", "1e5e\n", "ret=1 bits=40f86a0000000000 rest=[e\n]\n".into()),
+        ("%lf", "-\n", format!("ret=0 bits={none} rest=[\n]\n")),
+        ("%lf", "-", format!("ret=0 bits={none} rest=[]\n")),
+        ("%lf", "  \n", format!("ret=-1 bits={none} rest=[]\n")),
+    ];
+    for (format, input, want) in rows {
+        let (_, out) = run_with_stdin(&SCANF_PROBE.replace("FORMAT", format), input);
+        assert_eq!(out, want, "scanf(\"{format}\") reading {input:?}");
+    }
+}
+
+/// Run with stdin left open, as typed into the console: fd 0 is a terminal.
+fn run_on_the_console(source: &str, files: &[(&str, &str)]) -> String {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    for (path, body) in files {
+        cpu.upload_vfs_file(path.to_string(), body.as_bytes().to_vec());
+    }
+    let result = cpu.run_until_break(2_000_000).expect("run");
+    assert!(result.halted, "program did not halt");
+    String::from_utf8_lossy(&cpu.take_stdout()).into_owned()
+}
+
+/// Run with stdin fed from a file: queued and closed before the program
+/// starts, as `./program < input` does.
+fn run_with_stdin_from_a_file(source: &str, files: &[(&str, &str)]) -> String {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    for (path, body) in files {
+        cpu.upload_vfs_file(path.to_string(), body.as_bytes().to_vec());
+    }
+    cpu.push_stdin(b"x\n");
+    cpu.close_stdin();
+    let result = cpu.run_until_break(2_000_000).expect("run");
+    assert!(result.halted, "program did not halt");
+    String::from_utf8_lossy(&cpu.take_stdout()).into_owned()
+}
+
+// A raw system call that fails answers the negated Linux error number in
+// x0: -2 (ENOENT) for a missing file, -9 (EBADF) for a descriptor that is
+// not open or not open for writing, -22 (EINVAL) for a bad argument. The
+// -1 a C programmer expects comes from the library wrappers, not svc.
+#[test]
+fn failed_file_syscalls_answer_linux_error_numbers() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+define(fd_r, x19)
+
+AT_FDCWD = -100
+SYS_FCNTL = 25
+SYS_OPENAT = 56
+SYS_CLOSE = 57
+SYS_LSEEK = 62
+SYS_READ = 63
+SYS_WRITE = 64
+
+        .data
+missing:    .string "no-such-file.txt"
+empty:      .string ""
+present:    .string "data.txt"
+fmt:        .string "%ld\n"
+
+        .bss
+        .balign 8
+buf:        .skip 8
+
+        .text
+        .balign 4
+        .global main
+
+// print the number in x1 on its own line
+print:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =fmt
+        bl      printf
+        ldp     fp, lr, [sp], 16
+        ret
+
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     x19, [fp, 16]
+
+        mov     x0, AT_FDCWD
+        ldr     x1, =missing
+        mov     x2, 0
+        mov     x8, SYS_OPENAT
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, AT_FDCWD
+        ldr     x1, =empty
+        mov     x2, 0
+        mov     x8, SYS_OPENAT
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, AT_FDCWD
+        ldr     x1, =present
+        mov     x2, 0
+        mov     x8, SYS_OPENAT
+        svc     0
+        mov     fd_r, x0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, fd_r                // write to a read-only descriptor
+        ldr     x1, =buf
+        mov     x2, 1
+        mov     x8, SYS_WRITE
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, fd_r                // lseek with whence 7
+        mov     x1, 0
+        mov     x2, 7
+        mov     x8, SYS_LSEEK
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, fd_r                // lseek to -5
+        mov     x1, -5
+        mov     x2, 0
+        mov     x8, SYS_LSEEK
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, fd_r
+        mov     x8, SYS_CLOSE
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, fd_r                // close it again
+        mov     x8, SYS_CLOSE
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, 99
+        ldr     x1, =buf
+        mov     x2, 1
+        mov     x8, SYS_READ
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, 99
+        mov     x1, 0
+        mov     x2, 0
+        mov     x8, SYS_LSEEK
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     x0, 0                   // fcntl command 99
+        mov     x1, 99
+        mov     x2, 0
+        mov     x8, SYS_FCNTL
+        svc     0
+        mov     x1, x0
+        bl      print
+
+        mov     w0, 0
+        ldr     x19, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+    let out = run_on_the_console(source, &[("data.txt", "hello\n")]);
+    assert_eq!(out, "-2\n-2\n3\n-9\n-22\n-22\n0\n-9\n-9\n-9\n-22\n");
+}
+
+// Only the console is a terminal. With stdin fed from a file, ioctl
+// TCGETS and TCSETS on fd 0 answer -25 (ENOTTY) and leave the buffer
+// alone, as on the server; an open file and an unknown request answer
+// -25 too, and a descriptor that is not open -9. Typed input keeps fd 0 a
+// cooked terminal.
+#[test]
+fn ioctl_finds_a_terminal_only_on_the_console() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+TCGETS = 0x5401
+TCSETS = 0x5402
+SYS_IOCTL = 29
+SYS_OPENAT = 56
+
+        .data
+        .balign 8
+termios:    .quad   0x5555555555555555, 0x5555555555555555, 0x5555555555555555
+            .quad   0x5555555555555555, 0x5555555555555555, 0x5555555555555555
+            .quad   0x5555555555555555, 0x5555555555555555
+present:    .string "data.txt"
+fmt:        .string "%ld\n"
+fmt_hex:    .string "0x%08x\n"
+
+        .text
+        .balign 4
+        .global main
+
+// ioctl(x0, x1, termios), then print what it answered
+ask:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x2, =termios
+        mov     x8, SYS_IOCTL
+        svc     0
+        mov     x1, x0
+        ldr     x0, =fmt
+        bl      printf
+        ldp     fp, lr, [sp], 16
+        ret
+
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x0, 0
+        mov     x1, TCGETS
+        bl      ask
+
+        ldr     x9, =termios            // c_lflag, or 0x55555555 if untouched
+        ldr     w1, [x9, 12]
+        ldr     x0, =fmt_hex
+        bl      printf
+
+        mov     x0, -100
+        ldr     x1, =present
+        mov     x2, 0
+        mov     x8, SYS_OPENAT
+        svc     0
+        mov     x1, TCGETS
+        bl      ask
+
+        mov     x0, 99
+        mov     x1, TCGETS
+        bl      ask
+
+        mov     x0, 0
+        mov     x1, 0x1234
+        bl      ask
+
+        mov     x0, 0
+        mov     x1, TCSETS
+        bl      ask
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let files = [("data.txt", "hello\n")];
+    assert_eq!(
+        run_with_stdin_from_a_file(source, &files),
+        "-25\n0x55555555\n-25\n-9\n-25\n-25\n"
+    );
+    assert_eq!(run_on_the_console(source, &files), "0\n0x00008a3b\n-25\n-9\n-25\n0\n");
+}
