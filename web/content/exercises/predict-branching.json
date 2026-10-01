@@ -1,0 +1,47 @@
+{
+  "title": "Predict: branching",
+  "slug": "predict-branching",
+  "order": 114,
+  "lastUpdated": "2026-10-01",
+  "topic": "branching",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Trace what conditional selects, conditional increments, and zero tests leave in a register, with signed and unsigned conditions.",
+  "predictions": [
+    {
+      "code": "mov w1, -5\nmov w2, 3\ncmp w1, w2\ncsel w0, w1, w2, hi",
+      "question": "What does w0 hold after the csel? Answer in decimal, reading w0 as signed.",
+      "answer": "-5",
+      "explanation": "hi is an unsigned condition. As an unsigned word, -5 is 0xfffffffb, far above 3, so the condition holds and csel copies w1. Picking the larger signed value would take gt, which gives 3.",
+      "hint": "hi reads both values as unsigned."
+    },
+    {
+      "code": "mov w0, 5\nmov w1, 4\ncmp w1, 4\ncinc w0, w0, eq\ncmp w1, 9\ncinc w0, w0, gt\ncset w2, lt\nadd w0, w0, w2",
+      "question": "What does w0 hold after the add? Answer in decimal.",
+      "answer": "7",
+      "explanation": "The first compare finds 4 equal to 4, so the first cinc adds 1 and w0 becomes 6. The second compare reads 4 against 9: 4 > 9 is false, so the second cinc leaves 6. The same flags make lt true, so cset writes 1 to w2, and the add gives 7.",
+      "hint": "cset reads the flags from the second cmp, the last one before it."
+    },
+    {
+      "code": "    mov w0, 0\n    mov w1, 5\n    mov w2, 0\n    cmp w1, 2\n    cbnz w2, out\n    b.gt bigger\n    mov w0, 1\n    b out\nbigger:\n    mov w0, 2\nout:",
+      "question": "What does w0 hold when execution reaches out? Answer in decimal.",
+      "answer": "2",
+      "explanation": "w2 is 0, so cbnz does not jump. cbnz also sets no flags, so b.gt still reads the flags from cmp w1, 2. 5 > 2, so b.gt jumps to bigger and w0 becomes 2.",
+      "hint": "Which instruction last set the flags before b.gt?"
+    },
+    {
+      "code": "    mov w19, 0\n    mov w20, 6\n    cbz w20, out\nloop:\n    add w19, w19, w20\n    sub w20, w20, 2\n    cbnz w20, loop\nout:",
+      "question": "What does w19 hold when execution reaches out? Answer in decimal.",
+      "answer": "12",
+      "explanation": "w20 starts at 6, so cbz does not skip the loop. The body adds 6, then 4, then 2. After the third pass w20 is 0, cbnz falls through, and w19 holds 6 + 4 + 2 = 12.",
+      "hint": "cbnz goes round again while w20 is not 0."
+    },
+    {
+      "code": "mov w4, 10\nmov w5, 20\ncmp w4, w5\ncsinc w6, w4, w5, ge",
+      "question": "What does w6 hold after the csinc? Answer in decimal.",
+      "answer": "21",
+      "explanation": "csinc gives its first source when the condition holds and its second source plus 1 when it does not. 10 >= 20 is false, so w6 gets w5 + 1, which is 21. cinc works the other way round: it adds 1 when its condition holds.",
+      "hint": "Decide whether ge holds, then read which source csinc takes in that case."
+    }
+  ]
+}
