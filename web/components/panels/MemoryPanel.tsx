@@ -7,7 +7,6 @@ import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { Select } from "@/components/ui/Select";
-import { isAtLeast, useBreakpoint } from "@/lib/hooks/use-breakpoint";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
@@ -33,6 +32,13 @@ function isDirty(byteAddr: number, ranges: Array<[number, number]>): boolean {
 }
 
 const DEFAULT_ROWS = 16;
+
+/** Characters a 16-byte row needs at its tightest: the address, 16 bytes
+ *  of two digits with a little air between them, and 16 ascii characters. */
+const WIDE_ROW_CHARS = 68;
+
+/** The monospace face's advance as a share of its size. */
+const MONO_ADVANCE = 0.6;
 
 /** Section bands the jump list offers, in the order it offers them. The
  *  heap, argv and host-stub bands stay out of the list on purpose: they are
@@ -94,15 +100,24 @@ export function MemoryPanel({
   // as "my .data is empty".
   const [lastGoodAddr, setLastGoodAddr] = useState(0x00400000);
   const [rows, setRows] = useState(DEFAULT_ROWS);
+  const [bytesPerRow, setBytesPerRow] = useState(16);
   const rootRef = useRef<HTMLDivElement>(null);
   // A tall pane shows more memory instead of a blank band under the dump; a
   // short one keeps the 16 rows and scrolls. Watching the panel too catches a
   // zoom, which changes the row height without resizing the pane.
+  // A pane too narrow for a 16-byte row gets 8 per row. The pane decides,
+  // not the screen: a phone on its side or a 1024px laptop gives the panel
+  // well under half the screen, and the ascii column ran off its edge.
   useEffect(() => {
     const root = rootRef.current;
     const pane = root?.parentElement;
     if (!root || !pane || typeof ResizeObserver === "undefined") return;
     const fit = () => {
+      const style = getComputedStyle(root);
+      const px = (value: string, fallback = 0) => parseFloat(value) || fallback;
+      const width = root.clientWidth - px(style.paddingLeft) - px(style.paddingRight);
+      const ch = px(style.fontSize, 12) * MONO_ADVANCE;
+      setBytesPerRow(width >= WIDE_ROW_CHARS * ch ? 16 : 8);
       const rowHeight = root.querySelector("tbody tr")?.getBoundingClientRect().height ?? 0;
       if (rowHeight <= 0) return;
       const spare = pane.clientHeight - root.offsetHeight;
@@ -114,9 +129,6 @@ export function MemoryPanel({
     return () => observer.disconnect();
   }, []);
   const zoom = useZoom("memory");
-  // A 16-byte row overflows the screen below sm, so phones get 8 per row.
-  const bp = useBreakpoint();
-  const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
 
   const parsed = parseAddress(baseAddr);
   const addr = parsed ?? lastGoodAddr;
@@ -205,9 +217,8 @@ export function MemoryPanel({
             <th className="text-left pr-2 sm:pr-4">addr</th>
             {Array.from({ length: bytesPerRow }, (_, i) => (
               // A byte column takes its text's width and the full-width table
-              // spreads the columns in a wide pane. A fixed width cut the
-              // ascii column off a 320px screen and off the half-width pane
-              // of a phone on its side, since the viewport is not the pane.
+              // spreads the columns; a fixed width cut the ascii column off a
+              // 320px screen.
               <th key={i} className="text-center">
                 {i.toString(16).toUpperCase()}
               </th>
