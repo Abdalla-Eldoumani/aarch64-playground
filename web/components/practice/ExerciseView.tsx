@@ -418,7 +418,7 @@ export function ExerciseView({
             id={specHeadingId}
             className="border-b border-[var(--border-strong)] pb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]"
           >
-            Specification
+            specification
           </h2>
           {exercise.args && <SpecRow label="args">{exercise.args}</SpecRow>}
           {exercise.stdin !== undefined && (
