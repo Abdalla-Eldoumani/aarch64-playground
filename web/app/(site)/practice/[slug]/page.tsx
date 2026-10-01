@@ -23,9 +23,8 @@ export async function generateMetadata({
   const { slug } = await params;
   const exercise = loadExercise(slug);
   if (!exercise) return { title: "exercise not found" };
-  // Three theory sets in a family share one title, so the tab and share-card
-  // title carries the difficulty that tells them apart; the page h1 keeps the
-  // bare content title.
+  // The tab and share-card title adds the difficulty, so a search result says
+  // how hard the set is; the page h1 keeps the bare content title.
   return pageMetadata({
     title: exercise.difficulty ? `${exercise.title} (${exercise.difficulty})` : exercise.title,
     description: exerciseDescription(exercise),
