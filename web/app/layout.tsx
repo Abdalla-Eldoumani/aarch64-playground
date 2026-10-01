@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -11,25 +11,30 @@ import { composeTitle, pageMetadata } from "@/lib/content/seo";
 
 // Each font is bound to a CSS variable so utility classes and the --type-*
 // tokens in globals.css can pick a family without a Tailwind config change.
-const fontSerif = Source_Serif_4({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  // Upright only: the drawn italic costs twelve @font-face rules and four
-  // woff2 files in the render-blocking stylesheet on every route, for two
-  // small captions. Those two keep `italic` and take the browser's
+// The files live in app/fonts (each with its OFL license), so a build needs
+// no font download. Each is the variable Latin subset of the family, and
+// `weight` is the range that file covers. A character outside the subset (no
+// page of the site uses one; a student's program might) takes the fallback
+// face; add the latin-ext file if a page ever needs one.
+const fontSerif = localFont({
+  src: "./fonts/source-serif-4-latin.woff2",
+  weight: "200 900",
+  // Upright only: the drawn italic would be one more file on every route for
+  // two small captions, which keep `italic` and take the browser's
   // synthesized oblique.
   display: "swap",
+  adjustFontFallback: "Times New Roman",
   variable: "--font-serif",
 });
-const fontSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const fontSans = localFont({
+  src: "./fonts/ibm-plex-sans-latin.woff2",
+  weight: "100 700",
   display: "swap",
   variable: "--font-sans",
 });
-const fontMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const fontMono = localFont({
+  src: "./fonts/jetbrains-mono-latin.woff2",
+  weight: "400 800",
   display: "swap",
   variable: "--font-mono",
 });
