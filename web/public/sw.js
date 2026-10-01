@@ -1,138 +1,186 @@
-// Service worker for AArch64 Playground: network first for pages so a new
-// deploy reaches students, cache first for build files, examples, and icons,
-// and a size bound on the one runtime cache.
+// Service worker for AArch64 Playground. Each build keeps one cache, named
+// after its build id and filled from the list scripts/write-precache-list.js
+// writes after next build.
+// - Install saves the core set (the playground, the offline page, and every
+//   file a page can load) all or nothing, so a half-saved build never serves.
+// - A new build's worker waits until no page of the old build is open, then
+//   deletes every other cache: an open page keeps the files it was built
+//   with, and a page never loads another build's files.
+// - Pages come from the network first, and from the cache offline.
+// - Only a 2xx answer from this build is stored, so the host's challenge page
+//   or an error page never replaces a saved one.
 
-// Bumping CACHE_VERSION retires the previous runtime cache instead of
-// inheriting its entries: activate deletes every cpsc355-runtime-* key that
-// is not the current one.
-const CACHE_VERSION = "v7";
-const RUNTIME_CACHE = `cpsc355-runtime-${CACHE_VERSION}`;
-const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png"];
+// A failed import (offline, or the host's challenge) fails the update, and
+// the installed worker keeps serving. The browser byte-compares this file on
+// every update check, so a new build's list is what starts an update.
+importScripts("/sw-precache.js");
 
-// One build's full working set is about 220 entries (pages, build files,
-// examples, icons). Double that lets a student open everything without an
-// eviction, with room for the next deploy's hashed files beside it.
-const MAX_RUNTIME_ENTRIES = 450;
+const { build: BUILD, corePages, files, otherPages, otherBytes } = self.PRECACHE;
+const CACHE = `aarch64-playground-${BUILD}`;
+const PAGES = new Set([...corePages, ...otherPages]);
+const FILES = new Set(files);
+const OFFLINE_PAGE = "/offline";
+// When the reader saved every page. No page or file lives at this address,
+// so the fetch handler never serves it.
+const SAVED_KEY = "/sw-saved-every-page";
 
-const SHELL_PATHS = new Set(APP_SHELL);
+/** A page the host now serves from a newer deploy than this worker's. */
+class StaleBuildError extends Error {}
+
+/** A 2xx straight from this site, not a redirect and not the host's bot
+ *  challenge (which can answer with its own page). */
+function storable(res) {
+  return res.ok && !res.redirected && !res.headers.has("x-vercel-mitigated");
+}
 
 /**
- * Write to the runtime cache, then trim it to the bound. The Cache API has no
- * sizes or access times, so the bound is an entry count and the oldest go
- * first, which only ever costs a refetch. The app shell, oldest of all and the
- * offline fallback, is never evicted.
+ * Fetches one address for the cache. A page must also come from this build:
+ * a newer deploy's page would ask for files this cache does not hold.
  */
-async function putBounded(cache, request, response) {
-  await cache.put(request, response);
-  const keys = await cache.keys();
-  const excess = keys.length - MAX_RUNTIME_ENTRIES;
-  if (excess <= 0) return;
-  const evictable = keys.filter((k) => !SHELL_PATHS.has(new URL(k.url).pathname));
-  await Promise.all(evictable.slice(0, excess).map((k) => cache.delete(k)));
+async function fetchForCache(url) {
+  const res = await fetch(url, { cache: "no-cache" });
+  if (!storable(res)) throw new Error(`${url} answered ${res.status}`);
+  if (PAGES.has(url) && !(await res.clone().text()).includes(BUILD)) {
+    throw new StaleBuildError(url);
+  }
+  return res;
 }
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(RUNTIME_CACHE).then((cache) => {
-      // Pre-warm the app shell. Failures are tolerated: a request
-      // that 404s during install shouldn't kill the install.
-      return Promise.allSettled(APP_SHELL.map((url) => cache.add(url)));
-    }).then(() => self.skipWaiting()),
-  );
+  event.waitUntil(installBuild());
 });
+
+async function installBuild() {
+  // A reader who saved every page under the last build keeps them across
+  // the update.
+  const keepEveryPage = Boolean(await caches.match(SAVED_KEY));
+  const cache = await caches.open(CACHE);
+  try {
+    const urls = [...corePages, ...files, ...(keepEveryPage ? otherPages : [])];
+    await Promise.all(urls.map(async (url) => cache.put(url, await fetchForCache(url))));
+    if (keepEveryPage) await markSaved(cache);
+  } catch (err) {
+    // The failed install is discarded by the browser; its partial cache
+    // must go with it.
+    await caches.delete(CACHE);
+    throw err;
+  }
+}
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys
-          .filter((k) => k.startsWith("cpsc355-runtime-") && k !== RUNTIME_CACHE)
-          .map((k) => caches.delete(k)),
-      ),
-    ).then(() => self.clients.claim()),
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim()),
   );
 });
-
-function isCacheFirst(url) {
-  const p = url.pathname;
-  return (
-    p.startsWith("/_next/static/") ||
-    p.startsWith("/examples/") ||
-    p.startsWith("/icons/")
-  );
-}
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return;
-
-  // Pages: network first so a new deploy reaches the student. Each page caches
-  // under its own URL, since one shared "/" key would show offline /learn as
-  // whichever page loaded last. waitUntil keeps a stopping worker from
-  // dropping the write half done.
   if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res.ok) {
-            const copy = res.clone();
-            event.waitUntil(
-              caches.open(RUNTIME_CACHE).then((cache) => putBounded(cache, req, copy)),
-            );
-          }
-          return res;
-        })
-        .catch(() =>
-          caches
-            .match(req)
-            .then((m) => m || caches.match("/"))
-            // last resort: no cached copy and no shell, so retry the network
-            // and let it fail visibly.
-            .then((m) => m || fetch(req)),
-        ),
-    );
-    return;
+    event.respondWith(openPage(event, url.pathname));
+  } else if (FILES.has(url.pathname)) {
+    event.respondWith(openFile(req));
   }
-
-  if (isCacheFirst(url)) {
-    event.respondWith(
-      caches.match(req).then((cached) => {
-        const network = fetch(req)
-          .then((res) => {
-            if (res.ok) {
-              const copy = res.clone();
-              event.waitUntil(
-                caches.open(RUNTIME_CACHE).then((cache) => putBounded(cache, req, copy)),
-              );
-            }
-            return res;
-          })
-          .catch(() => cached);
-        // /examples paths carry no build hash, so an edited program keeps its
-        // URL. Serve the cached copy for speed and refresh it in the
-        // background so the next load is current.
-        if (!cached) return network;
-        event.waitUntil(network.catch(() => undefined));
-        return cached;
-      }),
-    );
-    return;
-  }
-
-  // Default: network first, fall back to cache.
-  event.respondWith(
-    fetch(req)
-      .then((res) => {
-        if (res.ok) {
-          const copy = res.clone();
-          event.waitUntil(
-            caches.open(RUNTIME_CACHE).then((cache) => putBounded(cache, req, copy)),
-          );
-        }
-        return res;
-      })
-      .catch(() => caches.match(req).then((m) => m || Response.error())),
-  );
+  // Anything else, such as the page data the router prefetches, goes to the
+  // network untouched. Offline, the router then falls back to a full page
+  // load, which openPage answers.
 });
+
+async function openFile(req) {
+  const cache = await caches.open(CACHE);
+  // The search part is dropped because the icons are linked with a hash
+  // query; every listed file has one copy per build.
+  return (await cache.match(req, { ignoreSearch: true, ignoreVary: true })) || fetch(req);
+}
+
+async function openPage(event, pathname) {
+  const cache = await caches.open(CACHE);
+  try {
+    const res = await fetch(event.request);
+    // Whatever the network says is shown, the challenge page included, so
+    // the reader can pass it; only a page from this build is kept.
+    if (PAGES.has(pathname) && storable(res)) {
+      event.waitUntil(keepIfThisBuild(cache, pathname, res.clone()));
+    }
+    return res;
+  } catch {
+    const saved = PAGES.has(pathname) && (await cache.match(pathname, { ignoreVary: true }));
+    return saved || (await cache.match(OFFLINE_PAGE, { ignoreVary: true })) || Response.error();
+  }
+}
+
+async function keepIfThisBuild(cache, pathname, res) {
+  if ((await res.clone().text()).includes(BUILD)) await cache.put(pathname, res);
+}
+
+// "Save every page": the page asks, this worker fetches, and every open tab
+// hears the progress.
+
+/** The save in progress, shared by every tab that asks for it. */
+let saving = null;
+/** { done, total } while a save runs. */
+let progress = null;
+/** Why the last save stopped: "network", "storage", "update", or null. */
+let failure = null;
+
+self.addEventListener("message", (event) => {
+  const type = event.data && event.data.type;
+  if (type === "offline-status") event.waitUntil(broadcast());
+  else if (type === "save-every-page") event.waitUntil(saveEveryPage());
+});
+
+async function saveEveryPage() {
+  if (!saving) {
+    saving = runSave().finally(() => {
+      saving = null;
+      progress = null;
+    });
+  }
+  await saving;
+  await broadcast();
+}
+
+async function runSave() {
+  const cache = await caches.open(CACHE);
+  const have = new Set((await cache.keys()).map((req) => new URL(req.url).pathname));
+  const todo = otherPages.filter((url) => !have.has(url));
+  progress = { done: otherPages.length - todo.length, total: otherPages.length };
+  failure = null;
+  await broadcast();
+  const results = await Promise.allSettled(
+    todo.map(async (url) => {
+      await cache.put(url, await fetchForCache(url));
+      progress.done += 1;
+      await broadcast();
+    }),
+  );
+  const errors = results.filter((r) => r.status === "rejected").map((r) => r.reason);
+  if (errors.length === 0) await markSaved(cache);
+  else if (errors.some((err) => err instanceof StaleBuildError)) failure = "update";
+  else if (errors.some((err) => err && err.name === "QuotaExceededError")) failure = "storage";
+  else failure = "network";
+}
+
+function markSaved(cache) {
+  return cache.put(SAVED_KEY, new Response(new Date().toISOString()));
+}
+
+async function broadcast() {
+  const cache = await caches.open(CACHE);
+  const saved = await cache.match(SAVED_KEY);
+  const status = {
+    type: "offline-status",
+    pages: otherPages.length,
+    bytes: otherBytes,
+    savedAt: saved ? await saved.text() : null,
+    saving: progress && { ...progress },
+    failure,
+  };
+  const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  for (const client of clients) client.postMessage(status);
+}
