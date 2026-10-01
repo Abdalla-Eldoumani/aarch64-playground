@@ -106,7 +106,7 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
 
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]"
+      className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[12px]"
       aria-label="replay scrubber"
     >
       <button
