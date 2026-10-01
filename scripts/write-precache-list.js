@@ -103,9 +103,9 @@ function collectPrecache(webDir) {
     corePages: corePages.map((page) => page.url),
     files: files.map((file) => file.url).sort(),
     otherPages: otherPages.map((page) => page.url),
-    coreBytes: sum([...corePages, ...files]),
     otherBytes: sum(otherPages),
     // Not read by the worker: the summary line prints them.
+    coreBytes: sum([...corePages, ...files]),
     coreStoredBytes: stored([...corePages, ...files]),
     otherStoredBytes: stored(otherPages),
   };
@@ -113,7 +113,7 @@ function collectPrecache(webDir) {
 
 /** The worker imports this file, so it is a script that sets one global. */
 function renderPrecache(list) {
-  const { coreStoredBytes, otherStoredBytes, ...forWorker } = list;
+  const { coreBytes, coreStoredBytes, otherStoredBytes, ...forWorker } = list;
   return (
     "// Written by scripts/write-precache-list.js after next build. Not tracked.\n" +
     `self.PRECACHE = ${JSON.stringify(forWorker)};\n`
