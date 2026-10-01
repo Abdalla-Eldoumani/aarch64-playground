@@ -1,0 +1,47 @@
+{
+  "title": "Predict: input and output",
+  "slug": "predict-io",
+  "order": 123,
+  "lastUpdated": "2026-10-01",
+  "topic": "io",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "What `printf`, `scanf`, `read` and `write` hand back in `w0` or `x0`, and what a specifier that does not match its slot leaves behind.",
+  "predictions": [
+    {
+      "code": "        .data\nfmt_m:  .string \"%d cats\\n\"\n\n        .text\n        ldr     x0, =fmt_m\n        mov     w1, 12\n        bl      printf",
+      "question": "printf returns how many characters it printed. What value does w0 hold after bl printf returns? Answer in decimal.",
+      "answer": "8",
+      "explanation": "printf prints 12 cats and a newline. %d becomes the two characters 1 and 2, and the rest of the format is copied as it is: a space, the four letters of cats, and the newline. 2 + 1 + 4 + 1 = 8, and the newline counts even though it does not show.",
+      "hint": "Write out what printf prints, then count every character, the newline included."
+    },
+    {
+      "code": "        .data\nfmt_m:  .string \"%d %d\"\n\n        .bss\n        .balign 4\na_n:    .skip 4\nb_n:    .skip 4\n\n        .text\n        ldr     x0, =fmt_m\n        ldr     x1, =a_n\n        ldr     x2, =b_n\n        bl      scanf",
+      "question": "The program's input is the line 41 apples. What value does w0 hold after scanf returns? Answer in decimal.",
+      "answer": "1",
+      "explanation": "scanf stores 41 in a_n, then reaches the a of apples where the second %d needs a digit. It stops there and returns how many numbers it stored, 1. b_n keeps the 0 that .bss gave it.",
+      "hint": "w0 counts the numbers scanf stored, not their values."
+    },
+    {
+      "code": "        .data\nok_m:   .string \"ok\\n\"\nok_len = . - ok_m\n\n        .text\n        mov     x8, 64\n        mov     x0, 1\n        ldr     x1, =ok_m\n        mov     x2, ok_len\n        svc     0",
+      "question": "write returns how many bytes it wrote. What value does x0 hold after svc 0? Answer in decimal.",
+      "answer": "4",
+      "explanation": ".string stores o, k, the newline, and a zero byte, so ok_len is 4 and write sends all 4 bytes, the zero byte too. With .ascii the message would be 3 bytes, and no zero byte would reach the output.",
+      "hint": "Count the byte that .string adds after the text."
+    },
+    {
+      "code": "        .bss\nbuf_m:  .skip 16\n\n        .text\n        mov     x0, 0\n        ldr     x1, =buf_m\n        mov     x2, 16\n        mov     x8, 63\n        svc     0",
+      "question": "The program's input is hey followed by Enter, and nothing more. What value does x0 hold after svc 0? Answer in decimal.",
+      "answer": "4",
+      "explanation": "read returns the number of bytes it put in the buffer, which can be fewer than the 16 that x2 allows. The input holds h, e, y and the newline from Enter, so read returns 4. A second read would return 0, which means the input has ended.",
+      "hint": "x2 is only the most that read may return. Count the bytes the input holds."
+    },
+    {
+      "code": "        .data\nfmt_m:  .string \"%d\"\n\n        .bss\n        .balign 8\nn_n:    .skip 8\n\n        .text\n        ldr     x0, =fmt_m\n        ldr     x1, =n_n\n        bl      scanf\n        ldr     x9, =n_n\n        ldr     x19, [x9]",
+      "question": "The program's input is -1. What value does x19 hold? Answer as 0x followed by the hex digits, with no leading zeros.",
+      "answer": "0xFFFFFFFF",
+      "explanation": "%d stores an int, 4 bytes: -1 is 0xFFFFFFFF, written over the low half of the 8-byte slot. The high half keeps the zeros .bss started with, and the 8-byte load reads both halves as 0x00000000FFFFFFFF, which is 4294967295, not -1. %ld would have filled all 8 bytes.",
+      "hint": "%d writes only 4 of the slot's 8 bytes. What is in the other 4?"
+    }
+  ]
+}
