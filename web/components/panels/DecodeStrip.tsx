@@ -59,11 +59,11 @@ export function DecodeStrip({
       aria-label="current instruction"
     >
       <div className="flex items-baseline justify-between gap-3">
-        <span className="font-mono font-medium uppercase tracking-[0.14em] text-[10px] text-[var(--text-secondary)]">
+        <span className="font-mono font-medium uppercase tracking-[0.14em] text-[12px] text-[var(--text-secondary)]">
           current instruction
         </span>
         {decoded && encodingHex ? (
-          <span className="font-mono text-[10px] text-[var(--text-tertiary)]">
+          <span className="font-mono text-[12px] text-[var(--text-tertiary)]">
             {encodingHex}
           </span>
         ) : null}
@@ -82,7 +82,7 @@ export function DecodeStrip({
           <span className="font-mono text-[13px] font-medium text-[var(--amber)]">
             {externalCall.name}
           </span>
-          <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--amber)]">
+          <span className="font-mono text-[12px] uppercase tracking-[0.1em] text-[var(--amber)]">
             external call · handled by the runtime
           </span>
           <span className="font-mono text-[12px] leading-[1.6] text-[var(--text-secondary)] break-words">
@@ -125,7 +125,7 @@ export function DecodeStrip({
                 }}
               >
                 <span
-                  className={`px-1 font-mono text-[9px] uppercase tracking-[0.1em] ${
+                  className={`px-1 font-mono text-[12px] uppercase tracking-[0.1em] ${
                     dest ? "text-[var(--amber)]" : "text-[var(--text-tertiary)]"
                   }`}
                 >
@@ -146,7 +146,7 @@ export function DecodeStrip({
                 </span>
                 {!compact && field.meaning ? (
                   <span
-                    className={`px-1 font-mono text-[9px] ${
+                    className={`px-1 font-mono text-[12px] ${
                       dest
                         ? "text-[var(--amber)]"
                         : field.kind === "register"
