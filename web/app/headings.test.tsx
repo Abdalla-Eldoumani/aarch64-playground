@@ -214,7 +214,8 @@ describe("every route keeps the heading case", () => {
       found.push(...problems(container));
     }
     expect(found).toEqual([]);
-  });
+    // Three lazy tabs, each allowed 10 s above, outlast the 5 s default.
+  }, 30_000);
 
   it("/playground, on every tab and in its dialogs", async () => {
     useEmulatorMock.mockReturnValue(makeHub());
