@@ -153,7 +153,7 @@ export function LessonIndex({
                       {lesson.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="font-mono text-[11px] text-[var(--text-tertiary)]"
+                          className="font-mono text-[12px] text-[var(--text-tertiary)]"
                         >
                           {tag}
                         </span>
