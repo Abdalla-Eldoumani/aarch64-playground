@@ -51,6 +51,7 @@ import ExercisePage, { generateMetadata as exerciseMetadata } from "./(site)/pra
 import { metadata as referenceMetadata } from "./(site)/reference/page";
 import PlaygroundLayout, { metadata as playgroundMetadata } from "./playground/layout";
 import { metadata as notFoundMetadata } from "./not-found";
+import { metadata as offlineMetadata } from "./(site)/offline/page";
 import { loadAllLessons } from "@/lib/content/lessons";
 import { loadAllExercises } from "@/lib/content/exercises";
 import { practiceSide } from "@/lib/content/practice-topics";
@@ -162,6 +163,12 @@ describe("per-page titles and snippets", () => {
     expect(notFoundMetadata.alternates).toBeNull();
     expect(notFoundMetadata.openGraph?.url).toBeUndefined();
     expect(titleOf(notFoundMetadata)).toBe(`404 · ${SITE_NAME}`);
+  });
+
+  it("keep the offline page out of the index, since it answers under other pages' addresses", () => {
+    expect(offlineMetadata.robots).toEqual({ index: false });
+    expect(offlineMetadata.alternates).toBeNull();
+    expect(sitemap().some((entry) => entry.url.endsWith("/offline"))).toBe(false);
   });
 });
 
