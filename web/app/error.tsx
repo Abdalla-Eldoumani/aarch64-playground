@@ -82,7 +82,7 @@ export default function Error({
       </div>
 
       <h1 className="font-serif text-3xl font-semibold text-[var(--text-primary)]">
-        something broke
+        Something broke
       </h1>
 
       <p className="max-w-md font-sans text-sm text-[var(--text-secondary)]">
