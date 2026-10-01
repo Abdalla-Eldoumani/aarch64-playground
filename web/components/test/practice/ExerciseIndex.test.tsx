@@ -28,6 +28,7 @@ vi.mock("@/components/ui/Toast", () => ({
 }));
 
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
+import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
@@ -60,6 +61,13 @@ function makeRow(over: Partial<ExerciseIndexRow>): ExerciseIndexRow {
   };
 }
 
+// The page renders each blurb on the server and hands the index the result.
+function blurbsOf(rows: ExerciseIndexRow[]) {
+  return Object.fromEntries(
+    rows.map(({ slug, blurb }) => [slug, <LessonMarkdown inline markdown={blurb} />]),
+  );
+}
+
 // order 2 then 1, so a correct render proves the order-sort; distinct topics and
 // difficulties drive the filter tests; "solved-one" is the mocked-solved slug.
 const exercises: ExerciseIndexRow[] = [
@@ -83,7 +91,7 @@ const exercises: ExerciseIndexRow[] = [
 
 describe("ExerciseIndex", () => {
   it("renders cards sorted by their order field, each linking to its exercise", () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const hrefs = Array.from(container.querySelectorAll('a[href^="/practice/"]')).map((a) =>
       a.getAttribute("href"),
     );
@@ -93,7 +101,7 @@ describe("ExerciseIndex", () => {
   });
 
   it("filters by the search query (title and topic) with an accessible search name", () => {
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const input = screen.getByLabelText("search exercises");
     fireEvent.change(input, { target: { value: "Alpha" } });
     expect(screen.getByText("Alpha Exercise")).toBeTruthy();
@@ -120,7 +128,8 @@ describe("ExerciseIndex", () => {
       topic: "bitwise",
       blurb: "flip some bits",
     });
-    render(<ExerciseIndex exercises={[...exercises, quiz, listedTopic]} />);
+    const all = [...exercises, quiz, listedTopic];
+    render(<ExerciseIndex exercises={all} blurbs={blurbsOf(all)} />);
 
     const code = screen.getByRole("region", { name: "Coding exercises" });
     const theory = screen.getByRole("region", { name: "Theory sets" });
@@ -142,7 +151,7 @@ describe("ExerciseIndex", () => {
   // if it arrived empty, because every other assertion matches on a title or
   // a topic.
   it("renders the server-derived blurb verbatim", () => {
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     expect(screen.getByText("work with the stack")).toBeTruthy();
     expect(screen.getByText("work with registers")).toBeTruthy();
   });
@@ -152,7 +161,7 @@ describe("ExerciseIndex", () => {
       makeRow({ title: "Alpha", slug: "alpha", order: 1, blurb: "tail-call elimination" }),
       makeRow({ title: "Beta", slug: "beta", order: 2, blurb: "unrelated" }),
     ];
-    render(<ExerciseIndex exercises={rows} />);
+    render(<ExerciseIndex exercises={rows} blurbs={blurbsOf(rows)} />);
     fireEvent.change(screen.getByLabelText("search exercises"), {
       target: { value: "elimination" },
     });
@@ -161,7 +170,7 @@ describe("ExerciseIndex", () => {
   });
 
   it("filters by a selected difficulty chip", () => {
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const chip = screen.getByRole("button", { name: "intro" });
     fireEvent.click(chip);
     expect(chip.getAttribute("aria-pressed")).toBe("true");
@@ -170,13 +179,13 @@ describe("ExerciseIndex", () => {
   });
 
   it("renders the empty state when there are no exercises", () => {
-    const { container } = render(<ExerciseIndex exercises={[]} />);
+    const { container } = render(<ExerciseIndex exercises={[]} blurbs={blurbsOf([])} />);
     expect(screen.getByText("no exercises yet")).toBeTruthy();
     expect(container.querySelector('a[href^="/practice/"]')).toBeNull();
   });
 
   it("renders the no-match state when the query matches nothing", () => {
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     fireEvent.change(screen.getByLabelText("search exercises"), {
       target: { value: "zzznomatch" },
     });
@@ -184,14 +193,14 @@ describe("ExerciseIndex", () => {
   });
 
   it("renders the loading skeleton instead of the list", () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} loading />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} loading />);
     expect(container.querySelector('[data-testid="exercise-index-skeleton"]')).not.toBeNull();
     expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
     expect(screen.queryByText("Alpha Exercise")).toBeNull();
   });
 
   it("shows the solved indicator only on a solved card, after mount", async () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     // The indicator is set by the post-mount effect.
     await screen.findByText("solved");
     const solvedCard = container.querySelector('a[href="/practice/solved-one"]') as HTMLElement;
@@ -229,7 +238,7 @@ describe("ExerciseIndex progress row", () => {
   }
 
   it("renders the export and import controls below the list", () => {
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     expect(screen.getByText("progress:")).toBeTruthy();
     expect(screen.getByRole("button", { name: "export solved progress" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "import solved progress" })).toBeTruthy();
@@ -238,7 +247,7 @@ describe("ExerciseIndex progress row", () => {
   it("downloads the current solved set as one progress file", async () => {
     window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one", "another"]));
     const captured = captureDownload();
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "export solved progress" }));
 
@@ -257,7 +266,7 @@ describe("ExerciseIndex progress row", () => {
       JSON.stringify({ version: 1, kind: "write", source: "my work", updatedAt: 7 }),
     );
     const captured = captureDownload();
-    render(<ExerciseIndex exercises={exercises} />);
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
 
     fireEvent.click(screen.getByRole("button", { name: "export solved progress" }));
 
@@ -268,7 +277,7 @@ describe("ExerciseIndex progress row", () => {
   });
 
   it("counts the imported answers in the toast", async () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const bundle = JSON.stringify({
       version: 1,
@@ -288,7 +297,7 @@ describe("ExerciseIndex progress row", () => {
   });
 
   it("opens the file picker when import is clicked", () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const click = vi.spyOn(fileInput, "click").mockImplementation(() => {});
     fireEvent.click(screen.getByRole("button", { name: "import solved progress" }));
@@ -297,7 +306,7 @@ describe("ExerciseIndex progress row", () => {
 
   it("merges an imported file into the stored set and reports the count", async () => {
     window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one"]));
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const bundle = JSON.stringify({ version: 1, solved: ["solved-one", "unsolved-two"] });
 
@@ -319,7 +328,7 @@ describe("ExerciseIndex progress row", () => {
 
   it("says nothing new when the file adds no exercises", async () => {
     window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one"]));
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
 
     fireEvent.change(fileInput, {
@@ -336,7 +345,7 @@ describe("ExerciseIndex progress row", () => {
 
   it("refuses a malformed file with the reason and leaves the set alone", async () => {
     window.localStorage.setItem(SOLVED_KEY, JSON.stringify(["solved-one"]));
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
 
     fireEvent.change(fileInput, {
@@ -354,7 +363,7 @@ describe("ExerciseIndex progress row", () => {
   });
 
   it("refuses a file that is not json at all", async () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
 
     fireEvent.change(fileInput, {
@@ -365,7 +374,7 @@ describe("ExerciseIndex progress row", () => {
   });
 
   it("rejects a file over the size limit before reading it", () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     const oversized = new File(["{}"], "huge.json");
     Object.defineProperty(oversized, "size", {
@@ -383,7 +392,7 @@ describe("ExerciseIndex progress row", () => {
   });
 
   it("ignores a change event with no file picked", () => {
-    const { container } = render(<ExerciseIndex exercises={exercises} />);
+    const { container } = render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement;
     fireEvent.change(fileInput, { target: { files: [] } });
     expect(toastError).not.toHaveBeenCalled();
