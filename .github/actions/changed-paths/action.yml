@@ -2,8 +2,9 @@ name: changed paths
 description: >-
   Tells a check.yml job whether this run needs it. On a pull request it lists
   the files the pull request changes and sorts them with
-  .github/scripts/classify-changes.js; a push or the weekly run turns every
-  flag on. Needs a checkout with fetch-depth 2.
+  .github/scripts/classify-changes.js; a push, the weekly run, and the pull
+  request from integration (which tests in place of integration's pushes)
+  turn every flag on. Needs a checkout with fetch-depth 2.
 
 outputs:
   rust:
@@ -27,7 +28,7 @@ runs:
       id: classify
       shell: bash
       run: |
-        if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+        if [ "$GITHUB_EVENT_NAME" = pull_request ] && [ "$GITHUB_HEAD_REF" != integration ]; then
           git diff --name-only --no-renames -z HEAD^1 HEAD > "$RUNNER_TEMP/changed"
           node .github/scripts/classify-changes.js < "$RUNNER_TEMP/changed"
         else
