@@ -2,8 +2,8 @@
 
 /**
  * The practice index. Row fields render as plain React text, except the
- * blurb, whose inline code goes through the sanitizing lesson renderer, so
- * exercise content still has no way to inject markup here.
+ * blurb, which the server page has already run through the sanitizing lesson
+ * renderer, so exercise content still has no way to inject markup here.
  */
 
 import {
@@ -15,6 +15,7 @@ import {
   useSyncExternalStore,
   type ChangeEvent,
   type JSX,
+  type ReactNode,
 } from "react";
 import Link from "next/link";
 import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
@@ -32,7 +33,6 @@ import {
   topicRank,
   type PracticeSideInfo,
 } from "@/lib/content/practice-topics";
-import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 
@@ -194,7 +194,10 @@ function toggleValue(set: Set<string>, value: string): Set<string> {
 
 interface Row {
   exercise: ExerciseIndexRow;
+  /** The plain text, for the search. */
   blurb: string;
+  /** The same text rendered, inline code and all. */
+  renderedBlurb: ReactNode;
   sheetNumber: string;
 }
 
@@ -222,7 +225,7 @@ function groupByTopic(rows: Row[]): TopicGroup[] {
 }
 
 function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.Element {
-  const { exercise, blurb, sheetNumber } = row;
+  const { exercise, blurb, renderedBlurb, sheetNumber } = row;
   return (
     <li>
       <Link href={`/practice/${exercise.slug}`} className={ROW_CLASS}>
@@ -233,9 +236,7 @@ function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.El
           <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
             {exercise.title}
           </span>
-          {blurb && (
-            <LessonMarkdown inline markdown={blurb} className="text-sm text-[var(--text-secondary)]" />
-          )}
+          {blurb && <span className="text-sm text-[var(--text-secondary)]">{renderedBlurb}</span>}
           {(exercise.difficulty || isSolved) && (
             <span className="mt-1 flex flex-wrap items-center gap-3">
               {exercise.difficulty && <span className={META_CLASS}>{exercise.difficulty}</span>}
@@ -319,9 +320,12 @@ function SideColumn({
 
 export function ExerciseIndex({
   exercises,
+  blurbs,
   loading,
 }: {
   exercises: ExerciseIndexRow[];
+  /** Each row's blurb, rendered on the server, by slug. */
+  blurbs: Record<string, ReactNode>;
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
@@ -340,9 +344,10 @@ export function ExerciseIndex({
       [...exercises].sort(compareByOrder).map((exercise, index) => ({
         exercise,
         blurb: exercise.blurb,
+        renderedBlurb: blurbs[exercise.slug],
         sheetNumber: `5.${index + 1}`,
       })),
-    [exercises],
+    [exercises, blurbs],
   );
 
   const allDifficulties = useMemo(() => {
