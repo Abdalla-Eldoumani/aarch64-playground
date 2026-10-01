@@ -62,7 +62,8 @@ cd "$repo_root/web"
 # Vercel's adapter collects public/ during next build, so a worker written
 # after it never ships. A second build with the same build id ships it, and
 # --check fails the deploy if the second build's files differ from the list.
-PLAYGROUND_BUILD_ID="$(node -e "console.log(require('node:crypto').randomBytes(12).toString('base64url'))")"
+# Redraw an id containing "ad", as Next does for its own: ad blockers match it.
+PLAYGROUND_BUILD_ID="$(node -e "const c=require('node:crypto');let id;do id=c.randomBytes(12).toString('base64url');while(/ad/i.test(id));console.log(id)")"
 export PLAYGROUND_BUILD_ID
 npm run build
 npx next build --webpack
