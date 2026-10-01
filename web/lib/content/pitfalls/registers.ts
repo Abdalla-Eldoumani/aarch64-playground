@@ -12,8 +12,8 @@ export const REGISTER_PITFALLS: Pitfall[] = [
       "prints `bytes = 947912705`: 5,242,880,000 lost its top 32 bits when `add w19, w19, 1` wrote the register.",
     playground: "prints the same line, and the registers panel shows x19 drop to a 32-bit value at the add.",
     fix: "Update a 64-bit value through its x name: `add x19, x19, 1`. The fixed program prints `bytes = 5242880001`.",
-    wrong: `        add     w19, w19, 1`,
-    right: `        add     x19, x19, 1`,
+    wrong: `add     w19, w19, 1`,
+    right: `add     x19, x19, 1`,
     broken: {
       source: `// Counts the bytes in 40,000 records of 131,072 bytes, then adds one more.
 // The add writes w19, which clears the top half of x19.
@@ -96,8 +96,8 @@ main:
     server: "does not build: as reports `expected a register or register list at operand 1` for `mov x31,7`.",
     playground: "does not build either; the error says x31 is not a register and lists the ones that are.",
     fix: "Pick a free register from x9 to x15 for scratch work. The fixed program uses x11 and prints `product = 42`.",
-    wrong: `        mov     x31, 7`,
-    right: `        mov     x11, 7`,
+    wrong: `mov     x31, 7`,
+    right: `mov     x11, 7`,
     broken: {
       source: `// Multiplies 6 by 7, using x31 as one more scratch register.
 // Register number 31 is sp or xzr, never a general-purpose register.
@@ -177,9 +177,9 @@ main:
     server: "does not build: as reports `immediate cannot be moved by a single instruction`.",
     playground: "does not build either, and the error says the value needs movz and movk.",
     fix: "Load the low chunk with `movz`, then add each higher chunk with `movk`, which keeps the bits it does not write. `ldr x19, =100000` also works: it reads the value from the literal pool. The fixed program prints `seats = 100000`.",
-    wrong: `        mov     x19, 100000`,
-    right: `        movz    x19, 0x86a0
-        movk    x19, 0x1, lsl 16`,
+    wrong: `mov     x19, 100000`,
+    right: `movz    x19, 0x86a0
+movk    x19, 0x1, lsl 16`,
     broken: {
       source: `// Prints the number of seats in a stadium: 100000.
 // mov can place one 16-bit chunk, and 100000 needs two.
@@ -257,9 +257,9 @@ main:
     server: "does not build: as reports `immediate out of range`.",
     playground: "does not build either, and the error gives the range: 0 to 4095, or a multiple of 4096.",
     fix: "Put a larger number in a register first, then add the register. The fixed program prints `balance = 17000`.",
-    wrong: `        add     x19, x19, 5000`,
-    right: `        mov     x9, 5000
-        add     x19, x19, x9`,
+    wrong: `add     x19, x19, 5000`,
+    right: `mov     x9, 5000
+add     x19, x19, x9`,
     broken: {
       source: `// Adds a deposit of 5000 to a balance of 12000.
 // add has 12 bits for its immediate, and 5000 does not fit.
@@ -339,8 +339,8 @@ main:
     server: "prints nothing and stops with `Segmentation fault`: printf treats 8 bytes of text as an address.",
     playground: "stops at the `bl printf` with a segmentation fault and shows the text bytes x0 holds where an address should be.",
     fix: "Write the `=` so x0 gets the address: `ldr x0, =fmt_total`. The fixed program prints `total = 42`.",
-    wrong: `        ldr     x0, fmt_total`,
-    right: `        ldr     x0, =fmt_total`,
+    wrong: `ldr     x0, fmt_total`,
+    right: `ldr     x0, =fmt_total`,
     broken: {
       source: `// Prints a total. The format string's address should go in x0,
 // but this ldr loads the string's first 8 bytes instead.
@@ -412,11 +412,11 @@ main:
     server: "prints `the page starts here`: x0 points at the start of the page, where another string sits.",
     playground: "prints the same line, and x0 in the registers panel ends in 000.",
     fix: "Follow every `adrp` with the `add` of the label's low 12 bits. The fixed program prints `total = 42`.",
-    wrong: `        adrp    x0, fmt_total
-        bl      printf`,
-    right: `        adrp    x0, fmt_total
-        add     x0, x0, :lo12:fmt_total
-        bl      printf`,
+    wrong: `adrp    x0, fmt_total
+bl      printf`,
+    right: `adrp    x0, fmt_total
+add     x0, x0, :lo12:fmt_total
+bl      printf`,
     broken: {
       source: `// Prints a total with an adrp-loaded format string.
 // adrp alone gives the start of the page, where a different string sits.
@@ -494,12 +494,12 @@ main:
     server: "prints nothing and stops with `Segmentation fault`: the index points about 32 GB past the array.",
     playground: "stops at the load with a memory fault at that wild address.",
     fix: "Sign-extend while you scale: `ldr x1, [x12, w11, SXTW 3]`, or `sxtw x11, w11` first. The fixed program prints `neighbor = 200`.",
-    wrong: `        sub     w11, w9, w10
-        lsl     x11, x11, 3
-        add     x13, x12, x11
-        ldr     x1, [x13]`,
-    right: `        sub     w11, w9, w10
-        ldr     x1, [x12, w11, SXTW 3]`,
+    wrong: `sub     w11, w9, w10
+lsl     x11, x11, 3
+add     x13, x12, x11
+ldr     x1, [x13]`,
+    right: `sub     w11, w9, w10
+ldr     x1, [x12, w11, SXTW 3]`,
     broken: {
       source: `// Reads the neighbor before the middle of an array: index 1 - 2 = -1.
 // The int index is used through its x name without sign extension.
