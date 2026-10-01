@@ -8,23 +8,11 @@ use super::*;
 // the floating-point lane engine
 // ---------------------------------------------------------------------------
 //
-// Every rule here is per LANE: the scalar FP paths above and these run
-// the same helpers, so the two cannot disagree about a NaN, a rounding
-// mode or a saturation rail.
-//
-//   - `fp_process_nans` is the operand rule: a NaN that ARRIVED in a lane
-//     comes back out of that lane quieted, sign and payload intact
-//     (FPCR.DN is clear). A signalling operand wins over a quiet one, and
-//     within a kind the earlier operand wins.
-//   - `default_nan_bits_if_new` is the other half: a NaN this operation MADE
-//     becomes the positive AArch64 default NaN.
-//   - FMAX and FMIN propagate an operand NaN; FMAXNM and FMINNM stand
-//     an infinity in a QUIET NaN's place and return the other operand,
-//     but leave a signalling one for FMAX to propagate.
-//   - FCMEQ/FCMGE/FCMGT/FCMLE/FCMLT and FACGE/FACGT write a lane of all
-//     ones or all zeros, and every one of them is false against a NaN.
-//   - FCVTZS/FCVTZU saturate at the LANE's integer rails and answer zero
-//     for a NaN, exactly as the general-register forms do.
+// The scalar forms in fp.rs run these same per-lane helpers, so a vector
+// and a scalar instruction cannot disagree about a NaN, a rounding mode or
+// a saturation rail. With FPCR.DN clear, a NaN that arrives in a lane
+// leaves it quieted with its payload (`fp_process_nans`), and only a NaN
+// the operation makes becomes the default NaN (`default_nan_bits_if_new`).
 
 /// ARM's FPProcessNaNs over as many operands as the form has. `None`
 /// means no operand was a NaN and the arithmetic runs.
