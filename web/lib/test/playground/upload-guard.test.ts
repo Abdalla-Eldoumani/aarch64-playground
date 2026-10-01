@@ -40,9 +40,9 @@ describe("upload-guard caps", () => {
     expect(MAX_VFS_BYTES).toBe(4 * 1024 * 1024);
     expect(MAX_ARGS_CHARS).toBe(1000);
     expect(MAX_STDIN_BYTES).toBe(100 * 1024);
-    // 12 KB: a crafted link inflates with the square of its length, and this
-    // cap holds the worst case near 33 MB (see upload-guard.ts).
-    expect(MAX_SHARE_HASH_BYTES).toBe(12 * 1024);
+    // 16 KB: a crafted link inflates with the square of its length, and this
+    // cap holds the worst case near 67 MB (see upload-guard.ts).
+    expect(MAX_SHARE_HASH_BYTES).toBe(16 * 1024);
   });
 
   test("the working set holds more than one full source file", () => {
