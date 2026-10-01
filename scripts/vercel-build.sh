@@ -56,5 +56,6 @@ cd "$repo_root/web"
 # Use the project's canonical build command (next build --webpack). The
 # next.config webpack() hook (e.g. the `?raw` source-import rule) only
 # applies under webpack, so the deploy must match local/CI, not the
-# default bundler.
+# default bundler. The same script then writes the service worker's file
+# list from this build, so the deployed worker names the deployed files.
 npm run build
