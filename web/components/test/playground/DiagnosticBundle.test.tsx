@@ -36,7 +36,7 @@ describe("DiagnosticBundle", () => {
   it("opens a dialog that shows the whole report before anything is copied", async () => {
     const writeText = useClipboard();
     await openDialog();
-    expect(screen.getByRole("dialog", { name: "diagnostic bundle" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "Diagnostic bundle" })).toBeTruthy();
     expect(report().value).toContain("# Diagnostic bundle");
     expect(report().value).toContain("finished after 1 step with exit code 0");
     expect(report().value).toContain("## What I got");
