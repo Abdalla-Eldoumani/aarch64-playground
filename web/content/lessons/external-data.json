@@ -2,7 +2,7 @@
   "title": "External data: .data, .bss, and .text",
   "slug": "external-data",
   "order": 23,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Choose where a variable lives (the frame, .data, .bss or .text) and reach each one by its label.",
   "tags": [
     "external data",
@@ -73,6 +73,11 @@
       "type": "callout",
       "variant": "warning",
       "markdown": "`.text` is read-only on the servers. A store into `pass_mark` stops the program with a segmentation fault, the error Linux raises when a program touches memory in a way it is not allowed to. The playground does not enforce this yet, so a store into `.text` that runs here can still crash on the server. Keep anything you plan to change in `.data` or `.bss`."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A common mistake from this lesson, with a broken program and its fix that you can run:\n\n- [adrp gives the page, not the address](/reference#pitfall-adrp-needs-lo12)"
     },
     {
       "type": "prose",
