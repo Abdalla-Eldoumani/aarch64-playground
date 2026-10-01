@@ -1,0 +1,47 @@
+{
+  "title": "Predict: command-line arguments",
+  "slug": "predict-argv",
+  "order": 128,
+  "lastUpdated": "2026-10-01",
+  "topic": "argv",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Work out what `argc`, the `argv` entries, `strlen` and `atoi` give for the command line each question names.",
+  "predictions": [
+    {
+      "code": "main:\n        mov     w19, w0\n        mov     x20, x1",
+      "question": "The program is started as ./program \"big cat\" dog. What value does w19 hold? Answer in decimal.",
+      "answer": "3",
+      "explanation": "On entry w0 holds argc. The quotes keep big cat together as one word, so the words are ./program, big cat, and dog, and argc is 3.",
+      "hint": "Count the program's name, and count the quoted words as one."
+    },
+    {
+      "code": "main:\n        ldr     x0, [x1, 8]\n        bl      strlen",
+      "question": "The program is started as ./program \"big cat\" dog. What value does x0 hold after strlen returns? Answer in decimal.",
+      "answer": "7",
+      "explanation": "[x1, 8] is argv[1], the address of big cat. The shell removes the quotes before the program starts, but the space between the words stays, so strlen counts b, i, g, the space, c, a and t: 7.",
+      "hint": "The space inside the quotes is part of the argument."
+    },
+    {
+      "code": "main:\n        ldr     x0, [x1, 8]\n        bl      atoi",
+      "question": "The program is started as ./program 042. What value does w0 hold after atoi returns? Answer in decimal.",
+      "answer": "42",
+      "explanation": "atoi always reads base 10, and a leading zero adds nothing, so the text 042 gives 42. A leading 0 means octal only to the assembler, where 042 in the source would be 34; text typed on the command line never goes through the assembler.",
+      "hint": "atoi reads decimal digits. Does a leading zero change a decimal number?"
+    },
+    {
+      "code": "main:\n        ldr     x20, [x1, 16]\n        ldrb    w21, [x20, 1]",
+      "question": "The program is started as ./program red blue. What value does w21 hold? Answer in decimal.",
+      "answer": "108",
+      "explanation": "Each entry of argv is 8 bytes, so [x1, 16] is argv[2] and x20 points at blue. Byte 1 of blue is the letter l, and ldrb loads its code, 108.",
+      "hint": "argv[0] is the program's name, so argv[2] is the second word after it."
+    },
+    {
+      "code": "main:\n        ldr     x22, [x1, w0, sxtw 3]",
+      "question": "The program is started as ./program a b c. What value does x22 hold? Answer in decimal.",
+      "answer": "0",
+      "explanation": "w0 holds argc, 4, so the load reads entry 4: sxtw 3 widens w0 to 64 bits and multiplies it by 8, which is 32 bytes into argv. Entries 0 to 3 hold the four words, and entry 4 is the 0 that ends the array.",
+      "hint": "argc is one more than the number of the last entry that holds a word."
+    }
+  ]
+}
