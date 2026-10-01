@@ -155,7 +155,7 @@ export function TutorialRunner({
             onSelect={(id) => setActiveId(id)}
             className="basis-full sm:basis-auto min-w-0"
           />
-          <span className="whitespace-nowrap text-[11px] [@media(pointer:coarse)]:text-[12px] text-[var(--text-secondary)]">
+          <span className="whitespace-nowrap text-[12px] text-[var(--text-secondary)]">
             step {stepIndex + 1} / {tutorial.steps.length}
           </span>
           <div className="flex-1" />
@@ -175,11 +175,11 @@ export function TutorialRunner({
           </button>
         </div>
         <div className="flex-1 overflow-auto p-4 text-sm">
-          <p className="text-[11px] text-[var(--text-secondary)] mb-2">
+          <p className="text-[12px] text-[var(--text-secondary)] mb-2">
             {tutorial.summary}
           </p>
           {loadError && (
-            <p className="text-[11px] text-[var(--danger)] mb-2" role="alert">
+            <p className="text-[12px] text-[var(--danger)] mb-2" role="alert">
               {loadError}
             </p>
           )}
@@ -190,12 +190,12 @@ export function TutorialRunner({
             {step?.body}
           </p>
           {step?.highlight && (
-            <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+            <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
               focus: lines {step.highlight.start}-{step.highlight.end} of the source
             </p>
           )}
           {step?.watchReg && (
-            <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+            <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
               watch hint: add{" "}
               <span className="font-mono text-[var(--text-primary)]">{step.watchReg}</span>{" "}
               to the watch panel
