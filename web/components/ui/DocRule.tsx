@@ -23,8 +23,10 @@ export function DocRule({
           <span className="sm:hidden">aarch64-pg</span>
           <span className="hidden sm:inline">aarch64 playground</span>
         </span>
+        {/* A lesson's section names it by title; where a long one meets a
+            narrow sheet it ends in an ellipsis, since the h1 below says it whole. */}
         {section ? (
-          <span className="hidden whitespace-nowrap text-[var(--amber)] sm:inline">
+          <span className="hidden min-w-0 truncate text-[var(--amber)] sm:inline">
             {section}
           </span>
         ) : null}
