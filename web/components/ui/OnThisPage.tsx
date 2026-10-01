@@ -13,6 +13,8 @@ export interface PageSection {
   label: string;
   /** Shown before the label in mono, e.g. "01". */
   number: string;
+  /** 3 indents the link under the depth-2 entry above it. */
+  depth?: 2 | 3;
 }
 
 const LINK_CLASS =
@@ -28,7 +30,7 @@ export function OnThisPage({
 }): JSX.Element {
   const links = sections.map((section) => (
     <li key={section.id}>
-      <a href={`#${section.id}`} className={LINK_CLASS}>
+      <a href={`#${section.id}`} className={section.depth === 3 ? `${LINK_CLASS} pl-4` : LINK_CLASS}>
         <span className="mr-2 font-mono text-[12px] text-[var(--text-tertiary)]">
           {section.number}
         </span>
