@@ -19,12 +19,12 @@ import { PitfallsCatalog } from "@/components/reference/PitfallsCatalog";
 
 const TITLES = [
   "16-byte stack alignment",
-  "saving and restoring fp and lr",
-  "sign extension",
-  "off-by-one loop bounds",
-  "non-16-byte local allocation",
-  "caller-saved registers do not survive a call",
-  "misaligned stack at a call",
+  "Saving and restoring fp and lr",
+  "Sign extension",
+  "Off-by-one loop bounds",
+  "Non-16-byte local allocation",
+  "Caller-saved registers do not survive a call",
+  "Misaligned stack at a call",
 ];
 
 afterEach(() => {
