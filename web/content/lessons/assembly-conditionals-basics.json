@@ -2,7 +2,7 @@
   "title": "Conditionals with cmp and b.cond",
   "slug": "assembly-conditionals-basics",
   "order": 10,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "How cmp sets the condition flags and how b.cond reads them to build an if, an if-else, and an else-if chain.",
   "tags": [
     "conditionals",
@@ -139,6 +139,11 @@
       "type": "callout",
       "variant": "pitfall",
       "markdown": "Every body except the last needs its `b band_done`. Delete the first one, set the weight to 40, and run: the program prints `40 g: letter` and then `40 g: small packet`, because after the letter body, execution runs on into the next test, and 40 is also at most 500."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [cmp a, b tests a against b, not b against a](/reference#pitfall-cmp-operand-order)\n- [lt, le, gt, ge are signed; lo, ls, hi, hs are unsigned](/reference#pitfall-signed-and-unsigned-conditions)\n- [cbz and cbnz test a register without setting the flags](/reference#pitfall-cbz-sets-no-flags)\n- [csinc adds one when the condition is false; cinc when it is true](/reference#pitfall-csinc-adds-one-when-false)"
     },
     {
       "type": "prose",
