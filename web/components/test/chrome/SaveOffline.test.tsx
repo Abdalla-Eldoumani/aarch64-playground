@@ -45,7 +45,6 @@ function send(data: Record<string, unknown>): void {
 
 const STATUS = {
   type: "offline-status",
-  pages: 147,
   bytes: 2_408_523,
   savedAt: null,
   saving: null,
@@ -133,7 +132,7 @@ describe("SaveOffline", () => {
 
   it("ignores a message that is not a well-formed status", async () => {
     await mount();
-    send({ ...STATUS, pages: -1 });
+    send({ ...STATUS, bytes: -1 });
     send({ ...STATUS, savedAt: "not a date" });
     send({ ...STATUS, saving: { done: 5, total: 2 } });
     send({ type: "something-else" });
