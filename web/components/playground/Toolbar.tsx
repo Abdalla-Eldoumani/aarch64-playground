@@ -35,7 +35,7 @@ const INACTIVE =
 function GroupLabel({ children }: { children: ReactNode }) {
   // --type-label: mono, 12px, uppercase, 0.08em tracking.
   return (
-    <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] select-none whitespace-nowrap [@media(pointer:coarse)]:text-[12px]">
+    <span className="font-mono text-[12px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] select-none whitespace-nowrap">
       {children}
     </span>
   );
@@ -101,7 +101,7 @@ export function Toolbar({
           <kbd
             aria-hidden="true"
             data-keys="Ctrl+K"
-            className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
+            className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[12px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
           />
         </button>
       </div>
