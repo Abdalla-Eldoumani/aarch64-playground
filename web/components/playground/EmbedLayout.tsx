@@ -149,6 +149,8 @@ export function EmbedLayout({
                 onChange={(event) => args.onChange(event.target.value)}
                 maxLength={MAX_ARGS_CHARS}
                 spellCheck={false}
+                autoCorrect="off"
+                autoCapitalize="off"
                 autoComplete="off"
                 className="min-h-[44px] w-36 rounded border border-[var(--border)] bg-[var(--bg-base)] px-2 font-mono text-[12px] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] sm:w-44"
               />
