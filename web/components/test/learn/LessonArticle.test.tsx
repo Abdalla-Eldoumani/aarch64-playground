@@ -92,6 +92,13 @@ describe("LessonArticle", () => {
     expect(precedes(editorLink, secondProse)).toBe(true);
   });
 
+  it("names the lesson by its title in the header strip, never by its slug", () => {
+    const { container } = render(<LessonArticle lesson={fullLesson} sheetNumber="4.2" />);
+    const strip = container.querySelector("article > div");
+    expect(strip?.textContent).toContain("lesson 4.2 · Test Lesson");
+    expect(container.textContent).not.toContain("test-lesson");
+  });
+
   it("renders prose through the real LessonMarkdown (heading id matches the table of contents)", () => {
     const { container } = render(<LessonArticle lesson={fullLesson} />);
     // A real heading element with the slugified id proves LessonMarkdown ran,
