@@ -45,13 +45,12 @@ function loadMonaco(): Promise<void> {
     // nothing, so both load, widgets first as monaco's own entry orders them,
     // under one chunk name so the size budget sees one file. Each feature runs
     // in its own task, since one big import blocks input for a quarter second
-    // or more; register.all then catches any feature the list lacks.
+    // or more. The list's test keeps it in step with monaco's register.all,
+    // which is not imported: it would bring back the feature the list leaves out.
     for (const load of MONACO_FEATURES) {
       await load();
       await yieldToEventLoop();
     }
-    await import(/* webpackChunkName: "monaco" */ "monaco-editor/features/register.all");
-    await yieldToEventLoop();
     const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
     await yieldToEventLoop();
     // The first language or theme call starts every editor service. Made
