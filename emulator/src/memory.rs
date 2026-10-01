@@ -268,9 +268,9 @@ impl Memory {
         self.zero_fill.clear();
         let Self { pages, free, .. } = self;
         for (_, page) in pages.drain() {
-            // A page a snapshot frame still shares cannot be recycled:
-            // zeroing it would rewrite that frame's memory. Those are
-            // dropped and the frame keeps the only reference.
+            // A page a named save still shares cannot be recycled:
+            // zeroing it would rewrite that save's memory. Those are
+            // dropped and the save keeps the only reference.
             if let Ok(mut page) = Rc::try_unwrap(page) {
                 page.fill(0);
                 free.push(page);
@@ -660,8 +660,8 @@ mod tests {
 
     #[test]
     fn cloning_memory_does_not_carry_the_recycle_pool() {
-        // The snapshot ring clones Memory every step; a cloned pool would
-        // copy megabytes of parked buffers into each frame.
+        // A named save clones Memory; a cloned pool would copy megabytes
+        // of parked buffers into each save.
         let mut mem = Memory::new();
         for i in 0..64 {
             mem.write_u8(i * 4096, 1).unwrap();
@@ -675,10 +675,9 @@ mod tests {
 
     #[test]
     fn cloning_shares_page_buffers_until_one_is_written() {
-        // The step-back ring clones Memory on every step. Copying every
-        // live page there cost ~33x the price of running the instruction;
-        // sharing the buffers and copying one on write is what makes the
-        // ring affordable.
+        // A named save clones Memory. Copying every live page would make
+        // each save copy the whole address space; sharing the buffers and
+        // copying one on write keeps a named save cheap.
         let mut mem = Memory::new();
         for i in 0..64 {
             mem.write_u8(i * 4096, 1).unwrap();
