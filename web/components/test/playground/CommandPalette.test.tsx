@@ -101,10 +101,21 @@ describe("CommandPalette", () => {
 
   it("runs the selected action on Enter", () => {
     const { actions, onClose } = renderPalette();
-    fireEvent.change(input(), { target: { value: "assemble" } });
+    // An input event, as typing makes: the focus trap holds Enter back right
+    // after opening until the reader has typed something.
+    fireEvent.input(input(), { target: { value: "assemble" } });
     fireEvent.keyDown(input(), { key: "Enter" });
     expect(actions[0].run).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // A double press of Enter on the "commands" button lands its second Enter
+  // here; it must not run the first command and close the palette.
+  it("ignores an Enter that arrives right after it opens", () => {
+    const { actions, onClose } = renderPalette();
+    fireEvent.keyDown(input(), { key: "Enter" });
+    expect(actions[0].run).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("closes on Escape without running anything", () => {
