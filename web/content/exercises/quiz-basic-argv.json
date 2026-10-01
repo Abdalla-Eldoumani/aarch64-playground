@@ -1,0 +1,84 @@
+{
+  "title": "Basic quiz: command-line arguments",
+  "slug": "quiz-basic-argv",
+  "order": 127,
+  "lastUpdated": "2026-10-01",
+  "topic": "argv",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "How the words typed after a program's name reach `main`: `argc`, the `argv` array of string addresses, and `atoi`, which turns an argument into a number.",
+  "questions": [
+    {
+      "question": "A program is started as ./greet \"good morning\" Sam. What is argc?",
+      "options": [
+        "2",
+        "3",
+        "4",
+        "5"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The shell splits the line at spaces, except inside quotes, so the words are ./greet, good morning, and Sam. argc counts all three, the program's own name included.",
+      "hint": "Count the program's name, and count the quoted words as one."
+    },
+    {
+      "question": "On entry to main, which register holds argv, and what is it?",
+      "options": [
+        "x1, the address of an array of addresses, one per word",
+        "x1, the address of one string that holds the whole command line",
+        "w1, the number of words typed after the program's name",
+        "x0, the address of the text of the first argument"
+      ],
+      "correctAnswer": 0,
+      "explanation": "main(int argc, char *argv[]) gets argc in w0 and argv in x1. argv is the address of an array of 8-byte entries, and each entry is the address of one word's text: argv[0] is the program's name and argv[1] the first argument.",
+      "hint": "argv is the second argument to main, and it is a pointer."
+    },
+    {
+      "question": "x20 holds argv. Which instruction loads argv[1], the address of the first argument's text?",
+      "options": [
+        "ldr x21, [x20, 1]",
+        "ldrb w21, [x20, 1]",
+        "ldr x21, [x20, 16]",
+        "ldr x21, [x20, 8]"
+      ],
+      "correctAnswer": 3,
+      "explanation": "Each entry of argv is an 8-byte address, so entry 1 starts 8 bytes in. Offset 1 lands in the middle of argv[0], ldrb loads only one byte, and offset 16 is argv[2].",
+      "hint": "Entry n starts n times the size of an address into the array."
+    },
+    {
+      "question": "A program is run as ./scale 25. What does argv[1] point at?",
+      "options": [
+        "The 8-byte number 25, ready for an x register",
+        "The 4-byte int 25, ready for a w register",
+        "The bytes '2' and '5', then a zero byte",
+        "A length byte of 2, then the bytes '2' and '5'"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Every argument arrives as text, even one that looks like a number. argv[1] points at the codes 50 and 53, for the characters 2 and 5, followed by the zero byte that ends every string. atoi turns that text into the int 25.",
+      "hint": "The shell passes words, never numbers."
+    },
+    {
+      "question": "Which library function turns the text \"250\" into the int 250 and returns it in w0?",
+      "options": [
+        "atoi",
+        "strlen",
+        "scanf",
+        "puts"
+      ],
+      "correctAnswer": 0,
+      "explanation": "atoi (ASCII to integer) reads decimal digits from the string whose address is in x0 and returns their value in w0. strlen would return 3, the number of characters, and scanf reads standard input, not a string already in memory.",
+      "hint": "Its name is short for ASCII to integer."
+    },
+    {
+      "question": "What does the entry argv[argc] hold?",
+      "options": [
+        "The address of the last argument's text",
+        "A second copy of argc, the number of words",
+        "Leftover stack data, since it is past the end",
+        "0, which marks the end of the array"
+      ],
+      "correctAnswer": 3,
+      "explanation": "argv has argc entries, numbered 0 to argc - 1, so the last argument is argv[argc - 1]. The entry after it always holds 0, so a loop can walk argv until it loads a 0 instead of counting.",
+      "hint": "Entries count from 0. Which entry holds the last argument?"
+    }
+  ]
+}
