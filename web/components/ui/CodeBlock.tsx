@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
+import { ScrollingPre } from "@/components/ui/ScrollingPre";
 import { KIND_CLASS, tokenizeLine, type Token } from "@/lib/asm/highlight-arm64";
 
 export interface CodeBlockProps {
@@ -45,29 +46,11 @@ export function CodeBlock({
     }
   }, [code]);
 
-  // Lines that run past the right edge scroll inside the block; the fade
-  // says there is more, since a phone shows no scrollbar until a swipe.
-  const preRef = useRef<HTMLPreElement>(null);
-  const [moreRight, setMoreRight] = useState(false);
-  const measure = useCallback(() => {
-    const pre = preRef.current;
-    if (pre) setMoreRight(pre.scrollLeft + pre.clientWidth < pre.scrollWidth - 1);
-  }, []);
-  useEffect(() => {
-    measure();
-    window.addEventListener("resize", measure);
-    return () => window.removeEventListener("resize", measure);
-  }, [measure, code]);
-
   // Under a coarse pointer the copy button is a 44px target, two code lines
   // tall, so the code starts below it rather than hiding a line's end.
   return (
     <div className={`relative ${className}`}>
-      <pre
-        ref={preRef}
-        onScroll={measure}
-        className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)] [@media(pointer:coarse)]:pt-14"
-      >
+      <ScrollingPre preClassName="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)] [@media(pointer:coarse)]:pt-14">
         <code>
           {tokenizedLines.map((tokens, lineIndex) => (
             <span
@@ -87,13 +70,7 @@ export function CodeBlock({
             </span>
           ))}
         </code>
-      </pre>
-      {moreRight && (
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute inset-y-px right-px w-8 rounded-r-[var(--radius-card)] bg-gradient-to-l from-[var(--bg-sunken)] to-transparent"
-        />
-      )}
+      </ScrollingPre>
       <button
         type="button"
         onClick={copy}
