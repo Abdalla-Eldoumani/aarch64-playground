@@ -511,24 +511,22 @@ html:has([data-install-tip]) {
   scroll-padding-bottom: var(--install-tip-clear);
 }
 
-/* A lesson term's card (LessonMarkdown) sits along the bottom edge on a touch
-   screen or in a window under 1024px: hung off a term near the right edge, it
-   ran past the screen and widened the page. The auto margins centre it once
-   the width reaches its cap. */
-@media (max-width: 1023.98px), (pointer: coarse) {
-  .term-card {
-    position: fixed;
-    inset: auto 1rem calc(1rem + var(--safe-bottom));
-    z-index: 60;
-    width: auto;
-    max-width: 32rem;
-    margin: 0 auto;
-    padding: 0.5rem 0.75rem;
-  }
-  /* Clear of the install tip, which holds the same edge while it shows. */
-  html:has([data-install-tip]) .term-card {
-    bottom: var(--install-tip-clear);
-  }
+/* A lesson term's card (LessonMarkdown) sits along the bottom edge at every
+   size: hung off a term, it ran past the right edge under 1024px and widened
+   the page, and past the bottom edge for a term low in a laptop window. The
+   auto margins centre it once the width reaches its cap. */
+.term-card {
+  position: fixed;
+  inset: auto 1rem calc(1rem + var(--safe-bottom));
+  z-index: 60;
+  width: auto;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 0.5rem 0.75rem;
+}
+/* Clear of the install tip, which holds the same edge while it shows. */
+html:has([data-install-tip]) .term-card {
+  bottom: var(--install-tip-clear);
 }
 
 /* =============================================================================
