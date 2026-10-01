@@ -8,6 +8,7 @@ import { REPO_URL, NAV_ROUTES, isActiveRoute } from "@/lib/content/site";
 import { formatStarCount } from "@/lib/content/github";
 import { CloseIcon, GitHubIcon, MenuIcon } from "@/components/chrome/SiteIcons";
 import { ThemeControl } from "@/components/chrome/ThemeControl";
+import { SaveOffline } from "@/components/chrome/SaveOffline";
 import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 /**
@@ -82,6 +83,8 @@ export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
             <div className="mt-2 border-t border-[var(--border)] pt-3">
               <ThemeControl size="comfortable" />
             </div>
+
+            <SaveOffline className="mt-1 px-3" />
 
             <a
               href={REPO_URL}
