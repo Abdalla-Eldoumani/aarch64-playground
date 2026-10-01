@@ -45,7 +45,7 @@ const viewsMarkdown = [
   "| view | what it shows |",
   "|---|---|",
   "| registers | `x0` to `x30`, `d0` to `d31`, or `v0` to `v31`, with the NZCV flags; the registers the last instruction changed are marked, and dec or hex picks how values are written |",
-  "| memory | raw bytes, 16 to a row, with their characters; jump to `.text`, `.rodata`, `.data`, `.bss` or the stack, or type an address in hex or decimal |",
+  "| memory | raw bytes, 16 to a row (8 on a narrow screen), with their characters; jump to `.text`, `.rodata`, `.data`, `.bss` or the stack, or type an address in hex or decimal |",
   "| stack | 16 rows of 8 bytes from `sp`, with the row `fp` points at marked and the others named by their offset from `fp` |",
   "| watches | the expressions in the table below, in hex, at every stop |",
   "| memwatch | a named strip of bytes at an address you choose, kept from run to run |",
