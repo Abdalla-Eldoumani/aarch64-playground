@@ -130,7 +130,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Pick the bigger one](/practice/pick-the-bigger-one): try it with one `csel` and no branch.\n- [Rock, paper, scissors referee](/practice/rock-paper-scissors-referee): once the compares are done, `csel` can pick which message to print."
+      "markdown": "## Practice\n\n- [Pick the bigger one](/practice/pick-the-bigger-one): try it with one `csel` and no branch.\n- [Rock, paper, scissors referee](/practice/rock-paper-scissors-referee): once the compares are done, `csel` can pick which message to print.\n- [Basic quiz: branching](/practice/quiz-basic-branching): reading the flags, with `cbz` and `csel` among the questions.\n- [Fill in the blank: branching (core)](/practice/blanks-branching): write the `csel`, `cset`, `cinc` or `cbz` a line needs.\n- [Predict: branching (challenge)](/practice/predict-branching): what conditional selects and zero tests leave behind, `csinc` included.\n- [Fill in the blank: loops (core)](/practice/blanks-loops) and [Intermediate quiz: loops](/practice/quiz-inter-loops): each ends a countdown with `cbnz`."
     }
   ]
 }
