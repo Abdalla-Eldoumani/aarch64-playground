@@ -136,7 +136,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Fill in the blank: external data (core)](/practice/blanks-external-data): how to export a label.\n- [Quiz: external data (core)](/practice/quiz-inter-external-data): the sections these files keep their data in."
+      "markdown": "## Practice\n\n- [Fill in the blank: external data (core)](/practice/blanks-external-data): how to export a label.\n- [Intermediate quiz: external data](/practice/quiz-inter-external-data): the sections these files keep their data in."
     }
   ]
 }
