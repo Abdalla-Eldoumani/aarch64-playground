@@ -280,10 +280,8 @@ main:
   "variadic-printf": {
     id: "variadic-printf",
     name: "the printf call",
-    source: `// One printf call with two ints and two prices. On Linux the ints take
-// w1 and w2 and the prices take d0 and d1: the two kinds count separately.
-// The second price is a float, and printf only reads doubles, so it is
-// widened first.
+    source: `// One printf call with two ints and two prices. The ints take w1 and w2, the
+// prices take d0 and d1, and the float price is widened to a double first.
 
 define(fp, x29)
 define(lr, x30)
@@ -328,9 +326,8 @@ main:
   "callee-saved": {
     id: "callee-saved",
     name: "the callee-saved registers",
-    source: `// Prints the first few multiples of a double. The counter, the limit and
-// the step must survive every printf, so they live in x19, x20 and d8, and
-// the function saves the caller's values of those three registers first.
+    source: `// Prints the first few multiples of a double. The counter, limit and step
+// survive each printf in x19, x20 and d8, whose old values are saved first.
 
 define(fp, x29)
 define(lr, x30)
@@ -415,9 +412,8 @@ print_multiples:
   "frame-chain": {
     id: "frame-chain",
     name: "the frame chain",
-    source: `// main calls outer and outer calls inner. Each function stores its own name
-// in its frame; inner then follows the saved fp in each frame record, one
-// record per caller, and prints the name it finds in each frame.
+    source: `// main calls outer, which calls inner. Each stores its name in its frame,
+// and inner walks the chain of saved fp values to print all three names.
 
 define(fp, x29)
 define(lr, x30)
