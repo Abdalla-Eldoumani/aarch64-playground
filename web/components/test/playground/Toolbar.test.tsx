@@ -11,11 +11,7 @@ function setup(overrides: Partial<ToolbarProps> = {}) {
     onToggleTheme: vi.fn(),
     buildDiagnostic: vi.fn(async () => ({ source: "" })),
     onOpenCommandPalette: vi.fn(),
-    sourceLink: (
-      <a href="https://example.com" aria-label="View source on GitHub">
-        source
-      </a>
-    ),
+    onOpenShortcuts: vi.fn(),
     ...overrides,
   };
   render(<Toolbar {...props} />);
@@ -54,5 +50,18 @@ describe("Toolbar", () => {
     const props = setup();
     fireEvent.click(screen.getByRole("button", { name: "tutorials" }));
     expect(props.onTutorials).toHaveBeenCalledTimes(1);
+  });
+
+  // The toolbar renders in the band, the short window's run row and the
+  // phone sheet, so the source link and the shortcut list ride inside it.
+  it("links the source and opens the shortcut list", () => {
+    const props = setup();
+    const source = screen.getByRole("link", { name: "source on github" });
+    expect(source.getAttribute("href")).toBe(
+      "https://github.com/Abdalla-Eldoumani/aarch64-playground",
+    );
+    expect(source.getAttribute("target")).toBe("_blank");
+    fireEvent.click(screen.getByRole("button", { name: "keyboard shortcuts" }));
+    expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
   });
 });
