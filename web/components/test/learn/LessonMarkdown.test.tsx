@@ -120,6 +120,18 @@ describe("LessonMarkdown", () => {
     }
   });
 
+  // `focus-visible:shadow-[var(--ring)]` compiles to a shadow colour with no
+  // shadow, so a keyboard user saw no ring; the box-shadow form paints one.
+  it("rings a link and a hover definition on keyboard focus", () => {
+    const { container } = render(
+      <LessonMarkdown markdown="see [the stack](/learn/stack) and the `mov` instruction" />,
+    );
+    const controls = [container.querySelector("a"), container.querySelector('[role="note"]')];
+    for (const control of controls) {
+      expect(control?.className).toContain("focus-visible:[box-shadow:var(--ring)]");
+    }
+  });
+
   it("makes a register a focusable hover definition that names its role", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `x0` register holds an argument" />,
