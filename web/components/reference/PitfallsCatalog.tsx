@@ -19,7 +19,7 @@ import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
  */
 
 const CHIP_CLASS =
-  "inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+  "inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
 
 interface OpenDemo {
   slug: string;
