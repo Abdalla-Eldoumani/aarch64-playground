@@ -58,12 +58,12 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
               >
                 <div className="flex flex-col">
                   <span>{a.label}</span>
-                  <span className="text-[10px] text-[var(--text-secondary)]">
+                  <span className="text-[12px] text-[var(--text-secondary)]">
                     {a.description}
                   </span>
                 </div>
                 {a.shortcut && (
-                  <kbd className="[@media(pointer:coarse)]:hidden text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  <kbd className="[@media(pointer:coarse)]:hidden text-[12px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
                     {a.shortcut}
                   </kbd>
                 )}
