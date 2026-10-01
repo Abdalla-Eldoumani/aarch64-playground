@@ -95,6 +95,31 @@ describe("LessonMarkdown", () => {
     expect(container.querySelector('[role="note"]')).toBeNull();
   });
 
+  // A phone shows no scrollbar until a swipe, so a fence cut at the right
+  // edge needs the same cue a CodeBlock gives.
+  it("fades a fenced block's right edge only while a line runs past it", () => {
+    const markdown = ["```", "mov x0, 1 // a comment long enough to run past a phone", "```"].join("\n");
+    const widths = (scroll: number, client: number) => {
+      Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => scroll });
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => client });
+    };
+    const fade = (root: HTMLElement) =>
+      root.querySelector("pre")?.parentElement?.querySelector('[aria-hidden="true"].bg-gradient-to-l');
+    try {
+      widths(600, 300);
+      const wide = render(<LessonMarkdown markdown={markdown} />);
+      expect(fade(wide.container)).toBeTruthy();
+      wide.unmount();
+      widths(300, 300);
+      const fits = render(<LessonMarkdown markdown={markdown} />);
+      expect(fade(fits.container)).toBeNull();
+    } finally {
+      // The prototype getters are jsdom's zeros; drop the overrides.
+      delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+  });
+
   it("makes a register a focusable hover definition that names its role", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `x0` register holds an argument" />,
