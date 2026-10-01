@@ -132,7 +132,7 @@ export function LessonArticle({
                     />
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                    <span className="mt-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                       example {sheetNumber}.{editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
                         try it: run it, or step one instruction at a time
