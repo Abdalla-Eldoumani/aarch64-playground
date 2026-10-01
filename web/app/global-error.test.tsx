@@ -42,7 +42,7 @@ describe("global error page", () => {
     render(<GlobalError error={faulted("boom")} reset={() => {}} />);
     expect(screen.getByText("runtime fault")).toBeTruthy();
     expect(screen.getByText("0x00000500")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("something broke");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Something broke");
     expect(screen.getByText(/hit an error before the page could load/)).toBeTruthy();
     expect(
       screen.getByText("brk #0 · execution stopped before this page finished"),
