@@ -861,7 +861,7 @@ mod tests {
         rf.write_fpr_q(3, u128::MAX);
         rf.write_fpr_scalar(3, 1, 0xABCD);
         assert_eq!(rf.read_fpr_q(3), 0xCD);
-        rf.write_fpr_scalar(3, 2, 0xABCD_EF);
+        rf.write_fpr_scalar(3, 2, 0x00AB_CDEF);
         assert_eq!(rf.read_fpr_q(3), 0xCDEF);
     }
 
