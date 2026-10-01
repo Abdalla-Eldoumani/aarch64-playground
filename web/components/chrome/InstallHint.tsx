@@ -2,16 +2,18 @@
 
 import { useState, useSyncExternalStore } from "react";
 import { CloseIcon } from "@/components/chrome/SiteIcons";
+import { SaveOffline } from "@/components/chrome/SaveOffline";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const DISMISSED_KEY = "aarch64-playground:install-hint-dismissed";
 
 /**
  * iOS offers no install prompt, so without this tip a student never learns the
- * site can live on the home screen. It promises nothing about offline use: the
- * service worker holds only what a visit fetched. iPadOS reports itself as a
- * Mac, hence the touch check. Other iOS browsers and in-app views are left
- * out: their menus differ, and an in-app view cannot install at all.
+ * site can live on the home screen. The service worker saves the playground on
+ * the first visit; the tip carries the button that saves every other page too.
+ * iPadOS reports itself as a Mac, hence the touch check. Other iOS browsers and
+ * in-app views are left out: their menus differ, and an in-app view cannot
+ * install at all.
  */
 function wantsHint(): boolean {
   if (typeof navigator === "undefined") return false;
@@ -58,10 +60,13 @@ export function InstallHint() {
       data-install-tip=""
       className="fixed inset-x-3 bottom-[calc(0.75rem+var(--safe-bottom))] z-40 flex items-start gap-2 rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-2 pl-4 pr-1 [box-shadow:var(--shadow-overlay)] sm:left-auto sm:w-[24rem]"
     >
-      <p className="flex-1 py-1.5 font-sans text-[14px] leading-snug text-[var(--text-primary)]">
-        Add the playground to your home screen: tap Share, then Add to Home Screen. It opens full
-        screen.
-      </p>
+      <div className="flex-1 py-1.5">
+        <p className="font-sans text-[14px] leading-snug text-[var(--text-primary)]">
+          Add the playground to your home screen: tap Share, then Add to Home Screen. It opens full
+          screen.
+        </p>
+        <SaveOffline className="mt-1" />
+      </div>
       <button
         type="button"
         onClick={() => {
