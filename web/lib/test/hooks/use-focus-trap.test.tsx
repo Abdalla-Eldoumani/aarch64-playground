@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { useRef } from "react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 afterEach(() => cleanup());
 
@@ -59,5 +59,21 @@ describe("useFocusTrap", () => {
     render(<Modal open={false} onClose={onClose} />);
     fireEvent.keyDown(document, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
+  });
+});
+
+describe("closeOnBackdropClick", () => {
+  test("a single click closes, the second click of a double press does not", () => {
+    const onClose = vi.fn();
+    render(<div data-testid="backdrop" onClick={closeOnBackdropClick(onClose)} />);
+    const backdrop = screen.getByTestId("backdrop");
+    fireEvent.click(backdrop, { detail: 2 });
+    fireEvent.click(backdrop, { detail: 3 });
+    expect(onClose).not.toHaveBeenCalled();
+    fireEvent.click(backdrop, { detail: 1 });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    // A click with no press count (an assistive tool's synthetic click) still closes.
+    fireEvent.click(backdrop, { detail: 0 });
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
