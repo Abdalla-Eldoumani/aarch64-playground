@@ -60,4 +60,29 @@ describe("FactorialWalk", () => {
     render(<FactorialWalk />);
     expect(screen.getByRole("group", { name: "factorial walk steps" })).toBeTruthy();
   });
+
+  // jsdom keeps focus on a button that turns disabled, but a browser drops it
+  // to the page, so the test also asks that the focused button is enabled.
+  it("keeps focus on an enabled step control at both ends of the walk", () => {
+    render(<FactorialWalk />);
+    const group = screen.getByRole("group", { name: "factorial walk steps" });
+    const focused = () => document.activeElement as HTMLButtonElement;
+
+    screen.getByRole("button", { name: "next" }).focus();
+    for (let i = 0; i < 8; i++) fireEvent.keyDown(focused(), { key: "ArrowRight" });
+    expect(screen.getByText("step 9 of 9")).toBeTruthy();
+    expect(group.contains(focused())).toBe(true);
+    expect(focused().textContent).toBe("back");
+    expect(focused().disabled).toBe(false);
+    fireEvent.keyDown(focused(), { key: "ArrowLeft" });
+    expect(screen.getByText("step 8 of 9")).toBeTruthy();
+
+    for (let i = 0; i < 7; i++) fireEvent.click(focused());
+    expect(screen.getByText("step 1 of 9")).toBeTruthy();
+    expect(group.contains(focused())).toBe(true);
+    expect(focused().textContent).toBe("next");
+    expect(focused().disabled).toBe(false);
+    fireEvent.keyDown(focused(), { key: "ArrowRight" });
+    expect(screen.getByText("step 2 of 9")).toBeTruthy();
+  });
 });
