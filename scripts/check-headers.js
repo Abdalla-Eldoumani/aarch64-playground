@@ -53,6 +53,9 @@ const REQUIRED = {
     !/'unsafe-eval'/.test(v),
 };
 
+// Returns the exit code instead of calling process.exit: on Windows, exiting
+// while a fetch is still open aborts node with 0xC0000409 instead of the
+// code asked for (nodejs/node#56645).
 async function main() {
   let res;
   try {
@@ -64,12 +67,15 @@ async function main() {
     res = await fetch(SITE, { redirect: "manual", headers });
   } catch (e) {
     console.error(`fetch failed: ${e.message}`);
-    process.exit(1);
+    return 1;
   }
+  // Only the headers are checked; dropping the body closes the connection
+  // so node can end on its own.
+  await res.body?.cancel();
   console.log(`GET ${SITE} -> ${res.status}`);
   if (!res.ok) {
     console.error("non-2xx response, header check skipped");
-    process.exit(1);
+    return 1;
   }
   let failures = 0;
   for (const [name, predicate] of Object.entries(REQUIRED)) {
@@ -88,12 +94,13 @@ async function main() {
   }
   if (failures > 0) {
     console.error(`\n${failures} header check(s) failed`);
-    process.exit(1);
+    return 1;
   }
   console.log(`\nall ${Object.keys(REQUIRED).length} security headers present and valid`);
+  return 0;
 }
 
 // A test loads the predicates without fetching anything.
-if (require.main === module) main();
+if (require.main === module) main().then((code) => (process.exitCode = code));
 
 module.exports = { REQUIRED };
