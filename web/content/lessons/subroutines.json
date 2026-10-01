@@ -2,7 +2,7 @@
   "title": "Writing your own subroutines",
   "slug": "subroutines",
   "order": 21,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "Write a subroutine that takes arguments in x0 to x7 and returns in w0 or x0, and know when it needs a frame and when a macro would do.",
   "tags": [
     "subroutines",
@@ -73,7 +73,7 @@
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "The playground's m4 expands the one-line `define(name, text)` used for register names and constants, but not a macro with arguments like `tri_open`, so the program below writes the three lines out itself. With GNU m4 the macro version builds to the same instructions."
+      "markdown": "The program below writes the three lines out itself, so step highlights each one as it runs. To try the macro instead, put its `define` near the top and replace the three lines with `tri_open(t_r, k_r)`: the program builds to the same instructions and prints the same two lines, in the playground and on the servers. Step then stays on the `tri_open` line for three presses, because all three instructions came from that one line."
     },
     {
       "type": "prose",
