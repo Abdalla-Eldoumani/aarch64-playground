@@ -771,7 +771,7 @@ svc 0").unwrap();
         assert_eq!(code, reference);
     }
 
-    // -- bitfield insert --
+    // -- m4 errors name the editor line --
 
     #[test]
     fn assemble_rejects_m4_construct_and_reports_line() {
