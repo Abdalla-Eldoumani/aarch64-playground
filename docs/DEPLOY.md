@@ -46,9 +46,9 @@ Vercel's domain settings.
 
 `vercel.json` gives content-hashed files (`/_next/static/`, `/icons/`, `.wasm`)
 a one-year immutable cache and the example programs and the manifest one hour.
-Browsers check `/sw.js` and the build's file list again on every load, so a
-new service worker installs on a student's next visit and takes over once
-their open tabs of the old build are closed. It
+Browsers check `/sw.js` again on every load, and each build writes its file
+list into it, so a new service worker installs on a student's next visit and
+takes over once their open tabs of the old build are closed. It
 also serves `.wasm` as `application/wasm`. The security headers, and why each
 one is there, are in [security.md](security.md).
 
