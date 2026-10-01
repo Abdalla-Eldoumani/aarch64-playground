@@ -262,7 +262,9 @@ a coding exercise's file carries no answer key.
 The interactive variants skip the editor and grade entirely in the page, so
 their files declare the expected answers (coding exercises still store none).
 They ship in families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
-`quiz-advance-<family>` (all three titled "Quiz: <subject>"),
+`quiz-advance-<family>` ("Basic quiz: <subject>", "Intermediate quiz:
+<subject>", and "Advanced quiz: <subject>", since no two exercises share a
+title),
 `blanks-<family>` ("Fill in the blank: <subject>"), and
 `predict-<family>` ("Predict: <subject>"). Every set on one topic uses
 the same subject name, so a reader scanning the theory column sees three
