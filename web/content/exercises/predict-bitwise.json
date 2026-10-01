@@ -1,0 +1,54 @@
+{
+  "title": "Predict: bit manipulation",
+  "slug": "predict-bitwise",
+  "order": 134,
+  "lastUpdated": "2026-10-01",
+  "topic": "bitwise",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "For each snippet, give the exact value left in the named register. The snippets clear, extract, insert, rotate, count and swap bits.",
+  "predictions": [
+    {
+      "code": "mov w20, 0x2C\nsub w21, w20, 1\nand w19, w20, w21",
+      "question": "What value does w19 hold after the and? Answer in decimal.",
+      "answer": "40",
+      "explanation": "0x2C is 0010 1100, which is 44. Subtracting 1 clears its lowest 1 bit and sets the bits below it, giving 0010 1011. The AND keeps only the bits set in both, 0010 1000, which is 40. n AND (n - 1) always clears the lowest 1 bit of n.",
+      "hint": "Write 44 and 43 in binary, one above the other."
+    },
+    {
+      "code": "mov w20, 0x1234\nubfx w19, w20, 6, 5",
+      "question": "What value does w19 hold after the ubfx? Answer in decimal.",
+      "answer": "8",
+      "explanation": "ubfx takes the 5 bits that start at bit 6. 0x1234 is 0001 0010 0011 0100 in binary. Shifted right by 6, it leaves 0100 1000, and the low 5 bits of that are 01000, which is 8.",
+      "hint": "Shift right by 6, then keep 5 bits."
+    },
+    {
+      "code": "mov w20, 0xFFFF\nmov w21, 0\nbfi w20, w21, 4, 8",
+      "question": "Write w20 after the bfi as 0x followed by eight hex digits.",
+      "answer": "0x0000F00F",
+      "explanation": "bfi copies the low 8 bits of w21, all zeros, into bits 4 to 11 of w20 and leaves its other bits alone. Bits 4 to 11 are the middle two hex digits of 0xFFFF, so they become 0, and w20 holds 0x0000F00F.",
+      "hint": "Only bits 4 to 11 change."
+    },
+    {
+      "code": "mov w20, 0x5678\nmovk w20, 0x1234, lsl 16\nror w19, w20, 8",
+      "question": "Write w19 after the ror as 0x followed by eight hex digits.",
+      "answer": "0x78123456",
+      "explanation": "The first two lines build 0x12345678 in w20. ror by 8 moves every bit down 8 places, and the low byte, 0x78, falls off the bottom and comes back in at the top. The result is 0x78123456.",
+      "hint": "Two hex digits are 8 bits, and a rotate loses nothing."
+    },
+    {
+      "code": "mov x20, 0x100\nclz x19, x20",
+      "question": "What value does x19 hold after the clz? Answer in decimal.",
+      "answer": "55",
+      "explanation": "clz (count leading zeros) counts the 0 bits above the highest 1. 0x100 is 2 to the power 8, so its only 1 is bit 8, and the 55 bits above it, bits 9 to 63, are all 0. 63 minus the count gives back the position of the highest 1.",
+      "hint": "In a 64-bit register, how many bits sit above bit 8?"
+    },
+    {
+      "code": "mov w19, 6\nmov w20, 9\neor w19, w19, w20\neor w20, w19, w20\neor w19, w19, w20",
+      "question": "What value does w19 hold after the three eor instructions? Answer in decimal.",
+      "answer": "9",
+      "explanation": "The three eor instructions swap the two registers without a third one. After the first, w19 holds 6 XOR 9. The second XORs that with 9, which cancels the 9 and leaves 6 in w20. The third XORs 6 XOR 9 with 6, which cancels the 6 and leaves 9 in w19.",
+      "hint": "x XOR y XOR y is x."
+    }
+  ]
+}
