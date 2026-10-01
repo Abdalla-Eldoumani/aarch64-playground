@@ -8,47 +8,61 @@ import {
   useGroupRef,
   type Layout,
 } from "react-resizable-panels";
-import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
+import type { Breakpoint, ScreenHeight } from "@/lib/hooks/use-breakpoint";
 import { useLayoutPersistence } from "@/lib/hooks/use-layout-persistence";
 
 export interface ResizableLayoutProps {
   breakpoint: Breakpoint;
+  /** A short or tall window (useScreenHeight) opens on its own splits and
+   *  saves its own. */
+  height?: ScreenHeight;
   editor: ReactNode;
   disassembly: ReactNode;
   registers: ReactNode;
   rightTabs: ReactNode;
 }
 
-/** What one draggable pair is: its panes, its opening split, its floors, and
- *  the name a screen reader reads off the grip between them. */
+/** What one draggable pair is: its panes, its opening split (percent, with
+ *  its own for a short or tall window), its floors in pixels, and the name a
+ *  screen reader reads off the grip between them. */
 export interface SplitSpec {
   ids: [string, string];
   defaults: [number, number];
-  minSizes: [string, string];
+  byHeight?: Partial<Record<ScreenHeight, [number, number]>>;
+  minSizes: [number, number];
   label: string;
 }
 
+// The floors are pixels, so a pane keeps a usable size on any screen: a
+// percentage floor let the disassembly shrink to two rows on a short laptop
+// and grow a wasted band on a tall one.
 export const MAIN_SPLIT: SplitSpec = {
   ids: ["panel-left", "panel-right"],
   defaults: [55, 45],
-  minSizes: ["25%", "25%"],
+  minSizes: [360, 320],
   label: "resize editor and debug column",
 };
 
+// A short window gives the editor more of its column: at 1366x657 the
+// authored 70% left it 15 lines, and 76% keeps 18 or more.
 export const EDITOR_SPLIT: SplitSpec = {
   ids: ["panel-editor", "panel-disasm"],
   defaults: [70, 30],
-  minSizes: ["20%", "15%"],
+  byHeight: { short: [76, 24] },
+  minSizes: [160, 80],
   label: "resize editor and disassembly",
 };
 
 // The registers take the larger share: after one step they must show the
 // write without scrolling at laptop heights, and the tabs below stay tall
-// enough for a readable memory dump and console.
+// enough for a readable memory dump and console. Under the decode strip a
+// short window's 56% held two register rows; on a 1440px screen the list
+// ended halfway down its pane, so a tall window gives the tabs the more.
 export const DEBUG_SPLIT: SplitSpec = {
   ids: ["panel-regs", "panel-tabs"],
   defaults: [56, 44],
-  minSizes: ["20%", "20%"],
+  byHeight: { short: [62, 38], tall: [44, 56] },
+  minSizes: [160, 140],
   label: "resize registers and tabs",
 };
 
@@ -106,7 +120,10 @@ export interface PaneSplitProps {
   orientation: "horizontal" | "vertical";
   spec: SplitSpec;
   /** localStorage scope: one entry per breakpoint per group. */
-  storageKey: Breakpoint;
+  storageKey: string;
+  /** A short or tall window keeps a split of its own, opening on the spec's
+   *  split for that height. */
+  height?: ScreenHeight;
   first: ReactNode;
   second: ReactNode;
 }
@@ -119,11 +136,16 @@ export function PaneSplit({
   orientation,
   spec,
   storageKey,
+  height = "regular",
   first,
   second,
 }: PaneSplitProps) {
-  const { ids, defaults, minSizes, label } = spec;
-  const [sizes, save, , ready] = useLayoutPersistence(storageKey, defaults);
+  const { ids, minSizes, label } = spec;
+  const defaults = spec.byHeight?.[height] ?? spec.defaults;
+  const [sizes, save, , ready] = useLayoutPersistence(
+    height === "regular" ? storageKey : `${storageKey}-${height}`,
+    defaults,
+  );
   const groupRef = useGroupRef();
   // The opening split, frozen at mount. A Panel re-registers with the group
   // whenever its `defaultSize` prop changes, and re-registering mid-drag
@@ -196,11 +218,12 @@ export function PaneSplit({
 }
 
 /**
- * Each grip saves its position per breakpoint, so resizing at laptop width
- * leaves the tablet split alone.
+ * Each grip saves its position per breakpoint, and per short or tall window,
+ * so resizing at laptop width leaves the tablet split alone.
  */
 export function ResizableLayout({
   breakpoint,
+  height = "regular",
   editor,
   disassembly,
   registers,
@@ -211,11 +234,13 @@ export function ResizableLayout({
       orientation="horizontal"
       spec={MAIN_SPLIT}
       storageKey={breakpoint}
+      height={height}
       first={
         <PaneSplit
           orientation="vertical"
           spec={EDITOR_SPLIT}
-          storageKey={`${breakpoint}-left` as Breakpoint}
+          storageKey={`${breakpoint}-left`}
+          height={height}
           first={editor}
           second={disassembly}
         />
@@ -224,7 +249,8 @@ export function ResizableLayout({
         <PaneSplit
           orientation="vertical"
           spec={DEBUG_SPLIT}
-          storageKey={`${breakpoint}-right` as Breakpoint}
+          storageKey={`${breakpoint}-right`}
+          height={height}
           first={registers}
           second={rightTabs}
         />
