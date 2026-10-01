@@ -1476,6 +1476,9 @@ ret                             // back to the caller: exit code 7`,
     category: "System",
     syntax: "svc #0",
     example: "svc 0",
+    gotchas: [
+      "x8 picks the call: 63 read, 64 write, 56 openat, 57 close, 93 exit. the result comes back in x0, and a negative result is an error.",
+    ],
     runnable: runSvc,
   },
   {
