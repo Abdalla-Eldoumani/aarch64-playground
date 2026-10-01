@@ -18,6 +18,9 @@ vi.mock("@/components/reference/PitfallsCatalog", () => ({
   PitfallsCatalog: ({ lessonTitles }: { lessonTitles: Record<string, string> }) =>
     `pitfalls-catalog:${Object.keys(lessonTitles).join(",")}`,
 }));
+vi.mock("@/components/reference/DirectivesAndDebugger", () => ({
+  DirectivesAndDebugger: () => "directives-and-debugger-guide",
+}));
 // The converter marker echoes the view it was opened at, so the fragment
 // wiring is visible without the real widget.
 vi.mock("@/components/panels/BaseConverter", () => ({
@@ -77,7 +80,7 @@ function followFragment(fragment: string): void {
 }
 
 describe("ReferenceView", () => {
-  it("renders the four reference tabs with Instructions active by default", () => {
+  it("renders the five reference tabs with Instructions active by default", () => {
     renderView();
     expect(
       screen.getByRole("tablist", { name: "reference sections" }),
@@ -88,6 +91,7 @@ describe("ReferenceView", () => {
       "Calling convention",
       "Pitfalls",
       "Converter",
+      "Directives and debugger",
     ]);
     expect(activeTab()).toBe("Instructions");
     expect(
@@ -200,6 +204,22 @@ describe("ReferenceView", () => {
     renderView();
     fireEvent.click(screen.getByRole("tab", { name: "Instructions" }));
     expect(window.location.hash).toBe("#b-cond");
+  });
+
+  it("opens the directives and debugger tab from its fragment, on load and when followed", async () => {
+    window.history.replaceState(null, "", "#directives-and-debugger");
+    const { unmount } = renderView();
+    expect(activeTab()).toBe("Directives and debugger");
+    expect(await screen.findByText("directives-and-debugger-guide")).toBeTruthy();
+    unmount();
+
+    window.history.replaceState(null, "", "/");
+    renderView();
+    fireEvent.click(screen.getByRole("tab", { name: "Pitfalls" }));
+    expect(await screen.findByText(CATALOG)).toBeTruthy();
+    followFragment("#directives-and-debugger");
+    expect(await screen.findByText("directives-and-debugger-guide")).toBeTruthy();
+    expect(screen.queryByText(CATALOG)).toBeNull();
   });
 
   it("ignores a fragment named after an inherited object key", () => {
