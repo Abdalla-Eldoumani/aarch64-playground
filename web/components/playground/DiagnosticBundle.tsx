@@ -114,7 +114,7 @@ function BundleDialog({
     >
       <div
         ref={ref}
-        className="w-full max-w-2xl max-h-[92svh] overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl p-4 sm:p-5 anim-modal-rise"
+        className="flex w-full max-w-2xl max-h-[92svh] flex-col overflow-y-auto rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl p-4 sm:p-5 anim-modal-rise"
         onClick={(e) => e.stopPropagation()}
       >
         <h2
@@ -133,13 +133,15 @@ function BundleDialog({
             the machine state could not be read. assemble the program again and reopen this.
           </p>
         ) : (
+          // The dialog is a column, so on a short phone this box gives up
+          // height before the buttons below it leave the screen.
           <textarea
             readOnly
             value={ready?.markdown ?? ""}
             placeholder="reading the machine state..."
             aria-label="diagnostic report"
             aria-busy={ready === null}
-            className="w-full h-[min(50svh,24rem)] resize-none text-[12px] leading-snug font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            className="w-full h-[min(50svh,24rem)] min-h-[5rem] resize-none text-[12px] leading-snug font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           />
         )}
         {ready && ready.link === null && (
