@@ -40,12 +40,56 @@ interface Row {
   body: string;
   /** Appended after `done`: data and helper functions. */
   after?: string;
+  /** argv[1..] for a question that names a command line. */
+  args?: string[];
+  /** Standard input for a question that names the program's input. */
+  stdin?: string;
   read: (m: Machine, entrySp: bigint) => string;
 }
 
 const BUF = "        .data\n        .balign 16\nbuf:    .skip 64\nmid:    .skip 64\n";
 
 const ROWS: Row[] = [
+  {
+    slug: "predict-argv",
+    index: 0,
+    uses: ["mov     w19, w0"],
+    args: ["big cat", "dog"],
+    body: "mov w19, w0\nmov x20, x1",
+    read: (m) => signed32(m.get_register(19)),
+  },
+  {
+    slug: "predict-argv",
+    index: 1,
+    uses: ["ldr     x0, [x1, 8]", "bl      strlen"],
+    args: ["big cat", "dog"],
+    body: "ldr x0, [x1, 8]\nbl strlen",
+    read: (m) => signed64(m.get_register(0)),
+  },
+  {
+    slug: "predict-argv",
+    index: 2,
+    uses: ["ldr     x0, [x1, 8]", "bl      atoi"],
+    args: ["042"],
+    body: "ldr x0, [x1, 8]\nbl atoi",
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-argv",
+    index: 3,
+    uses: ["ldr     x20, [x1, 16]", "ldrb    w21, [x20, 1]"],
+    args: ["red", "blue"],
+    body: "ldr x20, [x1, 16]\nldrb w21, [x20, 1]",
+    read: (m) => signed32(m.get_register(21)),
+  },
+  {
+    slug: "predict-argv",
+    index: 4,
+    uses: ["ldr     x22, [x1, w0, sxtw 3]"],
+    args: ["a", "b", "c"],
+    body: "ldr x22, [x1, w0, sxtw 3]",
+    read: (m) => signed64(m.get_register(22)),
+  },
   {
     slug: "predict-armv8",
     index: 0,
@@ -92,9 +136,9 @@ const ROWS: Row[] = [
   {
     slug: "predict-binary-logic",
     index: 2,
-    uses: ["bic x19, x20, x21"],
-    body: "mov x20, 0xFF\nmov x21, 0x3C\nbic x19, x20, x21",
-    read: (m) => (m.get_register(19) & 0xffn).toString(2).padStart(8, "0"),
+    uses: ["bic w24, w22, w23"],
+    body: "mov w22, 0xB7\nmov w23, 0x0F\nbic w24, w22, w23",
+    read: (m) => (m.get_register(24) & 0xffn).toString(2).padStart(8, "0"),
   },
   { slug: "predict-binary-logic", index: 3, uses: ["sxtb w19, w20"], body: "mov w20, 0xFF\nsxtb w19, w20", read: (m) => hex32(m.get_register(19)) },
   {
@@ -135,22 +179,22 @@ const ROWS: Row[] = [
   {
     slug: "predict-external-data",
     index: 0,
-    uses: ["a_m:    .hword 23", "b_m:    .word 42", "c_m:    .dword 0"],
+    uses: ["flag_m:     .byte 1", "year_m:     .hword 2026", "total_m:    .dword 0"],
     body: "nop",
-    after: "        .data\na_m:    .hword 23\nb_m:    .word 42\nc_m:    .dword 0\nend_m:\n",
-    read: (m) => String(label(m, "end_m") - label(m, "a_m")),
+    after: "        .data\nflag_m:     .byte 1\nyear_m:     .hword 2026\ntotal_m:    .dword 0\nend_m:\n",
+    read: (m) => String(label(m, "end_m") - label(m, "flag_m")),
   },
   {
     slug: "predict-external-data",
     index: 1,
-    uses: ["season_m:   .dword spr_m, sum_m, fal_m, win_m"],
+    uses: ["planet_m:   .dword mer_m, ven_m, ear_m, mar_m, jup_m"],
     body: "nop",
     after:
-      '        .data\nspr_m:      .string "spring"\nsum_m:      .string "summer"\nfal_m:      .string "fall"\nwin_m:      .string "winter"\n\n        .balign 8\nseason_m:   .dword spr_m, sum_m, fal_m, win_m\n',
+      '        .data\nmer_m:      .string "mercury"\nven_m:      .string "venus"\near_m:      .string "earth"\nmar_m:      .string "mars"\njup_m:      .string "jupiter"\n\n        .balign 8\nplanet_m:   .dword mer_m, ven_m, ear_m, mar_m, jup_m\n',
     read: (m) => {
-      const table = label(m, "season_m");
-      const at = [0, 1, 2, 3].find((i) => u64At(m, table + 8 * i) === BigInt(label(m, "fal_m")));
-      return at === undefined ? "no slot holds fal_m" : hex(0x1000 + 8 * at);
+      const table = label(m, "planet_m");
+      const at = [0, 1, 2, 3, 4].find((i) => u64At(m, table + 8 * i) === BigInt(label(m, "mar_m")));
+      return at === undefined ? "no slot holds mar_m" : hex(0x3000 + 8 * at);
     },
   },
   {
@@ -164,20 +208,20 @@ const ROWS: Row[] = [
   {
     slug: "predict-external-data",
     index: 3,
-    uses: ["bump_f:", "add     w10, w10, 1"],
-    body: "bl bump_f\nbl bump_f",
+    uses: ["add_tally:", "add     w12, w12, w0"],
+    body: "mov w0, 5\nbl add_tally\nmov w0, 7\nbl add_tally",
     after:
-      "        .data\ncount_m:    .word 0\n\n        .text\n        .balign 4\nbump_f:\n        ldr     x9, =count_m\n        ldr     w10, [x9]\n        add     w10, w10, 1\n        str     w10, [x9]\n        ret\n",
-    read: (m) => String(u32At(m, label(m, "count_m"))),
+      "        .bss\n        .balign 4\ntally_m:    .skip 4\n\n        .text\n        .balign 4\nadd_tally:\n        ldr     x11, =tally_m\n        ldr     w12, [x11]\n        add     w12, w12, w0\n        str     w12, [x11]\n        ret\n",
+    read: (m) => String(u32At(m, label(m, "tally_m"))),
   },
   {
     slug: "predict-external-data",
     index: 4,
-    uses: ["season_m:   .dword spr_m, sum_m, fal_m, win_m"],
+    uses: ["planet_m:   .dword mer_m, ven_m, ear_m, mar_m, jup_m"],
     body: "nop",
     after:
-      '        .data\nspr_m:      .string "spring"\nsum_m:      .string "summer"\nfal_m:      .string "fall"\nwin_m:      .string "winter"\n\n        .balign 8\nseason_m:   .dword spr_m, sum_m, fal_m, win_m\nend_m:\n',
-    read: (m) => String(label(m, "end_m") - label(m, "season_m")),
+      '        .data\nmer_m:      .string "mercury"\nven_m:      .string "venus"\near_m:      .string "earth"\nmar_m:      .string "mars"\njup_m:      .string "jupiter"\n\n        .balign 8\nplanet_m:   .dword mer_m, ven_m, ear_m, mar_m, jup_m\nend_m:\n',
+    read: (m) => String(label(m, "end_m") - label(m, "planet_m")),
   },
   {
     slug: "predict-floating-point",
@@ -348,6 +392,49 @@ const ROWS: Row[] = [
     read: (m) => signed32(m.get_register(0)),
   },
   {
+    slug: "predict-io",
+    index: 0,
+    uses: ["mov     w1, 12", "bl      printf"],
+    body: "ldr x0, =fmt_m\nmov w1, 12\nbl printf",
+    after: '        .data\nfmt_m:  .string "%d cats\\n"\n',
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-io",
+    index: 1,
+    uses: ["ldr     x2, =b_n", "bl      scanf"],
+    stdin: "41 apples\n",
+    body: "ldr x0, =fmt_m\nldr x1, =a_n\nldr x2, =b_n\nbl scanf",
+    after: '        .data\nfmt_m:  .string "%d %d"\n\n        .bss\n        .balign 4\na_n:    .skip 4\nb_n:    .skip 4\n',
+    read: (m) => signed32(m.get_register(0)),
+  },
+  {
+    slug: "predict-io",
+    index: 2,
+    uses: ["ok_len = . - ok_m", "mov     x8, 64"],
+    body: "mov x8, 64\nmov x0, 1\nldr x1, =ok_m\nmov x2, ok_len\nsvc 0",
+    after: '        .data\nok_m:   .string "ok\\n"\nok_len = . - ok_m\n',
+    read: (m) => signed64(m.get_register(0)),
+  },
+  {
+    slug: "predict-io",
+    index: 3,
+    uses: ["mov     x8, 63"],
+    stdin: "hey\n",
+    body: "mov x0, 0\nldr x1, =buf_m\nmov x2, 16\nmov x8, 63\nsvc 0",
+    after: "        .bss\nbuf_m:  .skip 16\n",
+    read: (m) => signed64(m.get_register(0)),
+  },
+  {
+    slug: "predict-io",
+    index: 4,
+    uses: ["ldr     x19, [x9]"],
+    stdin: "-1\n",
+    body: "ldr x0, =fmt_m\nldr x1, =n_n\nbl scanf\nldr x9, =n_n\nldr x19, [x9]",
+    after: '        .data\nfmt_m:  .string "%d"\n\n        .bss\n        .balign 8\nn_n:    .skip 8\n',
+    read: (m) => hex(m.get_register(19)),
+  },
+  {
     slug: "predict-loops",
     index: 0,
     uses: ["add w20, w20, 2", "b.le body"],
@@ -391,6 +478,39 @@ const ROWS: Row[] = [
     after: "",
     read: (m) => hex(0x400040n + (m.get_register(30) - BigInt(label(m, "call")))),
   },
+  {
+    slug: "predict-strings",
+    index: 0,
+    uses: ['chip_m: .string "ARM64"', "ldrb    w20, [x19, 2]"],
+    body: "ldr x19, =chip_m\nldrb w20, [x19, 2]",
+    after: '        .data\nchip_m: .string "ARM64"\n',
+    read: (m) => signed32(m.get_register(20)),
+  },
+  { slug: "predict-strings", index: 1, uses: ["eor     w21, w20, 0x20"], body: "mov w20, 'k'\neor w21, w20, 0x20", read: (m) => signed32(m.get_register(21)) },
+  {
+    slug: "predict-strings",
+    index: 2,
+    uses: ['num_m:  .string "58"', "madd    w23, w20, w22, w21"],
+    body: "ldr x19, =num_m\nldrb w20, [x19]\nldrb w21, [x19, 1]\nsub w20, w20, '0'\nsub w21, w21, '0'\nmov w22, 10\nmadd w23, w20, w22, w21",
+    after: '        .data\nnum_m:  .string "58"\n',
+    read: (m) => signed32(m.get_register(23)),
+  },
+  {
+    slug: "predict-strings",
+    index: 3,
+    uses: ['part_m: .ascii  "fire"', 'rest_m: .string "fly"'],
+    body: "ldr x0, =part_m\nbl strlen",
+    after: '        .data\npart_m: .ascii  "fire"\nrest_m: .string "fly"\n',
+    read: (m) => signed64(m.get_register(0)),
+  },
+  {
+    slug: "predict-strings",
+    index: 4,
+    uses: ["strb    wzr, [x19, 4]"],
+    body: "ldr x19, =food_m\nstrb wzr, [x19, 4]\nmov x0, x19\nbl strlen",
+    after: '        .data\nfood_m: .string "sandwich"\n',
+    read: (m) => signed64(m.get_register(0)),
+  },
 ];
 
 const PREDICTIONS = new Map(
@@ -414,8 +534,10 @@ function run(row: Row, answer: string): string {
   ].join("\n");
   const m = new Emulator();
   try {
-    const asm = m.assemble_and_load_with_args(source, []) as { error?: string | null };
+    const asm = m.assemble_and_load_with_args(source, row.args ?? []) as { error?: string | null };
     if (asm.error) throw new Error(`${row.slug}[${row.index}] does not assemble: ${asm.error}\n${source}`);
+    if (row.stdin) m.push_stdin(row.stdin);
+    m.close_stdin();
     const entrySp = m.get_sp();
     m.set_breakpoint(Number(m.resolve_label("done")));
     const result = m.run_until_break(10_000) as { error?: string | null; hit_breakpoint?: boolean };
