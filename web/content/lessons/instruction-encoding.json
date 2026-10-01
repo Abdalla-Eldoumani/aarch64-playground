@@ -149,7 +149,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Assemble it yourself](/practice/assemble-it-yourself): build the 32-bit word for `add xD, xN, imm` from its fields.\n- [Machine code detective](/practice/machine-code-detective): take a register add or subtract word apart and print the instruction.\n- [Quiz: system architecture (core)](/practice/quiz-inter-architecture): why a fixed instruction size helps the processor.\n- [Quiz: ARMv8 assembly (intro)](/practice/quiz-basic-armv8), then [core](/practice/quiz-inter-armv8): which instruction an alias really encodes.\n- The reference has worked bit diagrams for [add](/reference#add), [sub](/reference#sub), [ldr](/reference#ldr) and [b](/reference#b)."
+      "markdown": "## Practice\n\n- [Assemble it yourself](/practice/assemble-it-yourself): build the 32-bit word for `add xD, xN, imm` from its fields.\n- [Machine code detective](/practice/machine-code-detective): take a register add or subtract word apart and print the instruction.\n- [Intermediate quiz: system architecture](/practice/quiz-inter-architecture): why a fixed instruction size helps the processor.\n- [Basic quiz: ARMv8 assembly](/practice/quiz-basic-armv8), then [core](/practice/quiz-inter-armv8): which instruction an alias really encodes.\n- The reference has worked bit diagrams for [add](/reference#add), [sub](/reference#sub), [ldr](/reference#ldr) and [b](/reference#b)."
     }
   ]
 }
