@@ -255,7 +255,13 @@ function WorkedExample({
           onClick={() => onToggle(id)}
           className="touch-target"
         >
-          {open ? "close" : "run the whole program"}
+          {/* Both labels share one grid cell, so the button keeps the wider
+              one's width: a shrinking button slid the playground link under
+              the pointer and a double click followed it. */}
+          <span className="grid justify-items-center">
+            <span className={`col-start-1 row-start-1 ${open ? "invisible" : ""}`}>run the whole program</span>
+            <span className={`col-start-1 row-start-1 ${open ? "" : "invisible"}`}>close</span>
+          </span>
         </Button>
         <OpenInPlayground href={`/playground${buildShareHash({ source: example.source })}`} />
       </div>
