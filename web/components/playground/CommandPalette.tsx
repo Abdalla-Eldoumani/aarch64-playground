@@ -2,7 +2,7 @@
 
 import { Command } from "cmdk";
 import { useRef } from "react";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import type { Action } from "@/lib/playground/commands";
 
 export interface CommandPaletteProps {
@@ -30,7 +30,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
       role="dialog"
       aria-modal="true"
       aria-label="command palette"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={cardRef}
