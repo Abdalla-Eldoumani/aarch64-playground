@@ -22,11 +22,20 @@ export function closeOnBackdropClick(onClose: () => void): (e: { detail: number 
   };
 }
 
+/** The usual double-click interval: a second press this soon after the
+ *  first belongs to the same double press. */
+const DOUBLE_PRESS_MS = 500;
+
 /**
  * Keeps keyboard focus inside an open dialog: focus starts on its first
  * control, Tab wraps, Escape calls `onClose`, and focus goes back where it
  * was on close. The caller still renders `role="dialog" aria-modal="true"`
  * and the backdrop, whose click goes through closeOnBackdropClick.
+ *
+ * Enter or Space pressed twice on the opener would land the second press on
+ * the control that just took focus (the close button, or the palette's first
+ * command), so right after opening those two keys do nothing until the
+ * double-press interval passes or the reader types anything else.
  */
 export function useFocusTrap(
   open: boolean,
@@ -38,7 +47,22 @@ export function useFocusTrap(
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const focusables = getFocusables(ref.current);
     focusables[0]?.focus();
+    const openedAt = performance.now();
+    let armed = true;
+    // Capture on the document runs before React's own key handlers.
+    const swallowSecondPress = (e: Event) => {
+      if (!armed) return;
+      const key = e instanceof KeyboardEvent ? e.key : "";
+      if (performance.now() - openedAt >= DOUBLE_PRESS_MS) armed = false;
+      else if (key === "Enter" || key === " ") {
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (e.type !== "keyup") armed = false;
+    };
+    const events = ["keydown", "keyup", "input"] as const;
+    for (const type of events) document.addEventListener(type, swallowSecondPress, true);
     return () => {
+      for (const type of events) document.removeEventListener(type, swallowSecondPress, true);
       previouslyFocused?.focus?.();
     };
   }, [open, ref]);
