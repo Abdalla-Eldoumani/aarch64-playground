@@ -35,4 +35,10 @@ describe("OnThisPage", () => {
     expect(rail.className).toContain("hidden");
     expect(rail.className).toContain("lg:block");
   });
+
+  it("indents a depth-3 entry and no other", () => {
+    render(<OnThisPage sections={[...SECTIONS, { id: "third", label: "A sub-part", number: "02.1", depth: 3 }]} />);
+    const links = within(screen.getByRole("navigation")).getAllByRole("link");
+    expect(links.map((link) => link.className.includes("pl-4"))).toEqual([false, false, true, false, false, true]);
+  });
 });
