@@ -11,8 +11,8 @@ export const MEMORY_PITFALLS: Pitfall[] = [
     server: "prints `sum = 20`: every pass read the second element, 5, because x19 never moved.",
     playground: "prints the same line; step through and x19 stays put in the registers panel.",
     fix: "Walk the array with post-index: `ldr x9, [ptr_r], 8`. The fixed program prints `sum = 24`.",
-    wrong: `        ldr     x9, [ptr_r, 8]`,
-    right: `        ldr     x9, [ptr_r], 8`,
+    wrong: `ldr     x9, [ptr_r, 8]`,
+    right: `ldr     x9, [ptr_r], 8`,
     broken: {
       source: `// Sums four longs by walking a pointer along the array.
 // The offset form reads ptr + 8 but never moves the pointer.
@@ -111,8 +111,8 @@ walk:
     server: "prints `temp = 251`.",
     playground: "prints the same line, and x1 in the registers panel holds 0xfb with zeros above it.",
     fix: "Load signed data with the signed form: `ldrsb w1, [x19, 1]`. The fixed program prints `temp = -5`.",
-    wrong: `        ldrb    w1, [x19, 1]`,
-    right: `        ldrsb   w1, [x19, 1]`,
+    wrong: `ldrb    w1, [x19, 1]`,
+    right: `ldrsb   w1, [x19, 1]`,
     broken: {
       source: `// Prints the second reading in a table of byte-sized temperatures.
 // ldrb fills the upper bits with zeros, so -5 arrives as 251.
@@ -189,8 +189,8 @@ main:
     server: "prints `first score = 38654705671`: that is 9 * 2^32 + 7, the second score sitting in the top half.",
     playground: "prints the same line.",
     fix: "Load an int into a w register, or sign-extend it into an x register with `ldrsw x1, [x19]`. The fixed program prints `first score = 7`.",
-    wrong: `        ldr     x1, [x19]`,
-    right: `        ldrsw   x1, [x19]`,
+    wrong: `ldr     x1, [x19]`,
+    right: `ldrsw   x1, [x19]`,
     broken: {
       source: `// Prints the first score in an array of ints.
 // An x load reads 8 bytes: the first int and the second together.
@@ -267,8 +267,8 @@ main:
     server: "prints `top byte = 0x78`.",
     playground: "prints the same line; the memory view shows 78 56 34 12 at the label.",
     fix: "The most significant byte of a word is at offset 3: `ldrb w1, [x19, 3]`. The fixed program prints `top byte = 0x12`.",
-    wrong: `        ldrb    w1, [x19]`,
-    right: `        ldrb    w1, [x19, 3]`,
+    wrong: `ldrb    w1, [x19]`,
+    right: `ldrb    w1, [x19, 3]`,
     broken: {
       source: `// Prints the most significant byte of 0x12345678.
 // Little-endian memory puts the least significant byte first.
