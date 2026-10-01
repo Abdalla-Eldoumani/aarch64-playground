@@ -218,8 +218,8 @@ describe("ResizableLayout", () => {
     expect(panel("panel-right").getAttribute("data-size")).toBe("45%");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-disasm").getAttribute("data-size")).toBe("30%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("56%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("44%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("60%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("40%");
   });
 
   // Plain numbers are pixels to the panel library, so each floor holds on
@@ -285,7 +285,7 @@ describe("ResizableLayout", () => {
     // re-registration mid-drag restarts the drag under the pointer.
     expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("56%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("60%");
     expect(setLayoutCalls).toHaveLength(3);
     expect(setLayoutCalls).toEqual(
       expect.arrayContaining([
@@ -307,8 +307,8 @@ describe("ResizableLayout", () => {
       "panel-disasm": 30,
     });
     expect(JSON.parse(group("panel-regs").getAttribute("data-layout") ?? "{}")).toEqual({
-      "panel-regs": 56,
-      "panel-tabs": 44,
+      "panel-regs": 60,
+      "panel-tabs": 40,
     });
   });
 
@@ -398,8 +398,8 @@ describe("ResizableLayout", () => {
     drag("panel-regs", { "panel-regs": 80, "panel-tabs": 20 });
 
     fireEvent.doubleClick(grip("resize registers and tabs"));
-    expect(setLayoutCalls).toEqual([{ "panel-regs": 56, "panel-tabs": 44 }]);
-    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[56,44]");
+    expect(setLayoutCalls).toEqual([{ "panel-regs": 60, "panel-tabs": 40 }]);
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[60,40]");
     expect(window.localStorage.getItem(`${KEY}lg`)).toBe("[30,70]");
   });
 
@@ -424,7 +424,7 @@ describe("ResizableLayout", () => {
   it("leaves a group alone when the stored split is the one it mounted with", () => {
     window.localStorage.setItem(`${KEY}lg`, "[55,45]");
     window.localStorage.setItem(`${KEY}lg-left`, "[70,30]");
-    window.localStorage.setItem(`${KEY}lg-right`, "[56,44]");
+    window.localStorage.setItem(`${KEY}lg-right`, "[60,40]");
     renderLayout();
     expect(setLayoutCalls).toEqual([]);
   });
