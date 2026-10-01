@@ -130,9 +130,9 @@ pub fn fopen(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
     let plus = mode.contains('+');
     let opened = match mode.chars().next() {
-        Some('r') => open_vfs(ctx, &path, plus, false, false, false),
-        Some('w') => open_vfs(ctx, &path, true, true, true, false),
-        Some('a') => open_vfs(ctx, &path, true, true, false, true),
+        Some('r') => open_vfs(ctx, &path, plus, false, false, false).ok(),
+        Some('w') => open_vfs(ctx, &path, true, true, true, false).ok(),
+        Some('a') => open_vfs(ctx, &path, true, true, false, true).ok(),
         _ => None,
     };
     match opened {
@@ -154,7 +154,7 @@ pub fn fprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(1, true);
     // x0 = stream and x1 = format are the fixed params; varargs start at x2.
     let out = format_into(ctx, fmt_ptr, 2, "fprintf's format string")?;
-    let n = write_to_fd(ctx, fd as u64, &out);
+    let n = write_to_fd(ctx, fd as u64, &out).max(-1);
     ctx.regs.write_gpr(0, true, n as u64);
     Ok(HostOutcome::Continue)
 }
@@ -169,7 +169,7 @@ pub fn fputs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         return Err(not_a_stream("fputs", handle));
     };
     let bytes = read_c_string(ctx.mem, str_ptr, "fputs's string")?;
-    let n = write_to_fd(ctx, fd as u64, &bytes);
+    let n = write_to_fd(ctx, fd as u64, &bytes).max(-1);
     ctx.regs.write_gpr(0, true, n as u64);
     Ok(HostOutcome::Continue)
 }
