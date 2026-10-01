@@ -116,10 +116,10 @@ export function WatchPanel({
   return (
     <div className="p-3 text-xs flex flex-col h-full">
       <div className="flex items-center gap-2 mb-2">
-        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">
+        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px]">
           watches
         </h2>
-        <span className="text-[10px] text-[var(--text-secondary)]">
+        <span className="text-[12px] text-[var(--text-secondary)]">
           {watches.length}
         </span>
       </div>
@@ -138,12 +138,12 @@ export function WatchPanel({
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
-          className="touch-target flex-1 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
+          className="touch-target flex-1 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[12px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch expression"
         />
         <button
           type="submit"
-          className="touch-target px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+          className="touch-target px-2 py-0.5 text-[12px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
           add
         </button>
@@ -154,7 +154,7 @@ export function WatchPanel({
             <p className="font-serif text-[12px] text-[var(--text-primary)]">
               Watches stay quiet until you ask.
             </p>
-            <p className="font-sans text-[10px] text-[var(--text-secondary)]">
+            <p className="font-sans text-[12px] text-[var(--text-secondary)]">
               Type an expression like <code className="font-mono">x0</code> or{" "}
               <code className="font-mono">[fp, score1_s]</code> above and press add.
             </p>
@@ -174,7 +174,7 @@ export function WatchPanel({
                 <span
                   className={
                     "error" in result
-                      ? "text-[var(--danger)] text-[10px]"
+                      ? "text-[var(--danger)] text-[12px]"
                       : "text-[var(--text-primary)]"
                   }
                   title={"error" in result ? result.error : undefined}
@@ -188,7 +188,7 @@ export function WatchPanel({
                 <button
                   type="button"
                   onClick={() => remove(expr)}
-                  className="touch-target text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
+                  className="touch-target text-[12px] text-[var(--text-secondary)] hover:text-[var(--danger)] px-1"
                   aria-label={`remove watch ${expr}`}
                 >
                   x
