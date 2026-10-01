@@ -76,7 +76,7 @@ export default function Error({
       tabIndex={-1}
       className="flex flex-col items-center justify-center flex-1 min-h-0 gap-6 px-6 text-center"
     >
-      <div className="flex items-baseline gap-3 border-b border-[var(--border)] pb-2 font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
+      <div className="flex items-baseline gap-3 border-b border-[var(--border)] pb-2 font-mono text-[12px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]">
         <span>runtime fault</span>
         <span className="text-[var(--danger)]">0x00000500</span>
       </div>
