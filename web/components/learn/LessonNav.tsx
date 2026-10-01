@@ -54,7 +54,7 @@ export function LessonNav({
       {practice.length > 0 && (
         <section aria-labelledby="lesson-practise-this">
           <h2 id="lesson-practise-this" className={CAPTION_CLASS}>
-            Practise this
+            practise this
           </h2>
           <div className={`mt-4 grid gap-6 ${practice.length > 1 ? "sm:grid-cols-2" : ""}`}>
             {practice.map(({ side, links }) => (
