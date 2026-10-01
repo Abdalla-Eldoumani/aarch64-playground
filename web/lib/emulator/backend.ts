@@ -41,8 +41,8 @@ export interface EmulatorBackend {
   pushStdin(text: string, interactive?: boolean): Promise<StateSnapshot>;
   /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
   closeStdin(): Promise<StateSnapshot>;
-  /** Pause/resume the step-back snapshot ring (live terminal sessions:
-   *  the per-step clone costs more than the step). */
+  /** Pause/resume the step-back snapshot ring (live terminal sessions,
+   *  where stepping back has no meaning). */
   setSnapshotsPaused(paused: boolean): Promise<void>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   /** Whether every page in the range is mapped (watch fault display). */
