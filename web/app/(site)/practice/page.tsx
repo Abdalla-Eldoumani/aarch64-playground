@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { loadExerciseIndex } from "@/lib/content/exercises";
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
@@ -23,9 +24,11 @@ export default function PracticePage() {
   const exercises = loadExerciseIndex();
   // Rendered here, at build time, so the markdown renderer stays out of the
   // page's script: only the finished code spans cross to the client index.
-  const blurbs = Object.fromEntries(
-    exercises.map(({ slug, blurb }) => [slug, <LessonMarkdown key={slug} inline markdown={blurb} />]),
-  );
+  // A plain object, not a list, so no key rides each blurb in the payload.
+  const blurbs: Record<string, ReactNode> = {};
+  for (const { slug, blurb } of exercises) {
+    blurbs[slug] = <LessonMarkdown inline markdown={blurb} />;
+  }
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
       <DocRule section="practice" context="cpsc 355 study aid" className="mb-8" />
