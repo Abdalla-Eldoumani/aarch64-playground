@@ -154,11 +154,11 @@ const TD_CLASS =
   "border border-[var(--border)] px-3 py-2 align-top tabular-nums [@media(pointer:coarse)]:[&>[role=note]]:min-h-[44px] [@media(pointer:coarse)]:[&>[role=note]]:min-w-[44px] [@media(pointer:coarse)]:[&>[role=note]]:items-center";
 const HOVER_WRAP_CLASS =
   "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
-// `term-card` (globals.css) pins the card along the bottom edge on a touch
-// screen and under 1024px, where a 288px card hung off a term near the right
-// edge ran past the screen and widened the page.
+// `term-card` (globals.css) places the card along the bottom edge: hung off
+// the term it ran past the right edge on a phone and past the bottom edge for
+// a term low in a laptop window.
 const TOOLTIP_CLASS =
-  "term-card pointer-events-none absolute left-0 top-full z-10 mt-1 hidden w-max max-w-[18rem] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-secondary)] shadow-[var(--shadow-overlay)] [font:var(--type-small)] group-hover:block group-focus:block group-focus-within:block";
+  "term-card pointer-events-none hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-overlay)] [font:var(--type-small)] group-hover:block group-focus:block group-focus-within:block";
 
 const components: Components = {
   h2(props) {
