@@ -76,7 +76,7 @@ describe("LessonNav", () => {
         ]}
       />,
     );
-    const section = screen.getByRole("region", { name: "Practise this" });
+    const section = screen.getByRole("region", { name: "practise this" });
     expect(within(section).getByRole("heading", { name: "Coding exercises" })).toBeTruthy();
     expect(within(section).getByRole("heading", { name: "Theory sets" })).toBeTruthy();
     const hrefs = within(section)
@@ -92,7 +92,7 @@ describe("LessonNav", () => {
 
   it("leaves out the practise-this block when the lesson links no exercise", () => {
     render(<LessonNav previous={PREVIOUS} next={NEXT} practice={[]} />);
-    expect(screen.queryByRole("region", { name: "Practise this" })).toBeNull();
-    expect(screen.queryByText("Practise this")).toBeNull();
+    expect(screen.queryByRole("region", { name: "practise this" })).toBeNull();
+    expect(screen.queryByText("practise this")).toBeNull();
   });
 });
