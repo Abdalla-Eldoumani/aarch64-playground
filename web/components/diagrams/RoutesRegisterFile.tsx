@@ -36,7 +36,7 @@ export function RoutesRegisterFile() {
       className="mx-auto w-full max-w-5xl px-6 py-12 sm:py-16"
     >
       <h2 id="routes-heading" className="sr-only">
-        where to go
+        Where to go
       </h2>
       <Kicker number="01" title="where to go" className="mb-4" />
       <BootFlashList className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)]">
