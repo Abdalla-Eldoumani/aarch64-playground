@@ -53,7 +53,7 @@ export function stripSourceLines(source: string): string[] {
 /**
  * The instruction-index-ordered text: stripped lines with blanks and
  * label-only lines removed, so `[i]` is the i-th emitted instruction. The
- * bare-metal fallback (and the map's rare misses) index this.
+ * bare-metal fallback indexes this.
  */
 export function indexedInstructionText(strippedLines: string[]): string[] {
   const out: string[] = [];
