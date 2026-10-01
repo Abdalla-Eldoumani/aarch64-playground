@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { escapeRegExp } from "@/lib/asm/escape-regexp";
 
 // Directives course files never write, each noted with the spelling the course
 // uses instead (docs/cpsc355-style-guide.md). The emulator still accepts some
@@ -20,8 +21,7 @@ const BANNED_DIRECTIVES = [
 
 /** Any of the names, read as literal text, ending at a word boundary. */
 function literalAlternation(names: readonly string[]): RegExp {
-  const escaped = names.map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`(${escaped.join("|")})\\b`);
+  return new RegExp(`(${names.map(escapeRegExp).join("|")})\\b`);
 }
 
 const bannedRe = literalAlternation(BANNED_DIRECTIVES);
