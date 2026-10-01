@@ -1,7 +1,8 @@
 // Pins what the Monaco editor does once it mounts: the lint squiggle at page
 // load (the first lint of the default program often lands while Monaco is
 // still loading, and those warnings must still reach the model once the
-// editor mounts, not wait for the next edit), and the site theme it follows.
+// editor mounts, not wait for the next edit), the site theme it follows, and
+// when it wraps long lines.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
@@ -40,7 +41,7 @@ const fake = vi.hoisted(() => {
     KeyMod: { CtrlCmd: 2048, Shift: 1024 },
     Range: class {},
   };
-  return { model, editor, monaco };
+  return { model, editor, monaco, options: null as null | { wordWrap?: string } };
 });
 
 vi.mock("@/components/playground/monaco-features", () => ({ MONACO_FEATURES: [] }));
@@ -48,7 +49,14 @@ vi.mock("monaco-editor/features/register.all", () => ({}));
 vi.mock("monaco-editor/editor", () => fake.monaco);
 vi.mock("@monaco-editor/react", () => ({
   loader: { config: vi.fn() },
-  default: function MonacoStub({ onMount }: { onMount: (editor: unknown, monaco: unknown) => void }) {
+  default: function MonacoStub({
+    onMount,
+    options,
+  }: {
+    onMount: (editor: unknown, monaco: unknown) => void;
+    options: { wordWrap?: string };
+  }) {
+    fake.options = options;
     useEffect(() => onMount(fake.editor, fake.monaco), [onMount]);
     return null;
   },
@@ -79,6 +87,22 @@ describe("Editor lint markers", () => {
         expect.objectContaining({ startLineNumber: 2, endColumn: 12, message: "x0 is never read" }),
       ]),
     );
+  });
+});
+
+describe("Editor line wrap", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  // A frame in a reading column cuts a trailing comment off at its edge, so
+  // the embed asks for wrapping; the full playground keeps one line per row.
+  it("wraps long lines only when the host asks", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    const { rerender } = render(<Editor {...base} wrapLines />);
+    await waitFor(() => expect(fake.options?.wordWrap).toBe("on"));
+    rerender(<Editor {...base} />);
+    await waitFor(() => expect(fake.options?.wordWrap).toBe("off"));
   });
 });
 
