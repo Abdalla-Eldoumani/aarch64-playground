@@ -3,7 +3,12 @@
 import type { ReactNode } from "react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { isAtLeast, type Breakpoint, type PhoneShape } from "@/lib/hooks/use-breakpoint";
+import {
+  isAtLeast,
+  type Breakpoint,
+  type PhoneShape,
+  type ScreenHeight,
+} from "@/lib/hooks/use-breakpoint";
 import { PhoneLayout, type PhoneLayoutProps } from "@/components/playground/PhoneLayout";
 import {
   DEBUG_SPLIT,
@@ -18,6 +23,9 @@ export interface FullLayoutProps {
   /** Set when the viewport wants the phone arrangement; it wins over the
    *  width breakpoint, since a phone on its side is tablet-wide. */
   phone: PhoneShape;
+  /** A short or tall window (useScreenHeight): the splits open, and save,
+   *  on their own sizes. */
+  height?: ScreenHeight;
   editor: ReactNode;
   disassembly: ReactNode;
   registers: ReactNode;
@@ -60,6 +68,7 @@ function EditorSlot({ host }: { host: HTMLElement }) {
 export function FullLayout({
   breakpoint,
   phone,
+  height = "regular",
   editor,
   disassembly,
   registers,
@@ -109,6 +118,7 @@ export function FullLayout({
             {showResizable ? (
               <ResizableLayout
                 breakpoint={breakpoint}
+                height={height}
                 editor={placed}
                 disassembly={disassembly}
                 registers={registers}
@@ -120,7 +130,8 @@ export function FullLayout({
                   <PaneSplit
                     orientation="vertical"
                     spec={EDITOR_SPLIT}
-                    storageKey={`${breakpoint}-left` as Breakpoint}
+                    storageKey={`${breakpoint}-left`}
+                    height={height}
                     first={placed}
                     second={disassembly}
                   />
@@ -129,7 +140,8 @@ export function FullLayout({
                   <PaneSplit
                     orientation="vertical"
                     spec={DEBUG_SPLIT}
-                    storageKey={`${breakpoint}-right` as Breakpoint}
+                    storageKey={`${breakpoint}-right`}
+                    height={height}
                     first={registers}
                     second={rightTabs}
                   />
