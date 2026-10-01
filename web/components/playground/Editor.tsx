@@ -4,7 +4,6 @@ import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
 import { docKeyAt, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
-import { hoverCLine } from "@/lib/asm/c-equivalents";
 import {
   MNEMONIC_ALTERNATION,
   REGISTER_PATTERN,
@@ -270,7 +269,7 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
     Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
   >[1];
   monaco.languages.registerHoverProvider("arm64", {
-    provideHover(model: TextModel, position: MonacoPosition) {
+    async provideHover(model: TextModel, position: MonacoPosition) {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
       // The lookup rule (including the dotted conditional form) lives beside
@@ -289,8 +288,15 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
       if (doc.example) {
         lines.push("", "```", doc.example, "```");
       }
-      const c = hoverCLine(key, window.location.origin);
-      if (c) lines.push("", c);
+      // The C table is 80 KB that only this line reads, so it loads on the
+      // first hover instead of with the editor.
+      try {
+        const { hoverCLine } = await import("@/lib/asm/c-equivalents");
+        const c = hoverCLine(key, window.location.origin);
+        if (c) lines.push("", c);
+      } catch {
+        // Offline with an older cache: the card goes out without its C line.
+      }
       return {
         range: new monaco.Range(
           position.lineNumber,
