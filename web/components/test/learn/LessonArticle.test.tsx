@@ -210,6 +210,18 @@ describe("LessonArticle", () => {
     expect(hrefs).toContain(`#${slugify("Second Heading")}`);
   });
 
+  // Open above the article, the contents filled a phone's first screen.
+  it("folds the contents above the article and keeps the side rail open", () => {
+    render(<LessonArticle lesson={fullLesson} />);
+    const nav = screen.getByRole("navigation", { name: /on this page/i });
+    const folded = nav.querySelector("details");
+    expect(folded?.open).toBe(false);
+    expect(folded?.className).toContain("lg:hidden");
+    const rail = nav.querySelector(":scope > div");
+    expect(rail?.className).toContain("hidden lg:block");
+    expect(rail?.querySelectorAll("a").length).toBe(folded?.querySelectorAll("a").length);
+  });
+
   it("numbers each contents entry under the lesson number, starting at 1", () => {
     render(<LessonArticle lesson={fullLesson} sheetNumber="4.2" />);
     const nav = screen.getByRole("navigation", { name: /on this page/i });
