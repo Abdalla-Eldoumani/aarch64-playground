@@ -36,7 +36,7 @@ const ARRANGEMENTS: LaneView[] = [
   { name: "v0.16b", lanes: 16, note: "16 lanes of 8 bits" },
 ];
 
-const ROW = "grid gap-1.5 sm:grid-cols-[8rem_minmax(0,1fr)] sm:items-center sm:gap-3";
+const ROW = "grid gap-1.5 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-center sm:gap-3";
 const BAR = "grid h-8 grid-cols-[repeat(16,minmax(0,1fr))] gap-[3px]";
 // Solid ink for the bits a name reads, a dashed outline for the bits it
 // leaves alone. Both strokes keep 3:1 against the card in every theme.
