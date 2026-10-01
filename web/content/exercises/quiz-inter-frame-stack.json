@@ -1,8 +1,8 @@
 {
-  "title": "Quiz: memory and the stack",
+  "title": "Intermediate quiz: memory and the stack",
   "slug": "quiz-inter-frame-stack",
   "order": 93,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "topic": "memory",
   "difficulty": "core",
   "variant": "quiz",
