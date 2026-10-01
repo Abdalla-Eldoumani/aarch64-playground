@@ -2,7 +2,7 @@
   "title": "Registers and immediates",
   "slug": "registers-and-immediates",
   "order": 4,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Name the 31 registers and their jobs, write a constant in any of four bases, and build one too wide for a single mov.",
   "tags": [
     "registers",
@@ -88,6 +88,11 @@
         "stdout": "value = 75568 (0x12730)\n",
         "exitCode": 0
       }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [A w write clears the top half of the x register](/reference#pitfall-w-write-clears-top-half)\n- [There is no x31](/reference#pitfall-there-is-no-x31)\n- [mov loads one 16-bit chunk, not any number](/reference#pitfall-mov-takes-one-16-bit-chunk)\n- [add and sub take an immediate from 0 to 4095](/reference#pitfall-add-immediate-range)"
     },
     {
       "type": "prose",
