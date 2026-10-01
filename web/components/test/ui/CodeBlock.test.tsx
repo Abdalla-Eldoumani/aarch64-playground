@@ -64,6 +64,28 @@ describe("CodeBlock", () => {
     expect(screen.getByText("mov x0, #1")).toBeTruthy();
   });
 
+  // A phone shows no scrollbar until a swipe, so a cut-off line needs a cue.
+  it("fades the right edge only while a line runs past it", () => {
+    const widths = (scroll: number, client: number) => {
+      Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => scroll });
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => client });
+    };
+    const fade = (root: HTMLElement) => root.querySelector('[aria-hidden="true"].bg-gradient-to-l');
+    try {
+      widths(600, 300);
+      const wide = render(<CodeBlock code={SNIPPET} />);
+      expect(fade(wide.container)).toBeTruthy();
+      wide.unmount();
+      widths(300, 300);
+      const fits = render(<CodeBlock code={SNIPPET} />);
+      expect(fade(fits.container)).toBeNull();
+    } finally {
+      // The prototype getters are jsdom's zeros; drop the overrides.
+      delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+  });
+
   it("copies the source to the clipboard on a single click", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", {
