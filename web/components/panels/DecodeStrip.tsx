@@ -3,6 +3,9 @@
 import { useMemo } from "react";
 import { describeLine, extractAliases } from "@/lib/asm/explain-line";
 import { decodeFields } from "@/lib/emulator/decode-fields";
+import { REGISTER_PATTERN } from "@/lib/asm/highlight-arm64";
+
+const IS_REGISTER = new RegExp(`^${REGISTER_PATTERN}$`, "i");
 
 export interface DecodeStripProps {
   /** Full source text, so the line the CPU is on can be extracted. */
@@ -40,18 +43,26 @@ export function DecodeStrip({
 }: DecodeStripProps) {
   const aliases = useMemo(() => extractAliases(source), [source]);
 
-  const gloss = useMemo(() => {
-    if (currentLine == null) return null;
-    const raw = source.split("\n")[currentLine - 1] ?? "";
-    return describeLine(raw, aliases);
-  }, [source, currentLine, aliases]);
-
   const decoded = useMemo(() => {
     if (!encodingHex) return null;
     const word = Number.parseInt(encodingHex, 16);
     if (!Number.isFinite(word)) return null;
     return decodeFields(word);
   }, [encodingHex]);
+
+  // The field row names each register operand under its box, so the line
+  // under it leaves out the m4 names that stand for registers: naming them
+  // twice wrapped most lines to two at 1024px. The row is an image to a
+  // screen reader, so the full line stays in a screen-reader copy.
+  const fieldsNameRegisters = !compact && decoded !== null && decoded.fields.length > 1;
+  const gloss = useMemo(() => {
+    if (currentLine == null) return null;
+    const raw = source.split("\n")[currentLine - 1] ?? "";
+    const full = describeLine(raw, aliases);
+    if (full === null || !fieldsNameRegisters) return full === null ? null : { full, shown: full };
+    const constants = Object.fromEntries(Object.entries(aliases).filter(([, value]) => !IS_REGISTER.test(value)));
+    return { full, shown: describeLine(raw, constants) ?? full };
+  }, [source, currentLine, aliases, fieldsNameRegisters]);
 
   return (
     <div
@@ -170,7 +181,14 @@ export function DecodeStrip({
           key={currentLine}
           className="anim-reg-flash -mx-1 inline-block rounded-[var(--radius-control)] px-1 font-mono text-[13px] leading-[1.6] text-[var(--text-primary)] break-words"
         >
-          {gloss}
+          {gloss.shown === gloss.full ? (
+            gloss.full
+          ) : (
+            <>
+              <span aria-hidden="true">{gloss.shown}</span>
+              <span className="sr-only">{gloss.full}</span>
+            </>
+          )}
         </span>
       ) : sessionStarted ? null : (
         <span className="font-mono text-[13px] leading-[1.6] text-[var(--text-tertiary)]">
