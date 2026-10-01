@@ -200,11 +200,14 @@ between chunks, with a snapshot at most every 50 ms so the panels stay live.
   `/_next/static/`, the example programs, the icons, and the manifest), and
   every other prerendered page.
 - On install the worker saves the core set in a cache named after the build
-  id, all or nothing. A new build's worker waits until no page of the old
-  build is open, then deletes every other cache, so a page never loads files
-  from another build.
+  id, all or nothing. Files under `/_next/static/` are named after their
+  content, so a copy an older build saved is reused instead of downloaded. A
+  new build's worker waits until no page of the old build is open, then
+  deletes every other cache, so a page never loads files from another build.
 - Pages come from the network first. Offline, a saved page comes from the
   cache, and an unsaved one gets the `/offline` page under its own address.
+  The router's page-data requests are not cached; offline they get an empty
+  204, so Next drops a prefetch and turns a link click into a full page load.
 - **Save every page for offline** (the phone menu, the iPhone install tip, and
   the footer) asks the worker to save the other pages too. A later build saves
   them again on install.
