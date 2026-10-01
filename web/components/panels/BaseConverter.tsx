@@ -107,7 +107,7 @@ const FLOAT_TITLES: Record<FloatWidth, string> = {
 const HINT = "type in any field, or click a bit to flip it";
 const EMPTY = "empty; the other fields keep the last value until you type one";
 
-const LABEL = "text-[10px] uppercase tracking-wider text-[var(--text-secondary)]";
+const LABEL = "text-[12px] uppercase tracking-wider text-[var(--text-secondary)]";
 
 interface Message {
   /** The field it belongs to, or "width" for a width switch. */
@@ -273,7 +273,7 @@ export function BaseConverter({
         </label>
         <div className="flex items-center gap-1">
           {spec.prefix && (
-            <span aria-hidden="true" className="font-mono text-[11px] text-[var(--text-tertiary)]">
+            <span aria-hidden="true" className="font-mono text-[12px] text-[var(--text-tertiary)]">
               {spec.prefix}
             </span>
           )}
@@ -289,7 +289,7 @@ export function BaseConverter({
             autoCorrect="off"
             aria-invalid={own?.tone === "error" ? true : undefined}
             aria-describedby={`${id}-message`}
-            className={`touch-target w-full min-w-0 rounded border bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+            className={`touch-target w-full min-w-0 rounded border bg-[var(--bg-raised)] px-2 py-1 font-mono text-[12px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
               own?.tone === "error" ? "border-[var(--warning)]" : "border-[var(--border)]"
             }`}
           />
@@ -297,7 +297,7 @@ export function BaseConverter({
         <p
           id={`${id}-message`}
           role="status"
-          className={`font-mono text-[11px] ${
+          className={`font-mono text-[12px] ${
             own?.tone === "error" ? "text-[var(--warning)]" : "text-[var(--text-secondary)]"
           }`}
         >
@@ -321,13 +321,13 @@ export function BaseConverter({
       <>
         {/* The pattern cut where the hardware cuts it: the same three
             fields the inputs below edit, in binary. */}
-        <div className="flex gap-2 font-mono text-[11px]">
+        <div className="flex gap-2 font-mono text-[12px]">
           {strip.map((part) => (
             <div
               key={part.name}
               className={`flex flex-col gap-0.5 ${part.name === "fraction" ? "min-w-0 flex-1" : "shrink-0"}`}
             >
-              <span className="text-[10px] leading-tight text-[var(--text-secondary)]">
+              <span className="text-[12px] leading-tight text-[var(--text-secondary)]">
                 {part.name}
                 <br />
                 {part.range}
@@ -355,7 +355,7 @@ export function BaseConverter({
           </div>
         ))}
 
-        <dl className="flex flex-col gap-1.5 font-mono text-[11px]">
+        <dl className="flex flex-col gap-1.5 font-mono text-[12px]">
           <div>
             <dt className={LABEL}>class</dt>
             <dd className="text-[var(--text-primary)]">
@@ -383,7 +383,7 @@ export function BaseConverter({
   return (
     <div className={`p-3 text-xs flex flex-col gap-3 ${className}`}>
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">
+        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px]">
           base converter
         </h2>
         <div role="group" aria-label="bit width" className="inline-flex items-center gap-1">
@@ -434,7 +434,7 @@ export function BaseConverter({
                     title={isSign ? `sign bit ${i}` : `bit ${i}`}
                     onClick={() => onBitClick(i)}
                     onFocus={() => setFocusBit(i)}
-                    className={`touch-target h-6 w-5 rounded-sm border font-mono text-[11px] leading-none transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
+                    className={`touch-target h-6 w-5 rounded-sm border font-mono text-[12px] leading-none transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
                       on
                         ? "border-[var(--cyan)] bg-[var(--bg-elevated)] font-semibold text-[var(--cyan)]"
                         : "border-[var(--border)] bg-[var(--bg-raised)] text-[var(--text-secondary)] hover:border-[var(--cyan-dim)]"
@@ -447,14 +447,14 @@ export function BaseConverter({
             </span>
             {/* The hex digit under each nibble: pack four bits, read one digit,
                 the by-hand procedure the exams ask for. */}
-            <span aria-hidden="true" className="font-mono text-[10px] text-[var(--text-tertiary)]">
+            <span aria-hidden="true" className="font-mono text-[12px] text-[var(--text-tertiary)]">
               {nibble.hexDigit}
             </span>
           </span>
         ))}
       </div>
 
-      <p className="font-mono text-[11px]">
+      <p className="font-mono text-[12px]">
         <span className={sign === 1 ? "text-[var(--amber)]" : "text-[var(--text-secondary)]"}>
           sign bit {sign}
         </span>
@@ -486,7 +486,7 @@ export function BaseConverter({
 
       <p
         role="status"
-        className={`min-h-[1.25em] font-mono text-[11px] ${
+        className={`min-h-[1.25em] font-mono text-[12px] ${
           message?.key === "width" ? "text-[var(--warning)]" : "text-[var(--text-tertiary)]"
         }`}
       >
@@ -509,7 +509,7 @@ export function BaseConverter({
         {isFloatWidth(width) ? (
           floatReading(width)
         ) : (
-          <p className="font-mono text-[11px] text-[var(--text-secondary)]">
+          <p className="font-mono text-[12px] text-[var(--text-secondary)]">
             pick 32 or 64 bits to read this pattern as a float: 32 is a single (an s
             register), 64 a double (a d register)
           </p>
