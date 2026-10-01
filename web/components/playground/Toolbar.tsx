@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { DiagnosticBundle } from "@/components/playground/DiagnosticBundle";
+import { REPO_URL } from "@/lib/content/site";
 import type { DiagnosticBundle as DiagnosticBundleData } from "@/lib/playground/diagnostic-bundle";
 
 export interface ToolbarProps {
@@ -12,9 +13,8 @@ export interface ToolbarProps {
   /** Gathers the diagnostic snapshot when its dialog opens; kept in the parent
    *  so the toolbar holds no emulator-hub state. */
   buildDiagnostic: () => Promise<DiagnosticBundleData>;
-  /** The GitHub source anchor, supplied by the parent so the playground owns
-   *  the link's destination and styling. */
-  sourceLink?: ReactNode;
+  /** Opens the keyboard shortcut list. */
+  onOpenShortcuts: () => void;
   /** Opens the standalone command-palette modal. A visible labeled control so
    *  discovery never depends on the Ctrl+K shortcut. */
   onOpenCommandPalette: () => void;
@@ -42,15 +42,16 @@ function GroupLabel({ children }: { children: ReactNode }) {
 }
 
 /**
- * Every tool is a visible, named button, so none depends on a shortcut. The
- * run controls keep their own bar at the bottom.
+ * Every tool is a visible, named button, so none depends on a shortcut. It
+ * sits in the header band, at the end of the run row in a short window, and
+ * in the phone's menu sheet.
  */
 export function Toolbar({
   onShare,
   onTutorials,
   onToggleTheme,
   buildDiagnostic,
-  sourceLink,
+  onOpenShortcuts,
   onOpenCommandPalette,
   className = "",
 }: ToolbarProps) {
@@ -84,7 +85,15 @@ export function Toolbar({
         >
           theme
         </button>
-        {sourceLink}
+        <a
+          href={REPO_URL}
+          target="_blank"
+          rel="noreferrer noopener"
+          aria-label="source on github"
+          className={`${CONTROL} ${INACTIVE}`}
+        >
+          source
+        </a>
         <button
           type="button"
           onClick={onOpenCommandPalette}
@@ -103,6 +112,15 @@ export function Toolbar({
             data-keys="Ctrl+K"
             className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[12px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
           />
+        </button>
+        {/* No F keys on a touch screen, so no shortcut list either. */}
+        <button
+          type="button"
+          onClick={onOpenShortcuts}
+          aria-label="keyboard shortcuts"
+          className={`${CONTROL} ${INACTIVE} [@media(pointer:coarse)]:hidden`}
+        >
+          ?
         </button>
       </div>
     </div>
