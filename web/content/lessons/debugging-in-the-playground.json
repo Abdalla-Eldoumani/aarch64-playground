@@ -83,7 +83,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Check yourself\n\n1. The program has stopped, and the highlighted line is `add w20, w20, w9`. Has that add run yet?\n2. A watch on `[fp, scores_s]` reads `0x0000005500000048`. Which two scores does it show, and which of them sits at the lower address?\n3. Why does a watch on `i_r` not work, and what do you type instead?\n4. A run pauses with a message after 1,000,000 instructions. What is the most likely cause?\n5. You stepped one instruction too far. Which button takes you back without starting over?"
+      "markdown": "## Check yourself\n\n1. The program has stopped, and the highlighted line is `add sum_r, sum_r, w9`. Has that add run yet?\n2. A watch on `[fp, scores_s]` reads `0x0000005500000048`. Which two scores does it show, and which of them sits at the lower address?\n3. Why does a watch on `i_r` not work, and what do you type instead?\n4. A run pauses with a message after 1,000,000 instructions. What is the most likely cause?\n5. You stepped one instruction too far. Which button takes you back without starting over?"
     },
     {
       "type": "callout",
