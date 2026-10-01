@@ -121,7 +121,7 @@ function BundleDialog({
           id="diagnostic-bundle-title"
           className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-2"
         >
-          diagnostic bundle
+          Diagnostic bundle
         </h2>
         <p className="text-[11px] leading-relaxed text-[var(--text-secondary)] mb-3">
           a report on this run for a bug report or an AI assistant: your program, its input and
