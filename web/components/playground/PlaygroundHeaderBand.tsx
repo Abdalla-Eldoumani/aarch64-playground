@@ -10,6 +10,8 @@ import { Toolbar } from "@/components/playground/Toolbar";
 import { MoreSheet } from "@/components/playground/MoreSheet";
 import { Wordmark } from "@/components/ui/Wordmark";
 import { MenuIcon } from "@/components/chrome/SiteIcons";
+import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
+import { useStarCount } from "@/components/chrome/StarCount";
 import type { RecentEntry } from "@/lib/playground/auto-save";
 import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
 import type { SourceFile } from "@/lib/playground/file-map";
@@ -49,6 +51,9 @@ export interface PlaygroundHeaderBandProps {
   onOpenShortcuts: () => void;
   /** The phone bar: home, examples, and a menu sheet with everything else. */
   compact?: boolean;
+  /** A short laptop window: the band stands in for the site bar (home link
+   *  and site menu) and leaves its tools to the run row. */
+  short?: boolean;
 }
 
 /**
@@ -73,7 +78,9 @@ export function PlaygroundHeaderBand({
   onOpenCommandPalette,
   onOpenShortcuts,
   compact = false,
+  short = false,
 }: PlaygroundHeaderBandProps) {
+  const stars = useStarCount();
   const [sheetOpen, setSheetOpen] = useState(false);
   // An action that opens a dialog of its own, or replaces the program, first
   // puts the sheet away.
@@ -115,29 +122,6 @@ export function PlaygroundHeaderBand({
       )}
     </>
   );
-  const sourceLink = (
-    <a
-      href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-      target="_blank"
-      rel="noreferrer noopener"
-      className="inline-flex items-center min-h-[36px] [@media(pointer:coarse)]:min-h-[44px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-      aria-label="source on github"
-    >
-      source
-    </a>
-  );
-  // No F keys on a touch screen, so no shortcut list either.
-  const shortcutsButton = (
-    <button
-      type="button"
-      onClick={compact ? fromSheet(onOpenShortcuts) : onOpenShortcuts}
-      className="shrink-0 inline-flex items-center min-h-[36px] text-xs text-[var(--text-secondary)] hover:text-[var(--cyan)] rounded px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] [@media(pointer:coarse)]:hidden"
-      aria-label="keyboard shortcuts"
-    >
-      ?
-    </button>
-  );
-
   if (compact) {
     return (
       // The phone bar replaces both the site bar and the band, so it carries
@@ -171,9 +155,8 @@ export function PlaygroundHeaderBand({
                     onToggleTheme={onToggleTheme}
                     buildDiagnostic={buildDiagnostic}
                     onOpenCommandPalette={fromSheet(onOpenCommandPalette)}
-                    sourceLink={sourceLink}
+                    onOpenShortcuts={fromSheet(onOpenShortcuts)}
                   />
-                  {shortcutsButton}
                 </>
               ),
             },
@@ -183,27 +166,41 @@ export function PlaygroundHeaderBand({
     );
   }
 
-  // No top padding: the band sits flush under the site bar, which carries
-  // the top safe area.
+  // No top padding under the site bar, which carries the top safe area. A
+  // short window drops that bar, so the band takes the safe area, the home
+  // link and the site menu, and its tools move to the run row.
   return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 pb-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
-      <span className="hidden sm:inline font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
-        aarch64-pg
-      </span>
+    <div
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 pb-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] ${
+        short ? "pt-[max(0.5rem,var(--safe-top))]" : ""
+      }`}
+    >
+      {short ? (
+        <Wordmark className="shrink-0" />
+      ) : (
+        <span className="hidden sm:inline font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
+          aarch64-pg
+        </span>
+      )}
       <div className="min-w-0 shrink-0">
         <ExampleLoader onLoad={onLoadProgram} />
       </div>
       {program}
-      <Toolbar
-        className="ml-auto"
-        onShare={onShare}
-        onTutorials={onTutorials}
-        onToggleTheme={onToggleTheme}
-        buildDiagnostic={buildDiagnostic}
-        onOpenCommandPalette={onOpenCommandPalette}
-        sourceLink={sourceLink}
-      />
-      {shortcutsButton}
+      {short ? (
+        <div className="ml-auto">
+          <MobileNavDrawer stars={stars} everywhere />
+        </div>
+      ) : (
+        <Toolbar
+          className="ml-auto"
+          onShare={onShare}
+          onTutorials={onTutorials}
+          onToggleTheme={onToggleTheme}
+          buildDiagnostic={buildDiagnostic}
+          onOpenCommandPalette={onOpenCommandPalette}
+          onOpenShortcuts={onOpenShortcuts}
+        />
+      )}
     </div>
   );
 }
