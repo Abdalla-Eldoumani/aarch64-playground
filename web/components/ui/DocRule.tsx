@@ -16,7 +16,7 @@ export function DocRule({
 }) {
   return (
     <div
-      className={`border-b border-[var(--border)] pb-2 font-mono text-[10px] uppercase leading-[1.4] tracking-[0.08em] text-[var(--text-tertiary)] ${className}`}
+      className={`border-b border-[var(--border)] pb-2 font-mono text-[12px] uppercase leading-[1.4] tracking-[0.08em] text-[var(--text-tertiary)] ${className}`}
     >
       <div className="flex items-baseline gap-3">
         <span className="whitespace-nowrap">
