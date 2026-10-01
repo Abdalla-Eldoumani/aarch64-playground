@@ -12,8 +12,8 @@ application code, no database: drop a file in the right folder and it shows up.
 The `slug` is the file name without `.json` and becomes the page URL, so keep
 it unique and url-safe: lowercase letters and digits joined by single dashes,
 like `adding-two-registers`. The index lists every file in the folder and
-sorts by the `order` field, so `order` sets the sequence. Plain numbers work;
-leave gaps to insert something later.
+sorts by the `order` field, so `order` sets the sequence. Lessons and
+exercises number it differently; their sections below say how.
 
 Long text fields are Markdown (a lesson's prose, an exercise's prompt). They
 render through a sanitizer: headings, lists, links, and inline code work, raw
@@ -37,7 +37,10 @@ Metadata:
   from another off the end of an index card. Keep it under 60 characters,
   about what a search result shows.
 - `slug`: url-safe kebab-case, matching the file name.
-- `order`: the index sorts by this; a number or string.
+- `order`: the index sorts by this; a number or string. The page numbers
+  each lesson by its position (4.1, 4.2, and so on), so `order` need not be
+  whole. To put a lesson between two others, give it a half order, such as
+  12.5 between 12 and 13, instead of renumbering every lesson after it.
 - `lastUpdated`: the day you last changed the lesson, as `YYYY-MM-DD`. The
   sitemap tells search engines this date, so set it to today whenever you
   edit the file. A shipped file without it fails the content tests.
