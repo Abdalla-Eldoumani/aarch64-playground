@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import LZString from "lz-string";
 import {
   buildShareHash,
@@ -321,6 +323,20 @@ describe("shareHashSize", () => {
     expect(size.chars).toBeGreaterThan(size.max);
     // ...and the receiver agrees.
     expect(readShareHash(hash).kind).toBe("too-large");
+  });
+
+  it("carries a dense gcc -O2 program, whose link is 13.8 KB", () => {
+    // The densest compiled program in the emulator's C tests: a jump table
+    // over many cases, which compresses worse than hand-written assembly.
+    const source = readFileSync(
+      join(process.cwd(), "../emulator/tests/c-corpus/78_switch_dense.O2plain.s"),
+      "utf8",
+    );
+    const hash = buildShareHash({ source });
+    const size = shareHashSize(hash);
+    expect(size.chars).toBeGreaterThan(13_000);
+    expect(size.chars).toBeLessThanOrEqual(size.max);
+    expect(okState(hash).source).toBe(source);
   });
 
   it("measures the payload, not the prefix, for both link versions", () => {
