@@ -4,7 +4,7 @@
  * Decorative (`aria-hidden`) and CSS only.
  */
 const BLOCK_LABEL =
-  "flex items-start border border-[var(--border)] px-2 py-1.5 font-mono text-[8px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
+  "flex items-start border border-[var(--border)] px-2 py-1.5 font-mono text-[12px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
 export function DieFloorplan({ className = "" }: { className?: string }) {
   return (
