@@ -40,6 +40,14 @@ describe("FrameWalk", () => {
     );
   });
 
+  it("keeps a band's bracketed operand whole with non-breaking spaces", () => {
+    render(<FrameWalk />);
+    next();
+    expect(screen.getByText("caller's lr, at [fp, 8]").textContent).toBe(
+      "caller's lr, at [fp, 8]",
+    );
+  });
+
   it("mov fp, sp anchors the frame pointer at the saved pair", () => {
     render(<FrameWalk />);
     next();
