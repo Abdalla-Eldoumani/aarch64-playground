@@ -105,7 +105,7 @@ describe("the precache list", () => {
     const scope: { PRECACHE?: Record<string, unknown> } = {};
     vm.runInNewContext(renderPrecache(list), { self: scope });
     expect(Object.keys(scope.PRECACHE ?? {}).sort()).toEqual(
-      ["build", "coreBytes", "corePages", "files", "otherBytes", "otherPages"].sort(),
+      ["build", "corePages", "files", "otherBytes", "otherPages"].sort(),
     );
     expect(scope.PRECACHE?.files).toEqual(list.files);
   });
