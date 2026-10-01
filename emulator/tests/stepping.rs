@@ -314,3 +314,140 @@ after:  add     w0, w0, 1
     assert!(r.error.is_none(), "no runtime error: {:?}", r.error);
     assert_eq!(cpu.exit_code(), Some(8), "the fall-through executed the add");
 }
+
+// -- step-back across the whole ring --
+
+/// Mallocs, callocs, and frees in a loop (so the free list splits and
+/// merges), recurses, fills a buffer with memset, and ends by touching a
+/// heap page nothing had mapped. A frame holds each of these as a log of
+/// what its step changed, so stepping back has to undo every kind.
+const CHURN_SRC: &str = r#"define(fp, x29)
+define(lr, x30)
+define(i_r, x19)
+define(a_r, x20)
+define(b_r, x21)
+
+        .data
+buf:    .skip 64
+
+        .text
+        .balign 4
+depth:  stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     x0, [fp, 16]
+        cbz     x0, depth_end
+        sub     x0, x0, 1
+        bl      depth
+depth_end:
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .global main
+main:   stp     fp, lr, [sp, -48]!
+        mov     fp, sp
+        stp     x19, x20, [fp, 16]
+        str     x21, [fp, 32]
+        mov     i_r, 0
+loop:   mov     x0, 32
+        bl      malloc
+        mov     a_r, x0
+        str     i_r, [a_r]
+        mov     x0, 3
+        mov     x1, 16
+        bl      calloc
+        mov     b_r, x0
+        str     i_r, [b_r, 8]
+        mov     x0, a_r
+        bl      free
+        mov     x0, 6
+        bl      depth
+        adrp    x0, buf
+        add     x0, x0, :lo12:buf
+        add     w1, w19, 65
+        mov     x2, 64
+        bl      memset
+        mov     x0, b_r
+        bl      free
+        add     i_r, i_r, 1
+        cmp     i_r, 12
+        b.lt    loop
+        mov     x0, 20000
+        bl      malloc
+        str     i_r, [x0, 8192]
+        mov     w0, 0
+        ldr     x21, [fp, 32]
+        ldp     x19, x20, [fp, 16]
+        ldp     fp, lr, [sp], 48
+        ret
+"#;
+
+/// What the machine shows after a step, as far as a test outside the
+/// crate can see it.
+#[derive(Debug, PartialEq)]
+struct Seen {
+    gpr: [u64; 32],
+    fpr: [u128; 32],
+    pc: u64,
+    flags: u8,
+    origins: Vec<(u8, u32, u32)>,
+    pages: usize,
+    stack: Vec<u8>,
+    heap_bytes: Vec<u8>,
+    data: Vec<u8>,
+    heap: aarch64_emulator::hosted::heap::HeapState,
+}
+
+fn seen(cpu: &Cpu) -> Seen {
+    use aarch64_emulator::cpu::{DATA_BASE, STACK_BASE};
+    use aarch64_emulator::hosted::heap::HEAP_BASE;
+    Seen {
+        gpr: cpu.regs.snapshot(),
+        fpr: cpu.regs.snapshot_fpr(),
+        pc: cpu.regs.read_pc(),
+        flags: cpu.regs.nzcv.pack(),
+        origins: (0..64)
+            .map(|code| {
+                let o = cpu.regs.clobber_origin(code);
+                (o.register, o.call_pc, o.copied_at)
+            })
+            .collect(),
+        pages: cpu.mem.mapped_page_count(),
+        stack: cpu.mem.read_bytes(STACK_BASE - 0x4000, 0x4000).unwrap(),
+        heap_bytes: cpu.mem.read_bytes(HEAP_BASE, 0x4000).unwrap(),
+        data: cpu.mem.read_bytes(DATA_BASE, 0x100).unwrap(),
+        heap: cpu.heap.clone(),
+    }
+}
+
+/// Every frame in the ring takes the machine back to exactly the state it
+/// was in before that step, and running on from the oldest one ends where
+/// the first run ended.
+#[test]
+fn stepping_back_through_the_whole_ring_retraces_every_state() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(CHURN_SRC, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+
+    let mut states = vec![seen(&cpu)];
+    while !cpu.is_halted() {
+        cpu.step().expect("step");
+        states.push(seen(&cpu));
+    }
+    assert_eq!(cpu.exit_code(), Some(0));
+    assert!(states.len() > 200, "the run is longer than the ring");
+    let end = states.len() - 1;
+    assert_ne!(states[end].pages, states[end - 128].pages, "the ring's span maps a page");
+
+    for back in 1..=128 {
+        assert!(cpu.can_step_back(), "frame {back} is in the ring");
+        cpu.step_back();
+        assert!(states[end - back] == seen(&cpu), "{back} steps back differs from the first run");
+    }
+    assert!(!cpu.can_step_back(), "the ring holds 128 frames");
+
+    while !cpu.is_halted() {
+        cpu.step().expect("step");
+    }
+    assert!(states[end] == seen(&cpu), "the rerun ends where the first run ended");
+    assert_eq!(cpu.exit_code(), Some(0));
+}
