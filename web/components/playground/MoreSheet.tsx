@@ -18,7 +18,7 @@ export interface MoreSheetProps {
 
 // The toolbar's group-label voice, so every group in the sheet reads alike.
 const HEADING =
-  "font-mono text-[10px] uppercase tracking-[0.08em] text-[var(--text-tertiary)] [@media(pointer:coarse)]:text-[12px]";
+  "font-mono text-[12px] uppercase tracking-[0.08em] text-[var(--text-tertiary)]";
 
 /**
  * The header band's controls on a phone, where one row showed only four of
