@@ -6,6 +6,9 @@ export interface WalkthroughTarget {
   /** Added to the step's text when this target stands in for the part
    *  itself: the tab or menu that leads to it. */
   hint?: string;
+  /** Controls the card must leave uncovered: a phone's run row sits right
+   *  above its tabs, and a view keeps controls in its header. */
+  avoid?: string[];
 }
 
 export interface WalkthroughStep {
@@ -20,6 +23,9 @@ export interface WalkthroughStep {
 
 const anchor = (name: string) => `[data-walkthrough="${name}"]`;
 
+// A card beside a phone's bottom tabs would sit on the run row above them.
+const RUN_ROW = [anchor("assemble")];
+
 // On a phone the tools live behind the menu button and most views behind
 // the bottom tabs, so those steps point at the way in.
 const menu = (what: string): WalkthroughTarget => ({
@@ -29,6 +35,7 @@ const menu = (what: string): WalkthroughTarget => ({
 const more = (what: string): WalkthroughTarget => ({
   selector: "#phone-tab-more",
   hint: `On a phone, tap more, then choose ${what}.`,
+  avoid: RUN_ROW,
 });
 const tab = (id: string, name: string): WalkthroughTarget => ({
   selector: `#right-tab-${id}`,
@@ -41,7 +48,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: "The editor",
     body: "Where you write or paste your program. It is saved as you type, so a reload keeps it.",
     targets: [
-      { selector: "#phone-tab-code", hint: "On a phone, the code tab shows it." },
+      { selector: "#phone-tab-code", hint: "On a phone, the code tab shows it.", avoid: RUN_ROW },
       { selector: anchor("editor") },
     ],
   },
@@ -51,7 +58,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     body: "A program can span several files. Add one here; every file is joined to main.asm when you assemble, so bl can call a function written in another file.",
     targets: [
       { selector: anchor("files") },
-      { selector: "#phone-tab-code", hint: "Tap code to see the files strip above the editor." },
+      { selector: "#phone-tab-code", hint: "Tap code to see the files strip above the editor.", avoid: RUN_ROW },
     ],
   },
   {
@@ -79,7 +86,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     targets: [
       { selector: `${anchor("editor")} .monaco-editor .margin` },
       { selector: anchor("gutter") },
-      { selector: "#phone-tab-code", hint: "Tap code to see the line numbers." },
+      { selector: "#phone-tab-code", hint: "Tap code to see the line numbers.", avoid: RUN_ROW },
     ],
   },
   {
@@ -89,9 +96,11 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     // A phone tab only while its view is not already showing: a turned
     // phone shows the registers beside the code, and the card belongs
     // beside them, not on top of them.
+    // Over a phone's registers view the card stays under the dec and hex
+    // the text names.
     targets: [
-      { selector: '#phone-tab-regs[aria-selected="false"]', hint: "On a phone, tap registers to see them." },
-      { selector: anchor("registers") },
+      { selector: '#phone-tab-regs[aria-selected="false"]', hint: "On a phone, tap registers to see them.", avoid: RUN_ROW },
+      { selector: anchor("registers"), avoid: [`${anchor("registers")} [aria-label$="value format"]`, ...RUN_ROW] },
     ],
   },
   {
@@ -105,7 +114,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: "Console and input",
     body: "What the program prints lands here. A program that reads input, with scanf or read, waits at the box below the output until you type a line and press enter.",
     targets: [
-      { selector: '#phone-tab-console[aria-selected="false"]', hint: "On a phone, tap console to see it." },
+      { selector: '#phone-tab-console[aria-selected="false"]', hint: "On a phone, tap console to see it.", avoid: RUN_ROW },
       { selector: '#phone-panel[aria-labelledby="phone-tab-console"]' },
       { selector: "#right-panel-console" },
       tab("console", "console"),
@@ -149,10 +158,11 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   },
 ];
 
-/** Where the offer points: the way back to the walkthrough later. */
+/** Where the offer points: the way back to the walkthrough later. Under a
+ *  phone's menu button the card would cover the files strip. */
 export const OFFER_TARGETS: WalkthroughTarget[] = [
   { selector: anchor("tutorials") },
-  { selector: anchor("menu") },
+  { selector: anchor("menu"), avoid: [anchor("files")] },
 ];
 
 // ---- where the student left off ----
@@ -202,10 +212,10 @@ export function isOnScreen(el: Element): boolean {
 export function resolveTarget(
   targets: WalkthroughTarget[],
   root: ParentNode = document,
-): { el: Element; hint?: string } | null {
+): { el: Element; hint?: string; avoid?: string[] } | null {
   for (const target of targets) {
     for (const el of root.querySelectorAll(target.selector)) {
-      if (isOnScreen(el)) return { el, hint: target.hint };
+      if (isOnScreen(el)) return { el, hint: target.hint, avoid: target.avoid };
     }
   }
   return null;
@@ -245,12 +255,14 @@ const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Ma
  * the whole card, the roomiest side takes a shorter (scrolling) or narrower
  * card, unless that would cut the text and the target is big enough to hold
  * the whole card: then, and when no side can hold even a short card, the card
- * sits over the target, below its header.
+ * sits over the target, below its header. No placement covers a box in
+ * `avoid`: above or below, the card steps past one in its way.
  */
 export function placeCard(
   target: Box,
   card: { width: number; height: number },
   view: { width: number; height: number },
+  avoid: Box[] = [],
 ): Placement {
   const width = Math.min(card.width, view.width - 2 * MARGIN);
   const bottom = target.top + target.height;
@@ -269,6 +281,41 @@ export function placeCard(
   const shownTop = Math.max(target.top, MARGIN);
   const shownBottom = Math.min(bottom, view.height - MARGIN);
 
+  const hit = (top: number, left: number, w: number, h: number) =>
+    avoid.find((a) => a.left < left + w && left < a.left + a.width && a.top < top + h && top < a.top + a.height);
+  // Each step lands past the box it hit, so the walk ends within avoid.length steps.
+  const stack = (side: "below" | "above", h: number): number => {
+    let top = side === "below" ? bottom + GAP : target.top - GAP - h;
+    for (let a = hit(top, alignedLeft, width, h); a; a = hit(top, alignedLeft, width, h)) {
+      top = side === "below" ? a.top + a.height + GAP : a.top - GAP - h;
+    }
+    return top;
+  };
+
+  // Over the target: its shown part, or with boxes to avoid, the first free
+  // stretch of its column from its top that holds the card (else the
+  // tallest), which may run past its foot down to the next box.
+  const overLeft = clamp(target.left + (target.width - width) / 2, MARGIN, view.width - MARGIN - width);
+  const overRegion = (): [number, number] => {
+    if (avoid.length === 0) return [shownTop, shownBottom];
+    let free: [number, number][] = [[shownTop, view.height - MARGIN]];
+    for (const a of avoid) {
+      if (a.left >= overLeft + width || overLeft >= a.left + a.width) continue;
+      free = free
+        .flatMap(([t, b]): [number, number][] => [
+          [t, Math.min(b, a.top - GAP)],
+          [Math.max(t, a.top + a.height + GAP), b],
+        ])
+        .filter(([t, b]) => b > t);
+    }
+    free = free.filter(([t]) => t < shownBottom);
+    return (
+      free.find(([t, b]) => b - t >= card.height) ??
+      free.sort((x, y) => y[1] - y[0] - (x[1] - x[0]))[0] ?? [shownTop, shownBottom]
+    );
+  };
+  const [regionTop, regionBottom] = overRegion();
+
   const at = (side: Placement["side"], w: number, h: number, maxHeight: number | null): Placement => {
     switch (side) {
       case "below":
@@ -282,25 +329,33 @@ export function placeCard(
       default: {
         // A view keeps its controls in a header (dec and hex) and sometimes
         // a row at its foot (the console's input box), so the card leaves
-        // twice as much of the view above it as below. A fixed guess: a view
-        // with controls in its middle would need them measured.
-        const spare = shownBottom - shownTop - h;
-        const top = shownTop + (spare > 0 ? (spare * 2) / 3 : spare / 2);
-        return {
-          side,
-          width: w,
-          maxHeight,
-          left: clamp(target.left + (target.width - w) / 2, MARGIN, view.width - MARGIN - w),
-          top: clamp(top, MARGIN, view.height - MARGIN - h),
-        };
+        // twice as much of the view above it as below. A fixed guess unless
+        // the target names its controls in `avoid`.
+        const spare = regionBottom - regionTop - h;
+        const top = regionTop + (spare > 0 ? (spare * 2) / 3 : spare / 2);
+        return { side, width: w, maxHeight, left: overLeft, top: clamp(top, MARGIN, view.height - MARGIN - h) };
       }
     }
   };
 
-  if (room.below >= card.height) return at("below", width, card.height, null);
-  if (room.above >= card.height) return at("above", width, card.height, null);
-  if (room.right >= width && fullHeight >= card.height) return at("right", width, card.height, null);
-  if (room.left >= width && fullHeight >= card.height) return at("left", width, card.height, null);
+  const belowTop = stack("below", card.height);
+  if (belowTop + card.height <= view.height - MARGIN) {
+    return { side: "below", width, maxHeight: null, left: alignedLeft, top: belowTop };
+  }
+  const aboveTop = stack("above", card.height);
+  if (aboveTop >= MARGIN) return { side: "above", width, maxHeight: null, left: alignedLeft, top: aboveTop };
+  // Beside the target, rising past a box in the way: the controls to avoid
+  // sit at the foot of a turned phone's column.
+  const fullSide = (side: "right" | "left") => {
+    if (room[side] < width || fullHeight < card.height) return null;
+    const p = at(side, width, card.height, null);
+    for (let a = hit(p.top, p.left, width, card.height); a; a = hit(p.top, p.left, width, card.height)) {
+      p.top = a.top - GAP - card.height;
+    }
+    return p.top >= MARGIN ? p : null;
+  };
+  const sideways = fullSide("right") ?? fullSide("left");
+  if (sideways) return sideways;
 
   // Nothing holds the whole card: the side with the most usable area takes
   // a shrunk one.
@@ -314,15 +369,22 @@ export function placeCard(
     const h = Math.min(card.height, fullHeight);
     if (w >= MIN_WIDTH && h >= MIN_HEIGHT) options.push({ side, area: w * h, w, h });
   }
-  const best = options.sort((a, b) => b.area - a.area)[0];
+  const best = options
+    .filter((o) => {
+      const p = at(o.side, o.w, o.h, null);
+      return !hit(p.top, p.left, o.w, o.h);
+    })
+    .sort((a, b) => b.area - a.area)[0];
   // A phone's registers or console view fills the screen but for a strip,
   // and a card cut to that strip shows its title and one line. Covering part
   // of such a view is the smaller loss.
-  const holdsCard = shownBottom - shownTop - 2 * GAP >= card.height && target.width >= width;
+  const holdsCard =
+    (avoid.length ? regionBottom - regionTop : shownBottom - shownTop - 2 * GAP) >= card.height &&
+    target.width >= width;
   if (best && (best.h === card.height || !holdsCard)) {
     return at(best.side, best.w, best.h, best.h < card.height ? best.h : null);
   }
 
-  const h = Math.min(card.height, fullHeight);
+  const h = Math.min(card.height, avoid.length ? regionBottom - regionTop : fullHeight);
   return at("over", width, h, h < card.height ? h : null);
 }
