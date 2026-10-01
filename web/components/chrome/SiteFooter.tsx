@@ -77,7 +77,7 @@ export function SiteFooter() {
 
       {/* The closing hairline row: the three credibility segments read as one
           line. */}
-      <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[10px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
+      <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[12px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
         <span>Open source · free to use and study</span>
         <span>{CREDIBILITY.privacyNote}</span>
         <span>{CREDIBILITY.disclaimer}</span>
