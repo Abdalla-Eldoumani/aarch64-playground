@@ -79,9 +79,11 @@ import { NotFound } from "@/components/chrome/NotFound";
 import { makeHub } from "@/components/test/playground/helpers/emulator-hub";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
 
-// Code a heading may open with, in its own spelling.
+// Code a heading may open with, in its own spelling: mnemonics, condition
+// codes (the pitfall cards open with lt and friends), and a few names.
 const CODE_OPENERS = new Set([
   ...REFERENCE_INSTRUCTIONS.map((instruction) => instruction.mnemonic.toLowerCase()),
+  ..."eq ne cs hs cc lo mi pl vs vc hi ls ge lt gt le al".split(" "),
   "argc",
   "argv",
   "gcd",
@@ -89,6 +91,8 @@ const CODE_OPENERS = new Set([
   "printf",
   "scanf",
 ]);
+/** A general-purpose register name, x0 to x30 or w0 to w30. */
+const REGISTER = /^[xw]([12]?\d|30)$/;
 // Names that keep their capital in the middle of a heading.
 const NAMES = new Set(["Euclid", "Hanoi"]);
 
@@ -111,7 +115,7 @@ function caseProblem(heading: HTMLElement): string | null {
     return capitals.length > 0 ? `label heading has capitals: ${capitals.join(", ")}` : null;
   }
   const [first, ...rest] = words;
-  if (/^[a-z]/.test(first) && !CODE_OPENERS.has(first.toLowerCase())) {
+  if (/^[a-z]/.test(first) && !CODE_OPENERS.has(first.toLowerCase()) && !REGISTER.test(first)) {
     return `opens in lower case: ${first}`;
   }
   const titled = rest.filter((word) => /^[A-Z]/.test(word) && !isAcronym(word) && !NAMES.has(word));
@@ -152,6 +156,8 @@ describe("the case rule itself", () => {
   it("passes sentence case, code openers, acronyms, names, and lower-case labels", () => {
     expect(caseProblem(heading("h1", "Inside a float: IEEE 754"))).toBeNull();
     expect(caseProblem(heading("h2", "argc and argv"))).toBeNull();
+    expect(caseProblem(heading("h3", "x16 and x17 can change"))).toBeNull();
+    expect(caseProblem(heading("h3", "lt, le, gt, ge are signed"))).toBeNull();
     expect(caseProblem(heading("h1", "gcd, the Euclid way"))).toBeNull();
     expect(caseProblem(heading("h2", "Calling C from assembly"))).toBeNull();
     expect(caseProblem(heading("h2", "register file · aapcs64", "uppercase"))).toBeNull();
@@ -160,6 +166,7 @@ describe("the case rule itself", () => {
 
   it("fails a lower-case opener, title case, and a capital in a label", () => {
     expect(caseProblem(heading("h1", "page not found"))).toMatch(/lower case/);
+    expect(caseProblem(heading("h2", "x31 is not a register"))).toMatch(/lower case/);
     expect(caseProblem(heading("h3", "Multiple Choice"))).toMatch(/title case/);
     expect(caseProblem(heading("h2", "Specification", "uppercase"))).toMatch(/capitals/);
   });
@@ -191,11 +198,19 @@ describe("every route keeps the heading case", () => {
     expect(problems(container)).toEqual([]);
   });
 
-  it("/reference, on every tab", () => {
+  it("/reference, on every tab", async () => {
     const { container } = render(<ReferencePage />);
     const found = problems(container);
-    for (const name of ["Calling convention", "Pitfalls", "Converter"]) {
+    // Each of these tabs loads behind next/dynamic, so wait for a heading
+    // only the loaded panel carries before checking it.
+    const loaded: [string, string][] = [
+      ["Calling convention", "Integer registers"],
+      ["Pitfalls", "Registers and values"],
+      ["Converter", "base converter"],
+    ];
+    for (const [name, heading] of loaded) {
       fireEvent.click(screen.getByRole("tab", { name }));
+      await screen.findByRole("heading", { name: heading }, { timeout: 10_000 });
       found.push(...problems(container));
     }
     expect(found).toEqual([]);
