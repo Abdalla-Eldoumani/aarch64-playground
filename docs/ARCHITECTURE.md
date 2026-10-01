@@ -191,10 +191,27 @@ between chunks, with a snapshot at most every 50 ms so the panels stay live.
 
 ## Offline
 
-`web/public/sw.js` is the service worker. Pages are fetched from the network
-first and fall back to a cached copy. Built files, example programs, and icons
-come from the cache and refresh in the background. It registers only over
-HTTPS or on `localhost`.
+`web/public/sw.js` is the service worker. It registers only over HTTPS or on
+`localhost`.
+
+- `npm run build` ends with `scripts/write-precache-list.js`, which reads the
+  build and writes `web/public/sw-precache.js` (not tracked): the build id, the
+  core set (the playground, the `/offline` page, every file under
+  `/_next/static/`, the example programs, the icons, and the manifest), and
+  every other prerendered page.
+- On install the worker saves the core set in a cache named after the build
+  id, all or nothing. A new build's worker waits until no page of the old
+  build is open, then deletes every other cache, so a page never loads files
+  from another build.
+- Pages come from the network first. Offline, a saved page comes from the
+  cache, and an unsaved one gets the `/offline` page under its own address.
+- **Save every page for offline** (the phone menu, the iPhone install tip, and
+  the footer) asks the worker to save the other pages too. A later build saves
+  them again on install.
+- Only a 2xx answer is stored, and a page only when it carries the worker's
+  build id, so the host's bot challenge (a 429) or a newer deploy's page never
+  replaces a saved one. A failed update check leaves the installed worker
+  serving.
 
 Security headers and input checks are in [security.md](security.md), tests in
 [TESTING.md](TESTING.md), and known traps in
