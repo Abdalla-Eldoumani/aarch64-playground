@@ -20,6 +20,13 @@ pub struct CallbackState {
     jobs: Vec<Job>,
 }
 
+impl CallbackState {
+    /// No qsort or bsearch is part-way through.
+    pub fn is_idle(&self) -> bool {
+        self.jobs.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Kind {
     Sort,
