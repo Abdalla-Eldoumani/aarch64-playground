@@ -176,7 +176,7 @@ main:
     mistake:
       "`bl` writes its return address into lr (x30), overwriting the one there. A function that makes a call and has not saved lr loses its own way back: its `ret` jumps to the instruction after its last `bl`.",
     server: "prints nothing and never ends: each `ret` lands on the `add` above it again, until Ctrl-C stops the program.",
-    playground: "never finishes either: Run stops after 10 million steps, the playground's limit. Step through and each `ret` lands on the `add` again.",
+    playground: "never finishes either. Run pauses after a million steps and says a loop may never end. Pressed again and again, it stops for good at 10 million steps, the playground's limit. Step through and each `ret` lands on the `add` again.",
     fix: "Give the function the usual frame: `stp fp, lr, [sp, -16]!` on entry and `ldp fp, lr, [sp], 16` before `ret`. The fixed program prints `price = 110`.",
     wrong: `add_tax:
         bl      round_up
