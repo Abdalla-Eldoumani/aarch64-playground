@@ -2,7 +2,7 @@
   "title": "Printing a variable from .data",
   "slug": "printing-defined-variables",
   "order": 8,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-30",
   "summary": "Load a value out of .data with two ldr instructions, print it, and store a new value back with str.",
   "tags": [
     "printing",
@@ -82,6 +82,11 @@
       "type": "callout",
       "variant": "note",
       "markdown": "You can print variables of any data type using the process shown above. Use the format specifier and the **register width** that match the variable's type.\n\nWhen calling `printf`, you must pass arguments whose data types match their corresponding format specifiers. A mismatch prints garbage."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A common mistake from this lesson, with a broken program and its fix that you can run:\n\n- [ldr x0, fmt loads the text, ldr x0, =fmt loads its address](/reference#pitfall-ldr-without-equals)"
     },
     {
       "type": "prose",
