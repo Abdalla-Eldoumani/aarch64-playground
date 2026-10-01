@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SideScroll } from "@/components/ui/SideScroll";
 import type { BitField } from "@/lib/content/reference-data";
 
 export interface BitFieldDiagramProps {
@@ -133,7 +134,11 @@ export function BitFieldDiagram({
         </p>
       )}
 
-      <ul className="flex w-full overflow-x-auto rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+      <SideScroll
+        as="ul"
+        scrollerClassName="flex w-full rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)]"
+        fadeClassName="rounded-r-[var(--radius-control)] from-[var(--bg-sunken)]"
+      >
         {fields.map((field, index) => {
           const dest = bitHeaders && isDestination(field);
           const rangeLine = ranges && (
@@ -206,7 +211,7 @@ export function BitFieldDiagram({
             </li>
           );
         })}
-      </ul>
+      </SideScroll>
 
       {worked && (
         <>
