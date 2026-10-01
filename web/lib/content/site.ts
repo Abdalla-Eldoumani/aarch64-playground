@@ -75,3 +75,9 @@ export function referenceId(mnemonic: string): string {
 export function pitfallFragment(slug: string): string {
   return `pitfall-${slug}`;
 }
+
+// The fragment /reference gives a section of the calling-convention guide;
+// following it opens that tab at the section.
+export function callingConventionFragment(section: string): string {
+  return `calling-convention-${section}`;
+}
