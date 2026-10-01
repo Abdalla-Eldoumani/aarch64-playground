@@ -36,8 +36,8 @@ export function OfflineBadge() {
   if (savedAt) {
     message = `offline: every page is saved on this device (saved ${formatSavedDate(savedAt)})`;
   } else if (snapshot) {
-    message =
-      "offline: the playground is saved on this device. Other pages open only if you saved every page or opened them online";
+    // Two lines at most on a 320px phone, so the badge stays a status line.
+    message = "offline: the playground works; other pages open only if saved or visited";
   }
   return (
     <div
