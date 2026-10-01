@@ -73,7 +73,7 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
   }, [source, value]);
 
   return (
-    <label className="inline-flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
+    <label className="inline-flex items-center gap-1 text-[12px] text-[var(--text-secondary)]">
       <span className="hidden sm:inline">args</span>
       <input
         type="text"
@@ -84,7 +84,7 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
         autoCapitalize="off"
         autoCorrect="off"
         aria-label="command-line arguments"
-        className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[11px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+        className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[12px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
       />
     </label>
   );
