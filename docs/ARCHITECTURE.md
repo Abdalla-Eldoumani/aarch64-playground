@@ -191,14 +191,16 @@ between chunks, with a snapshot at most every 50 ms so the panels stay live.
 
 ## Offline
 
-`web/public/sw.js` is the service worker. It registers only over HTTPS or on
-`localhost`.
+The service worker's source is `web/lib/playground/sw.js`; it is served as
+`/sw.js` and registers only over HTTPS or on `localhost`.
 
 - `npm run build` ends with `scripts/write-precache-list.js`, which reads the
-  build and writes `web/public/sw-precache.js` (not tracked): the build id, the
-  core set (the playground, the `/offline` page, every file under
-  `/_next/static/`, the example programs, the icons, and the manifest), and
-  every other prerendered page.
+  build and writes `web/public/sw.js` (not tracked): the build id, the core
+  set (the playground, the `/offline` page, every file under `/_next/static/`,
+  the example programs, the icons, and the manifest), and every other
+  prerendered page, followed by the worker's source. The list is part of the
+  worker itself, so every build's worker is different bytes and a browser's
+  update check always sees the new build.
 - On install the worker saves the core set in a cache named after the build
   id, all or nothing. Files under `/_next/static/` are named after their
   content, so a copy an older build saved is reused instead of downloaded. A
