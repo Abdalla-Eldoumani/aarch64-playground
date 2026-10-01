@@ -64,7 +64,6 @@ vi.mock("@/lib/asm/c-equivalents", async (importOriginal) => {
 });
 
 vi.mock("@/components/playground/monaco-features", () => ({ MONACO_FEATURES: [] }));
-vi.mock("monaco-editor/features/register.all", () => ({}));
 vi.mock("monaco-editor/editor", () => fake.monaco);
 vi.mock("@monaco-editor/react", () => ({
   loader: { config: vi.fn() },
