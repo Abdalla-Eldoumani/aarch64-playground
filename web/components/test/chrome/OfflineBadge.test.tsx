@@ -51,7 +51,9 @@ describe("OfflineBadge", () => {
   it("says the playground is saved and the other pages may not be", async () => {
     const { container } = await renderBadge(false);
     send({ savedAt: null });
-    expect(statusText(container)).toMatch(/^offline: the playground is saved on this device\. Other pages/);
+    expect(statusText(container)).toBe(
+      "offline: the playground works; other pages open only if saved or visited",
+    );
   });
 
   it("says every page is saved, and since when, after a save", async () => {
