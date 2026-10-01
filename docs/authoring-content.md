@@ -222,6 +222,10 @@ Fields every variant carries:
   `identify-bug` sit in the coding column of the practice page, the other
   three in the theory column.
 
+The two columns stay the same length. A test fails unless there are exactly
+as many theory sets as coding exercises, so a new coding exercise ships with
+a new theory set in the same change, and the other way round.
+
 The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
 
