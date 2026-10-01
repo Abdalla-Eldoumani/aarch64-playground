@@ -42,7 +42,7 @@ export function RegisterRow({
       }`}
     >
       <span className="w-[3ch] shrink-0 text-[var(--text-secondary)]">{name}</span>
-      <span className="w-[4ch] shrink-0 text-left text-[0.9167em] text-[var(--text-secondary)]">
+      <span className="w-[4ch] shrink-0 text-left text-[var(--text-secondary)]">
         {alias ?? ""}
       </span>
       <span className="ml-auto flex min-w-0 flex-col items-end text-right">
