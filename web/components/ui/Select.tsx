@@ -225,7 +225,7 @@ export function Select({
 
   const sizing =
     size === "xs"
-      ? "px-2 py-0.5 text-[10px] min-h-[24px] [@media(pointer:coarse)]:text-xs"
+      ? "px-2 py-0.5 text-[12px] min-h-[24px] [@media(pointer:coarse)]:text-xs"
       : "px-2 py-1 text-xs min-h-[28px]";
 
   // Each group's starting flat index, so option ids stay continuous across
@@ -304,7 +304,7 @@ export function Select({
                 {groups.map((group, groupIndex) => (
                   <div key={group.label ?? groupIndex}>
                     {group.label ? (
-                      <div className="px-3 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] [@media(pointer:coarse)]:text-[12px]">
+                      <div className="px-3 pb-1 pt-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
                         {group.label}
                       </div>
                     ) : null}
