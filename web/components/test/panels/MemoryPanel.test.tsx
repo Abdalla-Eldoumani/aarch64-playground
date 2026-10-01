@@ -189,6 +189,33 @@ describe("MemoryPanel region label", () => {
     expect(addrInput().value).toBe("0x7fffff00");
   });
 
+  it("shows 8 bytes a row in a pane too narrow for 16, whatever the screen", () => {
+    // jsdom has no layout: report the pane's width and fire the observer
+    // as soon as it is attached, as a browser does.
+    class FireOnObserve {
+      constructor(private readonly callback: () => void) {}
+      observe() {
+        this.callback();
+      }
+      disconnect() {}
+    }
+    vi.stubGlobal("ResizeObserver", FireOnObserve);
+    const width = vi.spyOn(HTMLElement.prototype, "clientWidth", "get");
+    const byteHeaders = () => screen.getAllByRole("columnheader").length - 2;
+    try {
+      width.mockReturnValue(320);
+      renderPanel();
+      expect(byteHeaders()).toBe(8);
+      cleanup();
+      width.mockReturnValue(600);
+      renderPanel();
+      expect(byteHeaders()).toBe(16);
+    } finally {
+      width.mockRestore();
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("falls back to the panel's own jump list and no label without the map", () => {
     renderPanel();
     // Old wasm build: nothing to name, so the trigger keeps its prompt and
