@@ -1,6 +1,6 @@
-// Service worker for AArch64 Playground. Each build keeps one cache, named
-// after its build id and filled from the list scripts/write-precache-list.js
-// writes after next build.
+// Service worker for AArch64 Playground. After next build,
+// scripts/write-precache-list.js writes it to public/sw.js below that build's
+// list (self.PRECACHE). Each build keeps one cache, named after its build id.
 // - Install saves the core set (the playground, the offline page, and every
 //   file a page can load) all or nothing, so a half-saved build never serves.
 // - A new build's worker waits until no page of the old build is open, then
@@ -10,11 +10,10 @@
 // - Only a 2xx answer from this build is stored, so the host's challenge page
 //   or an error page never replaces a saved one.
 
-// A failed import (offline, or the host's challenge) fails the update, and
-// the installed worker keeps serving. The browser byte-compares this file on
-// every update check, so a new build's list is what starts an update.
-importScripts("/sw-precache.js");
-
+// The list is part of the served worker's own bytes, so every build's worker
+// differs and the browser's byte check starts the update. An imported list
+// would rely on the browser re-checking imports, which Safari may skip. A
+// failed check (offline, or the host's challenge) leaves the old worker serving.
 const { build: BUILD, corePages, files, otherPages, otherBytes } = self.PRECACHE;
 const CACHE = `aarch64-playground-${BUILD}`;
 const PAGES = new Set([...corePages, ...otherPages]);
