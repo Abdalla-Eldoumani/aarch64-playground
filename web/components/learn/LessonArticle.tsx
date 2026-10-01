@@ -20,6 +20,7 @@ import { buildShareHash } from "@/lib/playground/share";
 import { validateStdin } from "@/lib/playground/upload-guard";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
+import { OnThisPage } from "@/components/ui/OnThisPage";
 
 function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
@@ -28,9 +29,6 @@ function safeStdin(stdin: string | undefined): string | undefined {
 
 /** A `main:` label at the start of a line, the mark of a complete program. */
 const DEFINES_MAIN = /^[ \t]*main:/m;
-
-const TOC_LINK_CLASS =
-  "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
 
 export function LessonArticle({
   lesson,
@@ -58,38 +56,15 @@ export function LessonArticle({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:max-w-7xl lg:flex-row-reverse lg:items-start lg:gap-12">
-      <nav
-        aria-label="On this page"
-        className="lg:sticky lg:top-24 lg:h-fit lg:w-56 lg:shrink-0"
-      >
-        <details
-          open
-          className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 lg:border-0 lg:bg-transparent lg:p-0"
-        >
-          <summary className="cursor-pointer select-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] lg:list-none [@media(pointer:coarse)]:text-[12px] [@media(pointer:coarse)]:leading-[44px]">
-            on this page
-          </summary>
-          <ul className="mt-3 flex flex-col lg:mt-0">
-            {toc.map((entry, i) => (
-              <li key={i}>
-                <a
-                  href={`#${entry.id}`}
-                  className={
-                    entry.depth === 3
-                      ? `${TOC_LINK_CLASS} pl-4`
-                      : TOC_LINK_CLASS
-                  }
-                >
-                  <span className="mr-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-                    {sheetNumber}.{i + 1}
-                  </span>
-                  {entry.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      </nav>
+      <OnThisPage
+        sections={toc.map((entry, i) => ({
+          id: entry.id,
+          label: entry.text,
+          number: `${sheetNumber}.${i + 1}`,
+          depth: entry.depth,
+        }))}
+        className="lg:w-56 lg:shrink-0"
+      />
 
       <article className="w-full min-w-0">
         <DocRule section={`lesson ${sheetNumber} · ${lesson.title}`} context="learn" className="mb-6" />
