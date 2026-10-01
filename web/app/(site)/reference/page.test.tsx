@@ -4,13 +4,19 @@ import { cleanup, render, screen } from "@testing-library/react";
 // The client view is replaced with a text marker so this test exercises the
 // server route wiring (data module -> page -> props) without pulling in the
 // Tabs, markdown, diagram, or share stacks. The marker echoes the instruction
-// count it receives, so the assertion proves the data actually flowed through.
+// and lesson counts it receives, so the assertion proves the data flowed through.
 vi.mock("@/components/reference/ReferenceView", () => ({
-  ReferenceView: ({ instructions }: { instructions: unknown[] }) =>
-    `reference-view:${instructions.length}`,
+  ReferenceView: ({
+    instructions,
+    lessonTitles,
+  }: {
+    instructions: unknown[];
+    lessonTitles: Record<string, string>;
+  }) => `reference-view:${instructions.length}:${Object.keys(lessonTitles).length}`,
 }));
 
 import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
+import { loadLessonIndex } from "@/lib/content/lessons";
 import { SHARE_CARD_IMAGE } from "@/lib/content/site";
 import ReferencePage, { metadata } from "./page";
 
@@ -19,10 +25,12 @@ afterEach(() => {
 });
 
 describe("reference route", () => {
-  it("renders the view from the full reference instruction set", () => {
+  it("renders the view from the full instruction set and every lesson title", () => {
     render(<ReferencePage />);
     expect(
-      screen.getByText(`reference-view:${REFERENCE_INSTRUCTIONS.length}`),
+      screen.getByText(
+        `reference-view:${REFERENCE_INSTRUCTIONS.length}:${loadLessonIndex().length}`,
+      ),
     ).toBeTruthy();
   });
 
