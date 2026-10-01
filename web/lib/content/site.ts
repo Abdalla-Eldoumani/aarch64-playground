@@ -62,3 +62,16 @@ export function isActiveRoute(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
 }
+
+// The fragment /reference gives an instruction's entry: lower case with dots
+// as dashes, so b.cond is #b-cond. The entry's id, the fragment it writes, and
+// every link into it go through this one rule.
+export function referenceId(mnemonic: string): string {
+  return mnemonic.toLowerCase().replace(/\./g, "-");
+}
+
+// The fragment /reference gives a pitfall card; following it opens the
+// pitfalls tab at that card.
+export function pitfallFragment(slug: string): string {
+  return `pitfall-${slug}`;
+}
