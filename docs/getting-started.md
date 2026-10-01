@@ -115,7 +115,9 @@ and memory, and copies it or a link that reopens the program.
 - **theme** cycles through dark, light, and high contrast.
 - `?embed=1` on the playground's address hides everything but the editor,
   registers, and console, for slides.
-- Once the site has loaded, it keeps working offline.
+- After one visit the playground works offline. **Save every page for
+  offline**, in the menu or at the foot of any page, keeps the lessons,
+  practice, and the reference too.
 
 [features.md](features.md) lists the file behind each of these.
 
