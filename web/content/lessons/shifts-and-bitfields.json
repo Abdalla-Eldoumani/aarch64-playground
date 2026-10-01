@@ -2,7 +2,7 @@
   "title": "Shifts, sign extension, and bitfields",
   "slug": "shifts-and-bitfields",
   "order": 15,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Shift and rotate bits, widen narrow values with sign or zero extension, and pack or unpack fields with bfi and ubfx.",
   "tags": [
     "bitwise",
@@ -91,6 +91,11 @@
     {
       "type": "prose",
       "markdown": "## More bitfield instructions\n\n| instruction | what it does |\n|---|---|\n| `sbfx d, n, lsb, width` | like `ubfx`, but fills the rest of `d` with copies of the field's top bit, so the field reads as a signed number |\n| `bfxil d, n, lsb, width` | extracts a field of `n` into the low bits of `d` and keeps the other bits of `d` |\n| `ubfiz d, n, lsb, width` | like `bfi`, but sets every other bit of `d` to 0 |\n| `sbfiz d, n, lsb, width` | like `ubfiz`, but fills the bits above the field with copies of the field's top bit |\n\nFor example, `sbfx` on the red field of `0xa5ac` gives -12: `10100` read as a 5-bit two's complement number is -16 + 4."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [Sign-extend a negative int before using it as an address](/reference#pitfall-sign-extend-a-negative-index)\n- [A shift by a register amount wraps at the register width](/reference#pitfall-shift-amount-wraps)"
     },
     {
       "type": "prose",
