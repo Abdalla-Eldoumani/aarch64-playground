@@ -72,6 +72,7 @@ import LessonPage, { generateStaticParams as lessonSlugs } from "./(site)/learn/
 import PracticePage from "./(site)/practice/page";
 import ExercisePage, { generateStaticParams as exerciseSlugs } from "./(site)/practice/[slug]/page";
 import ReferencePage from "./(site)/reference/page";
+import OfflinePage from "./(site)/offline/page";
 import PlaygroundPage from "./playground/page";
 import ErrorPage from "./error";
 import GlobalErrorPage from "./global-error";
@@ -239,6 +240,11 @@ describe("every route keeps the heading case", () => {
 
   it("the 404 page", () => {
     const { container } = render(<NotFound />);
+    expect(problems(container)).toEqual([]);
+  });
+
+  it("the offline page", () => {
+    const { container } = render(<OfflinePage />);
     expect(problems(container)).toEqual([]);
   });
 
