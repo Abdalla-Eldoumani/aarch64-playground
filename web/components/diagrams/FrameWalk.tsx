@@ -156,8 +156,10 @@ const POINTER_STYLE = {
   backgroundColor: "color-mix(in srgb, var(--cyan) 12%, transparent)",
 } as const;
 
+// Below sm the chips wrap under the text when both do not fit on one line:
+// beside it they squeezed a 320px band's detail into a 74px column.
 const BAND_BASE =
-  "flex min-h-[44px] items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-2";
+  "flex min-h-[44px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-[var(--radius-control)] border px-3 py-2 sm:flex-nowrap";
 
 /** Static role tints for diagrams that never step: cyan for a passed value,
  *  amber for a saved one, the AapcsRail's colours. */
@@ -211,7 +213,7 @@ export function Band({
         </span>
       </span>
       {markers.length > 0 && (
-        <span className="flex shrink-0 flex-col items-end gap-1">
+        <span className="ml-auto flex shrink-0 flex-wrap justify-end gap-1 sm:flex-col sm:items-end">
           {markers.map((marker) => (
             <span
               key={marker}
