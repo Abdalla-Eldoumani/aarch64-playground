@@ -126,7 +126,7 @@
     {
       "type": "callout",
       "variant": "note",
-      "markdown": "Answers:\n\n1. `csel w0, w1, w2, lt`. With `le` it also works: when the two are equal, either one is the smaller.\n2. `w4` holds 1 and `w5` holds 0. The values are equal, so the compare set Z.\n3. 7. The condition 7 > 10 is false, so `cinc` leaves the value as it was.\n4. `cbnz w19, again`.\n5. `csel` chooses between two registers. `wzr` always reads as 0, but no register always reads as 100, so the program puts 100 in `w9` first."
+      "markdown": "Answers:\n\n1. `csel w0, w1, w2, lt`. With `le` it also works: when the two are equal, either one is the smaller.\n2. `w4` holds 1 and `w5` holds 0. The values are equal, so the compare set Z.\n3. Still 7. The condition 7 > 10 is false, so `cinc` leaves the value as it was.\n4. `cbnz w19, again`.\n5. `csel` chooses between two registers. `wzr` always reads as 0, but no register always reads as 100, so the program puts 100 in `w9` first."
     },
     {
       "type": "prose",
