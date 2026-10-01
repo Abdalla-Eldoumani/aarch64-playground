@@ -24,6 +24,7 @@ import { useBreakpoints } from "@/lib/emulator/use-breakpoints";
 import { useConsoleOutput } from "@/lib/emulator/use-console-output";
 import { useCpuView } from "@/lib/emulator/use-cpu-view";
 import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
+import { formatSteps } from "@/lib/emulator/format-steps";
 import { parseArgs } from "@/lib/playground/args";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Workspace } from "@/lib/playground/file-map";
@@ -607,7 +608,7 @@ export function useEmulator(): EmulatorState {
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           else if (runResult.step_limit_reached) {
             setError(
-              `paused after ${total.toLocaleString()} steps without finishing. ` +
+              `paused after ${formatSteps(total)} without finishing. ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
             );
           }
