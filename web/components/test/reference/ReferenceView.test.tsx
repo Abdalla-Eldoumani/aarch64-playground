@@ -54,6 +54,7 @@ const INSTRUCTIONS: ReferenceInstruction[] = [
 ];
 const LESSON_TITLES = { subroutines: "Writing your own subroutines" };
 const CATALOG = "pitfalls-catalog:subroutines";
+const GUIDE = "calling-convention-guide";
 
 function renderView() {
   return render(<ReferenceView instructions={INSTRUCTIONS} lessonTitles={LESSON_TITLES} />);
@@ -103,7 +104,8 @@ describe("ReferenceView", () => {
     renderView();
 
     fireEvent.click(screen.getByRole("tab", { name: "Calling convention" }));
-    expect(screen.getByText("calling-convention-guide")).toBeTruthy();
+    // The guide arrives asynchronously behind next/dynamic too.
+    expect(await screen.findByText(GUIDE)).toBeTruthy();
     expect(
       screen.queryByText(`instruction-reference:${INSTRUCTIONS.length}`),
     ).toBeNull();
@@ -112,7 +114,7 @@ describe("ReferenceView", () => {
     // The catalog arrives asynchronously behind next/dynamic, with the
     // lesson titles it links to.
     expect(await screen.findByText(CATALOG)).toBeTruthy();
-    expect(screen.queryByText("calling-convention-guide")).toBeNull();
+    expect(screen.queryByText(GUIDE)).toBeNull();
   });
 
   it("mounts the base converter behind its tab", async () => {
@@ -150,11 +152,26 @@ describe("ReferenceView", () => {
     }
   });
 
-  it("opens the calling convention for #calling-convention", () => {
+  it("opens the calling convention for #calling-convention and for one of its sections", async () => {
+    for (const fragment of ["#calling-convention", "#calling-convention-frame-chain"]) {
+      window.history.replaceState(null, "", fragment);
+      const { unmount } = renderView();
+      expect(activeTab()).toBe("Calling convention");
+      expect(await screen.findByText(GUIDE)).toBeTruthy();
+      unmount();
+    }
+  });
+
+  it("keeps the calling convention open while its contents links are followed", async () => {
     window.history.replaceState(null, "", "#calling-convention");
     renderView();
+    expect(await screen.findByText(GUIDE)).toBeTruthy();
+    // A link in the guide's own contents, then one that names nothing here.
+    followFragment("#calling-convention-rules");
     expect(activeTab()).toBe("Calling convention");
-    expect(screen.getByText("calling-convention-guide")).toBeTruthy();
+    followFragment("#calling-convention-nonsense");
+    expect(activeTab()).toBe("Calling convention");
+    expect(screen.getByText(GUIDE)).toBeTruthy();
   });
 
   it("a link followed later wins over a tab pick when it names a tab or an instruction", async () => {
@@ -170,7 +187,7 @@ describe("ReferenceView", () => {
     expect(await screen.findByText("base-converter-widget:ieee754")).toBeTruthy();
 
     followFragment("#calling-convention");
-    expect(screen.getByText("calling-convention-guide")).toBeTruthy();
+    expect(await screen.findByText(GUIDE)).toBeTruthy();
 
     followFragment("#pitfall-there-is-no-x31");
     expect(await screen.findByText(CATALOG)).toBeTruthy();
@@ -234,7 +251,7 @@ describe("ReferenceView", () => {
 
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
     expect(activeTab()).toBe("Calling convention");
-    expect(screen.getByText("calling-convention-guide")).toBeTruthy();
+    expect(await screen.findByText(GUIDE)).toBeTruthy();
 
     fireEvent.keyDown(tablist, { key: "ArrowRight" });
     expect(await screen.findByText(CATALOG)).toBeTruthy();
