@@ -745,6 +745,14 @@ export function Editor({
             automaticLayout: true,
             tabSize: 4,
             wordWrap: wrapLines || isCoarsePointer() ? "on" : "off",
+            // Monaco's stock colour finder reads `#112` as a CSS colour and
+            // drew a swatch before the immediate.
+            defaultColorDecorators: "never",
+            // Hover cards are fixed to the window, so a frame's overflow no
+            // longer cuts them: an embed clipped up to 139 px off a card's
+            // right edge, and the playground's pane hid the top of an error
+            // card that opened above it.
+            fixedOverflowWidgets: true,
             // The block caret is the site's brand cursor, here in the one place
             // it is a real cursor. It blinks hard on/off; when the reader asks
             // for reduced motion it holds solid instead, same fallback as the
