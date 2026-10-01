@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -12,8 +12,20 @@ vi.mock("@/components/learn/LessonIndex", () => ({
     `lesson-index:${lessons.length}`,
 }));
 vi.mock("@/components/learn/LessonArticle", () => ({
-  LessonArticle: ({ lesson }: { lesson: { slug: string } }) =>
-    `lesson-article:${lesson.slug}`,
+  LessonArticle: ({
+    lesson,
+    sheetNumber,
+    children,
+  }: {
+    lesson: { slug: string };
+    sheetNumber: string;
+    children?: React.ReactNode;
+  }) => (
+    <>
+      {`lesson-article:${lesson.slug}:${sheetNumber}`}
+      {children}
+    </>
+  ),
 }));
 
 // notFound throws, as the real one does to stop rendering, so an unknown slug
@@ -36,6 +48,14 @@ const FILE_SLUGS = fs
   .readdirSync(path.join(process.cwd(), "content/lessons"))
   .filter((name) => name.endsWith(".json"))
   .map((name) => name.slice(0, -".json".length));
+
+// The same folder in reading order, sorted here by each file's own `order`,
+// with the raw text kept for the practice links it names.
+const BY_ORDER = FILE_SLUGS.map((slug) => {
+  const raw = fs.readFileSync(path.join(process.cwd(), "content/lessons", `${slug}.json`), "utf8");
+  const { title, order } = JSON.parse(raw) as { title: string; order: number };
+  return { slug, title, order, raw };
+}).sort((a, b) => a.order - b.order);
 
 afterEach(() => {
   cleanup();
@@ -62,8 +82,52 @@ describe("learn routes", () => {
       params: Promise.resolve({ slug: SEEDED_SLUGS[0] }),
     });
     render(element);
-    expect(screen.getByText(`lesson-article:${SEEDED_SLUGS[0]}`)).toBeTruthy();
+    expect(screen.getByText(new RegExp(`^lesson-article:${SEEDED_SLUGS[0]}:4\\.\\d+$`))).toBeTruthy();
     expect(vi.mocked(notFound)).not.toHaveBeenCalled();
+  });
+
+  describe.each([
+    ["first", 0],
+    ["middle", Math.floor(BY_ORDER.length / 2)],
+    ["last", BY_ORDER.length - 1],
+  ])("the %s lesson's foot", (_, index) => {
+    const entry = BY_ORDER[index];
+
+    it("numbers the lesson and links the lessons either side", async () => {
+      render(await LessonPage({ params: Promise.resolve({ slug: entry.slug }) }));
+      expect(screen.getByText(`lesson-article:${entry.slug}:4.${index + 1}`)).toBeTruthy();
+      const nav = screen.getByRole("navigation", { name: "Previous and next lesson" });
+      const links = within(nav).getAllByRole("link");
+      const expected: { href: string; text: string }[] = [];
+      if (index > 0) {
+        const before = BY_ORDER[index - 1];
+        expected.push({ href: `/learn/${before.slug}`, text: `previous · 4.${index} ${before.title}` });
+      }
+      if (index < BY_ORDER.length - 1) {
+        const after = BY_ORDER[index + 1];
+        expected.push({ href: `/learn/${after.slug}`, text: `next · 4.${index + 2} ${after.title}` });
+      } else {
+        expected.push({ href: "/practice", text: "next · 05 Practice" });
+      }
+      expect(
+        links.map((link) => ({
+          href: link.getAttribute("href"),
+          text: (link.textContent ?? "").replace(/<- |\s->/g, ""),
+        })),
+      ).toEqual(expected);
+    });
+
+    it("links every exercise the lesson's text names, and nothing else", async () => {
+      const { container } = render(
+        await LessonPage({ params: Promise.resolve({ slug: entry.slug }) }),
+      );
+      const named = [...new Set([...entry.raw.matchAll(/\]\(\/practice\/([a-z0-9-]+)\)/g)].map((m) => m[1]))];
+      const section = container.querySelector('section[aria-labelledby="lesson-practise-this"]');
+      const shown = section
+        ? [...section.querySelectorAll("a")].map((a) => a.getAttribute("href")?.replace("/practice/", ""))
+        : [];
+      expect([...shown].sort()).toEqual([...named].sort());
+    });
   });
 
   it("sends an unknown slug to the 404 page", async () => {
