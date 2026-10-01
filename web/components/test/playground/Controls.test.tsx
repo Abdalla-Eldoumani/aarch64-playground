@@ -71,6 +71,44 @@ describe("Controls", () => {
     expect(document.querySelector("kbd")).toBeNull();
   });
 
+  it("carries the tools at a short window's row end, without key chips", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        short
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        stepCount={3}
+        error={null}
+        trailing={<button type="button">share</button>}
+      />,
+    );
+    // The keys stay in each button's title and the shortcut list.
+    expect(document.querySelector("kbd")).toBeNull();
+    expect(screen.getByRole("button", { name: "assemble" }).getAttribute("title")).toBe("F6");
+    expect(screen.getByRole("status").textContent).toBe("3 steps");
+    const all = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(all[all.length - 1]).toBe("share");
+  });
+
+  it("keeps the key chips outside a short window", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        error={null}
+      />,
+    );
+    expect(document.querySelectorAll("kbd")).toHaveLength(5);
+  });
+
   it("renders the five buttons as assemble, run, step, back, reset", () => {
     const h = allHandlers();
     render(
