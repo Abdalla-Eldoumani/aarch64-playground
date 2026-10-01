@@ -17,7 +17,6 @@ const LIST = {
   corePages: ["/playground", "/offline"],
   files: ["/_next/static/chunks/main.js", "/examples/cpsc355/basics.s", "/icon.png"],
   otherPages: ["/", "/learn", "/reference"],
-  coreBytes: 1000,
   otherBytes: 2400,
 };
 
