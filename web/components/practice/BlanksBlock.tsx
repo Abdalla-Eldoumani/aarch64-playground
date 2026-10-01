@@ -68,7 +68,7 @@ export function BlanksBlock({
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Fill in the Blank
+        Fill in the blank
       </h3>
       <label
         htmlFor={inputId}
