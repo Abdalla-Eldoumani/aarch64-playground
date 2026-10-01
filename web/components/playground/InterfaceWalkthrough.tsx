@@ -151,13 +151,17 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
       return;
     }
     const r = found.el.getBoundingClientRect();
-    const target = { top: r.top, left: r.left, width: r.width, height: r.height };
+    const box = (b: DOMRect) => ({ top: b.top, left: b.left, width: b.width, height: b.height });
+    const avoid = (found.avoid ?? []).flatMap((selector) => {
+      const control = resolveTarget([{ selector }]);
+      return control ? [box(control.el.getBoundingClientRect())] : [];
+    });
     const ringTop = Math.max(0, r.top - RING_PAD);
     const ringLeft = Math.max(0, r.left - RING_PAD);
     const next: Layout = {
       hidden,
       hint: found.hint,
-      card: placeCard(target, size, view),
+      card: placeCard(box(r), size, view, avoid),
       ring: {
         top: ringTop,
         left: ringLeft,
