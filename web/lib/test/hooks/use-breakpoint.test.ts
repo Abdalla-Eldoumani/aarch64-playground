@@ -1,6 +1,13 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
-import { isAtLeast, phoneShape, useBreakpoint, usePhoneShape } from "@/lib/hooks/use-breakpoint";
+import {
+  isAtLeast,
+  phoneShape,
+  screenHeight,
+  useBreakpoint,
+  usePhoneShape,
+  useScreenHeight,
+} from "@/lib/hooks/use-breakpoint";
 
 afterEach(() => cleanup());
 
@@ -111,5 +118,29 @@ describe("usePhoneShape", () => {
       setWidth(844);
     });
     expect(result.current).toBe("landscape");
+  });
+});
+
+describe("screenHeight", () => {
+  test("760px and under is short, 1200px and over is tall", () => {
+    expect(screenHeight(620)).toBe("short");
+    expect(screenHeight(657)).toBe("short");
+    expect(screenHeight(760)).toBe("short");
+    expect(screenHeight(761)).toBe("regular");
+    expect(screenHeight(900)).toBe("regular");
+    expect(screenHeight(1199)).toBe("regular");
+    expect(screenHeight(1200)).toBe("tall");
+    expect(screenHeight(1440)).toBe("tall");
+  });
+
+  test("the hook follows a window resized across a bound", () => {
+    Object.defineProperty(window, "innerHeight", { value: 900, configurable: true, writable: true });
+    const { result } = renderHook(() => useScreenHeight());
+    expect(result.current).toBe("regular");
+    act(() => {
+      Object.defineProperty(window, "innerHeight", { value: 657, configurable: true, writable: true });
+      window.dispatchEvent(new Event("resize"));
+    });
+    expect(result.current).toBe("short");
   });
 });
