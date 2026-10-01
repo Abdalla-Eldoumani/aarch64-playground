@@ -15,6 +15,9 @@ export interface ToolbarProps {
   buildDiagnostic: () => Promise<DiagnosticBundleData>;
   /** Opens the keyboard shortcut list. */
   onOpenShortcuts: () => void;
+  /** Starts the interface walkthrough from its own button. Only the phone's
+   *  menu passes it: there the tutorials panel is a third tap away. */
+  onWalkthrough?: () => void;
   /** Opens the standalone command-palette modal. A visible labeled control so
    *  discovery never depends on the Ctrl+K shortcut. */
   onOpenCommandPalette: () => void;
@@ -52,6 +55,7 @@ export function Toolbar({
   onToggleTheme,
   buildDiagnostic,
   onOpenShortcuts,
+  onWalkthrough,
   onOpenCommandPalette,
   className = "",
 }: ToolbarProps) {
@@ -77,6 +81,11 @@ export function Toolbar({
         >
           tutorials
         </button>
+        {onWalkthrough && (
+          <button type="button" onClick={onWalkthrough} className={`${CONTROL} ${INACTIVE}`}>
+            walkthrough
+          </button>
+        )}
         <button
           type="button"
           onClick={onToggleTheme}
