@@ -32,6 +32,8 @@ interface FactState {
   at: string;
   /** Which call is running, shown before the instruction. */
   where: string;
+  /** The header, when "where: at" would not read well. */
+  spell?: string;
   effect: string;
   /** How many fact frames are open. */
   depth: number;
@@ -44,6 +46,7 @@ const STATES: FactState[] = [
   {
     at: "fact:",
     where: "main",
+    spell: "fact: (entry, from main)",
     effect: "main put 4 in x0 and called fact. Only main's frame is on the stack; fact has not opened one yet.",
     depth: 0,
     x0: "4",
@@ -149,7 +152,7 @@ function bands(state: FactState, opened: boolean): BandProps[] {
 }
 
 const FACT_STEPS: WalkStep[] = STATES.map((state, i) => ({
-  spell: `${state.where}: ${state.at}`,
+  spell: state.spell ?? `${state.where}: ${state.at}`,
   effect: state.effect,
   codeLine: lineOf(state.at),
   registers: [
