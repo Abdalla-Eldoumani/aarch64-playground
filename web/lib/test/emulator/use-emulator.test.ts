@@ -603,6 +603,24 @@ describe("useEmulator assemble", () => {
     expect(result.current.instructions[0].text).toContain("stp");
   });
 
+  it("reads the listing on to the last instruction when .text holds data", async () => {
+    // A string above main fills the first two words, so the five
+    // instructions end two words past instruction_count.
+    const fake = makeBackend({
+      lineMapFlat: FLAT_LINE_MAP.map((v, i) => (i % 2 === 0 ? v + 8 : v)),
+    });
+    const { result } = await mountLoaded(fake);
+
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+
+    expect(fake.calls.getMemory).toContainEqual([CODE_BASE, 7 * 4]);
+    expect(result.current.instructions).toHaveLength(7);
+    expect(result.current.instructions[0].text).toBe(".word 0x00000000");
+    expect(result.current.instructions[6].text).toBe("ret");
+  });
+
   it("records assembly errors with line and message on failure", async () => {
     const fake = makeBackend({
       assembleSuccess: false,
