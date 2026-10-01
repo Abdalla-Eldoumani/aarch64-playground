@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadAllLessons, loadLesson } from "@/lib/content/lessons";
+import { loadExerciseIndex } from "@/lib/content/exercises";
+import { lessonLinks } from "@/lib/content/lesson-links";
 import { LessonArticle } from "@/components/learn/LessonArticle";
+import { LessonNav } from "@/components/learn/LessonNav";
 import { jsonLdGraph, lessonDescription, lessonNodes, pageMetadata, toJsonLd } from "@/lib/content/seo";
 
 // Fully static: the build enumerates every valid lesson slug and, with
@@ -38,16 +41,22 @@ export default async function LessonPage({
   const { slug } = await params;
   const lesson = loadLesson(slug);
   if (!lesson) notFound();
-  // The sheet coordinate is the lesson's 1-based position in the sorted
-  // order. It is presentation only and derived at build time.
-  const position = loadAllLessons().findIndex((entry) => entry.slug === lesson.slug);
+  // The sheet number and both neighbours come from the sorted order, worked
+  // out at build time.
+  const { number, previous, next, practice } = lessonLinks(
+    loadAllLessons(),
+    lesson.slug,
+    loadExerciseIndex(),
+  );
   return (
     <>
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: toJsonLd(jsonLdGraph(...lessonNodes(lesson))) }}
       />
-      <LessonArticle lesson={lesson} sheetNumber={`4.${position + 1}`} />
+      <LessonArticle lesson={lesson} sheetNumber={number}>
+        <LessonNav previous={previous} next={next} practice={practice} />
+      </LessonArticle>
     </>
   );
 }
