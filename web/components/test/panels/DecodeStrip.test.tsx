@@ -30,6 +30,26 @@ describe("DecodeStrip", () => {
     expect(text).toContain("(score1_r = w19)");
   });
 
+  it("leaves register names to the field row, but keeps them for a screen reader", () => {
+    // movz x19, #5 = 0xd28000b3: the Rd box already reads x19.
+    const source = ["define(count_r, x19)", ".text", "main:", "    mov count_r, 5"].join("\n");
+    render(<DecodeStrip source={source} currentLine={4} encodingHex="0xd28000b3" />);
+    const strip = screen.getByLabelText("current instruction");
+    expect(screen.getByRole("img", { name: /instruction encoding/ }).textContent).toContain("x19");
+    const shown = strip.querySelector('[aria-hidden="true"]')?.textContent ?? "";
+    expect(shown).toContain("mov count_r, 5 ·");
+    expect(shown).not.toContain("count_r = x19");
+    expect(strip.querySelector(".sr-only")?.textContent).toContain("(count_r = x19)");
+  });
+
+  it("keeps an m4 constant in sight, since no box spells it out", () => {
+    // add x0, x1, #16 = 0x91004020.
+    const source = ["define(size_c, 16)", "main:", "    add x0, x1, size_c"].join("\n");
+    render(<DecodeStrip source={source} currentLine={3} encodingHex="0x91004020" />);
+    const text = screen.getByLabelText("current instruction").textContent ?? "";
+    expect(text).toContain("(size_c = 16)");
+  });
+
   it("shows the step prompt when no line is active", () => {
     render(<DecodeStrip source="    mov x0, 1\n" currentLine={null} />);
     const text = screen.getByLabelText("current instruction").textContent ?? "";
