@@ -52,6 +52,18 @@ describe("Toolbar", () => {
     expect(props.onTutorials).toHaveBeenCalledTimes(1);
   });
 
+  // On a phone the tutorials panel is a third tap from the menu, so the menu
+  // offers the walkthrough itself; the wide band keeps it inside tutorials.
+  it("offers the walkthrough only where it is passed", () => {
+    const onWalkthrough = vi.fn();
+    setup({ onWalkthrough });
+    fireEvent.click(screen.getByRole("button", { name: "walkthrough" }));
+    expect(onWalkthrough).toHaveBeenCalledTimes(1);
+    cleanup();
+    setup();
+    expect(screen.queryByRole("button", { name: "walkthrough" })).toBeNull();
+  });
+
   // The toolbar renders in the band, the short window's run row and the
   // phone sheet, so the source link and the shortcut list ride inside it.
   it("links the source and opens the shortcut list", () => {
