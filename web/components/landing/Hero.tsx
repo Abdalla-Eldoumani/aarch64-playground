@@ -21,7 +21,7 @@ export function Hero() {
     >
       <div className="flex items-start justify-between gap-12">
         <div className="flex max-w-2xl flex-col gap-5">
-          <span className="font-mono text-[11px] font-semibold uppercase leading-[1.4] tracking-[0.18em] text-[var(--amber)]">
+          <span className="font-mono text-[12px] font-semibold uppercase leading-[1.4] tracking-[0.18em] text-[var(--amber)]">
             runs in your browser · nothing to install
           </span>
           <h1
