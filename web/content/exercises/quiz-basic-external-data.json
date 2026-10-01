@@ -1,8 +1,8 @@
 {
-  "title": "Quiz: external data",
+  "title": "Basic quiz: external data",
   "slug": "quiz-basic-external-data",
   "order": 102,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "topic": "external-data",
   "difficulty": "intro",
   "variant": "quiz",
