@@ -476,10 +476,11 @@ body:has(> .playground-shell) {
 
 /* =============================================================================
    PHONES AND TOUCH SCREENS
-   These bounds match PhoneLayout's (under 500px tall is a phone on its side).
-   Its own top bar carries the site links, so the site nav steps aside.
+   Under 768px wide the phone bar carries the site links; in a window 760px
+   tall or less (SHORT_SCREEN_MAX_HEIGHT, which takes in a phone on its side)
+   the phone bar or the short band does. Either way the site nav steps aside.
 ============================================================================= */
-@media (max-width: 767.98px), (max-height: 499.98px) {
+@media (max-width: 767.98px), (max-height: 760px) {
   .playground-site-nav {
     display: none;
   }
