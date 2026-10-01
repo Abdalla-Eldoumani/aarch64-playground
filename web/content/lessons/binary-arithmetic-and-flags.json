@@ -2,7 +2,7 @@
   "title": "Binary arithmetic: flags, carries, and wide numbers",
   "slug": "binary-arithmetic-and-flags",
   "order": 16,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Predict the N, Z, C and V flags after an add or a subtract, pick a signed or an unsigned branch, and add numbers wider than 64 bits.",
   "tags": [
     "binary arithmetic",
@@ -159,6 +159,11 @@
     {
       "type": "prose",
       "markdown": "`mul` does this work in hardware in one instruction. The shift-and-add view still explains two things you will meet. First, the product of two n-bit numbers can need 2n bits, so a 32-bit product that might be large is worked out in `x` registers after widening both inputs with `sxtw`. Second, multiplying by a power of two is a single `lsl`. Division runs the same idea backward, as binary long division that subtracts the divisor wherever it fits; `sdiv` and `udiv` do it in hardware."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A common mistake from this lesson, with a broken program and its fix that you can run:\n\n- [add and sub set no flags; adds and subs do](/reference#pitfall-add-sets-no-flags)"
     },
     {
       "type": "prose",
