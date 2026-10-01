@@ -32,7 +32,14 @@ vi.mock("@/lib/content/lessons", async (importOriginal) => {
 vi.mock("@/lib/content/exercises", async (importOriginal) => {
   const real = await importOriginal<typeof import("@/lib/content/exercises")>();
   const all = real.loadAllExercises();
-  return { ...real, loadAllExercises: () => all, loadExercise: (slug: string) => all.find((item) => item.slug === slug) };
+  // Every lesson page reads the index for its practice links.
+  const index = real.loadExerciseIndex();
+  return {
+    ...real,
+    loadAllExercises: () => all,
+    loadExerciseIndex: () => index,
+    loadExercise: (slug: string) => all.find((item) => item.slug === slug),
+  };
 });
 
 import sitemap from "./sitemap";
