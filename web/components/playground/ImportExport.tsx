@@ -180,7 +180,7 @@ export function ImportExport({
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        className="touch-target text-[11px] [@media(pointer:coarse)]:text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+        className="touch-target text-[12px] [@media(pointer:coarse)]:text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="import assembly file"
       >
         import
@@ -206,7 +206,7 @@ export function ImportExport({
       <button
         type="button"
         onClick={copy}
-        className={`touch-target text-[11px] [@media(pointer:coarse)]:text-[13px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+        className={`touch-target text-[12px] [@media(pointer:coarse)]:text-[13px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
           copied
             ? "text-[var(--success)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
