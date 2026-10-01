@@ -10,8 +10,9 @@ web/node_modules/
 web/.next/
 web/out/
 web/coverage/
-# The service worker's file list, written by every build for that build.
-web/public/sw-precache.js
+# The service worker, written by every build with that build's file list
+# (its source is web/lib/playground/sw.js).
+web/public/sw.js
 web/.vitest/
 web/tsconfig.tsbuildinfo
 # A root package-lock.json only appears after a local npm install here (the
