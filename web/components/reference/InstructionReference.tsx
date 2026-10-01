@@ -311,6 +311,9 @@ export function InstructionReference({
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={onFilterKeyDown}
             placeholder="filter mnemonics"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
             aria-keyshortcuts="/"
             className="block min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] py-0 pl-3 pr-9 font-mono text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus-visible:border-[var(--focus)] focus-visible:[box-shadow:var(--ring)]"
           />
