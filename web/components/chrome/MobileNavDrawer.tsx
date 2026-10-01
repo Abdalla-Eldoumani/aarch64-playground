@@ -102,7 +102,7 @@ export function MobileNavDrawer({ stars = null }: { stars?: number | null }) {
               {/* Same tertiary mono numeral as the wide bar, appended inside the
                   same anchor so the row stays one target. */}
               {starCount === null ? null : (
-                <span className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]">
+                <span className="font-mono text-[12px] tabular-nums text-[var(--text-tertiary)]">
                   {starCount}
                 </span>
               )}
