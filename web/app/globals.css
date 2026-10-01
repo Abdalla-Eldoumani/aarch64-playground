@@ -467,6 +467,13 @@ body {
   font-size: calc(0.75rem * var(--font-scale));
 }
 
+/* The offline badge (chrome/OfflineBadge) sits above the playground in the
+   body's column. Holding that column to one screen lets the playground shrink
+   by the badge's height, so its run row stays on screen. */
+body:has(> .playground-shell) {
+  height: 100dvh;
+}
+
 /* =============================================================================
    PHONES AND TOUCH SCREENS
    These bounds match PhoneLayout's (under 500px tall is a phone on its side).
