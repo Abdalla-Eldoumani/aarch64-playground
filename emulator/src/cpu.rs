@@ -13,29 +13,28 @@ use crate::frontend::sections::{align_padding, Item, Program};
 use crate::hosted::{HostContext, HostOutcome, HostTable, RETURNS_IN_D0, RETURNS_NOTHING};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
-use crate::snapshot::{Snapshot, SnapshotRing};
+use crate::snapshot::{SavedState, Snapshot, SnapshotRing};
 
 mod bounds;
 mod control;
 mod loader;
 mod system;
 
-/// Size of the step-back snapshot ring. Each frame captures the full
-/// RegisterFile plus a copy-on-write view of the mapped pages, so memory
-/// scales with the pages the program rewrites while the frame is alive,
-/// not with the whole address space. 128 frames holds a few MiB at
-/// realistic working-set sizes.
+/// Size of the step-back snapshot ring. Each frame holds the small machine
+/// state whole and undo logs of what its step changed in the registers,
+/// memory and the heap, so a frame costs about what its step changed.
 const SNAPSHOT_CAPACITY: usize = 128;
 
 /// Budget for the state a snapshot frame copies WHOLE: the virtual
-/// filesystem, the queued stdin, and the open-file paths. Pages are
-/// shared copy-on-write and cost nothing to snapshot, but these are real
-/// copies taken on every step, so a program holding megabytes of them
-/// paid that price per instruction (100k steps with a 1 MiB virtual file
-/// took 51 s against 73 ms with none). Past the budget the ring stops
-/// recording, the same trade raw-mode terminal programs already make.
-/// A course program's files and typed input are a few hundred bytes, so
-/// step-back stays available for the programs students step through.
+/// filesystem, the queued stdin, and the open-file paths. Registers,
+/// memory and the heap go in as undo logs of what the step changed, but
+/// these are real copies taken on every step, so a program holding
+/// megabytes of them paid that price per instruction (100k steps with a
+/// 1 MiB virtual file took 51 s against 73 ms with none). Past the budget
+/// the ring stops recording, the same trade raw-mode terminal programs
+/// already make. A course program's files and typed input are a few
+/// hundred bytes, so step-back stays available for the programs students
+/// step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
 
 /// Base address where assembled code is loaded.
@@ -393,8 +392,8 @@ pub struct Cpu {
     /// comparator. Snapshotted so step-back can rewind into a sort.
     pub callbacks: crate::hosted::callback::CallbackState,
     /// Host-requested pause of the step-back snapshot ring. The web sets
-    /// it for live terminal sessions, where per-step clones cost far more
-    /// than the steps and stepping back mid-session has no meaning.
+    /// it for live terminal sessions, where stepping back mid-session has
+    /// no meaning.
     /// Transient runner state: not part of any snapshot, cleared on
     /// load/reset.
     pub snapshots_paused: bool,
@@ -634,12 +633,10 @@ impl Cpu {
     /// restore the exact pre-step state. Stdout/stderr are intentionally
     /// excluded from the snapshot (rolling back already-seen output is
     /// more confusing than leaving it in place). Raw-mode terminal
-    /// programs skip the ring entirely: a paced game executes millions
-    /// of steps, each clone costs far more than the step itself, and
-    /// stepping back into the middle of a live game has no meaning.
-    /// A host can also pause the ring explicitly (the web pauses it
-    /// while a program is driven live in the terminal pane, where the
-    /// same cost argument applies to cooked-mode menus), and the ring
+    /// programs skip the ring entirely: stepping back into the middle of
+    /// a live game has no meaning. A host can also pause the ring
+    /// explicitly (the web pauses it while a program is driven live in
+    /// the terminal pane, which covers cooked-mode menus too), and the ring
     /// stops on its own once the side state it copies whole outgrows
     /// `MAX_SNAPSHOT_SIDE_BYTES`.
     fn capture_step_snapshot(&mut self) {
@@ -651,26 +648,75 @@ impl Cpu {
             // stretch ends the history rather than hiding a hole in it.
             self.snapshots.clear();
         } else {
-            self.snapshots.push(Snapshot {
-                regs: self.regs.clone(),
-                mem: self.mem.clone(),
-                halted: self.halted,
-                blocked: self.blocked,
-                exit_code: self.exit_code,
-                stdin: self.stdin.clone(),
-                stdin_segments: self.stdin_segments.clone(),
-                stdin_closed: self.stdin_closed,
-                vfs: self.vfs.clone(),
-                open_files: self.open_files.clone(),
-                next_fd: self.next_fd,
-                rand_state: self.rand_state,
-                term: self.term,
-                heap: self.heap.clone(),
-                strtok_save: self.strtok_save,
-                callbacks: self.callbacks.clone(),
-                stdout_seen: self.stdout_seen,
-                stderr_seen: self.stderr_seen,
-            });
+            // Filled in place, field by field: the pattern names every
+            // field, so a new one cannot be left stale in a recycled frame.
+            let Snapshot {
+                regs,
+                mem,
+                halted,
+                blocked,
+                exit_code,
+                stdin,
+                stdin_segments,
+                stdin_closed,
+                vfs,
+                open_files,
+                next_fd,
+                rand_state,
+                term,
+                heap,
+                strtok_save,
+                callbacks,
+                stdout_seen,
+                stderr_seen,
+            } = self.snapshots.push_slot();
+            *halted = self.halted;
+            *blocked = self.blocked;
+            *exit_code = self.exit_code;
+            // These are empty on almost every step, and skipping the copy
+            // then saves calls that cost as much as the rest of the frame.
+            if !(stdin.is_empty() && self.stdin.is_empty()) {
+                *stdin = self.stdin.clone();
+            }
+            if !(stdin_segments.is_empty() && self.stdin_segments.is_empty()) {
+                *stdin_segments = self.stdin_segments.clone();
+            }
+            *stdin_closed = self.stdin_closed;
+            if !(vfs.is_empty() && self.vfs.is_empty()) {
+                *vfs = self.vfs.clone();
+            }
+            if !(open_files.is_empty() && self.open_files.is_empty()) {
+                *open_files = self.open_files.clone();
+            }
+            *next_fd = self.next_fd;
+            *rand_state = self.rand_state;
+            *term = self.term;
+            *strtok_save = self.strtok_save;
+            if callbacks.is_idle() && self.callbacks.is_idle() {
+                callbacks.stub_pc = self.callbacks.stub_pc;
+            } else {
+                *callbacks = self.callbacks.clone();
+            }
+            *stdout_seen = self.stdout_seen;
+            *stderr_seen = self.stderr_seen;
+            // What the step overwrites lands in the frame's own log
+            // buffers, lent out until `step` hands them back once the step
+            // is over.
+            self.regs.record_undo(regs);
+            self.mem.record_undo(mem);
+            self.heap.record_undo(heap);
+        }
+    }
+
+    /// Give the frame this step pushed the undo logs the step filled. A
+    /// step that recorded nothing leaves every frame as it is. Recording
+    /// starts only once the frame is in the ring, and nothing in a step
+    /// empties the ring, so the newest frame is the one to fill.
+    fn close_step_frame(&mut self) {
+        if let Some(frame) = self.snapshots.newest_mut() {
+            self.regs.finish_undo(&mut frame.regs);
+            self.mem.finish_undo(&mut frame.mem);
+            self.heap.finish_undo(&mut frame.heap);
         }
     }
 
@@ -721,6 +767,9 @@ impl Cpu {
         self.regs.take_clobbered_reads();
         let result = self.execute_step();
         self.note_clobbered_reads(pc, lr);
+        // After the clobber notes, which can carry a register's origin to
+        // another: that change belongs to this step's frame too.
+        self.close_step_frame();
         result
     }
 
