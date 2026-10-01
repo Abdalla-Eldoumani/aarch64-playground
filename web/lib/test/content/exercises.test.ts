@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +35,30 @@ afterEach(() => {
 });
 
 describe("loadAllExercises", () => {
+  // Each exercise page asked for the whole folder three times, so a build
+  // read it hundreds of times; a production build now reads it once.
+  it("reads the folder once in a production build and on every call otherwise", () => {
+    makeDir();
+    write("a.json", exerciseJson({ slug: "first", order: 1 }));
+    const reads = vi.spyOn(fs, "readdirSync");
+    try {
+      loadAllExercises(dir);
+      loadAllExercises(dir);
+      expect(reads).toHaveBeenCalledTimes(2);
+
+      reads.mockClear();
+      vi.stubEnv("NODE_ENV", "production");
+      const first = loadAllExercises(dir);
+      first.reverse();
+      expect(loadExercise("first", dir)?.slug).toBe("first");
+      expect(loadAllExercises(dir).map((e) => e.slug)).toEqual(["first"]);
+      expect(reads).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllEnvs();
+      reads.mockRestore();
+    }
+  });
+
   it("returns exercises sorted by order ascending, not by filename", () => {
     makeDir();
     // Filename order (a,b) is the reverse of the desired order, so a correct
