@@ -101,7 +101,12 @@ interface Worker {
   claimed: () => boolean;
   setNetwork: (responder: Responder | null) => void;
   fire: (type: string, init?: Record<string, unknown>) => Promise<void>;
-  request: (pathname: string, mode?: string, method?: string) => Promise<Response | null>;
+  request: (
+    pathname: string,
+    mode?: string,
+    method?: string,
+    headers?: Record<string, string>,
+  ) => Promise<Response | null>;
 }
 
 /** Evaluates sw.js against fresh fakes. `null` network means offline. */
@@ -144,11 +149,11 @@ function startWorker(responder: Responder | null, caches = new FakeCaches()): Wo
     for (let i = 0; i < pending.length; i += 1) await pending[i];
   }
 
-  async function request(pathname: string, mode = "no-cors", method = "GET") {
+  async function request(pathname: string, mode = "no-cors", method = "GET", headers: Record<string, string> = {}) {
     let answer: Promise<Response> | null = null;
     const pending: Promise<unknown>[] = [];
     handlers.fetch({
-      request: { url: new URL(pathname, ORIGIN).href, mode, method },
+      request: { url: new URL(pathname, ORIGIN).href, mode, method, headers: new Headers(headers) },
       respondWith: (p: Promise<Response>) => {
         answer = p;
       },
@@ -297,6 +302,17 @@ describe("loading a file", () => {
       "file /_next/static/chunks/main.js",
     );
     expect(await (await worker.request("/icon.png?4d2a"))?.text()).toBe("file /icon.png");
+  });
+
+  it("offline, answers the router's page data with an empty 204 so Next falls back quietly", async () => {
+    const worker = await installed();
+    const online = await worker.request("/learn?_rsc=abc", "cors", "GET", { RSC: "1" });
+    expect(online?.status).toBe(200);
+    worker.setNetwork(null);
+    const offline = await worker.request("/learn?_rsc=abc", "cors", "GET", { RSC: "1" });
+    expect(offline?.status).toBe(204);
+    expect(offline?.body).toBeNull();
+    expect(worker.caches.stores.get(CACHE)!.paths()).not.toContain("/learn");
   });
 
   it("leaves unlisted, cross-origin and non-GET requests to the browser", async () => {
