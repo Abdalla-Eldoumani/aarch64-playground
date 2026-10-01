@@ -201,7 +201,9 @@ export function TouchEditor({
       >
         <div
           ref={gutterRef}
-          className="absolute left-0 right-0 will-change-transform"
+          // top-0: a button centres the static position of an absolute
+          // child, which put line 1 halfway down the gutter.
+          className="absolute left-0 right-0 top-0 will-change-transform"
           style={{
             // Scroll and window are split across two properties so the
             // scroll half can be written imperatively without fighting this
