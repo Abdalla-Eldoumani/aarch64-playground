@@ -41,10 +41,10 @@ define(lr, x30)
 fmt_out:    .string "joined: %ld\\n"
 
 .text
-outgoing_size = 2 * 8                       // one 8-byte slot each for digits 9 and 10
-outgoing_alloc = -outgoing_size & -16       // rounded so sp stays 16-byte aligned
+outgoing_size = 2 * 8                       // a slot each for digits 9 and 10
+outgoing_alloc = -outgoing_size & -16       // keeps sp 16-byte aligned
 outgoing_dealloc = -outgoing_alloc
-arg9_s = 16                                 // just above the callee's 16-byte frame record
+arg9_s = 16                                 // just above the callee's record
 arg10_s = 24
 
 // join_digits(x0-x7 = digits 1 to 8, [fp, 16] = digit 9, [fp, 24] = digit 10)
@@ -63,7 +63,7 @@ join_digits:
         madd    x0, x0, x9, x5
         madd    x0, x0, x9, x6
         madd    x0, x0, x9, x7
-        ldr     x10, [fp, arg9_s]           // digit 9, in the caller's outgoing area
+        ldr     x10, [fp, arg9_s]           // digit 9, from the caller's frame
         madd    x0, x0, x9, x10
         ldr     x10, [fp, arg10_s]          // digit 10, one slot higher
         madd    x0, x0, x9, x10
@@ -77,7 +77,7 @@ main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        mov     x0, 1                       // digits 1 to 8 fill the argument registers
+        mov     x0, 1                       // digits 1 to 8 go in x0-x7
         mov     x1, 2
         mov     x2, 3
         mov     x3, 4
@@ -86,9 +86,9 @@ main:
         mov     x6, 7
         mov     x7, 8
 
-        add     sp, sp, outgoing_alloc      // open the outgoing area below the frame record
+        add     sp, sp, outgoing_alloc      // open the outgoing area
         mov     x9, 9
-        str     x9, [sp]                    // digit 9 at sp, the first stack slot
+        str     x9, [sp]                    // digit 9 at sp: the first slot
         mov     x9, 0
         str     x9, [sp, 8]                 // digit 10 in the next slot up
         bl      join_digits
@@ -102,15 +102,15 @@ main:
         ldp     fp, lr, [sp], 16
         ret
 `,
-    excerpt: `        add     sp, sp, outgoing_alloc      // open the outgoing area below the frame record
+    excerpt: `        add     sp, sp, outgoing_alloc      // open the outgoing area
         mov     x9, 9
-        str     x9, [sp]                    // digit 9 at sp, the first stack slot
+        str     x9, [sp]                    // digit 9 at sp: the first slot
         mov     x9, 0
         str     x9, [sp, 8]                 // digit 10 in the next slot up
         bl      join_digits
         add     sp, sp, outgoing_dealloc    // close the outgoing area
 ...
-        ldr     x10, [fp, arg9_s]           // digit 9, in the caller's outgoing area`,
+        ldr     x10, [fp, arg9_s]           // digit 9, from the caller's frame`,
     stdout: "joined: 1234567890\n",
   },
   "struct-arguments": {
@@ -123,8 +123,8 @@ define(fp, x29)
 define(lr, x30)
 
 .data
-pair:       .dword  30, 12                  // struct pair { long a, b; }, 16 bytes
-triple:     .dword  100, 20, 3              // struct triple { long a, b, c; }, 24 bytes
+pair:       .dword  30, 12                  // two longs: 16 bytes
+triple:     .dword  100, 20, 3              // three longs: 24 bytes
 vec:        .double 0r2.0, 0r3.0, 0r6.0     // struct vec3 { double x, y, z; }
 fmt_pair:   .string "pair: %ld\\n"
 fmt_triple: .string "triple: %ld\\n"
@@ -174,7 +174,7 @@ main:
         ldr     x0, =fmt_pair
         bl      printf
 
-        ldr     x9, =triple                 // 24 bytes: copy it into this frame...
+        ldr     x9, =triple                 // 24 bytes: copy it here...
         ldp     x10, x11, [x9]
         stp     x10, x11, [fp, copy_s]
         ldr     x10, [x9, 16]
@@ -186,10 +186,10 @@ main:
         bl      printf
 
         ldr     x9, =vec
-        ldp     d0, d1, [x9]                // all doubles, at most four: d0, d1, d2
+        ldp     d0, d1, [x9]                // an HFA: d0, d1, then d2
         ldr     d2, [x9, 16]
         bl      length2
-        ldr     x0, =fmt_vec                // the result is already in d0 for printf
+        ldr     x0, =fmt_vec                // the result is already in d0
         bl      printf
 
         mov     w0, 0
@@ -199,7 +199,7 @@ main:
     excerpt: `        ldr     x9, =pair
         ldp     x0, x1, [x9]                // 16 bytes: one field per register
 ...
-        ldr     x9, =triple                 // 24 bytes: copy it into this frame...
+        ldr     x9, =triple                 // 24 bytes: copy it here...
         ldp     x10, x11, [x9]
         stp     x10, x11, [fp, copy_s]
         ldr     x10, [x9, 16]
@@ -207,7 +207,7 @@ main:
         add     x0, fp, copy_s              // ...and pass the copy's address
 ...
         ldr     x9, =vec
-        ldp     d0, d1, [x9]                // all doubles, at most four: d0, d1, d2
+        ldp     d0, d1, [x9]                // an HFA: d0, d1, then d2
         ldr     d2, [x9, 16]`,
     stdout: "pair: 42\ntriple: 123\nvec3: 49.0\n",
   },
@@ -224,7 +224,7 @@ define(lr, x30)
 fmt_out:    .string "%ld, %ld, %ld\\n"
 
 .text
-p1_s = 0                                    // struct powers { long p1, p2, p3; }
+p1_s = 0                                    // struct powers: three longs
 p2_s = 8
 p3_s = 16
 powers_size = 24
@@ -245,7 +245,7 @@ powers:
         ldp     fp, lr, [sp], 16
         ret
 
-result_s = 16                               // main's struct powers, above its frame record
+result_s = 16                               // main's struct, above its record
 alloc = -(16 + powers_size) & -16
 dealloc = -alloc
 
@@ -304,10 +304,10 @@ main:
         mov     w1, 3                       // first int: w1
         ldr     x9, =apple
         ldr     d0, [x9]                    // first double: d0, not x2
-        mov     w2, 5                       // second int: the next integer register, w2
+        mov     w2, 5                       // second int: the next one, w2
         ldr     x9, =pear
         ldr     s1, [x9]
-        fcvt    d1, s1                      // a float is passed as a double: widen it into d1
+        fcvt    d1, s1                      // widen the float into d1
         bl      printf
 
         mov     w0, 0
@@ -318,10 +318,10 @@ main:
         mov     w1, 3                       // first int: w1
         ldr     x9, =apple
         ldr     d0, [x9]                    // first double: d0, not x2
-        mov     w2, 5                       // second int: the next integer register, w2
+        mov     w2, 5                       // second int: the next one, w2
         ldr     x9, =pear
         ldr     s1, [x9]
-        fcvt    d1, s1                      // a float is passed as a double: widen it into d1
+        fcvt    d1, s1                      // widen the float into d1
         bl      printf`,
     stdout: "3 apples at 0.75, 5 pears at 1.50\n",
   },
@@ -343,7 +343,7 @@ step:       .double 0r1.25
 fmt_row:    .string "%ld x %.2f = %.2f\\n"
 
 .text
-x19_s = 16                                  // the saved registers sit above the frame record
+x19_s = 16                                  // saved above the frame record
 x20_s = 24
 d8_s = 32
 alloc = -(16 + 24) & -16                    // 40 bytes, rounded up to 48
@@ -355,10 +355,10 @@ dealloc = -alloc
 print_multiples:
         stp     fp, lr, [sp, alloc]!
         mov     fp, sp
-        stp     x19, x20, [fp, x19_s]       // the caller's x19 and x20, restored before ret
+        stp     x19, x20, [fp, x19_s]       // the caller's x19 and x20
         str     d8, [fp, d8_s]              // and its d8
 
-        mov     count_r, x0                 // move the arguments out of x0 and d0
+        mov     count_r, x0                 // copy the arguments out
         fmov    step_r, d0
         mov     i_r, 1
         b       pm_test
@@ -368,13 +368,13 @@ pm_loop:
         ldr     x0, =fmt_row
         mov     x1, i_r
         fmov    d0, step_r
-        bl      printf                      // may change x0-x18, d0-d7 and d16-d31
+        bl      printf                      // may change x0-x18, d0-d7, d16-d31
         add     i_r, i_r, 1
 pm_test:
         cmp     i_r, count_r
         b.le    pm_loop
 
-        ldp     x19, x20, [fp, x19_s]
+        ldp     x19, x20, [fp, x19_s]       // put the caller's values back
         ldr     d8, [fp, d8_s]
         ldp     fp, lr, [sp], dealloc
         ret
@@ -394,7 +394,7 @@ main:
         ldp     fp, lr, [sp], 16
         ret
 `,
-    excerpt: `x19_s = 16                                  // the saved registers sit above the frame record
+    excerpt: `x19_s = 16                                  // saved above the frame record
 x20_s = 24
 d8_s = 32
 alloc = -(16 + 24) & -16                    // 40 bytes, rounded up to 48
@@ -403,10 +403,10 @@ dealloc = -alloc
 print_multiples:
         stp     fp, lr, [sp, alloc]!
         mov     fp, sp
-        stp     x19, x20, [fp, x19_s]       // the caller's x19 and x20, restored before ret
+        stp     x19, x20, [fp, x19_s]       // the caller's x19 and x20
         str     d8, [fp, d8_s]              // and its d8
 ...
-        ldp     x19, x20, [fp, x19_s]
+        ldp     x19, x20, [fp, x19_s]       // put the caller's values back
         ldr     d8, [fp, d8_s]
         ldp     fp, lr, [sp], dealloc
         ret`,
@@ -431,10 +431,10 @@ name_inner: .string "inner"
 fmt_hop:    .string "frame %ld: %s\\n"
 
 .text
-name_s = 16                                 // every frame keeps its name just above its record
+name_s = 16                                 // where each frame keeps its name
 alloc = -(16 + 8) & -16
 dealloc = -alloc
-inner_x19_s = 24                            // inner also saves x19 and x20 above the name
+inner_x19_s = 24                            // inner also saves x19 and x20
 inner_alloc = -(16 + 8 + 16) & -16
 inner_dealloc = -inner_alloc
 
@@ -444,7 +444,7 @@ inner_dealloc = -inner_alloc
 inner:
         stp     fp, lr, [sp, inner_alloc]!
         mov     fp, sp
-        stp     x19, x20, [fp, inner_x19_s] // callee-saved: keep the caller's values
+        stp     x19, x20, [fp, inner_x19_s] // keep the caller's x19 and x20
         ldr     x9, =name_inner
         str     x9, [fp, name_s]
 
@@ -456,7 +456,7 @@ walk_loop:
         mov     x1, depth_r
         ldr     x2, [frame_r, name_s]       // the name stored in that frame
         bl      printf
-        ldr     frame_r, [frame_r]          // the saved fp: the caller's frame record
+        ldr     frame_r, [frame_r]          // saved fp: the caller's record
         add     depth_r, depth_r, 1
 walk_test:
         cmp     depth_r, 3
@@ -499,7 +499,7 @@ walk_loop:
         mov     x1, depth_r
         ldr     x2, [frame_r, name_s]       // the name stored in that frame
         bl      printf
-        ldr     frame_r, [frame_r]          // the saved fp: the caller's frame record
+        ldr     frame_r, [frame_r]          // saved fp: the caller's record
         add     depth_r, depth_r, 1
 walk_test:
         cmp     depth_r, 3
@@ -520,7 +520,7 @@ define(n_r, x19)
 fmt_out:    .string "4! = %ld\\n"
 
 .text
-x19_s = 16                                  // the caller's x19, above the frame record
+x19_s = 16                                  // where the caller's x19 is saved
 alloc = -(16 + 8) & -16
 dealloc = -alloc
 
@@ -533,7 +533,7 @@ fact:
         str     n_r, [fp, x19_s]
 
         mov     n_r, x0
-        mov     x0, 1                       // 1! = 1, the case that ends the recursion
+        mov     x0, 1                       // 1! = 1 ends the recursion
         cmp     n_r, 1
         b.le    fact_done
         sub     x0, n_r, 1
