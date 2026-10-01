@@ -2,7 +2,7 @@
   "title": "Floating point: the other register file",
   "slug": "floating-point",
   "order": 26,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "Load, compute with, convert, compare, and print single and double values, and pass them to and from functions in d0 to d7.",
   "tags": [
     "floating point",
@@ -53,7 +53,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Printing a single\n\n`%f` always means a double. `printf` takes any number of arguments, and C widens every `float` it passes to such a function into a `double`, so `printf` never receives a single at all. Widen one yourself with `fcvt d0, s0` before the call. Skip that step and `printf` reads the 32 bits of `s0` as if they were a 64-bit double, a number so tiny it prints as 0.00."
+      "markdown": "## Printing a single\n\n`%f` always means a double. `printf` is *variadic*: it takes any number of arguments after the format string. C widens every `float` it passes to a variadic function into a `double`, so `printf` never receives a single at all. Widen one yourself with `fcvt d0, s0` before the call. Skip that step and `printf` reads the 32 bits of `s0` as if they were a 64-bit double, a number so tiny it prints as 0.00."
     },
     {
       "type": "prose",
