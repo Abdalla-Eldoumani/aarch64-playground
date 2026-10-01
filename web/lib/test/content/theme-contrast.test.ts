@@ -14,6 +14,11 @@ const css = readFileSync(path.join(process.cwd(), "app/globals.css"), "utf8").re
   "\n",
 );
 
+const converter = readFileSync(
+  path.join(process.cwd(), "components/panels/BaseConverter.tsx"),
+  "utf8",
+);
+
 /** The tokens of one theme block, name -> #hex. */
 function themeTokens(openingSelector: string): Record<string, string> {
   const start = css.indexOf(openingSelector);
@@ -80,6 +85,14 @@ describe("theme token contrast", () => {
       for (const ink of ["syntax-keyword", "syntax-register", "syntax-number", "syntax-comment", "syntax-label"]) {
         expect(contrast(t[ink], line), ink).toBeGreaterThanOrEqual(4.5);
       }
+    });
+
+    it(`${theme}: the converter's bit-cell hover border keeps 3:1 against the cell`, () => {
+      // BaseConverter's off cell is bg-[var(--bg-raised)]; its hover border
+      // is read from the component, since --cyan-dim there measured 2.6:1 in
+      // high-contrast.
+      const hover = /hover:border-\[var\(--([\w-]+)\)\]/.exec(converter)?.[1] ?? "missing";
+      expect(contrast(t[hover], t["bg-raised"]), `--${hover}`).toBeGreaterThanOrEqual(3);
     });
 
     it(`${theme}: primary and secondary text keep 4.5:1 contrast on both backgrounds`, () => {
