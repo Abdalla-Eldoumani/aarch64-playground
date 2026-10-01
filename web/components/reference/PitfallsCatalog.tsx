@@ -134,7 +134,7 @@ export function PitfallsCatalog({
           type="search"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="filter by word or instruction"
+          placeholder="try ldr, cmp, or stack"
           spellCheck={false}
           autoCorrect="off"
           autoCapitalize="off"
