@@ -24,6 +24,9 @@ impl Cpu {
         self.refund_steps_total = 0;
         self.refund_output_total = 0;
         self.snapshots_paused = false;
+        // The writes above ran outside any step, so no frame's undo log
+        // holds them: frames left from before the load cannot undo it.
+        self.snapshots.clear();
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
         // The bare-metal path has no host calls; drop any trampolines a
         // previously loaded hosted image left behind.
@@ -68,6 +71,9 @@ impl Cpu {
         self.refund_steps_total = 0;
         self.refund_output_total = 0;
         self.snapshots_paused = false;
+        // The image is written outside any step, so no frame's undo log
+        // will hold it: frames left from before the load cannot undo it.
+        self.snapshots.clear();
         self.clobber_notes.clear();
         self.clobber_noted = 0;
         for (addr, bytes) in &image.writes {
