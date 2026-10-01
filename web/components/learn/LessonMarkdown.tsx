@@ -260,16 +260,47 @@ const components: Components = {
   },
 };
 
+// A one-line excerpt that sits inside a link (a practice index row): inline
+// marks only, and code without the hover note, because a focusable note inside
+// a link is a control inside a control. A link in the excerpt keeps its text.
+const INLINE_ELEMENTS = ["p", "code", "em", "strong"];
+const inlineComponents: Components = {
+  p(props) {
+    return <>{props.children}</>;
+  },
+  code(props) {
+    return <code className={INLINE_CODE_CLASS}>{props.children}</code>;
+  },
+};
+
 /**
- * Render trusted-after-sanitization author Markdown.
+ * Render trusted-after-sanitization author Markdown. `inline` renders a
+ * phrase inside a `<span>` instead of blocks inside a `<div>`.
  */
 export function LessonMarkdown({
   markdown,
   className,
+  inline = false,
 }: {
   markdown: string;
   className?: string;
+  inline?: boolean;
 }): JSX.Element {
+  if (inline) {
+    return (
+      <span className={className}>
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
+          components={inlineComponents}
+          allowedElements={INLINE_ELEMENTS}
+          unwrapDisallowed
+        >
+          {markdown}
+        </Markdown>
+      </span>
+    );
+  }
   return (
     <div className={className}>
       <Markdown
