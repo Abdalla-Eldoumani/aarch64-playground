@@ -2,7 +2,7 @@
   "title": "Printing a variable from .data",
   "slug": "printing-defined-variables",
   "order": 8,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "Load a value out of .data with two ldr instructions, print it, and store a new value back with str.",
   "tags": [
     "printing",
@@ -99,7 +99,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [The price is right](/practice/the-price-is-right): load two words from `.data`, multiply them, and store the product in a third.\n- [Sum a global array](/practice/sum-a-global-array): add up an array of scores that lives in `.bss`. It needs a loop, so try it after the [pre-test loop lesson](/learn/pretest-loop)."
+      "markdown": "## Practice\n\n- [The price is right](/practice/the-price-is-right): load two words from `.data`, multiply them, and store the product in a third.\n- [Sum a global array](/practice/sum-a-global-array): add up an array of scores that lives in `.bss`. It needs a loop, so try it after the [pre-test loop lesson](/learn/pretest-loop).\n- [Fill in the blank: external data (core)](/practice/blanks-external-data): the directives that declare data, such as `.dword` for a 64-bit variable and `.string` for text. Its `.skip` question comes with the [external data lesson](/learn/external-data)."
     }
   ]
 }
