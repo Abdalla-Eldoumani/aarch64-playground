@@ -57,7 +57,7 @@ reaches React, the editor, or the emulator.
 | Input | Checked by | Refuses |
 | --- | --- | --- |
 | `?bundle=` diagnostic link | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
-| `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a field of the wrong type, more than 12 KiB compressed or 1 MiB decompressed |
+| `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a field of the wrong type, more than 16 KiB compressed or 1 MiB decompressed |
 | `?example=` | `web/lib/hooks/use-deep-link.ts`, regex `/^[\w.-]+$/` | paths and special characters |
 | `?theme=` and `?run=` | the same file, a fixed list of values | any other value |
 | `?embed=` | the same file | anything but exactly `1` |
