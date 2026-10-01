@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { buildShareUrl, shareHashSize, type ShareState } from "@/lib/playground/share";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { SITE_NAME } from "@/lib/content/site";
 
 export interface ShareDialogProps {
@@ -59,7 +59,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
       role="dialog"
       aria-modal="true"
       aria-label="share program"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={ref}
