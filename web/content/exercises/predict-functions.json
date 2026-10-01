@@ -1,0 +1,47 @@
+{
+  "title": "Predict: functions",
+  "slug": "predict-functions",
+  "order": 120,
+  "lastUpdated": "2026-10-01",
+  "topic": "functions",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Trace recursive calls, saved registers, and frame records, and say what a function returns or where it stores a value.",
+  "predictions": [
+    {
+      "code": "// main runs: mov w0, 4 then bl sum\nsum:                        // sum(n) = n + sum(n - 1), sum(0) = 0\n    stp x29, x30, [sp, -32]!\n    mov x29, sp\n    str x19, [sp, 16]       // save the caller's x19\n    mov w19, w0             // keep n for after the call\n    cbz w0, back            // sum(0) returns the 0 already in w0\n    sub w0, w0, 1\n    bl sum\n    add w0, w0, w19\nback:\n    ldr x19, [sp, 16]\n    ldp x29, x30, [sp], 32\n    ret",
+      "question": "What does sum return in w0? Answer in decimal.",
+      "answer": "10",
+      "explanation": "Each call keeps its own n in w19, saved and restored through its own frame, so every n is still there when its inner call returns. The calls go down to sum(0), which returns 0, and the adds happen on the way back out: 0 + 1 + 2 + 3 + 4 = 10.",
+      "hint": "Start from sum(0) and work back up to sum(4)."
+    },
+    {
+      "code": "// sp holds 0x8000 when main runs bl keep\nkeep:\n    stp x29, x30, [sp, -32]!\n    mov x29, sp\n    stp x19, x20, [sp, 16]",
+      "question": "At what address does keep store x20? Answer in hex, written as 0x followed by the digits.",
+      "answer": "0x7ff8",
+      "explanation": "The pre-indexed stp lowers sp by 32 to 0x7fe0 and stores the frame record, x29 and x30, in the first 16 bytes. The second stp writes x19 at sp + 16, which is 0x7ff0, and x20 in the 8 bytes after it, at 0x7ff8.",
+      "hint": "stp writes its first register at the address and its second 8 bytes higher."
+    },
+    {
+      "code": "// in main\n    mov w19, 50\n    mov w0, 6\n    bl triple\n    add w0, w0, w19\n\ntriple:\n    mov w19, 3              // scratch, never saved\n    mul w0, w0, w19\n    ret",
+      "question": "What does w0 hold after the add in main? Answer in decimal.",
+      "answer": "21",
+      "explanation": "triple returns 6 * 3 = 18 in w0, but it also leaves 3 in w19, a callee-saved register it should have put back. main is still counting on its 50, so the add gives 18 + 3 = 21 instead of 68.",
+      "hint": "After the call, what is really in w19?"
+    },
+    {
+      "code": "// sp holds 0x8000 when main runs bl f\nf:\n    stp x29, x30, [sp, -32]!\n    mov x29, sp\n    bl g\n    ...\ng:\n    stp x29, x30, [sp, -16]!\n    mov x29, sp",
+      "question": "Once g has run its mov x29, sp, what value does the 8-byte word at [x29] hold? Answer in hex, written as 0x followed by the digits.",
+      "answer": "0x7fe0",
+      "explanation": "f's stp lowers sp to 0x7fe0, and its mov sets x29 to 0x7fe0. g's stp then lowers sp to 0x7fd0 and stores the x29 it was handed, 0x7fe0, at the new sp. g's x29 points there, so [x29] holds f's frame pointer, the link one frame up the chain.",
+      "hint": "The first word of every frame record is the caller's x29."
+    },
+    {
+      "code": "// main runs: mov w0, 3 then bl total\ntotal:                      // meant to return n + (n - 1) + ... + 1\n    stp x29, x30, [sp, -16]!\n    mov x29, sp\n    mov w9, w0              // keep n for after the call\n    cbz w0, back\n    sub w0, w0, 1\n    bl total\n    add w0, w0, w9\nback:\n    ldp x29, x30, [sp], 16\n    ret",
+      "question": "What does total return in w0? Answer in decimal.",
+      "answer": "0",
+      "explanation": "w9 is a temporary that every call of total overwrites. The deepest call, total(0), sets w9 to 0 and returns 0. Each outer call then adds the w9 that the inner call left behind, which is 0, so 0 comes all the way back out. Keeping n in a callee-saved register such as x19, saved in each frame, fixes it.",
+      "hint": "After bl total returns, which call last wrote w9?"
+    }
+  ]
+}
