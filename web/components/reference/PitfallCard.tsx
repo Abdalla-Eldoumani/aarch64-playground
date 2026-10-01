@@ -81,7 +81,7 @@ export const PitfallCard = memo(function PitfallCard({
       <h3 id={`${id}-title`} className="text-[var(--text-primary)] [font:var(--type-h3)]">
         {pitfall.title}
       </h3>
-      <LessonMarkdown markdown={pitfall.mistake} className="text-[var(--text-secondary)]" />
+      <LessonMarkdown markdown={pitfall.mistake} />
       <div className="grid gap-3 sm:grid-cols-2">
         <div className={WRONG_PANEL}>
           <p className={LABEL_CLASS}>wrong</p>
@@ -94,21 +94,20 @@ export const PitfallCard = memo(function PitfallCard({
           {runButton("fixed")}
         </div>
       </div>
-      <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-[10rem_minmax(0,1fr)]">
+      {/* The markdown's paragraph margins are dropped here so each answer
+          sits on the baseline of its label. */}
+      <dl className="grid gap-x-4 gap-y-3 sm:grid-cols-[10rem_minmax(0,1fr)] sm:items-baseline [&_p]:my-0">
         <dt className={LABEL_CLASS}>on the server</dt>
         <dd>
-          <LessonMarkdown
-            markdown={`The broken program ${pitfall.server}`}
-            className="text-[var(--text-secondary)]"
-          />
+          <LessonMarkdown markdown={`The broken program ${pitfall.server}`} />
         </dd>
         <dt className={LABEL_CLASS}>in the playground</dt>
         <dd>
-          <LessonMarkdown markdown={`It ${pitfall.playground}`} className="text-[var(--text-secondary)]" />
+          <LessonMarkdown markdown={`It ${pitfall.playground}`} />
         </dd>
         <dt className={LABEL_CLASS}>the fix</dt>
         <dd>
-          <LessonMarkdown markdown={pitfall.fix} className="text-[var(--text-secondary)]" />
+          <LessonMarkdown markdown={pitfall.fix} />
         </dd>
       </dl>
       <ul className="flex flex-col gap-1 text-[var(--text-secondary)] [font:var(--type-small)] sm:flex-row sm:flex-wrap sm:gap-x-6">
