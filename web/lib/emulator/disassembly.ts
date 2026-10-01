@@ -9,6 +9,17 @@ export interface DecodedInstruction {
 }
 
 /**
+ * How many words the listing reads from the code base. Data in .text (a
+ * prompt string above main) sits among the instructions, so the last one can
+ * lie past `count` words; with a map, the listing runs on to it.
+ */
+export function listingLength(base: number, count: number, map: LineMap): number {
+  let last = -1;
+  for (const addr of map.addrToLine.keys()) if (addr > last) last = addr;
+  return last < base ? count : Math.max(count, (last - base) / 4 + 1);
+}
+
+/**
  * The instruction listing for one assembly, each word labelled with the
  * source line that produced it. The source is stripped once here: stripping
  * it per instruction costs source size times instruction count, enough to
@@ -36,12 +47,13 @@ export function buildDisassembly(params: {
       ((codeBytes[off + 3] ?? 0) << 24);
     const hex = formatWord32(word);
     // The map gives the editor line for this instruction's address; render
-    // that line's text. Fall back to the index-based source text when the
-    // map is empty (bare-metal) or the address is unexpectedly absent.
+    // that line's text. The map lists every instruction, so a word it leaves
+    // out is data (a string in .text, a literal pool) and is shown as data,
+    // the way objdump does. Bare-metal programs have no map and count lines.
     let text: string;
     if (mapped) {
       const line = pcToSourceLineFromMap(addr, map);
-      text = line == null ? instrTexts[i] ?? "" : strippedLines[line - 1] ?? "";
+      text = line == null ? `.word ${hex}` : strippedLines[line - 1] ?? "";
     } else {
       text = instrTexts[i] ?? "";
     }
