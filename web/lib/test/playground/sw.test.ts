@@ -1,13 +1,14 @@
-// public/sw.js run in a fake worker scope: what it stores, what it refuses,
-// what it serves offline, and when one build's cache replaces another's.
-// The worker is a plain script, so it is evaluated as one, with the
-// browser's cache and fetch replaced by small in-memory stand-ins.
+// The service worker run in a fake worker scope: what it stores, what it
+// refuses, what it serves offline, and when one build's cache replaces
+// another's. The worker is a plain script, so it is evaluated as one, with
+// its build's list already set (the build writes the list in front of it)
+// and the browser's cache and fetch replaced by small in-memory stand-ins.
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
 import { describe, expect, it } from "vitest";
 
-const SOURCE = fs.readFileSync(path.join(process.cwd(), "public", "sw.js"), "utf8");
+const SOURCE = fs.readFileSync(path.join(process.cwd(), "lib", "playground", "sw.js"), "utf8");
 const ORIGIN = "https://site.test";
 const BUILD = "build-two";
 const CACHE = `aarch64-playground-${BUILD}`;
@@ -122,10 +123,7 @@ function startWorker(responder: Responder | null, caches = new FakeCaches()): Wo
     addEventListener: (type: string, handler: (event: unknown) => void) => {
       handlers[type] = handler;
     },
-    importScripts: (url: string) => {
-      expect(url).toBe("/sw-precache.js");
-      scope.PRECACHE = LIST;
-    },
+    PRECACHE: LIST,
     fetch: async (input: string | { url: string }) => {
       if (!network) throw new TypeError("Failed to fetch");
       const url = new URL(typeof input === "string" ? input : input.url, ORIGIN);
