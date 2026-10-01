@@ -168,6 +168,10 @@ const TINT_STYLE = {
   amber: CHANGED_STYLE,
 } as const;
 
+/** Non-breaking spaces inside each [fp, 16]: a phone broke it after the comma. */
+const keepOperandsWhole = (text: string) =>
+  text.replace(/\[[^\]]*\]/g, (operand) => operand.replace(/ /g, " "));
+
 /** One stack band. Unique by label within a stack. */
 export interface BandProps {
   label: string;
@@ -209,7 +213,7 @@ export function Band({
             ghost ? "text-[var(--text-tertiary)]" : "text-[var(--text-secondary)]"
           }`}
         >
-          {detail}
+          {keepOperandsWhole(detail)}
         </span>
       </span>
       {markers.length > 0 && (
