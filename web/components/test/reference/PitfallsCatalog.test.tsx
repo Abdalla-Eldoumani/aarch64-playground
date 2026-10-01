@@ -173,7 +173,7 @@ describe("PitfallsCatalog", { timeout: 15_000 }, () => {
       focus(options);
     };
     fireEvent.click(screen.getByRole("button", { name: "clear the filters" }));
-    expect(calls).toEqual([{ cards: 36, preventScroll: undefined }]);
+    expect(calls).toEqual([{ cards: PITFALLS.length, preventScroll: undefined }]);
     expect(document.activeElement).toBe(box);
   });
 
