@@ -90,6 +90,11 @@ describe("authored programs stay inside the course directive vocabulary", () => 
     for (const file of files) assertClean(rel(file), fs.readFileSync(file, "utf8"));
   });
 
+  it("calling-convention examples carry no banned directive", () => {
+    const file = path.join(process.cwd(), "lib", "content", "calling-convention-examples.ts");
+    assertClean("lib/content/calling-convention-examples.ts", fs.readFileSync(file, "utf8"));
+  });
+
   it("authoring guide payloads carry no banned directive", () => {
     const guide = path.join(process.cwd(), "..", "docs", "authoring-content.md");
     assertClean("docs/authoring-content.md", fs.readFileSync(guide, "utf8"));
