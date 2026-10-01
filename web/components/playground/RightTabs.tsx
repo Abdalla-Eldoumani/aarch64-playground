@@ -96,7 +96,9 @@ export function RightTabs({
               role="tab"
               aria-selected={selected}
               aria-controls={`right-panel-${tab}`}
-              className={`touch-target relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+              // px-3 keeps the eight tabs on one row in a 1280px window's
+              // debug column; a second row came out of a short pane.
+              className={`touch-target relative min-h-[2.25rem] px-3 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
                   ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
