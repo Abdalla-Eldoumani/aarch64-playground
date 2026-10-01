@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { explainError } from "@/lib/asm/error-explain";
+import { formatSteps } from "@/lib/emulator/format-steps";
 
 interface ControlsProps {
   onAssemble: () => void;
@@ -178,7 +179,7 @@ export function Controls({
             role="status"
             aria-label={`${stepCount} ${stepCount === 1 ? "instruction" : "instructions"} executed`}
           >
-            {stepCount.toLocaleString()} {stepCount === 1 ? "step" : "steps"}
+            {formatSteps(stepCount)}
           </span>
         )}
 
