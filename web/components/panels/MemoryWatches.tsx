@@ -113,6 +113,9 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={label}
           onChange={(e) => setLabel(e.target.value)}
           placeholder="label"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className="touch-target w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch label"
         />
@@ -121,6 +124,9 @@ export function MemoryWatches({ getMemory }: MemoryWatchesProps) {
           value={addr}
           onChange={(e) => setAddr(e.target.value)}
           placeholder="0x00400000"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           className="touch-target w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]"
           aria-label="watch address"
         />
