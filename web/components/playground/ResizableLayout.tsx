@@ -55,12 +55,13 @@ export const EDITOR_SPLIT: SplitSpec = {
 
 // The registers take the larger share: after one step they must show the
 // write without scrolling at laptop heights, and the tabs below stay tall
-// enough for a readable memory dump and console. Under the decode strip a
-// short window's 56% held two register rows; on a 1440px screen the list
-// ended halfway down its pane, so a tall window gives the tabs the more.
+// enough for a readable memory dump and console. With 12px labels in the
+// decode strip, 56% held 14 x registers at 1440x900, under the 16 the panel
+// aims for; in a short window it held two rows. On a 1440px-tall screen the
+// list ended halfway down its pane, so a tall window gives the tabs the more.
 export const DEBUG_SPLIT: SplitSpec = {
   ids: ["panel-regs", "panel-tabs"],
-  defaults: [56, 44],
+  defaults: [60, 40],
   byHeight: { short: [62, 38], tall: [44, 56] },
   minSizes: [160, 140],
   label: "resize registers and tabs",
