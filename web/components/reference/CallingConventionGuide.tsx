@@ -144,7 +144,7 @@ const recursionMarkdown = [
 ].join("\n");
 
 const alignmentMarkdown = [
-  "AAPCS64 requires `sp` to sit on a 16-byte boundary at every `bl`: the routine you call is entitled to assume it, and on Linux the first stack access through a misaligned `sp` (usually deep inside `printf`) faults the program. `sub sp, sp, 24` is the classic bug: it reserves room for three 8-byte locals but leaves `sp` on an odd multiple of 8, so the crash surfaces at the next call, far from the line that caused it. The fix is to round every local allocation up to a multiple of 16, the way the `alloc = -(16 + locals) & -16` form does. Move `sp` yourself and watch the boundary:",
+  "AAPCS64 requires `sp` to sit on a 16-byte boundary at every `bl`: the routine you call is entitled to assume it, and on Linux the first stack access through a misaligned `sp` faults the program. The fault usually comes at the call into `printf`, in the short stub the linker puts in front of it. `sub sp, sp, 24` is the classic bug: it reserves room for three 8-byte locals but leaves `sp` on an odd multiple of 8, so the crash surfaces at the next call, far from the line that caused it. The fix is to round every local allocation up to a multiple of 16, the way the `alloc = -(16 + locals) & -16` form does. Move `sp` yourself and watch the boundary:",
 ].join("\n");
 
 const rulesMarkdown = [
