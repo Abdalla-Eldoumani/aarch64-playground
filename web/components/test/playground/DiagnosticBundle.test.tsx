@@ -104,6 +104,16 @@ describe("DiagnosticBundle", () => {
     expect(screen.getByText(/too large for a link/)).toBeTruthy();
   });
 
+  it("stays open when a double press's second click lands on the backdrop", async () => {
+    await openDialog();
+    const dialog = screen.getByRole("dialog", { name: "Diagnostic bundle" });
+    fireEvent.click(dialog, { detail: 2 });
+    expect(screen.getByRole("dialog", { name: "Diagnostic bundle" })).toBeTruthy();
+    // A single click on the backdrop still closes it.
+    fireEvent.click(dialog, { detail: 1 });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("closes on Escape and hands focus back to the button", async () => {
     await openDialog();
     fireEvent.keyDown(document, { key: "Escape" });
