@@ -12,6 +12,7 @@ import { place, type Place } from "@/lib/emulator/clobber-note";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { labelForOffset, parseFrameSlots, type StackSlot } from "@/lib/emulator/frame-labels";
 import { formatByte, formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
+import { formatSteps } from "@/lib/emulator/format-steps";
 import {
   combineSources,
   validateFileName,
@@ -352,7 +353,7 @@ function sameWorkspace(a: Workspace, b: Workspace): boolean {
 }
 
 function runStatus(m: DiagnosticMachine, edited: boolean): string {
-  const steps = `${m.stepCount} step${m.stepCount === 1 ? "" : "s"}`;
+  const steps = formatSteps(m.stepCount);
   let status: string;
   if (!m.programLoaded) {
     status = m.error ? "not running: the program did not assemble or link" : "not assembled yet";
