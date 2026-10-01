@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { formatSavedDate, useOfflineSnapshot } from "@/lib/playground/offline-status";
 
 function read(): boolean {
   if (typeof navigator === "undefined") return true;
@@ -18,21 +19,33 @@ function subscribe(callback: () => void): () => void {
 }
 
 /**
- * The emulator runs in the browser and the service worker serves what a
- * visit already fetched, so going offline is news, not an error.
+ * The emulator runs in the browser, so going offline is news, not an error.
+ * The badge says what the service worker has saved: the playground always,
+ * every other page only after "save every page" (or a visit online).
  */
 export function OfflineBadge() {
   // Default to online for the SSR snapshot so hydration matches the
   // optimistic state on first paint.
   const online = useSyncExternalStore(subscribe, read, () => true);
+  const snapshot = useOfflineSnapshot();
   if (online) return null;
+
+  const savedAt = snapshot?.status.savedAt;
+  // No answer from a worker: nothing is known to be saved.
+  let message = "offline: other pages will load once you reconnect";
+  if (savedAt) {
+    message = `offline: every page is saved on this device (saved ${formatSavedDate(savedAt)})`;
+  } else if (snapshot) {
+    message =
+      "offline: the playground is saved on this device. Other pages open only if you saved every page or opened them online";
+  }
   return (
     <div
       role="status"
       aria-live="polite"
-      className="px-3 py-1 text-[11px] text-center bg-[var(--bg-sunken)] border-b border-[var(--border)] text-[var(--text-secondary)]"
+      className="px-3 py-1 text-[12px] text-center bg-[var(--bg-sunken)] border-b border-[var(--border)] text-[var(--text-secondary)]"
     >
-      offline: the playground runs fully in your browser and keeps working from cached files
+      {message}
     </div>
   );
 }
