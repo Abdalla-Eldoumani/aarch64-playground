@@ -971,13 +971,13 @@ export function FullChromeSurface({
       {shareBanner && (
         <div
           role="status"
-          className="px-4 py-1 text-[11px] [@media(pointer:coarse)]:text-[12px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
+          className="px-4 py-1 text-[12px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
         >
           <span>loaded a shared program from the URL</span>
           <button
             type="button"
             onClick={() => setShareBanner(false)}
-            className="touch-target text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[11px] px-1 [@media(pointer:coarse)]:text-[12px]"
+            className="touch-target text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[12px] px-1"
           >
             dismiss
           </button>
