@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /*
- * Writes web/public/sw-precache.js, the list of addresses the service worker
- * keeps for offline use, from the build beside it. `npm run build` runs it
- * after next build, so the list always names the files of the build it ships
- * with (scripts/vercel-build.sh builds through that script).
+ * Writes web/public/sw.js, the service worker: the list of addresses it keeps
+ * for offline use, read from the build beside it, then the worker's code from
+ * web/lib/playground/sw.js. `npm run build` runs it after next build, so the
+ * list always names the files of the build it ships with
+ * (scripts/vercel-build.sh builds through that script).
  *
  *   node scripts/write-precache-list.js
  *
@@ -19,7 +20,8 @@ const path = require("node:path");
 const zlib = require("node:zlib");
 
 const WEB_DIR = path.join(__dirname, "..", "web");
-const OUT_FILE = path.join(WEB_DIR, "public", "sw-precache.js");
+const WORKER_SOURCE = path.join(WEB_DIR, "lib", "playground", "sw.js");
+const OUT_FILE = path.join(WEB_DIR, "public", "sw.js");
 
 /** Pages the worker saves on install: the manifest's start page, and the page
  *  it answers with when an unsaved page is opened offline. */
@@ -111,12 +113,17 @@ function collectPrecache(webDir) {
   };
 }
 
-/** The worker imports this file, so it is a script that sets one global. */
-function renderPrecache(list) {
+/**
+ * The served worker: one global holding the list, then the worker's code.
+ * The list carries the build id, so every build's worker is different bytes,
+ * which is what a browser checks to start an update.
+ */
+function renderWorker(list, source) {
   const { coreBytes, coreStoredBytes, otherStoredBytes, ...forWorker } = list;
   return (
     "// Written by scripts/write-precache-list.js after next build. Not tracked.\n" +
-    `self.PRECACHE = ${JSON.stringify(forWorker)};\n`
+    `self.PRECACHE = ${JSON.stringify(forWorker)};\n` +
+    source
   );
 }
 
@@ -126,7 +133,7 @@ function megabytes(bytes) {
 
 function main() {
   const list = collectPrecache(WEB_DIR);
-  fs.writeFileSync(OUT_FILE, renderPrecache(list));
+  fs.writeFileSync(OUT_FILE, renderWorker(list, fs.readFileSync(WORKER_SOURCE, "utf8")));
   const coreCount = list.corePages.length + list.files.length;
   console.log(
     `precache list for build ${list.build}: core ${coreCount} entries, ` +
@@ -139,4 +146,4 @@ function main() {
 // A test loads the functions without touching the real build.
 if (require.main === module) main();
 
-module.exports = { CORE_PAGES, collectPrecache, renderPrecache };
+module.exports = { CORE_PAGES, collectPrecache, renderWorker };
