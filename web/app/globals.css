@@ -417,13 +417,6 @@ body {
   }
 }
 
-/* Safe-area inset top, applied to the first flex child (the header) so the
-   inset participates in the flex chain instead of pushing the body below the
-   visible viewport on notched devices. */
-.safe-area-top {
-  padding-top: var(--safe-top);
-}
-
 /* =============================================================================
    SKIP LINK
    Hidden until focused, then fixed, because the nav's blur and the debugger's
