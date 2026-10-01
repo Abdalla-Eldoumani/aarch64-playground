@@ -5,10 +5,12 @@ import path from "node:path";
 import { validateExercise, type Exercise, type WriteExercise } from "@/lib/content/exercise-schema";
 import { checkExercise } from "@/lib/content/exercise-checker";
 import { practiceSide } from "@/lib/content/practice-topics";
+import { parseArgs } from "@/lib/playground/args";
 import {
   SOLUTIONS_DIR,
   codingExercise,
   grade,
+  hiddenMissCount,
   runToSnapshot,
   solutionFor,
 } from "@/lib/test/content/helpers/grade-exercise";
@@ -178,16 +180,26 @@ describe("every emulator-graded exercise is solvable and does not ship already s
   });
 
   it.each(coding.map((exercise) => [exercise.slug, exercise] as const))(
-    "%s: the reference passes every visible and hidden check, and the starter does not",
+    "%s: the reference passes every visible and hidden check, and the starter fails a visible check and a hidden input",
     async (slug, exercise) => {
       const solved = await grade(exercise, solutionFor(slug));
       expect(solved.pass, `${slug} solution: ${solved.why}`).toBe(true);
-      // A starter that faults counts as a failure: the-leaky-frame's
-      // under-sized frame leaves sp misaligned, so its first bl takes the bus
-      // error and the run halts with no exit code and no output. The checker
-      // reads that as a plain miss, not an exception.
-      const starter = await grade(exercise, exercise.starter);
-      expect(starter.pass, `${slug} starter: it already passes`).toBe(false);
+      // Failing somewhere is not enough: a starter that clears every visible
+      // check, or every hidden input, tells the student that part is done
+      // before they have written anything. A starter that faults counts as a
+      // failure: the-leaky-frame's under-sized frame leaves sp misaligned, so
+      // its first bl takes the bus error and the run halts with no output.
+      const visible = checkExercise(
+        exercise.acceptance,
+        runToSnapshot(exercise.starter, parseArgs(exercise.args ?? ""), exercise.stdin),
+        exercise.starter,
+      );
+      const failing = [...visible.results, ...visible.structural].filter((check) => !check.pass);
+      expect(failing.length, `${slug} starter: it passes every visible check`).toBeGreaterThan(0);
+      expect(
+        await hiddenMissCount(exercise, exercise.starter),
+        `${slug} starter: it passes every hidden input`,
+      ).toBeGreaterThan(0);
     },
   );
 });
