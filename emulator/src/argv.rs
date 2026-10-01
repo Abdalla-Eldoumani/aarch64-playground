@@ -1,36 +1,16 @@
-//! Command-line argument layout for hosted programs.
+//! argc and argv for hosted programs: one page at `ARGV_BASE` holding the
+//! pointer table (argv[0..argc], then NULL) and the NUL-terminated strings.
 //!
-//! Programs that read argc/argv (week 11 onward) need a pointer table
-//! plus a string pool somewhere the loader controls. We reserve a page
-//! above `.bss` and below the stack so the student's working area
-//! (stack, heap-style scratch in `.bss`) stays untouched.
-//!
-//! The loader owns argv[0]: on Linux argc is never 0 (argv[0] is the
-//! program path), so every load gets `DEFAULT_ARGV0` prepended and the
-//! caller's slice is argv[1..], the arguments after the program name.
-//! A program that gates on `cmp w0, 3` or prints argv[0] behaves here
-//! exactly as it does on the course servers.
-//!
-//! Page layout at `ARGV_BASE` (one 4 KiB page):
-//! ```text
-//!   +0:                argv[0] = ARGV_BASE + (argc+1)*8
-//!   +8:                argv[1]
-//!   ...
-//!   +argc*8:           NULL terminator
-//!   +(argc+1)*8:       string pool: argv[0] bytes, NUL, argv[1] bytes, NUL, ...
-//! ```
-//!
-//! On entry per AAPCS64: `w0 = argc`, `x1 = argv` (pointer to the table).
+//! The loader always supplies argv[0], because on Linux argc is never 0. A
+//! program that checks `cmp w0, 3` or prints argv[0] then behaves as it
+//! does on the course servers.
 
 use crate::errors::EmuError;
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 
-/// Reserved page for the argv pointer table + string pool.
-///
-/// Sits above `.bss` (`0x0070_0000`) and well below the stack
-/// (`0x8000_0000`), with a 1 MiB gap so future allocations (heap, mmap)
-/// can claim adjacent space without renumbering.
+/// Between `.bss` (0x0070_0000) and the heap (0x0090_0000); the stdio
+/// globals take the next page.
 pub const ARGV_BASE: u64 = 0x0080_0000;
 
 /// Cap on combined pointer-table + string-pool size. One 4 KiB page is
