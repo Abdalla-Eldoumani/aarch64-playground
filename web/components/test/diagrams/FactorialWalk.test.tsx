@@ -28,8 +28,9 @@ describe("FactorialWalk", () => {
     expect(screen.getByText("step 1 of 9")).toBeTruthy();
     for (let step = 0; step < 9; step++) {
       const spell = screen.getByLabelText("factorial walk").querySelector("header p:last-child")!.textContent!;
-      const instruction = spell.slice(spell.indexOf(": ") + 2);
-      expect(currentLine(container).startsWith(squeeze(instruction)), spell).toBe(true);
+      const instruction = currentLine(container).split("//")[0].trim();
+      expect(instruction.length, spell).toBeGreaterThan(0);
+      expect(squeeze(spell).includes(instruction), `${spell} names ${instruction}`).toBe(true);
       if (step < 8) next();
     }
   });
