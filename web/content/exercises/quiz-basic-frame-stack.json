@@ -1,8 +1,8 @@
 {
-  "title": "Quiz: memory and the stack",
+  "title": "Basic quiz: memory and the stack",
   "slug": "quiz-basic-frame-stack",
   "order": 92,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "topic": "memory",
   "difficulty": "intro",
   "variant": "quiz",
