@@ -11,8 +11,8 @@ export const FLOATING_POINT_PITFALLS: Pitfall[] = [
     server: "prints `rounded = 2`.",
     playground: "prints the same line.",
     fix: "Round to nearest with `fcvtas x1, d0`. The fixed program prints `rounded = 3`.",
-    wrong: `        fcvtzs  x1, d0`,
-    right: `        fcvtas  x1, d0`,
+    wrong: `fcvtzs  x1, d0`,
+    right: `fcvtas  x1, d0`,
     broken: {
       source: `// Rounds a price of 2.99 to the nearest whole number.
 // fcvtzs drops the fraction instead of rounding.
