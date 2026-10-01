@@ -900,6 +900,7 @@ function EmbeddableCore({
               followCurrentLine={!emu.isRunning && emu.stepCount > 0}
               onRunShortcut={readOnly ? undefined : handle.assembleAndRun}
               readOnly={readOnly}
+              wrapLines
             />
           )
         }
