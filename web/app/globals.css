@@ -101,7 +101,7 @@
   --syntax-number:   #6D28D9;
   --syntax-string:   #6D28D9;
   --syntax-comment:  #5A626B;
-  --syntax-label:    #047857;
+  --syntax-label:    #036B4D;  /* a shade under the editor's green: 4.5:1 on a code block's amber current line */
 }
 
 /* ----- HIGH-CONTRAST · pure-black, white hairlines, WCAG AAA, texture off ----- */
