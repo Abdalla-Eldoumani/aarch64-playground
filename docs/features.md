@@ -19,7 +19,7 @@ repository root.
 | Quizzes, fill-in-the-blank sets, and prediction sets | `web/components/practice/InteractiveExerciseView.tsx`, `QuizBlock.tsx`, `BlanksBlock.tsx`, `PredictionBlock.tsx`, `FeedbackAlert.tsx`, `web/lib/content/theory-answers.ts` |
 | Exercise checker (runs the program on the visible and hidden cases; no stored answer) | `web/lib/content/exercise-checker.ts` |
 | Saved answers, solved marks, and the progress file | `web/lib/playground/exercise-answers.ts`, `solved-state.ts` |
-| Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/`, `web/lib/content/reference-data.ts`, `pitfall-data.ts` |
+| Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/`, `web/lib/content/reference-data.ts`, `pitfall-data.ts`, `pitfalls/` (one file of pitfall cards per group) |
 | The C equivalent of each instruction | `web/lib/asm/c-equivalents.ts` |
 | Teaching diagrams (flag panel, condition codes, encodings, frame walk, stack alignment, register files) | `web/components/diagrams/` |
 | Flag math behind the diagrams | `web/lib/emulator/flag-math.ts` |
