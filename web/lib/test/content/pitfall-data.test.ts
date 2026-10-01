@@ -59,6 +59,15 @@ describe("pitfall cards", () => {
     }
   });
 
+  it("each start their snippets at the left edge, since a shared indent only costs room on a phone", () => {
+    for (const { slug, wrong, right } of PITFALLS) {
+      for (const snippet of [wrong, right]) {
+        const lines = snippet.split("\n").filter((line) => line.trim() !== "");
+        expect(lines.some((line) => !line.startsWith(" ")), slug).toBe(true);
+      }
+    }
+  });
+
   it("each cite a source in the Arm ARM, the GNU as manual, or AAPCS64", () => {
     for (const { slug, source } of PITFALLS) {
       expect(source.title, slug).toMatch(/^(Arm |GNU as manual|AAPCS64)/);
