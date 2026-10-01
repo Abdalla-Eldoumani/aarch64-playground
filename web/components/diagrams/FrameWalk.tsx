@@ -8,7 +8,8 @@
  * a frame opens, so nothing shifts.
  */
 
-import { useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 
@@ -302,11 +303,17 @@ export function FrameWalk({
 }): JSX.Element {
   const [index, setIndex] = useState(0);
   const step = steps[index];
+  const controls = useRef<HTMLDivElement>(null);
 
   function move(delta: 1 | -1) {
-    setIndex((current) =>
-      Math.min(Math.max(current + delta, 0), steps.length - 1),
-    );
+    const target = Math.min(Math.max(index + delta, 0), steps.length - 1);
+    const [back, next] = Array.from(controls.current?.querySelectorAll("button") ?? []);
+    const focused = document.activeElement;
+    flushSync(() => setIndex(target));
+    // A browser drops focus to the page when the focused button turns
+    // disabled, so at either end the other button takes it.
+    if (target === steps.length - 1 && focused === next) back?.focus();
+    else if (target === 0 && focused === back) next?.focus();
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -334,6 +341,7 @@ export function FrameWalk({
       </header>
 
       <div
+        ref={controls}
         className="flex flex-wrap items-center gap-3"
         onKeyDown={onKeyDown}
         role="group"
