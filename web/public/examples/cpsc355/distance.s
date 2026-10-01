@@ -12,7 +12,7 @@ define(COUNT, 6)
 .data
 nums:       .word   3, -8, 5, -2, 7, -1
 fmt_dist:   .string "%2d is %d from zero\n"
-fmt_total:  .string "total distance: %d\n"
+fmt_total:  .string "total distance is %d\n"
 
 .text
 
