@@ -7,6 +7,7 @@
  * (scripts/vercel-build.sh builds through that script).
  *
  *   node scripts/write-precache-list.js
+ *   node scripts/write-precache-list.js --check   (public/sw.js lists this build?)
  *
  * The core set is the playground, the offline page, and every file a page can
  * load: the build's static output (chunks, CSS, fonts, the emulator's .wasm),
@@ -153,8 +154,29 @@ function megabytes(bytes) {
   return `${(bytes / 1_000_000).toFixed(2)} MB`;
 }
 
+/** The list a written worker carries, or null when it carries none. */
+function workerList(text) {
+  const match = /^self\.PRECACHE = (\{.*\});$/m.exec(text);
+  return match ? JSON.parse(match[1]) : null;
+}
+
+/** Whether a written list names exactly this build's id, pages and files. */
+function sameFiles(list, written) {
+  const keys = ["build", "corePages", "files", "otherPages"];
+  return written !== null && keys.every((key) => JSON.stringify(list[key]) === JSON.stringify(written[key]));
+}
+
 function main() {
   const list = collectPrecache(WEB_DIR);
+  if (process.argv.includes("--check")) {
+    // vercel-build.sh's second build ships the worker its first build wrote,
+    // so the worker must still name this build's files.
+    if (!sameFiles(list, workerList(fs.readFileSync(OUT_FILE, "utf8")))) {
+      console.error(`public/sw.js does not list the files of build ${list.build}`);
+      process.exitCode = 1;
+    } else console.log(`public/sw.js lists the files of build ${list.build}`);
+    return;
+  }
   fs.writeFileSync(OUT_FILE, renderWorker(list, fs.readFileSync(WORKER_SOURCE, "utf8")));
   const coreCount = list.corePages.length + list.files.length;
   console.log(
@@ -168,4 +190,4 @@ function main() {
 // A test loads the functions without touching the real build.
 if (require.main === module) main();
 
-module.exports = { CORE_PAGES, collectPrecache, renderWorker };
+module.exports = { CORE_PAGES, collectPrecache, renderWorker, workerList, sameFiles };
