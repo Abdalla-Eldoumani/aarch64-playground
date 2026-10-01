@@ -67,7 +67,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
-          share this program
+          Share this program
         </h2>
         {oversize ? (
           <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
