@@ -8,7 +8,7 @@
  * the anchors always match.
  */
 
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import type { Lesson } from "@/lib/content/lesson-schema";
 import { extractToc } from "@/lib/content/lesson-toc";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
@@ -35,11 +35,15 @@ const TOC_LINK_CLASS =
 export function LessonArticle({
   lesson,
   sheetNumber = "4.x",
+  children,
 }: {
   lesson: Lesson;
   /** The lesson's number, e.g. "4.3" (its place in the sorted order); it
    *  numbers the kicker, the contents, and the examples. */
   sheetNumber?: string;
+  /** The foot of the article, after the last block. A slot rather than a
+   *  prop of data, so the page can render it on the server. */
+  children?: ReactNode;
 }): JSX.Element {
   const toc = extractToc(lesson);
   // Editor blocks are the numbered examples, 4.N.k in body order.
@@ -172,6 +176,7 @@ export function LessonArticle({
               );
           }
         })}
+        {children}
       </article>
     </div>
   );
