@@ -7,6 +7,7 @@ import {
   CREDIBILITY,
 } from "@/lib/content/site";
 import { Wordmark } from "@/components/ui/Wordmark";
+import { SaveOffline } from "@/components/chrome/SaveOffline";
 
 // Footer links share one quiet -> cyan-on-hover treatment, all from tokens.
 const LINK_CLASS =
@@ -14,8 +15,9 @@ const LINK_CLASS =
 
 /**
  * The one footer on every page, the landing included, so it carries the
- * project's facts and no page needs a second band above it. A server component
- * so it ships no client JS. The author's name lives only in LICENSE, never here.
+ * project's facts and no page needs a second band above it. A server component,
+ * so the only client JS it ships is the save-for-offline control. The author's
+ * name lives only in LICENSE, never here.
  */
 export function SiteFooter() {
   return (
@@ -67,6 +69,9 @@ export function SiteFooter() {
           <span className="text-[var(--text-tertiary)]">
             {CREDIBILITY.courseContext}
           </span>
+          {/* The one place a tablet or desktop reader finds it: the phone
+              drawer and the iPhone install tip carry it too. */}
+          <SaveOffline />
         </div>
       </div>
 
