@@ -1,5 +1,8 @@
+// Pins the vector register role map: 32 cells in three role bands, each cell
+// one 128-bit register whose bar shows what a call keeps. Only v8-v15 keep
+// anything, and only bits 63:0, their d view.
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { FpRegisterFileDiagram } from "@/components/diagrams/FpRegisterFileDiagram";
 
 afterEach(() => {
@@ -7,55 +10,57 @@ afterEach(() => {
 });
 
 describe("FpRegisterFileDiagram", () => {
-  it("renders the first and last register of each of the three role bands", () => {
+  it("exposes an accessible name", () => {
     render(<FpRegisterFileDiagram />);
-    // The footer prose also names d0/s0, so match within the cell list.
-    for (const reg of ["d0", "d7", "d8", "d15", "d16", "d31"]) {
-      expect(screen.getAllByText(reg).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByLabelText("aapcs64 vector register file")).toBeTruthy();
+  });
+
+  it("draws all 32 registers in the three AAPCS64 role bands", () => {
+    render(<FpRegisterFileDiagram />);
+    const bands = screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent);
+    expect(bands).toEqual([
+      "arguments & result",
+      "callee-saved, low 64 bits only",
+      "caller-saved temporaries",
+    ]);
+    const cells = screen.getAllByLabelText(/^v\d+: /);
+    expect(cells.map((cell) => cell.textContent?.match(/^v\d+/)?.[0])).toEqual(
+      Array.from({ length: 32 }, (_, n) => `v${n}`),
+    );
+  });
+
+  it("says a call keeps bits 63:0 of v8-v15 and nothing of the rest", () => {
+    render(<FpRegisterFileDiagram />);
+    for (const n of [8, 15]) {
+      expect(
+        screen.getByLabelText(`v${n}: bits 63:0, d${n}, kept across a call; bits 127:64 may change`),
+      ).toBeTruthy();
+    }
+    for (const n of [0, 7, 16, 31]) {
+      expect(screen.getByLabelText(`v${n}: a call may change all 128 bits`)).toBeTruthy();
     }
   });
 
-  it("pairs every d cell with its s view, the way the course names them", () => {
+  it("names each cell's d view, the course's name for the kept half", () => {
+    render(<FpRegisterFileDiagram />);
+    const v8 = screen.getByLabelText(/^v8: /);
+    expect(within(v8).getByText("d8")).toBeTruthy();
+  });
+
+  it("teaches the halves in the footer and notes there is no floating-point frame pointer", () => {
     const { container } = render(<FpRegisterFileDiagram />);
-    for (const sview of ["s0", "s8", "s15", "s31"]) {
-      expect(screen.getAllByText(sview).length).toBeGreaterThanOrEqual(1);
-    }
-    // The cells show only s and d. The footer names the full vector width once,
-    // as something the playground covers beyond the course, and says a call
-    // keeps only bits 63:0 of v8-v15.
     const text = container.textContent ?? "";
-    expect(text).toContain("the vector file as well");
-    expect(text).toContain("while the course keeps to");
-    expect(text).toContain("preserves only bits 63:0 of");
-  });
-
-  it("labels the callee-saved band and teaches the two views in the footer", () => {
-    render(<FpRegisterFileDiagram />);
-    expect(screen.getByText("callee-saved (d8-d15)")).toBeTruthy();
-    expect(screen.getByText(/two views the course uses/)).toBeTruthy();
-    expect(screen.getByText(/converts between them/)).toBeTruthy();
-  });
-
-  it("notes there is no floating-point frame pointer", () => {
-    render(<FpRegisterFileDiagram />);
-    expect(
-      screen.getByText(/There is no floating-point frame pointer/),
-    ).toBeTruthy();
+    expect(text).toContain("the left half of its bar is bits 127:64");
+    expect(text).toContain("A call keeps only the solid halves, d8 to d15");
+    expect(text).toContain("There is no floating-point frame pointer");
   });
 
   it("tints the bands from tokens: cyan arguments, amber callee-saved, neutral temporaries", () => {
     const { container } = render(<FpRegisterFileDiagram />);
     const html = container.innerHTML;
-    expect(html).toContain("var(--cyan)"); // d0-d7, arguments & result
-    expect(html).toContain("var(--amber)"); // d8-d15, callee-saved for the d-sized value only
-    expect(html).toContain("var(--border-strong)"); // d16-d31, temporaries
+    expect(html).toContain("var(--cyan)");
+    expect(html).toContain("var(--amber)");
+    expect(html).toContain("var(--border-strong)");
     expect(html).not.toContain("var(--danger)");
-  });
-
-  it("exposes an accessible name", () => {
-    render(<FpRegisterFileDiagram />);
-    expect(
-      screen.getByLabelText("aapcs64 floating-point register file"),
-    ).toBeTruthy();
   });
 });
