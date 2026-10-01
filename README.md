@@ -19,8 +19,8 @@ steps in [Run it locally](#run-it-locally).
 - Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
   on files kept in the browser.
 - Read 32 lessons, each with programs you can run in place.
-- Practice with 67 coding exercises, checked by running your program on hidden
-  inputs, and 44 sets of quizzes, fill-in-the-blank questions, and output
+- Practice with 68 coding exercises, checked by running your program on hidden
+  inputs, and 68 sets of quizzes, fill-in-the-blank questions, and output
   predictions.
 - Look up every instruction the emulator accepts, with its syntax, an example,
   the C it matches, and the flags it sets.
