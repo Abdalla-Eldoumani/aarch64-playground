@@ -20,7 +20,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## One register, many views\n\nThe scalar names each read the low bits of a `v` register as one value:\n\n| name | bits | holds |\n|---|---|---|\n| `b0` | 8 | one byte |\n| `h0` | 16 | one halfword |\n| `s0` | 32 | one single, or one int |\n| `d0` | 64 | one double, or one long |\n| `q0` | 128 | the whole register as one value |\n\nWritten as `v0` with an *arrangement* after a dot, the same 128 bits become lanes:\n\n| arrangement | lanes | bits per lane |\n|---|---|---|\n| `v0.16b` | 16 | 8 |\n| `v0.8h` | 8 | 16 |\n| `v0.4s` | 4 | 32 |\n| `v0.2d` | 2 | 64 |\n\n`v0.8b`, `v0.4h` and `v0.2s` use only the low 64 bits. One lane is named by its number in square brackets, counting from 0 at the low end: `v0.s[2]` is the third 32-bit lane."
+      "markdown": "## One register, many views\n\nThe *scalar* names read one value, not a row of them, from the low bits of a `v` register:\n\n| name | bits | holds |\n|---|---|---|\n| `b0` | 8 | one byte |\n| `h0` | 16 | one halfword |\n| `s0` | 32 | one single, or one int |\n| `d0` | 64 | one double, or one long |\n| `q0` | 128 | the whole register as one value |\n\nWritten as `v0` with an *arrangement* after a dot, the same 128 bits become lanes:\n\n| arrangement | lanes | bits per lane |\n|---|---|---|\n| `v0.16b` | 16 | 8 |\n| `v0.8h` | 8 | 16 |\n| `v0.4s` | 4 | 32 |\n| `v0.2d` | 2 | 64 |\n\n`v0.8b`, `v0.4h` and `v0.2s` use only the low 64 bits. One lane is named by its number in square brackets, counting from 0 at the low end: `v0.s[2]` is the third 32-bit lane."
     },
     {
       "type": "prose",
