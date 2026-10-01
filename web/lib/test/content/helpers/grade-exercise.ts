@@ -113,3 +113,22 @@ export async function grade(exercise: WriteExercise, source: string, maxSteps?: 
   }
   return { pass: true, why: "" };
 }
+
+/**
+ * How many hidden inputs a program gets wrong, every case run (`grade` stops
+ * at the first miss, and runs none when the visible checks fail).
+ */
+export async function hiddenMissCount(exercise: WriteExercise, source: string): Promise<number> {
+  const emu = new Emulator();
+  try {
+    const machine = new EmulatorInstance(emu);
+    let misses = 0;
+    for (const testCase of exercise.hiddenCases ?? []) {
+      const outcome = await runHeadless(machine, source, parseArgs(testCase.args ?? ""), testCase.stdin);
+      if (checkHiddenCase(testCase, outcome).miss !== null) misses += 1;
+    }
+    return misses;
+  } finally {
+    emu.free();
+  }
+}
