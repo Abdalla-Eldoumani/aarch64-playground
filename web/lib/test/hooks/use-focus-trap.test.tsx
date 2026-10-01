@@ -107,6 +107,24 @@ describe("useFocusTrap and a double press of Enter or Space", () => {
       clock.mockRestore();
     }
   });
+
+  test("holds back the repeats of a key held down since the opener", () => {
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const onKey = vi.fn();
+      render(<KeyedModal onKey={onKey} />);
+      now += 900;
+      fireEvent.keyDown(screen.getByTestId("first"), { key: "Enter", repeat: true });
+      expect(onKey).not.toHaveBeenCalled();
+      // Released and pressed again: a deliberate press goes through.
+      fireEvent.keyUp(screen.getByTestId("first"), { key: "Enter" });
+      fireEvent.keyDown(screen.getByTestId("first"), { key: "Enter" });
+      expect(onKey).toHaveBeenCalledWith("Enter");
+    } finally {
+      clock.mockRestore();
+    }
+  });
 });
 
 describe("closeOnBackdropClick", () => {
