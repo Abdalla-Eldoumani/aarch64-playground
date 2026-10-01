@@ -49,6 +49,16 @@ describe("LessonMarkdown", () => {
     expect(label + title).toContain(expected);
   });
 
+  it("renders a summary's code as code in the card, and drops its backticks from the label", () => {
+    const { container } = render(<LessonMarkdown markdown="then `neg` it" />);
+    const card = container.querySelector('[role="tooltip"]');
+    expect(card?.querySelector("code")?.textContent).toBe("SUB Rd, ZR, Rn");
+    expect(card?.textContent).not.toContain("`");
+    const note = container.querySelector('[role="note"]');
+    expect(note?.getAttribute("aria-label")).toBe("Rd = -Rn (alias for SUB Rd, ZR, Rn).");
+    expect(note?.getAttribute("title")).toBe("Rd = -Rn (alias for SUB Rd, ZR, Rn).");
+  });
+
   it("renders an inline excerpt as a phrase: code without a hover note, a link as its text", () => {
     const { container } = render(
       <LessonMarkdown inline markdown="Read `mov` with **care** and [print](/learn) it" />,
