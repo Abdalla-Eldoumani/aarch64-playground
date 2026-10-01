@@ -2,7 +2,7 @@
   "title": "Arithmetic, and the missing remainder",
   "slug": "arithmetic-instructions",
   "order": 7,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-30",
   "summary": "Work out formulas with add, sub, mul, madd and msub, divide with sdiv and udiv, and build a remainder from sdiv and msub.",
   "tags": [
     "armv8 basics",
@@ -88,6 +88,11 @@
         "stdout": "sdiv 9 / 0 = 0\nsdiv -8 / 2 = -4\nudiv -8 / 2 = 2147483644 (it read -8 as 4294967288)\n",
         "exitCode": 0
       }
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [Dividing by zero gives 0, with no error](/reference#pitfall-divide-by-zero-gives-zero)\n- [The most negative int divided by -1 stays negative](/reference#pitfall-int-min-divided-by-minus-one)\n- [There is no remainder instruction](/reference#pitfall-no-remainder-instruction)\n- [mul takes registers only and sets no flags](/reference#pitfall-mul-takes-registers-only)"
     },
     {
       "type": "prose",
