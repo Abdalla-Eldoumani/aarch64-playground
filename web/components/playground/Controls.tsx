@@ -158,7 +158,7 @@ export function Controls({
         {!compact && stepCount != null && stepCount > 0 && (
           <span
             key={stepCount}
-            className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
+            className="hidden sm:inline text-[12px] text-[var(--text-secondary)] font-mono anim-step-pop"
             role="status"
             aria-label={`${stepCount} ${stepCount === 1 ? "instruction" : "instructions"} executed`}
           >
@@ -197,7 +197,7 @@ export function Controls({
             {error}
           </p>
           {explanation && (
-            <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[11px] leading-snug text-[var(--text-tertiary)] sm:block">
+            <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-snug text-[var(--text-tertiary)] sm:block">
               {explanation.fix}
             </p>
           )}
@@ -217,7 +217,7 @@ function Shortcut({ keys }: { keys: string }) {
     <kbd
       aria-hidden="true"
       data-keys={keys}
-      className="hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
+      className="hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[12px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
     />
   );
 }
