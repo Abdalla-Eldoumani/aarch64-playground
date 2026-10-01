@@ -93,7 +93,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Monster roster](/practice/monster-roster): find the strongest monster in an array of structures, one field offset at a time.\n- [Quiz: arrays and structures (intro)](/practice/quiz-basic-arrays), [Fill in the blank: arrays and structures (core)](/practice/blanks-arrays) and [Predict: arrays and structures (challenge)](/practice/predict-arrays): field offsets, padding, and element addresses."
+      "markdown": "## Practice\n\n- [Monster roster](/practice/monster-roster): find the strongest monster in an array of structures, one field offset at a time.\n- [Basic quiz: arrays and structures](/practice/quiz-basic-arrays), [Fill in the blank: arrays and structures (core)](/practice/blanks-arrays) and [Predict: arrays and structures (challenge)](/practice/predict-arrays): field offsets, padding, and element addresses."
     }
   ]
 }
