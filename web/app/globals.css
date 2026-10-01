@@ -156,9 +156,9 @@
   --type-body:     400 15px/1.75  var(--font-sans);
   --type-small:    400 13px/1.50  var(--font-sans);
   --type-code:     400 14px/1.50  var(--font-mono);   /* editor: 14/21px    */
-  --type-label:    500 10px/1.40  var(--font-mono);   /* .14em, uppercase   */
-  --type-kicker:   600 11px/1.40  var(--font-mono);   /* .18em, uppercase   */
-  --type-docrule:  400 10px/1.40  var(--font-mono);   /* .08em, uppercase   */
+  --type-label:    500 12px/1.40  var(--font-mono);   /* .14em, uppercase   */
+  --type-kicker:   600 12px/1.40  var(--font-mono);   /* .18em, uppercase   */
+  --type-docrule:  400 12px/1.40  var(--font-mono);   /* .08em, uppercase   */
 }
 
 /* =============================================================================
