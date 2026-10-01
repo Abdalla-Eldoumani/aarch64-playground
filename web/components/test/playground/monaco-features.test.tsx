@@ -1,7 +1,8 @@
 // Pins the editor's feature list to monaco's own register.all: the loader runs
 // the features one task at a time, and only register.all's order keeps that
 // the same as the single import it replaced. A monaco upgrade that adds,
-// drops, or reorders a feature fails here instead of changing the editor.
+// drops, or reorders a feature fails here instead of changing the editor, so a
+// new feature is either listed or left out by name.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -33,13 +34,20 @@ function registerAllOrder(): string[] {
   );
 }
 
+// Features the editor leaves out on purpose, each with nothing in this app
+// that draws it. The editor never imports register.all, so a feature dropped
+// here is gone from the bundle, not just from the list.
+const LEFT_OUT = ["inlineCompletions"];
+
 describe("monaco feature list", () => {
-  it("names every feature register.all imports, in register.all's order", () => {
+  it("names every feature register.all imports but the ones left out, in register.all's order", () => {
     const listed = [
       ...readFileSync(SUBJECT, "utf8").matchAll(/"monaco-editor\/features\/([^/"]+)\/register"/g),
     ].map((m) => m[1]);
     const order = registerAllOrder();
     expect(order.length).toBeGreaterThan(60);
-    expect(listed).toEqual(order);
+    // A left-out name monaco no longer has would hide a typo in this list.
+    for (const name of LEFT_OUT) expect(order).toContain(name);
+    expect(listed).toEqual(order.filter((name) => !LEFT_OUT.includes(name)));
   });
 });
