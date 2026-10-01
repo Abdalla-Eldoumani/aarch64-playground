@@ -139,7 +139,7 @@ const LINK_CLASS =
 const PRE_CLASS =
   "my-4 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
 const INLINE_CODE_CLASS =
-  "rounded-[var(--radius-control)] bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[0.9em] text-[var(--syntax-keyword)]";
+  "rounded-[var(--radius-control)] bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[max(0.9em,12px)] text-[var(--syntax-keyword)]";
 // The wrapper, not the table, scrolls: a wide table on a phone scrolls
 // sideways inside the column instead of pushing the page wider.
 const TABLE_WRAP_CLASS = "my-4 overflow-x-auto";
