@@ -11,7 +11,7 @@ afterEach(() => {
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 
-/** jsdom never reports :focus-visible, so a test says how focus arrived. */
+/** jsdom reports :focus-visible for any focused element, however focus arrived, so a test says how it arrived. */
 function focusFrom(source: "keyboard" | "pointer") {
   vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
     return selector === ":focus-visible" ? source === "keyboard" : matches.call(this, selector);
@@ -56,7 +56,7 @@ describe("SideScroll", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("does nothing in a browser without scrollIntoView", () => {
+  it("does nothing where scrollIntoView is missing, as in jsdom", () => {
     focusFrom("keyboard");
     row();
     delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
