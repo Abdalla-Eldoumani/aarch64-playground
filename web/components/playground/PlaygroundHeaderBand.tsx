@@ -129,7 +129,7 @@ export function PlaygroundHeaderBand({
     return (
       // The phone bar replaces both the site bar and the band, so it carries
       // the top safe area and the home link itself.
-      <div className="safe-area-top flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] pl-[max(0.75rem,var(--safe-left))] pr-[max(0.25rem,var(--safe-right))]">
+      <div className="pt-[var(--safe-top)] flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] pl-[max(0.75rem,var(--safe-left))] pr-[max(0.25rem,var(--safe-right))]">
         <Wordmark className="shrink-0 min-h-[44px]" />
         <ExampleLoader onLoad={onLoadProgram} fill />
         <button
