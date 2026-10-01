@@ -286,6 +286,7 @@ export function BaseConverter({
             spellCheck={false}
             autoComplete="off"
             autoCapitalize="off"
+            autoCorrect="off"
             aria-invalid={own?.tone === "error" ? true : undefined}
             aria-describedby={`${id}-message`}
             className={`touch-target w-full min-w-0 rounded border bg-[var(--bg-raised)] px-2 py-1 font-mono text-[11px] text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus-visible:[box-shadow:var(--ring)] ${
