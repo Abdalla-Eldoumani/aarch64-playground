@@ -82,10 +82,10 @@ const TRACE_STYLE = {
   backgroundColor: "color-mix(in srgb, var(--amber) 22%, transparent)",
 } as const;
 
-// On a touch screen a field never shrinks under 44px, the least a finger
-// hits (45 with the shared 1px edge); the row scrolls sideways instead.
+// A field never shrinks below its own text, and on a touch screen its button
+// never below 44px, the least a finger hits; the row scrolls sideways instead.
 const FIELD_LI =
-  "flex min-w-0 [@media(pointer:coarse)]:min-w-[45px] flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
+  "flex flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
 // The amber destination cell: the 1px border rides an inset shadow so the
 // shared cell edges and the proportional widths stay untouched.
 const FIELD_LI_DEST =
@@ -138,7 +138,7 @@ export function BitFieldDiagram({
           const dest = bitHeaders && isDestination(field);
           const rangeLine = ranges && (
             <span
-              className={`w-full truncate font-mono text-[12px] ${
+              className={`w-full whitespace-nowrap font-mono text-[12px] ${
                 dest ? "text-[var(--amber)]" : "text-[var(--text-tertiary)]"
               }`}
             >
@@ -178,24 +178,24 @@ export function BitFieldDiagram({
                   aria-label={`${field.label}, ${field.bits} bits, ${field.value}${
                     field.meaning ? `, ${field.meaning}` : ""
                   }`}
-                  className={`flex min-h-[44px] w-full min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2 outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
+                  className={`flex min-h-[44px] w-full flex-col [@media(pointer:coarse)]:min-w-[44px] items-center justify-center gap-0.5 px-1 py-2 outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
                     active === index
                       ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)]"
                       : ""
                   }`}
                 >
                   {rangeLine}
-                  <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
+                  <span className={`w-full whitespace-nowrap font-mono text-[12px] ${labelInk}`}>
                     {field.label}
                   </span>
-                  <span className={`w-full truncate font-mono text-[12px] ${valueInk}`}>
+                  <span className={`w-full whitespace-nowrap font-mono text-[12px] ${valueInk}`}>
                     {field.value}
                   </span>
                 </button>
               ) : (
-                <span className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2">
+                <span className="flex flex-col items-center justify-center gap-0.5 px-1 py-2">
                   {rangeLine}
-                  <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
+                  <span className={`w-full whitespace-nowrap font-mono text-[12px] ${labelInk}`}>
                     {field.label}
                   </span>
                   <span className={`font-mono text-[12px] ${valueInk}`}>
