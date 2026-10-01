@@ -135,6 +135,9 @@ interface BackendConfig {
   assembleError?: string;
   assembleErrorLine?: number;
   assembleThrows: boolean;
+  /** What a failed assemble leaves in the machine. The bare-metal assembler
+   *  clears the machine only on success, so a failure can keep the old one. */
+  failedAssembleSnapshot: Partial<StateSnapshot>;
   stepResult: StepResultPayload;
   stepThrows: boolean;
   stepBackThrows: boolean;
@@ -186,6 +189,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     memoryRegions: REGIONS,
     assembleSuccess: true,
     assembleThrows: false,
+    failedAssembleSnapshot: {},
     stepResult: { pc: CODE_BASE, halted: false, error: null, outcome: "advance", exitCode: null },
     stepThrows: false,
     stepBackThrows: false,
@@ -268,7 +272,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
             error_line: cfg.assembleErrorLine,
             instruction_count: 0,
           };
-      const s = fire();
+      const s = fire(cfg.assembleSuccess ? {} : cfg.failedAssembleSnapshot);
       return Promise.resolve({ result, snapshot: s });
     },
     step() {
@@ -699,6 +703,55 @@ describe("useEmulator assemble", () => {
     });
 
     expect(result.current.instructions).toEqual([]);
+  });
+
+  // A machine stepped four times (x0 = 7, x1 = 12, a frame pushed), which the
+  // fake's failed assemble leaves in place as the bare-metal assembler does.
+  const STEPPED: Partial<StateSnapshot> = {
+    registers: [
+      "0x0000000000000007",
+      "0x000000000000000c",
+      ...Array<string>(29).fill("0x0000000000000000"),
+    ],
+    sp: "0x000000007ffffff0",
+    pc: "0x0000000000400010",
+    changedRegs: [1],
+  };
+
+  // The registers, stack and memory panes read the machine, so after any kind
+  // of failure the machine is wiped and the view matches a cold load.
+  it.each([
+    ["the assembler rejects the source", { assembleSuccess: false, assembleError: "bad" }, "editor"],
+    ["the backend call throws", { assembleThrows: true }, "editor"],
+    ["a terminal build fails", { assembleSuccess: false }, "terminal"],
+    ["the source has no instructions", {}, "empty"],
+  ] as const)("returns the registers to the cold-load state when %s", async (_why, failure, via) => {
+    const fake = makeBackend({ failedAssembleSnapshot: STEPPED });
+    const { result } = await mountLoaded(fake);
+    const cold = {
+      registers: result.current.registers,
+      sp: result.current.sp,
+      pc: result.current.pc,
+    };
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      fake.fire(STEPPED);
+    });
+    expect(result.current.pc).toBe(0x400010);
+
+    Object.assign(fake.cfg, failure);
+    await act(async () => {
+      if (via === "terminal") await result.current.assembleForTool(HOSTED_SOURCE);
+      else await result.current.assemble(via === "empty" ? "// nothing here" : HOSTED_SOURCE);
+    });
+
+    expect(result.current.registers).toEqual(cold.registers);
+    expect(result.current.sp).toBe(cold.sp);
+    expect(result.current.pc).toBe(cold.pc);
+    expect(result.current.changedRegs.size).toBe(0);
+    expect(fake.calls.reset).toBe(1);
   });
 
   it("captures a thrown backend error in the catch path", async () => {
