@@ -234,6 +234,25 @@ describe("ResizableLayout", () => {
     expect(panel("panel-tabs").getAttribute("data-min")).toBe("140");
   });
 
+  // A finger's tabs and console rows are 44px tall, so the tabs pane needs
+  // more height before the console shows any lines; the other floors stay.
+  it("raises the tabs pane's floor under a coarse pointer", () => {
+    const fine = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...fine(query),
+      matches: query === "(pointer: coarse)",
+    })) as typeof window.matchMedia;
+    try {
+      renderLayout();
+      expect(panel("panel-tabs").getAttribute("data-min")).toBe("300");
+      expect(panel("panel-regs").getAttribute("data-min")).toBe("160");
+      expect(panel("panel-editor").getAttribute("data-min")).toBe("160");
+      expect(panel("panel-left").getAttribute("data-min")).toBe("360");
+    } finally {
+      window.matchMedia = fine;
+    }
+  });
+
   it("opens a short window on its own splits, saved under their own keys", () => {
     window.localStorage.setItem(`${KEY}lg-left`, "[60,40]");
     render(
