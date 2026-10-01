@@ -243,17 +243,20 @@ const components: Components = {
       return <code className={INLINE_CODE_CLASS}>{children}</code>;
     }
 
+    // The instruction summaries mark code with backticks: the card renders
+    // them, and the attributes, which cannot hold markup, drop them.
+    const plainSummary = summary.replace(/`/g, "");
     return (
       <span
         tabIndex={0}
         role="note"
-        aria-label={summary}
-        title={summary}
+        aria-label={plainSummary}
+        title={plainSummary}
         className={HOVER_WRAP_CLASS}
       >
         <code className={INLINE_CODE_CLASS}>{children}</code>
         <span role="tooltip" aria-hidden="true" className={TOOLTIP_CLASS}>
-          {summary}
+          <LessonMarkdown inline markdown={summary} />
         </span>
       </span>
     );
