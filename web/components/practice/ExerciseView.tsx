@@ -55,7 +55,7 @@ const ANSWER_SAVE_DEBOUNCE_MS = 500;
 
 const RESTORE_CLASS =
   "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] px-3 font-mono " +
-  "text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] outline-none " +
+  "text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] outline-none " +
   "transition-colors hover:text-[var(--text-primary)] focus-visible:[box-shadow:var(--ring)]";
 
 /** The buffer this slug reopens with: the saved answer, else the starter. */
@@ -65,7 +65,7 @@ function openingSource(slug: string, starter: string): string {
 }
 
 const CRITERION_CODE =
-  "rounded-[var(--radius-control)] bg-[var(--bg-elevated)] px-1 py-0.5 font-mono text-[0.9em] text-[var(--text-primary)]";
+  "rounded-[var(--radius-control)] bg-[var(--bg-elevated)] px-1 py-0.5 font-mono text-[max(0.9em,12px)] text-[var(--text-primary)]";
 
 /**
  * A shape-only label for one result assertion: it names WHAT is checked, never
@@ -247,7 +247,7 @@ function prefersReducedMotion(): boolean {
 function SpecRow({ label, children }: { label: string; children: ReactNode }): JSX.Element {
   return (
     <div className="grid grid-cols-[6rem_1fr] items-baseline gap-x-4 border-b border-[var(--border)] py-2.5">
-      <span className="w-24 font-mono text-[10px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+      <span className="w-24 font-mono text-[12px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
         {label}
       </span>
       <span className="font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
@@ -264,7 +264,7 @@ function CheckSquare({ pass }: { pass: boolean }): JSX.Element {
     : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_15%,transparent)] text-[var(--danger)]";
   return (
     <span
-      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center border font-mono text-[9px] font-bold leading-none ${tone}`}
+      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center border font-mono text-[12px] font-bold leading-none ${tone}`}
     >
       <span aria-hidden="true">{pass ? "✓" : "✗"}</span>
       <span className="sr-only">{pass ? "passed" : "failed"}</span>
@@ -416,7 +416,7 @@ export function ExerciseView({
         <section aria-labelledby={specHeadingId}>
           <h2
             id={specHeadingId}
-            className="border-b border-[var(--border-strong)] pb-2 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]"
+            className="border-b border-[var(--border-strong)] pb-2 font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]"
           >
             specification
           </h2>
@@ -489,10 +489,10 @@ export function ExerciseView({
           {result && (
             <div className="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]">
               <div className="flex items-baseline justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-2.5">
-                <span className="font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
+                <span className="font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]">
                   Results
                 </span>
-                <span className="font-mono text-[11px] uppercase text-[var(--text-tertiary)]">
+                <span className="font-mono text-[12px] uppercase text-[var(--text-tertiary)]">
                   {passingCount} of {allChecks.length} checks passing
                 </span>
               </div>
