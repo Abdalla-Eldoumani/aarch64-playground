@@ -147,8 +147,9 @@ export type EmbeddablePlaygroundProps = {
    *  opens on this one; left out, it shows the x registers alone. */
   registerView?: RegView;
   /** Embed chrome: the registers panel's heading level, one below the host's
-   *  section heading (a lesson or reference entry passes 3). Defaults to 2. */
-  registerHeadingLevel?: 2 | 3;
+   *  section heading (a lesson or reference entry passes 3, a pitfall card 4).
+   *  Defaults to 2. */
+  registerHeadingLevel?: 2 | 3 | 4;
   /** Landing hero only: once the hub engages, assemble the start program and
    *  step it on a timer with no user action. Off by default, so full and
    *  checker chrome are unchanged. Under prefers-reduced-motion it waits for
