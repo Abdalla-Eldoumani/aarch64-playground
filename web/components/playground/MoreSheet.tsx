@@ -6,7 +6,7 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { NAV_ROUTES } from "@/lib/content/site";
 import { CloseIcon } from "@/components/chrome/SiteIcons";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 export interface MoreSheetProps {
   open: boolean;
@@ -33,7 +33,7 @@ export function MoreSheet({ open, onClose, sections }: MoreSheetProps) {
 
   return createPortal(
     <>
-      <div aria-hidden="true" onClick={onClose} className="fixed inset-0 z-[65] bg-black/60" />
+      <div aria-hidden="true" onClick={closeOnBackdropClick(onClose)} className="fixed inset-0 z-[65] bg-black/60" />
       <div
         ref={panelRef}
         role="dialog"
