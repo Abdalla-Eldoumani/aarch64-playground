@@ -66,7 +66,7 @@ const DIFFICULTY_RANK: Record<string, number> = { intro: 0, core: 1, challenge: 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
 const CHIP_CLASS =
-  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
 const META_CLASS = "font-mono text-[12px] text-[var(--text-tertiary)]";
 const CAPTION_CLASS = "font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
@@ -410,7 +410,7 @@ export function ExerciseIndex({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="search exercises"
-            className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:shadow-[var(--ring)]"
+            className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:[box-shadow:var(--ring)]"
           />
         </div>
         {allDifficulties.length > 0 && (
