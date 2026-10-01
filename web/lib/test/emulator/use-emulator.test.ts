@@ -669,6 +669,38 @@ describe("useEmulator assemble", () => {
     expect(fake.calls.assemble).toEqual([]);
   });
 
+  // Every assemble attempt wipes the machine, so a failure leaves no program:
+  // the disassembly, and the decode strip that reads it, must not keep
+  // showing the one that was there before.
+  it.each([
+    ["the assembler rejects the source", { assembleSuccess: false, assembleError: "bad instruction" }],
+    ["the backend call throws", { assembleThrows: true }],
+  ] as const)("drops the previous program's instructions when %s", async (_why, failure) => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    expect(result.current.instructions).toHaveLength(5);
+
+    Object.assign(fake.cfg, failure);
+    await act(async () => {
+      await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(false);
+    });
+
+    expect(result.current.instructions).toEqual([]);
+  });
+
+  it("drops the previous program's instructions when a terminal build fails", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    expect(result.current.instructions).toHaveLength(5);
+
+    fake.cfg.assembleSuccess = false;
+    await act(async () => {
+      await result.current.assembleForTool(HOSTED_SOURCE);
+    });
+
+    expect(result.current.instructions).toEqual([]);
+  });
+
   it("captures a thrown backend error in the catch path", async () => {
     const fake = makeBackend({ assembleThrows: true });
     const { result } = await mountLoaded(fake);
