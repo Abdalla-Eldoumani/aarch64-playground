@@ -2,7 +2,7 @@
   "title": "Writing your own subroutines",
   "slug": "subroutines",
   "order": 21,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-09-30",
   "summary": "Write a subroutine that takes arguments in x0 to x7 and returns in w0 or x0, and know when it needs a frame and when a macro would do.",
   "tags": [
     "subroutines",
@@ -95,6 +95,11 @@
     {
       "type": "prose",
       "markdown": "To see the chain, run the program (or press step) once, then set a breakpoint on the `bl printf` line inside `show` and press run. `fp` now points at `show`'s frame record: the 8 bytes at `fp` hold `main`'s `fp`, and the 8 bytes at `fp + 8` hold the address of the instruction after the `bl show` that made this call.\n\n`show` also moves its arguments up one register before it loads the format string: `w2` to `w3`, then `w1` to `w2`, then `x0` to `x1`. Working from the top down copies each value out before anything overwrites it."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [A function that calls another must save lr first](/reference#pitfall-save-lr-before-bl)\n- [ldp restores the pair in the order stp saved it](/reference#pitfall-ldp-order-matches-stp)"
     },
     {
       "type": "prose",
