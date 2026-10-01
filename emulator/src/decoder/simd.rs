@@ -1075,7 +1075,7 @@ pub enum SimdCopyOp {
 
 /// The Advanced SIMD forms this crate assembles, all of which land in the
 /// same top-level group as scalar FP. `None` means "not one of these",
-/// and the scalar FP decode below carries on.
+/// and `decode_fp_group` (fp.rs), which called this first, carries on.
 pub(super) fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
     let q = bit(instr, 30) == 1;
     let op = bit(instr, 29) == 1;
@@ -1193,8 +1193,8 @@ pub(super) fn decode_advanced_simd(instr: u32) -> Option<Instruction> {
     // Three-same (integer): 0 Q U 01110 size 1 Rm opcode 1 Rn Rd, and the
     // SIMD-scalar class 01 U 11110 size 1 Rm opcode 1 Rn Rd beside it.
     // A (U, opcode) pair the table does not carry is a floating-point row:
-    // answering None leaves it to the scalar FP decode below and, failing
-    // that, to the unknown-instruction error.
+    // answering None leaves it to the scalar FP decode in fp.rs and,
+    // failing that, to the unknown-instruction error.
     let scalar_three_same = instr & 0xDF20_0400 == 0x5E20_0400;
     if instr & 0x9F20_0400 == 0x0E20_0400 || scalar_three_same {
         // Opcodes 0x18 and up are the float rows, where bit 23 is an
