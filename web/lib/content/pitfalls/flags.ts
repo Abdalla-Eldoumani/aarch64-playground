@@ -11,10 +11,10 @@ export const FLAG_PITFALLS: Pitfall[] = [
     server: "prints `sum = 5`: the loop runs once, because `b.ne` still reads the guard's `cmp`, which found the count equal to 5.",
     playground: "prints the same line; step through and the Z flag stays set across the `sub`.",
     fix: "Use `subs` when a branch tests the result. The fixed program prints `sum = 15`.",
-    wrong: `        sub     count_r, count_r, 1
-        b.ne    sum_loop`,
-    right: `        subs    count_r, count_r, 1
-        b.ne    sum_loop`,
+    wrong: `sub     count_r, count_r, 1
+b.ne    sum_loop`,
+    right: `subs    count_r, count_r, 1
+b.ne    sum_loop`,
     broken: {
       source: `// Sums 5 + 4 + 3 + 2 + 1 with a loop that counts down to zero.
 // sub does not set the flags, so b.ne reads the guard's older compare.
@@ -125,10 +125,10 @@ done:
     server: "prints `larger = 12`: `cmp b_r, a_r` asked whether b is greater, and kept a when it was.",
     playground: "prints the same line.",
     fix: "Put the value the condition talks about first: `cmp a_r, b_r` before `b.gt`. The fixed program prints `larger = 30`.",
-    wrong: `        cmp     b_r, a_r
-        b.gt    keep_a`,
-    right: `        cmp     a_r, b_r
-        b.gt    keep_a`,
+    wrong: `cmp     b_r, a_r
+b.gt    keep_a`,
+    right: `cmp     a_r, b_r
+b.gt    keep_a`,
     broken: {
       source: `// Prints the larger of two numbers.
 // The compare has its operands swapped, so b.gt asks the wrong question.
@@ -221,10 +221,10 @@ keep_a:
     server: "prints `warmer = -1`: `b.ls` compared the temperatures as unsigned numbers, and -1 came out on top.",
     playground: "prints the same line.",
     fix: "Use the signed conditions for values that can be negative: `b.le`. The fixed program prints `warmer = 1`.",
-    wrong: `        cmp     t1_r, t2_r
-        b.ls    report`,
-    right: `        cmp     t1_r, t2_r
-        b.le    report`,
+    wrong: `cmp     t1_r, t2_r
+b.ls    report`,
+    right: `cmp     t1_r, t2_r
+b.le    report`,
     broken: {
       source: `// Prints the warmer of two temperatures, -1 and 1.
 // b.ls compares as unsigned, where -1 is the largest value there is.
@@ -317,11 +317,11 @@ report:
     server: "prints `7 is negative` on its last line: `b.lt` read the loop compare `i < 3`, which was true.",
     playground: "prints the same three lines.",
     fix: "Compare the value itself before testing its sign: `cmp val_r, 0`, then `b.lt`. The fixed program prints `7 is positive`.",
-    wrong: `        cbz     val_r, class_print
-        b.lt    class_print`,
-    right: `        cbz     val_r, class_print
-        cmp     val_r, 0
-        b.lt    class_print`,
+    wrong: `cbz     val_r, class_print
+b.lt    class_print`,
+    right: `cbz     val_r, class_print
+cmp     val_r, 0
+b.lt    class_print`,
     broken: {
       source: `// Says whether each value is negative, zero, or positive.
 // cbz tests for zero but sets no flags, so b.lt reads the loop's compare.
@@ -435,10 +435,10 @@ class_test:
     server: "prints `passed: 2`: `csinc` counted the two marks under 50.",
     playground: "prints the same line.",
     fix: "Count with `cinc pass_r, pass_r, ge`. The fixed program prints `passed: 3`.",
-    wrong: `        cmp     w9, 50
-        csinc   pass_r, pass_r, pass_r, ge`,
-    right: `        cmp     w9, 50
-        cinc    pass_r, pass_r, ge`,
+    wrong: `cmp     w9, 50
+csinc   pass_r, pass_r, pass_r, ge`,
+    right: `cmp     w9, 50
+cinc    pass_r, pass_r, ge`,
     broken: {
       source: `// Counts the passing marks, 50 or more, in a list of five.
 // csinc adds one when its condition is false, so it counts the fails.
@@ -545,10 +545,10 @@ mark_test:
     server: "prints `sum = 10014`: i = 5 still ran and added the 9999 stored after the array.",
     playground: "prints the same line.",
     fix: "Leave the loop with `b.ge`. The fixed program prints `sum = 15`.",
-    wrong: `        cmp     i_r, 5
-        b.gt    done`,
-    right: `        cmp     i_r, 5
-        b.ge    done`,
+    wrong: `cmp     i_r, 5
+b.gt    done`,
+    right: `cmp     i_r, 5
+b.ge    done`,
     broken: {
       source: `// Sums a five-element array.
 // b.gt lets index 5 through, one past the end.
