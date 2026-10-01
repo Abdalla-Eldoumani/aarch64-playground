@@ -67,9 +67,10 @@ export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
 }
 
 /**
- * A plain-text row summary from the prompt: the first non-empty line with
- * leading Markdown markers (#, >, -, *) stripped, clipped to a row-sized
- * length. Rendered as plain text, never Markdown.
+ * A row summary from the prompt: the first non-empty line with leading
+ * Markdown markers (#, >, -, *) stripped, clipped to a row-sized length. The
+ * index renders its inline code, so a clip never stops inside a code span,
+ * where the opening backtick would show bare.
  */
 function blurbFromPrompt(prompt: string): string {
   const firstLine =
@@ -78,7 +79,10 @@ function blurbFromPrompt(prompt: string): string {
       .map((line) => line.trim())
       .find((line) => line.length > 0) ?? "";
   const plain = firstLine.replace(/^[#>\-*\s]+/, "").trim();
-  return plain.length > 140 ? `${plain.slice(0, 140)}...` : plain;
+  if (plain.length <= 140) return plain;
+  let clipped = plain.slice(0, 140);
+  if ((clipped.match(/`/g) ?? []).length % 2 === 1) clipped = clipped.slice(0, clipped.lastIndexOf("`"));
+  return `${clipped.trimEnd()}...`;
 }
 
 /**
