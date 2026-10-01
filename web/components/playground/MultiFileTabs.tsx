@@ -151,6 +151,9 @@ export function MultiFileTabs({
           // A file-like placeholder ("new.asm") read as a second tab. Short
           // enough to fit the box whole.
           placeholder="file name"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           aria-label="new file name"
           className="touch-target w-20 [@media(pointer:coarse)]:w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
         />
