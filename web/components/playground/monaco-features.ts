@@ -4,6 +4,10 @@
  * one task at a time (Editor.tsx says why). Keeping register.all's order means
  * the modules run exactly as that one import would run them, and its test
  * fails when a monaco upgrade changes the list.
+ *
+ * One feature is left out: inlineCompletions, the grey suggested text an
+ * inline completion provider draws after the caret. This editor registers no
+ * such provider, and it was by far the largest feature in the monaco chunk.
  */
 export const MONACO_FEATURES: ReadonlyArray<() => Promise<unknown>> = [
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/anchorSelect/register"),
@@ -35,7 +39,6 @@ export const MONACO_FEATURES: ReadonlyArray<() => Promise<unknown>> = [
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/hover/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/indentation/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inlayHints/register"),
-  () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inlineCompletions/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inlineProgress/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inPlaceReplace/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/insertFinalNewLine/register"),
