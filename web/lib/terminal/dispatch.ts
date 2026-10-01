@@ -12,6 +12,38 @@ export interface DispatchResult {
   lines: string[];
   control?: "clear";
   exitCode?: number;
+  /** The lines are a command-and-description table, which a terminal too
+   *  narrow for a row reflows with fitTable. */
+  table?: boolean;
+}
+
+/**
+ * A help table for a terminal `cols` wide. A row that fits is left alone; a
+ * row too wide puts its command on one line and its description, wrapped at
+ * spaces, on the lines under it. On a phone the rows had wrapped mid-word.
+ */
+export function fitTable(lines: string[], cols: number): string[] {
+  const out: string[] = [];
+  for (const line of lines) {
+    const row = /^(\s*)(\S.*?)\s{2,}(\S.*)$/.exec(line);
+    if (line.length <= cols || !row) {
+      out.push(line);
+      continue;
+    }
+    const [, indent, command, description] = row;
+    out.push(indent + command);
+    const pad = `${indent}    `;
+    let current = pad;
+    for (const word of description.split(" ")) {
+      if (current !== pad && current.length + 1 + word.length > cols) {
+        out.push(current);
+        current = pad;
+      }
+      current += current === pad ? word : ` ${word}`;
+    }
+    out.push(current);
+  }
+  return out;
 }
 
 export interface ParsedCommandLine {
@@ -178,7 +210,7 @@ export async function dispatchCommand(
   const { cmd, args, stdinFrom, stdoutTo } = parsed;
 
   if (cmd === "clear") return { status: "ok", lines: [], control: "clear" };
-  if (cmd === "help") return { status: "ok", lines: HELP_LINES };
+  if (cmd === "help") return { status: "ok", lines: HELP_LINES, table: true };
   if (cmd === "ls") {
     const long = args[0] === "-l";
     const names = ctx.listVfs().slice().sort();
@@ -354,7 +386,7 @@ export async function dispatchCommand(
 
 async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
   const sub = args[0];
-  if (!sub || sub === "help") return { status: "ok", lines: GDB_HELP_LINES };
+  if (!sub || sub === "help") return { status: "ok", lines: GDB_HELP_LINES, table: true };
   if (sub === "n" || sub === "s") {
     await ctx.step();
     return { status: "ok", lines: [] };
