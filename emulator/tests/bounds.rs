@@ -195,7 +195,7 @@ fn an_open_loop_cannot_grow_the_descriptor_table() {
     // Re-opening one existing file left an fd entry per call, each holding
     // its own copy of the path: 200 opens of a 60 KiB path held 11 MiB,
     // cloned again into every snapshot frame. Past the wall openat answers
-    // -1 (EMFILE) and the program keeps running.
+    // -24 (EMFILE) and the program keeps running.
     let src = r#"
         .data
 path:   .string "log.txt"
@@ -234,7 +234,7 @@ open_loop:
         "the descriptor table must stop at the wall"
     );
     let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
-    assert_eq!(stdout, "-1\n", "a refused open reports EMFILE, not a halt");
+    assert_eq!(stdout, "-24\n", "a refused open reports EMFILE, not a halt");
 }
 
 // Spends the real ceiling on `memset` bytes (~160 MB of writes, minutes in
