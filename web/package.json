@@ -10,7 +10,7 @@
     "dev": "next dev --webpack",
     "wasm:watch": "node ../scripts/wasm-watch.mjs",
     "dev:all": "concurrently --kill-others-on-fail --names wasm,web --prefix-colors yellow,cyan \"npm run wasm:watch\" \"npm run dev\"",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node ../scripts/write-precache-list.js",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
