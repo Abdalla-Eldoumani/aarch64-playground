@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Group,
   Panel,
@@ -30,6 +30,8 @@ export interface SplitSpec {
   defaults: [number, number];
   byHeight?: Partial<Record<ScreenHeight, [number, number]>>;
   minSizes: [number, number];
+  /** Floors under a coarse pointer, where tabs and rows are 44px targets. */
+  coarseMinSizes?: [number, number];
   label: string;
 }
 
@@ -59,11 +61,15 @@ export const EDITOR_SPLIT: SplitSpec = {
 // decode strip, 56% held 14 x registers at 1440x900, under the 16 the panel
 // aims for; in a short window it held two rows. On a 1440px-tall screen the
 // list ended halfway down its pane, so a tall window gives the tabs the more.
+// Under a coarse pointer the tabs wrap to two rows of 44px and the console's
+// rows are touch targets, so 40% left a landscape iPad two console lines;
+// 300px keeps six.
 export const DEBUG_SPLIT: SplitSpec = {
   ids: ["panel-regs", "panel-tabs"],
   defaults: [60, 40],
   byHeight: { short: [62, 38], tall: [44, 56] },
   minSizes: [160, 140],
+  coarseMinSizes: [160, 300],
   label: "resize registers and tabs",
 };
 
@@ -104,6 +110,23 @@ const TOUCH_HIT_Y =
   "[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:-inset-y-[19px]";
 const HIT_SIZE = { coarse: 44, fine: 10 };
 
+const COARSE_POINTER = "(pointer: coarse)";
+
+function subscribePointer(onChange: () => void): () => void {
+  const query = window.matchMedia(COARSE_POINTER);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+/** Whether the main pointer is a finger; false on the server. */
+function useCoarsePointer(): boolean {
+  return useSyncExternalStore(
+    subscribePointer,
+    () => window.matchMedia(COARSE_POINTER).matches,
+    () => false,
+  );
+}
+
 function toArray(layout: Layout | undefined, ids: string[], fallback: number[]): number[] {
   if (!layout) return fallback;
   return ids.map((id, i) => layout[id] ?? fallback[i] ?? 0);
@@ -141,7 +164,9 @@ export function PaneSplit({
   first,
   second,
 }: PaneSplitProps) {
-  const { ids, minSizes, label } = spec;
+  const { ids, label } = spec;
+  const coarse = useCoarsePointer();
+  const minSizes = (coarse && spec.coarseMinSizes) || spec.minSizes;
   const defaults = spec.byHeight?.[height] ?? spec.defaults;
   const [sizes, save, , ready] = useLayoutPersistence(
     height === "regular" ? storageKey : `${storageKey}-${height}`,
