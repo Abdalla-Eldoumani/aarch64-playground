@@ -1,8 +1,8 @@
 {
-  "title": "Quiz: ARMv8 assembly",
+  "title": "Basic quiz: ARMv8 assembly",
   "slug": "quiz-basic-armv8",
   "order": 82,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "topic": "armv8",
   "difficulty": "intro",
   "variant": "quiz",
