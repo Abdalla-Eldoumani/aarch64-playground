@@ -23,7 +23,8 @@
       "blanks": [
         "64",
         "#64",
-        "0x40"
+        "0x40",
+        "#0x40"
       ],
       "explanation": "On Linux for AArch64, write is service number 64, and svc 0 reads it from x8. read is 63, openat 56, close 57, and exit 93.",
       "hint": "It is one more than the number for read, 63."
@@ -42,7 +43,10 @@
       "code": "mov     x0, ___",
       "blanks": [
         "0",
-        "#0"
+        "#0",
+        "0x0",
+        "#0x0",
+        "xzr"
       ],
       "explanation": "x0 holds the file descriptor to read from, and standard input is descriptor 0. Descriptor 1 is standard output and 2 is standard error.",
       "hint": "Standard input is the first of the three descriptors every program starts with."
