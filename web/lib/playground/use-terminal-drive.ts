@@ -205,8 +205,8 @@ export function useTerminalDrive(opts: {
         }
       };
       if (driveOpts?.clearAtStart || machine.current.wantsTerminal) clearOnce();
-      // Live sessions skip the step-back ring: the per-step clone costs
-      // more than the step, and stepping back mid-session has no meaning.
+      // Live sessions skip the step-back ring: stepping back mid-session
+      // has no meaning.
       machine.current.setSnapshotsPaused(true);
       machine.current.setOutputTap((t) => io.write(t));
       // Cooked-mode input works like a canonical tty: the line buffers
