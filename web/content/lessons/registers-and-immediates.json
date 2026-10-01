@@ -2,7 +2,7 @@
   "title": "Registers and immediates",
   "slug": "registers-and-immediates",
   "order": 4,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-10-01",
   "summary": "Name the 31 registers and their jobs, write a constant in any of four bases, and build one too wide for a single mov.",
   "tags": [
     "registers",
@@ -70,7 +70,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Building a wide constant\n\nA constant with none of those shapes is built one *halfword*, 16 bits, at a time; a 64-bit register holds four halfwords. `movz` (move and zero) writes a halfword and zeroes the rest of the register, while `movk` (move and keep) writes a halfword and keeps everything else.\n\nStart with `movz` to set one halfword and clear the register, then use `movk` for each remaining halfword. A left shift picks the 16-bit slot the immediate lands in: no shift targets bits 0 to 15, `lsl 16` targets bits 16 to 31, `lsl 32` targets bits 32 to 47, and `lsl 48` targets bits 48 to 63.\n\nOnce the constant is in place, ordinary arithmetic such as `add` with an immediate adjusts it without touching memory."
+      "markdown": "## Building a wide constant\n\nA constant with none of those shapes is built one *halfword*, 16 bits, at a time; a 64-bit register holds four halfwords. `movz` (move and zero) writes a halfword and zeroes the rest of the register, while `movk` (move and keep) writes a halfword and keeps everything else. A third, `movn` (move and NOT), places a halfword and then flips every bit of the register, so the other halfwords become all 1s. That is how the assembler builds the second shape above: `mov w19, -5` becomes `movn w19, 4`, because flipping every bit of 4 gives -5.\n\nStart with `movz` to set one halfword and clear the register, then use `movk` for each remaining halfword. A left shift picks the 16-bit slot the immediate lands in: no shift targets bits 0 to 15, `lsl 16` targets bits 16 to 31, `lsl 32` targets bits 32 to 47, and `lsl 48` targets bits 48 to 63.\n\nOnce the constant is in place, ordinary arithmetic such as `add` with an immediate adjusts it without touching memory."
     },
     {
       "type": "callout",
