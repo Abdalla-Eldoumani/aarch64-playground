@@ -105,7 +105,7 @@ describe("CallingConventionGuide", () => {
     render(<CallingConventionGuide />);
     const body = text();
     expect(body).toContain("low 32 bits");
-    expect(body).toContain("with the top half of x0");
+    expect(body).toContain("nothing is promised about the top half of x0");
     expect(body).toContain("There is no register named pc");
     expect(body).toContain("h0 the low 16 and b0 the low 8");
     expect(body).toContain("lane 0 at the low end");
