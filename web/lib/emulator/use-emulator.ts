@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
 import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
-import { buildDisassembly, type DecodedInstruction } from "@/lib/emulator/disassembly";
+import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
 import type {
   AssembleOutcome,
@@ -425,14 +425,13 @@ export function useEmulator(): EmulatorState {
           markCurrentLine(entryLine);
           // One bulk read for the whole code region: a per-instruction loop
           // costs instruction_count worker round-trips per assemble.
+          const count = listingLength(base, result.instruction_count, map);
           const codeBytes =
-            result.instruction_count > 0
-              ? await backend.getMemory(base, result.instruction_count * 4)
-              : new Uint8Array(0);
+            count > 0 ? await backend.getMemory(base, count * 4) : new Uint8Array(0);
           setInstructions(
             buildDisassembly({
               base,
-              count: result.instruction_count,
+              count,
               codeBytes,
               source,
               map,
