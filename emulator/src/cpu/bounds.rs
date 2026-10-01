@@ -39,8 +39,8 @@ impl Cpu {
 
     /// Whether the state a snapshot frame copies WHOLE (virtual files,
     /// queued stdin, open-file paths) has outgrown the ring's budget.
-    /// Guest pages are shared copy-on-write, so they cost nothing to
-    /// snapshot, but these are real copies on every step: 100k steps with
+    /// Registers, memory and the heap go in as undo logs of what a step
+    /// changed, but these are real copies on every step: 100k steps with
     /// a 1 MiB virtual file took 51 s against 73 ms with none.
     pub(super) fn snapshot_side_bytes_exceeded(&self) -> bool {
         let mut bytes = self.stdin.len();
