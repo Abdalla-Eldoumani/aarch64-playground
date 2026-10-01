@@ -1,0 +1,96 @@
+{
+  "title": "Basic quiz: C",
+  "slug": "quiz-basic-c",
+  "order": 131,
+  "lastUpdated": "2026-10-01",
+  "topic": "architecture",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "The C that the assembly lessons start from: type sizes, integer division, copies against addresses, where an array element sits, `printf` specifiers, and where a call's arguments go.",
+  "questions": [
+    {
+      "question": "How many bytes does a long take on the 64-bit ARM Linux machines this site imitates?",
+      "options": [
+        "1",
+        "2",
+        "4",
+        "8"
+      ],
+      "correctAnswer": 3,
+      "explanation": "A long is 8 bytes, 64 bits, the size of an x register. An int is 4 bytes, a short 2 and a char 1, which is why assembly has a load and a store for each size.",
+      "hint": "It fills a whole x register."
+    },
+    {
+      "question": "Both values are int. What is -17 / 5 in C?",
+      "options": [
+        "-4",
+        "-3.4",
+        "-3",
+        "3"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Division of two ints drops the fraction and cuts toward zero, so -3.4 becomes -3, not -4. The remainder, -17 % 5, is -2, because 5 * -3 + (-2) = -17. sdiv in assembly cuts the same way.",
+      "hint": "The fraction is thrown away, and the result moves toward zero."
+    },
+    {
+      "question": "void bump(int x) { x = x + 1; } is called as bump(score). What happens to score?",
+      "options": [
+        "It goes up by 1, because x is score",
+        "It keeps its value, because x is a copy",
+        "It becomes 0, because x is never returned",
+        "The call does not compile without a return"
+      ],
+      "correctAnswer": 1,
+      "explanation": "C passes arguments by value, so x is a new variable that starts as a copy of score. Adding 1 to x changes only the copy, so score keeps its value. To change score, the caller passes &score and the function writes through the pointer.",
+      "hint": "The function gets a copy of each argument."
+    },
+    {
+      "question": "int marks[6] starts at address 2000. At which address does marks[3] start?",
+      "options": [
+        "2003",
+        "2006",
+        "2012",
+        "2024"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Each int takes 4 bytes, so element i starts 4 * i bytes past the start of the array. marks[3] is 12 bytes in, at 2012. In assembly the same sum appears as the SXTW 2 in a load, which multiplies the index by 4.",
+      "hint": "Multiply the index by the size of one element."
+    },
+    {
+      "question": "Which printf specifier prints an int in hexadecimal?",
+      "options": [
+        "%x",
+        "%d",
+        "%c",
+        "%s"
+      ],
+      "correctAnswer": 0,
+      "explanation": "%x prints an integer in base 16, so printf(\"%x\", 255) prints ff. %d prints in decimal, %c prints one character, and %s prints a string.",
+      "hint": "x for hexadecimal."
+    },
+    {
+      "question": "int *p = marks; is followed by *p = 0;. What does the second line change?",
+      "options": [
+        "the pointer p, which now holds the address 0",
+        "every element of marks, which all become 0",
+        "nothing, because p holds a copy of the array",
+        "marks[0], the element p points at"
+      ],
+      "correctAnswer": 3,
+      "explanation": "An array's name on its own is the address of its first element, so p holds the address of marks[0]. *p means the value at that address, so *p = 0 stores 0 into marks[0] and changes nothing else.",
+      "hint": "A * in front of a pointer means the value stored at its address."
+    },
+    {
+      "question": "C calls average3(s1, s2, s3), and all three are int. In the assembly, where do the three arguments travel?",
+      "options": [
+        "On the stack, pushed from right to left",
+        "In w0, w1 and w2, in that order",
+        "In x19, x20 and x21, the saved registers",
+        "In the .data section, beside the strings"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The first eight integer arguments travel in registers, starting at w0 (x0 for a long or a pointer), and the answer comes back in w0. The stack carries only the arguments past the eighth.",
+      "hint": "Look at the mov lines just before the bl in an assembly call."
+    }
+  ]
+}
