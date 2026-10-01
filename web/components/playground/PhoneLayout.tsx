@@ -68,7 +68,9 @@ export function PhoneLayout({
   onPaneShown,
 }: PhoneLayoutProps) {
   const [tab, setTab] = useState<Tab>("code");
-  const [more, setMore] = useState<MoreId>("memory");
+  // Null shows the list of views: each press on "more" opens it, so any view
+  // is two taps from any tab. The select it replaced took three.
+  const [more, setMore] = useState<MoreId | null>(null);
   // A request is applied once, during the render that sees its nonce; one
   // that arrived before this layout mounted (a desktop palette action before
   // the window was narrowed) is not replayed.
@@ -91,7 +93,7 @@ export function PhoneLayout({
   const [termOpened, setTermOpened] = useState(false);
   if (side === "more" && more === "term" && !termOpened) setTermOpened(true);
 
-  const shown = side === "more" ? more : side;
+  const shown = side === "more" ? (more ?? "more") : side;
   useEffect(() => {
     onPaneShown?.(shown);
   }, [shown, onPaneShown]);
@@ -144,12 +146,26 @@ export function PhoneLayout({
       >
         {side === "regs" && <div className="h-full min-h-0 overflow-auto">{registers}</div>}
         {side === "console" && <div className="flex h-full min-h-0 flex-col">{panes.console}</div>}
-        {side === "more" && (
+        {side === "more" && more === null && (
+          <div role="group" aria-label="choose a view" className="grid min-h-0 grid-cols-2 content-start gap-2 overflow-auto p-2">
+            {MORE.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => setMore(m.id)}
+                className="touch-target min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-left font-sans text-[14px] text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        )}
+        {side === "more" && more !== null && (
           <div className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] px-2 py-1">
             <Select
               placeholder="view"
               ariaLabel="choose a view"
-              value={more}
+              value={more ?? undefined}
               groups={[{ options: MORE.map((m) => ({ value: m.id, label: m.label })) }]}
               onSelect={(next) => isMore(next) && setMore(next)}
               className="w-full max-w-[16rem]"
@@ -186,7 +202,10 @@ export function PhoneLayout({
               role="tab"
               aria-selected={selected}
               aria-controls="phone-panel"
-              onClick={() => setTab(t.id)}
+              onClick={() => {
+                if (t.id === "more") setMore(null);
+                setTab(t.id);
+              }}
               className={`${TAB_BUTTON} ${
                 selected
                   ? "text-[var(--cyan)] [box-shadow:inset_0_2px_0_0_var(--cyan)]"
