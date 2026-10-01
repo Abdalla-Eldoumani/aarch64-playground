@@ -51,6 +51,19 @@ describe("LessonIndex", () => {
     expect(screen.queryByText("Beta Lesson")).toBeNull();
   });
 
+  // `focus-visible:shadow-[var(--ring)]` compiles to a shadow colour with no
+  // shadow, so a keyboard user saw no ring; the box-shadow form paints one.
+  it("rings the search box and the tag chips on keyboard focus", () => {
+    render(<LessonIndex lessons={lessons} />);
+    const controls = [
+      screen.getByLabelText("search lessons"),
+      screen.getByRole("button", { name: "registers" }),
+    ];
+    for (const control of controls) {
+      expect(control.className).toContain("focus-visible:[box-shadow:var(--ring)]");
+    }
+  });
+
   it("renders the empty state when there are no lessons", () => {
     const { container } = render(<LessonIndex lessons={[]} />);
     expect(screen.getByText(/no lessons/i)).toBeTruthy();
