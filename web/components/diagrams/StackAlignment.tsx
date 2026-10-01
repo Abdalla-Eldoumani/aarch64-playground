@@ -135,7 +135,7 @@ export function StackAlignment({
             </span>
             {sp === START_SP && (
               <span
-                className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+                className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
                 style={SP_MARKER_STYLE}
               >
                 {"<- sp"}
@@ -165,7 +165,7 @@ export function StackAlignment({
                 </span>
                 {base === sp && (
                   <span
-                    className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+                    className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
                     style={SP_MARKER_STYLE}
                   >
                     {"<- sp"}
