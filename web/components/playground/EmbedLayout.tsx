@@ -217,12 +217,12 @@ export function EmbedLayout({
         </div>
         {/* A fault must be visible here too: full chrome surfaces the
             machine's error through Controls, and without this line an
-            embedded run that faults just stops silently. */}
+            embedded run that faults just stops silently. It wraps rather
+            than ending in an ellipsis: a phone has no hover for a title. */}
         {error && (
           <p
             role="alert"
-            title={error}
-            className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--danger)]"
+            className="min-w-0 flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
           >
             {error}
           </p>
