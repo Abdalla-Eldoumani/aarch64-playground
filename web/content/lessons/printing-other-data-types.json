@@ -145,7 +145,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Warm up the registers](/practice/warm-up-the-registers): prints its answer through a format string.\n- [Name tag](/practice/name-tag): print two characters and a number with one format string, `%c` and `%d`.\n- [Quiz: ARMv8 assembly (core)](/practice/quiz-inter-armv8): covers the argument registers."
+      "markdown": "## Practice\n\n- [Warm up the registers](/practice/warm-up-the-registers): prints its answer through a format string.\n- [Name tag](/practice/name-tag): print two characters and a number with one format string, `%c` and `%d`.\n- [Intermediate quiz: ARMv8 assembly](/practice/quiz-inter-armv8): covers the argument registers."
     }
   ]
 }
