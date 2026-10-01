@@ -1,14 +1,24 @@
 // Pins what the Monaco editor does once it mounts: the lint squiggle at page
 // load (the first lint of the default program often lands while Monaco is
 // still loading, and those warnings must still reach the model once the
-// editor mounts, not wait for the next edit), the site theme it follows, and
-// when it wraps long lines.
+// editor mounts, not wait for the next edit), the site theme it follows,
+// when it wraps long lines, and when the hover card fetches its C line.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { Editor } from "@/components/playground/Editor";
 
+type HoverProvider = {
+  provideHover: (
+    model: { getWordAtPosition: () => unknown; getLineContent: () => string },
+    position: { lineNumber: number; column: number },
+  ) => Promise<{ contents: { value: string }[] } | null>;
+};
+
 const fake = vi.hoisted(() => {
+  // Plain fields rather than mock call history, which vitest clears before
+  // each test while the providers register once per module.
+  const state = { hover: null as HoverProvider | null, cTableLoaded: false };
   const model = { getLineCount: () => 3, getLineMaxColumn: () => 12 };
   const editor = {
     getModel: () => model,
@@ -28,7 +38,9 @@ const fake = vi.hoisted(() => {
       setLanguageConfiguration: vi.fn(),
       setMonarchTokensProvider: vi.fn(),
       registerCompletionItemProvider: vi.fn(),
-      registerHoverProvider: vi.fn(),
+      registerHoverProvider: (_id: string, provider: HoverProvider) => {
+        state.hover = provider;
+      },
     },
     editor: {
       defineTheme: vi.fn(),
@@ -41,7 +53,14 @@ const fake = vi.hoisted(() => {
     KeyMod: { CtrlCmd: 2048, Shift: 1024 },
     Range: class {},
   };
-  return { model, editor, monaco, options: null as null | { wordWrap?: string } };
+  return { state, model, editor, monaco, options: null as null | { wordWrap?: string } };
+});
+
+// The factory runs when the module is first imported, so the flag says when
+// the editor asked for the C table.
+vi.mock("@/lib/asm/c-equivalents", async (importOriginal) => {
+  fake.state.cTableLoaded = true;
+  return importOriginal();
 });
 
 vi.mock("@/components/playground/monaco-features", () => ({ MONACO_FEATURES: [] }));
@@ -121,5 +140,30 @@ describe("Editor theme", () => {
     await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-hc"));
     document.documentElement.setAttribute("data-theme", "dark");
     await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-dark"));
+  });
+});
+
+describe("Editor hover card", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  // The C table is the editor's largest module and only the hover card reads
+  // it, so it stays out of the editor's chunk until a card needs it.
+  it("loads the C table on the first hover and adds its line to the card", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    render(<Editor {...base} />);
+    await waitFor(() => expect(fake.state.hover).not.toBeNull());
+    expect(fake.state.cTableLoaded).toBe(false);
+
+    const model = {
+      getWordAtPosition: () => ({ word: "b", startColumn: 3, endColumn: 4 }),
+      getLineContent: () => "  b done",
+    };
+    const card = await fake.state.hover!.provideHover(model, { lineNumber: 1, column: 3 });
+    expect(fake.state.cTableLoaded).toBe(true);
+    const text = card!.contents[0].value;
+    expect(text.startsWith("**b**")).toBe(true);
+    expect(text).toContain("**c equivalent:** `goto label;`");
   });
 });
