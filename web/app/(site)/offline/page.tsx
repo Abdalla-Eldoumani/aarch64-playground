@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 export default function OfflinePage() {
   return (
     <section className="mx-auto w-full max-w-2xl px-6 py-10 sm:py-14">
-      <DocRule section="offline" context="saved on this device" className="mb-8" />
+      <DocRule section="offline" context="no connection" className="mb-8" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
         Not saved on this device
       </h1>
