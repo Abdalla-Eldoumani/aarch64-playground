@@ -682,14 +682,14 @@ mod tests {
         for i in 0..64 {
             mem.write_u8(i * 4096, 1).unwrap();
         }
-        let frame = mem.clone();
+        let save = mem.clone();
         assert!(
             mem.pages.values().all(|p| Rc::strong_count(p) == 2),
             "a clone must share every page, not copy it"
         );
 
         mem.write_u8(0, 2).unwrap();
-        assert_eq!(frame.read_u8(0).unwrap(), 1, "the frame keeps the old byte");
+        assert_eq!(save.read_u8(0).unwrap(), 1, "the save keeps the old byte");
         assert_eq!(mem.read_u8(0).unwrap(), 2);
         let shared = mem
             .pages
@@ -701,9 +701,9 @@ mod tests {
 
     #[test]
     fn a_buffer_fill_records_one_dirty_range() {
-        // One entry per byte, copied into every snapshot frame: 12 fills
-        // of a 64 KiB buffer build a 12 MB log and take 0.4 s of pure
-        // bookkeeping.
+        // One entry per byte would let a single buffer fill eat the whole
+        // MAX_DIRTY_RANGES budget the UI's write tint reads; a fill stays
+        // one range.
         let mut mem = Memory::new();
         for i in 0..40_000u64 {
             mem.write_u8(0x1000 + i, 0xAB).unwrap();
@@ -733,11 +733,11 @@ mod tests {
     #[test]
     fn a_clone_leaves_the_dirty_log_behind() {
         // The log belongs to the UI's next drain, not to the machine state
-        // a snapshot restores; carrying it makes every frame pay for it.
+        // a named save restores, so a save starts with an empty log.
         let mut mem = Memory::new();
         mem.write_u32(0x1000, 7).unwrap();
-        let frame = mem.clone();
-        assert!(frame.dirty.is_empty());
+        let save = mem.clone();
+        assert!(save.dirty.is_empty());
         assert_eq!(mem.take_dirty(), vec![(0x1000, 4)]);
     }
 
