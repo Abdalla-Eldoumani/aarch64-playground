@@ -178,7 +178,7 @@ export function ConsolePanel({
           {blocked && !ownedByTerminal && (
             <span
               role="status"
-              className="px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] text-[10px]"
+              className="px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] text-[12px]"
             >
               waiting for input
             </span>
@@ -186,13 +186,13 @@ export function ConsolePanel({
           {ownedByTerminal && (
             <span
               role="status"
-              className="px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-secondary)] text-[10px]"
+              className="px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-secondary)] text-[12px]"
             >
               running in the terminal
             </span>
           )}
           {exitCode != null && (
-            <span className="text-[var(--text-secondary)] text-[10px]">
+            <span className="text-[var(--text-secondary)] text-[12px]">
               exit {exitCode}
             </span>
           )}
@@ -223,7 +223,7 @@ export function ConsolePanel({
       >
         {shownStdout && <span>{shownStdout}</span>}
         {terminalOwnedFrom != null && (
-          <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+          <p className="font-sans text-[12px] text-[var(--text-secondary)]">
             this run happened in the terminal tab
           </p>
         )}
@@ -232,7 +232,7 @@ export function ConsolePanel({
           <p
             key={i}
             role="note"
-            className="mt-1 font-sans text-[11px] whitespace-normal text-[var(--text-primary)]"
+            className="mt-1 font-sans text-[12px] whitespace-normal text-[var(--text-primary)]"
           >
             <span className="font-semibold text-[var(--warning)]">note: </span>
             {note}
@@ -243,7 +243,7 @@ export function ConsolePanel({
             <p className="font-serif text-[13px] text-[var(--text-primary)]">
               Output prints here as your program runs.
             </p>
-            <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+            <p className="font-sans text-[12px] text-[var(--text-secondary)]">
               {coarsePointer
                 ? `Tap ${buttons} under the editor, or feed stdin from the box below.`
                 : keyHints
@@ -254,7 +254,7 @@ export function ConsolePanel({
         )}
       </div>
       {vfsFiles.length > 0 && (
-        <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[10px] text-[var(--text-secondary)]">
+        <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[12px] text-[var(--text-secondary)]">
           vfs: {vfsFiles.join(", ")}
         </div>
       )}
