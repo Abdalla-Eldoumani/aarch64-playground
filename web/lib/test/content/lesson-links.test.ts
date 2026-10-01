@@ -1,0 +1,164 @@
+import { describe, expect, it } from "vitest";
+import fs from "node:fs";
+import path from "node:path";
+import type { Lesson } from "@/lib/content/lesson-schema";
+import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
+import { lessonLinks } from "@/lib/content/lesson-links";
+import { loadAllLessons } from "@/lib/content/lessons";
+import { loadExerciseIndex } from "@/lib/content/exercises";
+
+// The foot of every lesson: the previous and next buttons follow the sorted
+// lesson list, the last lesson hands over to practice, and the practice links
+// are exactly the exercises the lesson's own text links to.
+
+function lesson(slug: string, title: string, markdown = "No links here."): Lesson {
+  return { title, slug, order: 1, body: [{ type: "prose", markdown }] };
+}
+
+function exercise(
+  slug: string,
+  variant: ExerciseIndexRow["variant"],
+  difficulty?: ExerciseIndexRow["difficulty"],
+): ExerciseIndexRow {
+  return { title: `Title of ${slug}`, slug, order: 1, variant, difficulty, blurb: "" };
+}
+
+const THREE = [lesson("one", "One"), lesson("two", "Two"), lesson("three", "Three")];
+const EXERCISES = [
+  exercise("write-one", "write", "intro"),
+  exercise("bug-one", "identify-bug"),
+  exercise("quiz-one", "quiz", "core"),
+  exercise("blanks-one", "blanks", "challenge"),
+];
+
+describe("lessonLinks neighbours", () => {
+  it("gives the first lesson a next button and no previous one", () => {
+    const links = lessonLinks(THREE, "one", EXERCISES);
+    expect(links.number).toBe("4.1");
+    expect(links.previous).toBeUndefined();
+    expect(links.next).toEqual({ href: "/learn/two", number: "4.2", title: "Two" });
+  });
+
+  it("gives a middle lesson the lessons on either side", () => {
+    const links = lessonLinks(THREE, "two", EXERCISES);
+    expect(links.number).toBe("4.2");
+    expect(links.previous).toEqual({ href: "/learn/one", number: "4.1", title: "One" });
+    expect(links.next).toEqual({ href: "/learn/three", number: "4.3", title: "Three" });
+  });
+
+  it("points the last lesson's next button at practice", () => {
+    const links = lessonLinks(THREE, "three", EXERCISES);
+    expect(links.number).toBe("4.3");
+    expect(links.previous).toEqual({ href: "/learn/two", number: "4.2", title: "Two" });
+    expect(links.next).toEqual({ href: "/practice", number: "05", title: "Practice" });
+  });
+
+  it("follows the order it is given, so a reordered list moves the buttons", () => {
+    const reordered = [THREE[2], THREE[0], THREE[1]];
+    const links = lessonLinks(reordered, "one", EXERCISES);
+    expect(links.number).toBe("4.2");
+    expect(links.previous?.href).toBe("/learn/three");
+    expect(links.next.href).toBe("/learn/two");
+  });
+
+  it("gives a lone lesson only the way to practice", () => {
+    const links = lessonLinks([THREE[0]], "one", EXERCISES);
+    expect(links.previous).toBeUndefined();
+    expect(links.next.href).toBe("/practice");
+  });
+
+  it("throws for a slug that is not in the list", () => {
+    expect(() => lessonLinks(THREE, "four", EXERCISES)).toThrow('no lesson "four"');
+  });
+});
+
+describe("lessonLinks practice", () => {
+  it("splits the linked exercises into coding and theory, first mention first, each once", () => {
+    const text = [
+      "Try [the quiz](/practice/quiz-one) and [the fix](/practice/bug-one).",
+      "Then [write it](/practice/write-one), or [the quiz again](/practice/quiz-one).",
+      "The [whole list](/practice) and [another lesson](/learn/two) are not exercises.",
+    ].join("\n");
+    const links = lessonLinks([lesson("one", "One", text)], "one", EXERCISES);
+    expect(links.practice).toHaveLength(2);
+    expect(links.practice[0].side.id).toBe("code");
+    expect(links.practice[0].links).toEqual([
+      { href: "/practice/bug-one", title: "Title of bug-one", difficulty: undefined },
+      { href: "/practice/write-one", title: "Title of write-one", difficulty: "intro" },
+    ]);
+    expect(links.practice[1].side.id).toBe("theory");
+    expect(links.practice[1].links).toEqual([
+      { href: "/practice/quiz-one", title: "Title of quiz-one", difficulty: "core" },
+    ]);
+  });
+
+  it("reads callouts and skips code listings", () => {
+    const withCallout: Lesson = {
+      title: "One",
+      slug: "one",
+      order: 1,
+      body: [
+        { type: "code", language: "text", source: "[not a link](/practice/missing)" },
+        { type: "callout", variant: "note", markdown: "See [blanks](/practice/blanks-one)." },
+      ],
+    };
+    const links = lessonLinks([withCallout], "one", EXERCISES);
+    expect(links.practice).toHaveLength(1);
+    expect(links.practice[0].side.id).toBe("theory");
+    expect(links.practice[0].links.map((link) => link.href)).toEqual(["/practice/blanks-one"]);
+  });
+
+  it("is empty for a lesson that links no exercise", () => {
+    expect(lessonLinks(THREE, "two", EXERCISES).practice).toEqual([]);
+  });
+
+  it("throws when a lesson links an exercise that does not exist", () => {
+    const broken = lesson("one", "One", "Try [this](/practice/missing).");
+    expect(() => lessonLinks([broken], "one", EXERCISES)).toThrow(
+      'lesson "one" links /practice/missing, which is not an exercise',
+    );
+  });
+});
+
+// The shipped lessons, read once. The expected targets come from the
+// folders on disk, not from the loaders.
+const lessons = loadAllLessons();
+const exercises = loadExerciseIndex();
+const lessonSlugs = new Set(
+  fs.readdirSync(path.join(process.cwd(), "content/lessons"))
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => name.slice(0, -".json".length)),
+);
+const exerciseSlugs = new Set(
+  fs.readdirSync(path.join(process.cwd(), "content/exercises"))
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => name.slice(0, -".json".length)),
+);
+
+describe("lessonLinks on the shipped lessons", () => {
+  it("chains every lesson to the next one in order and ends at practice", () => {
+    expect(lessons.length).toBeGreaterThan(2);
+    lessons.forEach((entry, index) => {
+      const links = lessonLinks(lessons, entry.slug, exercises);
+      expect(links.number).toBe(`4.${index + 1}`);
+      expect(links.previous?.href).toBe(index === 0 ? undefined : `/learn/${lessons[index - 1].slug}`);
+      const last = index === lessons.length - 1;
+      expect(links.next.href).toBe(last ? "/practice" : `/learn/${lessons[index + 1].slug}`);
+    });
+  });
+
+  it("links only to pages that exist", () => {
+    for (const entry of lessons) {
+      const links = lessonLinks(lessons, entry.slug, exercises);
+      for (const neighbour of [links.previous, links.next]) {
+        if (!neighbour || neighbour.href === "/practice") continue;
+        expect(lessonSlugs).toContain(neighbour.href.replace("/learn/", ""));
+      }
+      for (const group of links.practice) {
+        for (const link of group.links) {
+          expect(exerciseSlugs).toContain(link.href.replace("/practice/", ""));
+        }
+      }
+    }
+  });
+});
