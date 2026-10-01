@@ -79,7 +79,7 @@ export function HeroDemo() {
               />
             ))}
           </span>
-          <span className="whitespace-nowrap font-mono text-[10px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
+          <span className="whitespace-nowrap font-mono text-[12px] font-medium uppercase tracking-[0.16em] text-[var(--text-secondary)]">
             live demo
           </span>
           {/* Sits after the name, not at the far end, so a label that grows
@@ -104,7 +104,7 @@ export function HeroDemo() {
               </button>
             );
           })}
-          <span className="ml-auto hidden font-mono text-[10px] text-[var(--text-tertiary)] sm:inline">
+          <span className="ml-auto hidden font-mono text-[12px] text-[var(--text-tertiary)] sm:inline">
             <span className="motion-reduce:hidden">one instruction every 450 ms</span>
             <span className="hidden motion-reduce:inline">one instruction per press</span>
           </span>
