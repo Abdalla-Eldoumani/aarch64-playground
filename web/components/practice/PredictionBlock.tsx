@@ -9,6 +9,7 @@
 import { useId, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { FeedbackAlert } from "@/components/practice/FeedbackAlert";
+import { ScrollingPre } from "@/components/ui/ScrollingPre";
 import { typedAnswerIsRight } from "@/lib/content/theory-answers";
 
 export function PredictionBlock({
@@ -67,9 +68,13 @@ export function PredictionBlock({
         Predict the result
       </h3>
 
-      <pre className="mb-6 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 font-mono text-[14px] leading-relaxed text-[var(--text-primary)]">
+      <ScrollingPre
+        className="mb-6"
+        preClassName="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 font-mono text-[14px] leading-relaxed text-[var(--text-primary)]"
+        fadeClassName="rounded-r-[var(--radius-card)] from-[var(--bg-elevated)]"
+      >
         {code}
-      </pre>
+      </ScrollingPre>
 
       <label
         htmlFor={inputId}
