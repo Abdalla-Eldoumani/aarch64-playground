@@ -85,7 +85,7 @@ main:
 `,
   },
   {
-    title: "saving and restoring fp and lr",
+    title: "Saving and restoring fp and lr",
     cause: "bl overwrites lr, so a function that calls must save and restore fp and lr.",
     wrong: `greet:
         bl      puts
@@ -149,7 +149,7 @@ greet:
 `,
   },
   {
-    title: "sign extension",
+    title: "Sign extension",
     cause: "a narrow signed value needs sign extension before it is used as a 64-bit value.",
     wrong: `        sub     w0, w1, w2
         ldr     x3, [x4, x0, lsl #3]`,
@@ -218,7 +218,7 @@ main:
 `,
   },
   {
-    title: "off-by-one loop bounds",
+    title: "Off-by-one loop bounds",
     cause: "the branch condition decides whether the final index is included.",
     wrong: `        mov     x19, 0
         mov     x0, 0
@@ -318,7 +318,7 @@ done:
 `,
   },
   {
-    title: "non-16-byte local allocation",
+    title: "Non-16-byte local allocation",
     cause: "local frames must be rounded up to a 16-byte multiple.",
     wrong: `        sub     sp, sp, 24
         str     x0, [sp, 8]
@@ -385,7 +385,7 @@ main:
 `,
   },
   {
-    title: "caller-saved registers do not survive a call",
+    title: "Caller-saved registers do not survive a call",
     cause:
       "a routine you call may overwrite x9-x15, so a value that must live across the call belongs in a callee-saved register (x19-x28): a routine that changes one must restore it before it returns.",
     wrong: `        mov     x9, 42
@@ -473,7 +473,7 @@ announce:                               // unchanged: x9 is its scratch
 `,
   },
   {
-    title: "misaligned stack at a call",
+    title: "Misaligned stack at a call",
     cause:
       "sub sp, sp, 8 reserves a local but parks sp off the 16-byte boundary the next bl needs.",
     wrong: `        sub     sp, sp, 8
