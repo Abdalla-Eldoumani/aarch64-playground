@@ -13,6 +13,19 @@ import { NAV_ROUTES } from "@/lib/content/site";
 afterEach(() => cleanup());
 
 describe("SiteNav", () => {
+  // The inset is a utility on the bar itself, so a second top padding added
+  // later sits in the same class list where Tailwind's order decides openly,
+  // not under a global rule that silently overrode it.
+  it("takes the notch's safe area as its only top padding, in both variants", () => {
+    for (const variant of ["full", "slim"] as const) {
+      render(<SiteNav variant={variant} />);
+      const classes = screen.getByRole("navigation", { name: "primary" }).className.split(/\s+/);
+      expect(classes).toContain("pt-[var(--safe-top)]");
+      expect(classes.filter((c) => /^(p|py|pt)-/.test(c))).toEqual(["pt-[var(--safe-top)]"]);
+      cleanup();
+    }
+  });
+
   it("full variant carries the label, the Open playground link, the routes, and marks the active route", () => {
     render(<SiteNav variant="full" />);
 
