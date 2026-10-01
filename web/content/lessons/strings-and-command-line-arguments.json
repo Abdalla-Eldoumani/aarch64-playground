@@ -2,7 +2,7 @@
   "title": "Strings, pointer arrays, and argv",
   "slug": "strings-and-command-line-arguments",
   "order": 24,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Handle text as bytes: character codes, strings that end in a zero byte, tables of string addresses, and the arguments main receives.",
   "tags": [
     "strings",
@@ -85,6 +85,11 @@
     {
       "type": "prose",
       "markdown": "To try other words, open the program in the playground and change the args box there. With the box empty, `argc` is 1 and the loop body never runs."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "A common mistake from this lesson, with a broken program and its fix that you can run:\n\n- [.ascii adds no zero byte; .string does](/reference#pitfall-ascii-has-no-terminator)"
     },
     {
       "type": "prose",
