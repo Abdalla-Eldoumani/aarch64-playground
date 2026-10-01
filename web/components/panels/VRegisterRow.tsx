@@ -86,7 +86,7 @@ export function VRegisterRow({
                 {text.primary}
               </span>
               {text.secondary ? (
-                <span className="text-[0.8334em] tabular-nums text-[var(--text-tertiary)]">
+                <span className="tabular-nums text-[var(--text-tertiary)]">
                   {text.secondary}
                 </span>
               ) : null}
