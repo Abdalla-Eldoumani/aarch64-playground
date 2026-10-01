@@ -28,7 +28,7 @@ async function renderBadge(online: boolean) {
 }
 
 function send(status: Record<string, unknown>): void {
-  const data = { type: "offline-status", pages: 3, bytes: 900, saving: null, failure: null, ...status };
+  const data = { type: "offline-status", bytes: 900, saving: null, failure: null, ...status };
   act(() => {
     for (const listener of listeners) listener(new MessageEvent("message", { data }));
   });
