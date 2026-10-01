@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 import { DiagnosticBundle } from "@/components/playground/DiagnosticBundle";
+import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { REPO_URL } from "@/lib/content/site";
 import type { DiagnosticBundle as DiagnosticBundleData } from "@/lib/playground/diagnostic-bundle";
 
@@ -107,20 +108,14 @@ export function Toolbar({
           type="button"
           onClick={onOpenCommandPalette}
           // The accessible name matches the visible label (WCAG label-in-name);
-          // the title still spells out what the button opens. The chip is
-          // full-strength for contrast on hover states, and its key is drawn
-          // by CSS from data-keys so the button's text stays the bare word.
+          // the title still spells out what the button opens.
           aria-label="commands"
           title="open the command palette (Ctrl+K)"
           data-walkthrough="commands"
           className={`${CONTROL} ${INACTIVE}`}
         >
           commands
-          <kbd
-            aria-hidden="true"
-            data-keys="Ctrl+K"
-            className="ml-1.5 hidden sm:inline-block [@media(pointer:coarse)]:hidden text-[12px] font-mono leading-none border border-current rounded px-1 py-[2px] after:content-[attr(data-keys)]"
-          />
+          <ShortcutChip keys="Ctrl+K" className="ml-1.5" />
         </button>
         {/* No F keys on a touch screen, so no shortcut list either. */}
         <button
