@@ -18,12 +18,30 @@ import { compareByOrder } from "@/lib/content/content-order";
 /** The real content directory, resolved against the build's cwd (web/). */
 const DEFAULT_DIR = path.join(process.cwd(), "content/exercises");
 
+// A production build reads each folder once. Every exercise page asks for
+// the whole folder three times (its metadata, the page, its sheet number) and
+// every lesson page once more, which was hundreds of full reads per build.
+// Development and tests read it on every call, so an edited file shows at once.
+const builtOnce = new Map<string, Exercise[]>();
+
 /**
  * Every `*.json` exercise in `dir`, validated and sorted by `order`. Throws on
  * bad JSON, invalid content, or a duplicate slug. A missing directory counts
  * as empty so the build runs before any exercise exists. `dir` is for tests.
  */
 export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
+  if (process.env.NODE_ENV !== "production") return readExercises(dir);
+  let exercises = builtOnce.get(dir);
+  if (!exercises) {
+    exercises = readExercises(dir);
+    builtOnce.set(dir, exercises);
+  }
+  // A copy, so a caller that sorts or splices its list cannot reorder the
+  // next caller's.
+  return exercises.slice();
+}
+
+function readExercises(dir: string): Exercise[] {
   if (!fs.existsSync(dir)) return [];
 
   // Sort filenames first so the read order (and any order ties) is deterministic.
