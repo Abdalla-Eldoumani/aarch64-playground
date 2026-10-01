@@ -63,7 +63,7 @@ describe("registerServiceWorker", () => {
       configurable: true,
     });
     registerServiceWorker();
-    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/" });
+    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/", updateViaCache: "none" });
   });
 
   test("swallows registration rejections silently", async () => {
