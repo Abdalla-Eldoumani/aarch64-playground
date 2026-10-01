@@ -284,6 +284,9 @@ export function ConsolePanel({
                 : "stdin"
           }
           disabled={ownedByTerminal}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           aria-label="Standard input"
           className="touch-target min-w-0 flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:opacity-50 disabled:cursor-not-allowed"
         />
