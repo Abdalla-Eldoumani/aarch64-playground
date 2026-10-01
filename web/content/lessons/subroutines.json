@@ -112,7 +112,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Call yourself](/practice/call-yourself): a subroutine that calls itself.\n- [Down to one digit](/practice/down-to-one-digit): call a digit-sum subroutine until the answer is one digit long.\n- [Tower of Hanoi](/practice/tower-of-hanoi): a subroutine that calls itself twice and passes four arguments.\n- [Basic quiz: subroutines](/practice/quiz-basic-subroutines), then [core](/practice/quiz-inter-subroutines): `bl`, `ret`, and the argument registers.\n- [Fill in the blank: subroutines (core)](/practice/blanks-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): frames, arguments, and return values."
+      "markdown": "## Practice\n\n- [Call yourself](/practice/call-yourself): a subroutine that calls itself.\n- [Down to one digit](/practice/down-to-one-digit): call a digit-sum subroutine until the answer is one digit long.\n- [Tower of Hanoi](/practice/tower-of-hanoi): a subroutine that calls itself twice and passes four arguments.\n- [Basic quiz: subroutines](/practice/quiz-basic-subroutines), then [core](/practice/quiz-inter-subroutines): `bl`, `ret`, and the argument registers.\n- [Fill in the blank: subroutines (core)](/practice/blanks-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): frames, arguments, and return values.\n- [Intermediate quiz: functions](/practice/quiz-inter-functions) and [Predict: functions (challenge)](/practice/predict-functions): recursion, frame records, and the frame chain. Their questions on saving `x19` come with [the next lesson](/learn/calling-conventions)."
     }
   ]
 }
