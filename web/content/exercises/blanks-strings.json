@@ -36,8 +36,8 @@
       "hint": "It is the store that pairs with ldrb."
     },
     {
-      "prompt": "Leave the loop at the byte that ends the string.",
-      "code": "ldrb    w10, [x9]\ncmp     w10, ___\nb.eq    walk_done",
+      "prompt": "w10 holds the byte that ldrb just loaded from the string. Compare it so that the b.eq walk_done after this line leaves the loop at the byte that ends the string.",
+      "code": "cmp     w10, ___",
       "blanks": [
         "0",
         "#0",
