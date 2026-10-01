@@ -303,4 +303,13 @@ describe("the plain pass-through rows", () => {
     expect(deps.formatSource).toHaveBeenCalledTimes(1);
     expect(deps.openShortcuts).toHaveBeenCalledTimes(1);
   });
+
+  // The palette searches the description too, so a student typing "octal" or
+  // "ieee" finds the converter that shows both.
+  it("names every view the base converter has", () => {
+    const { description } = row(buildPaletteCommands(makeDeps()), "base-converter");
+    for (const view of ["hex", "octal", "binary", "decimal", "two's complement", "IEEE-754"]) {
+      expect(description).toContain(view);
+    }
+  });
 });
