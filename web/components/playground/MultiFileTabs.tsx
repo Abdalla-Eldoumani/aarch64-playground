@@ -69,7 +69,7 @@ export function MultiFileTabs({
       role="group"
       aria-label="source files"
       data-walkthrough="files"
-      className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px] [@media(pointer:coarse)]:text-[12px]"
+      className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[12px]"
     >
       <span className="text-[var(--text-secondary)] mr-1">files:</span>
       <button
@@ -155,7 +155,7 @@ export function MultiFileTabs({
           autoCorrect="off"
           autoCapitalize="off"
           aria-label="new file name"
-          className="touch-target w-20 [@media(pointer:coarse)]:w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
+          className="touch-target w-20 [@media(pointer:coarse)]:w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[12px] text-[var(--text-primary)]"
         />
         <button
           type="submit"
