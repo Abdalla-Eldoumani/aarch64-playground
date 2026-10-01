@@ -64,7 +64,7 @@ function makeRow(over: Partial<ExerciseIndexRow>): ExerciseIndexRow {
 // The page renders each blurb on the server and hands the index the result.
 function blurbsOf(rows: ExerciseIndexRow[]) {
   return Object.fromEntries(
-    rows.map(({ slug, blurb }) => [slug, <LessonMarkdown inline markdown={blurb} />]),
+    rows.map(({ slug, blurb }) => [slug, <LessonMarkdown key={slug} inline markdown={blurb} />]),
   );
 }
 
