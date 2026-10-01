@@ -57,6 +57,12 @@ describe("PredictionBlock controlled answer", () => {
     expect(onValueChange).toHaveBeenCalledWith("0x10");
   });
 
+  // The answer box's own outline is off, so the ring is its only focus mark.
+  it("rings the answer box on keyboard focus", () => {
+    render(<PredictionBlock {...PROPS} />);
+    expect(screen.getByLabelText(PROPS.question).className).toContain("focus-visible:[box-shadow:var(--ring)]");
+  });
+
   // A phone shows no scrollbar until a swipe, so a snippet line cut at the
   // right edge needs a cue.
   it("fades the snippet's right edge only while a line runs past it", () => {
