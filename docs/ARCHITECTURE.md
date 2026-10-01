@@ -113,27 +113,33 @@ marks the line the student wrote.
 
 ## Encoding and decoding
 
-`assembler.rs` encodes each instruction in one large `match` on the mnemonic.
-Each arm carries the constants its instruction needs (opcode bits, operand
-rules, the flag-setting variant), so the encoder for any instruction is one
-search away and the compiler still checks every arm. Pseudo-instructions such
-as `mov`, `cmp`, and `cset` become the real instruction they stand for, so
-the executor only sees real encodings. The four largest Advanced SIMD
-families are the exception: each family's mnemonics share one arm that looks
-the row up by name in a table in `decoder.rs`.
+`encode_line` in `assembler.rs` is one large `match` on the mnemonic. Each
+arm passes the constants its instruction needs (opcode bits, operand rules,
+the flag-setting variant) to an encoder in `assembler/`, so the encoder for
+any instruction is one search away and the compiler still checks every arm.
+Pseudo-instructions such as `mov`, `cmp`, and `cset` become the real
+instruction they stand for, so the executor only sees real encodings. The
+Advanced SIMD lane families are the exception: two checks ahead of the
+`match` recognize a vector line by its operands and look its row up by name
+in a table in `decoder/simd.rs` or `decoder/simd_fp.rs`.
 
 Facts that more than one module needs have one home and a test that walks
 them: the condition codes and the register aliases (`sp`, `xzr`, `fp`, `lr`)
-in `registers.rs`; the directive names in `parser.rs`; and the load and store
-extend keywords, access sizes, floating-point opcodes, and every SIMD
-encoding class in `decoder.rs`. The SIMD tables serve both directions, so an
-instruction is encoded, decoded, and printed from the same row.
+in `registers.rs`; the directive names in `parser.rs`; the load and store
+extend keywords, access sizes, and scalar floating-point opcodes in
+`decoder.rs`; and every SIMD encoding class in `decoder/simd.rs`,
+`decoder/simd_fp.rs`, and `decoder/load_store.rs`. The SIMD tables serve both
+directions, so an instruction is encoded, decoded, and printed from the same
+row.
 
-The decoder checks `(word & mask) == pattern` from the most specific pattern
-to the least and returns a typed `Instruction`. A word that matches no
-supported encoding, including a reserved one inside a class that does match,
-decodes as unknown, so the program stops on it instead of running some other
-instruction.
+`decode` in `decoder.rs` picks the instruction class from bits 28 to 25 and
+hands the word to that class's file in `decoder/`, which checks
+`(word & mask) == pattern` from the most specific pattern to the least and
+returns a typed `Instruction`. A word that matches no supported encoding,
+including a reserved one inside a class that does match, decodes as unknown,
+so the program stops on it instead of running some other instruction.
+`execute` in `executor.rs` sends each `Instruction` to the file in
+`executor/` for its class.
 
 ## Memory
 
