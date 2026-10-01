@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
 import {
   safeGetItem,
   safeRemoveItem,
@@ -10,8 +9,8 @@ import {
 
 const KEY_PREFIX = "aarch64-playground:layout:";
 
-function readStored(bp: Breakpoint): number[] | null {
-  const raw = safeGetItem(`${KEY_PREFIX}${bp}`);
+function readStored(scope: string): number[] | null {
+  const raw = safeGetItem(`${KEY_PREFIX}${scope}`);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
@@ -25,45 +24,46 @@ function readStored(bp: Breakpoint): number[] | null {
 }
 
 /**
- * Panel sizes per breakpoint in localStorage; reset clears only the current
- * breakpoint. `save` does nothing until `ready`: a panel group can report its
+ * Panel sizes per scope in localStorage (a breakpoint, plus "-short" in a
+ * short window, plus the group's side); reset clears only the current scope.
+ * `save` does nothing until `ready`: a panel group can report its
  * size before the stored sizes load, and saving that report would replace
  * them with the fallback on every reload.
  */
 export function useLayoutPersistence(
-  bp: Breakpoint,
+  scope: string,
   fallback: number[],
 ): [number[], (next: number[]) => void, () => void, boolean] {
   const [sizes, setSizes] = useState<number[]>(fallback);
   const [ready, setReady] = useState(false);
   // The synchronous half of `ready`: a save can arrive between the render
-  // that changed `bp` and the effect that loads it, and state is too late.
-  const loadedFor = useRef<Breakpoint | null>(null);
+  // that changed `scope` and the effect that loads it, and state is too late.
+  const loadedFor = useRef<string | null>(null);
 
   useEffect(() => {
     loadedFor.current = null;
     setReady(false);
-    setSizes(readStored(bp) ?? fallback);
-    loadedFor.current = bp;
+    setSizes(readStored(scope) ?? fallback);
+    loadedFor.current = scope;
     setReady(true);
     // `fallback` is out of the deps on purpose: a new array identity must not
     // overwrite a loaded layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bp]);
+  }, [scope]);
 
   const save = useCallback(
     (next: number[]) => {
-      if (loadedFor.current !== bp) return;
+      if (loadedFor.current !== scope) return;
       setSizes(next);
-      safeSetItem(`${KEY_PREFIX}${bp}`, JSON.stringify(next));
+      safeSetItem(`${KEY_PREFIX}${scope}`, JSON.stringify(next));
     },
-    [bp],
+    [scope],
   );
 
   const reset = useCallback(() => {
-    safeRemoveItem(`${KEY_PREFIX}${bp}`);
+    safeRemoveItem(`${KEY_PREFIX}${scope}`);
     setSizes(fallback);
-  }, [bp, fallback]);
+  }, [scope, fallback]);
 
   return [sizes, save, reset, ready];
 }
