@@ -91,3 +91,18 @@ describe("EmbedLayout's narrow view switch", () => {
     expect(grid().dataset.pane).toBe("editor");
   });
 });
+
+describe("the error line", () => {
+  // A phone has no hover to read a title, so the whole message is the line's
+  // own text and the line never ends in an ellipsis; the wrap itself is
+  // measured in the browser pass, since jsdom does no layout.
+  test("carries the whole message and is never truncated", () => {
+    const message =
+      "immediate out of range: 0-4095, or a multiple of 4096 up to 16773120 (which encodes as lsl #12)";
+    render(<EmbedLayout {...props({ error: message })} />);
+    const line = screen.getByRole("alert");
+    expect(line.textContent).toBe(message);
+    expect(line.className).not.toMatch(/\btruncate\b/);
+    expect(line.className).toMatch(/\bbreak-words\b/);
+  });
+});
