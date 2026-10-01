@@ -144,6 +144,9 @@ export function MemoryPanel({
           type="text"
           value={baseAddr}
           onChange={handleAddrChange}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           aria-label="memory base address"
           className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
