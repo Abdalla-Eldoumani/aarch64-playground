@@ -396,7 +396,7 @@ average:
     mistake:
       "A function you call may change x0 to x18 without putting them back; only x19 to x28 (and fp and sp) are callee-saved, which means the callee must restore them before it returns. A value that has to live across a `bl` belongs in x19 to x28.",
     server: "prints `sum = 25, cube = 125`: cube used x9 for its own work, as it is allowed to.",
-    playground: "prints the same line. After a library call such as printf the playground also fills x0 to x18 with 0xdeadbeefdeadbeef and notes the first use of a clobbered register.",
+    playground: "prints the same line. After each printf, x0 holds printf's return value (the number of characters it printed) and x1 to x18 hold 0xdeadbeefdeadbeef. The playground notes the first use of a clobbered register.",
     fix: "Keep the sum in x19, and save x19 in main's frame because main is a callee too. The fixed program prints `sum = 42, cube = 125`.",
     wrong: `mov     x9, 42
 bl      cube
@@ -753,7 +753,7 @@ limit_done:
     mistake:
       "x16 and x17 (IP0 and IP1) are scratch registers for the linker. A `bl printf` reaches printf through a small stub, the PLT (procedure linkage table), that uses x16 and x17 to find printf before printf even starts.",
     server: "prints only `line 1`: after the first call x16 held an address, far above 3.",
-    playground: "prints the same line. Here a library call fills x0 to x18 with 0xdeadbeefdeadbeef, and a console note names the call that changed x16.",
+    playground: "prints the same line. After each printf, x0 holds printf's return value and x1 to x18 hold 0xdeadbeefdeadbeef, and a console note names the call that changed x16.",
     fix: "Keep a counter that lives across calls in x19 to x28. The fixed program prints lines 1 to 3.",
     wrong: `        mov     x16, 1
 line_loop:
