@@ -1,10 +1,11 @@
-"use client";
-
 /**
  * The one renderer for author Markdown on the site. Author Markdown is
  * untrusted, so it runs through rehype-sanitize with no raw-HTML path; the
  * hover-define attributes are added by the React components below, after
  * sanitizing, so the schema widens the default only by a heading `id`.
+ *
+ * No "use client": it holds no state or handlers, so a server page can render
+ * it at build time and ship none of the markdown code (the practice index).
  */
 
 import { Children, isValidElement, type JSX, type ReactNode } from "react";
