@@ -46,6 +46,20 @@ async function fetchForCache(url) {
   return res;
 }
 
+/**
+ * A file under /_next/static/ is named after its content, so a copy an older
+ * build saved is this build's file too. Reusing it means a deploy that changed
+ * little (a star-count rebuild changes nothing but the build id) downloads
+ * little.
+ */
+async function reuseOrFetch(url) {
+  if (url.startsWith("/_next/static/")) {
+    const saved = await caches.match(url);
+    if (saved) return saved;
+  }
+  return fetchForCache(url);
+}
+
 self.addEventListener("install", (event) => {
   event.waitUntil(installBuild());
 });
@@ -57,7 +71,7 @@ async function installBuild() {
   const cache = await caches.open(CACHE);
   try {
     const urls = [...corePages, ...files, ...(keepEveryPage ? otherPages : [])];
-    await Promise.all(urls.map(async (url) => cache.put(url, await fetchForCache(url))));
+    await Promise.all(urls.map(async (url) => cache.put(url, await reuseOrFetch(url))));
     if (keepEveryPage) await markSaved(cache);
   } catch (err) {
     // The failed install is discarded by the browser; its partial cache
