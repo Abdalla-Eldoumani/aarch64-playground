@@ -133,9 +133,11 @@ export function ExampleLoader({ onLoad, fill = false }: ExampleLoaderProps) {
 
   return (
     <div className={fill ? "flex min-w-0 flex-1 items-center gap-2" : "flex items-center gap-2"}>
+      {/* The phone bar leaves a 320px screen 84px for the label, which cut
+          "load example..." short; the accessible name says the rest. */}
       <Select
         className={fill ? "min-w-0 flex-1" : ""}
-        placeholder="load example..."
+        placeholder={fill ? "examples" : "load example..."}
         ariaLabel="load an example program"
         onSelect={(stem) => void handleSelect(stem)}
         groups={GROUPS.map((group) => ({
