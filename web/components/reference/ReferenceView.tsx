@@ -1,10 +1,11 @@
 "use client";
 
 /**
- * The reference page's four tabs. The pitfalls and the converter load only
- * when their tab opens, so the page's first download stays small. A link can
- * open a tab: #calling-convention, #pitfalls or #pitfall-<slug> (at that
- * card), and #converter, #converter-octal or #converter-ieee754 (at that part).
+ * The reference page's five tabs. The pitfalls, the converter and the
+ * directives guide load only when their tab opens, so the page's first
+ * download stays small. A link can open a tab: #calling-convention,
+ * #pitfalls or #pitfall-<slug> (at that card), #directives-and-debugger, and
+ * #converter, #converter-octal or #converter-ieee754 (at that part).
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -27,12 +28,18 @@ const PitfallsCatalog = dynamic(
   () => import("@/components/reference/PitfallsCatalog").then((m) => m.PitfallsCatalog),
   { ssr: false },
 );
+// Its tables are text the first view never shows, so they stay out of the route chunk.
+const DirectivesAndDebugger = dynamic(
+  () => import("@/components/reference/DirectivesAndDebugger").then((m) => m.DirectivesAndDebugger),
+  { ssr: false },
+);
 
 const TABS: TabItem[] = [
   { value: "instructions", label: "Instructions" },
   { value: "calling-convention", label: "Calling convention" },
   { value: "pitfalls", label: "Pitfalls" },
   { value: "converter", label: "Converter" },
+  { value: "directives-and-debugger", label: "Directives and debugger" },
 ];
 
 // The fragments that open the converter, so a lesson can link straight to
@@ -49,6 +56,7 @@ function tabFor(fragment: string): string | null {
   if (CONVERTER_LINKS.has(fragment)) return "converter";
   if (fragment === "pitfalls" || fragment.startsWith(pitfallFragment(""))) return "pitfalls";
   if (fragment === "calling-convention") return "calling-convention";
+  if (fragment === "directives-and-debugger") return "directives-and-debugger";
   return null;
 }
 
@@ -136,6 +144,7 @@ export function ReferenceView({
             </div>
           </div>
         )}
+        {active === "directives-and-debugger" && <DirectivesAndDebugger />}
       </div>
     </Tabs>
   );
