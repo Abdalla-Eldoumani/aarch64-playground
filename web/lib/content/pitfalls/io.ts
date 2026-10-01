@@ -11,10 +11,10 @@ export const IO_PITFALLS: Pitfall[] = [
     server: "prints `average = 10.000000`: printf read d0, which still held the total.",
     playground: "prints the same line.",
     fix: "Put the double in d0: `fmov d0, d2`. The fixed program prints `average = 2.500000`.",
-    wrong: `        fmov    x1, d2
-        bl      printf`,
-    right: `        fmov    d0, d2
-        bl      printf`,
+    wrong: `fmov    x1, d2
+bl      printf`,
+    right: `fmov    d0, d2
+bl      printf`,
     broken: {
       source: `// Prints the average of a total of 10.0 over 4 items.
 // The double goes in x1, but printf reads %f from d0.
@@ -95,11 +95,11 @@ main:
     server: "prints `ratio = 0.000000`.",
     playground: "prints the same line.",
     fix: "Convert first: `fcvt d0, s0`. The fixed program prints `ratio = 2.500000`.",
-    wrong: `        ldr     s0, [x9]
-        bl      printf`,
-    right: `        ldr     s0, [x9]
-        fcvt    d0, s0
-        bl      printf`,
+    wrong: `ldr     s0, [x9]
+bl      printf`,
+    right: `ldr     s0, [x9]
+fcvt    d0, s0
+bl      printf`,
     broken: {
       source: `// Prints a 32-bit float, 2.5, with %f.
 // printf reads a 64-bit double, and the float was never widened.
