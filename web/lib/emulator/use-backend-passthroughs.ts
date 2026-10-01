@@ -50,9 +50,8 @@ export function useBackendPassthroughs(
     void backend.closeStdin();
   }, [backendRef]);
 
-  // Live terminal sessions pause the step-back ring: the per-step clone
-  // costs more than the step, and stepping back mid-session has no
-  // meaning. The drive resumes it when it stands down.
+  // Live terminal sessions pause the step-back ring, since stepping back
+  // mid-session has no meaning. The drive resumes it when it stands down.
   const setSnapshotsPaused = useCallback(
     (paused: boolean) => {
       const backend = backendRef.current;
