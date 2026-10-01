@@ -375,6 +375,9 @@ export function useEmulator(): EmulatorState {
         .assemble(source, args)
         .then(async ({ result }): Promise<AssembleOutcome> => {
           if (!result.success) {
+            // The attempt wiped the old program, so the disassembly and the
+            // decode strip that reads it go back to their no-program state.
+            setInstructions([]);
             // A non-positive line means "no line available" (a few linker
             // errors); Monaco clamps a 0 range to line 1, which paints the
             // error onto an unrelated first line.
@@ -433,6 +436,7 @@ export function useEmulator(): EmulatorState {
           return { success: true, error: null, errorLine: null };
         })
         .catch((e: unknown): AssembleOutcome => {
+          setInstructions([]);
           const message = e instanceof Error ? e.message : String(e);
           if (surfaceErrors) setError(message);
           return { success: false, error: message, errorLine: null };
