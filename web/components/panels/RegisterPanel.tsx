@@ -55,7 +55,7 @@ interface RegisterPanelProps {
   running?: boolean;
   /** The label's heading level, one below the host's own section heading, so
    *  an embedded panel reads as part of that section rather than a sibling. */
-  headingLevel?: 2 | 3;
+  headingLevel?: 2 | 3 | 4;
   /** When the follow may move the list; the landing demo waits for a reader
    *  who is scrolling the page. Straight away by default. */
   holdScroll?: ScrollHold;
