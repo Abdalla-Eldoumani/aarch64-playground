@@ -12,6 +12,7 @@ import type {
   ResultAssertion,
   StructuralAssertion,
 } from "@/lib/content/exercise-schema";
+import { escapeRegExp } from "@/lib/asm/escape-regexp";
 
 /**
  * The structural subset of the embed's `EmbeddableState` the checker reads.
@@ -83,11 +84,6 @@ function instructionText(text: string): string {
   return text
     .replace(new RegExp(STRING_LITERAL, "g"), '""')
     .replace(/^([ \t]*)[A-Za-z_.$][\w.$]*:/gm, "$1");
-}
-
-/** Escape every regex metacharacter so author text matches literally. */
-function escapeRegExp(value: string): string {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /**
