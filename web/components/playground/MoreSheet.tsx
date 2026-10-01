@@ -43,7 +43,7 @@ export function MoreSheet({ open, onClose, sections }: MoreSheetProps) {
       >
         <div className="flex items-center justify-between">
           <h2 id={titleId} className="font-sans text-[15px] font-medium text-[var(--text-primary)]">
-            more
+            More
           </h2>
           <button
             type="button"
