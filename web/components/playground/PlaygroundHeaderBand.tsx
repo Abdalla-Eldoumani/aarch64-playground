@@ -166,22 +166,18 @@ export function PlaygroundHeaderBand({
     );
   }
 
-  // No top padding under the site bar, which carries the top safe area. A
-  // short window drops that bar, so the band takes the safe area, the home
-  // link and the site menu, and its tools move to the run row.
+  // No top padding under the site bar, which carries the top safe area and
+  // the name, so the band opens on the examples: a label here repeated the
+  // bar's mark and, at 12px, pushed the 1440px band to a second row. A short
+  // window drops that bar, so the band takes the safe area, the home link and
+  // the site menu, and its tools move to the run row.
   return (
     <div
       className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 pb-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] ${
         short ? "pt-[max(0.5rem,var(--safe-top))]" : ""
       }`}
     >
-      {short ? (
-        <Wordmark className="shrink-0" />
-      ) : (
-        <span className="hidden sm:inline font-mono text-[12px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
-          aarch64-pg
-        </span>
-      )}
+      {short && <Wordmark className="shrink-0" />}
       <div className="min-w-0 shrink-0">
         <ExampleLoader onLoad={onLoadProgram} />
       </div>
