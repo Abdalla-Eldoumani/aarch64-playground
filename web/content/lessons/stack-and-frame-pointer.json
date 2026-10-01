@@ -2,7 +2,7 @@
   "title": "The stack and the frame pointer",
   "slug": "stack-and-frame-pointer",
   "order": 18,
-  "lastUpdated": "2026-09-28",
+  "lastUpdated": "2026-09-30",
   "summary": "Open a stack frame that saves fp and lr, keep locals at fp offsets, read input straight into them, and keep sp 16-byte aligned.",
   "tags": [
     "stack",
@@ -109,6 +109,11 @@
     {
       "type": "prose",
       "markdown": "Two details matter. The block moves `sp` by 16, not by the 4 bytes it uses, so `sp` stays a multiple of 16 while `printf` runs. And the block gives its bytes back with `add sp, sp, 16` before the epilogue, because `ldp fp, lr, [sp], 16` reads the saved pair at `sp`: with `sp` still 16 bytes low, it would load the wrong values and `ret` would jump to a bad address."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "Common mistakes from this lesson, each with a broken program and its fix that you can run:\n\n- [The frame record takes 16 bytes, not 8](/reference#pitfall-frame-record-takes-16-bytes)\n- [Round every local allocation up to a multiple of 16](/reference#pitfall-locals-round-up-to-16)"
     },
     {
       "type": "prose",
