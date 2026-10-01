@@ -178,6 +178,10 @@ pub struct TermState {
     /// UI reads this as "this program is a terminal program" and hands
     /// it the terminal pane.
     pub raw_mode: bool,
+    /// Stdin was closed before the first step: the input is a file
+    /// (`./prog < file`, a checker's hidden case), not the console, so
+    /// ioctl answers ENOTTY for fd 0.
+    pub stdin_is_file: bool,
 }
 
 /// Pacing credit for sleeping programs: each nanosecond a program asks
