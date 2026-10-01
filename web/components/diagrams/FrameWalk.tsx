@@ -8,7 +8,7 @@
  * a frame opens, so nothing shifts.
  */
 
-import { useState, type JSX, type KeyboardEvent } from "react";
+import { useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 
@@ -375,23 +375,32 @@ export function FrameWalk({
         ))}
       </ul>
 
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
-          <span>high addresses</span>
-          <span className="flex items-center gap-1">
-            <span aria-hidden="true">{"↓"}</span>
-            the stack grows downward
-          </span>
-        </div>
+      <StackColumn>
         <ul aria-label="stack bands" className="flex flex-col gap-2">
           {step.bands.map((band) => (
             <Band key={band.label} {...band} />
           ))}
         </ul>
-        <span className="text-[12px] text-[var(--text-secondary)]">
-          low addresses
+      </StackColumn>
+    </section>
+  );
+}
+
+/** A stack drawn top to bottom between its high- and low-address edges. */
+export function StackColumn({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
+        <span>high addresses</span>
+        <span className="flex items-center gap-1">
+          <span aria-hidden="true">{"↓"}</span>
+          the stack grows downward
         </span>
       </div>
-    </section>
+      {children}
+      <span className="text-[12px] text-[var(--text-secondary)]">
+        low addresses
+      </span>
+    </div>
   );
 }
