@@ -7,7 +7,7 @@ afterEach(() => cleanup());
 describe("NotFound", () => {
   it("renders the default title and message", () => {
     render(<NotFound />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("page not found");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Page not found");
     expect(screen.getByText(/is not mapped/i)).toBeTruthy();
   });
 
