@@ -10,7 +10,7 @@ import { afterEach, describe, expect, it } from "vitest";
 // above web/ (vitest's cwd), so it is loaded by path and run against a small
 // build laid out on disk.
 const nodeRequire = createRequire(import.meta.url);
-const { collectPrecache, renderWorker } = nodeRequire(
+const { collectPrecache, renderWorker, workerList, sameFiles } = nodeRequire(
   path.join(process.cwd(), "..", "scripts", "write-precache-list.js"),
 ) as {
   collectPrecache: (webDir: string) => Record<string, unknown> & {
@@ -21,6 +21,8 @@ const { collectPrecache, renderWorker } = nodeRequire(
     otherBytes: number;
   };
   renderWorker: (list: object, source: string) => string;
+  workerList: (text: string) => Record<string, unknown> | null;
+  sameFiles: (list: object, written: Record<string, unknown> | null) => boolean;
 };
 const WORKER_SOURCE = fs.readFileSync(path.join(process.cwd(), "lib", "playground", "sw.js"), "utf8");
 
@@ -143,5 +145,27 @@ describe("the precache list", () => {
     expect(first.endsWith(WORKER_SOURCE)).toBe(true);
     expect(second.endsWith(WORKER_SOURCE)).toBe(true);
     expect(WORKER_SOURCE).not.toMatch(/importScripts/);
+  });
+});
+
+describe("the deploy's second-build check", () => {
+  it("reads back the list a written worker carries", () => {
+    const list = collectPrecache(fakeBuild());
+    const written = workerList(renderWorker(list, WORKER_SOURCE));
+    expect(sameFiles(list, written)).toBe(true);
+  });
+
+  it("refuses a worker written by another build or naming other files", () => {
+    const list = collectPrecache(fakeBuild());
+    const other = workerList(renderWorker(collectPrecache(fakeBuild(undefined, "def456")), WORKER_SOURCE));
+    expect(sameFiles(list, other)).toBe(false);
+    const web = fakeBuild();
+    write(web, ".next/static/chunks/main-2.js", "console.log(3)");
+    const moreFiles = workerList(renderWorker(collectPrecache(web), WORKER_SOURCE));
+    expect(sameFiles(list, moreFiles)).toBe(false);
+  });
+
+  it("refuses a worker with no list", () => {
+    expect(sameFiles(collectPrecache(fakeBuild()), workerList(WORKER_SOURCE))).toBe(false);
   });
 });
