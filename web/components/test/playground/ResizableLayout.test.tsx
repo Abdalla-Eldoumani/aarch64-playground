@@ -84,7 +84,7 @@ vi.mock("react-resizable-panels", async () => {
       children,
     }: {
       id: string;
-      minSize: string;
+      minSize: number | string;
       defaultSize: string;
       children?: ReactNode;
     }) => (
@@ -222,14 +222,56 @@ describe("ResizableLayout", () => {
     expect(panel("panel-tabs").getAttribute("data-size")).toBe("44%");
   });
 
-  it("keeps a pane from being dragged shut", () => {
+  // Plain numbers are pixels to the panel library, so each floor holds on
+  // any screen height.
+  it("keeps a pane from being dragged shut, in pixels", () => {
     renderLayout();
-    expect(panel("panel-left").getAttribute("data-min")).toBe("25%");
-    expect(panel("panel-right").getAttribute("data-min")).toBe("25%");
-    expect(panel("panel-editor").getAttribute("data-min")).toBe("20%");
-    expect(panel("panel-disasm").getAttribute("data-min")).toBe("15%");
-    expect(panel("panel-regs").getAttribute("data-min")).toBe("20%");
-    expect(panel("panel-tabs").getAttribute("data-min")).toBe("20%");
+    expect(panel("panel-left").getAttribute("data-min")).toBe("360");
+    expect(panel("panel-right").getAttribute("data-min")).toBe("320");
+    expect(panel("panel-editor").getAttribute("data-min")).toBe("160");
+    expect(panel("panel-disasm").getAttribute("data-min")).toBe("80");
+    expect(panel("panel-regs").getAttribute("data-min")).toBe("160");
+    expect(panel("panel-tabs").getAttribute("data-min")).toBe("140");
+  });
+
+  it("opens a short window on its own splits, saved under their own keys", () => {
+    window.localStorage.setItem(`${KEY}lg-left`, "[60,40]");
+    render(
+      <ResizableLayout
+        breakpoint="lg"
+        height="short"
+        editor={<span>EDITOR</span>}
+        disassembly={<span>DISASM</span>}
+        registers={<span>REGS</span>}
+        rightTabs={<span>TABS</span>}
+      />,
+    );
+    expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("76%");
+    expect(panel("panel-disasm").getAttribute("data-size")).toBe("24%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("62%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("38%");
+    // The tall window's saved split is not the short window's.
+    expect(setLayoutCalls).toHaveLength(0);
+    drag("panel-editor", { "panel-editor": 80, "panel-disasm": 20 });
+    expect(window.localStorage.getItem(`${KEY}lg-left-short`)).toBe("[80,20]");
+    expect(window.localStorage.getItem(`${KEY}lg-left`)).toBe("[60,40]");
+  });
+
+  it("gives a tall window's tabs the larger share", () => {
+    render(
+      <ResizableLayout
+        breakpoint="2xl"
+        height="tall"
+        editor={<span>EDITOR</span>}
+        disassembly={<span>DISASM</span>}
+        registers={<span>REGS</span>}
+        rightTabs={<span>TABS</span>}
+      />,
+    );
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("44%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("56%");
   });
 
   it("restores the three stored splits, one key per group", () => {
