@@ -53,11 +53,16 @@ export function useFocusTrap(
     const swallowSecondPress = (e: Event) => {
       if (!armed) return;
       const key = e instanceof KeyboardEvent ? e.key : "";
-      if (performance.now() - openedAt >= DOUBLE_PRESS_MS) armed = false;
-      else if (key === "Enter" || key === " ") {
+      if (key !== "Enter" && key !== " ") {
+        if (e.type !== "keyup") armed = false;
+        return;
+      }
+      // A key held down since the opener repeats into the dialog for as long
+      // as it is held, so a repeat is held back after the interval too.
+      if ((e as KeyboardEvent).repeat || performance.now() - openedAt < DOUBLE_PRESS_MS) {
         e.preventDefault();
         e.stopPropagation();
-      } else if (e.type !== "keyup") armed = false;
+      } else armed = false;
     };
     const events = ["keydown", "keyup", "input"] as const;
     for (const type of events) document.addEventListener(type, swallowSecondPress, true);
