@@ -1,9 +1,10 @@
 "use client";
 
 /**
- * The reference page's four tabs. The converter loads only when its tab opens,
- * so the page's first download stays small; a #converter, #converter-octal or
- * #converter-ieee754 link opens it at that part.
+ * The reference page's four tabs. The pitfalls and the converter load only
+ * when their tab opens, so the page's first download stays small. A link can
+ * open a tab: #calling-convention, #pitfalls or #pitfall-<slug> (at that
+ * card), and #converter, #converter-octal or #converter-ieee754 (at that part).
  */
 
 import { useEffect, useState, type JSX } from "react";
@@ -12,13 +13,18 @@ import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import { AapcsRail } from "@/components/diagrams/AapcsRail";
 import { InstructionReference } from "@/components/reference/InstructionReference";
 import { CallingConventionGuide } from "@/components/reference/CallingConventionGuide";
-import { PitfallsCatalog } from "@/components/reference/PitfallsCatalog";
 import type { ConverterView } from "@/components/panels/BaseConverter";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
+import { pitfallFragment, referenceId } from "@/lib/content/site";
 import type { ReferenceInstruction } from "@/lib/content/reference-data";
 
 const BaseConverter = dynamic(
   () => import("@/components/panels/BaseConverter").then((m) => m.BaseConverter),
+  { ssr: false },
+);
+// The cards carry two whole programs each, so they stay out of the route chunk.
+const PitfallsCatalog = dynamic(
+  () => import("@/components/reference/PitfallsCatalog").then((m) => m.PitfallsCatalog),
   { ssr: false },
 );
 
@@ -38,33 +44,63 @@ const CONVERTER_LINKS = new Map<string, ConverterView | undefined>([
   ["converter-ieee754", "ieee754"],
 ]);
 
+/** The tab a fragment opens, or null for one that names no tab. */
+function tabFor(fragment: string): string | null {
+  if (CONVERTER_LINKS.has(fragment)) return "converter";
+  if (fragment === "pitfalls" || fragment.startsWith(pitfallFragment(""))) return "pitfalls";
+  if (fragment === "calling-convention") return "calling-convention";
+  return null;
+}
+
 export function ReferenceView({
   instructions,
+  lessonTitles,
 }: {
   instructions: ReferenceInstruction[];
+  /** Lesson titles by slug, for the pitfall cards' lesson links. */
+  lessonTitles: Record<string, string>;
 }): JSX.Element {
   const fragment = useHashFragment();
   // The reader's tab pick; until there is one, the fragment decides.
   const [picked, setPicked] = useState<string | null>(null);
-  const active = picked ?? (CONVERTER_LINKS.has(fragment) ? "converter" : "instructions");
+  const active = picked ?? tabFor(fragment) ?? "instructions";
   // False until the first tab switch, so the panel entrance answers the
   // reader's pick and never slows the first paint on a slow phone.
   const [switched, setSwitched] = useState(false);
 
-  // A converter link followed on this page (back, forward, a clicked
-  // #converter link) wins over an earlier tab pick. Other fragments belong
-  // to the instruction list and leave the tab alone.
+  // A link followed on this page (back, forward, a clicked #link) wins over
+  // an earlier tab pick when it names a tab or an instruction, so a pitfall
+  // card's #cmp link lands on cmp. Any other fragment, such as the skip
+  // link's #main, leaves the tab alone.
   useEffect(() => {
     const onHashChange = () => {
-      if (CONVERTER_LINKS.has(window.location.hash.replace(/^#/, ""))) setPicked(null);
+      const followed = window.location.hash.replace(/^#/, "");
+      if (tabFor(followed) || instructions.some((i) => referenceId(i.mnemonic) === followed)) {
+        setPicked(null);
+      }
     };
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
-  }, []);
+  }, [instructions]);
 
   function onChange(value: string) {
+    // A press on the open tab changes nothing, and keeps the fragment that
+    // selected the instruction on show.
+    if (value === active) return;
     setSwitched(true);
     setPicked(value);
+    // The pick replaces whatever the fragment opened, so the fragment goes:
+    // a reload shows the picked tab, and a later link to that same fragment
+    // still changes the URL, so it still fires hashchange and still lands.
+    // replaceState fires no hashchange, so one is sent for the fragment store.
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        "",
+        window.location.pathname + window.location.search,
+      );
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    }
   }
 
   return (
@@ -84,7 +120,7 @@ export function ReferenceView({
           </div>
         )}
         {active === "calling-convention" && <CallingConventionGuide />}
-        {active === "pitfalls" && <PitfallsCatalog />}
+        {active === "pitfalls" && <PitfallsCatalog lessonTitles={lessonTitles} />}
         {active === "converter" && (
           <div className="max-w-2xl">
             <p className="text-[var(--text-secondary)] [font:var(--type-body)]">
