@@ -5,23 +5,15 @@
  * one ("or" in "for", "word", "memory").
  */
 
-const LETTER_OR_DIGIT = /[\p{L}\p{N}]/u;
-
-/** True when `word` sits in `text` at the start of a word. Both lower case. */
-function startsAWord(text: string, word: string): boolean {
-  for (let at = text.indexOf(word); at !== -1; at = text.indexOf(word, at + 1)) {
-    if (at === 0 || !LETTER_OR_DIGIT.test(text[at - 1])) return true;
-  }
-  return false;
-}
+/** Anything but a letter or a digit ends a word, in the text and the query. */
+const WORD_BREAK = /[^\p{L}\p{N}]+/u;
 
 /** True when every word of `query` starts a word of `text`, ignoring case.
  *  A blank query matches everything. */
 export function matchesAllWords(query: string, text: string): boolean {
-  const lower = text.toLowerCase();
+  const words = text.toLowerCase().split(WORD_BREAK);
   return query
     .toLowerCase()
-    .split(/\s+/)
-    .filter(Boolean)
-    .every((word) => startsAWord(lower, word));
+    .split(WORD_BREAK)
+    .every((typed) => words.some((word) => word.startsWith(typed)));
 }
