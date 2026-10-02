@@ -104,6 +104,9 @@ export function useEmulator(): EmulatorState {
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
   const [droppedBreakpoints, setDroppedBreakpoints] = useState<number[]>(NO_LINES);
   const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
+  // The last snapshot's call, kept while a run hides it: a run's final
+  // snapshot lands before the run is over, so the stop shows it from here.
+  const lastCallRef = useRef<ExternalCall | null>(null);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
@@ -229,6 +232,7 @@ export function useEmulator(): EmulatorState {
     // An external call shows only while paused: a run passes through one on
     // every printf, and showing it mid-run would flicker the card and drag
     // the marker back to the call site on every heartbeat.
+    lastCallRef.current = snap.externalCall ?? null;
     const call = (!runningRef.current && snap.externalCall) || null;
     setExternalCall(call);
     const map = lineMapRef.current;
@@ -614,6 +618,13 @@ export function useEmulator(): EmulatorState {
         // The snapshot this result carries has already landed, so the ref
         // says whether the run stopped at a read rather than for good.
         runBlockedRef.current = blockedRef.current && !runResult.error;
+        // That snapshot hid any library call, since the run was still on. A
+        // stop inside printf, or at a scanf's read, marks the `bl` line.
+        const call = lastCallRef.current;
+        if (call && programLoadedRef.current) {
+          setExternalCall(call);
+          markCurrentLine(call.callSiteLine);
+        }
         setStepCount((c) => {
           const next = c + total;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
@@ -640,7 +651,7 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [pushReplayFrame, surfaceRuntimeError]);
+  }, [markCurrentLine, pushReplayFrame, surfaceRuntimeError]);
 
   const resumeAfterInput = useCallback(() => {
     if (!runBlockedRef.current) return;
