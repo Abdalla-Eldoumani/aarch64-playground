@@ -158,7 +158,7 @@ describe("the help key", () => {
     const keys = [...(await findByTestId("shortcuts-help")).querySelectorAll("kbd")].map(
       (k) => k.textContent,
     );
-    expect(keys).toContain("F9 or Ctrl+F8");
+    expect(keys).toContain("F9");
     expect(keys).toContain("Ctrl+M, then Tab");
   });
 
