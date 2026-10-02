@@ -42,14 +42,16 @@ export function LessonArticle({
 }: {
   lesson: Lesson;
   /** The lesson's number, e.g. "4.3" (its place in the sorted order); it
-   *  numbers the kicker, the contents, and the examples. */
+   *  numbers the kicker and the contents. */
   sheetNumber?: string;
   /** The foot of the article, after the last block. A slot rather than a
    *  prop of data, so the page can render it on the server. */
   children?: ReactNode;
 }): JSX.Element {
   const toc = extractToc(lesson);
-  // Editor blocks are the numbered examples, 4.N.k in body order.
+  // Editor blocks are examples 1, 2, 3 in body order. The 4.N.k numbers
+  // belong to the contents: one number naming a section and an example
+  // was ambiguous.
   const editorOrdinals = new Map<number, number>();
   lesson.body.forEach((block, index) => {
     if (block.type === "editor") editorOrdinals.set(index, editorOrdinals.size + 1);
@@ -157,7 +159,7 @@ export function LessonArticle({
                   </div>
                   <div className="flex items-center justify-between gap-4">
                     <span className="mt-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                      example {sheetNumber}.{editorOrdinals.get(index)}
+                      example {editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
                         try it: run it, or step one instruction at a time
                       </span>
