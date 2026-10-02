@@ -73,13 +73,14 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
   }, [source, value]);
 
   return (
+    // The word shows at every width, and the empty box shows nothing: a sample
+    // value there read as arguments the program would get.
     <label className="inline-flex items-center gap-1 text-[12px] text-[var(--text-secondary)]">
-      <span className="hidden sm:inline">args</span>
+      <span>args</span>
       <input
         type="text"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="12 25"
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
