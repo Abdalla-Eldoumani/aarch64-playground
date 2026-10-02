@@ -16,6 +16,11 @@ export type PaletteDeps = {
   launchable: boolean;
   /** The buffer the download / copy / format rows act on. */
   source: string;
+  /** The caret's line in main.asm, or null while another file's tab is open:
+   *  only the editor knows that caret, and F9 there reaches it. Left out, the
+   *  breakpoint row stays and says how to set one from the editor. */
+  caretLine?: number | null;
+  toggleBreakpoint?: () => void;
   assemble: () => void;
   step: () => void;
   stepBack: () => void;
@@ -134,6 +139,18 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       description: "start the program over, keeping breakpoints",
       shortcut: "Shift+F5",
       run: () => deps.reset(),
+    },
+    {
+      id: "toggle-breakpoint",
+      label: "Toggle breakpoint",
+      description:
+        deps.caretLine != null
+          ? `set or clear a breakpoint on line ${deps.caretLine}, where the caret is`
+          : "(put the caret on a line in the editor, then press F9)",
+      shortcut: "F9",
+      run: () => {
+        if (deps.caretLine != null) deps.toggleBreakpoint?.();
+      },
     },
     {
       id: "share",
