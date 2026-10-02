@@ -94,15 +94,15 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
       },
     },
     {
-      // Ahead of run and reset, whose descriptions say "breakpoint" too: the
-      // palette keeps list order among equal matches, so a search for
-      // "breakpoint" lands on this row first.
+      // Run's and reset's descriptions say "breakpoint" too. The palette ranks
+      // a match that ends the text first and keeps list order among equals,
+      // so this row ends on the word and sits ahead of both.
       id: "toggle-breakpoint",
       label: "Toggle breakpoint",
       description:
         deps.caretLine != null
-          ? `set or clear a breakpoint on line ${deps.caretLine}, where the caret is`
-          : "(put the caret on a line in the editor, then press F9)",
+          ? `line ${deps.caretLine}, where the caret is: set or clear a breakpoint`
+          : "press F9 in the editor to set or clear a breakpoint",
       shortcut: "F9",
       run: () => {
         if (deps.caretLine != null) deps.toggleBreakpoint?.();
