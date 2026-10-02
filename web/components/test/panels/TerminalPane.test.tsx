@@ -17,7 +17,7 @@ const instances = vi.hoisted(
       dataCb: DataHandler | null;
       customKeyCb: CustomKeyHandler | null;
       textarea: HTMLTextAreaElement;
-      options: { theme?: { background?: string } };
+      options: { theme?: { background?: string }; fontSize?: number };
     }>,
 );
 vi.mock("@xterm/xterm", () => ({
@@ -35,7 +35,9 @@ vi.mock("@xterm/xterm", () => ({
       instances.push(this as never);
     }
     open() {}
-    loadAddon() {}
+    loadAddon(addon: { activate?: (term: unknown) => void }) {
+      addon.activate?.(this);
+    }
     attachCustomKeyEventHandler(cb: CustomKeyHandler) {
       this.customKeyCb = cb;
     }
@@ -56,10 +58,18 @@ vi.mock("@xterm/xterm", () => ({
     }
   },
 }));
+// The pane's width in pixels, and a cell 0.6 of the font size wide, which is
+// JetBrains Mono's advance.
+const pane = vi.hoisted(() => ({ width: 600 }));
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
+    term: { options: { fontSize?: number } } | null = null;
+    activate(term: { options: { fontSize?: number } }) {
+      this.term = term;
+    }
     proposeDimensions() {
-      return undefined;
+      const size = this.term?.options.fontSize ?? 15;
+      return { cols: Math.floor(pane.width / (size * 0.6)), rows: 20 };
     }
     fit() {}
   },
@@ -237,6 +247,29 @@ describe("TerminalPane", () => {
     );
     instances[0].dataCb!("upload\r");
     await vi.waitFor(() => expect(onUploadRequest).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("TerminalPane width", () => {
+  afterEach(() => {
+    pane.width = 600;
+  });
+
+  // dsav draws its frame 80 columns wide; at 13px a laptop's pane held 70.
+  it("keeps 13px text when 80 columns fit", () => {
+    pane.width = 700; // 89 columns at 13px
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect(instances[0].options.fontSize).toBe(13);
+  });
+
+  it("drops to 12px, and no lower, when 80 columns do not fit at 13px", () => {
+    pane.width = 600; // 76 columns at 13px, 83 at 12px
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect(instances[0].options.fontSize).toBe(12);
+    cleanup();
+    pane.width = 300; // a phone: 80 columns never fit
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect(instances[1].options.fontSize).toBe(12);
   });
 });
 
