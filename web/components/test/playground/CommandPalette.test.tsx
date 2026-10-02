@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { CommandPalette } from "@/components/playground/CommandPalette";
 import type { Action } from "@/lib/playground/commands";
+import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 
 beforeEach(() => {
   // cmdk's list measures itself with ResizeObserver and scrolls the
@@ -107,6 +108,45 @@ describe("CommandPalette", () => {
     fireEvent.keyDown(input(), { key: "Enter" });
     expect(actions[0].run).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Run's and reset's descriptions say "breakpoint" too; a student who types
+  // the word wants the row that sets one.
+  it("puts the toggle breakpoint row first for a breakpoint search", () => {
+    for (const caretLine of [21, null]) {
+      const deps = {
+        blocked: false,
+        programLoaded: true,
+        isRunning: false,
+        canStepBack: true,
+        launchable: false,
+        source: "",
+        caretLine,
+        toggleBreakpoint: vi.fn(),
+        assemble: vi.fn(),
+        step: vi.fn(),
+        stepBack: vi.fn(),
+        run: vi.fn(),
+        pause: vi.fn(),
+        reset: vi.fn(),
+        launchInteractive: vi.fn(),
+        formatSource: vi.fn(),
+        openShare: vi.fn(),
+        openShortcuts: vi.fn(),
+        openTutorials: vi.fn(),
+        openWalkthrough: vi.fn(),
+        openConverter: vi.fn(),
+        toggleTheme: vi.fn(),
+      };
+      render(<CommandPalette open onClose={vi.fn()} actions={buildPaletteCommands(deps)} />);
+      fireEvent.input(input(), { target: { value: "breakpoint" } });
+      const first = document.querySelector("[cmdk-item]");
+      expect(first?.textContent, String(caretLine)).toMatch(/^Toggle breakpoint/);
+      fireEvent.keyDown(input(), { key: "Enter" });
+      expect(deps.run).not.toHaveBeenCalled();
+      expect(deps.toggleBreakpoint).toHaveBeenCalledTimes(caretLine == null ? 0 : 1);
+      cleanup();
+    }
   });
 
   // A double press of Enter on the "commands" button lands its second Enter
