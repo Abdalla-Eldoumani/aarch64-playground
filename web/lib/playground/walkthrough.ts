@@ -69,13 +69,13 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   {
     id: "assemble",
     title: "Assemble",
-    body: "Assemble turns your source into machine code and loads it. A mistake shows up under this row and on the line in the editor that caused it.",
+    body: "Assemble turns your source into machine code and loads it, without running it. A mistake shows up under this row and on the line in the editor that caused it.",
     targets: [{ selector: anchor("assemble") }],
   },
   {
     id: "run",
     title: "Run",
-    body: "Run carries the program on until it ends, waits for input, or reaches a breakpoint. While it runs, this button pauses it.",
+    body: "Run assembles first if nothing is loaded, the program has finished, or you changed the code, files, or arguments. Then it runs until the program ends, waits for input, or reaches a breakpoint. While it runs, this button pauses it.",
     targets: [{ selector: anchor("run") }],
   },
   {
