@@ -240,7 +240,15 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
-    fit.fit();
+    // Full-screen programs draw for an 80-column terminal. A pane too narrow
+    // for 80 columns at 13px drops to 12px, the smallest text the site uses.
+    const fitColumns = () => {
+      term.options.fontSize = 13;
+      const at13 = fit.proposeDimensions();
+      if (at13 && at13.cols < 80) term.options.fontSize = 12;
+      fit.fit();
+    };
+    fitColumns();
     // Screen readers hear the way out on entering, as they do in the editor.
     term.textarea?.setAttribute("aria-describedby", leaveHintId);
     term.attachCustomKeyEventHandler((e) => {
@@ -384,7 +392,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       // a pane that is actually on screen.
       const el = containerRef.current;
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
-      try { fit.fit(); } catch { /* xterm may be torn down */ }
+      try { fitColumns(); } catch { /* xterm may be torn down */ }
     });
     ro.observe(containerRef.current);
 
