@@ -29,6 +29,7 @@ import { buildShareHash } from "@/lib/playground/share";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
 import { playgroundSource } from "@/lib/playground/playground-source";
 import { referenceId } from "@/lib/content/site";
+import { matchesAllWords } from "@/lib/content/search-words";
 
 // The emulator surface loads only when an example is run in place, so
 // browsing the reference never ships or mounts the embed's chunk.
@@ -110,11 +111,18 @@ export function InstructionReference({
     return order;
   }, [instructions]);
 
+  // A piece of a mnemonic still finds it ("sw" finds ldrsw); the words of the
+  // summary and category let a student who does not know "ldr" type "load".
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return instructions;
-    return instructions.filter((instruction) =>
-      instruction.mnemonic.toLowerCase().includes(query),
+    return instructions.filter(
+      (instruction) =>
+        instruction.mnemonic.toLowerCase().includes(query) ||
+        matchesAllWords(
+          query,
+          `${instruction.mnemonic} ${instruction.summary} ${instruction.category}`,
+        ),
     );
   }, [instructions, filter]);
 
@@ -275,10 +283,13 @@ export function InstructionReference({
     } else if (event.key === "Enter" && flat.length > 0) {
       event.preventDefault();
       // The mnemonic typed in full wins over the first row: "b" opens b, not
-      // the first mnemonic that happens to contain the letter.
+      // the first mnemonic that happens to contain the letter. Next comes a
+      // mnemonic that contains what was typed, ahead of a row listed only
+      // for a word of its summary or category ("d" opens add, not mov).
       const typed = filter.trim().toLowerCase();
       const exact = flat.find((i) => i.mnemonic.toLowerCase() === typed);
-      openInstruction((exact ?? flat[0]).mnemonic);
+      const partial = flat.find((i) => i.mnemonic.toLowerCase().includes(typed));
+      openInstruction((exact ?? partial ?? flat[0]).mnemonic);
     }
   }
 
