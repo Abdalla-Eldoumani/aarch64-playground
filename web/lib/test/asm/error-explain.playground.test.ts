@@ -213,6 +213,23 @@ describe("error guidance for the messages the emulator really sends", () => {
     explained(withBody("", 'msg:    .string "abc\\\n'));
   });
 
+  it("blames a one-letter define for an escape m4 rewrote, not a file path", () => {
+    // m4 turns the \n of "%d\n" into \w19 before the assembler reads it.
+    const e = explained(`define(n, w19)\n${withBody("", 'fmt:    .string "%d\\n"\n')}`);
+    expect(e.fix).toContain("one-letter name");
+    expect(e.fix).toContain("after a backslash");
+    expect(e.why).toContain("define(n, w19)");
+    expect(`${e.what} ${e.why} ${e.fix}`).not.toMatch(/windows|path/i);
+  });
+
+  it("says mul takes registers only, without sending the student a line up", () => {
+    const e = explained(withBody("        mul     x23, x19, 3"));
+    expect(e.fix).toContain("`mul`");
+    expect(e.fix).toContain("registers only");
+    expect(e.fix).toContain("`mov x9, 3`");
+    expect(e.fix).not.toContain("line above");
+  });
+
   it("names the m4 traps: recursion, a backtick, and an unsupported macro", () => {
     const loop = explained(`define(one_r, two_r)\ndefine(two_r, one_r)\n${withBody("        mov     x0, one_r")}`);
     expect(loop.styleSection).toBe("m4 preprocessing");
