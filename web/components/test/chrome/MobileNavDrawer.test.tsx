@@ -49,6 +49,48 @@ describe("MobileNavDrawer", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  // The drawer covers the toggle that opened it, so the same spot has to
+  // close it: a close button sits there, and focus starts on it rather than
+  // on a link that could read as a second current page.
+  it("opens on a close button that shuts the drawer and gives focus back to the toggle", () => {
+    render(<MobileNavDrawer />);
+    const trigger = screen.getByRole("button", { name: "open navigation" });
+    trigger.focus();
+    fireEvent.click(trigger);
+
+    const dialog = screen.getByRole("dialog");
+    const close = within(dialog).getByRole("button", { name: "close navigation" });
+    expect(document.activeElement).toBe(close);
+
+    fireEvent.click(close);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  // WebKit does not focus a button it taps, so the focus trap has nothing to
+  // give back; the toggle still has to get it.
+  it("gives focus to the toggle on Escape when the opening tap left it on the page", () => {
+    render(<MobileNavDrawer />);
+    const trigger = screen.getByRole("button", { name: "open navigation" });
+    expect(document.activeElement).toBe(document.body);
+    fireEvent.click(trigger);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("holds the page still while open and puts back the page's own overflow after", () => {
+    document.body.style.overflow = "scroll";
+    render(<MobileNavDrawer />);
+    fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
+    expect(document.body.style.overflow).toBe("hidden");
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(document.body.style.overflow).toBe("scroll");
+    document.body.style.overflow = "";
+  });
+
   it("appends the formatted star count to the source row when one is passed", () => {
     render(<MobileNavDrawer stars={1204} />);
     fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
