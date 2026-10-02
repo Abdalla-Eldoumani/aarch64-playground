@@ -19,6 +19,7 @@ const handle = vi.hoisted(() => ({
   getArgs: vi.fn(() => ""),
   getCursor: vi.fn(() => ({ line: 1, column: 1 })),
   getCommands: vi.fn(() => []),
+  toggleBreakpoint: vi.fn(),
   notifyError: vi.fn(),
 }));
 
@@ -104,6 +105,14 @@ describe("page keyboard ownership", () => {
     fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
     expect(handle.assembleAndRun).toHaveBeenCalledTimes(1);
     expect(handle.assemble).not.toHaveBeenCalled();
+  });
+
+  it("routes F9 and Ctrl+F8 to the caret-line breakpoint, and F8 alone nowhere", () => {
+    render(<Home />);
+    fireEvent.keyDown(window, { key: "F9" });
+    fireEvent.keyDown(window, { key: "F8", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "F8" });
+    expect(handle.toggleBreakpoint).toHaveBeenCalledTimes(2);
   });
 
   // The editor holds Ctrl+K as the start of its two-key commands, so the
