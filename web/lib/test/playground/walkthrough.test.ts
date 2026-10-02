@@ -4,9 +4,11 @@
 // and a broken store never breaks the page.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
+  OFFER_TARGETS,
   WALKTHROUGH_STEPS,
   loadProgress,
   placeCard,
+  placeOverBar,
   resolveTarget,
   saveProgress,
   type Box,
@@ -58,6 +60,54 @@ describe("the steps", () => {
     expect(first("console")).toBe('#phone-tab-console[aria-selected="false"]');
     expect(first("memory")).toBe("#phone-tab-more");
     expect(first("converter")).toBe("#phone-tab-more");
+  });
+
+  it("keeps every card a phone shows off the run row, its back button included", () => {
+    const runRowSteps = ["assemble", "run", "step"];
+    const phoneOnly = /^#phone-|"menu"|"gutter"|"files"/;
+    for (const step of WALKTHROUGH_STEPS) {
+      if (runRowSteps.includes(step.id)) continue;
+      for (const t of step.targets) {
+        if (!phoneOnly.test(t.selector)) continue;
+        expect(t.avoid, `${step.id} ${t.selector}`).toContain('[data-walkthrough="assemble"]');
+        expect(t.avoid, `${step.id} ${t.selector}`).toContain('button[aria-label="back"]');
+      }
+    }
+  });
+});
+
+describe("the offer", () => {
+  it("keeps off the code and the registers, and goes over a phone's bar", () => {
+    const [tutorials, menu] = OFFER_TARGETS;
+    expect(tutorials.avoid).toEqual(
+      expect.arrayContaining(['[data-walkthrough="editor"]', '[data-walkthrough="registers"]']),
+    );
+    expect(menu.selector).toBe('[data-walkthrough="menu"]');
+    expect(menu.overBar).toBe(true);
+  });
+
+  it("drops under the registers at 1920x1080, over the tabs below them", () => {
+    // Measured on /playground at 1920x1080: the tutorials button in the
+    // band, the register pane top right, the editor on the left.
+    const tutorialsBox = { top: 47, left: 1535, width: 70, height: 40 };
+    const registers = { top: 120, left: 1060, width: 860, height: 500 };
+    const editor = { top: 150, left: 0, width: 1055, height: 595 };
+    const p = placeCard(tutorialsBox, { width: 352, height: 190 }, { width: 1920, height: 1080 }, [editor, registers]);
+    expect(p.side).toBe("below");
+    expect(p.top).toBe(620 + 8);
+    expect(overlaps(registers, p, 190)).toBe(false);
+    expect(overlaps(editor, p, 190)).toBe(false);
+  });
+
+  it("sits level with a phone's menu row, at its right edge, inside the screen", () => {
+    const view13 = { width: 390, height: 664 };
+    const menu13 = { top: 0, left: 338, width: 52, height: 44 };
+    expect(placeOverBar(menu13, 352, view13)).toEqual({ side: "over", width: 352, maxHeight: null, top: 8, left: 30 });
+    const se = { width: 320, height: 568 };
+    const menuSe = { top: 0, left: 268, width: 52, height: 44 };
+    expect(placeOverBar(menuSe, 352, se)).toEqual({ side: "over", width: 304, maxHeight: null, top: 8, left: 8 });
+    // An installed app's bar starts below the status bar; the card follows it.
+    expect(placeOverBar({ ...menu13, top: 47 }, 352, view13).top).toBe(47);
   });
 });
 
