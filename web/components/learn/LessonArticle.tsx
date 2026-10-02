@@ -31,9 +31,9 @@ function safeStdin(stdin: string | undefined): string | undefined {
 const DEFINES_MAIN = /^[ \t]*main:/m;
 
 /** The lead line of the note that answers a lesson's Check yourself. */
-const ANSWERS_LEAD = /^Answers:\s*/;
+const ANSWERS_LEAD = "Answers:";
 const ANSWERS_SUMMARY =
-  "w-fit cursor-pointer select-none font-medium text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)] [@media(pointer:coarse)]:leading-[44px]";
+  "cursor-pointer font-medium leading-[44px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 
 export function LessonArticle({
   lesson,
@@ -119,20 +119,16 @@ export function LessonArticle({
             case "callout": {
               // Open, the answers sat right under the questions and the eye
               // read them first; folded, the reader answers, then looks.
-              const answers = block.variant === "note" ? ANSWERS_LEAD.exec(block.markdown) : null;
+              const answers = block.markdown.startsWith(ANSWERS_LEAD);
               return (
                 <div key={index} className="my-6 max-w-2xl">
                   <Callout type={block.variant}>
                     {answers ? (
-                      <details className="group">
-                        <summary className={ANSWERS_SUMMARY}>
-                          <span className="group-open:hidden">show answers</span>
-                          <span className="hidden group-open:inline">hide answers</span>
-                        </summary>
-                        <LessonMarkdown
-                          markdown={block.markdown.slice(answers[0].length)}
-                          className="mt-2"
-                        />
+                      // The marker and the expanded state the browser reports
+                      // say open or shut, so the label stays put.
+                      <details>
+                        <summary className={ANSWERS_SUMMARY}>show answers</summary>
+                        <LessonMarkdown markdown={block.markdown.slice(ANSWERS_LEAD.length)} />
                       </details>
                     ) : (
                       <LessonMarkdown markdown={block.markdown} />
