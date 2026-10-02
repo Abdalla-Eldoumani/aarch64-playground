@@ -214,6 +214,16 @@ export function explainError(located: string): ErrorExplanation | null {
       styleSection: "addressing modes",
     };
   }
+  // A number where a register goes: the line above has nothing to do with it.
+  const numberForRegister = message.match(/expected a register here, got `(#?-?\d[^`]*)`/);
+  if (numberForRegister) {
+    return {
+      what: "This operand has to be a register, and the line puts a number there.",
+      why: "Not every instruction has a form that takes a constant: `add` and `sub` do, but `mul`, `sdiv` and `udiv` read registers only, and a store writes the value of a register.",
+      fix: `\`mul\`, \`sdiv\`, \`udiv\` and the stores take registers only here: put the number in a spare register first (\`mov x9, ${numberForRegister[1]}\`), then name that register.`,
+      styleSection: "general",
+    };
+  }
   if (detail.includes("expected") && (detail.includes("register") || detail.includes("operand"))) {
     return {
       what: "The assembler reached an operand slot expecting a register or constant and saw something else (often a directive name or a stray character).",
