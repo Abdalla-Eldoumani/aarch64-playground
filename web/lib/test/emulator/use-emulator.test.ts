@@ -1911,6 +1911,26 @@ describe("useEmulator external calls", () => {
     });
   });
 
+  it("leaves ip0 and ip1 out of the writes inside a call, and only there", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+
+    act(() => {
+      fake.fire({
+        pc: toHex(TRAMPOLINE_PC),
+        changedRegs: [16, 17, 30],
+        externalCall: { name: "printf", callSitePc: CODE_BASE + 8, callSiteLine: 11 },
+      });
+    });
+    expect([...result.current.changedRegs]).toEqual([30]);
+
+    // The program's own write to x16 is a write like any other.
+    act(() => {
+      fake.fire({ pc: toHex(CODE_BASE + 8), changedRegs: [16] });
+    });
+    expect([...result.current.changedRegs]).toEqual([16]);
+  });
+
   it("reports no call when the snapshot omits the field (older wasm)", async () => {
     const fake = makeBackend();
     const { result } = await mountAssembled(fake);
