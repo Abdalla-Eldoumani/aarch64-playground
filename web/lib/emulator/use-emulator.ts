@@ -575,6 +575,9 @@ export function useEmulator(): EmulatorState {
     if (!backend || !programLoadedRef.current || haltedRef.current) return;
     if (runningRef.current) return;
     runBlockedRef.current = false;
+    // The last stop's alert ("paused after 1,000,000 steps") describes a run
+    // that is over; step clears it the same way.
+    setError(null);
     setIsRunning(true);
     runningRef.current = true;
     const drive = async (): Promise<void> => {
