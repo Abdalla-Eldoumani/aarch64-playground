@@ -213,13 +213,13 @@ describe("error guidance for the messages the emulator really sends", () => {
     explained(withBody("", 'msg:    .string "abc\\\n'));
   });
 
-  it("blames a one-letter define for an escape m4 rewrote, not a file path", () => {
-    // m4 turns the \n of "%d\n" into \w19 before the assembler reads it.
-    const e = explained(`define(n, w19)\n${withBody("", 'fmt:    .string "%d\\n"\n')}`);
-    expect(e.fix).toContain("one-letter name");
-    expect(e.fix).toContain("after a backslash");
-    expect(e.why).toContain("define(n, w19)");
-    expect(`${e.what} ${e.why} ${e.fix}`).not.toMatch(/windows|path/i);
+  it("explains a backslash with nothing after it, and names the one-letter define trap", () => {
+    // The source ends right after the backslash, so it has nothing to escape.
+    const e = explained(withBody("", 'msg:    .string "abc\\'));
+    expect(e.fix).toContain("write two");
+    expect(e.fix).toContain("one-letter name changes the letter after a backslash");
+    expect(e.fix).toContain("define(n, w19)");
+    expect(`${e.what} ${e.why} ${e.fix}`).not.toMatch(/windows|path|only the standard/i);
   });
 
   it("says mul takes registers only, without sending the student a line up", () => {
