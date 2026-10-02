@@ -1,8 +1,8 @@
 "use client";
 
-import { memo, type JSX } from "react";
-import dynamic from "next/dynamic";
+import { Suspense, lazy, memo, useEffect, useRef, type JSX } from "react";
 import Link from "next/link";
+import type { EmbeddablePlaygroundHandle } from "@/components/playground/EmbeddablePlayground";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Button } from "@/components/ui/Button";
@@ -16,13 +16,14 @@ import { pitfallFragment } from "@/lib/content/site";
  */
 
 // The emulator surface loads only when a demo is opened; the catalog itself
-// stays free of the embed's chunk.
-const EmbeddablePlayground = dynamic(
-  () =>
-    import("@/components/playground/EmbeddablePlayground").then(
-      (m) => m.EmbeddablePlayground,
-    ),
-  { ssr: false, loading: () => null },
+// stays free of the embed's chunk. React's lazy, not next/dynamic: the demo
+// drives the embed through its handle, and next/dynamic does not promise to
+// pass a ref on (its pages-router build answers with a handle of its own).
+// A demo opens only on a click, so it never renders on the server.
+const EmbeddablePlayground = lazy(() =>
+  import("@/components/playground/EmbeddablePlayground").then((m) => ({
+    default: m.EmbeddablePlayground,
+  })),
 );
 
 // min-w-0 lets a panel shrink below its longest code line, which then
@@ -131,19 +132,48 @@ export const PitfallCard = memo(function PitfallCard({
         </li>
       </ul>
       {running && (
-        // Fixed frame so the editor loading never shifts the page; the key
-        // remounts the embed when the variant switches, which resets the
-        // machine for the other program.
-        <div className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px]">
-          <EmbeddablePlayground
-            key={`${pitfall.slug}-${running}`}
-            chrome="embed"
-            startSource={pitfall[running].source}
-            readOnly={false}
-            registerHeadingLevel={4}
-          />
-        </div>
+        // The key remounts the demo when the variant switches, which resets
+        // the machine for the other program.
+        <PitfallDemo key={`${pitfall.slug}-${running}`} source={pitfall[running].source} />
       )}
     </article>
   );
 });
+
+/**
+ * The open demo. The button that opened it said run, so the program assembles
+ * and runs as soon as the machine loads (the broken one shows its error), and
+ * the frame comes into view with its controls.
+ */
+function PitfallDemo({ source }: { source: string }) {
+  const frameRef = useRef<HTMLDivElement>(null);
+  const started = useRef(false);
+
+  // Instant whatever the motion setting: a smooth scroll moves the whole page.
+  useEffect(() => {
+    frameRef.current?.scrollIntoView({ block: "nearest", behavior: "instant" });
+  }, []);
+
+  return (
+    // Fixed frame so the editor loading never shifts the page.
+    <div
+      ref={frameRef}
+      className="embed-frame flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] sm:h-[560px]"
+    >
+      <Suspense fallback={null}>
+        <EmbeddablePlayground
+          // Called again on every render with a fresh function; the run is once.
+          ref={(handle: EmbeddablePlaygroundHandle | null) => {
+            if (!handle || started.current) return;
+            started.current = true;
+            handle.assembleAndRun();
+          }}
+          chrome="embed"
+          startSource={source}
+          readOnly={false}
+          registerHeadingLevel={4}
+        />
+      </Suspense>
+    </div>
+  );
+}
