@@ -239,7 +239,9 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     if (!containerRef.current) return;
     const term = new Terminal({
       convertEol: true,
-      cursorBlink: true,
+      // A reader who asks for reduced motion gets a steady caret, as the
+      // editor's does.
+      cursorBlink: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
       cursorStyle: "block",
       fontFamily: monoFontFamily(),
       fontSize: 13,
