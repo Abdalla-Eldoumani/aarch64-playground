@@ -711,6 +711,10 @@ export function FullChromeSurface({
               : null
           }
           sessionStarted={emu.programLoaded}
+          // A short window drops the field meanings (the line under the
+          // fields names the registers instead), so the list below keeps
+          // about nine rows mid-run.
+          compact={short}
         />
         <ReplayScrubber
           frames={emu.replayFrames}
