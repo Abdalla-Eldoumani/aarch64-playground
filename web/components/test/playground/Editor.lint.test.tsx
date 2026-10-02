@@ -5,7 +5,7 @@
 // when it wraps long lines, how its hover cards and colour swatches draw,
 // and when the hover card fetches its C line.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { Editor } from "@/components/playground/Editor";
 
@@ -26,6 +26,7 @@ const fake = vi.hoisted(() => {
     getDomNode: () => null,
     onDidChangeCursorPosition: vi.fn(),
     addCommand: vi.fn(),
+    getPosition: () => ({ lineNumber: 2, column: 5 }),
     createContextKey: () => ({ set: vi.fn() }),
     onMouseDown: vi.fn(),
     onDidDispose: vi.fn(),
@@ -50,7 +51,7 @@ const fake = vi.hoisted(() => {
       MouseTargetType: { GUTTER_GLYPH_MARGIN: 2 },
     },
     MarkerSeverity: { Warning: 4 },
-    KeyCode: { Escape: 9, Enter: 3, KeyF: 36 },
+    KeyCode: { Escape: 9, Enter: 3, KeyF: 36, F8: 66, F9: 67 },
     KeyMod: { CtrlCmd: 2048, Shift: 1024 },
     Range: class {},
   };
@@ -76,7 +77,9 @@ vi.mock("@monaco-editor/react", () => ({
     options: Record<string, unknown>;
   }) {
     fake.options = options;
-    useEffect(() => onMount(fake.editor, fake.monaco), [onMount]);
+    // The real component keeps the first onMount and calls it once.
+    const firstOnMount = useRef(onMount);
+    useEffect(() => firstOnMount.current(fake.editor, fake.monaco), []);
     return null;
   },
 }));
@@ -181,5 +184,49 @@ describe("Editor hover card", () => {
     const text = card!.contents[0].value;
     expect(text.startsWith("**b**")).toBe(true);
     expect(text).toContain("**c equivalent:** `goto label;`");
+  });
+});
+
+describe("Editor breakpoint keys", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  /** The handler Monaco would run for one key chord. */
+  function command(chord: number): () => void {
+    const call = fake.editor.addCommand.mock.calls.find(([key]) => key === chord);
+    expect(call, `no command bound to ${chord}`).toBeTruthy();
+    return call![1] as () => void;
+  }
+
+  // The gutter dot is the only other way, and it needs a mouse.
+  it("toggles a breakpoint on the caret's line with F9 and with Ctrl+F8", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    const onToggleBreakpoint = vi.fn();
+    render(<Editor {...base} onToggleBreakpoint={onToggleBreakpoint} />);
+    await waitFor(() => expect(fake.editor.addCommand).toHaveBeenCalled());
+
+    command(fake.monaco.KeyCode.F9)();
+    command(fake.monaco.KeyMod.CtrlCmd | fake.monaco.KeyCode.F8)();
+    expect(onToggleBreakpoint.mock.calls).toEqual([[2], [2]]);
+  });
+
+  // Monaco runs the mount handler once; a tab switch hands the editor a new
+  // line mapping, and the keys and the gutter must use it.
+  it("uses the newest breakpoint handler after the host passes another", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(<Editor {...base} onToggleBreakpoint={first} />);
+    await waitFor(() => expect(fake.editor.addCommand).toHaveBeenCalled());
+    rerender(<Editor {...base} onToggleBreakpoint={second} />);
+
+    command(fake.monaco.KeyCode.F9)();
+    const onGutter = fake.editor.onMouseDown.mock.calls[0][0] as (e: unknown) => void;
+    onGutter({
+      target: { type: fake.monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN, position: { lineNumber: 3 } },
+    });
+    expect(first).not.toHaveBeenCalled();
+    expect(second.mock.calls).toEqual([[2], [3]]);
   });
 });
