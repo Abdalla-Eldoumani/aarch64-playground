@@ -59,7 +59,7 @@ steps in [Run it locally](#run-it-locally).
 - Your programs, files, and exercise progress are saved in this browser only.
   There are no accounts, and clearing the site's data deletes them. The
   practice page can export your progress to a file and import it elsewhere.
-- A share link holds up to 12 KiB of compressed text. Send a longer program as
+- A share link holds up to 16 KiB of compressed text. Send a longer program as
   a file: pick **workspace .json** from the playground's **export** menu.
 
 ## Run it locally
