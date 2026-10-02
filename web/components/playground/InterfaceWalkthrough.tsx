@@ -39,6 +39,9 @@ const OFFER_DELAY_MS = 1200;
 // Tab switches, lazy panes and a rotating phone move targets without an
 // event to hear, so the card re-measures on a short beat while it is up.
 const SYNC_MS = 400;
+// The run controls (the first-run card's assemble too) and their keys.
+const RUN_CONTROLS = 'button[aria-label="assemble"], button[aria-label="run"], button[aria-label="step"]';
+const RUN_KEYS = new Set(["F5", "F6", "F10"]);
 const CARD_WIDTH = 352;
 const RING_PAD = 4;
 
@@ -120,6 +123,27 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     saveProgress({ offered: true, step: 0 });
     close();
   }, [close]);
+
+  // A student who assembles, runs or steps has started work, and the offer
+  // would sit over the registers they now want to read. Capture phase, so
+  // a handler that stops the event cannot hide it.
+  const offering = mode.kind === "offer";
+  useEffect(() => {
+    if (!offering) return;
+    const onClick = (e: MouseEvent) => {
+      if (e.target instanceof Element && e.target.closest(RUN_CONTROLS)) close();
+    };
+    const onKey = (e: KeyboardEvent) => {
+      const runKey = RUN_KEYS.has(e.key) && !e.shiftKey;
+      if (runKey || (e.key === "Enter" && (e.ctrlKey || e.metaKey))) close();
+    };
+    window.addEventListener("click", onClick, true);
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("click", onClick, true);
+      window.removeEventListener("keydown", onKey, true);
+    };
+  }, [offering, close]);
 
   const sync = useCallback(() => {
     const card = cardRef.current;
