@@ -1,6 +1,8 @@
 "use client";
 
+import { useEffect, useReducer } from "react";
 import { useZoom } from "@/lib/hooks/use-zoom";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { labelForOffset, type StackSlot } from "@/lib/emulator/frame-labels";
 import { formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
@@ -14,7 +16,13 @@ interface StackPanelProps {
 
 // The band's exclusive end, where a reset machine parks sp.
 const STACK_BASE = 0x80000000;
-const ROWS_TO_SHOW = 16;
+/** The window is 128 bytes at sp: 16 slots of 8 bytes, or 32 of 4. */
+const BYTES_TO_SHOW = 128;
+const WIDTH_KEY = "aarch64-playground:stack-width";
+
+/** Bytes per row. Course locals are mostly w-sized: read 8 bytes at a time,
+ *  two int locals print as one number, the second in the top half. */
+type SlotWidth = 8 | 4;
 
 export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelProps) {
   // A genuinely-zero SP (broken prologue, x29 never set) is real state, not
@@ -22,12 +30,23 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
   // exists to show.
   const parsedSp = parseInt(sp, 16);
   const spVal = Number.isNaN(parsedSp) ? STACK_BASE : parsedSp;
-  const bytesToShow = ROWS_TO_SHOW * 8;
-  const data = getMemory(spVal, bytesToShow);
+  const data = getMemory(spVal, BYTES_TO_SHOW);
   const zoom = useZoom("stack");
 
+  // Read after mount, since the server has no storage; a reducer, so the
+  // stored choice can arrive from an effect.
+  const [width, setWidth] = useReducer((_prev: SlotWidth, next: SlotWidth) => next, 8);
+  useEffect(() => {
+    if (safeGetItem(WIDTH_KEY) === "4") setWidth(4);
+  }, []);
+  const pickWidth = (next: SlotWidth) => {
+    setWidth(next);
+    safeSetItem(WIDTH_KEY, String(next));
+  };
+  const rows = BYTES_TO_SHOW / width;
+
   const fpVal = fp ?? 0;
-  const fpInView = fpVal >= spVal && fpVal < spVal + bytesToShow;
+  const fpInView = fpVal >= spVal && fpVal < spVal + BYTES_TO_SHOW;
 
   return (
     <div
@@ -52,12 +71,34 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
             FP = {formatWord64(fpVal)}
           </span>
         )}
+        <div
+          role="group"
+          aria-label="slot size"
+          className="ml-auto inline-flex shrink-0 items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
+        >
+          {([8, 4] as const).map((w, i) => (
+            <button
+              key={w}
+              type="button"
+              aria-pressed={width === w}
+              onClick={() => pickWidth(w)}
+              className={`shrink-0 whitespace-nowrap px-2 py-0.5 font-mono text-[12px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10 min-h-[22px] [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px] ${
+                i > 0 ? "border-l border-[var(--border)]" : ""
+              } ${
+                width === w
+                  ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              }`}
+            >
+              {w * 8}-bit
+            </button>
+          ))}
+        </div>
         <ZoomControl
           scale={zoom.scale}
           onZoomIn={zoom.zoomIn}
           onZoomOut={zoom.zoomOut}
           onReset={zoom.reset}
-          className="ml-auto"
         />
       </div>
 
@@ -65,21 +106,22 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
         <thead>
           <tr className="text-[var(--text-secondary)]">
             <th className="text-left">address</th>
-            <th className="text-left pl-4">value (64-bit)</th>
+            <th className="text-left pl-4">value ({width * 8}-bit)</th>
             <th className="hidden sm:table-cell text-left pl-4">label</th>
           </tr>
         </thead>
         <tbody>
-          {Array.from({ length: ROWS_TO_SHOW }, (_, row) => {
-            const addr = spVal + row * 8;
-            const slice = data.slice(row * 8, (row + 1) * 8);
+          {Array.from({ length: rows }, (_, row) => {
+            const offset = row * width;
+            const addr = spVal + offset;
+            const slice = data.slice(offset, offset + width);
 
-            // little-endian u64
+            // little-endian
             let val = BigInt(0);
-            for (let i = 7; i >= 0; i--) {
+            for (let i = width - 1; i >= 0; i--) {
               val = (val << BigInt(8)) | BigInt(slice[i] ?? 0);
             }
-            const hex = formatWord64(val);
+            const hex = width === 8 ? formatWord64(val) : formatWord32(Number(val));
             const isZero = val === BigInt(0);
 
             const fpOffset = fpInView && fpVal > 0 ? addr - fpVal : null;
@@ -116,16 +158,18 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
                   {hex}
                 </td>
                 <td className="hidden sm:table-cell pl-4 text-[var(--text-secondary)]">
+                  {/* The offset stays beside the name: a wrong offset among
+                      the locals is the bug this column helps find. */}
                   {label ? (
                     <span>
-                      [fp, <span className="text-[var(--text-primary)]">{label}</span>]
+                      [fp, {fpOffset}] <span className="text-[var(--text-primary)]">{label}</span>
                     </span>
                   ) : isFpRow ? (
                     <span className="text-[var(--success)]">fp</span>
                   ) : fpOffset !== null && fpOffset > 0 ? (
                     <span>[fp, {fpOffset}]</span>
                   ) : (
-                    <span>SP+{row * 8}</span>
+                    <span>SP+{offset}</span>
                   )}
                 </td>
               </tr>
