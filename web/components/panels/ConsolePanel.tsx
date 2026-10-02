@@ -154,6 +154,17 @@ export function ConsolePanel({
       ? stdout
       : stripEscapeSequences(stdout.slice(0, terminalOwnedFrom));
   const buttons = stepButton ? "step or run" : "run";
+  // The read waits on this box. Its placeholder has room for a few words,
+  // so the whole instruction goes under the output instead.
+  const reading = blocked && !ownedByTerminal;
+
+  // End of input, as Ctrl+D gives in a shell: a read-until-end loop sees
+  // read return 0 and finishes. A phone keyboard has no Ctrl key, so the
+  // same thing has a button while a read waits.
+  const endInput = () => {
+    closeStdin();
+    onInputSent?.();
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -238,7 +249,14 @@ export function ConsolePanel({
             {note}
           </p>
         ))}
-        {!shownStdout && !stderr && notes.length === 0 && terminalOwnedFrom == null && (
+        {reading && (
+          <p className="mt-1 font-sans text-[12px] whitespace-normal text-[var(--text-primary)]">
+            {coarsePointer
+              ? "Your program is reading input. Type a line and tap send, or tap end input when there is nothing more to send."
+              : "Your program is reading input. Type a line and press Enter, or press Ctrl+D with the box empty to end the input."}
+          </p>
+        )}
+        {!reading && !shownStdout && !stderr && notes.length === 0 && terminalOwnedFrom == null && (
           <div className="space-y-1">
             <p className="font-serif text-[13px] text-[var(--text-primary)]">
               Output prints here as your program runs.
@@ -272,15 +290,16 @@ export function ConsolePanel({
             // getchar sees EOF and read-until-EOF loops can finish.
             if (e.ctrlKey && (e.key === "d" || e.key === "D") && stdinValue === "") {
               e.preventDefault();
-              closeStdin();
-              onInputSent?.();
+              endInput();
             }
           }}
           placeholder={
             ownedByTerminal
               ? "this program reads from the terminal tab; type there"
               : blocked
-                ? "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input"
+                ? coarsePointer
+                  ? "type a line"
+                  : "type a line, or Ctrl+D to end"
                 : "stdin"
           }
           disabled={ownedByTerminal}
@@ -297,6 +316,15 @@ export function ConsolePanel({
         >
           send
         </button>
+        {reading && (
+          <button
+            type="button"
+            onClick={endInput}
+            className="touch-target whitespace-nowrap px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+          >
+            end input
+          </button>
+        )}
       </form>
     </div>
   );
