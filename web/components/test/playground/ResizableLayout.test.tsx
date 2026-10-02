@@ -268,8 +268,10 @@ describe("ResizableLayout", () => {
     expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("76%");
     expect(panel("panel-disasm").getAttribute("data-size")).toBe("24%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("62%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("38%");
+    // Mid-run the decode strip and replay bar sit above the list, so the
+    // registers take nearly three quarters of a short column.
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("73%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("27%");
     // The tall window's saved split is not the short window's.
     expect(setLayoutCalls).toHaveLength(0);
     drag("panel-editor", { "panel-editor": 80, "panel-disasm": 20 });
