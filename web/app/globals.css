@@ -653,6 +653,15 @@ body:has(> .playground-shell) {
   background: var(--border-strong);
 }
 
+/* A control that draws no focus of its own (a range slider, a plain field, a
+   file tab) showed the browser's ring instead of the cyan one. This gives it
+   the same 2px cyan band at the same 2px gap. Zero specificity, so any
+   component's own focus rule still wins. */
+:where(a, button, input, select, textarea, summary, [tabindex]):where(:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* Forced colors (Windows High Contrast). The focus ring everywhere else is
    a box-shadow, which forced-colors mode strips, so focus would be
    invisible; a real outline in the system Highlight color survives. */
