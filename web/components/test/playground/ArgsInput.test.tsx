@@ -28,6 +28,19 @@ describe("ArgsInput", () => {
     expect(input.value).toBe("hello world");
   });
 
+  // On a phone the word "args" was hidden, and a "12 25" placeholder read as
+  // arguments the program would get. The box names itself at every width and
+  // shows nothing while it is empty.
+  it("names itself at every width and shows no sample value when empty", () => {
+    render(<Harness source="// prog" />);
+    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const word = screen.getByText("args");
+    expect(word.className.split(/\s+/)).not.toContain("hidden");
+    expect(word.closest("label")).toBe(input.closest("label"));
+    expect(input.value).toBe("");
+    expect(input.getAttribute("placeholder")).toBeNull();
+  });
+
   it("accepts an args value exactly at the cap", () => {
     render(<Harness source="// prog" />);
     const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
