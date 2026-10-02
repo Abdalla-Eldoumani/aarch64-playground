@@ -60,6 +60,7 @@ import {
   MAIN_FILE,
   planBreakpointRemap,
   resolveLine,
+  sameWorkspace,
   validateFileName,
   workspaceShape,
   type Workspace,
@@ -77,7 +78,8 @@ export type FullChromeBridge = {
    *  box should take, drop the previous session's watermark, and set the
    *  shared-program banner. */
   onProgramLoaded: (payload: HandoffPayload) => string;
-  /** An assemble is about to reset the machine and empty the console. */
+  /** An assemble of the workspace on screen is about to reset the machine
+   *  and empty the console. */
   onAssemble: () => void;
   /** The buffer was replaced without a payload, so the launch mode it
    *  belonged to goes with it. */
@@ -344,10 +346,8 @@ export function FullChromeSurface({
     terminalTabActive: shownPane === "term",
     requestPane,
   });
-  // Assemble, then hand the terminal pane over. It skips handleRun's guard on
-  // purpose: that guard protects a finished program's output, and this program
-  // is new. The assemble must land first, or the drive's programLoaded check
-  // ends the new session at once.
+  // Assemble, then hand the terminal pane over. The assemble must land first,
+  // or the drive's programLoaded check ends the new session at once.
   const launchInteractive = useCallback(async () => {
     const ok = await assembleWithHistory();
     // The failure already renders in Controls' error box, and the pane is
@@ -356,35 +356,6 @@ export function FullChromeSurface({
     requestPane("term");
     requestTerminalRun();
   }, [assembleWithHistory, requestPane, requestTerminalRun]);
-  // Run in terminal mode: hand the program the pane up front. Switch the tab,
-  // then let the attach effect below start the drive once the pane's io
-  // registration lands (the pane mounts lazily on the tab switch, so the drive
-  // cannot start synchronously here).
-  const handleRun = useCallback(() => {
-    if (launchMode === "terminal") {
-      // Cold load: nothing is assembled, so there is no screen to protect and
-      // nothing to hand over yet. This was a silent no-op; in terminal mode the
-      // press is the launch. The run button is disabled here, so this is the F5
-      // / palette / handle path.
-      if (!emu.programLoaded) {
-        void launchInteractive();
-        return;
-      }
-      // The terminal takeover WIPES the pane, so a finished or already running
-      // program is left alone: without this, F5 and the palette cleared a
-      // finished program's output and printed an exit line onto an empty
-      // screen. An assembled program hands over without re-assembling.
-      if (emu.isHalted || emu.isRunning) return;
-      requestPane("term");
-      requestTerminalRun();
-      return;
-    }
-    emu.run();
-  }, [launchMode, emu, launchInteractive, requestPane, requestTerminalRun]);
-  const handleRunRef = useRef(handleRun);
-  useEffect(() => {
-    handleRunRef.current = handleRun;
-  }, [handleRun]);
 
   // Ctrl+Enter: assemble, then run it the way a run press would. Terminal
   // mode's one-action launch already is exactly that.
@@ -396,6 +367,42 @@ export function FullChromeSurface({
     if (await assembleWithHistory()) emuRef.current.run();
   }, [launchMode, launchInteractive, assembleWithHistory, emuRef]);
 
+  // The workspace and args the machine last assembled from here, so a run
+  // press can tell the student's edits from the program that is loaded.
+  const loadedRef = useRef<{ workspace: Workspace; args: string } | null>(null);
+  const noteAssembled = () => {
+    loadedRef.current = { workspace: { main: source, extras: extraFiles }, args: argsText };
+  };
+
+  // Run starts the program on screen from the top, as a lesson's run does,
+  // when nothing is loaded, the program finished, or the code, files or args
+  // changed since the last assemble; only an unchanged program that paused
+  // carries on. Assemble alone loads without running. In terminal mode a
+  // loaded program is handed the pane: the tab switches, and the attach
+  // effect starts the drive once the pane's io registration lands.
+  const handleRun = useCallback(() => {
+    if (emu.isAssembling || emu.isRunning) return;
+    const loaded = loadedRef.current;
+    const edited =
+      loaded !== null &&
+      (loaded.args !== argsText ||
+        !sameWorkspace(loaded.workspace, { main: source, extras: extraFiles }));
+    if (!emu.programLoaded || emu.isHalted || edited) {
+      void assembleAndRun();
+      return;
+    }
+    if (launchMode === "terminal") {
+      requestPane("term");
+      requestTerminalRun();
+      return;
+    }
+    emu.run();
+  }, [emu, argsText, source, extraFiles, assembleAndRun, launchMode, requestPane, requestTerminalRun]);
+  const handleRunRef = useRef(handleRun);
+  useEffect(() => {
+    handleRunRef.current = handleRun;
+  }, [handleRun]);
+
   // Reset starts the same program over: an unedited workspace is assembled
   // again at once so breakpoints stay armed and run and step stay live. An
   // edited one waits for the student. A live terminal session only stops,
@@ -403,15 +410,12 @@ export function FullChromeSurface({
   const restartProgram = useCallback(() => {
     const wasLoaded = emuRef.current.programLoaded;
     resetMachine();
-    if (!wasLoaded || foregroundLive || !assembledLayout) return;
-    const unchanged =
-      assembledLayout.main === source &&
-      assembledLayout.extras.length === extraFiles.length &&
-      assembledLayout.extras.every(
-        (f, i) => f.name === extraFiles[i].name && f.body === extraFiles[i].body,
-      );
-    if (unchanged) void assembleWithHistory();
-  }, [emuRef, resetMachine, foregroundLive, assembledLayout, source, extraFiles, assembleWithHistory]);
+    const loaded = loadedRef.current;
+    if (!wasLoaded || foregroundLive || !loaded) return;
+    if (sameWorkspace(loaded.workspace, { main: source, extras: extraFiles })) {
+      void assembleWithHistory();
+    }
+  }, [emuRef, resetMachine, foregroundLive, source, extraFiles, assembleWithHistory]);
 
   // Whether the composite launch has somewhere to land: only the terminal
   // mode owns the pane at run press, and only this surface has a pane.
@@ -423,6 +427,7 @@ export function FullChromeSurface({
   const liveRef = useRef({
     adoptLaunch,
     dropTerminalWatermark,
+    noteAssembled,
     resetLaunch,
     restartProgram,
     assembleAndRun,
@@ -433,6 +438,7 @@ export function FullChromeSurface({
     liveRef.current = {
       adoptLaunch,
       dropTerminalWatermark,
+      noteAssembled,
       resetLaunch,
       restartProgram,
       assembleAndRun,
@@ -457,7 +463,10 @@ export function FullChromeSurface({
         loadedSourceRef.current = payload.source;
         return nextArgs;
       },
-      onAssemble: () => liveRef.current.dropTerminalWatermark(),
+      onAssemble: () => {
+        liveRef.current.dropTerminalWatermark();
+        liveRef.current.noteAssembled();
+      },
       onSourceReplaced: () => liveRef.current.resetLaunch(),
       resetMachine: () => liveRef.current.restartProgram(),
       run: () => handleRunRef.current(),
@@ -865,7 +874,18 @@ export function FullChromeSurface({
         args={argsText}
         stepCount={emu.stepCount}
         onLoadProgram={loadProgram}
-        onRestoreBookmark={emu.restoreBookmark}
+        onRestoreBookmark={async (params) => {
+          const verdict = await emu.restoreBookmark(params);
+          // The restore assembled the bookmark's own program, so a run press
+          // carries on from the restored step instead of starting over.
+          if (verdict.success) {
+            loadedRef.current = {
+              workspace: { main: params.source, extras: [] },
+              args: params.args ?? "",
+            };
+          }
+          return verdict;
+        }}
       />
     </ErrorBoundary>
   );
@@ -952,10 +972,6 @@ export function FullChromeSurface({
       isAssembling={emu.isAssembling}
       isHalted={emu.isHalted}
       programLoaded={emu.programLoaded}
-      // Terminal mode's run press on a cold load assembles and starts the
-      // session, so the button must be reachable by mouse, or the one-action
-      // launch exists only for the keyboard.
-      runAssemblesFirst={launchable}
       blocked={emu.blocked}
       error={controlsError}
       stepCount={emu.stepCount}
