@@ -1,8 +1,9 @@
 // pins the disassembly table: the pc row carries its marker, and a listing
 // too large to hand the browser whole renders as a fixed window that follows
 // the program counter instead of a quarter-million rows (the linker's 1 MiB
-// .text window allows 262,144 instructions).
-import { afterEach, describe, expect, it } from "vitest";
+// .text window allows 262,144 instructions). The listing's own box follows
+// the pc after each step, and is a keyboard stop that shows its focus.
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import {
   INSTRUCTION_WINDOW,
@@ -94,5 +95,68 @@ describe("InstructionView", () => {
     expect(marked[0].textContent).toContain("nop 1500");
     expect(screen.getByRole("status").textContent).toContain("1,025-1,536");
     expect(screen.queryByText("nop 0")).toBeNull();
+  });
+});
+
+describe("InstructionView following the program counter", () => {
+  // A 100px box over 20px rows: row i spans 20i to 20i + 20 in the content.
+  const ROW = 20;
+  let scrollTop = 0;
+  afterEach(() => vi.restoreAllMocks());
+
+  function mountBox(pc: number, running = false) {
+    const view = render(
+      <InstructionView instructions={listing(40)} pc={pc} running={running} />,
+    );
+    const box = screen.getByRole("group", { name: "disassembly" });
+    scrollTop = 0;
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => scrollTop,
+      set: (next: number) => {
+        scrollTop = next;
+      },
+    });
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+      this: Element,
+    ) {
+      if (this === box) return DOMRect.fromRect({ x: 0, y: 0, width: 300, height: 100 });
+      const index = Array.from(box.querySelectorAll("tbody tr")).indexOf(
+        this as HTMLTableRowElement,
+      );
+      return DOMRect.fromRect({ x: 0, y: index * ROW - scrollTop, width: 300, height: ROW });
+    });
+    return view;
+  }
+
+  it("scrolls its own box just far enough to show the row after a step", () => {
+    const { rerender } = mountBox(CODE_BASE);
+    // Row 12 spans 240 to 260; the nearest scroll that shows it is 160.
+    rerender(<InstructionView instructions={listing(40)} pc={CODE_BASE + 12 * 4} />);
+    expect(scrollTop).toBe(160);
+    // Row 10 (200 to 220, shown from 160) is in view, so nothing moves.
+    rerender(<InstructionView instructions={listing(40)} pc={CODE_BASE + 10 * 4} />);
+    expect(scrollTop).toBe(160);
+    // Back above the view: the row lands at the top edge.
+    rerender(<InstructionView instructions={listing(40)} pc={CODE_BASE + 2 * 4} />);
+    expect(scrollTop).toBe(40);
+  });
+
+  it("holds still during a run and catches up when it stops", () => {
+    const { rerender } = mountBox(CODE_BASE, true);
+    rerender(
+      <InstructionView instructions={listing(40)} pc={CODE_BASE + 30 * 4} running />,
+    );
+    expect(scrollTop).toBe(0);
+    rerender(<InstructionView instructions={listing(40)} pc={CODE_BASE + 30 * 4} />);
+    // Row 30 spans 600 to 620.
+    expect(scrollTop).toBe(520);
+  });
+
+  it("is a named keyboard stop", () => {
+    // Its focus outline is checked in the browser pass.
+    render(<InstructionView instructions={listing(3)} pc={CODE_BASE} />);
+    const box = screen.getByRole("group", { name: "disassembly" });
+    expect(box.getAttribute("tabindex")).toBe("0");
   });
 });
