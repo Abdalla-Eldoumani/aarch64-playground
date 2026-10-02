@@ -269,21 +269,30 @@ export function definesMain(body: string): boolean {
 }
 
 /**
- * A machine error prefixed with the file it happened in, for the single
- * plain-text line Controls shows. Only a helper file earns the prefix:
- * main.asm is the buffer the student is already looking at.
+ * A machine error led by where it happened, for the one plain-text line
+ * Controls shows: "line N" in a one-file program, "<file> line N" once helper
+ * files are open, with combined lines turned back into the file's own. Only
+ * the error `first` belongs to is located: an assemble error is its message,
+ * and a run stop arrives as "line N: message" with N combined. A label
+ * defined twice also names where it "first appears".
  */
-export function errorWithFileName(
+export function errorWithLocation(
   error: string | null,
-  firstErrorLine: number | undefined,
+  first: { line: number; message: string } | undefined,
   main: string,
   extras: SourceFile[],
 ): string | null {
-  if (!error) return error;
-  if (firstErrorLine == null || firstErrorLine <= 0 || extras.length === 0) {
-    return error;
-  }
-  const loc = resolveLine(firstErrorLine, main, extras);
-  if (loc.file === MAIN_FILE) return error;
-  return `${loc.name} line ${loc.line}: ${error}`;
+  if (!error || !first || first.line <= 0) return error;
+  const stopPrefix = `line ${first.line}: `;
+  const owned = error === first.message || error === stopPrefix + first.message;
+  if (!owned) return error;
+  const where = (line: number) => {
+    const loc = resolveLine(line, main, extras);
+    return extras.length === 0 ? `line ${loc.line}` : `${loc.name} line ${loc.line}`;
+  };
+  const body = first.message.replace(
+    /first appears on line (\d+)/,
+    (_, line: string) => `first appears on ${where(Number(line))}`,
+  );
+  return `${where(first.line)}: ${body}`;
 }
