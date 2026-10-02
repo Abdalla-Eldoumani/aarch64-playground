@@ -11,7 +11,7 @@ import {
 } from "react";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { formatWord64 } from "@/lib/emulator/format-hex";
-import { isCallLeftover } from "@/lib/emulator/clobber-note";
+import { CLOBBER_HEX, isCallLeftover } from "@/lib/emulator/clobber-note";
 import type { RegView } from "@/lib/emulator/emulator-state";
 import {
   compactHex,
@@ -156,6 +156,10 @@ const NO_REGISTERS: string[] = [];
 const NO_CHANGES: ReadonlySet<number> = new Set<number>();
 
 const ZERO_VECTOR = /^0x0+$/;
+
+/** The registers a library call may change, x0 to x18: the ones its marker
+ *  can be sitting in. */
+const CALLER_SAVED_X = 19;
 
 /** Persisted boolean flag, SSR-safe (reads localStorage after mount). A
  *  reducer, like the lane arrangement below, so the stored value can arrive
@@ -655,6 +659,14 @@ export function RegisterPanel({
 
   const zoom = useZoom("registers");
 
+  // After printf or scanf the caller-saved registers read 0xdeadbeef... and
+  // N, Z and V come up set, which looks like a bug. The marker is the
+  // emulator's stand-in for whatever the real library left there, so the
+  // panel says so while any x register still holds it.
+  const callLeftover = registers
+    .slice(0, CALLER_SAVED_X)
+    .some((hex) => hex.slice(2).toLowerCase() === CLOBBER_HEX);
+
   // shrink-0 + whitespace-nowrap: under flex pressure the cells collapsed far
   // enough to wrap "x0–x30" onto two lines and push the second cell out of
   // the group's overflow-hidden box.
@@ -837,6 +849,12 @@ export function RegisterPanel({
             />
           </div>
         </div>
+        {callLeftover ? (
+          <p className="mt-1 font-sans text-[12px] leading-snug text-[var(--text-secondary)]">
+            <span className="font-mono">0x{CLOBBER_HEX}</span> is what a library call left: a
+            call may change x0 to x18 and the flags.
+          </p>
+        ) : null}
       </div>
 
       <p id="regfile-view-help" className="sr-only">
