@@ -291,13 +291,13 @@ export function explainError(located: string): ErrorExplanation | null {
     detail.includes("dangling backslash") ||
     (detail.includes("escape") && (detail.includes("invalid") || detail.includes("incomplete")))
   ) {
-    // m4 runs first and knows nothing about strings, so in a course program
-    // the usual cause is a define, not what the student typed.
+    // m4 runs first and knows nothing about strings, so a one-letter define
+    // can rewrite the letter after a backslash.
     return {
-      what: "A string or character literal holds a backslash sequence the assembler stopped at.",
-      why: "m4 rewrites the source before the assembler reads it, and it replaces a define's name inside strings too: with `define(n, w19)`, the `\\n` in \"%d\\n\" reaches the assembler as `\\w19`. The escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` are the ones to write.",
-      fix: "If a define has a one-letter name, m4 also replaces that letter after a backslash in your strings: give it a longer name (`n_r` for `n`). Otherwise check the letter after the backslash, and write a backslash you want printed as `\\\\`.",
-      styleSection: "m4 preprocessing",
+      what: "The assembler stopped at a backslash in a string or character literal.",
+      why: "A backslash escapes the character after it: `\\n` is a newline, `\\t` a tab, `\\\"` a double quote and `\\\\` one backslash. A backslash at the very end of a literal has nothing to escape.",
+      fix: "To print a backslash, write two (`\\\\`). m4 also replaces a define's name inside strings, so a one-letter name changes the letter after a backslash: with `define(n, w19)`, `\\n` reaches the assembler as `\\w19`. Give such a define a longer name (`n_r` for `n`).",
+      styleSection: "naming conventions",
     };
   }
 
