@@ -175,12 +175,24 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.getByText(/press Ctrl\+D with the box empty to end the input/)).toBeTruthy();
   });
 
-  it("ends the input from a button while a read waits, for keyboards with no Ctrl", () => {
+  it("ends the input from a button while a read waits on a touch screen, which has no Ctrl", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("coarse"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
     const onInputSent = vi.fn();
     const { closeStdin } = setup({ blocked: true, onInputSent });
     fireEvent.click(screen.getByRole("button", { name: "end input" }));
     expect(closeStdin).toHaveBeenCalledTimes(1);
     expect(onInputSent).toHaveBeenCalledTimes(1);
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves the button out where Ctrl+D is at hand, so the box keeps its width", () => {
+    setup({ blocked: true });
+    expect(screen.queryByRole("button", { name: "end input" })).toBeNull();
   });
 
   it("offers neither the instruction nor the button when nothing is reading", () => {
