@@ -1911,6 +1911,42 @@ describe("useEmulator external calls", () => {
     });
   });
 
+  it("marks the call site when a run stops inside a library call", async () => {
+    // The step guard or a pause lands on a trampoline word, and the run's
+    // last snapshot arrives while the run is still on.
+    const printf = { name: "printf", callSitePc: CODE_BASE + 8, callSiteLine: 11 };
+    const fake = makeBackend({
+      runDeferred: true,
+      runSnapshot: { pc: toHex(TRAMPOLINE_PC), externalCall: printf },
+    });
+    const { result } = await mountAssembled(fake);
+
+    act(() => {
+      result.current.run();
+    });
+    await act(async () => {
+      fake.triggerRun();
+    });
+    await waitFor(() => expect(result.current.isRunning).toBe(false));
+    expect(result.current.externalCall).toEqual(printf);
+    expect(result.current.currentLine).toBe(11);
+  });
+
+  it("marks the scanf line while the run waits for input inside it", async () => {
+    const scanf = { name: "scanf", callSitePc: CODE_BASE + 4, callSiteLine: 10 };
+    const fake = makeBackend({
+      runSnapshot: { pc: toHex(TRAMPOLINE_PC), blocked: true, externalCall: scanf },
+    });
+    const { result } = await mountAssembled(fake);
+
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.blocked).toBe(true));
+    expect(result.current.externalCall).toEqual(scanf);
+    expect(result.current.currentLine).toBe(10);
+  });
+
   it("leaves ip0 and ip1 out of the writes inside a call, and only there", async () => {
     const fake = makeBackend();
     const { result } = await mountAssembled(fake);
