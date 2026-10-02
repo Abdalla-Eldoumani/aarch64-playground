@@ -61,7 +61,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "assemble",
       label: "Assemble",
-      description: "turn the source into machine code and load it into memory",
+      description: "turn the source into machine code and load it, without running it",
       shortcut: "F6",
       run: () => deps.assemble(),
     },
@@ -96,8 +96,9 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "run",
       label: "Run",
-      // In terminal mode with nothing assembled, run is the launch, so it
-      // says so instead of sending the student to the assemble button.
+      // Run assembles first when nothing is loaded, so with no program the
+      // row says it will, in either mode, instead of sending the student to
+      // the assemble button.
       description: deps.blocked
         ? "(waiting for stdin; feed the console first)"
         : deps.launchable
@@ -106,7 +107,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
             : "assemble, then run it in the terminal tab"
           : deps.programLoaded
             ? "run until halt or breakpoint"
-            : "(no program; assemble first)",
+            : "assemble, then run until halt or breakpoint",
       shortcut: "F5",
       run: () => {
         if (!deps.blocked) deps.run();
