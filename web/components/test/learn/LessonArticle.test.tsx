@@ -277,6 +277,26 @@ describe("LessonArticle", () => {
     }
   });
 
+  // "4.4.1" named both a contents entry and an example on the same page.
+  it("numbers the examples apart from the contents entries", () => {
+    const lesson: Lesson = {
+      ...fullLesson,
+      body: [...fullLesson.body, { type: "editor", starter: "ret" }],
+    };
+    const { container } = render(<LessonArticle lesson={lesson} sheetNumber="4.2" />);
+    const nav = screen.getByRole("navigation", { name: /on this page/i });
+    const contentsNumbers = within(nav)
+      .getAllByRole("link")
+      .map((a) => (a.textContent ?? "").match(/^[\d.]+/)?.[0]);
+    const captions = [...container.querySelectorAll("article span")]
+      .map((s) => s.textContent ?? "")
+      .filter((t) => t.startsWith("example"));
+    expect(captions.map((t) => t.match(/^example [\d.]+/)?.[0])).toEqual(["example 1", "example 2"]);
+    for (const number of contentsNumbers) {
+      for (const caption of captions) expect(caption).not.toContain(` ${number}`);
+    }
+  });
+
   it("passes a lesson's stdin under the size cap to the embed", () => {
     const lesson: Lesson = {
       title: "Stdin",
