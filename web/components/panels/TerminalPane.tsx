@@ -434,7 +434,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       </div>
       <p
         id={leaveHintId}
-        className="shrink-0 border-t border-[var(--border)] px-2 py-1 font-mono text-[12px] text-[var(--text-tertiary)] [@media(pointer:coarse)]:hidden"
+        className="shrink-0 border-t border-[var(--border)] px-2 py-0.5 font-mono text-[12px] leading-4 text-[var(--text-tertiary)] [@media(pointer:coarse)]:hidden"
       >
         <kbd className="font-mono text-[var(--text-secondary)]">Ctrl+M</kbd>, then Tab, leaves the terminal
       </p>
