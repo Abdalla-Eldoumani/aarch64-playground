@@ -763,6 +763,10 @@ export function Editor({
             // Monaco's stock colour finder reads `#112` as a CSS colour and
             // drew a swatch before the immediate.
             defaultColorDecorators: "never",
+            // The pinned scope header covered a line and named the label above
+            // `main` (a string's `fmt:`) as its scope, and took a Tab stop
+            // that showed no focus.
+            stickyScroll: { enabled: false },
             // Hover cards are fixed to the window, so a frame's overflow no
             // longer cuts them: an embed clipped up to 139 px off a card's
             // right edge, and the playground's pane hid the top of an error
