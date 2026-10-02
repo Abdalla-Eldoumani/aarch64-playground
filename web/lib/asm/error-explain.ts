@@ -35,7 +35,10 @@ export interface ErrorExplanation {
  * the same teaching block fires whether the error came from
  * assembler/parser/lexer/linker or m4.
  */
-export function explainError(message: string): ErrorExplanation | null {
+export function explainError(located: string): ErrorExplanation | null {
+  // The run row leads with where the error is ("line 12: ", "cube.s line 3: "),
+  // which the checks below would read as part of the message.
+  const message = located.replace(/^(?:\S+ )?line \d+: /, "");
   const lower = message.toLowerCase();
 
   // Whole-message variants come first; assembler / parser / preprocess /
