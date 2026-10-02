@@ -47,6 +47,7 @@ const EVERY_ID = [
   "launch-terminal",
   "pause",
   "reset",
+  "toggle-breakpoint",
   "share",
   "tutorials",
   "walkthrough",
@@ -82,6 +83,7 @@ describe("the row set", () => {
     expect(row(actions, "step").shortcut).toBe("F10");
     expect(row(actions, "step-back").shortcut).toBe("Shift+F10");
     expect(row(actions, "reset").shortcut).toBe("Shift+F5");
+    expect(row(actions, "toggle-breakpoint").shortcut).toBe("F9");
     expect(row(actions, "format-source").shortcut).toBe("Ctrl+Shift+F");
     expect(row(actions, "help").shortcut).toBe("?");
     // Run and pause share F5: one key toggles the run loop.
@@ -185,6 +187,25 @@ describe("the descriptions that carry the reason", () => {
     expect(row(actions, "reset").description).toBe(
       "start the program over, keeping breakpoints",
     );
+  });
+});
+
+describe("the breakpoint row", () => {
+  // Without it a keyboard user had no way to stop a run at a line.
+  it("toggles the caret's line and names it", () => {
+    const deps = makeDeps({ caretLine: 21, toggleBreakpoint: vi.fn() });
+    const action = row(buildPaletteCommands(deps), "toggle-breakpoint");
+    expect(action.description).toBe("set or clear a breakpoint on line 21, where the caret is");
+    action.run();
+    expect(deps.toggleBreakpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays, does nothing and says how, when the caret is in another file's tab", () => {
+    const deps = makeDeps({ caretLine: null, toggleBreakpoint: vi.fn() });
+    const action = row(buildPaletteCommands(deps), "toggle-breakpoint");
+    expect(action.description).toBe("(put the caret on a line in the editor, then press F9)");
+    action.run();
+    expect(deps.toggleBreakpoint).not.toHaveBeenCalled();
   });
 });
 
