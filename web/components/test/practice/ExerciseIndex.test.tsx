@@ -48,6 +48,11 @@ afterEach(() => {
   delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
 });
 
+/** True when `a` comes before `b` in document order. */
+function precedes(a: Element, b: Element): boolean {
+  return Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+}
+
 // The index takes the narrowed row, so the fixture is a row: the blurb
 // arrives already derived from the server rather than computed here.
 function makeRow(over: Partial<ExerciseIndexRow>): ExerciseIndexRow {
@@ -182,6 +187,23 @@ describe("ExerciseIndex", () => {
     });
     expect(screen.getByText("Basic quiz: ARMv8 assembly")).toBeTruthy();
     expect(screen.queryByText("Basic loops")).toBeNull();
+  });
+
+  // On a phone the columns stack, and the theory sets start some 14,000px
+  // down the page.
+  it("links from above the lists to the theory sets heading", () => {
+    const quiz = makeRow({ title: "Loop Quiz", slug: "loop-quiz", order: 3, variant: "quiz" });
+    const all = [...exercises, quiz];
+    const { container } = render(<ExerciseIndex exercises={all} blurbs={blurbsOf(all)} />);
+    const jump = screen.getByRole("link", { name: "jump to the theory sets" });
+    const target = container.querySelector(jump.getAttribute("href") ?? "#none");
+    expect(target?.textContent).toBe("Theory sets");
+    expect(precedes(jump, screen.getByRole("region", { name: "Coding exercises" }))).toBe(true);
+  });
+
+  it("leaves the jump link out when there are no theory sets", () => {
+    render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
+    expect(screen.queryByRole("link", { name: "jump to the theory sets" })).toBeNull();
   });
 
   it("filters by a selected difficulty chip", () => {
