@@ -9,6 +9,9 @@ export interface WalkthroughTarget {
   /** Controls the card must leave uncovered: a phone's run row sits right
    *  above its tabs, and a view keeps controls in its header. */
   avoid?: string[];
+  /** Lay a short card over the bar that holds the target, not beside it:
+   *  everything under a phone's top bar is the student's code. */
+  overBar?: boolean;
 }
 
 export interface WalkthroughStep {
@@ -24,13 +27,15 @@ export interface WalkthroughStep {
 const anchor = (name: string) => `[data-walkthrough="${name}"]`;
 
 // A card beside a phone's bottom tabs would sit on the run row above them.
-const RUN_ROW = [anchor("assemble")];
+// Back is named too: a narrow card can miss assemble and still cover it.
+const RUN_ROW = [anchor("assemble"), 'button[aria-label="back"]'];
 
 // On a phone the tools live behind the menu button and most views behind
 // the bottom tabs, so those steps point at the way in.
 const menu = (what: string): WalkthroughTarget => ({
   selector: anchor("menu"),
   hint: `On a phone, find ${what} in this menu.`,
+  avoid: RUN_ROW,
 });
 const more = (what: string): WalkthroughTarget => ({
   selector: "#phone-tab-more",
@@ -57,7 +62,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: "Files",
     body: "A program can span several files. Add one here; every file is joined to main.asm when you assemble, so bl can call a function written in another file.",
     targets: [
-      { selector: anchor("files") },
+      { selector: anchor("files"), avoid: RUN_ROW },
       { selector: "#phone-tab-code", hint: "Tap code to see the files strip above the editor.", avoid: RUN_ROW },
     ],
   },
@@ -85,7 +90,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     body: "Click or tap beside a line number to set a breakpoint, a mark that makes run stop before that line. Do it again to clear it.",
     targets: [
       { selector: `${anchor("editor")} .monaco-editor .margin` },
-      { selector: anchor("gutter") },
+      { selector: anchor("gutter"), avoid: RUN_ROW },
       { selector: "#phone-tab-code", hint: "Tap code to see the line numbers.", avoid: RUN_ROW },
     ],
   },
@@ -115,7 +120,7 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     body: "What the program prints lands here. A program that reads input, with scanf or read, waits at the box below the output until you type a line and press enter.",
     targets: [
       { selector: '#phone-tab-console[aria-selected="false"]', hint: "On a phone, tap console to see it.", avoid: RUN_ROW },
-      { selector: '#phone-panel[aria-labelledby="phone-tab-console"]' },
+      { selector: '#phone-panel[aria-labelledby="phone-tab-console"]', avoid: RUN_ROW },
       { selector: "#right-panel-console" },
       tab("console", "console"),
     ],
@@ -158,11 +163,12 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   },
 ];
 
-/** Where the offer points: the way back to the walkthrough later. Under a
- *  phone's menu button the card would cover the files strip. */
+/** Where the offer points: the way back to the walkthrough later. It keeps
+ *  off the code and the registers, which a student opening the playground
+ *  from a lesson has come to read. */
 export const OFFER_TARGETS: WalkthroughTarget[] = [
-  { selector: anchor("tutorials") },
-  { selector: anchor("menu"), avoid: [anchor("files")] },
+  { selector: anchor("tutorials"), avoid: [anchor("editor"), anchor("registers"), ...RUN_ROW] },
+  { selector: anchor("menu"), overBar: true },
 ];
 
 // ---- where the student left off ----
@@ -212,10 +218,10 @@ export function isOnScreen(el: Element): boolean {
 export function resolveTarget(
   targets: WalkthroughTarget[],
   root: ParentNode = document,
-): { el: Element; hint?: string; avoid?: string[] } | null {
+): { el: Element; hint?: string; avoid?: string[]; overBar?: boolean } | null {
   for (const target of targets) {
     for (const el of root.querySelectorAll(target.selector)) {
-      if (isOnScreen(el)) return { el, hint: target.hint, avoid: target.avoid };
+      if (isOnScreen(el)) return { el, hint: target.hint, avoid: target.avoid, overBar: target.overBar };
     }
   }
   return null;
@@ -248,6 +254,19 @@ const MIN_HEIGHT = 120;
 const MIN_WIDTH = 240;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
+
+/** A short card over the bar that holds `target`, level with its top and
+ *  lined up with its right edge, where a phone keeps its menu button. */
+export function placeOverBar(target: Box, cardWidth: number, view: { width: number; height: number }): Placement {
+  const width = Math.min(cardWidth, view.width - 2 * MARGIN);
+  return {
+    side: "over",
+    width,
+    maxHeight: null,
+    top: Math.max(target.top, MARGIN),
+    left: clamp(target.left + target.width - width, MARGIN, view.width - MARGIN - width),
+  };
+}
 
 /**
  * Put a card of `card` size next to `target` without covering it: below,
