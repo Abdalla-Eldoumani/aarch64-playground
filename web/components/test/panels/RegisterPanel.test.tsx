@@ -73,6 +73,24 @@ describe("RegisterPanel", () => {
     expect(row("X2")).not.toMatch(/-|u/);
   });
 
+  it("says what a library call left when x0 to x18 hold its marker", () => {
+    const note = /0xdeadbeefdeadbeef\s*is what a library call left: a call may change x0 to x18 and the flags\./;
+    const panel = (regs: string[]) => (
+      <RegisterPanel registers={regs} changedRegs={new Set()} sp="0x0000fffffffff000" pc={0x400000} nzcv={0b1101} />
+    );
+    const { rerender, container } = render(panel(registers));
+    expect(container.textContent).not.toMatch(note);
+
+    const afterCall = registers.map((hex, i) => (i >= 1 && i <= 18 ? "0xdeadbeefdeadbeef" : hex));
+    rerender(panel(afterCall));
+    expect(container.textContent).toMatch(note);
+
+    // Only x19 to x30 holding it is the program's own doing, not a call's.
+    const kept = registers.map((hex, i) => (i === 19 ? "0xDEADBEEFDEADBEEF" : hex));
+    rerender(panel(kept));
+    expect(container.textContent).not.toMatch(note);
+  });
+
   it("shows each register's alias (arg0, fp, lr) beside its name", () => {
     renderPanel();
     expect(screen.getByText("arg0")).toBeTruthy();
