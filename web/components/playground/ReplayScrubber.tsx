@@ -104,22 +104,25 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
     }, interval);
   };
 
+  // One noun for the row and one verb for its button: "play" and "replay"
+  // beside run and step read as three ways to run the program, when this row
+  // only shows steps already taken.
   return (
     <div
       className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[12px]"
       aria-label="replay scrubber"
     >
+      <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap">
+        history
+      </span>
       <button
         type="button"
         onClick={togglePlay}
         className="touch-target text-[var(--cyan)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] rounded px-1"
-        aria-label={playing ? "pause replay" : "play replay"}
+        aria-label={playing ? "stop the replay" : "replay the saved steps"}
       >
-        {playing ? "pause" : "play"}
+        {playing ? "stop" : "replay"}
       </button>
-      <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap">
-        replay
-      </span>
       <input
         type="range"
         min={0}
