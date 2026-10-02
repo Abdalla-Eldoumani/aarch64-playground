@@ -98,13 +98,30 @@ describe("ReplayScrubber", () => {
     expect(screen.getByText("step 2 · 2 of 4 · registers only")).toBeTruthy();
   });
 
+  it("names the row once and gives its button one verb, apart from run", () => {
+    render(<ReplayScrubber frames={[frame(1), frame(2)]} currentStep={2} onSeek={vi.fn()} />);
+    const row = screen.getByLabelText("replay scrubber");
+    expect(row.textContent).toContain("history");
+    const button = screen.getByRole("button", { name: "replay the saved steps" });
+    expect(button.textContent).toBe("replay");
+    expect(row.textContent).not.toMatch(/\bplay\b/);
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(button);
+      expect(screen.getByRole("button", { name: "stop the replay" }).textContent).toBe("stop");
+      fireEvent.click(screen.getByRole("button", { name: "stop the replay" }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns to the live frame when playback runs to the end", () => {
     vi.useFakeTimers();
     try {
       const onSeek = vi.fn();
       const frames = [frame(1), frame(2), frame(3)];
       render(<ReplayScrubber frames={frames} currentStep={3} onSeek={onSeek} />);
-      fireEvent.click(screen.getByRole("button", { name: /play replay/i }));
+      fireEvent.click(screen.getByRole("button", { name: "replay the saved steps" }));
       act(() => {
         vi.runAllTimers();
       });
