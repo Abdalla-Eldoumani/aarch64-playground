@@ -3,7 +3,7 @@
 // little-endian 64-bit numbers, the fp row and frame-slot labels appear only
 // while fp is inside the window, and rows fall back to SP+N labels.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { StackPanel } from "@/components/panels/StackPanel";
 
 afterEach(() => {
@@ -85,7 +85,7 @@ describe("StackPanel fp marker and labels", () => {
     expect(fpCell.closest("tr")?.className).toContain("text-[var(--success)]");
     // fp+8 carries the parsed frame-slot name
     const named = screen.getByText("count_s");
-    expect(named.parentElement?.textContent).toBe("[fp, count_s]");
+    expect(named.parentElement?.textContent).toBe("[fp, 8] count_s");
     // fp+16 has no name and falls back to the numeric offset
     expect(screen.getByText("[fp, 16]")).toBeTruthy();
     // rows below fp keep the SP-relative label
@@ -106,5 +106,56 @@ describe("StackPanel fp marker and labels", () => {
     renderPanel();
     expect(screen.queryByText(/^FP = /)).toBeNull();
     expect(screen.queryByText("fp")).toBeNull();
+  });
+});
+
+describe("StackPanel 32-bit slots", () => {
+  // Two int locals, a = 7 at [fp, 16] and b = 5 at [fp, 20], with fp = sp.
+  function intLocals() {
+    return vi.fn((addr: number, len: number) => {
+      const out = new Uint8Array(len);
+      if (addr === SP) {
+        out[16] = 7;
+        out[20] = 5;
+      }
+      return out;
+    });
+  }
+  const slots = [
+    { offset: 16, name: "a_s" },
+    { offset: 20, name: "b_s" },
+  ];
+
+  it("reads 8 bytes a row by default, so two int locals share one number", () => {
+    render(<StackPanel sp="0x80000000" getMemory={intLocals()} fp={SP} frameSlots={slots} />);
+    const row = screen.getByText("a_s").closest("tr");
+    expect(row?.textContent).toContain("0x0000000500000007");
+    expect(screen.queryByText("b_s")).toBeNull();
+  });
+
+  it("splits the same 128 bytes into 32 rows of 4, each local on its own row with its offset", () => {
+    const { container } = render(
+      <StackPanel sp="0x80000000" getMemory={intLocals()} fp={SP} frameSlots={slots} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "32-bit" }));
+    expect(screen.getByRole("button", { name: "32-bit" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("value (32-bit)")).toBeTruthy();
+    expect(container.querySelectorAll("tbody tr").length).toBe(32);
+    const a = screen.getByText("a_s").closest("tr");
+    const b = screen.getByText("b_s").closest("tr");
+    expect(a).not.toBe(b);
+    expect(a?.textContent).toContain("0x00000007");
+    expect(a?.textContent).toContain("[fp, 16] a_s");
+    expect(b?.textContent).toContain("0x00000005");
+    expect(b?.textContent).toContain("[fp, 20] b_s");
+    expect(screen.getByText("0x80000004")).toBeTruthy();
+  });
+
+  it("keeps the choice for the next visit", () => {
+    render(<StackPanel sp="0x80000000" getMemory={intLocals()} />);
+    fireEvent.click(screen.getByRole("button", { name: "32-bit" }));
+    cleanup();
+    const { container } = render(<StackPanel sp="0x80000000" getMemory={intLocals()} />);
+    expect(container.querySelectorAll("tbody tr").length).toBe(32);
   });
 });
