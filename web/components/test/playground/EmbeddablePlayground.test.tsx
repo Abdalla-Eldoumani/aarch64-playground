@@ -182,7 +182,7 @@ describe("EmbeddablePlayground", () => {
     expect(hub.toggleBreakpoint).toHaveBeenCalledWith(2);
 
     const row = ref.current!.getCommands().find((command) => command.id === "toggle-breakpoint")!;
-    expect(row.description).toBe("set or clear a breakpoint on line 2, where the caret is");
+    expect(row.description).toBe("line 2, where the caret is: set or clear a breakpoint");
     act(() => row.run());
     expect(hub.toggleBreakpoint).toHaveBeenCalledTimes(2);
   });
