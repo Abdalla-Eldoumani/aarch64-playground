@@ -300,7 +300,7 @@ export function FullChromeSurface({
         else next.push({ name: f.name, body: f.body });
       }
       setExtraFiles(next);
-      toast.show(`imported ${files.length} files`);
+      toast.show(`imported ${what}`);
     },
     [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch],
   );
