@@ -253,6 +253,17 @@ describe("TerminalPane", () => {
 describe("TerminalPane width", () => {
   afterEach(() => {
     pane.width = 600;
+    document.documentElement.style.removeProperty("--font-mono");
+  });
+
+  // xterm measures its cells on a canvas, which reads no CSS variable: given
+  // var(--font-mono) it sized every cell for 10px Arial.
+  it("hands xterm the site's mono family by name, never a CSS variable", () => {
+    document.documentElement.style.setProperty("--font-mono", "'fontMono', 'fontMono Fallback'");
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    const family = String((instances[0].options as { fontFamily?: string }).fontFamily);
+    expect(family.startsWith("'fontMono', 'fontMono Fallback', ")).toBe(true);
+    expect(family).not.toContain("var(");
   });
 
   // dsav draws its frame 80 columns wide; at 13px a laptop's pane held 70.
