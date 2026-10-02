@@ -137,11 +137,20 @@ export interface FullChromeSurfaceProps {
   registerBridge: (bridge: FullChromeBridge | null) => void;
 }
 
+/** What a new tab starts with. */
+const fileStub = (name: string) => `// ${name}\n`;
+
 // An import, unlike a program load, keeps no copy in recents of what it
 // writes over, so it asks before replacing code that differs from the file
-// coming in, in main.asm or in any helper tab.
-function importReplaces(current: string | undefined, incoming: string): boolean {
-  return current !== undefined && current.trim() !== "" && current !== incoming;
+// coming in, in main.asm or in any helper tab. A tab still holding its new
+// stub (`name`) has nothing to lose.
+function importReplaces(current: string | undefined, incoming: string, name?: string): boolean {
+  return (
+    current !== undefined &&
+    current.trim() !== "" &&
+    current !== incoming &&
+    (name === undefined || current !== fileStub(name))
+  );
 }
 
 function confirmImport(what: string, replaced: string[]): boolean {
@@ -234,8 +243,11 @@ export function FullChromeSurface({
 
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
-      const current = target.kind === "main" ? source : extraFiles[target.index]?.body;
-      const replaced = importReplaces(current, body) ? [describeTarget(target, extraFiles)] : [];
+      const tab = target.kind === "extra" ? extraFiles[target.index] : undefined;
+      const current = target.kind === "main" ? source : tab?.body;
+      const replaced = importReplaces(current, body, tab?.name)
+        ? [describeTarget(target, extraFiles)]
+        : [];
       if (!confirmImport("this file", replaced)) return;
       resetLaunch();
       switch (target.kind) {
@@ -267,9 +279,9 @@ export function FullChromeSurface({
       let mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
       if (mainIdx < 0) mainIdx = files.findIndex((f) => definesMain(f.body));
       const replaced = files.flatMap((f, i) => {
-        const current =
-          i === mainIdx ? source : extraFiles.find((x) => x.name === f.name)?.body;
-        return importReplaces(current, f.body) ? [i === mainIdx ? "main.asm" : f.name] : [];
+        if (i === mainIdx) return importReplaces(source, f.body) ? ["main.asm"] : [];
+        const current = extraFiles.find((x) => x.name === f.name)?.body;
+        return importReplaces(current, f.body, f.name) ? [f.name] : [];
       });
       const what = files.length === 1 ? files[0].name : `${files.length} files`;
       if (!confirmImport(what, replaced)) return;
@@ -623,7 +635,7 @@ export function FullChromeSurface({
             return;
           }
           const clean = name.trim();
-          const next: SourceFile = { name: clean, body: `// ${clean}\n` };
+          const next: SourceFile = { name: clean, body: fileStub(clean) };
           const idx = extraFiles.length;
           setExtraFiles([...extraFiles, next]);
           setActiveFile(idx);
