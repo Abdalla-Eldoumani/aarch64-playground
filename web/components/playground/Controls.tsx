@@ -20,14 +20,11 @@ interface ControlsProps {
   isAssembling?: boolean;
   isHalted: boolean;
   /** False until a successful assemble, and false again after reset or a
-   *  failed one. Run, step, and back have nothing to execute without a
-   *  program, so they render disabled instead of silently no-oping. */
+   *  failed one. Step and back have nothing to execute without a program, so
+   *  they render disabled instead of silently no-oping. Run stays live: with
+   *  nothing loaded it assembles first, so it waits only for an assemble
+   *  already in flight, and one press cannot start two. */
   programLoaded: boolean;
-  /** Run has something to do even with nothing assembled: it assembles the
-   *  workspace first and starts the session itself. Only run is affected (step
-   *  and back still need a loaded program), and an assemble already in flight
-   *  still disables it, so one press cannot start two. */
-  runAssemblesFirst?: boolean;
   /** True while the program sits at a blocked read waiting for stdin. Run,
    *  step, and back cannot make progress past the read (the machine just
    *  re-blocks), so they disable; assemble and reset stay live because both
@@ -59,7 +56,6 @@ export function Controls({
   isAssembling = false,
   isHalted,
   programLoaded,
-  runAssemblesFirst = false,
   blocked = false,
   error,
   stepCount,
@@ -121,11 +117,7 @@ export function Controls({
           aria-keyshortcuts="F5"
           title="F5"
           className={share("flex-1")}
-          disabled={
-            (!programLoaded && (!runAssemblesFirst || isAssembling)) ||
-            (isHalted && !isRunning) ||
-            (blocked && !isRunning)
-          }
+          disabled={isAssembling || (blocked && !isRunning)}
         >
           <span>{isRunning ? "pause" : "run"}</span>
           {chips && <ShortcutChip keys="F5" />}
