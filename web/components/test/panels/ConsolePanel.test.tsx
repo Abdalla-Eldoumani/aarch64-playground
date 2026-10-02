@@ -182,12 +182,15 @@ describe("ConsolePanel controls and state", () => {
       addEventListener: () => {},
       removeEventListener: () => {},
     }));
-    const onInputSent = vi.fn();
-    const { closeStdin } = setup({ blocked: true, onInputSent });
-    fireEvent.click(screen.getByRole("button", { name: "end input" }));
-    expect(closeStdin).toHaveBeenCalledTimes(1);
-    expect(onInputSent).toHaveBeenCalledTimes(1);
-    vi.unstubAllGlobals();
+    try {
+      const onInputSent = vi.fn();
+      const { closeStdin } = setup({ blocked: true, onInputSent });
+      fireEvent.click(screen.getByRole("button", { name: "end input" }));
+      expect(closeStdin).toHaveBeenCalledTimes(1);
+      expect(onInputSent).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("leaves the button out where Ctrl+D is at hand, so the box keeps its width", () => {
@@ -212,11 +215,14 @@ describe("ConsolePanel controls and state", () => {
       addEventListener: () => {},
       removeEventListener: () => {},
     }));
-    const { input } = setup({ blocked: true });
-    expect(screen.getByText(/Type a line and tap send, or tap end input/)).toBeTruthy();
-    expect(screen.queryByText(/Ctrl\+D/)).toBeNull();
-    expect(input.placeholder).toBe("type a line");
-    vi.unstubAllGlobals();
+    try {
+      const { input } = setup({ blocked: true });
+      expect(screen.getByText(/Type a line and tap send, or tap end input/)).toBeTruthy();
+      expect(screen.queryByText(/Ctrl\+D/)).toBeNull();
+      expect(input.placeholder).toBe("type a line");
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it("shows each note under the output, in place of the idle hint", () => {
