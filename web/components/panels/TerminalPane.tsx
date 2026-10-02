@@ -104,6 +104,13 @@ export interface TerminalPaneProps {
 
 const PROMPT = "$ ";
 
+// The playground's run keys pass through to the page, which runs them: no
+// terminal example reads F5, F6, F9 or F10, and Ctrl+Enter only repeats Enter.
+function isPlaygroundKey(e: KeyboardEvent): boolean {
+  if (e.key === "F5" || e.key === "F6" || e.key === "F9" || e.key === "F10") return true;
+  return (e.ctrlKey || e.metaKey) && (e.key === "Enter" || e.key === "F8");
+}
+
 /**
  * The xterm.js shell pane. lazy-panels.tsx loads it on demand so the xterm
  * bundle ships only when the student opens the terminal tab.
@@ -227,6 +234,8 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     term.loadAddon(fit);
     term.open(containerRef.current);
     fit.fit();
+    // false: xterm leaves the key alone, so it reaches the page's handler.
+    term.attachCustomKeyEventHandler((e) => !isPlaygroundKey(e));
 
     // Follow the site theme live: the switcher writes data-theme on <html>,
     // so a mutation observer keeps the terminal palette in step without a
