@@ -92,9 +92,11 @@ impl fmt::Display for EmuError {
                 write!(
                     f,
                     "memory fault: the program tried to {kind} 0x{address:016x}, which \
-                     no section covers. The base register is holding a value that is \
-                     not an address, usually because a `mov` was written where \
-                     `ldr xN, =label` was meant"
+                     no section covers. The base register (the first one inside the \
+                     brackets, or a pointer passed to a call) does not hold an address, \
+                     usually because `ldr xN, label` lost its `=` (it loads the value \
+                     stored at the label) or a `mov` was written where `ldr xN, =label` \
+                     was meant"
                 )
             }
             Self::UnalignedAccess { address, required } => {
@@ -142,7 +144,8 @@ impl fmt::Display for EmuError {
                     "stopped: tried to {kind} address 0x{address:x}, which is not part of \
                      any program section (the servers kill this with a segmentation fault). \
                      A base register is holding a small number instead of an address: check \
-                     for a `mov` where you meant `ldr xN, =label`, or an m4 alias that \
+                     for a `mov`, or an `ldr xN, label` missing its `=`, where you meant \
+                     `ldr xN, =label`, or an m4 alias that \
                      reuses a register a pointer is already living in (`define(i_r, w19)` \
                      after `ldr x19, =arr` overwrites the pointer)"
                 )
