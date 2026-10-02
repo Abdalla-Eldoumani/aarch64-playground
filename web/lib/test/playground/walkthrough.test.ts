@@ -62,6 +62,14 @@ describe("the steps", () => {
     expect(first("converter")).toBe("#phone-tab-more");
   });
 
+  it("says when run assembles first, and that assemble alone does not run", () => {
+    const body = (id: string) => WALKTHROUGH_STEPS.find((s) => s.id === id)?.body ?? "";
+    expect(body("assemble")).toContain("loads it, without running it");
+    expect(body("run")).toContain(
+      "Run assembles first if nothing is loaded, the program has finished, or you changed the code, files, or arguments.",
+    );
+  });
+
   it("keeps every card a phone shows off the run row, its back button included", () => {
     const runRowSteps = ["assemble", "run", "step"];
     const phoneOnly = /^#phone-|"menu"|"gutter"|"files"/;
