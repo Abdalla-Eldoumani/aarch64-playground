@@ -44,6 +44,15 @@ describe("LessonIndex", () => {
     expect(screen.queryByText("Beta Lesson")).toBeNull();
   });
 
+  it("finds a lesson from two words typed in another order", () => {
+    render(<LessonIndex lessons={lessons} />);
+    fireEvent.change(screen.getByLabelText("search lessons"), {
+      target: { value: "registers alpha" },
+    });
+    expect(screen.getByText("Alpha Lesson")).toBeTruthy();
+    expect(screen.queryByText("Beta Lesson")).toBeNull();
+  });
+
   it("filters by a selected tag chip", () => {
     render(<LessonIndex lessons={lessons} />);
     fireEvent.click(screen.getByRole("button", { name: "registers" }));
