@@ -405,6 +405,17 @@ body {
   }
 }
 
+/* Monaco fades its scrollbars, folding arrows and minimap slider on its own
+   clock (100 to 800ms). Under reduced motion they switch at once like the
+   rest of the page; !important because Monaco's stylesheet loads later with
+   longer selectors. */
+@media (prefers-reduced-motion: reduce) {
+  .monaco-editor,
+  .monaco-editor * {
+    transition: none !important;
+  }
+}
+
 /* =============================================================================
    SKIP LINK
    Hidden until focused, then fixed, because the nav's blur and the debugger's
