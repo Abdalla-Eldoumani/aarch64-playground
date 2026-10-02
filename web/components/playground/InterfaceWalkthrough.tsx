@@ -9,6 +9,7 @@ import {
   WALKTHROUGH_STEPS,
   loadProgress,
   placeCard,
+  placeOverBar,
   resolveTarget,
   saveProgress,
   type Box,
@@ -29,6 +30,8 @@ interface Layout {
   hint?: string;
   /** A modal dialog or a picker's list is up; the walkthrough waits under it. */
   hidden: boolean;
+  /** The offer laid over a phone's top bar: its title and buttons only. */
+  compact?: boolean;
 }
 
 // Past the first paint, so the offer lands on a settled page.
@@ -152,6 +155,12 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     }
     const r = found.el.getBoundingClientRect();
     const box = (b: DOMRect) => ({ top: b.top, left: b.left, width: b.width, height: b.height });
+    if (found.overBar) {
+      // The card covers the target, so no ring: it would frame the card.
+      const next: Layout = { ring: null, hidden, compact: true, card: placeOverBar(box(r), CARD_WIDTH, view) };
+      setLayout((prev) => (sameLayout(prev, next) ? prev : next));
+      return;
+    }
     const avoid = (found.avoid ?? []).flatMap((selector) => {
       const control = resolveTarget([{ selector }]);
       return control ? [box(control.el.getBoundingClientRect())] : [];
@@ -280,12 +289,17 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
         <div
           ref={textRef}
           aria-live="polite"
-          className={`min-h-0 flex-1 overflow-y-auto pl-3 pt-3 ${step ? "pr-11" : "pr-3"}`}
+          className={`min-h-0 flex-1 overflow-y-auto pl-3 ${layout.compact ? "pt-2" : "pt-3"} ${step ? "pr-11" : "pr-3"}`}
         >
           <h2 id={titleId} className="font-sans text-[15px] font-medium leading-snug">
             {step ? step.title : "New to the playground?"}
           </h2>
-          <p id={bodyId} className="mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]">
+          {/* Over a phone's top bar there is room for the title and the two
+              buttons only; the sentence stays for a screen reader. */}
+          <p
+            id={bodyId}
+            className={layout.compact ? "sr-only" : "mt-1 text-[13px] leading-relaxed text-[var(--text-secondary)]"}
+          >
             {step
               ? step.body
               : "A short walkthrough points at each part of the screen in turn, from the editor to the run controls, the registers, and the tools. You can leave it at any step and pick it up again from tutorials."}
@@ -294,7 +308,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
             )}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-2 p-3">
+        <div className={`flex shrink-0 items-center gap-2 ${layout.compact ? "px-3 pb-2 pt-1" : "p-3"}`}>
           {step ? (
             <>
               <Button
