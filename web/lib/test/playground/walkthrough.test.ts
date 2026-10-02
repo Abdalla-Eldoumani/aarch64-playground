@@ -258,6 +258,25 @@ describe("placeCard", () => {
     expect(p.top).toBe(98 + 8);
   });
 
+  it("keeps the editor's card off the run row in a short window", () => {
+    // Measured at 1366x657: the editor over the disassembly, the run row
+    // under both, and room for the card between the editor and the row.
+    const view = { width: 1366, height: 657 };
+    const editor = { top: 119, left: 0, width: 750, height: 351 };
+    const runRow = [
+      { top: 609, left: 16, width: 94, height: 44 },
+      { top: 609, left: 249, width: 65, height: 44 },
+    ];
+    const size = { width: 352, height: 141 };
+    expect(runRow.some((b) => overlaps(b, placeCard(editor, size, view), 141))).toBe(true);
+    const p = placeCard(editor, size, view, runRow);
+    expect(runRow.some((b) => overlaps(b, p, 141))).toBe(false);
+    expect(p.side).toBe("right");
+    const editorStep = WALKTHROUGH_STEPS.find((st) => st.id === "editor");
+    const desk = editorStep?.targets.find((t) => t.selector === '[data-walkthrough="editor"]');
+    expect(desk?.avoid).toContain('button[aria-label="back"]');
+  });
+
   it("narrows to the viewport on a small phone", () => {
     const tab = { top: 596, left: 0, width: 90, height: 44 };
     const p = check(tab, { width: 320, height: 640 });
