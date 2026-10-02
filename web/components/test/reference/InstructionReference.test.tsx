@@ -151,6 +151,28 @@ describe("InstructionReference", () => {
     expect(screen.getByRole("button", { name: "ldr" })).toBeTruthy();
   });
 
+  // A student who does not know the mnemonic yet types what it does.
+  it("finds an instruction by a word its summary uses", () => {
+    render(<InstructionReference instructions={REFERENCE_INSTRUCTIONS} />);
+    fireEvent.change(screen.getByLabelText(/filter/i), { target: { value: "load" } });
+    expect(screen.getByRole("button", { name: "ldr" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "mov" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "str" })).toBeNull();
+    fireEvent.keyDown(screen.getByLabelText(/filter/i), { key: "Enter" });
+    expect(screen.getByLabelText("instruction detail").querySelector("h2")?.textContent).toBe("ldr");
+  });
+
+  it("finds an instruction by its category and by words in any order", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    fireEvent.change(input, { target: { value: "memory" } });
+    expect(screen.getByRole("button", { name: "ldr" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "mov" })).toBeNull();
+    fireEvent.change(input, { target: { value: "prose cmp" } });
+    expect(screen.getByRole("button", { name: "cmp" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ldr" })).toBeNull();
+  });
+
   it("moves the active item with ArrowDown and opens it with Enter", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const nav = screen.getByRole("navigation", { name: /instruction index/i });
@@ -209,10 +231,11 @@ describe("InstructionReference", () => {
     expect(screen.getByRole("button", { name: "mov" })).toBeTruthy();
   });
 
-  it("opens the first match when Enter is pressed in the filter", () => {
+  it("opens the first mnemonic that contains the filter when Enter is pressed", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const input = screen.getByLabelText(/filter/i);
-    // "d" leaves add, adcs, ldr and addv, in that order.
+    // "d" lists mov first, for its category "Data processing", then add,
+    // adcs, ldr and addv, whose mnemonics hold the letter.
     fireEvent.change(input, { target: { value: "d" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByLabelText("instruction detail").textContent).toContain("add xd, xn, xm");
