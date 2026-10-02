@@ -23,7 +23,7 @@ vi.mock("@/components/playground/lazy-editor", () => ({
 }));
 
 const decodeProps = vi.hoisted(() => ({
-  current: null as null | { source: string; currentLine: number | null },
+  current: null as null | { source: string; currentLine: number | null; compact?: boolean },
 }));
 vi.mock("@/components/panels/DecodeStrip", () => ({
   DecodeStrip: (props: NonNullable<typeof decodeProps.current>) => {
@@ -320,6 +320,30 @@ describe("the decode strip in a multi-file workspace", () => {
   });
 });
 
+describe("the decode strip in a short window", () => {
+  function setHeight(px: number): void {
+    Object.defineProperty(window, "innerHeight", { value: px, configurable: true, writable: true });
+    window.dispatchEvent(new Event("resize"));
+  }
+  afterEach(() => setHeight(768));
+
+  async function stripCompact(height: number) {
+    setHeight(height);
+    const { container } = render(<EmbeddablePlayground chrome="full" startSource={MAIN} />);
+    engage(container);
+    await fullChromeMounted();
+    return decodeProps.current!.compact;
+  }
+
+  it("drops the field meanings in a short window, so the registers keep their rows", async () => {
+    expect(await stripCompact(657)).toBe(true);
+  });
+
+  it("keeps them at a regular height", async () => {
+    expect(await stripCompact(900)).toBe(false);
+  });
+});
+
 describe("helper file names", () => {
   it("refuses a new tab named main.asm", async () => {
     const { container } = render(
@@ -364,6 +388,90 @@ describe("helper file names", () => {
 
     expect(toastError).not.toHaveBeenCalled();
     expect(screen.getByLabelText("remove queue.s")).toBeTruthy();
+  });
+});
+
+describe("importing a program's files", () => {
+  const PROGRAM = "        .global main\nmain:   bl cube\n        ret\n";
+  const CUBE = "        .global cube\ncube:   mul x0, x0, x0\n        ret\n";
+
+  function pick(...files: File[]): void {
+    const input = document.querySelector<HTMLInputElement>(
+      'input[type="file"][data-import-input]',
+    )!;
+    fireEvent.change(input, { target: { files } });
+  }
+  const file = (body: string, name: string) => new File([body], name, { type: "text/plain" });
+
+  it("puts the file that defines main in main.asm when none is named main", async () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    await fullChromeMounted();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    pick(file(CUBE, "cube.s"), file(PROGRAM, "a6.s"));
+
+    await waitFor(() => expect(ref.current!.getSource()).toBe(PROGRAM));
+    expect(ref.current!.getFiles()).toEqual([{ name: "cube.s", body: CUBE }]);
+    // main.asm held other code, so the import asked before writing over it.
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("main.asm"));
+  });
+
+  it("fills a new tab's starter comment without asking", async () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    await fullChromeMounted();
+    fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "cube.s" } });
+    fireEvent.click(screen.getByLabelText("add file"));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    pick(file(CUBE, "cube.s"));
+
+    await waitFor(() =>
+      expect(ref.current!.getFiles()).toEqual([{ name: "cube.s", body: CUBE }]),
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(ref.current!.getSource()).toBe(MAIN);
+  });
+});
+
+describe("the error line under the run row", () => {
+  async function mountWithError(message: string, line: number) {
+    useEmulatorMock.mockReturnValue(
+      makeHub({ assemblyErrors: [{ line, message }], error: message }),
+    );
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    await fullChromeMounted();
+    await act(async () => {
+      ref.current!.assemble();
+    });
+    return screen.getByRole("alert").textContent ?? "";
+  }
+
+  it("leads a one-file error with its line, under a hint that fits it", async () => {
+    const text = await mountWithError("expected a register here, got `3`", 4);
+    expect(text).toContain("line 4: expected a register here, got `3`");
+    expect(text).toContain("registers only");
+  });
+
+  it("names the files of a label defined twice", async () => {
+    seedFiles();
+    const text = await mountWithError(
+      "symbol `main' is already defined\n`main:` first appears on line 3: give this one a different name",
+      UTIL_COMBINED_LINE,
+    );
+    expect(text).toContain("util.s line 3: symbol `main' is already defined");
+    expect(text).toContain("first appears on main.asm line 3");
   });
 });
 
