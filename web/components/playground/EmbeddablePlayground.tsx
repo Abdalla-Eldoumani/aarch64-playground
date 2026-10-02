@@ -58,7 +58,7 @@ const FullChromeSurface = dynamic(
     ),
   },
 );
-import { resolveLine } from "@/lib/playground/file-map";
+import { MAIN_FILE, resolveLine } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 
 /**
@@ -114,6 +114,9 @@ export type EmbeddablePlaygroundHandle = {
   /** The command Action[] built inside the component so a host-rendered
    *  palette has no duplicate logic. */
   getCommands(): Action[];
+  /** F9 outside the editor: set or clear a breakpoint on main.asm's caret
+   *  line. Inside the editor, the editor's own F9 takes the key. */
+  toggleBreakpoint(): void;
   /** Surface a host-page failure (bad share link, failed example fetch) through
    *  this component's toast instance. The page entry's own react-hot-toast
    *  binding is a separate module instance in the production chunk graph, so
@@ -548,6 +551,15 @@ function EmbeddableCore({
     else emuRef.current.reset();
   }, []);
 
+  // F9 outside the editor and the palette's breakpoint row act on this line.
+  // Only main.asm's caret reaches the shell; on another file's tab the
+  // editor's own F9 does it.
+  const caretLine = activeFile === MAIN_FILE ? cursor.line : null;
+  const toggleBreakpointAtCaret = useCallback(() => {
+    if (caretLine == null) toast.show("put the caret on a line in the editor, then press F9");
+    else emu.toggleBreakpoint(caretLine);
+  }, [caretLine, emu, toast]);
+
   // The command Action[] is built from the state that lives here (source,
   // launch mode, hub) and surfaced through the handle so a host-rendered
   // palette reuses it. The table itself is a pure function of these deps.
@@ -560,6 +572,8 @@ function EmbeddableCore({
         canStepBack: emu.canStepBack,
         launchable: fullRef.current?.launchable() ?? false,
         source,
+        caretLine,
+        toggleBreakpoint: toggleBreakpointAtCaret,
         assemble: () => void assembleWithHistory(),
         step: () => emu.step(),
         stepBack: () => emu.stepBack(),
@@ -579,7 +593,7 @@ function EmbeddableCore({
         openConverter: () => fullRef.current?.openConverter(),
         toggleTheme: () => onToggleTheme?.(),
       }),
-    [emu, assembleWithHistory, runProgram, resetMachine, source, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
+    [emu, assembleWithHistory, runProgram, resetMachine, source, caretLine, toggleBreakpointAtCaret, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
   // Latest-value refs so the imperative handle stays a stable object while
@@ -596,6 +610,7 @@ function EmbeddableCore({
   const runEmbedRef = useRef(runEmbed);
   const loadProgramRef = useRef(loadProgram);
   const buildCommandsRef = useRef(buildCommands);
+  const toggleBreakpointRef = useRef(toggleBreakpointAtCaret);
   useEffect(() => {
     emuRef.current = emu;
     sourceRef.current = source;
@@ -608,7 +623,8 @@ function EmbeddableCore({
     runEmbedRef.current = runEmbed;
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
-  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands]);
+    toggleBreakpointRef.current = toggleBreakpointAtCaret;
+  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret]);
 
   // The buffer itself, which onStateChange deliberately does not mirror (its
   // ten fields are the machine's outcome, not the editor's). Fires on mount
@@ -775,6 +791,7 @@ function EmbeddableCore({
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
       getCommands: () => buildCommandsRef.current(),
+      toggleBreakpoint: () => toggleBreakpointRef.current(),
       walk,
     }),
     // `toast` is referentially stable (useToast memoizes it); notifyError
@@ -1181,6 +1198,7 @@ export const EmbeddablePlayground = forwardRef<
       getCursor: () =>
         innerHandleRef.current?.getCursor() ?? { line: 1, column: 1 },
       getCommands: () => innerHandleRef.current?.getCommands() ?? [],
+      toggleBreakpoint: () => innerHandleRef.current?.toggleBreakpoint(),
       walk: (command: WalkCommand) => runOrQueue((handle) => handle.walk(command)),
     }),
     [runOrQueue, startSource, startArgs],
