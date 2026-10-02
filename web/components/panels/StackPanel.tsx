@@ -71,35 +71,39 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
             FP = {formatWord64(fpVal)}
           </span>
         )}
-        <div
-          role="group"
-          aria-label="slot size"
-          className="ml-auto inline-flex shrink-0 items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
-        >
-          {([8, 4] as const).map((w, i) => (
-            <button
-              key={w}
-              type="button"
-              aria-pressed={width === w}
-              onClick={() => pickWidth(w)}
-              className={`shrink-0 whitespace-nowrap px-2 py-0.5 font-mono text-[12px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10 min-h-[22px] [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px] ${
-                i > 0 ? "border-l border-[var(--border)]" : ""
-              } ${
-                width === w
-                  ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
-                  : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-              }`}
-            >
-              {w * 8}-bit
-            </button>
-          ))}
+        {/* The two controls wrap as one, so a narrow pane drops them to a
+            second line together instead of stranding the zoom alone. */}
+        <div className="ml-auto flex items-center gap-2">
+          <div
+            role="group"
+            aria-label="slot size"
+            className="inline-flex shrink-0 items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)]"
+          >
+            {([8, 4] as const).map((w, i) => (
+              <button
+                key={w}
+                type="button"
+                aria-pressed={width === w}
+                onClick={() => pickWidth(w)}
+                className={`shrink-0 whitespace-nowrap px-2 py-0.5 font-mono text-[12px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10 min-h-[22px] [@media(pointer:coarse)]:min-h-[44px] [@media(pointer:coarse)]:min-w-[44px] ${
+                  i > 0 ? "border-l border-[var(--border)]" : ""
+                } ${
+                  width === w
+                    ? "bg-[var(--bg-elevated)] text-[var(--text-primary)]"
+                    : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                }`}
+              >
+                {w * 8}-bit
+              </button>
+            ))}
+          </div>
+          <ZoomControl
+            scale={zoom.scale}
+            onZoomIn={zoom.zoomIn}
+            onZoomOut={zoom.zoomOut}
+            onReset={zoom.reset}
+          />
         </div>
-        <ZoomControl
-          scale={zoom.scale}
-          onZoomIn={zoom.zoomIn}
-          onZoomOut={zoom.zoomOut}
-          onReset={zoom.reset}
-        />
       </div>
 
       <table className="w-full font-mono">
