@@ -43,10 +43,17 @@ vi.mock("@/components/playground/EmbeddablePlayground", async () => {
   };
 });
 vi.mock("@/components/playground/CommandPalette", () => ({ CommandPalette: () => null }));
-// The help modal renders a marker while open, so a test can see what `?` did.
+// The help modal renders its keys while open, so a test can see what `?` did
+// and what the help lists.
 vi.mock("@/components/playground/ShortcutsHelp", () => ({
-  ShortcutsHelp: ({ open }: { open: boolean }) =>
-    open ? <div data-testid="shortcuts-help" /> : null,
+  ShortcutsHelp: ({ open, shortcuts }: { open: boolean; shortcuts: { keys: string }[] }) =>
+    open ? (
+      <div data-testid="shortcuts-help">
+        {shortcuts.map((s) => (
+          <kbd key={s.keys}>{s.keys}</kbd>
+        ))}
+      </div>
+    ) : null,
 }));
 vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
 vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
@@ -143,6 +150,16 @@ describe("the help key", () => {
     const { findByTestId } = render(<Home />);
     fireEvent.keyDown(document.body, { key: "?" });
     expect(await findByTestId("shortcuts-help")).toBeTruthy();
+  });
+
+  it("lists the breakpoint key and the way out of the terminal", async () => {
+    const { findByTestId } = render(<Home />);
+    fireEvent.keyDown(document.body, { key: "?" });
+    const keys = [...(await findByTestId("shortcuts-help")).querySelectorAll("kbd")].map(
+      (k) => k.textContent,
+    );
+    expect(keys).toContain("F9 or Ctrl+F8");
+    expect(keys).toContain("Ctrl+M, then Tab");
   });
 
   it("leaves a ? typed in the editor to the editor", () => {
