@@ -446,6 +446,12 @@ export function Editor({
   useEffect(() => {
     onToggleBreakpointRef.current = onToggleBreakpoint;
   }, [onToggleBreakpoint]);
+  // The same for the caret report: the host passes none while another file's
+  // tab is open, so that caret never stands in for main.asm's.
+  const onCursorChangeRef = useRef(onCursorChange);
+  useEffect(() => {
+    onCursorChangeRef.current = onCursorChange;
+  }, [onCursorChange]);
   const toast = useToast();
   // The vendored build has to be named to the loader BEFORE
   // @monaco-editor/react asks for it: an unnamed instance is exactly what sends
@@ -596,7 +602,7 @@ export function Editor({
       // can encode it. The callback fires on arrow keys, click, and any
       // edit; the parent throttles persistence as needed.
       editor.onDidChangeCursorPosition((e) => {
-        onCursorChange?.({ line: e.position.lineNumber, column: e.position.column });
+        onCursorChangeRef.current?.({ line: e.position.lineNumber, column: e.position.column });
       });
 
       // Set an aria-label so screen readers announce the editor as more
@@ -679,7 +685,7 @@ export function Editor({
       applyLint();
       applyFocusRequest();
     },
-    [applyLint, applyFocusRequest, onCursorChange]
+    [applyLint, applyFocusRequest]
   );
 
   const onDrop = useCallback(
