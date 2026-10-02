@@ -1,23 +1,46 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { PITFALLS, PITFALL_GROUPS } from "@/lib/content/pitfall-data";
 
 // The pitfall catalog: every card under its group, its links, the text and
-// group filters (alone, together, and empty), one demo at a time, and a link
-// to one card bringing that card into view.
+// group filters (alone, together, and empty), one demo at a time that runs as
+// it opens, and a link to one card bringing that card into view.
+
+// The programs each demo was asked to assemble and run, in order.
+const runs = vi.hoisted(() => ({ sources: [] as string[] }));
 
 // Stub the shared embeddable with a light marker that echoes the props the
-// catalog feeds it, so the test never instantiates Monaco or the WASM worker.
-vi.mock("@/components/playground/EmbeddablePlayground", () => ({
-  EmbeddablePlayground: (props: { chrome?: string; startSource?: string; registerHeadingLevel?: number }) => (
-    <div
-      data-testid="embed"
-      data-chrome={props.chrome}
-      data-startsource={props.startSource}
-      data-headinglevel={props.registerHeadingLevel}
-    />
-  ),
-}));
+// catalog feeds it and records the runs asked of its handle, so the test never
+// instantiates Monaco or the WASM worker.
+vi.mock("@/components/playground/EmbeddablePlayground", async () => {
+  const { forwardRef, useImperativeHandle } = await import("react");
+  type Props = { chrome?: string; startSource?: string; registerHeadingLevel?: number };
+  return {
+    EmbeddablePlayground: forwardRef<{ assembleAndRun(): void }, Props>(function Embed(props, ref) {
+      useImperativeHandle(ref, () => ({
+        assembleAndRun: () => runs.sources.push(props.startSource ?? ""),
+      }));
+      return (
+        <div
+          data-testid="embed"
+          data-chrome={props.chrome}
+          data-startsource={props.startSource}
+          data-headinglevel={props.registerHeadingLevel}
+        />
+      );
+    }),
+  };
+});
+
+// jsdom has no scrollIntoView; opening a demo calls it.
+let frameScrolls: { node: Element; options?: boolean | ScrollIntoViewOptions }[];
+beforeEach(() => {
+  frameScrolls = [];
+  runs.sources = [];
+  Element.prototype.scrollIntoView = function (this: Element, options) {
+    frameScrolls.push({ node: this, options });
+  };
+});
 
 import { PitfallsCatalog } from "@/components/reference/PitfallsCatalog";
 
@@ -43,6 +66,7 @@ function shownTitles(): string[] {
 afterEach(() => {
   cleanup();
   window.history.replaceState(null, "", "/");
+  delete (Element.prototype as Partial<Element>).scrollIntoView;
 });
 
 // Each test renders every card, markdown and highlighted code included: about
@@ -205,6 +229,27 @@ describe("PitfallsCatalog", { timeout: 15_000 }, () => {
     fireEvent.click(screen.getByRole("button", { name: `run the fixed program: ${pitfall.title}` }));
     const embed = await screen.findByTestId("embed");
     expect(embed.getAttribute("data-startsource")).toBe(pitfall.fixed.source);
+  });
+
+  // The button says run, so the frame runs its program once as it opens (the
+  // broken one shows its assemble error with no second press) and comes into
+  // view with its controls, at once rather than gliding the whole page.
+  it("runs the program a demo opens with, once, and brings its frame into view", async () => {
+    renderCatalog();
+    const pitfall = bySlug("mul-takes-registers-only");
+    fireEvent.click(screen.getByRole("button", { name: `run the broken program: ${pitfall.title}` }));
+    const embed = await screen.findByTestId("embed");
+    await waitFor(() => expect(runs.sources).toEqual([pitfall.broken.source]));
+    expect(frameScrolls).toEqual([
+      { node: embed.closest(".embed-frame"), options: { block: "nearest", behavior: "instant" } },
+    ]);
+
+    // A keystroke in the filter re-renders the catalog; the demo does not run again.
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "mul" } });
+    expect(runs.sources).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: `run the fixed program: ${pitfall.title}` }));
+    await waitFor(() => expect(runs.sources).toEqual([pitfall.broken.source, pitfall.fixed.source]));
   });
 
   it("only one demo is live at a time, and a second press closes it", async () => {
