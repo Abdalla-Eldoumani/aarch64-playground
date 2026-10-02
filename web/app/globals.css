@@ -243,9 +243,8 @@ body {
 }
 
 /* Motion. Each animation is opt-in via a class so existing layout is
-   untouched; `prefers-reduced-motion` strips every one except the block
-   caret (see its own comment below: native carets blink under reduced
-   motion too), so vestibular-sensitive users see static UI. */
+   untouched, and every class runs only under no-preference (the block
+   below), so a reader who asks for less motion sees a static page. */
 @keyframes step-pop {
   0%   { transform: scale(1); }
   35%  { transform: scale(1.15); }
@@ -357,18 +356,16 @@ body {
   to   { opacity: 0; }
 }
 
-/* The block caret blinks unconditionally, like a native text caret (browsers
-   blink those under reduced motion too): a ~1s hard on/off toggle of a small
-   static box, not movement. Every other animation stays motion-gated below. */
-.anim-cursor-blink {
-  animation: cursor-blink var(--cursor-blink) infinite;
-}
-
 /* Every .anim-* class below is applied only here, so each one is static under
    prefers-reduced-motion. */
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop var(--step-pop) var(--ease) 1;
+  }
+  .anim-cursor-blink {
+    /* It blinks for as long as the page is open, with no control to stop
+       it, so a reader who asks for less motion gets a solid caret. */
+    animation: cursor-blink var(--cursor-blink) infinite;
   }
   .anim-reg-flash::before {
     /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
