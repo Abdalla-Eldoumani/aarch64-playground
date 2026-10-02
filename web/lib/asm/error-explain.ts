@@ -291,11 +291,13 @@ export function explainError(located: string): ErrorExplanation | null {
     detail.includes("dangling backslash") ||
     (detail.includes("escape") && (detail.includes("invalid") || detail.includes("incomplete")))
   ) {
+    // m4 runs first and knows nothing about strings, so in a course program
+    // the usual cause is a define, not what the student typed.
     return {
-      what: "A string or character literal contains a backslash sequence the assembler does not recognize.",
-      why: "Only the standard escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` exist. A Windows path like \"C:\\dir\" reads `\\d` as an escape.",
-      fix: "Double every literal backslash (`C:\\\\dir`), or rewrite the data as raw bytes with `.byte 0xAB, 0xCD, ...`.",
-      styleSection: "naming conventions",
+      what: "A string or character literal holds a backslash sequence the assembler stopped at.",
+      why: "m4 rewrites the source before the assembler reads it, and it replaces a define's name inside strings too: with `define(n, w19)`, the `\\n` in \"%d\\n\" reaches the assembler as `\\w19`. The escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` are the ones to write.",
+      fix: "If a define has a one-letter name, m4 also replaces that letter after a backslash in your strings: give it a longer name (`n_r` for `n`). Otherwise check the letter after the backslash, and write a backslash you want printed as `\\\\`.",
+      styleSection: "m4 preprocessing",
     };
   }
 
