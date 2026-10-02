@@ -196,8 +196,12 @@ export function Controls({
           key={error}
           // A readable box, not a truncated line: long messages wrap in
           // full view (scrolling only past ~4 lines) instead of hiding
-          // behind a hover title.
-          className="anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left"
+          // behind a hover title. In a short window it takes a full-width
+          // line of its own under the buttons, so the tools keep their place
+          // beside them and the wider box needs fewer lines.
+          className={`anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left ${
+            short ? "sm:order-last sm:basis-full sm:max-w-none" : ""
+          }`}
           style={{
             borderColor: "color-mix(in srgb, var(--danger) 45%, transparent)",
             background: "color-mix(in srgb, var(--danger) 8%, transparent)",
