@@ -26,6 +26,7 @@ import {
   subscribeSolved,
 } from "@/lib/playground/solved-state";
 import { compareByOrder } from "@/lib/content/content-order";
+import { matchesAllWords } from "@/lib/content/search-words";
 import {
   PRACTICE_SIDES,
   practiceSide,
@@ -356,19 +357,17 @@ export function ExerciseIndex({
     return [...set].sort((a, b) => (DIFFICULTY_RANK[a] ?? 99) - (DIFFICULTY_RANK[b] ?? 99));
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter(({ exercise, blurb }) => {
-      const haystack = [exercise.title, exercise.topic ?? "", exercise.difficulty ?? "", blurb]
-        .join(" ")
-        .toLowerCase();
-      const matchesQuery = q === "" || haystack.includes(q);
-      const matchesDifficulty =
-        activeDifficulties.size === 0 ||
-        (exercise.difficulty ? activeDifficulties.has(exercise.difficulty) : false);
-      return matchesQuery && matchesDifficulty;
-    });
-  }, [rows, query, activeDifficulties]);
+  const filtered = useMemo(
+    () =>
+      rows.filter(({ exercise, blurb }) => {
+        const text = [exercise.title, exercise.topic ?? "", exercise.difficulty ?? "", blurb].join(" ");
+        const matchesDifficulty =
+          activeDifficulties.size === 0 ||
+          (exercise.difficulty ? activeDifficulties.has(exercise.difficulty) : false);
+        return matchesAllWords(query, text) && matchesDifficulty;
+      }),
+    [rows, query, activeDifficulties],
+  );
 
   // A side with nothing on the sheet at all is left out, so a content set
   // that is all coding exercises renders as one column rather than one
