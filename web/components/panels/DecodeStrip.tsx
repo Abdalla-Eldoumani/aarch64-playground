@@ -28,8 +28,8 @@ export interface DecodeStripProps {
 }
 
 /**
- * The instruction under the pc: its 32-bit encoding cut into labeled fields,
- * and a plain-language line. An unrecognized word stays one box so the strip
+ * The instruction under the pc, which is the one the next step runs: its
+ * 32-bit encoding cut into labeled fields, and a plain-language line. An unrecognized word stays one box so the strip
  * never invents structure; inside a libc call the word is not the student's
  * code, so a card naming the call replaces both.
  */
@@ -67,11 +67,11 @@ export function DecodeStrip({
   return (
     <div
       className="w-full flex flex-col gap-2 px-4 py-3 border-b border-[var(--border)] bg-[var(--bg-raised)]"
-      aria-label="current instruction"
+      aria-label="next instruction"
     >
       <div className="flex items-baseline justify-between gap-3">
         <span className="font-mono font-medium uppercase tracking-[0.14em] text-[12px] text-[var(--text-secondary)]">
-          current instruction
+          next instruction
         </span>
         {decoded && encodingHex ? (
           <span className="font-mono text-[12px] text-[var(--text-tertiary)]">
@@ -116,11 +116,15 @@ export function DecodeStrip({
           {decoded.fields.map((field, index) => {
             const dest = index === decoded.destIndex;
             return (
+              // The destination is where this instruction will write, not a
+              // register already written: a dashed amber outline, with the
+              // value in its usual ink. The register list keeps the solid
+              // amber bar and the --changed ink for a write that happened.
               <div
                 key={`${field.label}-${index}`}
                 className={`anim-decode-latch flex min-w-max flex-col items-center border py-1 ${
                   dest
-                    ? "border-[var(--amber)] z-10"
+                    ? "border-dashed border-[var(--amber)] z-10"
                     : "border-[var(--border)]"
                 } ${index > 0 ? "-ml-px" : ""}`}
                 style={{
@@ -130,9 +134,6 @@ export function DecodeStrip({
                   // squeezed under its own bit string. The row scrolls
                   // horizontally when the floors overflow.
                   flexBasis: `${Math.max(34, field.bits * 8)}px`,
-                  backgroundColor: dest
-                    ? "color-mix(in srgb, var(--amber) 8%, transparent)"
-                    : undefined,
                 }}
               >
                 <span
@@ -144,13 +145,11 @@ export function DecodeStrip({
                 </span>
                 <span
                   className={`px-1 font-mono text-[12px] font-medium tabular-nums whitespace-nowrap ${
-                    dest
-                      ? "text-[var(--amber)]"
-                      : field.kind === "register"
-                        ? "text-[var(--syntax-register)]"
-                        : field.kind === "immediate"
-                          ? "text-[var(--syntax-number)]"
-                          : "text-[var(--text-primary)]"
+                    field.kind === "register"
+                      ? "text-[var(--syntax-register)]"
+                      : field.kind === "immediate"
+                        ? "text-[var(--syntax-number)]"
+                        : "text-[var(--text-primary)]"
                   }`}
                 >
                   {field.value}
@@ -158,11 +157,9 @@ export function DecodeStrip({
                 {!compact && field.meaning ? (
                   <span
                     className={`px-1 font-mono text-[12px] ${
-                      dest
-                        ? "text-[var(--amber)]"
-                        : field.kind === "register"
-                          ? "text-[var(--syntax-register)]"
-                          : "text-[var(--text-tertiary)]"
+                      field.kind === "register"
+                        ? "text-[var(--syntax-register)]"
+                        : "text-[var(--text-tertiary)]"
                     }`}
                   >
                     {field.meaning}
@@ -192,7 +189,7 @@ export function DecodeStrip({
         </span>
       ) : sessionStarted ? null : (
         <span className="font-mono text-[13px] leading-[1.6] text-[var(--text-tertiary)]">
-          step the program to see the current instruction
+          step the program to see the next instruction
         </span>
       )}
     </div>
