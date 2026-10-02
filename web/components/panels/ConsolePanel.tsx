@@ -159,8 +159,9 @@ export function ConsolePanel({
   const reading = blocked && !ownedByTerminal;
 
   // End of input, as Ctrl+D gives in a shell: a read-until-end loop sees
-  // read return 0 and finishes. A phone keyboard has no Ctrl key, so the
-  // same thing has a button while a read waits.
+  // read return 0 and finishes. A phone keyboard has no Ctrl key, so under a
+  // finger the same thing is a button while a read waits; with a keyboard
+  // the box keeps its width for the placeholder.
   const endInput = () => {
     closeStdin();
     onInputSent?.();
@@ -316,7 +317,7 @@ export function ConsolePanel({
         >
           send
         </button>
-        {reading && (
+        {reading && coarsePointer && (
           <button
             type="button"
             onClick={endInput}
