@@ -54,6 +54,7 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
   { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
+  { keys: "F9 or Ctrl+F8", description: "set or clear a breakpoint on the caret's line" },
   { keys: "Ctrl+K", description: "open command palette" },
   { keys: "Ctrl+Shift+F", description: "format the source" },
   { keys: "Ctrl+S", description: "nothing to save: your code saves as you type" },
@@ -326,6 +327,10 @@ export default function Home() {
       } else if (e.key === "F5" && e.shiftKey) {
         e.preventDefault();
         playgroundRef.current?.reset();
+      } else if (e.key === "F9" || (meta && e.key === "F8")) {
+        // Inside the editor its own F9 takes the key; this is everywhere else.
+        e.preventDefault();
+        playgroundRef.current?.toggleBreakpoint();
       }
     };
     window.addEventListener("keydown", onPaletteKey, true);
