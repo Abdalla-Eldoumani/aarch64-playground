@@ -94,7 +94,8 @@ function currentXtermTheme(): ITheme {
 // xterm sizes its cells on a canvas, which cannot read a CSS variable: given
 // `var(--font-mono)` it measured 10px Arial, and padded every glyph out to that
 // width, so a laptop pane held 62 columns where 75 fit. The variable (set in
-// app/layout.tsx) is resolved here first, as the editor does.
+// app/layout.tsx) is resolved here first, as the editor does. Measured by
+// name, a row is the font's own height, which already clears descenders.
 function monoFontFamily(): string {
   const mono = getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim();
   return `${mono ? `${mono}, ` : ""}"JetBrains Mono", Consolas, monospace`;
@@ -242,8 +243,6 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       cursorStyle: "block",
       fontFamily: monoFontFamily(),
       fontSize: 13,
-      // At the default 1.0 the rows touched and clipped descenders.
-      lineHeight: 1.15,
       theme: currentXtermTheme(),
     });
     const fit = new FitAddon();
