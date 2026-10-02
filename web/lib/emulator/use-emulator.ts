@@ -44,6 +44,15 @@ export {
 // the same array and its drop notice does not re-fire.
 const NO_LINES: number[] = [];
 
+// x16 and x17 (ip0, ip1) are the linker's scratch registers: the stub a `bl
+// printf` runs through writes them, the program does not. Inside a call they
+// are left out of the writes, so a stop there never names a value the student
+// never wrote.
+function withoutCallScratch(snap: StateSnapshot): StateSnapshot {
+  if (!snap.externalCall) return snap;
+  return { ...snap, changedRegs: snap.changedRegs.filter((i) => i !== 16 && i !== 17) };
+}
+
 export function useEmulator(): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
@@ -188,7 +197,7 @@ export function useEmulator(): EmulatorState {
       frameRef.current = snap.frame;
       invalidateMemory();
     }
-    const pcNum = applyRegisters(snap);
+    const pcNum = applyRegisters(withoutCallScratch(snap));
     setIsHalted(snap.halted);
     haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
