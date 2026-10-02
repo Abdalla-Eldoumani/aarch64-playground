@@ -55,7 +55,7 @@ import {
   breakpointsForFile,
   combinedLineFor,
   diagnosticsForFile,
-  errorWithFileName,
+  errorWithLocation,
   MAIN_FILE,
   planBreakpointRemap,
   resolveLine,
@@ -572,16 +572,10 @@ export function FullChromeSurface({
     if (!moved) return;
     machine.remapBreakpoints((line) => moved.get(line) ?? null);
   }, [layoutShape]);
-  // Controls shows the first error as plain text; name the owning file
-  // when it is not the buffer labelled main.asm.
+  // Controls shows the first error as plain text, led by its line (and its
+  // file once helpers are open).
   const controlsError = useMemo(
-    () =>
-      errorWithFileName(
-        emu.error,
-        emu.assemblyErrors[0]?.line,
-        machineMain,
-        machineExtras,
-      ),
+    () => errorWithLocation(emu.error, emu.assemblyErrors[0], machineMain, machineExtras),
     [emu.error, emu.assemblyErrors, machineMain, machineExtras],
   );
   // `gcc -o name` registers compiled source here; `./name` runs it. A ref,
