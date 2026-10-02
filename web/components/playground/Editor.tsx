@@ -546,6 +546,11 @@ export function Editor({
       decorations
     );
   }, [currentLine, currentLineInCall, breakpoints, assemblyErrors]);
+  const updateDecorationsRef = useRef(updateDecorations);
+  useEffect(() => {
+    updateDecorationsRef.current = updateDecorations;
+    updateDecorations();
+  }, [updateDecorations]);
 
   // Jump-to-error: reveal, place the cursor, and focus so the student
   // lands on the offending line instead of hunting for it. A request made
@@ -667,18 +672,15 @@ export function Editor({
         }
       }
 
-      updateDecorations();
+      // Monaco keeps the first mount handler it was given, so the markers and
+      // the jump come from refs: a run that reported an error while the
+      // editor loaded would otherwise mark and reveal nothing.
+      updateDecorationsRef.current();
       applyLint();
-      // Monaco keeps the first mount handler it was given, so the jump comes
-      // from a ref: one asked for while the editor loaded runs now.
       applyFocusRequest();
     },
-    [updateDecorations, applyLint, applyFocusRequest, onCursorChange]
+    [applyLint, applyFocusRequest, onCursorChange]
   );
-
-  useEffect(() => {
-    updateDecorations();
-  }, [currentLine, currentLineInCall, breakpoints, assemblyErrors, updateDecorations]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
