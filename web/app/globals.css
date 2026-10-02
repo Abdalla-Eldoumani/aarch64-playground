@@ -163,8 +163,7 @@
 
 /* =============================================================================
    SPACE · RADII · ELEVATION · MOTION
-   Each .anim-* class takes its duration from these tokens. The one exception,
-   the 50ms mobile pane fade, is fixed so a pane switch lands instead of easing.
+   Each .anim-* class takes its duration from these tokens.
 ============================================================================= */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
@@ -251,10 +250,6 @@ body {
   0%   { transform: scale(1); }
   35%  { transform: scale(1.15); }
   100% { transform: scale(1); }
-}
-@keyframes tab-fade-in {
-  from { opacity: 0.45; }
-  to   { opacity: 1; }
 }
 
 /* The four machine animations draw on a ::before layer and animate only
@@ -374,10 +369,6 @@ body {
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop var(--step-pop) var(--ease) 1;
-  }
-  .anim-tab-fade {
-    /* Off-token at 50ms; see the motion block above. */
-    animation: tab-fade-in 50ms linear 1;
   }
   .anim-reg-flash::before {
     /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
