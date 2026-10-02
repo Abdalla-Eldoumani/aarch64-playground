@@ -164,6 +164,29 @@ describe("EmbeddablePlayground", () => {
     act(() => action!.run());
   });
 
+  // F9 outside the editor and the palette row act on main.asm's caret line.
+  it("toggles a breakpoint on the caret's line from the handle and the palette", () => {
+    const hub: Hub = makeHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground
+        ref={ref}
+        chrome="embed"
+        startSource={"main:\n  mov x0, 1\n  ret"}
+        startCursor={{ line: 2, column: 3 }}
+      />,
+    );
+    engage(container);
+    act(() => ref.current!.toggleBreakpoint());
+    expect(hub.toggleBreakpoint).toHaveBeenCalledWith(2);
+
+    const row = ref.current!.getCommands().find((command) => command.id === "toggle-breakpoint")!;
+    expect(row.description).toBe("set or clear a breakpoint on line 2, where the caret is");
+    act(() => row.run());
+    expect(hub.toggleBreakpoint).toHaveBeenCalledTimes(2);
+  });
+
   it("does not start the emulator before the first press", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     // An embed waits until it scrolls into view or is pressed; jsdom has no
