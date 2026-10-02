@@ -34,6 +34,8 @@ describe("matchesAllWords", () => {
     expect(matchesAllWords("", "anything")).toBe(true);
     expect(matchesAllWords("   ", "")).toBe(true);
     expect(matchesAllWords("x", "")).toBe(false);
+    // Punctuation alone names no word, so it narrows nothing.
+    expect(matchesAllWords("@@ ##", "anything")).toBe(true);
   });
 
   it("finds a later occurrence that starts a word when an earlier one does not", () => {
