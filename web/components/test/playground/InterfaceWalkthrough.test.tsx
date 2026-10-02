@@ -71,6 +71,39 @@ describe("the first-visit offer", () => {
     expect(screen.getByRole("heading", { name: "The editor" })).toBeTruthy();
     expect(document.activeElement).toBe(next());
   });
+
+  it("goes away on the first assemble, run or step, by button or key", () => {
+    const run = document.createElement("button");
+    run.setAttribute("aria-label", "run");
+    document.body.appendChild(run);
+    render(<InterfaceWalkthrough openRequest={0} />);
+    act(() => vi.advanceTimersByTime(1300));
+    fireEvent.click(run);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    run.remove();
+
+    for (const key of ["F6", "F10", "F5"]) {
+      cleanup();
+      window.localStorage.clear();
+      render(<InterfaceWalkthrough openRequest={0} />);
+      act(() => vi.advanceTimersByTime(1300));
+      // Reset and step back are not a start.
+      fireEvent.keyDown(window, { key: key === "F10" ? "F10" : "F5", shiftKey: true });
+      expect(screen.getByRole("dialog")).toBeTruthy();
+      fireEvent.keyDown(window, { key });
+      expect(screen.queryByRole("dialog"), key).toBeNull();
+    }
+  });
+
+  it("stays up through a run once the walkthrough itself is open", () => {
+    const run = document.createElement("button");
+    run.setAttribute("aria-label", "run");
+    document.body.appendChild(run);
+    renderOpen(3);
+    fireEvent.click(run);
+    expect(screen.getByRole("heading", { name: "Run" })).toBeTruthy();
+    run.remove();
+  });
 });
 
 describe("walking the steps", () => {
