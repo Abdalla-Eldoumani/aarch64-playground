@@ -48,11 +48,15 @@ const ShareDialog = dynamic(
 );
 
 const SHORTCUTS: Shortcut[] = [
-  { keys: "F6", description: "assemble" },
+  { keys: "F6", description: "assemble: load the program without running it" },
   { keys: "Ctrl+Enter", description: "assemble and run, from anywhere including the editor" },
   { keys: "F10", description: "step" },
   { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
-  { keys: "F5", description: "run / pause" },
+  {
+    keys: "F5",
+    description:
+      "run, or pause a run; run assembles first when nothing is loaded, the program finished, or the code or args changed",
+  },
   { keys: "Shift+F5", description: "reset" },
   { keys: "F9 or Ctrl+F8", description: "set or clear a breakpoint on the caret's line" },
   { keys: "Ctrl+K", description: "open command palette" },
