@@ -14,6 +14,8 @@ import { matchesAllWords } from "@/lib/content/search-words";
 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
+const SUMMARY_CLASS =
+  "w-fit cursor-pointer select-none py-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-secondary)] outline-none hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] [@media(pointer:coarse)]:py-0 [@media(pointer:coarse)]:leading-[44px]";
 const CHIP_CLASS =
   "inline-flex min-h-[44px] shrink-0 items-center whitespace-nowrap rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
 
@@ -108,25 +110,26 @@ export function LessonIndex({
           />
         </div>
         {allTags.length > 0 && (
-          // One row that scrolls sideways on a phone, so two dozen tags do not
-          // push the lessons below the fold; from sm up the chips wrap.
-          <div
-            role="group"
-            aria-label="Filter by tag"
-            className="-mx-6 flex gap-2 overflow-x-auto px-6 py-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:p-0"
-          >
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                aria-pressed={activeTags.has(tag)}
-                onClick={() => toggleTag(tag)}
-                className={CHIP_CLASS}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
+          // Folded: open, two dozen chips took five rows over the list on a
+          // wide screen. The count keeps a chosen tag in sight while shut.
+          <details>
+            <summary className={SUMMARY_CLASS}>
+              {activeTags.size > 0 ? `filter by tag (${activeTags.size} chosen)` : "filter by tag"}
+            </summary>
+            <div role="group" aria-label="Filter by tag" className="flex flex-wrap gap-2 pt-1">
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  aria-pressed={activeTags.has(tag)}
+                  onClick={() => toggleTag(tag)}
+                  className={CHIP_CLASS}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </details>
         )}
       </div>
 
