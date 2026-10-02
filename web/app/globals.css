@@ -525,6 +525,18 @@ body:has(> .playground-shell) {
     min-height: 420px;
   }
 }
+/* A phone on its side is 320 to 430px tall, so neither the 560px frame nor the
+   420px floor fit, and the code and the run row were never on screen
+   together. Under 500px tall the frame takes the screen less the site bar
+   (64px at its tallest). The class is doubled to beat the sm: and lg: heights
+   Tailwind emits after this file. */
+@media (max-height: 499.98px) {
+  .embed-frame.embed-frame {
+    height: calc(100vh - 4rem);
+    height: calc(100svh - 4rem);
+    min-height: 0;
+  }
+}
 .embed-layout {
   container-type: inline-size;
 }
