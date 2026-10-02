@@ -152,12 +152,59 @@ describe("ConsolePanel controls and state", () => {
     expect(clearConsole).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces the waiting-for-input status and placeholder when blocked", () => {
+  it("surfaces the waiting-for-input status and a placeholder short enough to read whole", () => {
     const { input } = setup({ blocked: true });
     expect(screen.getByRole("status").textContent).toBe("waiting for input");
-    expect(input.placeholder).toBe(
-      "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input",
-    );
+    // A lesson frame's box is about 300px wide: room for some 30 characters.
+    expect(input.placeholder).toBe("type a line, or Ctrl+D to end");
+  });
+
+  it("says how to answer a waiting read in place of the idle hint", () => {
+    setup({ blocked: true });
+    expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+    expect(
+      screen.getByText(
+        "Your program is reading input. Type a line and press Enter, or press Ctrl+D with the box empty to end the input.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("keeps the instruction under a prompt the program already printed", () => {
+    setup({ blocked: true, stdout: "enter n: " });
+    expect(screen.getByText("enter n:")).toBeTruthy();
+    expect(screen.getByText(/press Ctrl\+D with the box empty to end the input/)).toBeTruthy();
+  });
+
+  it("ends the input from a button while a read waits, for keyboards with no Ctrl", () => {
+    const onInputSent = vi.fn();
+    const { closeStdin } = setup({ blocked: true, onInputSent });
+    fireEvent.click(screen.getByRole("button", { name: "end input" }));
+    expect(closeStdin).toHaveBeenCalledTimes(1);
+    expect(onInputSent).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers neither the instruction nor the button when nothing is reading", () => {
+    setup({ blocked: false, stdout: "done\n" });
+    expect(screen.queryByRole("button", { name: "end input" })).toBeNull();
+    expect(screen.queryByText(/Your program is reading input/)).toBeNull();
+    cleanup();
+    setup({ blocked: true, ownedByTerminal: true });
+    expect(screen.queryByRole("button", { name: "end input" })).toBeNull();
+    expect(screen.queryByText(/Your program is reading input/)).toBeNull();
+  });
+
+  it("words a waiting read for tapping on a touch screen", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("coarse"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    const { input } = setup({ blocked: true });
+    expect(screen.getByText(/Type a line and tap send, or tap end input/)).toBeTruthy();
+    expect(screen.queryByText(/Ctrl\+D/)).toBeNull();
+    expect(input.placeholder).toBe("type a line");
+    vi.unstubAllGlobals();
   });
 
   it("shows each note under the output, in place of the idle hint", () => {
