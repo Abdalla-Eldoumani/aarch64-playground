@@ -26,6 +26,7 @@ import {
   subscribeSolved,
 } from "@/lib/playground/solved-state";
 import { compareByOrder } from "@/lib/content/content-order";
+import { slugify } from "@/lib/content/lesson-toc";
 import { matchesAllWords } from "@/lib/content/search-words";
 import {
   PRACTICE_SIDES,
@@ -68,6 +69,8 @@ const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
 const CHIP_CLASS =
   "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+const JUMP_CLASS =
+  "touch-target inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] text-[var(--cyan)] outline-none [font:var(--type-small)] underline-offset-2 hover:underline focus-visible:[box-shadow:var(--ring)] lg:hidden";
 const META_CLASS = "font-mono text-[12px] text-[var(--text-tertiary)]";
 const CAPTION_CLASS = "font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
@@ -271,7 +274,8 @@ function SideColumn({
   rows: Row[];
   solvedSet: Set<string>;
 }): JSX.Element {
-  const headingId = useId();
+  // A readable id, since the jump link above the lists points at it.
+  const headingId = slugify(side.title);
   const solvedCount = all.filter(({ exercise }) => solvedSet.has(exercise.slug)).length;
   const noun = all.length === 1 ? "exercise" : "exercises";
   const groups = groupByTopic(rows);
@@ -282,7 +286,7 @@ function SideColumn({
         <p className={CAPTION_CLASS}>{side.caption}</p>
         <h2
           id={headingId}
-          className="font-serif text-2xl font-semibold leading-tight text-[var(--text-primary)]"
+          className="scroll-mt-24 font-serif text-2xl font-semibold leading-tight text-[var(--text-primary)]"
         >
           {side.title}
         </h2>
@@ -427,6 +431,13 @@ export function ExerciseIndex({
             ))}
           </div>
         )}
+        {/* Stacked under lg, the theory sets start some 14,000px down a
+            phone's page. */}
+        {sides.slice(1).map(({ side }) => (
+          <a key={side.id} href={`#${slugify(side.title)}`} className={JUMP_CLASS}>
+            jump to the {side.title.toLowerCase()}
+          </a>
+        ))}
       </div>
 
       <div className={`grid gap-10 ${sides.length > 1 ? "lg:grid-cols-2 lg:gap-8" : ""}`}>
