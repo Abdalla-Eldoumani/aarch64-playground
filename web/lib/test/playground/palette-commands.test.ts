@@ -138,13 +138,17 @@ describe("the descriptions that carry the reason", () => {
     expect(row(actions, "run").description).toBe(waiting);
   });
 
-  it("sends a student with no program to the assemble button", () => {
+  it("sends a student with no program to assemble, except run, which assembles first", () => {
     const actions = buildPaletteCommands(
       makeDeps({ programLoaded: false, canStepBack: false }),
     );
     expect(row(actions, "step").description).toBe("(no program; assemble first)");
     expect(row(actions, "step-back").description).toBe("(nothing to undo; take a step first)");
-    expect(row(actions, "run").description).toBe("(no program; assemble first)");
+    expect(row(actions, "run").description).toBe("assemble, then run until halt or breakpoint");
+    // Assemble alone loads the program and leaves it there.
+    expect(row(actions, "assemble").description).toBe(
+      "turn the source into machine code and load it, without running it",
+    );
   });
 
   it("describes an ordinary console run", () => {
