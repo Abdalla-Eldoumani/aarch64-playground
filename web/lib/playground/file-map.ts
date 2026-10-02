@@ -252,6 +252,15 @@ export function planBreakpointRemap(
   return changed ? moved : null;
 }
 
+/** Two workspaces with the same files, names, and text. */
+export function sameWorkspace(a: Workspace, b: Workspace): boolean {
+  return (
+    a.main === b.main &&
+    a.extras.length === b.extras.length &&
+    a.extras.every((f, i) => f.name === b.extras[i].name && f.body === b.extras[i].body)
+  );
+}
+
 /**
  * A machine error prefixed with the file it happened in, for the single
  * plain-text line Controls shows. Only a helper file earns the prefix:
