@@ -169,6 +169,21 @@ describe("ExerciseIndex", () => {
     expect(screen.queryByText("Beta")).toBeNull();
   });
 
+  // The whole query as one phrase found nothing for the first thing a
+  // student types.
+  it("finds a title from two words typed in another order", () => {
+    const rows = [
+      makeRow({ title: "Basic quiz: ARMv8 assembly", slug: "quiz", order: 1, variant: "quiz" }),
+      makeRow({ title: "Basic loops", slug: "loops", order: 2 }),
+    ];
+    render(<ExerciseIndex exercises={rows} blurbs={blurbsOf(rows)} />);
+    fireEvent.change(screen.getByLabelText("search exercises"), {
+      target: { value: "armv8 quiz" },
+    });
+    expect(screen.getByText("Basic quiz: ARMv8 assembly")).toBeTruthy();
+    expect(screen.queryByText("Basic loops")).toBeNull();
+  });
+
   it("filters by a selected difficulty chip", () => {
     render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     const chip = screen.getByRole("button", { name: "intro" });
