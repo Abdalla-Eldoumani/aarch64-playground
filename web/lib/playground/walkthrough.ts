@@ -54,7 +54,8 @@ export const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     body: "Where you write or paste your program. It is saved as you type, so a reload keeps it.",
     targets: [
       { selector: "#phone-tab-code", hint: "On a phone, the code tab shows it.", avoid: RUN_ROW },
-      { selector: anchor("editor") },
+      // In a short window the room under the editor ends at the run row.
+      { selector: anchor("editor"), avoid: RUN_ROW },
     ],
   },
   {
