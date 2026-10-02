@@ -199,7 +199,7 @@ describe("the breakpoint row", () => {
   it("toggles the caret's line and names it", () => {
     const deps = makeDeps({ caretLine: 21, toggleBreakpoint: vi.fn() });
     const action = row(buildPaletteCommands(deps), "toggle-breakpoint");
-    expect(action.description).toBe("set or clear a breakpoint on line 21, where the caret is");
+    expect(action.description).toBe("line 21, where the caret is: set or clear a breakpoint");
     action.run();
     expect(deps.toggleBreakpoint).toHaveBeenCalledTimes(1);
   });
@@ -207,7 +207,7 @@ describe("the breakpoint row", () => {
   it("stays, does nothing and says how, when the caret is in another file's tab", () => {
     const deps = makeDeps({ caretLine: null, toggleBreakpoint: vi.fn() });
     const action = row(buildPaletteCommands(deps), "toggle-breakpoint");
-    expect(action.description).toBe("(put the caret on a line in the editor, then press F9)");
+    expect(action.description).toBe("press F9 in the editor to set or clear a breakpoint");
     action.run();
     expect(deps.toggleBreakpoint).not.toHaveBeenCalled();
   });
