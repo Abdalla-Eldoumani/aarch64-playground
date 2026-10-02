@@ -1,18 +1,22 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 
 // Minimal xterm stand-in: records every allocation and exposes the
 // onKey / onData callbacks so tests can drive keys and pastes without a
 // real terminal or canvas.
 type KeyHandler = (e: { key: string; domEvent: KeyboardEvent }) => void;
 type DataHandler = (data: string) => void;
+type CustomKeyHandler = (e: KeyboardEvent) => boolean;
 const instances = vi.hoisted(
   () =>
     [] as Array<{
       writes: string[];
       dispose: ReturnType<typeof vi.fn>;
+      blur: ReturnType<typeof vi.fn>;
       keyCb: KeyHandler | null;
       dataCb: DataHandler | null;
+      customKeyCb: CustomKeyHandler | null;
+      textarea: HTMLTextAreaElement;
       options: { theme?: { background?: string } };
     }>,
 );
@@ -20,8 +24,11 @@ vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     writes: string[] = [];
     dispose = vi.fn();
+    blur = vi.fn();
     keyCb: KeyHandler | null = null;
     dataCb: DataHandler | null = null;
+    customKeyCb: CustomKeyHandler | null = null;
+    textarea = document.createElement("textarea");
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown> = {}) {
       this.options = { ...options };
@@ -29,6 +36,9 @@ vi.mock("@xterm/xterm", () => ({
     }
     open() {}
     loadAddon() {}
+    attachCustomKeyEventHandler(cb: CustomKeyHandler) {
+      this.customKeyCb = cb;
+    }
     writeln(s: string) {
       this.writes.push(s + "\n");
     }
@@ -48,6 +58,9 @@ vi.mock("@xterm/xterm", () => ({
 }));
 vi.mock("@xterm/addon-fit", () => ({
   FitAddon: class {
+    proposeDimensions() {
+      return undefined;
+    }
     fit() {}
   },
 }));
@@ -224,5 +237,71 @@ describe("TerminalPane", () => {
     );
     instances[0].dataCb!("upload\r");
     await vi.waitFor(() => expect(onUploadRequest).toHaveBeenCalledTimes(1));
+  });
+});
+
+describe("TerminalPane keyboard", () => {
+  /** What xterm's own handler would do with a key: true keeps it in the terminal. */
+  function terminalKeeps(init: KeyboardEventInit, type = "keydown"): boolean {
+    return instances[0].customKeyCb!(new KeyboardEvent(type, { ...init, cancelable: true }));
+  }
+
+  // A run started from the terminal put focus in it, and no key got it out
+  // again (WCAG 2.1.2).
+  it("leaves the terminal on Ctrl+M, without sending the program a byte", () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    const event = new KeyboardEvent("keydown", { key: "m", ctrlKey: true, cancelable: true });
+    expect(instances[0].customKeyCb!(event)).toBe(false);
+    expect(event.defaultPrevented).toBe(true);
+    expect(instances[0].blur).toHaveBeenCalledTimes(1);
+    // The key's release goes nowhere either.
+    expect(terminalKeeps({ key: "m", ctrlKey: true }, "keyup")).toBe(false);
+    expect(instances[0].blur).toHaveBeenCalledTimes(1);
+  });
+
+  it("passes the playground's run keys through to the page", () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    for (const init of [
+      { key: "F5" },
+      { key: "F5", shiftKey: true },
+      { key: "F6" },
+      { key: "F9" },
+      { key: "F10" },
+      { key: "F10", shiftKey: true },
+      { key: "Enter", ctrlKey: true },
+      { key: "F8", ctrlKey: true },
+    ]) {
+      expect(terminalKeeps(init), JSON.stringify(init)).toBe(false);
+    }
+    expect(instances[0].blur).not.toHaveBeenCalled();
+  });
+
+  // The six terminal examples read letters, digits, Enter, space, Escape and
+  // the arrow keys; all of them, and Tab for the shell, stay with the program.
+  it("keeps every key a program reads", () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    for (const init of [
+      { key: "w" },
+      { key: "q" },
+      { key: "7" },
+      { key: " " },
+      { key: "Enter" },
+      { key: "Escape" },
+      { key: "ArrowUp" },
+      { key: "Tab" },
+      { key: "Backspace" },
+      { key: "c", ctrlKey: true },
+      { key: "d", ctrlKey: true },
+      { key: "M", shiftKey: true },
+    ]) {
+      expect(terminalKeeps(init), JSON.stringify(init)).toBe(true);
+    }
+  });
+
+  it("shows the way out in the pane and reads it to a screen reader", () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    const hint = screen.getByText(/then Tab, leaves the terminal/);
+    expect(hint.textContent).toBe("Ctrl+M, then Tab, leaves the terminal");
+    expect(instances[0].textarea.getAttribute("aria-describedby")).toBe(hint.id);
   });
 });
