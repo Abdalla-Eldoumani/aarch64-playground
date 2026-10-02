@@ -37,7 +37,7 @@
     },
     {
       "type": "prose",
-      "markdown": "The sum is 5 too high. The rest of this lesson tracks down where the extra 5 comes from.\n\nThe embedded editor has run, step, back and reset. The watches, the stack and the memory view live in the full playground: open the program there with the Open in playground link under the editor, and keep this page open beside it. On a phone, those views are under more."
+      "markdown": "The sum is 5 too high. The rest of this lesson tracks down where the extra 5 comes from.\n\nThe editor above has run, step, back and reset. The watches, the stack and the memory view are in the full playground. Open the program there in a new tab, so this page stays open beside it: Ctrl+click the Open in playground link under the editor (Cmd+click on a Mac), or on a phone, press and hold the link and choose to open it in a new tab. A plain click opens the playground in place of this page. On a phone, the playground keeps those views under more."
     },
     {
       "type": "prose",
