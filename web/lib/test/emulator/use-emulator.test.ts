@@ -982,6 +982,35 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.stepCount).toBe(3);
   });
 
+  it("clears the step-limit alert when the run is resumed", async () => {
+    const fake = makeBackend({
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(/^paused after 1,000,000 steps/));
+
+    // Run again: while it runs, nothing says it is paused.
+    fake.cfg.runDeferred = true;
+    act(() => {
+      result.current.run();
+    });
+    expect(result.current.isRunning).toBe(true);
+    expect(result.current.error).toBeNull();
+    await act(async () => {
+      fake.triggerRun();
+    });
+  });
+
   it("run records a rejected backend call and still clears the running flag", async () => {
     const fake = makeBackend({ runThrows: true });
     const { result } = await mountAssembled(fake);
