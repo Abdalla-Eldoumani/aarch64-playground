@@ -46,7 +46,8 @@ export function MobileNavDrawer({
     toggleRef.current?.focus();
   }, [open]);
 
-  // The page behind the drawer stays put, as behind every other dialog.
+  // The page behind the drawer stays put while it is open, so a swipe that
+  // misses the panel does not scroll the route away under it.
   useEffect(() => {
     if (!open) return;
     const { style } = document.body;
