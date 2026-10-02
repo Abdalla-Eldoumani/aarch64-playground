@@ -284,6 +284,20 @@ describe("TerminalPane width", () => {
   });
 });
 
+describe("TerminalPane caret", () => {
+  it("blinks, and holds still for a reader who asks for reduced motion", () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect((instances[0].options as { cursorBlink?: boolean }).cursorBlink).toBe(true);
+    cleanup();
+    const reduce = vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) => ({ matches: query.includes("reduce"), media: query }) as MediaQueryList,
+    );
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect((instances[1].options as { cursorBlink?: boolean }).cursorBlink).toBe(false);
+    reduce.mockRestore();
+  });
+});
+
 describe("TerminalPane keyboard", () => {
   /** What xterm's own handler would do with a key: true keeps it in the terminal. */
   function terminalKeeps(init: KeyboardEventInit, type = "keydown"): boolean {
