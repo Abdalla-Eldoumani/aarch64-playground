@@ -60,12 +60,32 @@ describe("LessonIndex", () => {
     expect(screen.queryByText("Beta Lesson")).toBeNull();
   });
 
+  // Two dozen chips took five rows over the list on a wide screen and a
+  // sideways strip on a phone; folded, the first lessons show at once.
+  it("folds the tag chips behind a closed disclosure that wraps them", () => {
+    render(<LessonIndex lessons={lessons} />);
+    const group = screen.getByRole("group", { name: "Filter by tag" });
+    const fold = group.closest("details");
+    expect(fold?.open).toBe(false);
+    expect(fold?.querySelector("summary")?.textContent).toBe("filter by tag");
+    expect(group.className).toContain("flex-wrap");
+    expect(group.className).not.toContain("overflow-x-auto");
+  });
+
+  it("names how many tags are chosen on the folded control", () => {
+    render(<LessonIndex lessons={lessons} />);
+    fireEvent.click(screen.getByRole("button", { name: "registers" }));
+    const summary = screen.getByRole("group", { name: "Filter by tag" }).closest("details")?.querySelector("summary");
+    expect(summary?.textContent).toBe("filter by tag (1 chosen)");
+  });
+
   // Tailwind reads a shadow utility over var(--ring) as a shadow colour and
   // paints no ring, so the ring has to be set as the box-shadow itself.
   it("rings the search box and the tag chips on keyboard focus", () => {
     render(<LessonIndex lessons={lessons} />);
     const controls = [
       screen.getByLabelText("search lessons"),
+      screen.getByText("filter by tag"),
       screen.getByRole("button", { name: "registers" }),
     ];
     for (const control of controls) {
