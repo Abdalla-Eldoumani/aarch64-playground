@@ -1717,3 +1717,153 @@ main:
     );
     assert_eq!(run_on_the_console(source, &files), "0\n0x00008a3b\n-25\n-9\n-25\n0\n");
 }
+
+// GAS gives an escape it has no name for its own letter, with no warning:
+// `\w` is `w` and `\e` is `e`, while `\b` and `\f` are the control codes.
+// The playground refused all four.
+#[test]
+fn unknown_string_escapes_keep_their_letter_like_the_servers() {
+    let source = r#"
+        .data
+fmt:    .string "%d %s\n"
+s0:     .string "<\w>"
+s1:     .string "<\b>"
+s2:     .string "<\f>"
+s3:     .string "<\e>"
+s4:     .string "<\q>"
+s5:     .string "<\0>"
+s6:     .string "<\x41>"
+s7:     .string "<\101>"
+s8:     .string "<\\>"
+s9:     .string "<\">"
+table:  .quad   s0, s1, s2, s3, s4, s5, s6, s7, s8, s9
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -32]!
+        mov     x29, sp
+        str     x19, [x29, 16]
+        str     x20, [x29, 24]
+
+        mov     w19, 0
+        ldr     x20, =table
+loop:
+        cmp     w19, 10
+        b.ge    done
+        ldr     x0, =fmt
+        mov     w1, w19
+        ldr     x2, [x20, w19, sxtw 3]
+        bl      printf
+        add     w19, w19, 1
+        b       loop
+done:
+        ldr     x19, [x29, 16]
+        ldr     x20, [x29, 24]
+        mov     w0, 0
+        ldp     x29, x30, [sp], 32
+        ret
+"#;
+    let (cpu, out) = run_with_stdin(source, "");
+    assert_eq!(
+        out,
+        "0 <w>\n1 <\x08>\n2 <\x0c>\n3 <e>\n4 <q>\n5 <\n6 <A>\n7 <A>\n8 <\\>\n9 <\">\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+// An m4 define named `n` turns the `\n` in a string into `\w19`, and one
+// named `sum` rewrites the word. The servers assemble it and print the
+// rewritten text with no newline; the lint says why on the string's line.
+#[test]
+fn a_define_inside_a_string_prints_what_the_servers_print() {
+    let source = r#"// sum of 1 to n
+define(n, w19)
+define(i, w20)
+define(sum, w21)
+define(fp, x29)
+define(lr, x30)
+
+fmt:    .string "sum of 1 to %d is %d\n"
+        .balign 4
+        .global main
+
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     n, 10
+        mov     sum, 0
+        mov     i, 1
+test:
+        cmp     i, n
+        b.gt    done
+        add     sum, sum, i
+        add     i, i, 1
+        b       test
+done:
+        ldr     x0, =fmt
+        mov     w1, n
+        mov     w2, sum
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (cpu, out) = run_with_stdin(source, "");
+    assert_eq!(out, "w21 of 1 to 10 is 55w19");
+    assert_eq!(cpu.exit_code(), Some(0));
+    let warnings = aarch64_emulator::frontend::lint::lint(source);
+    assert!(
+        warnings.iter().any(|w| w.line == 8 && w.message.contains("`n` is defined as a macro")),
+        "the lint names the define on the string's line: {warnings:?}"
+    );
+}
+
+// `ldr x20, label` without the `=` loads the first 8 bytes stored at the
+// label, here 0x0000000800000004. The servers link it and die with
+// SIGSEGV (exit 139) at the first load through x20, printing nothing.
+#[test]
+fn ldr_label_without_equals_faults_with_a_hint_that_names_it() {
+    let source = r#"
+        .data
+vals:   .word   4, 8, 15, 16
+fmt:    .string "vals[%d] = %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+
+        ldr     x20, vals
+        mov     w19, 0
+next:
+        cmp     w19, 4
+        b.ge    done
+        ldr     w2, [x20, w19, sxtw 2]
+        mov     w1, w19
+        ldr     x0, =fmt
+        bl      printf
+        add     w19, w19, 1
+        b       next
+done:
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(
+        message.starts_with("memory fault: the program tried to read 0x0000000800000004"),
+        "{message}"
+    );
+    assert!(
+        message.contains("first one inside the brackets")
+            && message.contains("`ldr xN, label` lost its `=`"),
+        "the hint names the base register and the missing `=`: {message}"
+    );
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "");
+}
