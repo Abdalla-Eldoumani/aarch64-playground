@@ -10,6 +10,7 @@ import { useId, useMemo, useState, type JSX } from "react";
 import Link from "next/link";
 import type { LessonIndexRow } from "@/lib/content/lesson-schema";
 import { compareByOrder } from "@/lib/content/content-order";
+import { matchesAllWords } from "@/lib/content/search-words";
 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
@@ -52,18 +53,16 @@ export function LessonIndex({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [numbered]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return numbered.filter(({ lesson }) => {
-      const haystack = [lesson.title, lesson.summary ?? "", ...(lesson.tags ?? [])]
-        .join(" ")
-        .toLowerCase();
-      const matchesQuery = q === "" || haystack.includes(q);
-      const matchesTags =
-        activeTags.size === 0 || (lesson.tags ?? []).some((tag) => activeTags.has(tag));
-      return matchesQuery && matchesTags;
-    });
-  }, [numbered, query, activeTags]);
+  const filtered = useMemo(
+    () =>
+      numbered.filter(({ lesson }) => {
+        const text = [lesson.title, lesson.summary ?? "", ...(lesson.tags ?? [])].join(" ");
+        const matchesTags =
+          activeTags.size === 0 || (lesson.tags ?? []).some((tag) => activeTags.has(tag));
+        return matchesAllWords(query, text) && matchesTags;
+      }),
+    [numbered, query, activeTags],
+  );
 
   function toggleTag(tag: string): void {
     setActiveTags((prev) => {
