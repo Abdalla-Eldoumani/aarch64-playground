@@ -261,6 +261,13 @@ export function sameWorkspace(a: Workspace, b: Workspace): boolean {
   );
 }
 
+/** Whether a source defines the `main` label, so an import can tell which
+ *  picked file is the program and which are its helpers. A file saved on
+ *  Windows may open with a byte order mark. */
+export function definesMain(body: string): boolean {
+  return /^[﻿ \t]*main[ \t]*:/m.test(body);
+}
+
 /**
  * A machine error prefixed with the file it happened in, for the single
  * plain-text line Controls shows. Only a helper file earns the prefix:
