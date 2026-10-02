@@ -548,15 +548,27 @@ export function Editor({
   }, [currentLine, currentLineInCall, breakpoints, assemblyErrors]);
 
   // Jump-to-error: reveal, place the cursor, and focus so the student
-  // lands on the offending line instead of hunting for it.
-  useEffect(() => {
-    if (!focusRequest) return;
+  // lands on the offending line instead of hunting for it. A request made
+  // while Monaco is still loading waits for the mount. One already there when
+  // this editor mounted is not replayed, as in the touch editor, so a remount
+  // never steals the focus.
+  const focusRequestRef = useRef(focusRequest);
+  const seenFocusRef = useRef(focusRequest?.nonce ?? null);
+  const applyFocusRequest = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor) return;
-    editor.revealLineInCenter(focusRequest.line);
-    editor.setPosition({ lineNumber: focusRequest.line, column: 1 });
+    const request = focusRequestRef.current;
+    if (!editor || !request || request.nonce === seenFocusRef.current) return;
+    seenFocusRef.current = request.nonce;
+    editor.revealLineInCenter(request.line);
+    editor.setPosition({ lineNumber: request.line, column: 1 });
     editor.focus();
-  }, [focusRequest]);
+  }, []);
+  useEffect(() => {
+    focusRequestRef.current = focusRequest;
+    // The touch editor takes a request made while it is the one on screen.
+    if (fallback) seenFocusRef.current = focusRequest?.nonce ?? seenFocusRef.current;
+    else applyFocusRequest();
+  }, [focusRequest, fallback, applyFocusRequest]);
 
   // Follow the pc: a step or a stop below the fold brings the line into view
   // by the nearest scroll, as the phone fallback does, so stepping through
@@ -657,8 +669,11 @@ export function Editor({
 
       updateDecorations();
       applyLint();
+      // Monaco keeps the first mount handler it was given, so the jump comes
+      // from a ref: one asked for while the editor loaded runs now.
+      applyFocusRequest();
     },
-    [updateDecorations, applyLint, onCursorChange]
+    [updateDecorations, applyLint, applyFocusRequest, onCursorChange]
   );
 
   useEffect(() => {
