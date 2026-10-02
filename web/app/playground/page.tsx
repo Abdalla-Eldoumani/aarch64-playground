@@ -286,13 +286,19 @@ export default function Home() {
   // keys, so a keypress fires exactly once. Embed chrome, which omits Controls,
   // still gets the shortcuts from here.
   useEffect(() => {
+    // The editor reads Ctrl+K as the first half of its two-key commands and
+    // keeps it, so the palette key is taken on the way down, before any
+    // element sees it.
+    const onPaletteKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey) || e.key.toLowerCase() !== "k") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPaletteActions(playgroundRef.current?.getCommands() ?? []);
+      setPaletteOpen((v) => !v);
+    };
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
-      if (meta && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        setPaletteActions(playgroundRef.current?.getCommands() ?? []);
-        setPaletteOpen((v) => !v);
-      } else if (meta && e.key.toLowerCase() === "s") {
+      if (meta && e.key.toLowerCase() === "s") {
         // The buffer autosaves continuously; intercept Ctrl+S so it does not
         // open the browser's save-page dialog. The help entry documents this.
         e.preventDefault();
@@ -322,8 +328,12 @@ export default function Home() {
         playgroundRef.current?.reset();
       }
     };
+    window.addEventListener("keydown", onPaletteKey, true);
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onPaletteKey, true);
+      window.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   return (
