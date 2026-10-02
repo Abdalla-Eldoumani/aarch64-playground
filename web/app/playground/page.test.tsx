@@ -105,6 +105,28 @@ describe("page keyboard ownership", () => {
     expect(handle.assembleAndRun).toHaveBeenCalledTimes(1);
     expect(handle.assemble).not.toHaveBeenCalled();
   });
+
+  // The editor holds Ctrl+K as the start of its two-key commands, so the
+  // page has to see it first or the palette never opens from the editor.
+  it("opens the palette on Ctrl+K before the editor can keep the key", () => {
+    render(<Home />);
+    const editor = document.createElement("div");
+    editor.className = "monaco-editor";
+    const surface = document.createElement("textarea");
+    editor.appendChild(surface);
+    document.body.appendChild(editor);
+    const editorSaw = vi.fn();
+    editor.addEventListener("keydown", editorSaw);
+    try {
+      const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true, cancelable: true });
+      surface.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(editorSaw).not.toHaveBeenCalled();
+      expect(handle.getCommands).toHaveBeenCalledTimes(1);
+    } finally {
+      editor.remove();
+    }
+  });
 });
 
 describe("the help key", () => {
