@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useId, useRef } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -111,12 +111,19 @@ function isPlaygroundKey(e: KeyboardEvent): boolean {
   return (e.ctrlKey || e.metaKey) && (e.key === "Enter" || e.key === "F8");
 }
 
+// Ctrl+M leaves the terminal, so the keyboard is never trapped in it. A
+// program reads it as the same byte as Enter, which it still gets from Enter.
+function isLeaveKey(e: KeyboardEvent): boolean {
+  return e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "m";
+}
+
 /**
  * The xterm.js shell pane. lazy-panels.tsx loads it on demand so the xterm
  * bundle ships only when the student opens the terminal tab.
  */
 export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: TerminalPaneProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const leaveHintId = useId();
   const termRef = useRef<Terminal | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
   const stateRef = useRef<TerminalInputState>(new TerminalInputState());
@@ -234,8 +241,19 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     term.loadAddon(fit);
     term.open(containerRef.current);
     fit.fit();
-    // false: xterm leaves the key alone, so it reaches the page's handler.
-    term.attachCustomKeyEventHandler((e) => !isPlaygroundKey(e));
+    // Screen readers hear the way out on entering, as they do in the editor.
+    term.textarea?.setAttribute("aria-describedby", leaveHintId);
+    term.attachCustomKeyEventHandler((e) => {
+      if (isLeaveKey(e)) {
+        if (e.type === "keydown") {
+          e.preventDefault();
+          term.blur();
+        }
+        return false;
+      }
+      // false: xterm leaves the key alone, so it reaches the page's handler.
+      return !isPlaygroundKey(e);
+    });
 
     // Follow the site theme live: the switcher writes data-theme on <html>,
     // so a mutation observer keeps the terminal palette in step without a
@@ -382,18 +400,28 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     };
     // Every dependency here is a stable useCallback, so the terminal is
     // allocated exactly once per mount and survives machine re-renders.
-  }, [repaintInput, runLine, writeLines, writePrompt]);
+  }, [repaintInput, runLine, writeLines, writePrompt, leaveHintId]);
 
   // The padding sits on a wrapper: the fit addon sizes the grid from the
   // terminal's parent box, which would count padding of its own as columns.
+  // The hint stays put rather than showing on focus, since a pane that
+  // changed height on focus would reflow the running program's screen.
   return (
-    <div className="h-full w-full bg-[var(--bg-base)] overflow-hidden pl-2 pt-1">
-      <div
-        className="h-full w-full overflow-hidden"
-        ref={containerRef}
-        aria-label="shell terminal"
-        role="application"
-      />
+    <div className="flex h-full w-full flex-col bg-[var(--bg-base)]">
+      <div className="min-h-0 flex-1 overflow-hidden pl-2 pt-1">
+        <div
+          className="h-full w-full overflow-hidden"
+          ref={containerRef}
+          aria-label="shell terminal"
+          role="application"
+        />
+      </div>
+      <p
+        id={leaveHintId}
+        className="shrink-0 border-t border-[var(--border)] px-2 py-1 font-mono text-[12px] text-[var(--text-tertiary)] [@media(pointer:coarse)]:hidden"
+      >
+        <kbd className="font-mono text-[var(--text-secondary)]">Ctrl+M</kbd>, then Tab, leaves the terminal
+      </p>
     </div>
   );
 }
