@@ -548,20 +548,39 @@ fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
     if bytes.len() < 3 {
         return Err(lex_err(line, "unterminated char literal"));
     }
-    let i = 1;
-    let (value, end) = if bytes[i] == b'\\' {
-        if i + 1 >= bytes.len() {
-            return Err(lex_err(line, "unterminated char literal"));
-        }
-        let (v, used) = decode_escape(&bytes[i..], line)?;
-        (v, i + used)
+    // GAS reads one byte here, or a backslash and one byte, so `'\0'` is
+    // the digit 0 (48) on the servers, and `'\x41'` is an x plus junk.
+    let escaped = bytes[1] == b'\\';
+    let (value, end) = if escaped {
+        (u32::from(control_escape(bytes[2])), 3)
     } else {
-        (bytes[i] as u32, i + 1)
+        (u32::from(bytes[1]), 2)
     };
     if end >= bytes.len() || bytes[end] != b'\'' {
-        return Err(lex_err(line, "expected closing single-quote in char literal"));
+        let hint = if escaped {
+            ": an escape here is one letter, like '\\n'; write any other code as a number (0x41)"
+        } else {
+            ""
+        };
+        return Err(lex_err(
+            line,
+            &format!("expected closing single-quote in char literal{hint}"),
+        ));
     }
     Ok((value, end + 1))
+}
+
+/// The escapes a string and a char literal share; any other letter stands
+/// for itself, as on the servers (`\w` is `w`, `\e` is `e`).
+fn control_escape(letter: u8) -> u8 {
+    match letter {
+        b'b' => 0x08,
+        b'f' => 0x0C,
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        other => other,
+    }
 }
 
 fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuError> {
@@ -577,54 +596,45 @@ fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuErr
             return Ok((out, i + 1));
         }
         if b == b'\n' || b == b'\r' {
-            return Err(lex_err(
-                line,
-                "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)",
-            ));
+            return Err(lex_err(line, UNTERMINATED_STRING));
         }
         if b == b'\\' {
-            let (v, used) = decode_escape(&bytes[i..], line)?;
-            out.push(v as u8);
+            let (v, used) = decode_string_escape(&bytes[i..], line)?;
+            out.push(v);
             i += used;
             continue;
         }
         out.push(b);
         i += 1;
     }
-    Err(lex_err(
-        line,
-        "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)",
-    ))
+    Err(lex_err(line, UNTERMINATED_STRING))
 }
 
-fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
-    // bytes[0] is the backslash.
+const UNTERMINATED_STRING: &str =
+    "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)";
+
+/// One string escape; `bytes[0]` is the backslash. Returns the byte and
+/// how many source bytes it used.
+fn decode_string_escape(bytes: &[u8], line: usize) -> Result<(u8, usize), EmuError> {
     if bytes.len() < 2 {
         return Err(lex_err(line, "dangling backslash in literal"));
     }
-    let next = bytes[1];
-    match next {
-        b'n' => Ok((b'\n' as u32, 2)),
-        b't' => Ok((b'\t' as u32, 2)),
-        b'r' => Ok((b'\r' as u32, 2)),
-        d @ b'0'..=b'7' => {
-            // GAS octal escape: backslash + 1 to 3 octal digits, value mod
-            // 256. `\0` alone is still NUL; `\012` is a newline; `\101`
-            // is 'A'.
-            let mut val = u32::from(d - b'0');
-            let mut consumed = 2; // backslash + first digit
-            while consumed < 4
-                && consumed < bytes.len()
-                && (b'0'..=b'7').contains(&bytes[consumed])
-            {
-                val = val * 8 + u32::from(bytes[consumed] - b'0');
+    match bytes[1] {
+        b'0'..=b'9' => {
+            // GAS reads up to three digits in base 8 and lets 8 and 9 in
+            // (`\18` is 16), keeping the low byte: `\101` is 'A'.
+            let mut value: u32 = 0;
+            let mut consumed = 1;
+            while consumed < 4 && bytes.get(consumed).is_some_and(u8::is_ascii_digit) {
+                value = value * 8 + u32::from(bytes[consumed] - b'0');
                 consumed += 1;
             }
-            Ok((val & 0xFF, consumed))
+            Ok(((value & 0xFF) as u8, consumed))
         }
-        b'\\' => Ok((b'\\' as u32, 2)),
-        b'"' => Ok((b'"' as u32, 2)),
-        b'\'' => Ok((b'\'' as u32, 2)),
+        b'v' => Ok((0x0B, 2)),
+        // GAS joins the next line onto the string here; the playground
+        // keeps strings on one line so the error stays where the slip is.
+        b'\n' | b'\r' => Err(lex_err(line, UNTERMINATED_STRING)),
         b'x' | b'X' => {
             // GAS takes every hex digit after the `x` and keeps the low
             // byte: `"\xA"` is a newline and `"\x123"` is 0x23. Masking each
@@ -641,12 +651,9 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
                 value = ((value << 4) | digit) & 0xFF;
                 consumed += 1;
             }
-            Ok((value, consumed))
+            Ok((value as u8, consumed))
         }
-        other => Err(lex_err(
-            line,
-            &format!("unknown escape \\{}", other as char),
-        )),
+        other => Ok((control_escape(other), 2)),
     }
 }
 
@@ -769,14 +776,66 @@ mod tests {
             ("'\\n'", 10),
             ("'\\t'", 9),
             ("'\\r'", 13),
-            ("'\\0'", 0),
+            ("'\\b'", 8),
+            ("'\\f'", 12),
             ("'\\\\'", b'\\' as u32),
             ("'\\''", b'\'' as u32),
-            ("'\\x41'", 0x41),
+            // csarm: `mov w0, '\0'` is `mov w0, #0x30`, and `\v` is a v.
+            ("'\\0'", 48),
+            ("'\\v'", b'v' as u32),
+            ("'\\w'", b'w' as u32),
         ];
         for (src, expected) in cases {
             let t = lex(src, 1).unwrap();
             assert_eq!(kinds(&t), vec![TokenKind::CharLit(expected)], "src: {src}");
+        }
+    }
+
+    // Captured on csarm (GNU as 2.46.1): the bytes of `.ascii "\c"` and
+    // `.byte '\c'` for each printable c from space to `~`, in order.
+    const SERVER_STRING_ESCAPES: &str = "202122232425262728292a2b2c2d2e2f000102030405060708093a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565700595a5b5c5d5e5f6061086364650c6768696a6b6c6d0a6f70710d7309750b7700797a7b7c7d7e";
+    const SERVER_CHAR_ESCAPES: &str = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f6061086364650c6768696a6b6c6d0a6f70710d730975767778797a7b7c7d7e";
+
+    #[test]
+    fn every_printable_escape_decodes_as_the_servers_do() {
+        for (n, c) in (0x20u8..=0x7E).enumerate() {
+            let want = |table: &str| u8::from_str_radix(&table[2 * n..2 * n + 2], 16).unwrap();
+            let string = format!("\"\\{}\"", c as char);
+            assert_eq!(
+                kinds(&lex(&string, 1).unwrap()),
+                vec![TokenKind::StringLit(vec![want(SERVER_STRING_ESCAPES)])],
+                "src: {string}"
+            );
+            let chr = format!("'\\{}'", c as char);
+            assert_eq!(
+                kinds(&lex(&chr, 1).unwrap()),
+                vec![TokenKind::CharLit(u32::from(want(SERVER_CHAR_ESCAPES)))],
+                "src: {chr}"
+            );
+        }
+    }
+
+    #[test]
+    fn digit_and_hex_escapes_stop_where_the_servers_stop() {
+        // csarm: digits are read in base 8 with 8 and 9 allowed, three at
+        // most, low byte kept; hex stops at the first non-hex byte.
+        let cases: [(&str, &[u8]); 9] = [
+            (r#""\18""#, &[0x10]),
+            (r#""\19""#, &[0x11]),
+            (r#""\998""#, &[0x90]),
+            (r#""\777""#, &[0xFF]),
+            (r#""\400""#, &[0x00]),
+            (r#""\0101""#, &[0x08, b'1']),
+            (r#""\x4g""#, &[0x04, b'g']),
+            ("\"\\\t\"", &[0x09]),
+            ("\"\\\u{e9}\"", &[0xC3, 0xA9]),
+        ];
+        for (src, expected) in cases {
+            assert_eq!(
+                kinds(&lex(src, 1).unwrap()),
+                vec![TokenKind::StringLit(expected.to_vec())],
+                "src: {src}"
+            );
         }
     }
 
@@ -865,8 +924,16 @@ mod tests {
     }
 
     #[test]
-    fn unknown_escape_errors() {
-        rejects(lex("'\\q'", 1), "unknown escape \\q");
+    fn a_char_literal_escape_is_one_letter() {
+        // GAS turns `'\x41'` into an x plus junk (0x8e after a truncation
+        // warning); refusing it here names the fix instead.
+        rejects(lex("'\\x41'", 1), "write any other code as a number");
+        rejects(lex("'\\101'", 1), "an escape here is one letter");
+    }
+
+    #[test]
+    fn a_backslash_before_a_line_break_still_ends_the_string() {
+        rejects(lex("\"abc\\\n\"", 1), "unterminated string literal");
     }
 
     #[test]
