@@ -440,6 +440,12 @@ export function Editor({
     onRunShortcutRef.current = onRunShortcut;
     canRunKeyRef.current?.set(Boolean(onRunShortcut));
   }, [onRunShortcut]);
+  // Monaco calls the mount handler once, so a gutter click reading the prop
+  // from there would keep the first tab's line mapping after a switch.
+  const onToggleBreakpointRef = useRef(onToggleBreakpoint);
+  useEffect(() => {
+    onToggleBreakpointRef.current = onToggleBreakpoint;
+  }, [onToggleBreakpoint]);
   const toast = useToast();
   // The vendored build has to be named to the loader BEFORE
   // @monaco-editor/react asks for it: an unnamed instance is exactly what sends
@@ -617,7 +623,7 @@ export function Editor({
         }
         const line = e.target.position?.lineNumber;
         if (line != null) {
-          onToggleBreakpoint(line);
+          onToggleBreakpointRef.current(line);
         }
       });
 
@@ -643,7 +649,7 @@ export function Editor({
       updateDecorations();
       applyLint();
     },
-    [onToggleBreakpoint, updateDecorations, applyLint, onCursorChange]
+    [updateDecorations, applyLint, onCursorChange]
   );
 
   useEffect(() => {
