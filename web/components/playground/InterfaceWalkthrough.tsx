@@ -341,7 +341,8 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
                 disabled={mode.kind === "open" && mode.step === 0}
                 className="!min-h-[36px] !px-3 !text-[13px] [@media(pointer:coarse)]:!min-h-[44px]"
               >
-                back
+                {/* Not "back": the run row's step-back button is called that. */}
+                previous
               </Button>
               <span className="flex-1 text-center font-mono text-[12px] text-[var(--text-tertiary)]">
                 {mode.kind === "open" ? mode.step + 1 : 0} of {WALKTHROUGH_STEPS.length}
