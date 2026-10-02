@@ -34,12 +34,17 @@ export interface DebugControl {
 }
 
 export const DEBUG_CONTROLS: readonly DebugControl[] = [
-  { control: "assemble", command: "assemble", key: "F6", does: "turns the source into machine code and loads it" },
+  {
+    control: "assemble",
+    command: "assemble",
+    key: "F6",
+    does: "turns the source into machine code and loads it, without running it",
+  },
   {
     control: "run",
     command: "run",
     key: "F5",
-    does: "runs until the program ends, waits for input, or reaches a breakpoint; pressed during a run, it pauses",
+    does: "assembles first when nothing is loaded, the program has finished, or the code, files or args changed, then runs until the program ends, waits for input, or reaches a breakpoint; pressed during a run, it pauses",
   },
   { control: "step", command: "step", key: "F10", does: "runs one instruction; the highlighted line is the next one to run" },
   { control: "back", command: "step-back", key: "Shift+F10", does: "undoes the last step, registers and memory included" },
