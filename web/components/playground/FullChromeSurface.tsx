@@ -54,6 +54,7 @@ import {
 import {
   breakpointsForFile,
   combinedLineFor,
+  definesMain,
   diagnosticsForFile,
   errorWithLocation,
   MAIN_FILE,
@@ -256,12 +257,15 @@ export function FullChromeSurface({
     [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch],
   );
 
-  // Multi-select import: a file named main.asm / main.s replaces the main
-  // buffer; every other file becomes (or refreshes) a named tab, so a
-  // whole multi-file program lands in one gesture.
+  // Multi-select import: the program replaces the main buffer; every other
+  // file becomes (or refreshes) a named tab, so a whole multi-file program
+  // lands in one gesture. The program is a file named main.asm / main.s, or
+  // else the first that defines main, since a student's files are never
+  // called main.
   const handleImportMany = useCallback(
     (files: { name: string; body: string }[]) => {
-      const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
+      let mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
+      if (mainIdx < 0) mainIdx = files.findIndex((f) => definesMain(f.body));
       const replaced = files.flatMap((f, i) => {
         const current =
           i === mainIdx ? source : extraFiles.find((x) => x.name === f.name)?.body;
