@@ -47,29 +47,24 @@ const ShareDialog = dynamic(
   { ssr: false },
 );
 
+// The help has no scroll box, so every row stays one or two lines: the list
+// has to fit a 620px-tall window with its heading and close button on screen.
 const SHORTCUTS: Shortcut[] = [
-  { keys: "F6", description: "assemble: load the program without running it" },
-  { keys: "Ctrl+Enter", description: "assemble and run, from anywhere including the editor" },
+  { keys: "F6", description: "assemble" },
+  { keys: "Ctrl+Enter", description: "assemble and run, even from the editor" },
   { keys: "F10", description: "step" },
   { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
-  {
-    keys: "F5",
-    description:
-      "run, or pause a run; run assembles first when nothing is loaded, the program finished, or the code or args changed",
-  },
+  { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
-  { keys: "F9 or Ctrl+F8", description: "set or clear a breakpoint on the caret's line" },
+  { keys: "F9", description: "set or clear a breakpoint on the caret's line" },
   { keys: "Ctrl+K", description: "open command palette" },
   { keys: "Ctrl+Shift+F", description: "format the source" },
   { keys: "Ctrl+S", description: "nothing to save: your code saves as you type" },
   { keys: "Ctrl+/", description: "toggle line comment" },
   { keys: "Shift+Alt+A", description: "toggle block comment" },
-  { keys: "Tab", description: "in the editor, indent or take the highlighted suggestion" },
+  { keys: "Tab", description: "in the editor, indent or take a suggestion" },
   { keys: "Esc, then Tab", description: "leave the editor and move to the next control" },
-  {
-    keys: "Ctrl+M, then Tab",
-    description: "leave the terminal and move to the next control; the run keys above work in the terminal too",
-  },
+  { keys: "Ctrl+M, then Tab", description: "leave the terminal and move to the next control" },
   { keys: "Ctrl+M", description: "make Tab move focus out of the editor instead of indenting (press again to undo)" },
   { keys: "Ctrl+Wheel", description: "zoom the panel under the pointer" },
   { keys: "?", description: "show this help" },
