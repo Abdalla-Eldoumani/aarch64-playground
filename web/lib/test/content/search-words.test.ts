@@ -21,10 +21,11 @@ describe("matchesAllWords", () => {
     expect(matchesAllWords("dd", "add two registers")).toBe(false);
   });
 
-  it("treats punctuation as a word break, and keeps punctuation the reader typed", () => {
+  it("treats punctuation as a word break in the text and in the query", () => {
     expect(matchesAllWords("cond", "b.cond")).toBe(true);
     expect(matchesAllWords("test", "post-test loop")).toBe(true);
-    expect(matchesAllWords("b.cond", "branch on a condition with b.cond")).toBe(true);
+    expect(matchesAllWords("b.cond", "b.cond")).toBe(true);
+    expect(matchesAllWords("b.cond", "add two registers")).toBe(false);
     expect(matchesAllWords("[fp", "a watch on [fp, 16]")).toBe(true);
   });
 
