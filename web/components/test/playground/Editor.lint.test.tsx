@@ -229,4 +229,13 @@ describe("Editor breakpoint keys", () => {
     expect(first).not.toHaveBeenCalled();
     expect(second.mock.calls).toEqual([[2], [3]]);
   });
+
+  // The pinned scope header covered a line and named a string's label as the
+  // scope of `main`.
+  it("pins no scope header over the code", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    render(<Editor {...base} />);
+    await waitFor(() => expect(fake.options).not.toBeNull());
+    expect(fake.options?.stickyScroll).toEqual({ enabled: false });
+  });
 });
