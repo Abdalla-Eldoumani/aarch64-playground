@@ -440,8 +440,8 @@ export function Editor({
     onRunShortcutRef.current = onRunShortcut;
     canRunKeyRef.current?.set(Boolean(onRunShortcut));
   }, [onRunShortcut]);
-  // Monaco calls the mount handler once, so a gutter click reading the prop
-  // from there would keep the first tab's line mapping after a switch.
+  // Monaco calls the mount handler once, so a gutter click or F9 reading the
+  // prop from there would keep the first tab's line mapping after a switch.
   const onToggleBreakpointRef = useRef(onToggleBreakpoint);
   useEffect(() => {
     onToggleBreakpointRef.current = onToggleBreakpoint;
@@ -626,6 +626,15 @@ export function Editor({
           onToggleBreakpointRef.current(line);
         }
       });
+
+      // The gutter dot is a mouse target, so the keyboard sets or clears a
+      // breakpoint on the caret's line: F9, or Ctrl+F8 as in other debuggers.
+      const toggleAtCaret = () => {
+        const line = editor.getPosition()?.lineNumber;
+        if (line != null) onToggleBreakpointRef.current(line);
+      };
+      editor.addCommand(monaco.KeyCode.F9, toggleAtCaret);
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F8, toggleAtCaret);
 
       // On coarse pointers, the breakpoint gesture is a single tap on the glyph
       // margin. The CSS below widens that margin to 32px so a fingertip lands
