@@ -30,6 +30,11 @@ function safeStdin(stdin: string | undefined): string | undefined {
 /** A `main:` label at the start of a line, the mark of a complete program. */
 const DEFINES_MAIN = /^[ \t]*main:/m;
 
+/** The lead line of the note that answers a lesson's Check yourself. */
+const ANSWERS_LEAD = /^Answers:\s*/;
+const ANSWERS_SUMMARY =
+  "w-fit cursor-pointer select-none font-medium text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)] [@media(pointer:coarse)]:leading-[44px]";
+
 export function LessonArticle({
   lesson,
   sheetNumber = "4.x",
@@ -109,14 +114,31 @@ export function LessonArticle({
                 </div>
               );
             }
-            case "callout":
+            case "callout": {
+              // Open, the answers sat right under the questions and the eye
+              // read them first; folded, the reader answers, then looks.
+              const answers = block.variant === "note" ? ANSWERS_LEAD.exec(block.markdown) : null;
               return (
                 <div key={index} className="my-6 max-w-2xl">
                   <Callout type={block.variant}>
-                    <LessonMarkdown markdown={block.markdown} />
+                    {answers ? (
+                      <details className="group">
+                        <summary className={ANSWERS_SUMMARY}>
+                          <span className="group-open:hidden">show answers</span>
+                          <span className="hidden group-open:inline">hide answers</span>
+                        </summary>
+                        <LessonMarkdown
+                          markdown={block.markdown.slice(answers[0].length)}
+                          className="mt-2"
+                        />
+                      </details>
+                    ) : (
+                      <LessonMarkdown markdown={block.markdown} />
+                    )}
                   </Callout>
                 </div>
               );
+            }
             case "editor":
               return (
                 <div key={index} className="my-6">
