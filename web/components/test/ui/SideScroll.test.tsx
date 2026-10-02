@@ -11,7 +11,7 @@ afterEach(() => {
   delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
 });
 
-/** jsdom guesses :focus-visible from the last key or mouse event, and a bare .focus() reads as keyboard, so a test says how focus arrived. */
+/** jsdom's answer for :focus-visible depends on which key and mouse events it happens to have seen, so a test says how focus arrived. */
 function focusFrom(source: "keyboard" | "pointer") {
   vi.spyOn(Element.prototype, "matches").mockImplementation(function (this: Element, selector: string) {
     return selector === ":focus-visible" ? source === "keyboard" : matches.call(this, selector);
