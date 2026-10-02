@@ -104,6 +104,28 @@ describe("the first-visit offer", () => {
     expect(screen.getByRole("heading", { name: "Run" })).toBeTruthy();
     run.remove();
   });
+
+  it("lays itself over a phone's top bar as a title and two buttons", () => {
+    const menu = document.createElement("button");
+    menu.setAttribute("data-walkthrough", "menu");
+    document.body.appendChild(menu);
+    vi.spyOn(menu, "getBoundingClientRect").mockReturnValue({
+      top: 0, left: 972, width: 44, height: 44, right: 1016, bottom: 44, x: 972, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+    render(<InterfaceWalkthrough openRequest={0} />);
+    act(() => vi.advanceTimersByTime(1300));
+    const offer = card();
+    expect(offer.style.top).toBe("8px");
+    expect(offer.style.left).toBe(`${1024 - 8 - 352}px`);
+    // The sentence is there for a screen reader, not on the bar.
+    const sentence = screen.getByText(/A short walkthrough points at each part/);
+    expect(sentence.className).toBe("sr-only");
+    expect(offer.getAttribute("aria-describedby")).toBe(sentence.id);
+    expect(screen.getByRole("button", { name: "start the walkthrough" })).toBeTruthy();
+    // No ring: it would frame the card that covers the button.
+    expect(document.querySelector(".border-2")).toBeNull();
+    menu.remove();
+  });
 });
 
 describe("walking the steps", () => {
