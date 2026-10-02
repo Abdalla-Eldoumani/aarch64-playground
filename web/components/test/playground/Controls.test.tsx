@@ -244,7 +244,7 @@ describe("Controls", () => {
     expect(text).toContain("mnemonic");
   });
 
-  it("disables run, step, and back until a program is loaded", () => {
+  it("disables step and back until a program is loaded", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -256,12 +256,11 @@ describe("Controls", () => {
         error={null}
       />,
     );
-    for (const name of [/^run/, /^step/, /^back/]) {
+    for (const name of [/^step/, /^back/]) {
       const btn = screen.getByRole("button", { name });
       expect(btn.hasAttribute("disabled")).toBe(true);
       fireEvent.click(btn);
     }
-    expect(h.onRun).not.toHaveBeenCalled();
     expect(h.onStep).not.toHaveBeenCalled();
     expect(h.onStepBack).not.toHaveBeenCalled();
     // Assemble and reset stay live: they are how a program gets loaded.
@@ -294,9 +293,9 @@ describe("Controls", () => {
     expect(h.onStep).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps run live with nothing loaded when run assembles first", () => {
-    // Terminal mode: the run press is itself the launch, so the button cannot be
-    // the one path that still demands a separate assemble press.
+  it("keeps run live with nothing loaded, since run assembles first", () => {
+    // A run press with nothing assembled assembles and runs, as in a lesson,
+    // so the button cannot demand a separate assemble press.
     const h = allHandlers();
     render(
       <Controls
@@ -305,7 +304,6 @@ describe("Controls", () => {
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        runAssemblesFirst={true}
         error={null}
       />,
     );
@@ -319,6 +317,26 @@ describe("Controls", () => {
     }
   });
 
+  it("keeps run live once the program finishes, since run starts it again", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={true}
+        programLoaded={true}
+        error={null}
+      />,
+    );
+    const run = screen.getByRole("button", { name: /^run/ });
+    expect(run.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(run);
+    expect(h.onRun).toHaveBeenCalledTimes(1);
+    // Stepping a finished program has nothing left to execute.
+    expect(screen.getByRole("button", { name: /^step/ }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("still disables run while that assemble is in flight", () => {
     const h = allHandlers();
     render(
@@ -329,7 +347,6 @@ describe("Controls", () => {
         isAssembling={true}
         isHalted={false}
         programLoaded={false}
-        runAssemblesFirst={true}
         error={null}
       />,
     );
@@ -348,7 +365,6 @@ describe("Controls", () => {
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        runAssemblesFirst={true}
         blocked={true}
         error={null}
       />,
@@ -356,6 +372,28 @@ describe("Controls", () => {
     expect(
       screen.getByRole("button", { name: /^run/ }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("gives a short window's error a line of its own under the buttons and tools", () => {
+    // The tools at the row's end would otherwise wrap under an inline error.
+    const h = allHandlers();
+    const row = (short: boolean) => (
+      <Controls
+        {...h}
+        short={short}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={false}
+        error="unknown mnemonic `mvo'"
+        trailing={<button type="button">share</button>}
+      />
+    );
+    const { rerender } = render(row(true));
+    expect(screen.getByRole("alert").className).toContain("sm:basis-full");
+    expect(screen.getByRole("alert").className).toContain("sm:order-last");
+    rerender(row(false));
+    expect(screen.getByRole("alert").className).not.toContain("sm:basis-full");
   });
 
   it("does not bind keyboard shortcuts (the page is the single owner)", () => {
