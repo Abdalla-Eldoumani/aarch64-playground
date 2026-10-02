@@ -667,27 +667,27 @@ export function FullChromeSurface({
     </div>
   );
 
-  const disasmBlock = (
-    <div className="h-full overflow-auto">
-      {emu.instructions.length === 0 ? (
-        // Cold load / nothing assembled: FirstRunState replaces
-        // InstructionView's bare "no program assembled" line with a
-        // what-this-is / what-to-press lead.
+  // The listing is its own scroll box, so it can follow the pc.
+  const disasmBlock =
+    emu.instructions.length === 0 ? (
+      // Cold load / nothing assembled: FirstRunState replaces
+      // InstructionView's bare "no program assembled" line with a
+      // what-this-is / what-to-press lead.
+      <div className="h-full overflow-auto">
         <FirstRunState onAssemble={assembleWithHistory} />
-      ) : (
-        <ErrorBoundary label="disassembly">
-          <InstructionView
-            instructions={emu.instructions}
-            pc={emu.pc}
-            running={emu.isRunning}
-            // Inside a libc call the pc is a trampoline word, which the
-            // listing does not hold; mark and follow the `bl` instead.
-            anchorPc={emu.externalCall?.callSitePc ?? null}
-          />
-        </ErrorBoundary>
-      )}
-    </div>
-  );
+      </div>
+    ) : (
+      <ErrorBoundary label="disassembly">
+        <InstructionView
+          instructions={emu.instructions}
+          pc={emu.pc}
+          running={emu.isRunning}
+          // Inside a libc call the pc is a trampoline word, which the
+          // listing does not hold; mark and follow the `bl` instead.
+          anchorPc={emu.externalCall?.callSitePc ?? null}
+        />
+      </ErrorBoundary>
+    );
 
   const regsBlock = (
     <ErrorBoundary label="registers">
