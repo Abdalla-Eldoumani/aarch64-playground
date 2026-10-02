@@ -12,6 +12,7 @@ function okShareState(hash: string) {
 }
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Lesson } from "@/lib/content/lesson-schema";
+import { loadAllLessons } from "@/lib/content/lessons";
 
 // Stub the shared embeddable with a light marker that echoes the props the
 // article feeds it, so the test never instantiates Monaco or the WASM worker.
@@ -230,6 +231,50 @@ describe("LessonArticle", () => {
       .map((a) => (a.textContent ?? "").trim());
     expect(labels[0].startsWith("4.2.1")).toBe(true);
     expect(labels[1].startsWith("4.2.2")).toBe(true);
+  });
+
+  // The answers printed right under the questions, so the eye landed on
+  // answer 1 while still reading question 2.
+  it("keeps the Check yourself answers folded until the reader opens them", () => {
+    const lesson: Lesson = {
+      title: "Quiz",
+      slug: "quiz",
+      order: 1,
+      body: [
+        { type: "prose", markdown: "## Check yourself\n\n1. What is seven?" },
+        { type: "callout", variant: "note", markdown: "Answers:\n\n1. The number after six." },
+      ],
+    };
+    const { container } = render(<LessonArticle lesson={lesson} />);
+    const answer = screen.getByText("The number after six.");
+    const fold = answer.closest("details");
+    expect(fold).not.toBeNull();
+    expect(fold?.open).toBe(false);
+    const summary = fold?.querySelector("summary");
+    expect(summary?.textContent).toContain("show answers");
+    // The control names itself, so the lead line is not said twice.
+    expect(container.textContent).not.toContain("Answers:");
+
+    summary?.click();
+    expect(fold?.open).toBe(true);
+  });
+
+  it("leaves a note that is not the answers open", () => {
+    render(<LessonArticle lesson={fullLesson} />);
+    expect(screen.getByText("a callout body line").closest("details")).toBeNull();
+  });
+
+  it("folds the answers on every lesson", { timeout: 30_000 }, () => {
+    const lessons = loadAllLessons();
+    expect(lessons.length).toBeGreaterThan(0);
+    for (const lesson of lessons) {
+      const { container, unmount } = render(<LessonArticle lesson={lesson} />);
+      const folds = container.querySelectorAll("details:not([open]) > summary");
+      const answers = [...folds].filter((s) => s.textContent?.includes("show answers"));
+      expect(answers, lesson.slug).toHaveLength(1);
+      expect(container.textContent, lesson.slug).not.toContain("Answers:");
+      unmount();
+    }
   });
 
   it("passes a lesson's stdin under the size cap to the embed", () => {
