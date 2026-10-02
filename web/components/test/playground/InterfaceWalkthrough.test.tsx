@@ -74,7 +74,7 @@ describe("the first-visit offer", () => {
 });
 
 describe("walking the steps", () => {
-  it("moves with next and back, and with the arrow keys", () => {
+  it("moves with next and previous, and with the arrow keys", () => {
     renderOpen();
     expect(screen.getByText("1 of 15")).toBeTruthy();
     fireEvent.click(next());
@@ -82,9 +82,11 @@ describe("walking the steps", () => {
     fireEvent.keyDown(card(), { key: "ArrowRight" });
     expect(screen.getByRole("heading", { name: "Assemble" })).toBeTruthy();
     fireEvent.keyDown(card(), { key: "ArrowLeft" });
-    fireEvent.click(screen.getByRole("button", { name: "back" }));
+    fireEvent.click(screen.getByRole("button", { name: "previous" }));
     expect(screen.getByRole("heading", { name: "The editor" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "back" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "previous" }).hasAttribute("disabled")).toBe(true);
+    // "back" is the run row's step back; the card never repeats the word.
+    expect(screen.queryByRole("button", { name: "back" })).toBeNull();
   });
 
   it("closes at any step and resumes there", () => {
