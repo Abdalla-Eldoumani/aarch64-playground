@@ -6,8 +6,15 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { createRef } from "react";
 import type { ReactNode } from "react";
 
+// The editor's change handler, so a case can type into the buffer.
+const editorProps = vi.hoisted(() => ({
+  current: null as null | { onChange: (next: string) => void },
+}));
 vi.mock("@/components/playground/lazy-editor", () => ({
-  Editor: () => <div data-testid="editor" />,
+  Editor: (props: { onChange: (next: string) => void }) => {
+    editorProps.current = props;
+    return <div data-testid="editor" />;
+  },
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
@@ -451,8 +458,7 @@ describe("launchInteractive: assemble, then run in the terminal, in one action",
 });
 
 describe("run straight after a program loads", () => {
-  // The run button is disabled with nothing assembled, so this run arrives
-  // through F5, the command palette, or the handle, which all call one run.
+  // F5, the command palette and the handle all call one run.
   function pressRun(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
     act(() => ref.current!.run());
   }
@@ -515,7 +521,7 @@ describe("run straight after a program loads", () => {
     );
   });
 
-  it("does nothing in console mode with nothing assembled", async () => {
+  it("assembles, then runs in the console, with nothing assembled", async () => {
     const hub: Hub = makeHub({ programLoaded: false });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -527,10 +533,8 @@ describe("run straight after a program loads", () => {
     await act(async () => {
       pressRun(ref);
     });
-    // The press reaches the emulator, which has nothing to run. No assemble,
-    // no terminal.
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
     expect(hub.run).toHaveBeenCalledTimes(1);
-    expect(hub.assemble).not.toHaveBeenCalled();
     expect(screen.getByRole("tab", { name: "term" }).getAttribute("aria-selected")).toBe(
       "false",
     );
@@ -578,7 +582,7 @@ describe("run straight after a program loads", () => {
     );
   });
 
-  it("leaves the run button disabled in console mode with nothing assembled", () => {
+  it("keeps the run button clickable in console mode with nothing assembled", async () => {
     const hub: Hub = makeHub({ programLoaded: false });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -586,9 +590,13 @@ describe("run straight after a program loads", () => {
     act(() => {
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
-    expect((screen.getByRole("button", { name: "run" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    const run = screen.getByRole("button", { name: "run" }) as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(run);
+    });
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.run).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the button disabled while the first assemble is still running", () => {
@@ -633,6 +641,91 @@ describe("run straight after a program loads", () => {
     loadDsav(ref);
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("unknown mnemonic");
+  });
+});
+
+describe("run after an edit or a finish", () => {
+  // Run starts the program on screen from the top when the code, files or
+  // args changed since the last assemble, or the program finished, as a
+  // lesson's run does; assemble alone loads without running.
+  const EDITED = "        mov x0, 9\n";
+
+  async function assembled(hub: Hub) {
+    useEmulatorMock.mockReturnValue(hub);
+    mount(createRef<EmbeddablePlaygroundHandle>());
+    await fullChromeMounted();
+    // The run row's assemble (the first-run card has one of its own).
+    const assemble = screen
+      .getAllByRole("button", { name: "assemble" })
+      .find((b) => b.getAttribute("aria-keyshortcuts") === "F6")!;
+    await act(async () => {
+      fireEvent.click(assemble);
+    });
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    // Assemble alone loads without running.
+    expect(hub.run).not.toHaveBeenCalled();
+  }
+
+  async function clickRun() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "run" }));
+    });
+  }
+
+  it("assembles the edited code first, then runs it", async () => {
+    const hub = makeHub();
+    await assembled(hub);
+    act(() => editorProps.current!.onChange(EDITED));
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(hub.assemble).mock.calls[1][0]).toBe(EDITED);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("assembles first when only the arguments changed", async () => {
+    const hub = makeHub();
+    await assembled(hub);
+    fireEvent.change(argsBox(), { target: { value: "5 7" } });
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(hub.assemble).mock.calls[1][1]).toEqual(["5", "7"]);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries on an unchanged program without assembling again", async () => {
+    const hub = makeHub();
+    await assembled(hub);
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a finished program again from the top", async () => {
+    const hub = makeHub({ isHalted: true });
+    await assembled(hub);
+    const run = screen.getByRole("button", { name: "run" }) as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("launches a finished terminal program again in the terminal", async () => {
+    const hub = makeHub({ isHalted: true });
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    await fullChromeMounted();
+    act(() => {
+      ref.current!.loadProgram({ source: SOURCE, stem: "dsav", launch: "terminal", label: "dsav" });
+    });
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "term" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
   });
 });
 
