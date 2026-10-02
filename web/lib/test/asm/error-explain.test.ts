@@ -50,6 +50,16 @@ describe("explainError", () => {
     );
   });
 
+  it("reads past the line the run row puts in front of a message", () => {
+    const fault =
+      "memory fault: the program tried to read 0x0000000000000010, which no section covers";
+    expect(explainError(`line 19: ${fault}`)!.styleSection).toBe("addressing modes");
+    expect(explainError(`cube.s line 3: ${fault}`)!.styleSection).toBe("addressing modes");
+    expect(explainError("line 4: unknown mnemonic `mvo' -- `mvo w0,0'")!.fix).toBe(
+      "did you mean `mov` or `mvn`?",
+    );
+  });
+
   it("recognizes a \\x escape with no hex digits", () => {
     expect(explainError("incomplete \\xNN escape")).not.toBeNull();
   });
