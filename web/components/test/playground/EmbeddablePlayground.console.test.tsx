@@ -77,7 +77,7 @@ describe("embed console rendering", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({
         error:
-          "memory fault: the program tried to read 0x0000000800600008, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+          "memory fault: the program tried to read 0x0000000800600008, which no section covers. The base register (the first one inside the brackets, or a pointer passed to a call) does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or a `mov` was written where `ldr xN, =label` was meant",
       }),
     );
     const { container } = render(
