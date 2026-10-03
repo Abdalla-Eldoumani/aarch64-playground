@@ -46,6 +46,7 @@ export const DEBUG_CONTROLS: readonly DebugControl[] = [
     key: "F5",
     does: "assembles first when nothing is loaded, the program has finished, or the code, files or args changed, then runs until the program ends, waits for input, or reaches a breakpoint; pressed during a run, it pauses",
   },
+  { control: "breakpoint", command: "toggle-breakpoint", key: "F9", does: "sets or clears a breakpoint on the line the caret is on; run stops before that line" },
   { control: "step", command: "step", key: "F10", does: "runs one instruction; the highlighted line is the next one to run" },
   { control: "back", command: "step-back", key: "Shift+F10", does: "undoes the last step, registers and memory included" },
   { control: "reset", command: "reset", key: "Shift+F5", does: "starts the program over and keeps the breakpoints" },
