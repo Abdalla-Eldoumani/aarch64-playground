@@ -2,8 +2,9 @@ import type { JSX } from "react";
 
 /**
  * The reference page's register rail. Cyan: registers you pass values in;
- * amber: ones the callee must preserve; faded: ones to leave alone. The rows
- * are the content, so they live here rather than in a data module.
+ * amber: ones the callee must preserve; dashed: ones to leave alone. The
+ * tokens' hues differ by theme, so the caption names roles, never colours.
+ * The rows are the content, so they live here rather than in a data module.
  */
 
 type Tint = "cyan" | "neutral" | "muted" | "amber" | "amber-strong";
@@ -45,8 +46,9 @@ const TINT: Record<Tint, { row: string; range: string; note: string }> = {
     range: "text-[var(--text-primary)]",
     note: "text-[var(--text-tertiary)]",
   },
+  // A dashed edge marks it; fading the row put its note under 3:1.
   muted: {
-    row: "border-[var(--border)] opacity-60",
+    row: "border-dashed border-[var(--border-strong)]",
     range: "text-[var(--text-primary)]",
     note: "text-[var(--text-tertiary)]",
   },
@@ -101,8 +103,12 @@ export function AapcsRail({
         ))}
       </ul>
       <p className="mt-1 font-serif text-[13px] italic leading-relaxed text-[var(--text-secondary)]">
-        Amber = the callee must preserve it. Cyan = yours to pass and receive.
-        Each <span className="font-mono not-italic">x</span> row is one register
+        Colour marks the registers every function call depends on: one
+        colour for the argument rows and one for the callee-saved rows, where
+        the callee is the function being called. The callee must
+        preserve the callee-saved rows and the frame record, and the argument
+        rows are yours to pass and receive. Each{" "}
+        <span className="font-mono not-italic">x</span> row is one register
         with a <span className="font-mono not-italic">w</span> view of its low
         32 bits, and each <span className="font-mono not-italic">d</span> row is
         one register with an{" "}
