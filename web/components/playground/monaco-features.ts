@@ -1,7 +1,7 @@
 /**
  * Monaco's editor features, one loader each, in the order
  * monaco-editor/features/register.all imports them. The editor evaluates them
- * one task at a time (Editor.tsx says why). Keeping register.all's order means
+ * one task at a time (monaco-setup.ts says why). Keeping register.all's order means
  * the modules run exactly as that one import would run them, and its test
  * fails when a monaco upgrade changes the list.
  *
