@@ -25,8 +25,10 @@ const BASE =
   // sunken surface with a dashed edge: the shape, not only the colour, says
   // it is off, and the label keeps its 4.5:1 (7:1 in high contrast). An
   // outline, unlike a border, takes no room, so nothing shifts on toggle.
+  // The border goes clear so its solid line (white in high contrast) cannot
+  // fill the dash's gaps.
   "disabled:outline-dashed disabled:outline-1 disabled:-outline-offset-1 " +
-  "disabled:outline-[var(--border-strong)] " +
+  "disabled:outline-[var(--border-strong)] disabled:border-transparent " +
   "disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)]";
 
 // Hover mixes some label color into the fill rather than fading it with
