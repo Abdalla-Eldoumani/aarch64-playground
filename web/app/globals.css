@@ -42,7 +42,7 @@
   --crop:           #4A515C;
 
   /* Syntax colors for the read-only CodeBlock, matched per theme to the editor's
-     Monaco palette (web/components/Editor.tsx) so the editor and read-only code
+     Monaco palette (web/components/playground/monaco-setup.ts) so the editor and read-only code
      read the same. --syntax-comment is lifted from the editor's gray to clear
      WCAG AA on the code surface; --syntax-string reuses the literal (number) hue
      since the editor grammar has no string token. */
