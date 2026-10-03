@@ -3,14 +3,12 @@
 import type { ReactNode } from "react";
 import { DiagnosticBundle } from "@/components/playground/DiagnosticBundle";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
-import { REPO_URL } from "@/lib/content/site";
 import type { DiagnosticBundle as DiagnosticBundleData } from "@/lib/playground/diagnostic-bundle";
 
 export interface ToolbarProps {
   /** share and tools. */
   onShare: () => void;
   onTutorials: () => void;
-  onToggleTheme: () => void;
   /** Gathers the diagnostic snapshot when its dialog opens; kept in the parent
    *  so the toolbar holds no emulator-hub state. */
   buildDiagnostic: () => Promise<DiagnosticBundleData>;
@@ -53,7 +51,6 @@ function GroupLabel({ children }: { children: ReactNode }) {
 export function Toolbar({
   onShare,
   onTutorials,
-  onToggleTheme,
   buildDiagnostic,
   onOpenShortcuts,
   onWalkthrough,
@@ -87,23 +84,6 @@ export function Toolbar({
             walkthrough
           </button>
         )}
-        <button
-          type="button"
-          onClick={onToggleTheme}
-          aria-label="toggle theme"
-          className={`${CONTROL} ${INACTIVE}`}
-        >
-          theme
-        </button>
-        <a
-          href={REPO_URL}
-          target="_blank"
-          rel="noreferrer noopener"
-          aria-label="source on github"
-          className={`${CONTROL} ${INACTIVE}`}
-        >
-          source
-        </a>
         <button
           type="button"
           onClick={onOpenCommandPalette}
