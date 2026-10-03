@@ -1,7 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { evaluateWatch, type EvalContext } from "@/lib/emulator/watch-expr";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  evaluateWatch,
+  labelElementSize,
+  watchLabelName,
+  type ElementSize,
+  type EvalContext,
+} from "@/lib/emulator/watch-expr";
 import type { StackSlot } from "@/lib/emulator/frame-labels";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
@@ -35,7 +41,18 @@ export interface WatchPanelProps {
    *  async fetch is in flight. Defaults to "always mapped" so a mount
    *  without the surface still reads bytes. */
   getMemoryMapped?: (addr: number, len: number) => boolean | null;
-  labelAddresses?: Record<string, number>;
+  /** The editor's program text, read for a data label's element size. */
+  source?: string;
+  /** Data label lookup in the loaded program. Left out, `arr[i]` reads only
+   *  frame slots. */
+  resolveLabel?: (name: string) => Promise<number | null>;
+  /** Changes identity on every assemble or reset, so labels look up again. */
+  program?: unknown;
+}
+
+interface LabelInfo {
+  address: number | null;
+  size: ElementSize;
 }
 
 export function WatchPanel({
@@ -44,14 +61,54 @@ export function WatchPanel({
   frameSlots,
   getMemory,
   getMemoryMapped = () => true,
-  labelAddresses = {},
+  source = "",
+  resolveLabel,
+  program,
 }: WatchPanelProps) {
   const [watches, setWatches] = useState<string[]>(loadInitial);
   const [input, setInput] = useState("");
+  const [labels, setLabels] = useState<{
+    program: unknown;
+    names: string;
+    info: Map<string, LabelInfo>;
+  } | null>(null);
+  // The size is read from the text as it stood when the lookup ran, which
+  // follows each assemble: an edit made since then must not resize the
+  // loaded program's array.
+  const sourceRef = useRef(source);
 
   useEffect(() => {
     persist(watches);
   }, [watches]);
+
+  useEffect(() => {
+    sourceRef.current = source;
+  }, [source]);
+
+  const labelNames = useMemo(
+    () => [...new Set(watches.map(watchLabelName).filter((n) => n !== null))].join(" "),
+    [watches],
+  );
+
+  useEffect(() => {
+    if (!resolveLabel || labelNames === "") return;
+    let live = true;
+    const text = sourceRef.current;
+    void Promise.all(
+      labelNames.split(" ").map(async (name): Promise<[string, LabelInfo]> => {
+        const address = await resolveLabel(name).catch(() => null);
+        return [name, { address, size: labelElementSize(text, name) }];
+      }),
+    ).then((entries) => {
+      if (live) setLabels({ program, names: labelNames, info: new Map(entries) });
+    });
+    return () => {
+      live = false;
+    };
+  }, [resolveLabel, labelNames, program]);
+
+  const current =
+    labels !== null && labels.program === program && labels.names === labelNames ? labels : null;
 
   const ctx = useMemo<EvalContext>(
     () => ({
@@ -93,11 +150,15 @@ export function WatchPanel({
         return slot ? BigInt(slot.offset) : null;
       },
       resolveLabelAddress: (name) => {
-        const addr = labelAddresses[name];
+        if (!resolveLabel) return null;
+        if (!current) return "pending";
+        const addr = current.info.get(name)?.address;
         return addr != null ? BigInt(addr) : null;
       },
+      labelElementSize: (name) =>
+        current?.info.get(name)?.size ?? { error: "its label is not in the source" },
     }),
-    [registers, sp, frameSlots, getMemory, getMemoryMapped, labelAddresses],
+    [registers, sp, frameSlots, getMemory, getMemoryMapped, resolveLabel, current],
   );
 
   const submit = useCallback(() => {
