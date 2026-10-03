@@ -5,3 +5,12 @@
 declare module "monaco-editor/esm/vs/editor/editor.api" {
   export * from "monaco-editor/editor";
 }
+
+// Monaco's colour registry has no public API and ships no types. The editor
+// reads the id of every colour Monaco registers from it, and only that.
+declare module "monaco-editor/platform/registry/common/platform" {
+  export const Registry: { as(id: string): { getColors(): { id: string }[] } };
+}
+declare module "monaco-editor/platform/theme/common/colorUtils" {
+  export const Extensions: { ColorContribution: string };
+}
