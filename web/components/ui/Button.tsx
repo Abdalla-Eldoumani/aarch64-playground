@@ -20,7 +20,14 @@ const BASE =
   "inline-flex items-center justify-center gap-2 " +
   "px-4 min-h-[44px] font-sans text-[14px] font-medium transition-colors " +
   "focus:outline-none focus-visible:[box-shadow:var(--ring)] " +
-  "active:translate-y-px disabled:opacity-50 disabled:pointer-events-none";
+  "active:translate-y-px disabled:pointer-events-none " +
+  // A faded cyan fill still read as live, so disabled drops the fill for the
+  // sunken surface with a dashed edge: the shape, not only the colour, says
+  // it is off, and the label keeps its 4.5:1 (7:1 in high contrast). An
+  // outline, unlike a border, takes no room, so nothing shifts on toggle.
+  "disabled:outline-dashed disabled:outline-1 disabled:-outline-offset-1 " +
+  "disabled:outline-[var(--border-strong)] " +
+  "disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)]";
 
 // Hover mixes some label color into the fill rather than fading it with
 // opacity, so the label gains contrast in all three themes from one rule.
