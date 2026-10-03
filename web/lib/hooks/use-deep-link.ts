@@ -6,6 +6,7 @@ import type {
 } from "@/lib/playground/diagnostic-bundle";
 import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import type { Theme } from "@/lib/hooks/use-theme";
+import { isThemeId } from "@/lib/theme/themes";
 
 export interface DeepLink {
   example?: string;
@@ -45,9 +46,7 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
   if (example && /^[\w.-]+$/.test(example)) result.example = example;
 
   const theme = params.get("theme");
-  if (theme === "dark" || theme === "light" || theme === "high-contrast") {
-    result.theme = theme;
-  }
+  if (isThemeId(theme)) result.theme = theme;
 
   // Drop unknown values the way theme does: a typo falls back to the
   // example's own default instead of guessing at a surface.
