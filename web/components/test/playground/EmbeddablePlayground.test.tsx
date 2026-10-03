@@ -646,6 +646,26 @@ describe("EmbeddablePlayground", () => {
     );
   });
 
+  it("embed Run pressed again while its assemble is in flight assembles and seeds once", async () => {
+    // A second assemble would reset the machine after the first one's seeds
+    // were queued, and both seeds would then land: the input arrives twice.
+    const hub: Hub = makeHub({ instructions: [] });
+    let finish: (ok: boolean) => void = () => {};
+    hub.assemble = vi.fn(() => new Promise<boolean>((resolve) => (finish = resolve)));
+    useEmulatorMock.mockReturnValue(hub);
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" startStdin={"5\n"} />,
+    );
+    engage(container);
+    (hub.pushStdin as ReturnType<typeof vi.fn>).mockClear();
+    fireEvent.click(screen.getByLabelText("run"));
+    fireEvent.click(screen.getByLabelText("run"));
+    await act(async () => finish(true));
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.pushStdin).toHaveBeenCalledTimes(1);
+  });
+
   it("embed Run skips execution when the assemble fails", async () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(false);
