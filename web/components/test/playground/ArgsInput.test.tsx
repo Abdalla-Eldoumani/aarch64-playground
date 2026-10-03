@@ -23,9 +23,18 @@ function Harness({ source, initial = "" }: { source: string; initial?: string })
 describe("ArgsInput", () => {
   it("calls onChange when the user types", () => {
     render(<Harness source="// prog" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "hello world" } });
     expect(input.value).toBe("hello world");
+  });
+
+  // A voice user says the word on screen, so the box's name must hold it.
+  it("keeps the visible word args in its accessible name", () => {
+    render(<Harness source="// prog" />);
+    const input = screen.getByRole("textbox");
+    const word = input.closest("label")!.querySelector("span")!.textContent!;
+    expect(word).toBe("args");
+    expect(input.getAttribute("aria-label")).toContain(word);
   });
 
   // On a phone the word "args" was hidden, and a "12 25" placeholder read as
@@ -33,7 +42,7 @@ describe("ArgsInput", () => {
   // shows nothing while it is empty.
   it("names itself at every width and shows no sample value when empty", () => {
     render(<Harness source="// prog" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     const word = screen.getByText("args");
     expect(word.className.split(/\s+/)).not.toContain("hidden");
     expect(word.closest("label")).toBe(input.closest("label"));
@@ -43,7 +52,7 @@ describe("ArgsInput", () => {
 
   it("accepts an args value exactly at the cap", () => {
     render(<Harness source="// prog" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     const atCap = "x".repeat(MAX_ARGS_CHARS);
     fireEvent.change(input, { target: { value: atCap } });
     expect(input.value).toBe(atCap);
@@ -52,7 +61,7 @@ describe("ArgsInput", () => {
   it("rejects an over-cap args value and keeps the previous value", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(<Harness source="// prog" initial="ok" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "x".repeat(MAX_ARGS_CHARS + 1) } });
     // The over-cap input is not propagated, so the controlled value reverts.
     expect(input.value).toBe("ok");
@@ -63,7 +72,7 @@ describe("ArgsInput", () => {
   it("persists per-program in localStorage after a debounce", () => {
     vi.useFakeTimers();
     render(<Harness source="// prog A" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "abc" } });
     act(() => {
       vi.advanceTimersByTime(300);
@@ -79,14 +88,14 @@ describe("ArgsInput", () => {
       "saved value",
     );
     render(<Harness source="// prog X" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     expect(input.value).toBe("saved value");
   });
 
   it("clears the saved entry when the user empties the input", () => {
     vi.useFakeTimers();
     render(<Harness source="// prog Y" initial="something" />);
-    const input = screen.getByLabelText("command-line arguments") as HTMLInputElement;
+    const input = screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
     act(() => {
       vi.advanceTimersByTime(300);
     });
