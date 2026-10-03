@@ -209,8 +209,9 @@ describe("error guidance for the messages the emulator really sends", () => {
   });
 
   it("explains the escapes the lexer rejects", () => {
-    expect(explained(withBody("", 'msg:    .string "C:\\dir"\n')).fix.toLowerCase()).toContain("backslash");
-    explained(withBody("", 'msg:    .string "abc\\\n'));
+    // GNU as keeps an unknown letter after a backslash, so "C:\dir" assembles;
+    // a backslash that ends a string's line is still refused.
+    expect(explained(withBody("", 'msg:    .string "abc\\\n')).fix.toLowerCase()).toContain("backslash");
   });
 
   it("explains a backslash with nothing after it, and names the one-letter define trap", () => {
