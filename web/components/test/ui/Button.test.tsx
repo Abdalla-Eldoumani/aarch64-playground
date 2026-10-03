@@ -19,6 +19,16 @@ describe("Button", () => {
     expect(button.disabled).toBe(true);
   });
 
+  it("draws its disabled state off the cyan fill instead of fading it", () => {
+    // Half-faded cyan read as live; disabled trades the fill for the sunken
+    // surface and the dim label (the browser pass checks the paint).
+    render(<Button disabled>off</Button>);
+    const cls = screen.getByRole("button", { name: "off" }).className;
+    expect(cls).toContain("disabled:bg-[var(--bg-sunken)]");
+    expect(cls).toContain("disabled:text-[var(--text-tertiary)]");
+    expect(cls).not.toContain("opacity-50");
+  });
+
   it("fires onClick when pressed", () => {
     const onClick = vi.fn();
     render(<Button onClick={onClick}>go</Button>);
