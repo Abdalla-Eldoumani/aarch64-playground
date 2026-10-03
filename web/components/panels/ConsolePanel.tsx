@@ -308,12 +308,12 @@ export function ConsolePanel({
           autoCorrect="off"
           autoCapitalize="off"
           aria-label="Standard input"
-          className="touch-target min-w-0 flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="touch-target min-w-0 flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:cursor-not-allowed"
         />
         <button
           type="submit"
           disabled={ownedByTerminal}
-          className="touch-target px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="touch-target px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed"
         >
           send
         </button>
