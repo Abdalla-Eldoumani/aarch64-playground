@@ -12,7 +12,7 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 const BASE =
   "block w-full rounded-[var(--radius-action)] px-3 min-h-[44px] text-[14px] " +
-  "bg-[var(--bg-raised)] border border-[var(--border)] text-[var(--text-primary)] " +
+  "bg-[var(--bg-raised)] border border-[var(--border-control)] text-[var(--text-primary)] " +
   "placeholder:text-[var(--text-tertiary)] " +
   "focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:border-[var(--focus)]";
 
