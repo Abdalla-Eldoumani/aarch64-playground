@@ -6,7 +6,7 @@ import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 /**
  * The error boundary for the root layout itself. It replaces the whole
  * document, so the stylesheet, font variables and theme may all be missing:
- * the colors below restate the dark tokens from app/globals.css and must move
+ * the colors below restate the dark tokens from lib/theme/tokens.ts and must move
  * with them, and the fonts fall back to generic stacks.
  */
 
