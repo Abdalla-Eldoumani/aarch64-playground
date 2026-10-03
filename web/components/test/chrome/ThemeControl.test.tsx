@@ -12,12 +12,12 @@ beforeEach(() => {
 });
 
 describe("ThemeControl", () => {
-  it("renders exactly three theme options with full accessible names", () => {
+  it("renders one option per theme with full accessible names", () => {
     render(<ThemeControl />);
-    expect(screen.getByRole("button", { name: "dark theme" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "light theme" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "high-contrast theme" })).toBeTruthy();
-    expect(screen.getAllByRole("button")).toHaveLength(3);
+    for (const id of ["dark", "light", "high-contrast", "ember", "forest", "paper"]) {
+      expect(screen.getByRole("button", { name: `${id} theme` })).toBeTruthy();
+    }
+    expect(screen.getAllByRole("button")).toHaveLength(6);
   });
 
   it("marks exactly one option active with aria-pressed (the default)", () => {
@@ -35,7 +35,7 @@ describe("ThemeControl", () => {
     const html = renderToStaticMarkup(<ThemeControl />);
     expect(html).toContain('aria-label="dark theme"');
     expect(html).not.toContain('aria-pressed="true"');
-    expect(html.match(/aria-pressed="false"/g)).toHaveLength(3);
+    expect(html.match(/aria-pressed="false"/g)).toHaveLength(6);
   });
 
   it("hydrates that HTML with nothing logged, then presses the resolved theme", async () => {
