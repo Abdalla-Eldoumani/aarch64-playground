@@ -19,8 +19,8 @@ steps in [Run it locally](#run-it-locally).
 - Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
   on files kept in the browser.
 - Read 32 lessons, each with programs you can run in place. Every lesson ends
-  with buttons to the previous and next lessons, and most first link the
-  exercises that practice them.
+  with buttons to the previous and next lessons, and first links the
+  exercises that practice it.
 - Practice with 68 coding exercises, checked by running your program on hidden
   inputs, and 68 sets of quizzes, fill-in-the-blank questions, and output
   predictions.
