@@ -583,8 +583,9 @@ body:has(> .playground-shell) {
 
 /* Monaco fades a disabled toggle in its find box (find in selection) to 40%,
    which put the icon under 3:1 on the light themes. It takes the theme's
-   disabled ink at full strength instead, which the theme tests hold to 3:1. */
+   disabled ink at full strength instead, which the theme tests hold to 3:1;
+   !important because Monaco writes an inline colour on every toggle. */
 .monaco-editor .find-widget .monaco-custom-toggle.disabled {
   opacity: 1;
-  color: var(--vscode-disabledForeground);
+  color: var(--vscode-disabledForeground) !important;
 }
