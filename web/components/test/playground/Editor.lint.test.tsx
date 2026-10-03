@@ -26,6 +26,7 @@ const fake = vi.hoisted(() => {
     // does while its loader resolves.
     holdMount: false,
     mount: null as null | (() => void),
+    definedThemes: [] as string[],
   };
   const model = { getLineCount: () => 3, getLineMaxColumn: () => 12 };
   const editor = {
@@ -55,7 +56,7 @@ const fake = vi.hoisted(() => {
       },
     },
     editor: {
-      defineTheme: vi.fn(),
+      defineTheme: (name: string) => void state.definedThemes.push(name),
       setTheme: vi.fn(),
       setModelMarkers: vi.fn(),
       MouseTargetType: { GUTTER_GLYPH_MARGIN: 2 },
@@ -77,6 +78,13 @@ vi.mock("@/lib/asm/c-equivalents", async (importOriginal) => {
 
 vi.mock("@/components/playground/monaco-features", () => ({ MONACO_FEATURES: [] }));
 vi.mock("monaco-editor/editor", () => fake.monaco);
+// Two colour ids stand in for Monaco's registry, so the real editor never loads.
+vi.mock("monaco-editor/platform/registry/common/platform", () => ({
+  Registry: { as: () => ({ getColors: () => [{ id: "editor.background" }, { id: "focusBorder" }] }) },
+}));
+vi.mock("monaco-editor/platform/theme/common/colorUtils", () => ({
+  Extensions: { ColorContribution: "base.contributions.colors" },
+}));
 vi.mock("@monaco-editor/react", () => ({
   loader: { config: vi.fn() },
   default: function MonacoStub({
@@ -170,9 +178,35 @@ describe("Editor theme", () => {
     render(<Editor {...base} />);
     await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-light"));
     document.documentElement.setAttribute("data-theme", "high-contrast");
-    await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-hc"));
-    document.documentElement.setAttribute("data-theme", "dark");
+    await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-high-contrast"));
+    document.documentElement.setAttribute("data-theme", "ember");
+    await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-ember"));
+    // A value that is no theme paints the page dark, so the editor goes dark too.
+    document.documentElement.setAttribute("data-theme", "neon");
     await waitFor(() => expect(fake.monaco.editor.setTheme).toHaveBeenLastCalledWith("arm64-dark"));
+  });
+
+  it("registers one editor theme per site theme", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    render(<Editor {...base} />);
+    await waitFor(() => expect(fake.state.definedThemes).toHaveLength(6));
+    expect(fake.state.definedThemes).toEqual([
+      "arm64-dark",
+      "arm64-light",
+      "arm64-high-contrast",
+      "arm64-ember",
+      "arm64-forest",
+      "arm64-paper",
+    ]);
+  });
+
+  // While this key is on, Monaco re-checks forced colours at every options
+  // update and can trade the high-contrast theme for its own stock one.
+  it("keeps Monaco from swapping the site's theme for its own", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    render(<Editor {...base} />);
+    await waitFor(() => expect(fake.options).not.toBeNull());
+    expect(fake.options?.autoDetectHighContrast).toBe(false);
   });
 });
 
