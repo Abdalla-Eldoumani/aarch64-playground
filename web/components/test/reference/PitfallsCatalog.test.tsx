@@ -139,6 +139,14 @@ describe("PitfallsCatalog", { timeout: 15_000 }, () => {
     ]);
   });
 
+  it("finds a card from its words in any order, as the other filters do", () => {
+    renderCatalog();
+    const { title } = bySlug("csinc-adds-one-when-false");
+    const backwards = title.split(" ").reverse().join(" ");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: backwards } });
+    expect(shownTitles()).toContain(title);
+  });
+
   it("narrows the list by group, and two groups show both", () => {
     renderCatalog();
     const flags = screen.getByRole("button", { name: "Flags" });
