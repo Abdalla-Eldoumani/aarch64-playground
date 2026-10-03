@@ -105,5 +105,11 @@ describe("theme token contrast", () => {
         }
       }
     });
+
+    it(`${theme}: a disabled button's label keeps 4.5:1 on its sunken fill, 7:1 in high-contrast`, () => {
+      // Button paints disabled as text-tertiary on bg-sunken.
+      const bar = theme === "high-contrast" ? 7 : 4.5;
+      expect(contrast(t["text-tertiary"], t["bg-sunken"])).toBeGreaterThanOrEqual(bar);
+    });
   }
 });
