@@ -9,16 +9,23 @@ import { errorHoverMarkdown, explainError } from "@/lib/asm/error-explain";
 describe("explainError", () => {
   it("recognizes memory faults and distinguishes read from write", () => {
     const r = explainError(
-      "memory fault: the program tried to read 0x0000000000000010, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+      "memory fault: the program tried to read 0x0000000000000010, which no section covers. The base register (the first one inside the brackets, or a pointer passed to a call) does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or a `mov` was written where `ldr xN, =label` was meant",
     );
     const w = explainError(
-      "memory fault: the program tried to write 0x00000000ffff0000, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+      "memory fault: the program tried to write 0x00000000ffff0000, which no section covers. The base register (the first one inside the brackets, or a pointer passed to a call) does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or a `mov` was written where `ldr xN, =label` was meant",
     );
     expect(r).not.toBeNull();
     expect(w).not.toBeNull();
     expect(r!.what.toLowerCase()).toContain("read");
     expect(w!.what.toLowerCase()).toContain("write");
     expect(r!.styleSection).toBe("addressing modes");
+    // `ldr x19, arr` loads the first element, not its address: a cause as
+    // common as the mov slip, so both hints name it.
+    expect(r!.why).toContain("`ldr xN, label` written without its `=`");
+    const page = explainError(
+      "stopped: tried to read address 0x10, which is not part of any program section (the servers kill this with a segmentation fault)",
+    );
+    expect(page!.why).toContain("an `ldr xN, label` missing its `=`");
   });
 
   it("offers every supported mnemonic one edit away, whatever the case", () => {
