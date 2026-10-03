@@ -135,6 +135,9 @@ export function useDebugPanes({
         frameSlots={frameSlots}
         getMemory={emu.getMemory}
         getMemoryMapped={emu.getMemoryMapped}
+        source={source}
+        resolveLabel={emu.resolveLabel}
+        program={emu.instructions}
       />
     </ErrorBoundary>
   );
