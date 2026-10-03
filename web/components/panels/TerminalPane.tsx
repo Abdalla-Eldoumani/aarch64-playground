@@ -12,83 +12,13 @@ import {
   type TerminalProgramIO,
 } from "@/lib/terminal/dispatch";
 import { TerminalInputState, splitPasteLines } from "@/lib/terminal/input-state";
+import { isThemeId } from "@/lib/theme/themes";
+import { xtermTheme } from "@/lib/theme/editor-themes";
 
-// xterm takes literal hex only, so these restate token values from
-// app/globals.css per theme: the terminal sits on --bg-base, the caret is
-// the amber block cursor (the machine's color), and the ANSI ramp lands on
-// the v2 syntax and status hues. Keep in step with the tokens when one moves.
-const XTERM_THEMES: Record<string, ITheme> = {
-  dark: {
-    background: "#0B0C10",
-    foreground: "#EDEEF1",
-    cursor: "#FFB224",
-    selectionBackground: "#3EC5E84D",
-    black: "#262B33",
-    red: "#FF6B6B",
-    green: "#4ADE80",
-    yellow: "#FFB224",
-    blue: "#6FA8FF",
-    magenta: "#FF7EB6",
-    cyan: "#3EC5E8",
-    white: "#A5ACB6",
-    brightBlack: "#3A414C",
-    brightRed: "#FF8A8A",
-    brightGreen: "#7CE9A3",
-    brightYellow: "#FFCB5E",
-    brightBlue: "#9BC1FF",
-    brightMagenta: "#FFA3CB",
-    brightCyan: "#7CD7F0",
-    brightWhite: "#EDEEF1",
-  },
-  light: {
-    background: "#FFFFFF",
-    foreground: "#14161A",
-    cursor: "#A86A0F",
-    selectionBackground: "#0E749033",
-    black: "#14161A",
-    red: "#C2362F",
-    green: "#1F8A3B",
-    yellow: "#A86A0F",
-    blue: "#1D4ED8",
-    magenta: "#BE185D",
-    cyan: "#0E7490",
-    white: "#C9CED6",
-    brightBlack: "#565E68",
-    brightRed: "#E05252",
-    brightGreen: "#2FA653",
-    brightYellow: "#C4841D",
-    brightBlue: "#4C6FE8",
-    brightMagenta: "#D64583",
-    brightCyan: "#22A3C4",
-    brightWhite: "#F4F5F7",
-  },
-  "high-contrast": {
-    background: "#000000",
-    foreground: "#FFFFFF",
-    cursor: "#FFC247",
-    selectionBackground: "#5AD7F066",
-    black: "#444444",
-    red: "#FF8585",
-    green: "#5CF06B",
-    yellow: "#FFC247",
-    blue: "#8BE0FF",
-    magenta: "#FFB6E6",
-    cyan: "#5AD7F0",
-    white: "#E6E6E6",
-    brightBlack: "#777777",
-    brightRed: "#FFA3A3",
-    brightGreen: "#8AF598",
-    brightYellow: "#FFD480",
-    brightBlue: "#B3EBFF",
-    brightMagenta: "#FFCCEE",
-    brightCyan: "#9AE6F7",
-    brightWhite: "#FFFFFF",
-  },
-};
-
+// With no known data-theme the page paints dark, so the terminal does too.
 function currentXtermTheme(): ITheme {
-  const t = document.documentElement.getAttribute("data-theme") ?? "dark";
-  return XTERM_THEMES[t] ?? XTERM_THEMES.dark;
+  const t = document.documentElement.getAttribute("data-theme");
+  return xtermTheme(isThemeId(t) ? t : "dark");
 }
 
 // xterm sizes its cells on a canvas, which cannot read a CSS variable: given
