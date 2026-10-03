@@ -182,9 +182,9 @@ describe("the descriptions that carry the reason", () => {
 
   it("describes what the theme, share, and reset rows really do", () => {
     const actions = buildPaletteCommands(makeDeps());
-    // Three themes, not two.
+    // Every theme in the lineup, not just two.
     expect(row(actions, "toggle-theme").description).toBe(
-      "cycle through dark, light, and high contrast",
+      "cycle through the six colour themes",
     );
     // The row opens the dialog; it copies nothing by itself.
     expect(row(actions, "share").description).toBe(
