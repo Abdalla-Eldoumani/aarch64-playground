@@ -708,23 +708,26 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 
-  it("disables the full playground's run, step, and back until a program is loaded", async () => {
-    // The real Controls renders in full chrome; run/step/back must follow
+  it("disables the full playground's step and back until a program is loaded, and keeps run live", async () => {
+    // The real Controls renders in full chrome; step and back must follow
     // programLoaded even when the step-back history says stepping back is
-    // possible (an old canStepBack cannot outvote a missing program).
+    // possible (an old canStepBack cannot outvote a missing program). Run
+    // assembles first, so it stays live with nothing loaded.
     useEmulatorMock.mockReturnValue(
       makeHub({ programLoaded: false, canStepBack: true }),
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
     await fullChromeMounted();
-    for (const name of [/^run/, /^step/, /^back/]) {
+    for (const name of [/^step/, /^back/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(true);
     }
-    expect(
-      screen.getByRole("button", { name: /^assemble/ }).hasAttribute("disabled"),
-    ).toBe(false);
+    for (const name of [/^run/, /^assemble/]) {
+      expect(
+        screen.getByRole("button", { name }).hasAttribute("disabled"),
+      ).toBe(false);
+    }
     unmount();
 
     useEmulatorMock.mockReturnValue(
