@@ -28,7 +28,6 @@ function band(short: boolean) {
       runMode={null}
       onShare={vi.fn()}
       onTutorials={vi.fn()}
-      onToggleTheme={vi.fn()}
       buildDiagnostic={vi.fn(async () => ({ source: "" }))}
       onOpenCommandPalette={vi.fn()}
       onOpenShortcuts={vi.fn()}
