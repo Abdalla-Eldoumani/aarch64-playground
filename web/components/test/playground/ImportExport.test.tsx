@@ -52,16 +52,30 @@ function setup(source = "mov x0, 1\nsvc 0\n") {
 }
 
 describe("ImportExport import path", () => {
-  it("routes a valid imported file body to the active target", async () => {
-    const { onImport, fileInput } = setup();
+  it("hands a single picked file to onImportMany with its name", async () => {
+    const { onImport, onImportMany, fileInput } = setup();
     const body = "mov x0, 7\nsvc 0\n";
-    const file = new File([body], "main.s", { type: "text/plain" });
+    const file = new File([body], "cube.s", { type: "text/plain" });
 
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
-    expect(onImport).toHaveBeenCalledWith(TARGET, body);
+    await waitFor(() => expect(onImportMany).toHaveBeenCalledTimes(1));
+    expect(onImportMany).toHaveBeenCalledWith([{ name: "cube.s", body }]);
+    expect(onImport).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("routes a single file's body to the active target when the host takes no names", async () => {
+    const onImport = vi.fn();
+    const { container } = render(
+      <ImportExport source="" onImport={onImport} target={TARGET} />,
+    );
+    const body = "mov x0, 7\nsvc 0\n";
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [new File([body], "main.s", { type: "text/plain" })] },
+    });
+
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(TARGET, body));
   });
 
   it("hands a multi-select pick to onImportMany with names and bodies", async () => {
