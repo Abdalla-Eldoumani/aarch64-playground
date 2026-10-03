@@ -21,4 +21,14 @@ describe("Callout", () => {
     render(<Callout type="pitfall">careful</Callout>);
     expect(screen.getByText("pitfall")).toBeTruthy();
   });
+
+  it("takes a label of its own in place of the variant's", () => {
+    render(
+      <Callout type="note" label="answers">
+        seven
+      </Callout>,
+    );
+    expect(screen.getByText("answers")).toBeTruthy();
+    expect(screen.queryByText("note")).toBeNull();
+  });
 });
