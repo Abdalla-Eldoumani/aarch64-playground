@@ -50,6 +50,6 @@ describe("PlaygroundHeaderBand", () => {
     expect(screen.getByRole("button", { name: "open navigation" })).toBeTruthy();
     expect(screen.queryByRole("group", { name: "share and tools" })).toBeNull();
     // The program controls stay in the band.
-    expect(screen.getByRole("textbox", { name: "command-line arguments" })).toBeTruthy();
+    expect(screen.getByRole("textbox", { name: "args (command-line arguments)" })).toBeTruthy();
   });
 });
