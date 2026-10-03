@@ -445,7 +445,7 @@ describe("launchInteractive: assemble, then run in the terminal, in one action",
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
     expect(ref.current!.getCommands().find((a) => a.id === "run")!.description).toBe(
-      "run until halt or breakpoint",
+      "run until halt or breakpoint, assembling first if the code changed or the program ended",
     );
 
     fireEvent.click(screen.getByLabelText("run in the terminal"));
