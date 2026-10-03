@@ -222,7 +222,9 @@ export function TouchEditor({
                 ? "text-[var(--danger)]"
                 : isCurrent
                   ? currentLineInCall
-                    ? "text-[var(--amber)] opacity-70"
+                    ? // The call site: regular weight beside the dashed rule;
+                      // a fade took the amber number under 4.5:1.
+                      "text-[var(--amber)]"
                     : "text-[var(--amber)] font-bold"
                   : "text-[var(--text-secondary)]";
             return (
@@ -279,7 +281,7 @@ export function TouchEditor({
           ref={taRef}
           // The glyphs are transparent so the coloured layer shows through;
           // the caret keeps the amber of Monaco's block cursor.
-          className={`absolute inset-0 h-full w-full resize-none bg-transparent text-transparent [-webkit-text-fill-color:transparent] [caret-color:var(--amber)] selection:bg-[color-mix(in_srgb,var(--cyan)_30%,transparent)] focus:outline-none ${TEXT_METRICS}`}
+          className={`absolute inset-0 h-full w-full resize-none bg-transparent text-transparent [-webkit-text-fill-color:transparent] [caret-color:var(--amber)] selection:bg-[var(--selection)] focus:outline-none ${TEXT_METRICS}`}
           style={{
             WebkitAppearance: "none",
             paddingTop: `${PAD_Y}px`,
