@@ -10,6 +10,7 @@ import {
   type Pitfall,
   type PitfallGroup,
 } from "@/lib/content/pitfall-data";
+import { matchesAllWords } from "@/lib/content/search-words";
 import { pitfallFragment } from "@/lib/content/site";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
 
@@ -62,11 +63,10 @@ export function PitfallsCatalog({
   const fragment = useHashFragment();
 
   const sections = useMemo(() => {
-    const words = query.trim().toLowerCase();
     const shown = PITFALLS.filter(
       (pitfall) =>
         (groups.size === 0 || groups.has(pitfall.group)) &&
-        (words === "" || (SEARCH_TEXT.get(pitfall) ?? "").includes(words)),
+        matchesAllWords(query, SEARCH_TEXT.get(pitfall) ?? ""),
     );
     return PITFALL_GROUPS.map((group) => ({
       group,
