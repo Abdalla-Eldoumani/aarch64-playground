@@ -54,7 +54,7 @@ const SHARE = "flex-1 min-w-[3.5rem] sm:flex-none";
 
 // One secondary-control string for step, back, and reset.
 const SECONDARY =
-  `${SHARE} min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
+  `${SHARE} min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
 
 /**
  * The embedded frame: code, registers, console, and a few controls. The
@@ -165,7 +165,7 @@ export function EmbedLayout({
               onClick={onRun}
               disabled={isRunning}
               aria-label="run"
-              className={`${SHARE} min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`}
+              className={`${SHARE} min-h-[44px] px-4 rounded bg-[var(--cyan)] text-[var(--bg-base)] text-sm font-medium disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`}
             >
               run
             </button>
