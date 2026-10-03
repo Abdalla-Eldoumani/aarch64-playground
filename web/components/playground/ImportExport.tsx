@@ -36,9 +36,9 @@ export interface ImportExportProps {
 }
 
 /**
- * Import and export in the header. One imported file goes to the tab being
- * edited, so it never overwrites a buffer the student is not looking at;
- * several files, or one workspace `.json`, go to the parent as named files.
+ * Import and export in the header. Picked files, or one workspace `.json`,
+ * go to the parent as named files; a host without `onImportMany` gets one
+ * file's body for the tab being edited.
  */
 export function ImportExport({
   source,
@@ -151,11 +151,10 @@ export function ImportExport({
               return;
             }
           }
-          if (files.length === 1 || !onImportMany) {
-            onImport(target, files[0].body);
-          } else {
-            onImportMany(files);
-          }
+          // One file goes by name too, so cube.s lands as its own tab
+          // instead of over the code on screen.
+          if (onImportMany) onImportMany(files);
+          else onImport(target, files[0].body);
         })
         .catch(() => {
           // A moved or unreadable file rejects file.text(); without it the
