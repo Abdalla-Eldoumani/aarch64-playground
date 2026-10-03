@@ -403,26 +403,26 @@ describe("replacing the code in a helper tab", () => {
     return mounted;
   }
 
-  it("asks before an import writes over different code in the open helper tab", async () => {
+  it("asks before one imported file writes over different code in its own helper tab", async () => {
     const { ref } = await mountWithHelper();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    pick(new File(["// imported\nret\n"], "other.s", { type: "text/plain" }));
+    pick(new File(["// imported\nret\n"], "helper.s", { type: "text/plain" }));
 
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("helper.s"));
     expect(ref.current!.getFiles()).toEqual([{ name: "helper.s", body: HELPER }]);
 
     confirm.mockReturnValue(true);
-    pick(new File(["// imported\nret\n"], "other.s", { type: "text/plain" }));
+    pick(new File(["// imported\nret\n"], "helper.s", { type: "text/plain" }));
     await waitFor(() =>
       expect(ref.current!.getFiles()).toEqual([{ name: "helper.s", body: "// imported\nret\n" }]),
     );
   });
 
-  it("fills a blank helper tab without asking", async () => {
+  it("fills a blank helper tab of the same name without asking", async () => {
     const { ref } = await mountWithHelper("   \n");
     const confirm = vi.spyOn(window, "confirm");
-    pick(new File(["// imported\nret\n"], "other.s", { type: "text/plain" }));
+    pick(new File(["// imported\nret\n"], "helper.s", { type: "text/plain" }));
 
     await waitFor(() =>
       expect(ref.current!.getFiles()).toEqual([{ name: "helper.s", body: "// imported\nret\n" }]),
@@ -440,10 +440,29 @@ describe("replacing the code in a helper tab", () => {
     );
 
     await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
-    expect(confirm).toHaveBeenCalledWith(
-      "Import 2 files? It replaces the code in helper.s, including your edits.",
-    );
+    // helper.s still holds what the load put there, so nothing of the
+    // student's is lost and the question does not claim otherwise.
+    expect(confirm).toHaveBeenCalledWith("Import 2 files? It replaces the code in helper.s.");
     expect(ref.current!.getFiles()).toEqual([{ name: "helper.s", body: HELPER }]);
+  });
+
+  it("names the student's edits only when a replaced buffer holds some", async () => {
+    const { ref } = await mountWithHelper();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    pick(new File(["// imported\nret\n"], "main.s", { type: "text/plain" }));
+    await waitFor(() =>
+      expect(confirm).toHaveBeenCalledWith("Import main.s? It replaces the code in main.asm."),
+    );
+
+    act(() => {
+      ref.current!.loadSource("// my edits\nret\n");
+    });
+    pick(new File(["// imported\nret\n"], "main.s", { type: "text/plain" }));
+    await waitFor(() =>
+      expect(confirm).toHaveBeenLastCalledWith(
+        "Import main.s? It replaces the code in main.asm, including your edits.",
+      ),
+    );
   });
 
   it("adds new tabs and keeps an identical helper without asking", async () => {
