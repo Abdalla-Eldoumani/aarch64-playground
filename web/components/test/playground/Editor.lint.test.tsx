@@ -6,7 +6,7 @@
 // and when the hover card fetches its C line.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useEffect, useRef } from "react";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { Editor } from "@/components/playground/Editor";
 
 type HoverProvider = {
@@ -19,7 +19,14 @@ type HoverProvider = {
 const fake = vi.hoisted(() => {
   // Plain fields rather than mock call history, which vitest clears before
   // each test while the providers register once per module.
-  const state = { hover: null as HoverProvider | null, cTableLoaded: false };
+  const state = {
+    hover: null as HoverProvider | null,
+    cTableLoaded: false,
+    // Set, the stand-in waits to mount until a test calls `mount`, as Monaco
+    // does while its loader resolves.
+    holdMount: false,
+    mount: null as null | (() => void),
+  };
   const model = { getLineCount: () => 3, getLineMaxColumn: () => 12 };
   const editor = {
     getModel: () => model,
@@ -30,9 +37,12 @@ const fake = vi.hoisted(() => {
     createContextKey: () => ({ set: vi.fn() }),
     onMouseDown: vi.fn(),
     onDidDispose: vi.fn(),
-    deltaDecorations: () => [],
+    deltaDecorations: vi.fn((_old: string[], _next: { options: { className?: string } }[]) => [] as string[]),
     layout: vi.fn(),
     revealLine: vi.fn(),
+    revealLineInCenter: vi.fn(),
+    setPosition: vi.fn(),
+    focus: vi.fn(),
   };
   const monaco = {
     languages: {
@@ -79,7 +89,11 @@ vi.mock("@monaco-editor/react", () => ({
     fake.options = options;
     // The real component keeps the first onMount and calls it once.
     const firstOnMount = useRef(onMount);
-    useEffect(() => firstOnMount.current(fake.editor, fake.monaco), []);
+    useEffect(() => {
+      const mount = () => firstOnMount.current(fake.editor, fake.monaco);
+      if (fake.state.holdMount) fake.state.mount = mount;
+      else mount();
+    }, []);
     return null;
   },
 }));
@@ -184,6 +198,43 @@ describe("Editor hover card", () => {
     const text = card!.contents[0].value;
     expect(text.startsWith("**b**")).toBe(true);
     expect(text).toContain("**c equivalent:** `goto label;`");
+  });
+});
+
+describe("Editor before Monaco has loaded", () => {
+  afterEach(() => {
+    cleanup();
+    fake.state.holdMount = false;
+    fake.state.mount = null;
+  });
+
+  // A run started before the editor loaded (a pitfall's auto-run, a lesson's
+  // first press) reported its error, but the failing line was never marked
+  // or brought into view.
+  it("marks and jumps to an error that arrived while Monaco was loading", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    fake.state.holdMount = true;
+    const { rerender } = render(<Editor {...base} />);
+    await waitFor(() => expect(fake.state.mount).not.toBeNull());
+    const error = [{ line: 2, message: "expected a register here" }];
+    rerender(<Editor {...base} assemblyErrors={error} focusRequest={{ line: 2, nonce: 1 }} />);
+    expect(fake.editor.revealLineInCenter).not.toHaveBeenCalled();
+
+    act(() => fake.state.mount!());
+    expect(fake.editor.revealLineInCenter).toHaveBeenCalledWith(2);
+    expect(fake.editor.setPosition).toHaveBeenCalledWith({ lineNumber: 2, column: 1 });
+    expect(fake.editor.focus).toHaveBeenCalledTimes(1);
+    const painted = fake.editor.deltaDecorations.mock.calls.at(-1)![1];
+    expect(painted.filter((d) => d.options.className === "error-line-highlight")).toHaveLength(1);
+  });
+
+  // The touch editor's rule: a remount never steals the focus.
+  it("does not replay a jump that was already there when the editor mounted", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    render(<Editor {...base} focusRequest={{ line: 2, nonce: 7 }} />);
+    await waitFor(() => expect(fake.editor.addCommand).toHaveBeenCalled());
+    expect(fake.editor.revealLineInCenter).not.toHaveBeenCalled();
+    expect(fake.editor.focus).not.toHaveBeenCalled();
   });
 });
 
