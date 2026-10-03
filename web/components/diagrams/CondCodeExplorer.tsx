@@ -331,15 +331,25 @@ export function CondCodeExplorer({
                   aria-label={`${flag.toUpperCase()} ${FLAG_WORDS[flag]}: ${
                     lit ? 1 : 0
                   }, ${read ? "read by" : "ignored by"} b.${picked.code}`}
+                  // An ignored flag steps down one text token and takes a
+                  // dashed edge; fading it took its text under 4.5:1.
                   className={`flex min-w-[4.5rem] flex-col items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-2 ${
-                    read ? "" : "opacity-50"
+                    read ? "" : "border-dashed"
                   }`}
                   style={lit && read ? LIT_STYLE : undefined}
                 >
-                  <span className="font-mono text-[15px] font-semibold text-[var(--text-primary)]">
+                  <span
+                    className={`font-mono text-[15px] font-semibold ${
+                      read ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+                    }`}
+                  >
                     {flag.toUpperCase()} = {lit ? 1 : 0}
                   </span>
-                  <span className="[font:var(--type-label)] text-[var(--text-secondary)]">
+                  <span
+                    className={`[font:var(--type-label)] ${
+                      read ? "text-[var(--text-secondary)]" : "text-[var(--text-tertiary)]"
+                    }`}
+                  >
                     {read ? FLAG_WORDS[flag] : "ignored"}
                   </span>
                 </li>
