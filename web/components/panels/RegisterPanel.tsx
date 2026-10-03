@@ -19,7 +19,6 @@ import {
   integerReading,
   laneText,
   parseBits,
-  type LaneArrangement,
 } from "@/lib/emulator/register-format";
 import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
@@ -28,6 +27,20 @@ import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
 import { DRegisterRow } from "@/components/panels/DRegisterRow";
 import { VRegisterRow } from "@/components/panels/VRegisterRow";
+import { hostPane, prefersReducedMotion, revealRows } from "@/components/panels/reveal-rows";
+import { INITIAL_VIEW, reduceView } from "@/components/panels/register-view-state";
+import {
+  ARRANGEMENTS,
+  ARRANGEMENT_IDS,
+  FOLLOW_KEY,
+  HEX_KEY,
+  parseView,
+  usePersistedArrangement,
+  usePersistedFlag,
+  V_DEC_KEY,
+  VIEW_KEY,
+  X_DEC_KEY,
+} from "@/components/panels/register-panel-settings";
 
 interface RegisterPanelProps {
   /** The file to open on, read at mount, from a host that knows what its
@@ -66,15 +79,6 @@ interface RegisterPanelProps {
 // so each label reads its own bit, in the conventional ARM N Z C V order.
 const FLAG_NAMES = ["N", "Z", "C", "V"];
 
-const VIEW_KEY = "aarch64-playground:regfile-view";
-/** The d-view's format flag keeps the key it shipped with, so a returning
- *  student's choice survives the split into one flag per view. */
-const HEX_KEY = "aarch64-playground:regfile-fp-hex";
-const X_DEC_KEY = "aarch64-playground:regfile-x-dec";
-const V_DEC_KEY = "aarch64-playground:regfile-v-dec";
-const LANE_KEY = "aarch64-playground:regfile-lane-width";
-const FOLLOW_KEY = "aarch64-playground:regfile-follow";
-
 /** How long a scroll by the student holds the list still. */
 const USER_SCROLL_HOLD_MS = 5000;
 
@@ -96,28 +100,6 @@ const VIEW_HELP: Record<RegView, string> = {
   d: "d0–d31 are the low 64 bits of the floating-point registers, and s0–s31 the low 32.",
   v: "v0–v31 are the full 128-bit vector registers, and q0–q31 is the same 128 bits named as a scalar.",
 };
-
-/** The lane arrangements the v view reads a register in: the four integer
- *  widths by their ISA letter, then the two float ones by their C names. The
- *  ids are what storage holds, so a width stored before the float ones
- *  existed still parses. Cells, not a popover: a listbox opened in the short
- *  register pane was clipped by it. */
-const ARRANGEMENTS = {
-  b: { width: "b", float: false, label: "b", help: "8-bit lanes" },
-  h: { width: "h", float: false, label: "h", help: "16-bit lanes" },
-  s: { width: "s", float: false, label: "s", help: "32-bit lanes" },
-  d: { width: "d", float: false, label: "d", help: "64-bit lanes" },
-  sf: { width: "s", float: true, label: "float", help: "32-bit float lanes" },
-  df: { width: "d", float: true, label: "double", help: "64-bit float lanes" },
-} as const satisfies Record<string, LaneArrangement & { label: string; help: string }>;
-
-type ArrangementId = keyof typeof ARRANGEMENTS;
-
-const ARRANGEMENT_IDS = Object.keys(ARRANGEMENTS) as ArrangementId[];
-
-function isArrangementId(raw: string | null): raw is ArrangementId {
-  return raw != null && Object.hasOwn(ARRANGEMENTS, raw);
-}
 
 /**
  * The letter the destination register was written with (`ldr q0`,
@@ -161,166 +143,6 @@ const ZERO_VECTOR = /^0x0+$/;
  *  can be sitting in. */
 const CALLER_SAVED_X = 19;
 
-/** Persisted boolean flag, SSR-safe (reads localStorage after mount). A
- *  reducer, like the lane arrangement below, so the stored value can arrive
- *  from an effect. */
-function usePersistedFlag(
-  key: string,
-  fallback = false,
-): [boolean, (next: boolean) => void] {
-  const [value, apply] = useReducer((_prev: boolean, next: boolean) => next, fallback);
-  useEffect(() => {
-    // Storage unavailable reads as null, which keeps the fallback: session-only
-    // state, no separate branch needed.
-    const stored = safeGetItem(key);
-    if (stored != null) apply(stored === "1");
-  }, [key]);
-  const set = useCallback((next: boolean) => {
-    apply(next);
-    safeSetItem(key, next ? "1" : "0");
-  }, [key]);
-  return [value, set];
-}
-
-/** "1" / "0" are the two-view flag this control replaced: a returning student
- *  who left the panel on the d-file lands back on it. */
-function parseView(raw: string | null): RegView | null {
-  const stored = raw === "1" ? "d" : raw === "0" ? "x" : raw;
-  return stored === "x" || stored === "d" || stored === "v" ? stored : null;
-}
-
-/** The lane arrangement, persisted like the format flags. 64-bit integer
- *  lanes by default: two halves is the reading closest to the d-view the
- *  student came from. The state is a reducer so the stored value can arrive
- *  from an effect, the same reason the pulse ids below are one. */
-function usePersistedArrangement(): [ArrangementId, (next: ArrangementId) => void] {
-  const [value, apply] = useReducer((_prev: ArrangementId, next: ArrangementId) => next, "d");
-  useEffect(() => {
-    const stored = safeGetItem(LANE_KEY);
-    if (isArrangementId(stored)) apply(stored);
-  }, []);
-  const set = useCallback((next: ArrangementId) => {
-    apply(next);
-    safeSetItem(LANE_KEY, next);
-  }, []);
-  return [value, set];
-}
-
-/** A step's write, waiting for the list to bring its rows into view and for
- *  the live region to say it. `id` tells a new write from a re-render. */
-interface PendingFollow {
-  id: number;
-  view: RegView;
-  /** Row positions in that view's grid (register index; SP is 31). */
-  rows: readonly number[];
-  speech: string;
-}
-
-/**
- * Which file is shown, which of the other cells wrote while the student was
- * reading this one, and the write waiting to be followed. They are one state
- * because the switch rule decides all three at once, and a reducer is how a
- * rule inside an effect moves state here (the pulse ids below do the same).
- */
-interface ViewState {
-  view: RegView;
-  flagged: ReadonlySet<RegView>;
-  pending: PendingFollow | null;
-  /** fp registers whose last write was spelled `dN`: always read as doubles. */
-  doubles: ReadonlySet<number>;
-}
-
-type ViewAction =
-  /** The student picked a cell, or the stored choice arrived after mount. */
-  | { kind: "show"; view: RegView }
-  /** A run is streaming: the write from before it is no longer the news. */
-  | { kind: "run" }
-  /** The classes this step wrote, already filtered to the ones that exist. */
-  | {
-      kind: "follow";
-      touched: readonly RegView[];
-      /** "follow changes" is on: a single-class write may switch the view. */
-      move: boolean;
-      rows: Record<RegView, readonly number[]>;
-      speech: string;
-      /** The fp registers the machine reports written, and whether the
-       *  executed line spelled its destination `dN`. */
-      fpWritten: readonly number[];
-      dSpelled: boolean;
-    };
-
-const NO_FLAGS: ReadonlySet<RegView> = new Set<RegView>();
-const INITIAL_VIEW: ViewState = {
-  view: "x",
-  flagged: NO_FLAGS,
-  pending: null,
-  doubles: new Set<number>(),
-};
-
-function sameViews(a: readonly RegView[], b: ReadonlySet<RegView>): boolean {
-  return a.length === b.size && a.every((t) => b.has(t));
-}
-
-/** The last write with nothing left to show or say. Its id stays, so the
- *  next write's id is still new to the scroll effect. */
-function spent(pending: PendingFollow | null): PendingFollow | null {
-  return pending && (pending.rows.length > 0 || pending.speech)
-    ? { ...pending, rows: [], speech: "" }
-    : pending;
-}
-
-function reduceView(state: ViewState, action: ViewAction): ViewState {
-  if (action.kind === "show") {
-    if (state.view === action.view && !state.flagged.has(action.view)) return state;
-    const flagged = new Set(state.flagged);
-    flagged.delete(action.view);
-    return { ...state, view: action.view, flagged };
-  }
-  if (action.kind === "run") {
-    const pending = spent(state.pending);
-    return pending === state.pending ? state : { ...state, pending };
-  }
-  const { touched, move } = action;
-  let { view, flagged } = state;
-  // Exactly one class wrote: show it, so a mixed program needs no manual
-  // switching. Several at once, or following switched off: the student's
-  // view stays put and the other cells carry a change dot, because guessing
-  // which write they meant to watch is worse than saying both moved. A click
-  // between steps still wins; the next single-class write may move it again.
-  if (move && touched.length === 1) {
-    view = touched[0];
-    if (flagged.size > 0) flagged = NO_FLAGS;
-  } else if (touched.length > 0) {
-    const others = touched.filter((t) => t !== view);
-    if (!sameViews(others, flagged)) flagged = new Set(others);
-  }
-  // A snapshot that wrote nothing drops the last write too: kept, its words
-  // would come back after a run as if the run had just written them.
-  const rows = action.rows[view];
-  const pending =
-    rows.length > 0 || action.speech
-      ? { id: (state.pending?.id ?? 0) + 1, view, rows, speech: action.speech }
-      : spent(state.pending);
-  let { doubles } = state;
-  if (action.fpWritten.some((i) => doubles.has(i) !== action.dSpelled)) {
-    const next = new Set(doubles);
-    for (const i of action.fpWritten) {
-      if (action.dSpelled) next.add(i);
-      else next.delete(i);
-    }
-    doubles = next;
-  }
-  if (
-    view === state.view &&
-    flagged === state.flagged &&
-    pending === state.pending &&
-    doubles === state.doubles
-  ) {
-    return state;
-  }
-  return { view, flagged, pending, doubles };
-}
-
 /** Monotonic pulse id per register, used as the React key so the CSS flash
  *  restarts each time the register actually changes. `useReducer` lets the id
  *  bump inside an effect without tripping React 19's set-state-in-effect
@@ -341,52 +163,6 @@ function usePulseIds(changed: ReadonlySet<number>): Map<number, number> {
     bump(changed);
   }, [changed]);
   return pulses;
-}
-
-/** The host's pane: the nearest ancestor that can scroll, short of the page,
- *  which is never ours to move. */
-function hostPane(from: HTMLElement): HTMLElement | null {
-  const page = document.scrollingElement;
-  for (let el = from.parentElement; el; el = el.parentElement) {
-    if (el === page || el === document.body) return null;
-    const { overflowY } = getComputedStyle(el);
-    if (overflowY === "auto" || overflowY === "scroll") return el;
-  }
-  return null;
-}
-
-/**
- * Scroll just far enough to show all of `rows`, or the first of them when
- * they cannot all fit: inside the list's own box, then inside the host's
- * pane when that pane is too short to show the list whole (a lesson frame on
- * a phone). Nothing moves when they are already in view. `scrollIntoView`
- * would also scroll the page.
- */
-function revealRows(body: HTMLElement, rows: readonly Element[], smooth: boolean): void {
-  if (rows.length === 0) return;
-  const rects = rows.map((row) => row.getBoundingClientRect());
-  let first = Math.min(...rects.map((r) => r.top));
-  let last = Math.max(...rects.map((r) => r.bottom));
-  for (const box of [body, hostPane(body)]) {
-    if (!box || box.scrollHeight <= box.clientHeight) continue;
-    const top = box.getBoundingClientRect().top + box.clientTop;
-    const bottom = top + box.clientHeight;
-    // A pixel of slack: fractional layout can leave a fully shown row a
-    // hair outside the box.
-    if (first >= top - 1 && last <= bottom + 1) continue;
-    const delta = first < top || last - first > bottom - top ? first - top : last - bottom;
-    const from = box.scrollTop;
-    const target = Math.min(Math.max(from + delta, 0), box.scrollHeight - box.clientHeight);
-    box.scrollTo({ top: target, behavior: smooth ? "smooth" : "auto" });
-    // A smooth scroll has not moved the rows yet, so the pane works from
-    // where they will land.
-    first -= target - from;
-    last -= target - from;
-  }
-}
-
-function prefersReducedMotion(): boolean {
-  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
 /** At most this many writes are named; the rest are counted. */
