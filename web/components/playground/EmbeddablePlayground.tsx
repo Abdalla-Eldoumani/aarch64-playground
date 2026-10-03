@@ -651,19 +651,6 @@ function EmbeddableCore({
     }
   }, [staticEditor, readOnly]);
 
-  // Seed starter stdin once the hub is live so a program that reads has its
-  // input queued before the first run. A pending first press assembles and
-  // seeds on its own; this copy could reach the worker after that assemble's
-  // reset, and the program would read its input twice.
-  const seededStdin = useRef(false);
-  useEffect(() => {
-    if (chrome === "full") return;
-    if (emu.isLoaded && startStdin && !seededStdin.current) {
-      seededStdin.current = true;
-      if (!firstPress) emu.pushStdin(startStdin);
-    }
-  }, [chrome, emu, emu.isLoaded, startStdin, firstPress]);
-
   // Autoplay: the landing hero's hands-off walk. The hub reaches it as emuRef,
   // never as a render value; the reason is in the hook.
   const walk = useAutoplay({
