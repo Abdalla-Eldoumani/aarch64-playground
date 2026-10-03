@@ -254,6 +254,9 @@ describe("LessonArticle", () => {
     expect(summary?.textContent).toContain("show answers");
     // The control names itself, so the lead line is not said twice.
     expect(container.textContent).not.toContain("Answers:");
+    // The box says what it holds, not "note".
+    expect(screen.getByText("answers")).toBeTruthy();
+    expect(screen.queryByText("note")).toBeNull();
 
     summary?.click();
     expect(fold?.open).toBe(true);
