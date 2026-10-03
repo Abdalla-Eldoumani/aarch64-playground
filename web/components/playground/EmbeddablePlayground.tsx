@@ -494,38 +494,45 @@ function EmbeddableCore({
   // assemble skips the run. `fromTop` is Ctrl+Enter's assemble-and-run.
   const lastRunSourceRef = useRef<string | null>(null);
   const runKey = `${argsText}\n${source}`;
+  // A press while that assemble is in flight is dropped: a second assemble
+  // resets the machine after the first queued its seeds, so both seeds land
+  // and a reading program gets its input twice.
+  const embedAssemblingRef = useRef(false);
+  const assembleEmbed = useCallback(async () => {
+    embedAssemblingRef.current = true;
+    try {
+      lastRunSourceRef.current = runKey;
+      const ok = await emu.assemble(source, parseArgs(argsText));
+      if (ok) applySeeds();
+      return ok;
+    } finally {
+      embedAssemblingRef.current = false;
+    }
+  }, [emu, source, argsText, runKey, applySeeds]);
   const runEmbed = useCallback(async (fromTop = false) => {
-    if (
+    if (embedAssemblingRef.current) return;
+    const stale =
       fromTop ||
       emu.instructions.length === 0 ||
       lastRunSourceRef.current !== runKey ||
-      emu.isHalted
-    ) {
-      lastRunSourceRef.current = runKey;
-      const ok = await emu.assemble(source, parseArgs(argsText));
-      if (!ok) return;
-      applySeeds();
-    }
+      emu.isHalted;
+    if (stale && !(await assembleEmbed())) return;
     emu.run();
-  }, [emu, source, argsText, runKey, applySeeds]);
+  }, [emu, runKey, assembleEmbed]);
 
   // Step has the same cold-start problem Run has: a bare step would advance
   // over empty memory. Same gate, so the first press assembles, re-seeds, and
   // then advances one word. A step on a finished program restarts it from the
   // top, exactly as Run does.
   const stepEmbed = useCallback(async () => {
-    if (
+    if (embedAssemblingRef.current) return;
+    const stale =
       emu.instructions.length === 0 ||
       lastRunSourceRef.current !== runKey ||
-      emu.isHalted
-    ) {
-      lastRunSourceRef.current = runKey;
-      const ok = await emu.assemble(source, parseArgs(argsText));
-      if (!ok) return;
-      applySeeds();
-    }
+      emu.isHalted;
+    if (stale && !(await assembleEmbed())) return;
     emu.step();
-  }, [emu, source, argsText, runKey, applySeeds]);
+  }, [emu, runKey, assembleEmbed]);
 
   // Back cannot pass a blocked read (the machine just re-blocks), so while
   // stdin is awaited it no-ops. One guard, two callers: the imperative handle
