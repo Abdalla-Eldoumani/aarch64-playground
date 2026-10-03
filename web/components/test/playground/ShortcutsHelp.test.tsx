@@ -34,9 +34,20 @@ describe("ShortcutsHelp", () => {
     }
   });
 
-  it("moves focus into the modal on open", () => {
+  it("scrolls the list in its own keyboard-reachable box, outside the heading and close", () => {
+    // A phone's screen is shorter than the whole list; only the list may
+    // scroll away, so the heading and the way out stay on screen.
     renderHelp();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "close" }));
+    const list = screen.getByRole("region", { name: "shortcut list" });
+    expect(list.getAttribute("tabindex")).toBe("0");
+    expect(list.contains(screen.getByText("run program"))).toBe(true);
+    expect(list.contains(screen.getByRole("heading", { name: "Keyboard shortcuts" }))).toBe(false);
+    expect(list.contains(screen.getByRole("button", { name: "close" }))).toBe(false);
+  });
+
+  it("moves focus into the modal on open, onto the list a keyboard scrolls", () => {
+    renderHelp();
+    expect(document.activeElement).toBe(screen.getByRole("region", { name: "shortcut list" }));
   });
 
   it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
