@@ -135,8 +135,9 @@ function isLinkRow(children: ReactNode): boolean {
     typeof parts[0].props.href === "string"
   );
 }
+// Hover thickens the underline: fading the link took its text under 4.5:1.
 const LINK_CLASS =
-  "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:opacity-80 focus-visible:[box-shadow:var(--ring)]";
+  "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:decoration-2 focus-visible:[box-shadow:var(--ring)]";
 const PRE_CLASS =
   "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
 const INLINE_CODE_CLASS =
