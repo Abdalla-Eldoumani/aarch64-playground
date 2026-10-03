@@ -107,7 +107,6 @@ export interface FullChromeSurfaceProps {
   onOpenCommandPalette?: () => void;
   onOpenShortcutsHelp?: () => void;
   onOpenShareDialog?: () => void;
-  onToggleTheme?: () => void;
   /** Published on mount, cleared on unmount. */
   registerBridge: (bridge: FullChromeBridge | null) => void;
 }
@@ -146,7 +145,6 @@ export function FullChromeSurface({
   onOpenCommandPalette,
   onOpenShortcutsHelp,
   onOpenShareDialog,
-  onToggleTheme,
   registerBridge,
 }: FullChromeSurfaceProps) {
   const toast = useToast();
@@ -570,7 +568,6 @@ export function FullChromeSurface({
   // the run row that carries the tools instead.
   const openShare = () => onOpenShareDialog?.();
   const openTutorials = () => setTutorialOpen(true);
-  const toggleTheme = () => onToggleTheme?.();
   const openCommandPalette = () => onOpenCommandPalette?.();
   const openShortcuts = () => onOpenShortcutsHelp?.();
 
@@ -598,7 +595,6 @@ export function FullChromeSurface({
             className="sm:ml-auto"
             onShare={openShare}
             onTutorials={openTutorials}
-            onToggleTheme={toggleTheme}
             buildDiagnostic={buildDiagnostic}
             onOpenCommandPalette={openCommandPalette}
             onOpenShortcuts={openShortcuts}
@@ -636,7 +632,6 @@ export function FullChromeSurface({
         }
         onShare={openShare}
         onTutorials={openTutorials}
-        onToggleTheme={toggleTheme}
         buildDiagnostic={buildDiagnostic}
         onOpenCommandPalette={openCommandPalette}
         onOpenShortcuts={openShortcuts}
