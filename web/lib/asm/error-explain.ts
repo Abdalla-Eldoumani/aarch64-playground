@@ -63,8 +63,8 @@ export function explainError(located: string): ErrorExplanation | null {
     const isWrite = lower.includes("write");
     return {
       what: `The CPU tried to ${isWrite ? "write to" : "read from"} an address that is not mapped (no .text/.data/.rodata/.bss/.stack page covers it).`,
-      why: "Most often a base register holds an offset rather than an address, or `ldr xN, =label` was forgotten so the register stays at 0.",
-      fix: "Watch the base register in the watch panel. If it is a small number (0..255), you wrote `mov` where you meant `ldr =`; if it is near 0xFFFF_0000, it points at the playground's C library code, which a program reaches only by calling it (`bl printf` and friends).",
+      why: "Most often a base register holds a value rather than an address: `ldr xN, label` written without its `=` loads what is stored at the label, and a `mov` where `ldr xN, =label` was meant leaves a small number.",
+      fix: "Watch the base register in the watch panel. If it holds a number from your data or a small number (0..255), add the missing `=` or replace the `mov` with `ldr xN, =label`; if it is near 0xFFFF_0000, it points at the playground's C library code, which a program reaches only by calling it (`bl printf` and friends).",
       styleSection: "addressing modes",
     };
   }
@@ -93,7 +93,7 @@ export function explainError(located: string): ErrorExplanation | null {
   if (lower.includes("not part of any program section")) {
     return {
       what: "A load or store landed in the first page of the address space, which no program owns.",
-      why: "The base register held a small number instead of an address. The course servers kill this with a segmentation fault. A `mov` where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
+      why: "The base register held a small number instead of an address. The course servers kill this with a segmentation fault. A `mov`, or an `ldr xN, label` missing its `=`, where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
       fix: "Check how the base register was loaded: addresses come from `ldr xN, =label`. If an m4 define names the same register a pointer occupies (`define(i_r, w19)` after `ldr x19, =arr`), rename the alias to a free register.",
       styleSection: "addressing modes",
     };
