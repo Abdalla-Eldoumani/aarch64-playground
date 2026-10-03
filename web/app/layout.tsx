@@ -8,6 +8,8 @@ import { OfflineBadge } from "@/components/chrome/OfflineBadge";
 import { RegisterSW } from "@/components/chrome/RegisterSW";
 import { HOME_DESCRIPTION, HOME_TITLE, SITE_NAME, SITE_URL } from "@/lib/content/site";
 import { composeTitle, pageMetadata } from "@/lib/content/seo";
+import { PRE_PAINT_SCRIPT } from "@/lib/theme/pre-paint";
+import { THEME_TOKENS } from "@/lib/theme/tokens";
 
 // Each font is bound to a CSS variable so utility classes and the --type-*
 // tokens in globals.css can pick a family without a Tailwind config change.
@@ -66,12 +68,11 @@ export const viewport: Viewport = {
   // A soft keyboard shrinks the layout, not just the visible part, so the
   // playground's bottom bars sit above it instead of behind it on Android.
   interactiveWidget: "resizes-content",
-  // One entry per OS preference, matching the --bg-base of the theme the
-  // pre-paint script picks: an OS-light visitor gets a light browser chrome
-  // around a light first paint instead of a dark band above it.
+  // One entry per OS preference, for a browser that runs no script. The
+  // pre-paint script puts the chosen theme's colour in front of both.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FCFCFD" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B0C10" },
+    { media: "(prefers-color-scheme: light)", color: THEME_TOKENS.light["bg-base"] },
+    { media: "(prefers-color-scheme: dark)", color: THEME_TOKENS.dark["bg-base"] },
   ],
 };
 
@@ -83,21 +84,15 @@ export default function RootLayout({
   const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
     // suppressHydrationWarning covers exactly one attribute mismatch: the
-    // pre-paint script below writes data-theme before React hydrates, so a
-    // saved light/high-contrast theme differs from the server markup by
-    // design. The suppression scopes to this element only.
+    // pre-paint script below writes data-theme before React hydrates, so the
+    // attribute differs from the server markup by design. The suppression
+    // scopes to this element only.
     <html lang="en" className={fontClasses} suppressHydrationWarning>
       <head>
-        {/* Runs before first paint so a saved light or high-contrast theme
-            does not flash dark on load; with nothing saved, the OS decides.
-            use-theme does the saving, and its storage key must match this
-            one. A fixed script with no user input, which the CSP allows. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              'try{var d=document.documentElement,t=localStorage.getItem("aarch64-playground:theme");if(t==="light"||t==="dark"||t==="high-contrast")d.setAttribute("data-theme",t);else if(window.matchMedia("(prefers-color-scheme: light)").matches)d.setAttribute("data-theme","light");}catch(e){}',
-          }}
-        />
+        {/* Runs before first paint so a saved theme never flashes another on
+            load; with nothing saved, the OS decides. A fixed script built
+            from the theme list, with no user input, which the CSP allows. */}
+        <script dangerouslySetInnerHTML={{ __html: PRE_PAINT_SCRIPT }} />
       </head>
       <body className="flex flex-col min-h-dvh font-mono">
         {/* First focusable element in the document: a keyboard visitor reaches
