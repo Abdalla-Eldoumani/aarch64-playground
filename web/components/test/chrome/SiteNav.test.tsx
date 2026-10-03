@@ -111,12 +111,14 @@ describe("SiteNav", () => {
     for (const variant of ["full", "slim"] as const) {
       const { unmount } = render(<SiteNav variant={variant} />);
       // With the drawer closed the bar's is the only one in the document.
-      const groups = screen.getAllByRole("group", { name: "theme" });
-      expect(groups).toHaveLength(1);
+      const buttons = screen.getAllByRole("button", { name: /^theme/ });
+      expect(buttons).toHaveLength(1);
+      expect(screen.getAllByRole("radiogroup", { name: "theme" })).toHaveLength(1);
       // jsdom runs no media queries, so check the classes that hide this control
       // below md, where the drawer's own copy (md:hidden) takes over.
-      expect(groups[0].parentElement?.className).toContain("hidden");
-      expect(groups[0].parentElement?.className).toContain("md:flex");
+      const wrapper = buttons[0].parentElement?.parentElement;
+      expect(wrapper?.className).toContain("hidden");
+      expect(wrapper?.className).toContain("md:flex");
       unmount();
     }
   });
