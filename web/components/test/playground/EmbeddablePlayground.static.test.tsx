@@ -125,6 +125,30 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(loaded.run).toHaveBeenCalledTimes(1);
   });
 
+  // The run assembles and queues the input itself. A second copy queued as the
+  // hub came up could land after that assemble's reset: 56 bytes for 28.
+  it("queues a reading program's input once when the engaging press runs it", async () => {
+    const hub = makeHub({ isLoaded: false, assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    const frame = () => (
+      <EmbeddablePlayground chrome="embed" startSource={SRC} startStdin={"5\n"} readOnly staticEditor />
+    );
+    const { rerender } = render(frame());
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    });
+    const loaded = { ...hub, isLoaded: true };
+    useEmulatorMock.mockReturnValue(loaded);
+    await act(async () => {
+      rerender(frame());
+    });
+    expect(loaded.run).toHaveBeenCalledTimes(1);
+    expect(loaded.pushStdin).toHaveBeenCalledTimes(1);
+    expect((loaded.assemble as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]).toBeLessThan(
+      (loaded.pushStdin as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
+  });
+
   it("only wakes the frame for a press that is not run, step or check", async () => {
     const hub = makeHub({ assemble: vi.fn(async () => true) });
     useEmulatorMock.mockReturnValue(hub);
