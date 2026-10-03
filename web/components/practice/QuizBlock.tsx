@@ -66,16 +66,19 @@ export function QuizBlock({
         {options.map((opt, i) => {
           const isSelected = selected === i;
           let tone: string;
+          // Once answered, the options not picked lose their fill and keep
+          // readable ink: fading the text would make them hard to re-read.
+          const settled = "border-[var(--border)] text-[var(--text-secondary)]";
           if (answered) {
             if (isCorrect) {
               tone =
                 i === correctAnswer
                   ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] font-medium text-[var(--success)]"
-                  : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] opacity-40";
+                  : settled;
             } else {
               tone = isSelected
                 ? "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] font-medium text-[var(--danger)]"
-                : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] opacity-70";
+                : settled;
             }
           } else {
             tone = isSelected
