@@ -47,7 +47,7 @@ export function DiagnosticBundle({ build }: DiagnosticBundleProps) {
 type Report = { markdown: string; link: string | null };
 
 const ACTION =
-  "text-xs rounded px-3 min-h-[44px] sm:min-h-[36px] [@media(pointer:coarse)]:min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed " +
+  "text-xs rounded px-3 min-h-[44px] sm:min-h-[36px] [@media(pointer:coarse)]:min-h-[44px] disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed " +
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]";
 
 function BundleDialog({
