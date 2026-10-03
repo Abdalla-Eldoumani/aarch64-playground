@@ -49,8 +49,8 @@ export const metadata: Metadata = {
     default: composeTitle(HOME_TITLE),
     template: `%s · ${SITE_NAME}`,
   },
-  // iOS takes a home-screen app's name and standalone launch from these
-  // tags, not from the web manifest.
+  // iOS before 16.4 ignores the web manifest and reads a home-screen app's
+  // name and standalone launch from these tags.
   appleWebApp: { capable: true, title: SITE_NAME },
   // Search Console URL-prefix verification; the domain property is verified
   // via DNS separately, so this tag is a second anchor, not the primary.
