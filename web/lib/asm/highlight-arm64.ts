@@ -1,6 +1,6 @@
 /**
  * The highlighter behind CodeBlock, the landing hero's StaticCodeView and
- * TouchEditor's colour layer. Editor.tsx builds its Monaco rules from the two
+ * TouchEditor's colour layer. monaco-setup.ts builds the Monaco rules from the two
  * patterns exported here, so all four colour code the same way. Names
  * come from lib/asm/mnemonics, not instruction-docs, to keep the hover-card
  * text out of the landing bundle. KIND_CLASS holds Tailwind classes, which is
@@ -34,7 +34,7 @@ export const ARM64_MNEMONICS: ReadonlySet<string> = new Set(
 );
 
 /**
- * The same set as one escaped regex alternation, for Editor.tsx's Monaco
+ * The same set as one escaped regex alternation, for monaco-setup.ts's Monaco
  * keyword rule. The caller adds its own word boundaries and the `i` flag.
  */
 export const MNEMONIC_ALTERNATION: string = [...ARM64_MNEMONICS].map(escapeRegExp).join("|");
@@ -51,7 +51,7 @@ const REGISTER_BODY =
 const REGISTER_RE = new RegExp(`^${REGISTER_BODY}$`, "i");
 
 /**
- * The register alternation for Editor.tsx's Monaco rule, which scans a line.
+ * The register alternation for monaco-setup.ts's Monaco rule, which scans a line.
  * Monarch takes whatever prefix fits, so without the lookahead `x31` would
  * colour as `x3`, the very typo error-explain names. A trailing `\b` cannot
  * stand in, because a lane form ends in `]`.
