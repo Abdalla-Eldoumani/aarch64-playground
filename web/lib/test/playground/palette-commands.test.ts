@@ -157,7 +157,9 @@ describe("the descriptions that carry the reason", () => {
     expect(row(actions, "step-back").description).toBe(
       "undo the last instruction",
     );
-    expect(row(actions, "run").description).toBe("run until halt or breakpoint");
+    expect(row(actions, "run").description).toBe(
+      "run until halt or breakpoint, assembling first if the code changed or the program ended",
+    );
   });
 
   it("names the terminal tab when run lands there", () => {
