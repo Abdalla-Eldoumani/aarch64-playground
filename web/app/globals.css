@@ -66,6 +66,16 @@
   --error-shake: 200ms;
   --modal-rise: 160ms;
   --decode-latch: 120ms;
+
+  /* The shared motion scale: things arrive on the ease-out and leave on the
+     quicker ease-in, and a leave takes the short step so it never holds up
+     the next action. Nothing runs longer than 300ms. */
+  --motion-short: 120ms;
+  --motion-base: 180ms;
+  --motion-long: 240ms;
+  --ease-arrive: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-leave: cubic-bezier(0.4, 0, 1, 1);
+  --stagger-step: 16ms;
 }
 
 html {
@@ -285,6 +295,54 @@ body {
        Outside this block (reduced motion) the ring stays at opacity 0 and the
        fields swap instantly. */
     animation: decode-latch-fade var(--decode-latch) var(--ease) 1;
+  }
+}
+
+/* The site bar's theme row (ThemeControl). Closed it is invisible; open it
+   grows out of its button, which sits at its right edge. The transitions live
+   in the block below, so under reduced motion it opens and closes in place. */
+.theme-strip {
+  transform-origin: right center;
+}
+.theme-strip[data-open="false"] {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(8px) scale(0.96);
+}
+.theme-strip[data-open="false"] .theme-swatch {
+  opacity: 0;
+  transform: translateX(6px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Leaving: one short fade, no stagger, and visibility drops once it ends. */
+  .theme-strip {
+    transition:
+      opacity var(--motion-short) var(--ease-leave),
+      transform var(--motion-short) var(--ease-leave),
+      visibility 0s linear var(--motion-short);
+  }
+  .theme-strip[data-open="true"] {
+    transition:
+      opacity var(--motion-base) var(--ease-arrive),
+      transform var(--motion-base) var(--ease-arrive),
+      visibility 0s;
+  }
+  .theme-strip .theme-swatch {
+    transition:
+      opacity var(--motion-short) var(--ease-leave),
+      transform var(--motion-short) var(--ease-leave),
+      background-color var(--dur-ui) var(--ease);
+  }
+  /* Arriving swatches follow the row out, one stagger step apart (--i is the
+     distance from the button). The colour fade is the hover. */
+  .theme-strip[data-open="true"] .theme-swatch {
+    transition:
+      opacity var(--motion-short) var(--ease-arrive) calc(var(--i, 0) * var(--stagger-step)),
+      transform var(--motion-short) var(--ease-arrive) calc(var(--i, 0) * var(--stagger-step)),
+      background-color var(--dur-ui) var(--ease);
+  }
+  .theme-marker {
+    transition: transform var(--motion-base) var(--ease-arrive);
   }
 }
 
