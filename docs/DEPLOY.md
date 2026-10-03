@@ -26,10 +26,22 @@ Vercel detects Next.js) and then runs `npm ci` in `web/`. The build command is
    `web/lib/wasm/` for the site, and `--target nodejs` into
    `web/lib/wasm-node/`. The second copy never ships, but `next build`
    type-checks the test files, and some of them import it.
-4. Runs `npm run build` in `web/`, which is `next build --webpack`. The
-   `--webpack` flag matters: the emulator loads through webpack's
-   `asyncWebAssembly`, and the playground's default program is a `?raw`
-   import that only a webpack rule in `web/next.config.mjs` can read.
+4. Picks one build id, `PLAYGROUND_BUILD_ID`, and exports it, so both builds
+   in the next steps share it. An id containing "ad" is drawn again, because
+   ad blockers block file names that contain it.
+5. Runs `npm run build` in `web/`, which is `next build --webpack` followed by
+   `scripts/write-precache-list.js`. That script writes `web/public/sw.js`, the
+   service worker with this build's file list. The `--webpack` flag matters:
+   the emulator loads through webpack's `asyncWebAssembly`, and the
+   playground's default program is a `?raw` import that only a webpack rule in
+   `web/next.config.mjs` can read.
+6. Runs `next build --webpack` a second time. Vercel collects `web/public/`
+   during the build, so the worker the first build wrote after it finished
+   would never ship. The second build has the same id, so it produces the same
+   files and ships that worker.
+7. Runs `node ../scripts/write-precache-list.js --check`, which fails the
+   deploy if the worker's file list does not match the files the second build
+   made.
 
 CI pins the same Rust and wasm-pack versions (`.github/workflows/check.yml`),
 so a pull request tests the compiler that ships.
