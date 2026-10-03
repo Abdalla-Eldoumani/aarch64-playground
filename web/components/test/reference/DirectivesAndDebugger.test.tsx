@@ -63,6 +63,7 @@ describe("DirectivesAndDebugger", () => {
     const expected: Record<string, string> = {
       assemble: "F6",
       run: "F5",
+      breakpoint: "F9",
       step: "F10",
       back: "Shift+F10",
       reset: "Shift+F5",
