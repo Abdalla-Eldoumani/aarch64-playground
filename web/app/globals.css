@@ -454,6 +454,20 @@ body {
   box-shadow: var(--ring);
 }
 
+/* The toggle of a folded section (a lesson's answers, the tag filter): a
+   44px row with the ring on keyboard focus. Here rather than as utilities
+   because each copy of the class string ships in a page's script. The
+   transparent outline still shows in forced-colors mode. */
+.fold-summary {
+  cursor: pointer;
+  line-height: 44px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+.fold-summary:focus-visible {
+  box-shadow: var(--ring);
+}
+
 /* Panel content inherits `--font-scale`; opt-in classes use it. */
 .panel-scaled {
   font-size: calc(0.75rem * var(--font-scale));
