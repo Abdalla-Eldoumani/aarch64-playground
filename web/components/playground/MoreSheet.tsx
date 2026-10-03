@@ -4,8 +4,9 @@ import type { ReactNode } from "react";
 import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { NAV_ROUTES } from "@/lib/content/site";
-import { CloseIcon } from "@/components/chrome/SiteIcons";
+import { NAV_ROUTES, REPO_URL } from "@/lib/content/site";
+import { CloseIcon, GitHubIcon } from "@/components/chrome/SiteIcons";
+import { ThemeControl } from "@/components/chrome/ThemeControl";
 import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 
 export interface MoreSheetProps {
@@ -23,7 +24,8 @@ const HEADING =
 /**
  * The header band's controls on a phone, where one row showed only four of
  * them. It rises from the bottom, near the thumb, and holds the site links,
- * since the phone playground drops the site bar to give the code room.
+ * the theme and the source link, since the phone playground drops the site
+ * bar to give the code room.
  */
 export function MoreSheet({ open, onClose, sections }: MoreSheetProps) {
   const panelRef = useRef<HTMLDivElement>(null);
@@ -77,6 +79,16 @@ export function MoreSheet({ open, onClose, sections }: MoreSheetProps) {
               </Link>
             ))}
           </div>
+          <ThemeControl size="comfortable" />
+          <a
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer noopener"
+            className="flex min-h-[44px] items-center gap-2 rounded-[var(--radius-control)] border border-[var(--border)] px-3 font-sans text-[14px] text-[var(--text-secondary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+          >
+            <GitHubIcon className="h-4 w-4" />
+            source on github
+          </a>
         </nav>
       </div>
     </>,
