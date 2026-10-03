@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   evaluateWatch,
+  labelElementSize,
+  watchLabelName,
   type EvalContext,
   type EvalOk,
   type EvalOutcome,
@@ -44,6 +46,7 @@ const baseCtx: EvalContext = {
   }),
   resolveSlotOffset: (name) => (name === "score1_s" ? 16n : null),
   resolveLabelAddress: (name) => (name === "arr" ? 0x0070_0000n : null),
+  labelElementSize: () => ({ size: 8 }),
 };
 
 describe("watch expressions", () => {
@@ -165,6 +168,7 @@ describe("watch expression edge cases", () => {
       readMemory: (addr) => (addr === 0x700010n ? 77n : "unmapped"),
       resolveSlotOffset: () => null,
       resolveLabelAddress: (name) => (name === "arr" ? 0x700000n : null),
+      labelElementSize: () => ({ size: 8 }),
     };
     const r = ok(evaluateWatch("arr[w2]", ctx));
     expect(r.display).toBe("0x000000000000004d");
@@ -233,5 +237,142 @@ describe("watch expression edge cases", () => {
     const r = evaluateWatch("[fp, 0xZZ]", baseCtx);
     expect("error" in r).toBe(true);
   });
+});
 
+describe("label element size", () => {
+  const SPELLINGS: Array<[string, number]> = [
+    [".byte", 1], [".1byte", 1],
+    [".hword", 2], [".short", 2], [".2byte", 2],
+    [".word", 4], [".int", 4], [".long", 4], [".4byte", 4], [".single", 4], [".float", 4],
+    [".dword", 8], [".quad", 8], [".xword", 8], [".8byte", 8], [".double", 8],
+  ];
+
+  it.each(SPELLINGS)("reads %s as %i bytes", (directive, size) => {
+    expect(labelElementSize(`.data\narr: ${directive} 1, 2, 3\n`, "arr")).toEqual({ size });
+  });
+
+  it("reads the directive on the line after a bare label", () => {
+    const source = "\t.data\narr:\n\t// three counts\n\t.hword 1, 2\n\t.hword 3\n\t.text\nmain:\n";
+    expect(labelElementSize(source, "arr")).toEqual({ size: 2 });
+  });
+
+  it("stops at the next label, so a neighbour's directive does not count", () => {
+    const source = "arr: .word 1, 2\nmsg: .string \"hi\"\nbig: .dword 5\n";
+    expect(labelElementSize(source, "arr")).toEqual({ size: 4 });
+  });
+
+  it("ignores comments and a CRLF file's carriage returns", () => {
+    const source = "/* .byte here is a comment */\r\narr: .word 7 // .byte too\r\n.balign 8\r\n";
+    expect(labelElementSize(source, "arr")).toEqual({ size: 4 });
+  });
+
+  it("reads through a second label that shares the address", () => {
+    expect(labelElementSize("arr:\nfirst: .dword 1, 2\n", "arr")).toEqual({ size: 8 });
+  });
+
+  it("refuses a label that mixes sizes", () => {
+    const source = "arr: .word 1, 2\n     .byte 3\nnext: .word 0\n";
+    expect(labelElementSize(source, "arr")).toEqual({ error: "its label mixes data sizes" });
+  });
+
+  it("refuses sized data followed by reserved space under one label", () => {
+    expect(labelElementSize("arr: .word 1\n.skip 12\n", "arr")).toEqual({
+      error: "its label mixes data sizes",
+    });
+  });
+
+  it("refuses a label m4 defines", () => {
+    const source = "define(arr, x19)\n.data\narr: .word 1, 2\n";
+    expect(labelElementSize(source, "arr")).toEqual({ error: "m4 defines it" });
+    expect(labelElementSize("define(`arr', `data')\n", "arr")).toEqual({ error: "m4 defines it" });
+  });
+
+  it("refuses a directive spelled through an m4 macro", () => {
+    const source = "define(WORD, `.word')\narr: WORD 1, 2\n";
+    expect(labelElementSize(source, "arr")).toEqual({
+      error: "no .byte, .hword, .word or .dword after its label",
+    });
+  });
+
+  it("refuses a label an m4 macro writes", () => {
+    const source = "define(table, `$1: .word 0')\ntable(arr)\n";
+    expect(labelElementSize(source, "arr")).toEqual({ error: "its label is not in the source" });
+  });
+
+  it("refuses a label with no size directive after it", () => {
+    for (const source of ["arr: .skip 40\n", "arr:\n.balign 8\n.dword 1\n", "arr:\n\tmov x0, 1\n", "arr:\n"]) {
+      expect(labelElementSize(source, "arr"), source).toEqual({
+        error: "no .byte, .hword, .word or .dword after its label",
+      });
+    }
+  });
+
+  it("refuses a label written twice and one that is missing", () => {
+    expect(labelElementSize("arr: .word 1\narr: .byte 2\n", "arr")).toEqual({
+      error: "its label appears twice",
+    });
+    expect(labelElementSize("array: .word 1\n", "arr")).toEqual({
+      error: "its label is not in the source",
+    });
+  });
+});
+
+describe("label arrays step by the element size", () => {
+  // A .word array at 0x700000 holding 10, 20, 30, and a .byte array at
+  // 0x700100 holding 1, 2, 3, 4.
+  const source = ".data\nwords: .word 10, 20, 30\nbytes: .byte 1, 2, 3, 4\n";
+  const cells: Record<string, number> = {
+    "0x700000:4": 10, "0x700004:4": 20, "0x700008:4": 30,
+    "0x700103:1": 4,
+  };
+  const ctx: EvalContext = {
+    readRegister: (name) => (name === "w1" ? 1n : null),
+    readMemory: (addr, size) => {
+      const v = cells[`0x${addr.toString(16)}:${size}`];
+      return v === undefined ? "unmapped" : BigInt(v);
+    },
+    resolveSlotOffset: () => null,
+    resolveLabelAddress: (name) =>
+      name === "words" ? 0x700000n : name === "bytes" ? 0x700100n : name === "later" ? "pending" : null,
+    labelElementSize: (name) => labelElementSize(source, name),
+  };
+
+  it("reads words[1] as the second 4-byte word", () => {
+    const r = ok(evaluateWatch("words[1]", ctx));
+    expect(r.value).toBe(20n);
+    expect(r.size).toBe(4);
+    expect(r.display).toBe("0x00000014");
+    expect(ok(evaluateWatch("words[w1]", ctx)).value).toBe(20n);
+  });
+
+  it("reads bytes[3] as one byte", () => {
+    const r = ok(evaluateWatch("bytes[3]", ctx));
+    expect(r.display).toBe("0x04");
+    expect(r.size).toBe(1);
+  });
+
+  it("refuses with the reason when the size is uncertain", () => {
+    const mixed: EvalContext = {
+      ...ctx,
+      labelElementSize: () => ({ error: "its label mixes data sizes" }),
+    };
+    expect(evaluateWatch("words[1]", mixed)).toEqual({
+      error: "can't tell the element size of words: its label mixes data sizes",
+    });
+  });
+
+  it("refuses a label array when no size reader is given", () => {
+    const { labelElementSize: _unused, ...bare } = ctx;
+    expect(evaluateWatch("words[1]", bare)).toHaveProperty("error");
+  });
+
+  it("waits while the label lookup is in flight", () => {
+    expect(evaluateWatch("later[0]", ctx)).toEqual({ pending: true });
+  });
+
+  it("names the label an array watch reads", () => {
+    expect(watchLabelName(" words[w1] ")).toBe("words");
+    expect(watchLabelName("[fp, 16]")).toBeNull();
+    expect(watchLabelName("x0")).toBeNull();
+  });
 });
