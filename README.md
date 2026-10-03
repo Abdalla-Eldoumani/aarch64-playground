@@ -18,14 +18,20 @@ steps in [Run it locally](#run-it-locally).
   registers, the stack, and memory update.
 - Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
   on files kept in the browser.
-- Read 32 lessons, each with programs you can run in place.
+- Read 32 lessons, each with programs you can run in place. Every lesson ends
+  with buttons to the previous and next lessons, and most first link the
+  exercises that practice them.
 - Practice with 68 coding exercises, checked by running your program on hidden
   inputs, and 68 sets of quizzes, fill-in-the-blank questions, and output
   predictions.
 - Look up every instruction the emulator accepts, with its syntax, an example,
-  the C it matches, and the flags it sets.
+  the C it matches, and the flags it sets. The reference also walks through the
+  calling convention and lists 36 common mistakes, each a program you can run.
 - Send a program as a link. The whole program is inside the link, so no server
   stores it.
+- Install the site as an app. After one visit the playground works offline,
+  and **Save every page for offline** keeps the lessons, practice, and
+  reference too.
 
 ## What it does not do
 
