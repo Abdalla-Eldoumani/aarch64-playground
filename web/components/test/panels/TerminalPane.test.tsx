@@ -140,7 +140,9 @@ describe("TerminalPane", () => {
     try {
       const { unmount } = render(<TerminalPane buildContext={() => makeContext()} />);
       const term = instances[0];
-      expect(term.options.theme?.background).toBe("#FFFFFF");
+      expect(term.options.theme?.background).toBe("#FCFCFD");
+      document.documentElement.setAttribute("data-theme", "ember");
+      await vi.waitFor(() => expect(term.options.theme?.background).toBe("#14100D"));
       document.documentElement.setAttribute("data-theme", "high-contrast");
       await vi.waitFor(() => expect(term.options.theme?.background).toBe("#000000"));
       document.documentElement.setAttribute("data-theme", "dark");
