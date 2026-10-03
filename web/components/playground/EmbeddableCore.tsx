@@ -768,7 +768,6 @@ export function EmbeddableCore({
         onOpenCommandPalette={onOpenCommandPalette}
         onOpenShortcutsHelp={onOpenShortcutsHelp}
         onOpenShareDialog={onOpenShareDialog}
-        onToggleTheme={onToggleTheme}
         registerBridge={registerFullChrome}
       />
     );
