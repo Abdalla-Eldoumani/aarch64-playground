@@ -57,6 +57,9 @@ offsets as symbols (`score1_s = 16`), and `printf` and `scanf` calls.
 3. Answer the other two prompts. The program prints the average, the controls
    show **halted**, and the console shows `exit 0`.
 
+**run** assembles first when it needs to: when nothing is loaded yet, when the
+program has finished, or when you changed the code, the files, or the args.
+**assemble** on its own loads the program without running it, ready to step.
 `Ctrl+Enter` assembles and runs in one step, even from inside the editor.
 
 ## Step and set a breakpoint
@@ -67,11 +70,13 @@ offsets as symbols (`score1_s = 16`), and `printf` and `scanf` calls.
    prologue as it builds the frame.
 3. Press **back** (`Shift+F10`) to undo the last instruction. Step back
    reaches the last 128 instructions.
-4. Click the margin to the left of a line number to set a breakpoint there.
-   **run** stops when it reaches that line.
+4. Click the margin to the left of a line number to set a breakpoint there,
+   or put the caret on the line and press `F9`. **run** stops when it reaches
+   that line.
 
-The strip above the registers shows the current instruction's encoding, field
-by field, with a plain-English reading of what it does.
+The **next instruction** strip above the registers shows the instruction the
+next step runs: its encoding, field by field, and a plain-English reading of
+what it does.
 
 ## Pass arguments
 
@@ -95,7 +100,9 @@ and memory, and copies it or a link that reopens the program.
 - **Tutorials** walk through an example program one step at a time and check
   the registers as you go.
 - The **term** tab is a terminal with the course workflow (`m4`, `gcc`,
-  `./program`) and a small `gdb`. See [terminal.md](terminal.md).
+  `./program`) and a small `gdb`. The terminal keeps the keyboard while it has
+  focus, so press `Ctrl+M`, then `Tab`, to move out of it. See
+  [terminal.md](terminal.md).
 - The **watches** tab evaluates expressions such as `x0`, `*x0`, and
   `[fp, score1_s]` each time the program stops. A stack offset also takes an
   index: `score1_s[1]` reads the 8 bytes at `fp + score1_s + 8`. Name
@@ -131,7 +138,9 @@ and memory, and copies it or a link that reopens the program.
 | `F10` | Step |
 | `Shift+F10` | Step back |
 | `Shift+F5` | Reset |
-| `Ctrl+K` | Command palette |
+| `F9` | Set or clear a breakpoint on the caret's line |
+| `Ctrl+K` | Command palette, from anywhere on the page |
+| `Ctrl+M` | Leave the terminal (then `Tab`) |
 | `?` | Every shortcut |
 
 ## The rest of the site
