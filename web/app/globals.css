@@ -3,143 +3,19 @@
 @tailwind utilities;
 
 /* =============================================================================
-   Design tokens. Amber is the machine acting, cyan is you acting. One token
-   drives each state across all three themes.
+   Design tokens. Every colour, per theme, comes from lib/theme/tokens.ts: the
+   Tailwind config writes those blocks into the base layer above, so no colour
+   value is written in this file. Amber is the machine acting, cyan is you
+   acting. What follows is theme-independent.
 ============================================================================= */
 
-/* ----- DARK · primary surface (default) ----- */
-:root,
-[data-theme="dark"] {
-  --bg-base:        #0B0C10;
-  --bg-sunken:      #0F1116;
-  --bg-raised:      #14171D;
-  --bg-panel:       #191D24;
-  --bg-elevated:    #212630;
-  --border:         #262B33;
-  --border-strong:  #3A414C;
-
-  --text-primary:   #EDEEF1;
-  --text-secondary: #A5ACB6;
-  --text-tertiary:  #858D99; /* 4.5:1 on every dark surface, --bg-elevated included */
-
-  --amber:          #FFB224;  /* execution: pc, current line, run, decode-strip Rd */
-  --amber-dim:      #7A5510;
-
-  --cyan:           #3EC5E8;  /* interaction: links, focus, primary actions, selected tab/nav */
-  --cyan-dim:       #1B6376;
-  --on-cyan:        #052430;  /* text/icon on a filled cyan control */
-
-  --success:        #4ADE80;
-  --warning:        #FFB454;
-  --danger:         #FF6B6B;
-  --changed:        #FFCB5E;  /* the just-written value's ink; the flash itself is the amber write bar */
-
-  --focus:          var(--cyan);
-
-  /* Blueprint paper + datasheet marginalia. The grid is CSS-only (see .paper)
-     and self-disabling in high-contrast where --grid-line goes transparent. */
-  --grid-line:      rgba(237, 238, 241, 0.03);
-  --crop:           #4A515C;
-
-  /* Syntax colors for the read-only CodeBlock, matched per theme to the editor's
-     Monaco palette (web/components/playground/monaco-setup.ts) so the editor and read-only code
-     read the same. --syntax-comment is lifted from the editor's gray to clear
-     WCAG AA on the code surface; --syntax-string reuses the literal (number) hue
-     since the editor grammar has no string token. */
-  --syntax-keyword:  #6FA8FF;
-  --syntax-register: #FF7EB6;
-  --syntax-number:   #B49BFF;
-  --syntax-string:   #B49BFF;
-  --syntax-comment:  #8B939E;
-  --syntax-label:    #3DD68C;
-
-  /* Viewport-safe insets and the panel font scale are theme-independent,
-     so the base/dark block owns them; they cascade to every theme via :root. */
+/* Viewport-safe insets and the panel font scale are the same in every theme. */
+:root {
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
   --safe-top:       env(safe-area-inset-top, 0px);
   --safe-left:      env(safe-area-inset-left, 0px);
   --safe-right:     env(safe-area-inset-right, 0px);
   --font-scale:     1;
-}
-
-/* ----- LIGHT · true light (ink on blueprint paper) ----- */
-[data-theme="light"] {
-  --bg-base:        #FCFCFD;
-  --bg-sunken:      #F4F5F7;
-  --bg-raised:      #FFFFFF;
-  --bg-panel:       #FFFFFF;
-  --bg-elevated:    #E9EBEF;
-  --border:         #E2E5EA;
-  --border-strong:  #C9CED6;
-
-  --text-primary:   #14161A;
-  --text-secondary: #565E68;
-  --text-tertiary:  #626A73; /* 4.5:1 on every light surface incl. --bg-elevated hover */
-
-  /* The three state hues sit darker than their dark-theme cousins on
-     purpose: as text they must clear 4.5:1 on every light surface AND on
-     their own 10-15% tint bands (the quiz chips, callouts, and the
-     current-instruction row are the worst cases). */
-  --amber:          #81520C;
-  --amber-dim:      #E7CD96;
-  --cyan:           #0E7490;
-  --cyan-dim:       #9AD3DF;
-  --on-cyan:        #FFFFFF;
-
-  --success:        #186A2D;
-  --warning:        #8D5400;
-  --danger:         #C2362F;
-  --changed:        #8A5700;
-
-  --focus:          var(--cyan);
-
-  --grid-line:      rgba(20, 22, 26, 0.04);
-  --crop:           #B9C0C9;
-
-  --syntax-keyword:  #1D4ED8;
-  --syntax-register: #BE185D;
-  --syntax-number:   #6D28D9;
-  --syntax-string:   #6D28D9;
-  --syntax-comment:  #5A626B;
-  --syntax-label:    #036B4D;  /* dark enough for 4.5:1 on a code block's amber current line */
-}
-
-/* ----- HIGH-CONTRAST · pure-black, white hairlines, WCAG AAA, texture off ----- */
-[data-theme="high-contrast"] {
-  --bg-base:        #000000;
-  --bg-sunken:      #0A0A0A;
-  --bg-raised:      #141414;
-  --bg-panel:       #141414;
-  --bg-elevated:    #1E1E1E;
-  --border:         #FFFFFF;
-  --border-strong:  #FFFFFF;
-
-  --text-primary:   #FFFFFF;
-  --text-secondary: #E6E6E6;
-  --text-tertiary:  #C7C7C7;
-
-  --amber:          #FFC247;
-  --amber-dim:      #6B4A00;
-  --cyan:           #5AD7F0;
-  --cyan-dim:       #13606F;  /* fills under --text-primary: 7.2:1, AAA */
-  --on-cyan:        #00181E;
-
-  --success:        #5CF06B;
-  --warning:        #FFC247;
-  --danger:         #FF8585;
-  --changed:        #FFD480;
-
-  --focus:          #FFFFFF;
-
-  --grid-line:      transparent;  /* texture off: nothing competes with text */
-  --crop:           #FFFFFF;
-
-  --syntax-keyword:  #8BE0FF;
-  --syntax-register: #FFB6E6;
-  --syntax-number:   #D4B6FF;
-  --syntax-string:   #D4B6FF;
-  --syntax-comment:  #D1D5DB;
-  --syntax-label:    #9EF0C1;
 }
 
 /* =============================================================================
@@ -178,9 +54,6 @@
   --radius-card:    8px;
   --radius-modal:   10px;
 
-  --shadow-overlay: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
-  --shadow-frame:   0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
-
   --ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--focus);
 
   --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -200,10 +73,20 @@ html {
   font-size: 16px;
 }
 
-/* Text selection carries the interaction pole: a cyan wash in every theme. */
+/* Text selection carries the interaction pole, translucent so marks under it show. */
 ::selection {
-  background: color-mix(in srgb, var(--cyan) 30%, transparent);
+  background: var(--selection);
   color: var(--text-primary);
+}
+
+/* Preflight's fixed grey placeholder falls to 2.5:1 on the light themes. In
+   the base layer this comes after preflight, so it wins while a component's
+   own placeholder: class still overrides it. */
+@layer base {
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-tertiary);
+  }
 }
 
 body {
@@ -696,4 +579,11 @@ body:has(> .playground-shell) {
 .context-view.monaco-component:has(.workbench-hover) {
   width: max-content !important;
   max-width: 500px !important;
+}
+
+/* Monaco fades a disabled toggle in its find box (find in selection) to 40%,
+   which put the icon under 3:1 on the light themes. The icon already takes
+   the disabled ink from the editor theme, so it stays at full strength. */
+.monaco-editor .find-widget .monaco-custom-toggle.disabled {
+  opacity: 1;
 }
