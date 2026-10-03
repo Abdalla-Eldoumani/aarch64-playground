@@ -81,16 +81,17 @@ describe("LessonIndex", () => {
 
   // Tailwind reads a shadow utility over var(--ring) as a shadow colour and
   // paints no ring, so the ring has to be set as the box-shadow itself.
+  // The tag filter's toggle takes its ring from the shared fold-summary rule.
   it("rings the search box and the tag chips on keyboard focus", () => {
     render(<LessonIndex lessons={lessons} />);
     const controls = [
       screen.getByLabelText("search lessons"),
-      screen.getByText("filter by tag"),
       screen.getByRole("button", { name: "registers" }),
     ];
     for (const control of controls) {
       expect(control.className).toContain("focus-visible:[box-shadow:var(--ring)]");
     }
+    expect(screen.getByText("filter by tag").className).toContain("fold-summary");
   });
 
   it("renders the empty state when there are no lessons", () => {
