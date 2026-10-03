@@ -17,16 +17,12 @@ function hydratedOnServer(): boolean {
   return false;
 }
 
-// Short visible labels; the aria-label always carries the full "<value> theme".
-const OPTIONS = THEMES.map(({ id, name }) => ({
-  value: id,
-  label: id === "high-contrast" ? "contrast" : name,
-}));
-
 /**
- * Drives the shared useTheme hook, so there is no second theme store. One
- * bordered strip rather than separate pills, so it reads as a single switch.
- * `comfortable` gives the mobile drawer 44px targets.
+ * Drives the shared useTheme hook, so there is no second theme store. Each
+ * option is a swatch painted by its own theme's tokens (`data-theme` on the
+ * swatch scopes them), so six fit where three words did; the name is the
+ * button's label and tooltip. One bordered strip, so it reads as a single
+ * switch. `comfortable` gives the mobile drawer 44px targets.
  */
 export function ThemeControl({
   size = "compact",
@@ -37,10 +33,7 @@ export function ThemeControl({
 }) {
   const [theme, , setTheme] = useTheme();
   const hydrated = useSyncExternalStore(subscribe, hydratedOnClient, hydratedOnServer);
-  const sizing =
-    size === "comfortable"
-      ? "min-h-[44px] px-3 text-[13px]"
-      : "min-h-[32px] px-2.5 text-[12px]";
+  const sizing = size === "comfortable" ? "min-h-[44px] min-w-[44px]" : "min-h-[32px] min-w-[28px]";
 
   return (
     <div
@@ -48,24 +41,29 @@ export function ThemeControl({
       aria-label="theme"
       className={`inline-flex items-stretch overflow-hidden rounded-[var(--radius-control)] border border-[var(--border)] ${className}`}
     >
-      {OPTIONS.map(({ value, label }, index) => {
-        const active = hydrated && theme === value;
+      {THEMES.map(({ id, name }, index) => {
+        const active = hydrated && theme === id;
         return (
           <button
-            key={value}
+            key={id}
             type="button"
-            aria-label={`${value} theme`}
+            aria-label={`${id} theme`}
             aria-pressed={active}
-            onClick={() => setTheme(value)}
-            className={`touch-target inline-flex items-center justify-center font-sans font-medium transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10 ${sizing} ${
+            title={name}
+            onClick={() => setTheme(id)}
+            className={`touch-target inline-flex items-center justify-center transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:z-10 ${sizing} ${
               index > 0 ? "border-l border-[var(--border)]" : ""
-            } ${
-              active
-                ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
-                : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
-            }`}
+            } ${active ? "bg-[var(--cyan)]" : "hover:bg-[var(--bg-elevated)]"}`}
           >
-            {label}
+            {/* The edge is the page's own ink, so a swatch close to the page
+                colour still shows; inside sit the theme's page, machine and
+                interaction colours. */}
+            <span aria-hidden="true" className="flex rounded-[2px] border border-[var(--text-tertiary)]">
+              <span data-theme={id} className="flex h-3.5 w-3.5 items-end gap-px bg-[var(--bg-base)] p-0.5">
+                <span className="h-1.5 w-1 bg-[var(--amber)]" />
+                <span className="h-1 w-1 bg-[var(--cyan)]" />
+              </span>
+            </span>
           </button>
         );
       })}
