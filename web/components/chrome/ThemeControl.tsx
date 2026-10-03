@@ -1,7 +1,8 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { useTheme, type Theme } from "@/lib/hooks/use-theme";
+import { useTheme } from "@/lib/hooks/use-theme";
+import { THEMES } from "@/lib/theme/themes";
 
 // The server cannot see the stored or OS theme, so its HTML presses no option
 // rather than a guess that the page's own colours may contradict until
@@ -17,15 +18,14 @@ function hydratedOnServer(): boolean {
 }
 
 // Short visible labels; the aria-label always carries the full "<value> theme".
-const OPTIONS: { value: Theme; label: string }[] = [
-  { value: "dark", label: "dark" },
-  { value: "light", label: "light" },
-  { value: "high-contrast", label: "contrast" },
-];
+const OPTIONS = THEMES.map(({ id, name }) => ({
+  value: id,
+  label: id === "high-contrast" ? "contrast" : name,
+}));
 
 /**
  * Drives the shared useTheme hook, so there is no second theme store. One
- * bordered strip rather than three pills, so it reads as a single switch.
+ * bordered strip rather than separate pills, so it reads as a single switch.
  * `comfortable` gives the mobile drawer 44px targets.
  */
 export function ThemeControl({
