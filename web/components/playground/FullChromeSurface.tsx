@@ -8,66 +8,39 @@ import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
 import { collectDiagnostic } from "@/lib/playground/diagnostic-bundle";
 import { formatAsm } from "@/lib/asm/asm-formatter";
-import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 import { useLaunchMode } from "@/lib/playground/use-launch-mode";
 import type { WorkingSet } from "@/lib/playground/use-working-set";
 import { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
 import { createTerminalContext } from "@/lib/playground/terminal-context";
-import {
-  describeTarget,
-  getImportTarget,
-  type ImportTarget,
-} from "@/lib/hooks/use-import-target";
+import { getImportTarget } from "@/lib/hooks/use-import-target";
 import { Editor } from "@/components/playground/lazy-editor";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
-import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { Controls } from "@/components/playground/Controls";
 import { DecodeStrip } from "@/components/panels/DecodeStrip";
 import { FirstRunState } from "@/components/playground/FirstRunState";
 import { FullLayout } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
 import { Toolbar } from "@/components/playground/Toolbar";
-import {
-  RightTabs,
-  type DebugPanes,
-  type RightTab,
-} from "@/components/playground/RightTabs";
+import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
 import {
   MultiFileTabs,
-  combineSources,
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
 import type { SourceFilesBackup } from "@/lib/hooks/use-source-files";
 import {
-  BaseConverter,
   InstructionView,
   InterfaceWalkthrough,
-  MemoryPanel,
-  MemoryWatches,
   ReplayScrubber,
-  SavesPanel,
-  StackPanel,
-  TerminalPane,
   TutorialRunner,
-  WatchPanel,
 } from "@/components/playground/lazy-panels";
-import {
-  breakpointsForFile,
-  combinedLineFor,
-  definesMain,
-  diagnosticsForFile,
-  errorWithLocation,
-  MAIN_FILE,
-  planBreakpointRemap,
-  resolveLine,
-  sameWorkspace,
-  validateFileName,
-  workspaceShape,
-  type Workspace,
-} from "@/lib/playground/file-map";
+import { validateFileName } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { fileStub, useWorkspaceImport } from "@/components/playground/use-workspace-import";
+import { useFullChromeRun } from "@/components/playground/use-full-chrome-run";
 
+import { useActiveFile } from "@/components/playground/use-active-file";
+import { useDebugPanes } from "@/components/playground/use-debug-panes";
 /**
  * The full-chrome actions the shell defers to. This surface loads lazily, so
  * it publishes them upward on mount and the shell reads them through a ref,
@@ -137,31 +110,6 @@ export interface FullChromeSurfaceProps {
   onToggleTheme?: () => void;
   /** Published on mount, cleared on unmount. */
   registerBridge: (bridge: FullChromeBridge | null) => void;
-}
-
-/** What a new tab starts with. */
-const fileStub = (name: string) => `// ${name}\n`;
-
-// An import, unlike a program load, keeps no copy in recents of what it
-// writes over, so it asks before replacing code that differs from the file
-// coming in, in main.asm or in any helper tab. A tab still holding its new
-// stub (`name`) has nothing to lose.
-function importReplaces(current: string | undefined, incoming: string, name?: string): boolean {
-  return (
-    current !== undefined &&
-    current.trim() !== "" &&
-    current !== incoming &&
-    (name === undefined || current !== fileStub(name))
-  );
-}
-
-function confirmImport(what: string, replaced: string[], edited: boolean): boolean {
-  return (
-    replaced.length === 0 ||
-    window.confirm(
-      `Import ${what}? It replaces the code in ${replaced.join(", ")}${edited ? ", including your edits" : ""}.`,
-    )
-  );
 }
 
 /**
@@ -239,105 +187,8 @@ export function FullChromeSurface({
     reset: resetLaunch,
   } = useLaunchMode({ args: argsText, setArgs: setArgsText });
   const importTarget = getImportTarget(activeFile);
-  // The main buffer as the last program load or import left it: anything
-  // else in there is the student's own edit.
-  const loadedSourceRef = useRef(source);
-  // The helper tabs as the last load or import left them, by name.
-  const loadedFilesRef = useRef(new Map(extraFiles.map((f) => [f.name, f.body])));
-  // Whether a buffer holds anything the student typed since it was loaded.
-  const isEdited = useCallback(
-    (name: string, body: string) =>
-      body !== (name === "main.asm" ? loadedSourceRef.current : loadedFilesRef.current.get(name)),
-    [],
-  );
-
-  const handleImport = useCallback(
-    (target: ImportTarget, body: string) => {
-      const tab = target.kind === "extra" ? extraFiles[target.index] : undefined;
-      const current = target.kind === "main" ? source : tab?.body;
-      const name = describeTarget(target, extraFiles);
-      const replaced = importReplaces(current, body, tab?.name) ? [name] : [];
-      if (!confirmImport("this file", replaced, isEdited(name, current ?? ""))) return;
-      resetLaunch();
-      switch (target.kind) {
-        case "main":
-          setSource(body);
-          loadedSourceRef.current = body;
-          toast.show("imported into main.asm");
-          return;
-        case "extra": {
-          const idx = target.index;
-          loadedFilesRef.current.set(name, body);
-          setExtraFiles(
-            extraFiles.map((f, i) => (i === idx ? { ...f, body } : f)),
-          );
-          toast.show(`imported into ${name}`);
-          return;
-        }
-      }
-    },
-    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch, isEdited],
-  );
-
-  // Multi-select import: the program replaces the main buffer; every other
-  // file becomes (or refreshes) a named tab, so a whole multi-file program
-  // lands in one gesture. The program is a file named main.asm / main.s, or
-  // else the first that defines main, since a student's files are never
-  // called main.
-  const handleImportMany = useCallback(
-    (files: { name: string; body: string }[]) => {
-      let mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
-      if (mainIdx < 0) mainIdx = files.findIndex((f) => definesMain(f.body));
-      const currentOf = (name: string) =>
-        name === "main.asm" ? source : extraFiles.find((x) => x.name === name)?.body;
-      const replaced = files.flatMap((f, i) => {
-        const name = i === mainIdx ? "main.asm" : f.name;
-        return importReplaces(currentOf(name), f.body, i === mainIdx ? undefined : f.name)
-          ? [name]
-          : [];
-      });
-      const edited = replaced.some((name) => isEdited(name, currentOf(name) ?? ""));
-      const what = files.length === 1 ? files[0].name : `${files.length} files`;
-      if (!confirmImport(what, replaced, edited)) return;
-      resetLaunch();
-      if (mainIdx >= 0) {
-        setSource(files[mainIdx].body);
-        loadedSourceRef.current = files[mainIdx].body;
-      }
-      const rest = files.filter((_, i) => i !== mainIdx);
-      const next = [...extraFiles];
-      for (const f of rest) {
-        loadedFilesRef.current.set(f.name, f.body);
-        const at = next.findIndex((x) => x.name === f.name);
-        if (at >= 0) next[at] = { name: f.name, body: f.body };
-        else next.push({ name: f.name, body: f.body });
-      }
-      setExtraFiles(next);
-      toast.show(`imported ${what}`);
-    },
-    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch, isEdited],
-  );
-
-  // A load replacing edits made since the last load or import asks first.
-  // The replaced text also goes to recents, so the question is only about
-  // work the student may not know is kept there; an untouched example is
-  // swapped without asking.
-  const loadProgramWithConfirm = useCallback(
-    (payload: HandoffPayload) => {
-      const edited = source.trim() !== "" && source !== loadedSourceRef.current;
-      if (
-        edited &&
-        source !== payload.source &&
-        !window.confirm(
-          `Load ${payload.label ?? "this program"}? It replaces your edits in main.asm. The current code stays under "recent" if you want it back.`,
-        )
-      ) {
-        return;
-      }
-      loadProgram(payload);
-    },
-    [source, loadProgram],
-  );
+  const { loadedSourceRef, loadedFilesRef, handleImport, handleImportMany, loadProgramWithConfirm } =
+    useWorkspaceImport({ source, setSource, extraFiles, setExtraFiles, toast, resetLaunch, loadProgram });
   // The terminal pane's foreground sessions: the shared drive, the console
   // watermark a session leaves behind, and the two rising edges (a blocked
   // read, a raw-mode program) that decide which pane comes forward.
@@ -359,80 +210,28 @@ export function FullChromeSurface({
     terminalTabActive: shownPane === "term",
     requestPane,
   });
-  // Assemble, then hand the terminal pane over. The assemble must land first,
-  // or the drive's programLoaded check ends the new session at once.
-  const launchInteractive = useCallback(async () => {
-    const ok = await assembleWithHistory();
-    // The failure already renders in Controls' error box, and the pane is
-    // left alone: a failed assemble must not wipe the terminal.
-    if (!ok) return;
-    requestPane("term");
-    requestTerminalRun();
-  }, [assembleWithHistory, requestPane, requestTerminalRun]);
-
-  // Ctrl+Enter: assemble, then run it the way a run press would. Terminal
-  // mode's one-action launch already is exactly that.
-  const assembleAndRun = useCallback(async () => {
-    if (launchMode === "terminal") {
-      await launchInteractive();
-      return;
-    }
-    if (await assembleWithHistory()) emuRef.current.run();
-  }, [launchMode, launchInteractive, assembleWithHistory, emuRef]);
-
-  // The workspace and args the machine last assembled from here, so a run
-  // press can tell the student's edits from the program that is loaded.
-  const loadedRef = useRef<{ workspace: Workspace; args: string } | null>(null);
-  const noteAssembled = () => {
-    loadedRef.current = { workspace: { main: source, extras: extraFiles }, args: argsText };
-  };
-
-  // Run starts the program on screen from the top, as a lesson's run does,
-  // when nothing is loaded, the program finished, or the code, files or args
-  // changed since the last assemble; only an unchanged program that paused
-  // carries on. Assemble alone loads without running. In terminal mode a
-  // loaded program is handed the pane: the tab switches, and the attach
-  // effect starts the drive once the pane's io registration lands.
-  const handleRun = useCallback(() => {
-    if (emu.isAssembling || emu.isRunning) return;
-    const loaded = loadedRef.current;
-    const edited =
-      loaded !== null &&
-      (loaded.args !== argsText ||
-        !sameWorkspace(loaded.workspace, { main: source, extras: extraFiles }));
-    if (!emu.programLoaded || emu.isHalted || edited) {
-      void assembleAndRun();
-      return;
-    }
-    if (launchMode === "terminal") {
-      requestPane("term");
-      requestTerminalRun();
-      return;
-    }
-    emu.run();
-  }, [emu, argsText, source, extraFiles, assembleAndRun, launchMode, requestPane, requestTerminalRun]);
-  const handleRunRef = useRef(handleRun);
-  useEffect(() => {
-    handleRunRef.current = handleRun;
-  }, [handleRun]);
-
-  // Reset starts the same program over: an unedited workspace is assembled
-  // again at once so breakpoints stay armed and run and step stay live. An
-  // edited one waits for the student. A live terminal session only stops,
-  // since a reassemble under it would start the program with no key pressed.
-  const restartProgram = useCallback(() => {
-    const wasLoaded = emuRef.current.programLoaded;
-    resetMachine();
-    const loaded = loadedRef.current;
-    if (!wasLoaded || foregroundLive || !loaded) return;
-    if (sameWorkspace(loaded.workspace, { main: source, extras: extraFiles })) {
-      void assembleWithHistory();
-    }
-  }, [emuRef, resetMachine, foregroundLive, source, extraFiles, assembleWithHistory]);
-
-  // Whether the composite launch has somewhere to land: only the terminal
-  // mode owns the pane at run press, and only this surface has a pane.
-  const launchable = launchMode === "terminal";
+  const {
+    launchInteractive,
+    assembleAndRun,
+    loadedRef,
+    noteAssembled,
+    handleRun,
+    handleRunRef,
+    restartProgram,
+    launchable,
+  } = useFullChromeRun({
+    emu,
+    emuRef,
+    source,
+    extraFiles,
+    argsText,
+    assembleWithHistory,
+    requestPane,
+    requestTerminalRun,
+    resetMachine,
+    foregroundLive,
+    launchMode,
+  });
 
   // Published upward once, as a stable object reading the live values through
   // a ref: the shell built the callbacks that call these before this module
@@ -493,40 +292,33 @@ export function FullChromeSurface({
     };
     registerBridge(bridge);
     return () => registerBridge(null);
-  }, [registerBridge, requestPane, openWalkthrough]);
+  }, [registerBridge, requestPane, openWalkthrough, loadedSourceRef, loadedFilesRef, handleRunRef]);
 
-  // Editor wiring: main buffer vs an extra file tab.
-  const isMain = activeFile === -1;
-  const editorValue = isMain ? source : extraFiles[activeFile]?.body ?? "";
-  const onEditorChange = useCallback(
-    (next: string) => {
-      if (isMain) {
-        setSource(next);
-      } else {
-        setExtraFiles(
-          extraFiles.map((f, i) => (i === activeFile ? { ...f, body: next } : f)),
-        );
-      }
-    },
-    [isMain, activeFile, extraFiles, setExtraFiles, setSource],
-  );
-  // Machine-produced lines resolve against the ASSEMBLED workspace; only the
-  // gutter (which the student clicks in the buffer on screen) uses the live
-  // one. Before the first assemble there is nothing pinned, so both fall back
-  // to what is on screen.
-  const machineMain = assembledLayout?.main ?? source;
-  const machineExtras = assembledLayout?.extras ?? extraFiles;
-
-  // The decode strip needs the combined source, since `emu.currentLine`
-  // counts across every file: main.asm alone lost the gloss inside a helper.
-  // Built from the pin, so it joins once per assemble, not per keystroke.
-  const pinnedCombined = useMemo(() => {
-    if (!assembledLayout) return null;
-    return assembledLayout.extras.length > 0
-      ? combineSources(assembledLayout.main, assembledLayout.extras)
-      : assembledLayout.main;
-  }, [assembledLayout]);
-  const decodeSource = pinnedCombined ?? source;
+  const {
+    isMain,
+    editorValue,
+    onEditorChange,
+    decodeSource,
+    activeErrors,
+    activeLint,
+    activeCurrentLine,
+    executing,
+    activeBreakpoints,
+    toggleBreakpointInActive,
+    controlsError,
+  } = useActiveFile({
+    emu,
+    source,
+    setSource,
+    sourceRef,
+    extraFiles,
+    setExtraFiles,
+    extraFilesRef,
+    activeFile,
+    setActiveFile,
+    lintWarnings,
+    assembledLayout,
+  });
 
   const frameSlots = useMemo(() => parseFrameSlots(source), [source]);
   const fpValue = useMemo(() => {
@@ -538,85 +330,6 @@ export function FullChromeSurface({
 
   // Hidden file picker the terminal's `upload` command triggers.
   const terminalUploadRef = useRef<HTMLInputElement>(null);
-  // Per-file views of the combined-line diagnostics: the editor shows one
-  // buffer at a time, so markers, the current-line highlight, and gutter
-  // breakpoints each translate to the active file's local lines (and hide
-  // when they belong to another file).
-  const activeErrors = useMemo(
-    () => diagnosticsForFile(emu.assemblyErrors, machineMain, machineExtras, activeFile),
-    [emu.assemblyErrors, machineMain, machineExtras, activeFile],
-  );
-  const activeLint = useMemo(
-    () => diagnosticsForFile(lintWarnings, source, extraFiles, activeFile),
-    [lintWarnings, source, extraFiles, activeFile],
-  );
-  const activeCurrentLine = useMemo(() => {
-    if (emu.currentLine == null) return null;
-    const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
-    return loc.file === activeFile ? loc.line : null;
-  }, [emu.currentLine, machineMain, machineExtras, activeFile]);
-  // Bring forward the tab the pc is in after a step or a stop. Not during a
-  // run (the pc crosses files many times a second), not before the first
-  // step (assembling from a helper tab must not jump to main's entry), and
-  // never onto a tab closed since the assemble; keyed on the pc's line so a
-  // tab picked while paused stays picked.
-  const executing = emu.stepCount > 0 && !emu.isRunning;
-  useEffect(() => {
-    if (emu.currentLine == null || !executing) return;
-    const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
-    if (loc.file !== MAIN_FILE && extraFilesRef.current[loc.file]?.name !== loc.name) return;
-    setActiveFile(loc.file);
-  }, [emu.currentLine, executing, machineMain, machineExtras, setActiveFile, extraFilesRef]);
-  const activeBreakpoints = useMemo(
-    () => breakpointsForFile(emu.breakpoints, source, extraFiles, activeFile),
-    [emu.breakpoints, source, extraFiles, activeFile],
-  );
-  const toggleBreakpointInActive = useCallback(
-    (line: number) => {
-      emu.toggleBreakpoint(
-        combinedLineFor(activeFile, line, sourceRef.current, extraFilesRef.current),
-      );
-    },
-    [emu, activeFile, sourceRef, extraFilesRef],
-  );
-  // Breakpoints are combined-source lines, so adding lines to main.asm shifts
-  // every dot in the helpers after it; this re-anchors them. Only line counts
-  // can move a line, so it is keyed on those and typing within a line is free.
-  const layoutShape = useMemo(() => workspaceShape(source, extraFiles), [
-    source,
-    extraFiles,
-  ]);
-  // Seeded with the workspace as it stands at mount (the strip rehydrates
-  // from storage), so the first pass has nothing to move.
-  const bpLayoutRef = useRef<Workspace>({ main: source, extras: extraFiles });
-  // Not the shell's refs: a child's effects run before its parent's, so they
-  // would be a render stale here, and the re-anchor gets one chance at each
-  // change. This mirror's effect runs just before its reader, since effects in
-  // one component run in declaration order.
-  const latestRef = useRef({
-    machine: emu,
-    workspace: { main: source, extras: extraFiles } as Workspace,
-  });
-  useEffect(() => {
-    latestRef.current = {
-      machine: emu,
-      workspace: { main: source, extras: extraFiles },
-    };
-  });
-  useEffect(() => {
-    const from = bpLayoutRef.current;
-    const { machine, workspace: to } = latestRef.current;
-    bpLayoutRef.current = to;
-    const moved = planBreakpointRemap(machine.breakpoints, from, to);
-    if (!moved) return;
-    machine.remapBreakpoints((line) => moved.get(line) ?? null);
-  }, [layoutShape]);
-  // Controls shows the first error as plain text, led by its line (and its
-  // file once helpers are open).
-  const controlsError = useMemo(
-    () => errorWithLocation(emu.error, emu.assemblyErrors[0], machineMain, machineExtras),
-    [emu.error, emu.assemblyErrors, machineMain, machineExtras],
-  );
   // `gcc -o name` registers compiled source here; `./name` runs it. A ref,
   // so the registry survives every per-snapshot context rebuild.
   const terminalExecutablesRef = useRef<Map<string, string>>(new Map());
@@ -786,136 +499,24 @@ export function FullChromeSurface({
   // switch remounts a failed one fresh. The editor stays unwrapped on purpose;
   // with the buffer surface itself broken, the route-level fault page is the
   // right fallback.
-  const memoryBlock = (
-    <ErrorBoundary label="memory">
-      <MemoryPanel
-        getMemory={emu.getMemory}
-        dirtyAddrs={emu.dirtyAddrs}
-        regions={emu.memoryRegions}
-        sp={emu.sp}
-      />
-    </ErrorBoundary>
-  );
-  const stackBlock = (
-    <ErrorBoundary label="stack">
-      <StackPanel
-        sp={emu.sp}
-        getMemory={emu.getMemory}
-        fp={fpValue}
-        frameSlots={frameSlots}
-      />
-    </ErrorBoundary>
-  );
-  const consoleBlock = (
-    <ErrorBoundary label="console">
-      <ConsolePanel
-        stdout={emu.stdout}
-        stderr={emu.stderr}
-        notes={emu.notes}
-        blocked={emu.blocked}
-        ownedByTerminal={foregroundLive || launchMode === "terminal"}
-        terminalOwnedFrom={terminalOwnedFrom}
-        exitCode={emu.exitCode}
-        vfsFiles={emu.vfsFiles}
-        pushStdin={emu.pushStdin}
-        onInputSent={emu.resumeAfterInput}
-        closeStdin={emu.closeStdin}
-        uploadVfsFile={stageVfsFile}
-        clearConsole={clearConsoleAll}
-      />
-    </ErrorBoundary>
-  );
-  const terminalBlock = (
-    <ErrorBoundary label="terminal">
-      <div className="h-full relative">
-        <input
-          ref={terminalUploadRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
-            if (sizeError) {
-              toast.error(sizeError);
-              e.target.value = "";
-              return;
-            }
-            f.arrayBuffer().then((buf) => {
-              stageVfsFile(f.name, new Uint8Array(buf));
-            });
-            e.target.value = "";
-          }}
-        />
-        <TerminalPane
-          buildContext={buildTerminalContext}
-          onUploadRequest={() => terminalUploadRef.current?.click()}
-          onRegisterIO={registerTermIO}
-        />
-      </div>
-    </ErrorBoundary>
-  );
-  const watchBlock = (
-    <ErrorBoundary label="watches">
-      <WatchPanel
-        registers={emu.registers}
-        sp={emu.sp}
-        pc={emu.pc}
-        frameSlots={frameSlots}
-        getMemory={emu.getMemory}
-        getMemoryMapped={emu.getMemoryMapped}
-      />
-    </ErrorBoundary>
-  );
-  const memWatchBlock = (
-    <ErrorBoundary label="memory watch">
-      <MemoryWatches getMemory={emu.getMemory} />
-    </ErrorBoundary>
-  );
-  const converterBlock = (
-    <ErrorBoundary label="converter">
-      <BaseConverter />
-    </ErrorBoundary>
-  );
-  const savesBlock = (
-    <ErrorBoundary label="saves">
-      <SavesPanel
-        savedStates={emu.savedStates}
-        onSaveState={emu.saveState}
-        onLoadState={emu.loadState}
-        onDeleteState={emu.deleteState}
-        source={source}
-        args={argsText}
-        stepCount={emu.stepCount}
-        onLoadProgram={loadProgram}
-        onRestoreBookmark={async (params) => {
-          const verdict = await emu.restoreBookmark(params);
-          // The restore assembled the bookmark's own program, so a run press
-          // carries on from the restored step instead of starting over.
-          if (verdict.success) {
-            loadedRef.current = {
-              workspace: { main: params.source, extras: [] },
-              args: params.args ?? "",
-            };
-          }
-          return verdict;
-        }}
-      />
-    </ErrorBoundary>
-  );
-
-  // The eight machine views as one bundle: the tab strip and the phone
-  // layout each render the same set, so neither has to name them one by one.
-  const panes: DebugPanes = {
-    memory: memoryBlock,
-    stack: stackBlock,
-    console: consoleBlock,
-    terminal: terminalBlock,
-    watches: watchBlock,
-    converter: converterBlock,
-    memwatch: memWatchBlock,
-    saves: savesBlock,
-  };
+  const panes = useDebugPanes({
+    emu,
+    source,
+    argsText,
+    loadProgram,
+    stageVfsFile,
+    fpValue,
+    frameSlots,
+    launchMode,
+    foregroundLive,
+    terminalOwnedFrom,
+    clearConsoleAll,
+    registerTermIO,
+    buildTerminalContext,
+    terminalUploadRef,
+    loadedRef,
+    toast,
+  });
 
   // Output that lands while another tab is up (a run's printf behind the
   // memory view) marks the console tab until the student opens it. The
