@@ -84,7 +84,7 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
-        aria-label="command-line arguments"
+        aria-label="args (command-line arguments)"
         className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[12px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
       />
     </label>
