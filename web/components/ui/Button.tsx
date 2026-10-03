@@ -32,7 +32,7 @@ const BASE =
   "disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)]";
 
 // Hover mixes some label color into the fill rather than fading it with
-// opacity, so the label gains contrast in all three themes from one rule.
+// opacity, so the label gains contrast in every theme from one rule.
 // Primary keeps the rounder action corner; the others use the square one.
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
