@@ -420,6 +420,24 @@ describe("importing a program's files", () => {
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining("main.asm"));
   });
 
+  it("adds one picked helper as its own tab and leaves main.asm alone", async () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    await fullChromeMounted();
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    pick(file(CUBE, "cube.s"));
+
+    await waitFor(() =>
+      expect(ref.current!.getFiles()).toEqual([{ name: "cube.s", body: CUBE }]),
+    );
+    expect(ref.current!.getSource()).toBe(MAIN);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it("fills a new tab's starter comment without asking", async () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     const { container } = render(
