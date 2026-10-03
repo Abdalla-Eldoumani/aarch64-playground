@@ -61,6 +61,23 @@ describe("motion in globals.css", () => {
     }
   });
 
+  it("moves the theme row only for a reader who has not asked for less motion", () => {
+    let outside = css;
+    for (const body of blocks("@media (prefers-reduced-motion: no-preference)")) {
+      outside = outside.replace(body, "");
+    }
+    // Outside that block the row and its swatches carry end states only.
+    expect(outside).not.toMatch(/\.theme-(?:strip|swatch|marker)[^{]*\{[^}]*\btransition\s*:/);
+    const moving = blocks("@media (prefers-reduced-motion: no-preference)").join("\n");
+    expect(moving).toMatch(/\.theme-strip\[data-open="true"\]\s*\{[^}]*transform var\(--motion-base\) var\(--ease-arrive\)/);
+    expect(moving).toMatch(/\.theme-marker\s*\{\s*transition: transform var\(--motion-base\)/);
+  });
+
+  it("keeps every motion token at 300ms or less", () => {
+    const tokens = [...css.matchAll(/--motion-[\w-]+:\s*(\d+)ms/g)].map((m) => Number(m[1]));
+    expect(tokens).toEqual([120, 180, 240]);
+  });
+
   it("stops Monaco's own fades under reduced motion", () => {
     const reduce = blocks("@media (prefers-reduced-motion: reduce)").join("\n");
     expect(reduce).toMatch(/\.monaco-editor,\s*\.monaco-editor \*\s*\{\s*transition: none !important;\s*\}/);
