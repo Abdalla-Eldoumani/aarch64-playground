@@ -507,14 +507,22 @@ describe("stdin given when the page opens", () => {
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
 
-  it("keeps the page's preset stdin in embed chrome", async () => {
+  // Queued once, by the run's own assemble: a copy queued as the hub came up
+  // could reach the machine after that assemble's reset and be read twice.
+  it("keeps the page's preset stdin in embed chrome, queued by the run", async () => {
     const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={MAIN} startStdin={"42\n"} />,
     );
     engage(container);
-    await waitFor(() => expect(hub.pushStdin).toHaveBeenCalledWith("42\n"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(hub.pushStdin).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.run).toHaveBeenCalledTimes(1));
+    expect(hub.pushStdin).toHaveBeenCalledTimes(1);
+    expect(hub.pushStdin).toHaveBeenCalledWith("42\n");
   });
 });
 
