@@ -121,7 +121,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
             ? "run this program in the terminal tab"
             : "assemble, then run it in the terminal tab"
           : deps.programLoaded
-            ? "run until halt or breakpoint"
+            ? "run until halt or breakpoint, assembling first if the code changed or the program ended"
             : "assemble, then run until halt or breakpoint",
       shortcut: "F5",
       run: () => {
