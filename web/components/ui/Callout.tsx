@@ -8,7 +8,7 @@ export interface CalloutProps {
   type: CalloutType;
   children: ReactNode;
   /** Replaces the variant's band label, for a box with its own job. */
-  label?: string;
+  label?: string | false;
   className?: string;
 }
 
@@ -48,7 +48,7 @@ export function Callout({ type, children, label, className = "" }: CalloutProps)
       <p
         className={`m-0 px-4 py-1.5 font-mono text-[12px] font-semibold uppercase tracking-[0.16em] ${BAND[type]}`}
       >
-        {label ?? LABEL[type]}
+        {label || LABEL[type]}
       </p>
       <div className="px-4 py-3 font-sans text-[14px] leading-[1.65] text-[var(--text-secondary)]">
         {children}
