@@ -10,11 +10,13 @@ repository root.
 | --- | --- |
 | Home page (`/`) | `web/app/(site)/page.tsx`, `web/components/landing/Hero.tsx`, `FeatureCatalog.tsx`, `web/lib/content/landing-content.ts` |
 | Home page program, drawn as static text so `/` loads no editor | `web/components/playground/StaticCodeView.tsx` |
+| Home page demo that steps on its own, with pause and replay | `web/components/landing/HeroDemo.tsx` |
 | Menu, footer, and page list | `web/lib/content/site.ts`, `web/components/chrome/SiteNav.tsx`, `SiteFooter.tsx`, `MobileNavDrawer.tsx` |
 | GitHub star count in the menu (read once per build, hidden when it cannot be read) | `web/lib/content/github.ts`, `web/components/chrome/StarCount.tsx`, `.github/workflows/refresh-stars.yml` |
 | Skip-to-content link | `web/app/layout.tsx`, `.skip-link` in `web/app/globals.css` |
 | 404 and error pages, with a report to copy | `web/app/not-found.tsx`, `web/components/chrome/NotFound.tsx`, `web/app/error.tsx`, `web/app/global-error.tsx` |
 | Lessons (`/learn`) | `web/app/(site)/learn/`, `web/components/learn/`, `web/lib/content/lessons.ts`, `lesson-schema.ts` |
+| A lesson's practice links and its previous and next buttons | `web/components/learn/LessonNav.tsx` |
 | Exercises (`/practice`), coding on one side and theory sets on the other | `web/app/(site)/practice/`, `web/components/practice/ExerciseIndex.tsx`, `ExerciseView.tsx`, `web/lib/content/exercises.ts`, `exercise-schema.ts`, `practice-topics.ts` |
 | Quizzes, fill-in-the-blank sets, and prediction sets | `web/components/practice/InteractiveExerciseView.tsx`, `QuizBlock.tsx`, `BlanksBlock.tsx`, `PredictionBlock.tsx`, `FeedbackAlert.tsx`, `web/lib/content/theory-answers.ts` |
 | Exercise checker (runs the program on the visible and hidden cases; no stored answer) | `web/lib/content/exercise-checker.ts` |
@@ -23,6 +25,7 @@ repository root.
 | The C equivalent of each instruction | `web/lib/asm/c-equivalents.ts` |
 | Teaching diagrams (flag panel, condition codes, encodings, frame walk, stack alignment, register files) | `web/components/diagrams/` |
 | Flag math behind the diagrams | `web/lib/emulator/flag-math.ts` |
+| Search on the lesson, practice, and reference pages (every word typed must start a word in the text) | `web/lib/content/search-words.ts` |
 | Code listing with a copy button, and the "open in playground" button | `web/components/ui/CodeBlock.tsx`, `OpenInPlayground.tsx` |
 | Page titles, snippets, structured data, and the sitemap | `web/lib/content/seo.ts`, `web/app/sitemap.ts`, `web/app/robots.ts` |
 | Share card image | `web/public/og.png`, `SHARE_CARD_IMAGE` in `web/lib/content/site.ts` |
@@ -32,10 +35,10 @@ repository root.
 
 | Feature | Files |
 | --- | --- |
-| The one emulator component used on every page | `web/components/playground/EmbeddablePlayground.tsx` |
-| The full debugger's panels and dialogs, loaded only on `/playground` | `web/components/playground/FullChromeSurface.tsx` |
+| The one emulator component used on every page | `web/components/playground/EmbeddablePlayground.tsx`, `EmbeddableCore.tsx` (owns the emulator hook), `use-embeddable-state.ts` |
+| The full debugger's panels and dialogs, loaded only on `/playground` | `web/components/playground/FullChromeSurface.tsx`, `lazy-full-chrome.tsx`, `use-workspace-import.ts`, `use-full-chrome-run.ts`, `use-active-file.ts`, `use-debug-panes.tsx` |
 | Lesson and exercise editors (run, step, back, reset, check) | `web/components/playground/EmbedLayout.tsx` |
-| Editor (Monaco), loaded on demand | `web/components/playground/Editor.tsx`, `lazy-editor.tsx` |
+| Editor (Monaco), loaded on demand | `web/components/playground/Editor.tsx`, `monaco-setup.ts`, `lazy-editor.tsx` |
 | Editor on touch screens | `web/components/playground/TouchEditor.tsx` |
 | Completion, hover cards, and error explanations | `web/lib/asm/asm-completion.ts`, `instruction-docs.ts`, `error-explain.ts` |
 | The list of mnemonics behind the reference, hover cards, and highlighting | `web/lib/asm/mnemonics.ts`, `highlight-arm64.ts` |
@@ -60,7 +63,7 @@ repository root.
 
 | Feature | Files |
 | --- | --- |
-| Registers: `x`, `d`, and `v` views, decimal or hex, vector lanes | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx`, `DRegisterRow.tsx`, `VRegisterRow.tsx`, `web/lib/emulator/vector-lanes.ts` |
+| Registers: `x`, `d`, and `v` views, decimal or hex, vector lanes | `web/components/panels/RegisterPanel.tsx`, `RegisterRow.tsx`, `DRegisterRow.tsx`, `VRegisterRow.tsx`, `register-view-state.ts`, `register-panel-settings.ts`, `reveal-rows.ts`, `web/lib/emulator/vector-lanes.ts` |
 | Encoding strip for the current instruction | `web/components/panels/DecodeStrip.tsx`, `web/lib/emulator/decode-fields.ts`, `web/lib/asm/explain-line.ts` |
 | Disassembly | `web/components/panels/InstructionView.tsx` |
 | Memory, with labels from the emulator's address map | `web/components/panels/MemoryPanel.tsx`, `web/lib/emulator/memory-map.ts` |
