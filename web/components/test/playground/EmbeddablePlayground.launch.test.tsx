@@ -162,7 +162,7 @@ async function registerPaneIO(io: ReturnType<typeof makeIO>): Promise<void> {
 }
 
 function argsBox(): HTMLInputElement {
-  return screen.getByLabelText("command-line arguments") as HTMLInputElement;
+  return screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
 }
 
 beforeEach(() => {
