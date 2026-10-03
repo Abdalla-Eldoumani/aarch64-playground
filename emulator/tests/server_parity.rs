@@ -1773,6 +1773,43 @@ done:
     assert_eq!(cpu.exit_code(), Some(0));
 }
 
+// An instruction's char operand is one byte, or a backslash and one byte:
+// on the servers `mov w0, '\0'` is `mov w0, #0x30` and `cmp w0, '\v'`
+// compares with a v. The playground gave 0 and refused `\v`.
+#[test]
+fn char_operands_in_instructions_read_one_letter_like_the_servers() {
+    let source = r#"
+        .data
+fmt:    .string "%d %d %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+
+        ldr     x0, =fmt
+        mov     w1, '\0'
+        mov     w2, '\w'
+        mov     w3, 'v'
+        cmp     w3, '\v'
+        cset    w3, eq
+        bl      printf
+
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(out, "48 119 1\n");
+
+    let bad = source.replace(r"mov     w2, '\w'", r"mov     w2, '\x41'");
+    let cpu = Cpu::new();
+    let err = assemble_hosted(&bad, &cpu.host).expect_err("'\\x41' is not one letter").to_string();
+    assert!(err.contains("write any other code as a number"), "message was: {err}");
+}
+
 // An m4 define named `n` turns the `\n` in a string into `\w19`, and one
 // named `sum` rewrites the word. The servers assemble it and print the
 // rewritten text with no newline; the lint says why on the string's line.
