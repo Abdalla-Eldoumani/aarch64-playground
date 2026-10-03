@@ -122,7 +122,7 @@ export function LessonArticle({
               const answers = block.markdown.startsWith(ANSWERS_LEAD);
               return (
                 <div key={index} className="my-6 max-w-2xl">
-                  <Callout type={block.variant}>
+                  <Callout type={block.variant} label={answers ? "answers" : undefined}>
                     {answers ? (
                       // The marker and the expanded state the browser reports
                       // say open or shut, so the label stays put.
