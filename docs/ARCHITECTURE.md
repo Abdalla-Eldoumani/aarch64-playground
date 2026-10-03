@@ -59,20 +59,37 @@ each kind of file must meet.
 | A pitfall card | `web/lib/content/pitfalls/<group>.ts`; `web/lib/content/pitfall-data.ts` joins the groups |
 | An instruction's reference entry | [instruction-reference.md](instruction-reference.md), `web/lib/content/reference-data.ts`, and the hover card in `web/lib/asm/instruction-docs.ts` |
 
-<!-- The site's rows (themes, the watch grammar, the panels, the playground
-layout) go here once its files settle. -->
+### The site and the playground
+
+All paths below are under `web/`.
+
+| To change | Edit |
+| --- | --- |
+| A theme's colours | its `[data-theme]` block of tokens in `app/globals.css`; the editor's copy in `components/playground/monaco-setup.ts` and the terminal's in `currentXtermTheme` (`components/panels/TerminalPane.tsx`) repeat them and change with them |
+| How the theme is picked and stored | `lib/hooks/use-theme.ts`, `components/chrome/ThemeControl.tsx`, and the script in `app/layout.tsx` that sets the theme before the page paints |
+| What a watch expression accepts | `lib/emulator/watch-expr.ts` (its header lists the grammar); the panel is `components/panels/WatchPanel.tsx` |
+| A panel | `components/panels/`, one file per panel; the register panel's view and stored settings are in `register-view-state.ts` and `register-panel-settings.ts` |
+| The playground's layout | `components/playground/FullLayout.tsx` picks `ResizableLayout.tsx` on a wide screen or `PhoneLayout.tsx` on a phone; `EmbedLayout.tsx` lays out the editors in lessons and exercises |
+| How a program loads, runs, and steps | `lib/emulator/use-emulator.ts`, which `components/playground/EmbeddableCore.tsx` owns |
+| The full debugger on `/playground` | `components/playground/FullChromeSurface.tsx` and its hooks: `use-workspace-import.ts`, `use-full-chrome-run.ts`, `use-active-file.ts`, `use-debug-panes.tsx` |
+| The editor | `components/playground/Editor.tsx`; Monaco's language, completion, and hover setup is `monaco-setup.ts`; phones use `TouchEditor.tsx` |
+| A keyboard shortcut | `app/playground/page.tsx`, the command palette's rows in `lib/playground/palette-commands.ts`, and the help list in `components/playground/ShortcutsHelp.tsx` |
+| The menu and the page list | `lib/content/site.ts` |
+| What works offline | `lib/playground/sw.js` and `scripts/write-precache-list.js` (see [Offline](#offline)) |
 
 ## One playground component
 
 `web/components/playground/EmbeddablePlayground.tsx` is the emulator on every
 page: the full playground, the home page's program, and every lesson and
-exercise editor. It owns the one `useEmulator()` hook
-(`web/lib/emulator/use-emulator.ts`), so a fix to how programs load or run
-reaches every page at once.
+exercise editor. On `/playground` it mounts `EmbeddableCore.tsx` at once.
+Elsewhere it draws a still frame and mounts the core when the reader first
+presses a control. The core owns the one
+`useEmulator()` hook (`web/lib/emulator/use-emulator.ts`). A fix to how
+programs load or run reaches every page at once.
 
 The full debugger's panels and dialogs live in `FullChromeSurface.tsx`, which
-`next/dynamic` loads only on `/playground`. The Monaco editor is loaded the
-same way (`lazy-editor.tsx`). The home page draws its program as static text
+`next/dynamic` loads only on `/playground` (`lazy-full-chrome.tsx`). The
+Monaco editor is loaded the same way (`lazy-editor.tsx`). The home page draws its program as static text
 (`StaticCodeView.tsx`), so it downloads no editor code at all. Both lazy parts
 wait for the web fonts before they appear, so a late font swap cannot shift the
 page after it has drawn.
