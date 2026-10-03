@@ -13,7 +13,7 @@ beforeEach(() => {
 
 describe("ThemeControl", () => {
   it("renders one option per theme with full accessible names", () => {
-    render(<ThemeControl />);
+    render(<ThemeControl size="comfortable" />);
     for (const id of ["dark", "light", "high-contrast", "ember", "forest", "paper"]) {
       expect(screen.getByRole("button", { name: `${id} theme` })).toBeTruthy();
     }
@@ -21,7 +21,7 @@ describe("ThemeControl", () => {
   });
 
   it("marks exactly one option active with aria-pressed (the default)", () => {
-    render(<ThemeControl />);
+    render(<ThemeControl size="comfortable" />);
     const pressed = screen
       .getAllByRole("button")
       .filter((b) => b.getAttribute("aria-pressed") === "true");
@@ -32,7 +32,7 @@ describe("ThemeControl", () => {
   });
 
   it("presses no option in the server HTML, since the server cannot know the theme", () => {
-    const html = renderToStaticMarkup(<ThemeControl />);
+    const html = renderToStaticMarkup(<ThemeControl size="comfortable" />);
     expect(html).toContain('aria-label="dark theme"');
     expect(html).not.toContain('aria-pressed="true"');
     expect(html.match(/aria-pressed="false"/g)).toHaveLength(6);
@@ -40,13 +40,13 @@ describe("ThemeControl", () => {
 
   it("hydrates that HTML with nothing logged, then presses the resolved theme", async () => {
     const container = document.createElement("div");
-    container.innerHTML = renderToString(<ThemeControl />);
+    container.innerHTML = renderToString(<ThemeControl size="comfortable" />);
     document.body.appendChild(container);
     const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const recovered: unknown[] = [];
     let root: ReturnType<typeof hydrateRoot> | undefined;
     await act(async () => {
-      root = hydrateRoot(container, <ThemeControl />, { onRecoverableError: (e) => recovered.push(e) });
+      root = hydrateRoot(container, <ThemeControl size="comfortable" />, { onRecoverableError: (e) => recovered.push(e) });
     });
     expect(recovered).toEqual([]);
     expect(logged.mock.calls.map((c) => String(c[0]))).toEqual([]);
@@ -58,10 +58,30 @@ describe("ThemeControl", () => {
   });
 
   it("selecting light sets data-theme=light and moves aria-pressed", () => {
-    render(<ThemeControl />);
+    render(<ThemeControl size="comfortable" />);
     const light = screen.getByRole("button", { name: "light theme" });
     fireEvent.click(light);
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(light.getAttribute("aria-pressed")).toBe("true");
+  });
+});
+
+// The site bar has room for one button, so its copy steps through the lineup.
+describe("ThemeControl in the site bar", () => {
+  it("names the theme in use and the next one, and steps to it on click", () => {
+    render(<ThemeControl size="comfortable" />);
+    fireEvent.click(screen.getByRole("button", { name: "forest theme" }));
+    cleanup();
+    render(<ThemeControl />);
+    const button = screen.getByRole("button", { name: "theme: forest. switch to paper" });
+    fireEvent.click(button);
+    expect(document.documentElement.getAttribute("data-theme")).toBe("paper");
+    expect(button.getAttribute("aria-label")).toBe("theme: paper. switch to dark");
+  });
+
+  it("names no theme in the server HTML, since the server cannot know it", () => {
+    const html = renderToStaticMarkup(<ThemeControl />);
+    expect(html).toContain('aria-label="switch theme"');
+    expect(html).not.toContain("data-theme");
   });
 });
