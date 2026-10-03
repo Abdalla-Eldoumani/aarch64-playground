@@ -108,7 +108,8 @@ describe("MobileNavDrawer", () => {
     expect(container.firstElementChild?.className).toContain("md:hidden");
     fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getByRole("group", { name: "theme" })).toBeTruthy();
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(6);
+    expect(within(dialog).getByRole("radiogroup", { name: "theme" })).toBeTruthy();
   });
 
   // The short-window playground band drops the site bar at every width, so
