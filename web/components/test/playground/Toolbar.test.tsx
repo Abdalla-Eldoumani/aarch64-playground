@@ -8,7 +8,6 @@ function setup(overrides: Partial<ToolbarProps> = {}) {
   const props: ToolbarProps = {
     onShare: vi.fn(),
     onTutorials: vi.fn(),
-    onToggleTheme: vi.fn(),
     buildDiagnostic: vi.fn(async () => ({ source: "" })),
     onOpenCommandPalette: vi.fn(),
     onOpenShortcuts: vi.fn(),
@@ -31,13 +30,20 @@ describe("Toolbar", () => {
       "share program",
       "diagnostic bundle",
       "tutorials",
-      "toggle theme",
       // The palette opener's name is its visible label (WCAG label-in-name);
       // the title carries the longer description.
       "commands",
     ]) {
       expect(screen.getByRole("button", { name })).toBeTruthy();
     }
+  });
+
+  // The site bar's theme control and GitHub link cover both, so the toolbar
+  // does not repeat them.
+  it("carries no theme button and no source link", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: /theme/ })).toBeNull();
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("opens the command palette from a visible button, not only a shortcut", () => {
@@ -64,15 +70,8 @@ describe("Toolbar", () => {
     expect(screen.queryByRole("button", { name: "walkthrough" })).toBeNull();
   });
 
-  // The toolbar renders in the band, the short window's run row and the
-  // phone sheet, so the source link and the shortcut list ride inside it.
-  it("links the source and opens the shortcut list", () => {
+  it("opens the shortcut list", () => {
     const props = setup();
-    const source = screen.getByRole("link", { name: "source on github" });
-    expect(source.getAttribute("href")).toBe(
-      "https://github.com/Abdalla-Eldoumani/aarch64-playground",
-    );
-    expect(source.getAttribute("target")).toBe("_blank");
     fireEvent.click(screen.getByRole("button", { name: "keyboard shortcuts" }));
     expect(props.onOpenShortcuts).toHaveBeenCalledTimes(1);
   });
