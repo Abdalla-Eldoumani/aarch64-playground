@@ -104,7 +104,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
               type="button"
               onClick={share}
               disabled={oversize}
-              className="touch-target text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+              className="touch-target text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
             >
               share
             </button>
@@ -113,7 +113,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
             type="button"
             onClick={copy}
             disabled={oversize}
-            className={`touch-target text-xs rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+            className={`touch-target text-xs rounded px-2 py-1 disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
               copied
                 ? "text-[var(--success)]"
                 : "text-[var(--cyan)] hover:underline"
