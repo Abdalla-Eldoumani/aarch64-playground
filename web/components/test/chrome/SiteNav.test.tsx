@@ -26,6 +26,19 @@ describe("SiteNav", () => {
     }
   });
 
+  // Tailwind's boxes are border-box, so a bar of h-14 with the inset as top
+  // padding left the row a 9px strip under a 47px notch and the toggle hung
+  // into the status bar. The inset is added to the height instead.
+  it("adds the safe area to the bar's height, so the row below keeps its own", () => {
+    for (const variant of ["full", "slim"] as const) {
+      render(<SiteNav variant={variant} />);
+      const classes = screen.getByRole("navigation", { name: "primary" }).className.split(/\s+/);
+      expect(classes).toContain("h-[calc(3.5rem+var(--safe-top))]");
+      expect(classes.filter((c) => /^(md:)?h-/.test(c)).every((c) => c.includes("var(--safe-top)"))).toBe(true);
+      cleanup();
+    }
+  });
+
   it("full variant carries the label, the Open playground link, the routes, and marks the active route", () => {
     render(<SiteNav variant="full" />);
 
