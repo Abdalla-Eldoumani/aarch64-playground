@@ -557,22 +557,23 @@ fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
         (u32::from(bytes[1]), 2)
     };
     if end >= bytes.len() || bytes[end] != b'\'' {
-        let hint = if escaped {
-            ": an escape here is one letter, like '\\n'; write any other code as a number (0x41)"
+        let message = if escaped {
+            CHAR_ESCAPE_TOO_LONG
         } else {
-            ""
+            "expected closing single-quote in char literal"
         };
-        return Err(lex_err(
-            line,
-            &format!("expected closing single-quote in char literal{hint}"),
-        ));
+        return Err(lex_err(line, message));
     }
     Ok((value, end + 1))
 }
 
+/// Shared with the instruction encoder, which reads char operands itself.
+pub(crate) const CHAR_ESCAPE_TOO_LONG: &str = "expected closing single-quote in char literal: \
+     an escape here is one letter, like '\\n'; write any other code as a number (0x41)";
+
 /// The escapes a string and a char literal share; any other letter stands
 /// for itself, as on the servers (`\w` is `w`, `\e` is `e`).
-fn control_escape(letter: u8) -> u8 {
+pub(crate) fn control_escape(letter: u8) -> u8 {
     match letter {
         b'b' => 0x08,
         b'f' => 0x0C,
