@@ -155,11 +155,11 @@ function importReplaces(current: string | undefined, incoming: string, name?: st
   );
 }
 
-function confirmImport(what: string, replaced: string[]): boolean {
+function confirmImport(what: string, replaced: string[], edited: boolean): boolean {
   return (
     replaced.length === 0 ||
     window.confirm(
-      `Import ${what}? It replaces the code in ${replaced.join(", ")}, including your edits.`,
+      `Import ${what}? It replaces the code in ${replaced.join(", ")}${edited ? ", including your edits" : ""}.`,
     )
   );
 }
@@ -242,15 +242,22 @@ export function FullChromeSurface({
   // The main buffer as the last program load or import left it: anything
   // else in there is the student's own edit.
   const loadedSourceRef = useRef(source);
+  // The helper tabs as the last load or import left them, by name.
+  const loadedFilesRef = useRef(new Map(extraFiles.map((f) => [f.name, f.body])));
+  // Whether a buffer holds anything the student typed since it was loaded.
+  const isEdited = useCallback(
+    (name: string, body: string) =>
+      body !== (name === "main.asm" ? loadedSourceRef.current : loadedFilesRef.current.get(name)),
+    [],
+  );
 
   const handleImport = useCallback(
     (target: ImportTarget, body: string) => {
       const tab = target.kind === "extra" ? extraFiles[target.index] : undefined;
       const current = target.kind === "main" ? source : tab?.body;
-      const replaced = importReplaces(current, body, tab?.name)
-        ? [describeTarget(target, extraFiles)]
-        : [];
-      if (!confirmImport("this file", replaced)) return;
+      const name = describeTarget(target, extraFiles);
+      const replaced = importReplaces(current, body, tab?.name) ? [name] : [];
+      if (!confirmImport("this file", replaced, isEdited(name, current ?? ""))) return;
       resetLaunch();
       switch (target.kind) {
         case "main":
@@ -260,15 +267,16 @@ export function FullChromeSurface({
           return;
         case "extra": {
           const idx = target.index;
+          loadedFilesRef.current.set(name, body);
           setExtraFiles(
             extraFiles.map((f, i) => (i === idx ? { ...f, body } : f)),
           );
-          toast.show(`imported into ${describeTarget(target, extraFiles)}`);
+          toast.show(`imported into ${name}`);
           return;
         }
       }
     },
-    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch],
+    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch, isEdited],
   );
 
   // Multi-select import: the program replaces the main buffer; every other
@@ -280,13 +288,17 @@ export function FullChromeSurface({
     (files: { name: string; body: string }[]) => {
       let mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
       if (mainIdx < 0) mainIdx = files.findIndex((f) => definesMain(f.body));
+      const currentOf = (name: string) =>
+        name === "main.asm" ? source : extraFiles.find((x) => x.name === name)?.body;
       const replaced = files.flatMap((f, i) => {
-        if (i === mainIdx) return importReplaces(source, f.body) ? ["main.asm"] : [];
-        const current = extraFiles.find((x) => x.name === f.name)?.body;
-        return importReplaces(current, f.body, f.name) ? [f.name] : [];
+        const name = i === mainIdx ? "main.asm" : f.name;
+        return importReplaces(currentOf(name), f.body, i === mainIdx ? undefined : f.name)
+          ? [name]
+          : [];
       });
+      const edited = replaced.some((name) => isEdited(name, currentOf(name) ?? ""));
       const what = files.length === 1 ? files[0].name : `${files.length} files`;
-      if (!confirmImport(what, replaced)) return;
+      if (!confirmImport(what, replaced, edited)) return;
       resetLaunch();
       if (mainIdx >= 0) {
         setSource(files[mainIdx].body);
@@ -295,6 +307,7 @@ export function FullChromeSurface({
       const rest = files.filter((_, i) => i !== mainIdx);
       const next = [...extraFiles];
       for (const f of rest) {
+        loadedFilesRef.current.set(f.name, f.body);
         const at = next.findIndex((x) => x.name === f.name);
         if (at >= 0) next[at] = { name: f.name, body: f.body };
         else next.push({ name: f.name, body: f.body });
@@ -302,7 +315,7 @@ export function FullChromeSurface({
       setExtraFiles(next);
       toast.show(`imported ${what}`);
     },
-    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch],
+    [source, extraFiles, setExtraFiles, setSource, toast, resetLaunch, isEdited],
   );
 
   // A load replacing edits made since the last load or import asks first.
@@ -461,6 +474,7 @@ export function FullChromeSurface({
         liveRef.current.dropTerminalWatermark();
         setShareBanner(Boolean(payload.fromShare));
         loadedSourceRef.current = payload.source;
+        loadedFilesRef.current = new Map((payload.files ?? []).map((f) => [f.name, f.body]));
         return nextArgs;
       },
       onAssemble: () => {
