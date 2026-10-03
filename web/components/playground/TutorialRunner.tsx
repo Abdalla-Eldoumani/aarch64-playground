@@ -210,7 +210,7 @@ export function TutorialRunner({
             type="button"
             onClick={() => setStep(stepIndex - 1)}
             disabled={stepIndex === 0}
-            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 rounded px-2 py-1"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:text-[var(--text-tertiary)] rounded px-2 py-1"
           >
             back
           </button>
@@ -229,7 +229,7 @@ export function TutorialRunner({
             type="button"
             onClick={() => setStep(stepIndex + 1)}
             disabled={stepIndex === tutorial.steps.length - 1}
-            className="touch-target text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:opacity-40 px-2 py-1"
+            className="touch-target text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] px-2 py-1"
           >
             next
           </button>
