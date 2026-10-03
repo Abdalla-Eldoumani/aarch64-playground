@@ -8,6 +8,8 @@ import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
 import { LINE_COMMENT } from "@/lib/asm/line-comment";
 import { yieldToEventLoop } from "@/lib/emulator/run-loop";
 import { MONACO_FEATURES } from "@/components/playground/monaco-features";
+import { isThemeId, THEMES } from "@/lib/theme/themes";
+import { monacoTheme } from "@/lib/theme/editor-themes";
 
 // Monaco comes from the monaco-editor dependency, not the loader's default
 // CDN: the installed app must work offline, and a campus network that blocks
@@ -44,11 +46,18 @@ export function loadMonaco(): Promise<void> {
       await yieldToEventLoop();
     }
     const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
+    // Every colour the editor can draw, from Monaco's own registry, so the
+    // themes give each one a token instead of leaving Monaco's stock ones.
+    const [{ Registry }, { Extensions }] = await Promise.all([
+      import(/* webpackChunkName: "monaco" */ "monaco-editor/platform/registry/common/platform"),
+      import(/* webpackChunkName: "monaco" */ "monaco-editor/platform/theme/common/colorUtils"),
+    ]);
+    const colourIds = Registry.as(Extensions.ColorContribution).getColors().map((colour) => colour.id);
     await yieldToEventLoop();
     // The first language or theme call starts every editor service. Made
     // here, that start-up is a task of its own instead of part of the
     // editor's creation.
-    ensureArm64Registered(monaco);
+    ensureArm64Registered(monaco, colourIds);
     loader.config({ monaco });
   })();
   return monacoLoad;
@@ -83,8 +92,7 @@ export function resolveMonoFontFamily(): string {
  *  mount) and by the module-level attribute observer on theme switches. */
 export function applyDocumentTheme(monaco: Parameters<OnMount>[1]): void {
   const t = document.documentElement.getAttribute("data-theme");
-  const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
-  monaco.editor.setTheme(id);
+  monaco.editor.setTheme(`arm64-${isThemeId(t) ? t : "dark"}`);
 }
 
 /**
@@ -92,7 +100,7 @@ export function applyDocumentTheme(monaco: Parameters<OnMount>[1]): void {
  * registries are tab-wide and add up, so registering per mount stacked a copy
  * of every hover card and completion on each remount.
  */
-function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
+function ensureArm64Registered(monaco: Parameters<OnMount>[1], colourIds: readonly string[]): void {
   if (arm64Registered) return;
   arm64Registered = true;
 
@@ -140,77 +148,9 @@ function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
     },
   });
 
-  // Monaco themes take literal hex only, so these restate the tokens in
-  // app/globals.css (the caret is the amber block cursor). Keep the two files
-  // in step when a token moves.
-  monaco.editor.defineTheme("arm64-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "keyword", foreground: "6fa8ff", fontStyle: "bold" },
-      { token: "variable", foreground: "ff7eb6" },
-      { token: "number", foreground: "b49bff" },
-      { token: "number.hex", foreground: "b49bff" },
-      { token: "comment", foreground: "7a828c", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "3dd68c" },
-    ],
-    colors: {
-      "editor.background": "#0B0C10",
-      "editor.lineHighlightBackground": "#14171DAA",
-      "editorGutter.background": "#0B0C10",
-      "editorLineNumber.foreground": "#79808B",
-      "editorCursor.foreground": "#FFB224",
-      "editorCursor.background": "#0B0C10",
-      "textLink.foreground": "#3EC5E8",
-      "textLink.activeForeground": "#3EC5E8",
-    },
-  });
-
-  monaco.editor.defineTheme("arm64-light", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      { token: "keyword", foreground: "1d4ed8", fontStyle: "bold" },
-      { token: "variable", foreground: "be185d" },
-      { token: "number", foreground: "6d28d9" },
-      { token: "number.hex", foreground: "6d28d9" },
-      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "036b4d" },
-    ],
-    colors: {
-      "editor.background": "#FFFFFF",
-      "editor.lineHighlightBackground": "#F4F5F7CC",
-      "editorGutter.background": "#FFFFFF",
-      "editorLineNumber.foreground": "#626A73",
-      "editorCursor.foreground": "#A86A0F",
-      "editorCursor.background": "#FFFFFF",
-      "textLink.foreground": "#0E7490",
-      "textLink.activeForeground": "#0E7490",
-    },
-  });
-
-  monaco.editor.defineTheme("arm64-hc", {
-    base: "hc-black",
-    inherit: true,
-    rules: [
-      { token: "keyword", foreground: "8be0ff", fontStyle: "bold" },
-      { token: "variable", foreground: "ffb6e6" },
-      { token: "number", foreground: "d4b6ff" },
-      { token: "number.hex", foreground: "d4b6ff" },
-      { token: "comment", foreground: "d1d5db", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "9ef0c1" },
-    ],
-    colors: {
-      "editor.background": "#000000",
-      "editor.lineHighlightBackground": "#1A1A1A",
-      "editorGutter.background": "#000000",
-      "editorLineNumber.foreground": "#C7C7C7",
-      "editorCursor.foreground": "#FFC247",
-      "editorCursor.background": "#000000",
-      "textLink.foreground": "#5AD7F0",
-      "textLink.activeForeground": "#5AD7F0",
-    },
-  });
+  // One editor theme per site theme, built from the same tokens as the page
+  // (Monaco takes literal colours, not CSS variables).
+  for (const { id } of THEMES) monaco.editor.defineTheme(`arm64-${id}`, monacoTheme(id, colourIds));
 
   const observer = new MutationObserver(() => applyDocumentTheme(monaco));
   observer.observe(document.documentElement, {
