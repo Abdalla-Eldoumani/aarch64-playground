@@ -57,11 +57,13 @@ export function SiteNav({
       // The full nav floats over the blueprint paper, so it takes a
       // translucent base with a backdrop blur (the artboards' rgba band);
       // the slim playground nav stays opaque over the flat debugger. The top
-      // padding is the notch's safe area, so no py-* belongs on this bar.
+      // padding is the notch's safe area, so no py-* belongs on this bar. The
+      // height adds that inset back, so the row under it keeps its full
+      // height and the menu toggle lines up with the drawer's close button.
       className={`pt-[var(--safe-top)] w-full border-b border-[var(--border)] ${
         full
-          ? "h-14 bg-[color-mix(in_srgb,var(--bg-base)_72%,transparent)] backdrop-blur-md md:h-16"
-          : "h-14 bg-[var(--bg-base)] md:h-12"
+          ? "h-[calc(3.5rem+var(--safe-top))] bg-[color-mix(in_srgb,var(--bg-base)_72%,transparent)] backdrop-blur-md md:h-[calc(4rem+var(--safe-top))]"
+          : "h-[calc(3.5rem+var(--safe-top))] bg-[var(--bg-base)] md:h-[calc(3rem+var(--safe-top))]"
       }`}
     >
       <div className="mx-auto flex h-full w-full max-w-screen-xl items-center justify-between gap-3 px-4">
