@@ -671,7 +671,7 @@ export function lookupDoc(raw: string): InstructionDoc | undefined {
  * The table key for the word an editor found at `startColumn` (1-based) of
  * `line`. The editor's word scan splits at `.`, so `b.eq` arrives as `eq`;
  * this re-attaches the letter before the dot and tries that first. It lives
- * beside the table so Editor.tsx's hover holds no lookup rule of its own.
+ * beside the table so the editor's hover (monaco-setup.ts) holds no lookup rule of its own.
  */
 export function docKeyAt(
   line: string,
