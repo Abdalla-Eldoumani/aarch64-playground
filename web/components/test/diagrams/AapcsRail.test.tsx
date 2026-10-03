@@ -39,11 +39,13 @@ describe("AapcsRail", () => {
     }
   });
 
-  it("keeps the amber/cyan legend under the rail, with the one-register note", () => {
+  // The two tints take a different hue in each theme, so a legend that
+  // names a hue is wrong in most of them.
+  it("keeps the legend under the rail by role, never by hue, with the one-register note", () => {
     render(<AapcsRail />);
-    expect(
-      screen.getByText(/Amber = the callee must preserve it/),
-    ).toBeTruthy();
+    const legend = screen.getByText(/callee must\s+preserve the callee-saved rows/);
+    expect(legend.textContent).toMatch(/argument\s+rows are yours to pass and receive/);
+    expect(legend.textContent).not.toMatch(/\b(amber|cyan|yellow|blue|orange|pink)\b/i);
     expect(screen.getByText(/row is one register with a/)).toBeTruthy();
   });
 
