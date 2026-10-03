@@ -254,7 +254,7 @@ export function Select({
         disabled={disabled}
         onClick={() => (open ? close() : openList())}
         onKeyDown={handleKeyDown}
-        className={`inline-flex w-full max-w-[14rem] items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] font-mono text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:outline-none focus-visible:[box-shadow:var(--ring)] disabled:pointer-events-none disabled:opacity-50 [@media(pointer:coarse)]:min-h-[44px] ${sizing}`}
+        className={`inline-flex w-full max-w-[14rem] items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] font-mono text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:outline-none focus-visible:[box-shadow:var(--ring)] disabled:pointer-events-none disabled:text-[var(--text-tertiary)] [@media(pointer:coarse)]:min-h-[44px] ${sizing}`}
       >
         <span className="truncate">
           {triggerLabel ?? (selected ? selected.label : placeholder)}
