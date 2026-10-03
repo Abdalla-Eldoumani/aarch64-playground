@@ -496,6 +496,10 @@ export function Editor({
             cursorStyle: "block",
             cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
             accessibilitySupport: "auto",
+            // Off: the site's high-contrast theme is the answer to a reader
+            // who wants more contrast. On, Monaco re-checks forced colours at
+            // every options update and can swap that theme for its stock one.
+            autoDetectHighContrast: false,
             // Enter always ends the line; Tab takes a suggestion. With the
             // stock setting, `mov x0, x1` then Enter accepted `x1` from the
             // open list and the next instruction landed on the same line.
