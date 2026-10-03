@@ -82,7 +82,7 @@ pub(super) fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError>
     let s = s.strip_prefix('#').unwrap_or(s);
     let s = s.trim();
 
-    // Single-quoted char literal: 'A' -> 65, '\n' -> 10, '\xFF' -> 255.
+    // Single-quoted char literal: 'A' -> 65, '\n' -> 10, '\0' -> 48.
     if let Some(body) = s.strip_prefix('\'').and_then(|b| b.strip_suffix('\'')) {
         return parse_char_body(body, line_num);
     }
@@ -139,52 +139,19 @@ pub(super) fn parse_immediate(s: &str, line_num: usize) -> Result<i64, EmuError>
     Ok(if negative { (val as i64).wrapping_neg() } else { val as i64 })
 }
 
+// Every instruction's char operand lands here, hosted programs included,
+// so it keeps the lexer's GAS rule: one byte, or a backslash and one byte
+// (`'\0'` is 48, `'\v'` is a v).
 fn parse_char_body(body: &str, line_num: usize) -> Result<i64, EmuError> {
-    let bytes = body.as_bytes();
-    if bytes.is_empty() {
-        return Err(asm_error(line_num, "empty char literal"));
+    use crate::frontend::lexer::{control_escape, CHAR_ESCAPE_TOO_LONG};
+    match body.as_bytes() {
+        [] => Err(asm_error(line_num, "empty char literal")),
+        [b'\\'] => Err(asm_error(line_num, "dangling backslash in char literal")),
+        [b'\\', letter] => Ok(i64::from(control_escape(*letter))),
+        [b'\\', ..] => Err(asm_error(line_num, CHAR_ESCAPE_TOO_LONG)),
+        [byte] => Ok(i64::from(*byte)),
+        _ => Err(asm_error(line_num, "char literal must be one character")),
     }
-    if bytes[0] != b'\\' {
-        // Plain character; the lexer-level corpus stays single-byte ASCII.
-        if bytes.len() != 1 {
-            return Err(asm_error(line_num, "char literal must be one character"));
-        }
-        return Ok(bytes[0] as i64);
-    }
-    if bytes.len() < 2 {
-        return Err(asm_error(line_num, "dangling backslash in char literal"));
-    }
-    let value = match bytes[1] {
-        b'n' => b'\n' as i64,
-        b't' => b'\t' as i64,
-        b'r' => b'\r' as i64,
-        b'0' => 0,
-        b'\\' => b'\\' as i64,
-        b'"' => b'"' as i64,
-        b'\'' => b'\'' as i64,
-        b'x' | b'X' => {
-            // Two digits exactly here, unlike the lexer's greedy GAS walk:
-            // this path only sees legacy bare-metal source, where no course
-            // file writes a one- or three-digit escape.
-            if bytes.len() != 4 {
-                return Err(asm_error(line_num, "\\xNN char literal needs two hex digits"));
-            }
-            let hex = std::str::from_utf8(&bytes[2..4])
-                .map_err(|_| asm_error(line_num, "invalid hex in char literal"))?;
-            i64::from_str_radix(hex, 16)
-                .map_err(|_| asm_error(line_num, "invalid hex in char literal"))?
-        }
-        other => {
-            return Err(asm_error(
-                line_num,
-                &format!("unknown escape in char literal: \\{}", other as char),
-            ));
-        }
-    };
-    if bytes[0] == b'\\' && !matches!(bytes[1], b'x' | b'X') && bytes.len() != 2 {
-        return Err(asm_error(line_num, "trailing characters after escape in char literal"));
-    }
-    Ok(value)
 }
 
 pub(super) fn parse_condition(s: &str, line_num: usize) -> Result<u8, EmuError> {
@@ -736,10 +703,10 @@ mod tests {
     }
 
     #[test]
-    fn char_literal_hex_escape() {
-        let code = assemble("MOV W0, '\\x41'").unwrap();
-        let reference = assemble("MOV W0, #65").unwrap();
-        assert_eq!(code, reference);
+    fn char_literal_escape_is_one_letter_like_gas() {
+        assert_eq!(assemble("MOV W0, '\\0'").unwrap(), assemble("MOV W0, #48").unwrap());
+        assert_eq!(assemble("MOV W0, '\\v'").unwrap(), assemble("MOV W0, #0x76").unwrap());
+        rejects(assemble("MOV W0, '\\x41'"), "write any other code as a number");
     }
 
     #[test]
