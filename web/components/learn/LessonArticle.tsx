@@ -32,8 +32,7 @@ const DEFINES_MAIN = /^[ \t]*main:/m;
 
 /** The lead line of the note that answers a lesson's Check yourself. */
 const ANSWERS_LEAD = "Answers:";
-const ANSWERS_SUMMARY =
-  "cursor-pointer font-medium leading-[44px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+const ANSWERS_SUMMARY = "fold-summary font-medium text-[var(--cyan)] hover:underline";
 
 export function LessonArticle({
   lesson,
