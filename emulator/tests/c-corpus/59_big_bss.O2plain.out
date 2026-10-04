@@ -1,0 +1,7 @@
+zero: sieve=0 wide=0 grid=0
+edges: wide[0]=0 grid[0][0].c=0 marker[3]=44444444
+sieve: 1007 primes below 8000, last=7993, sum of squares=19495587370
+gaps: twins=175 gap6=245 commonest=6 widest=34 (x1)
+wide: sum=14774939303582852485 wide[59820]=214061826108180 wide[59999]=-1
+grid: sum=14241090842417695380 last.d=7eadbeef cell[294][99].b=81
+heap: sum=19918400, then sieve[last]=ab wide[59999]=-1 marker=11111111,22222222,33333333,44444444

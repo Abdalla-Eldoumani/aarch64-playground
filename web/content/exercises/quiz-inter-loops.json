@@ -1,0 +1,108 @@
+{
+  "title": "Intermediate quiz: loops",
+  "slug": "quiz-inter-loops",
+  "order": 116,
+  "lastUpdated": "2026-10-01",
+  "topic": "loops",
+  "difficulty": "core",
+  "variant": "quiz",
+  "prompt": "Loops inside loops, leaving a loop early, reading until the input runs out, counting passes, and the bugs a call inside a loop body can cause.",
+  "questions": [
+    {
+      "question": "Nested loops print a grid of 3 rows and 4 columns. Where must the inner counter be set back to 0?",
+      "options": [
+        "At the top of each outer pass, just before the inner loop",
+        "Once, above both loops, next to where the outer counter starts",
+        "At the end of each inner pass, right after the inner counter's add",
+        "Nowhere, since the failing inner test puts it back to 0 itself"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The inner loop has to start from 0 on every row. Set it once above both loops and the second row starts with the counter already at 4, past its limit, so every row after the first comes out wrong. Resetting it at the top of each outer pass gives every row a full inner loop.",
+      "hint": "What does the inner counter hold when the second row begins?"
+    },
+    {
+      "question": "In C, break leaves a loop early. What does it become in assembly?",
+      "options": [
+        "A ret, which leaves the loop and the function at once",
+        "A b to the loop's test, which then finds the loop is done",
+        "A b to the label just after the loop, past its test",
+        "A cbz on the counter, which ends the loop when it is 0"
+      ],
+      "correctAnswer": 2,
+      "explanation": "break leaves without running the test again, so it is a plain branch to the first instruction after the loop. It usually sits behind a compare: if (x == 0) break; becomes a cmp and a b.eq to that label. A ret would leave the whole function.",
+      "hint": "Where does execution carry on after a break?"
+    },
+    {
+      "question": "A loop ends with cmp w19, w20, then bl printf, then b.lt again. Why can the b.lt go the wrong way?",
+      "options": [
+        "b.lt reads w19 and w20 again, and printf changed them both",
+        "bl clears every flag to 0, so b.lt can never branch after it",
+        "printf saves the flags in x30, so b.lt reads a return address",
+        "printf may change the flags, so b.lt reads what printf left"
+      ],
+      "correctAnswer": 3,
+      "explanation": "Nothing saves the flags across a call. printf runs compares and arithmetic of its own, and b.lt reads whatever its last flag-setting instruction left. Move the cmp below the bl so it sits right in front of the branch.",
+      "hint": "Which instruction last set the flags before b.lt runs?"
+    },
+    {
+      "question": "A loop reads numbers with scanf until the input runs out. What should it test after each call?",
+      "options": [
+        "The Z flag, which scanf sets when there is nothing more to read",
+        "w0, which holds how many values scanf stored, or -1 at the end",
+        "x1, which scanf sets to 0 when it reaches the end of the input",
+        "The value read, which scanf sets to 0 once the input runs out"
+      ],
+      "correctAnswer": 1,
+      "explanation": "scanf returns in w0 the number of values it stored, which is 1 for each number read with one %d. At the end of the input it returns -1 and stores nothing, so the variable still holds the previous number. Compare w0 with 1 and leave the loop when it differs.",
+      "hint": "Like every C function, scanf returns its answer in w0."
+    },
+    {
+      "question": "How many passes does for (i = 0; i < 10; i += 3) make?",
+      "options": [
+        "2",
+        "3",
+        "4",
+        "10"
+      ],
+      "correctAnswer": 2,
+      "explanation": "i takes the values 0, 3, 6 and 9, and each one passes the test. The step after 9 makes i 12, which fails i < 10, so the loop makes 4 passes.",
+      "hint": "List every value of i that passes the test."
+    },
+    {
+      "question": "A do-while loop runs while i < n, with i starting at 0. What goes wrong when n is 0?",
+      "options": [
+        "The body runs once, even though it should not run at all",
+        "The loop never stops, since i is already past n at the start",
+        "The body is skipped, but the step still runs once on the way",
+        "Nothing, since the test sees 0 < 0 before the body can run"
+      ],
+      "correctAnswer": 0,
+      "explanation": "A post-test loop runs its body before the first check, so with n = 0 it makes one pass it should not. Put a guard in front of it, such as a cbz on n, or use the pre-test layout instead.",
+      "hint": "When does a do-while loop check its test for the first time?"
+    },
+    {
+      "question": "A countdown should run its body while w19 is not 0, with no cmp. Which pair of lines ends each pass?",
+      "options": [
+        "subs w19, w19, 1 then cbz w19, top",
+        "sub w19, w19, 1 then b.ne top",
+        "cbnz w19, top then sub w19, w19, 1",
+        "sub w19, w19, 1 then cbnz w19, top"
+      ],
+      "correctAnswer": 3,
+      "explanation": "cbnz tests w19 itself and branches while it is not 0, so it needs no cmp. sub sets no flags, so a b.ne after it reads stale flags from an earlier instruction. cbz branches on 0, the opposite of what is wanted, and a sub placed after the branch only runs once the loop has ended.",
+      "hint": "Only one of the branches reads w19 itself."
+    },
+    {
+      "question": "A loop calls printf on every pass. Why does ldr x0, =fmt_out sit inside the loop, not above it?",
+      "options": [
+        "ldr x0, =label works only the first time it runs in a program",
+        "printf may change x0, so the address must be loaded each pass",
+        "The literal pool moves after each call, so the address changes",
+        "printf counts its calls in x0, which has to be reset each pass"
+      ],
+      "correctAnswer": 1,
+      "explanation": "x0 carries the format string's address into printf and printf's result back out. After the call it holds the number of characters printed, so the next pass needs the address again and the ldr has to run every time.",
+      "hint": "What is in x0 when printf returns?"
+    }
+  ]
+}

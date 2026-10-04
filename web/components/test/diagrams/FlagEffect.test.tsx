@@ -72,7 +72,7 @@ describe("FlagEffect", () => {
     expect(screen.getByText(/result is written/)).toBeTruthy();
   });
 
-  it("renders the b.cond jump link only when the mount passes an anchor", () => {
+  it("renders the see b.cond link only when an anchor is passed", () => {
     render(<FlagEffect mnemonic="cmp" />);
     expect(screen.queryByRole("link")).toBeNull();
     cleanup();

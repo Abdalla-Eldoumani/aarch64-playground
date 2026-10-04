@@ -1,30 +1,40 @@
-//! Snapshot ring buffer that powers step-back.
+//! The ring of saved CPU states behind step-back.
 //!
-//! Each `Snapshot` captures the CPU state that's needed to undo one
-//! instruction: registers, memory (all mapped pages), the halt/exit
-//! flags, the VFS/open-files tables, and the stdin queue with its
-//! cooked-tty echo state. The stdout and stderr BUFFERS are intentionally
-//! NOT rolled back (clearing output that the student already saw is more
-//! confusing than keeping it), but the display COUNTERS beside them are,
-//! so a host that tracks how much of each stream it has shown can unprint
-//! exactly what a rolled-back step wrote. The output-flood budget is a
-//! third thing again and is never restored.
+//! Each `Snapshot` holds what undoing one instruction needs: registers,
+//! memory, the halt and exit flags, the virtual files and open
+//! descriptors, and the stdin queue with its echo state. The stdout and stderr buffers are not rolled back
+//! (erasing output the student already saw confuses more than it helps),
+//! but the counters beside them are, so the host can take back exactly what
+//! an undone step printed. The output-flood budget is never restored.
 //!
-//! The ring stores at most `capacity` snapshots. Pushing past capacity
-//! drops the oldest frame (so step-back always reaches the newest `N`
-//! instructions).
+//! The ring keeps at most `capacity` frames and drops the oldest past that.
+//!
+//! A frame is taken on every step, so it holds the three large parts,
+//! registers, memory and the heap, only as undo logs of what its step
+//! changed in them. A named save, which has to outlive any number of
+//! later steps, holds them whole.
 
 use std::collections::{HashMap, VecDeque};
 
 use crate::cpu::{OpenFile, StdinSegment};
-use crate::memory::Memory;
-use crate::registers::RegisterFile;
+use crate::hosted::heap::{HeapState, HeapUndo};
+use crate::memory::{MemUndo, Memory};
+use crate::registers::{RegUndo, RegisterFile};
 
-/// Everything `Cpu::step_back` needs to restore.
-#[derive(Clone)]
-pub struct Snapshot {
-    pub regs: RegisterFile,
-    pub mem: Memory,
+/// One step-back frame: the state before a step, with registers, memory
+/// and the heap as logs of what the step changed.
+pub type StepFrame = Snapshot<RegUndo, MemUndo, HeapUndo>;
+
+/// One named save: the whole state.
+pub type SavedState = Snapshot<RegisterFile, Memory, HeapState>;
+
+/// Everything `Cpu::step_back` or a named save needs to restore, with
+/// registers, memory and the heap in the forms `R`, `M` and `H` (see the
+/// module note).
+#[derive(Clone, Default)]
+pub struct Snapshot<R, M, H> {
+    pub regs: R,
+    pub mem: M,
     pub halted: bool,
     pub blocked: bool,
     pub exit_code: Option<i64>,
@@ -45,10 +55,13 @@ pub struct Snapshot {
     pub term: crate::cpu::TermState,
     /// malloc/free allocator state, restored so a stepped-back program
     /// re-allocates the same addresses.
-    pub heap: crate::hosted::heap::HeapState,
+    pub heap: H,
     /// strtok's saved cursor, restored so a stepped-back tokenizing loop
     /// hands out the same token again.
     pub strtok_save: u64,
+    /// qsort/bsearch calls in flight, restored so a stepped-back sort
+    /// resumes from the same comparison.
+    pub callbacks: crate::hosted::callback::CallbackState,
     /// Display counters: bytes appended to stdout / stderr up to this
     /// frame. The buffers themselves stay where they are (see the module
     /// note); these let the host trim its own transcript instead.
@@ -57,14 +70,17 @@ pub struct Snapshot {
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
-/// buffer is full; newest frame is popped on `step_back`.
+/// buffer is full; newest frame is popped on `step_back`. A full ring
+/// hands its oldest frame back to be refilled in place (`push_slot`).
+/// Frames are boxed so that costs a pointer move, not a frame copy, and a
+/// frame's log buffers are reused instead of allocated on every step.
 pub struct SnapshotRing {
-    frames: VecDeque<Snapshot>,
+    frames: VecDeque<Box<StepFrame>>,
     capacity: usize,
     /// Named save states: keyed checkpoints the user explicitly stashed.
     /// Separate from the ring because these persist across step-back;
     /// the ring holds only the sliding-window pre-step history.
-    named: HashMap<String, Snapshot>,
+    named: HashMap<String, SavedState>,
 }
 
 impl SnapshotRing {
@@ -76,15 +92,31 @@ impl SnapshotRing {
         }
     }
 
-    pub fn push(&mut self, snap: Snapshot) {
-        if self.frames.len() == self.capacity {
-            self.frames.pop_front();
-        }
-        self.frames.push_back(snap);
+    #[cfg(test)]
+    pub fn push(&mut self, snap: StepFrame) {
+        *self.push_slot() = snap;
     }
 
-    pub fn pop(&mut self) -> Option<Snapshot> {
+    pub fn pop(&mut self) -> Option<Box<StepFrame>> {
         self.frames.pop_back()
+    }
+
+    /// The slot for a new newest frame, for the caller to fill: the oldest
+    /// frame once the ring is full, a blank one before that.
+    pub fn push_slot(&mut self) -> &mut StepFrame {
+        let slot = if self.frames.len() == self.capacity {
+            self.frames.pop_front()
+        } else {
+            None
+        };
+        self.frames.push_back(slot.unwrap_or_default());
+        let newest = self.frames.len() - 1;
+        &mut self.frames[newest]
+    }
+
+    /// The frame pushed last, which the running step's undo logs belong to.
+    pub fn newest_mut(&mut self) -> Option<&mut StepFrame> {
+        self.frames.back_mut().map(|frame| &mut **frame)
     }
 
     pub fn len(&self) -> usize {
@@ -101,11 +133,11 @@ impl SnapshotRing {
         // stash a checkpoint, reassemble, then restore it.
     }
 
-    pub fn save_named(&mut self, name: impl Into<String>, snap: Snapshot) {
+    pub fn save_named(&mut self, name: impl Into<String>, snap: SavedState) {
         self.named.insert(name.into(), snap);
     }
 
-    pub fn load_named(&self, name: &str) -> Option<Snapshot> {
+    pub fn load_named(&self, name: &str) -> Option<SavedState> {
         self.named.get(name).cloned()
     }
 
@@ -124,10 +156,12 @@ impl SnapshotRing {
 mod tests {
     use super::*;
 
-    fn empty_snap() -> Snapshot {
+    /// A blank snapshot of either form: a step-back frame where the ring
+    /// takes it, a named save where `save_named` does.
+    fn empty_snap<R: Default, M: Default, H: Default>() -> Snapshot<R, M, H> {
         Snapshot {
-            regs: RegisterFile::new(),
-            mem: Memory::new(),
+            regs: R::default(),
+            mem: M::default(),
             halted: false,
             blocked: false,
             exit_code: None,
@@ -139,8 +173,9 @@ mod tests {
             next_fd: 3,
             rand_state: crate::hosted::libc::RandState::default(),
             term: crate::cpu::TermState::default(),
-            heap: crate::hosted::heap::HeapState::default(),
+            heap: H::default(),
             strtok_save: 0,
+            callbacks: Default::default(),
             stdout_seen: 0,
             stderr_seen: 0,
         }
@@ -148,32 +183,33 @@ mod tests {
 
     #[test]
     fn push_and_pop_lifo() {
+        // A frame's registers are a log, so `next_fd` tells frames apart.
         let mut ring = SnapshotRing::new(4);
         let mut a = empty_snap();
-        a.regs.write_gpr(0, true, 1);
+        a.next_fd = 1;
         let mut b = empty_snap();
-        b.regs.write_gpr(0, true, 2);
+        b.next_fd = 2;
         ring.push(a);
         ring.push(b);
         assert_eq!(ring.len(), 2);
         let top = ring.pop().unwrap();
-        assert_eq!(top.regs.read_gpr(0, true), 2);
+        assert_eq!(top.next_fd, 2);
         let next = ring.pop().unwrap();
-        assert_eq!(next.regs.read_gpr(0, true), 1);
+        assert_eq!(next.next_fd, 1);
         assert!(ring.is_empty());
     }
 
     #[test]
     fn push_past_capacity_drops_oldest() {
         let mut ring = SnapshotRing::new(2);
-        for i in 0..5u64 {
+        for i in 0..5u32 {
             let mut s = empty_snap();
-            s.regs.write_gpr(0, true, i);
+            s.next_fd = i;
             ring.push(s);
         }
         assert_eq!(ring.len(), 2);
-        assert_eq!(ring.pop().unwrap().regs.read_gpr(0, true), 4);
-        assert_eq!(ring.pop().unwrap().regs.read_gpr(0, true), 3);
+        assert_eq!(ring.pop().unwrap().next_fd, 4);
+        assert_eq!(ring.pop().unwrap().next_fd, 3);
     }
 
     #[test]
@@ -187,22 +223,35 @@ mod tests {
 
     #[test]
     fn popped_frame_preserves_registers_and_memory() {
+        // A frame holds registers and memory as logs of what its step
+        // overwrote, so the round trip goes through a step's writes.
         let mut ring = SnapshotRing::new(2);
-        let mut s = empty_snap();
-        s.regs.write_gpr(5, true, 0xABCD);
-        s.regs.write_sp(0x8000_0000);
-        s.mem.write_u32(0x1000, 0xDEAD_BEEF).unwrap();
+        let mut regs = RegisterFile::new();
+        regs.write_gpr(5, true, 0xABCD);
+        regs.write_sp(0x8000_0000);
+        let mut mem = Memory::new();
+        mem.write_u32(0x1000, 0xDEAD_BEEF).unwrap();
+        let mut s: StepFrame = empty_snap();
+        regs.record_undo(&mut s.regs);
+        mem.record_undo(&mut s.mem);
+        regs.write_gpr(5, true, 1);
+        regs.write_sp(0x7FFF_FFF0);
+        mem.write_u32(0x1000, 0x1234_5678).unwrap();
+        regs.finish_undo(&mut s.regs);
+        mem.finish_undo(&mut s.mem);
         ring.push(s);
         let restored = ring.pop().unwrap();
-        assert_eq!(restored.regs.read_gpr(5, true), 0xABCD);
-        assert_eq!(restored.regs.read_sp(), 0x8000_0000);
-        assert_eq!(restored.mem.read_u32(0x1000).unwrap(), 0xDEAD_BEEF);
+        regs.undo(restored.regs);
+        mem.undo(restored.mem);
+        assert_eq!(regs.read_gpr(5, true), 0xABCD);
+        assert_eq!(regs.read_sp(), 0x8000_0000);
+        assert_eq!(mem.read_u32(0x1000).unwrap(), 0xDEAD_BEEF);
     }
 
     #[test]
     fn named_saves_survive_clear() {
         let mut ring = SnapshotRing::new(2);
-        let mut s = empty_snap();
+        let mut s: SavedState = empty_snap();
         s.regs.write_gpr(0, true, 7);
         ring.save_named("checkpoint", s);
         ring.push(empty_snap());
@@ -218,7 +267,7 @@ mod tests {
         let mut ring = SnapshotRing::new(2);
         ring.save_named("beta", empty_snap());
         ring.save_named("alpha", empty_snap());
-        let mut newer = empty_snap();
+        let mut newer: SavedState = empty_snap();
         newer.regs.write_gpr(0, true, 2);
         ring.save_named("beta", newer);
         assert_eq!(ring.named_keys(), vec!["alpha".to_string(), "beta".to_string()]);

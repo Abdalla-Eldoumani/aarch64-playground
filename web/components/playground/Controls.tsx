@@ -1,7 +1,10 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Button } from "@/components/ui/Button";
+import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { explainError } from "@/lib/asm/error-explain";
+import { formatSteps } from "@/lib/emulator/format-steps";
 
 interface ControlsProps {
   onAssemble: () => void;
@@ -17,14 +20,11 @@ interface ControlsProps {
   isAssembling?: boolean;
   isHalted: boolean;
   /** False until a successful assemble, and false again after reset or a
-   *  failed one. Run, step, and back have nothing to execute without a
-   *  program, so they render disabled instead of silently no-oping. */
+   *  failed one. Step and back have nothing to execute without a program, so
+   *  they render disabled instead of silently no-oping. Run stays live: with
+   *  nothing loaded it assembles first, so it waits only for an assemble
+   *  already in flight, and one press cannot start two. */
   programLoaded: boolean;
-  /** Run has something to do even with nothing assembled: it assembles the
-   *  workspace first and starts the session itself. Only run is affected (step
-   *  and back still need a loaded program), and an assemble already in flight
-   *  still disables it, so one press cannot start two. */
-  runAssemblesFirst?: boolean;
   /** True while the program sits at a blocked read waiting for stdin. Run,
    *  step, and back cannot make progress past the read (the machine just
    *  re-blocks), so they disable; assemble and reset stay live because both
@@ -32,6 +32,16 @@ interface ControlsProps {
   blocked?: boolean;
   error: string | null;
   stepCount?: number;
+  /** The phone row: five buttons sharing the width, no key chips, and no
+   *  step counter or halted chip, which the phone's status line carries. The
+   *  phone layout pads the safe area itself. */
+  compact?: boolean;
+  /** A short laptop window: the row's padding tightens and the key chips go
+   *  (each button's title and the shortcut list still carry its key), so the
+   *  header band's tools fit at the row's end. */
+  short?: boolean;
+  /** What rides at the row's end: the playground tools, in a short window. */
+  trailing?: ReactNode;
 }
 
 export function Controls({
@@ -46,10 +56,12 @@ export function Controls({
   isAssembling = false,
   isHalted,
   programLoaded,
-  runAssemblesFirst = false,
   blocked = false,
   error,
   stepCount,
+  compact = false,
+  short = false,
+  trailing,
 }: ControlsProps) {
   // The step counter uses a key tied to the count so the scale-up animation
   // restarts each step without extra effects. The visible 44px controls are
@@ -61,54 +73,67 @@ export function Controls({
   // first failed program says what to do next.
   const explanation = error ? explainError(error) : null;
 
+  // On a phone the five buttons share the row, assemble a little wider for
+  // its longer word, so all five fit a 320px screen with nothing to scroll.
+  const share = (weight: string) => (compact ? `${weight} min-w-0 !px-1 !text-[13px]` : undefined);
+  const chips = !compact && !short;
+
   return (
     <div
-      style={{ paddingBottom: "calc(0.5rem + var(--safe-bottom))" }}
-      className="flex flex-col gap-1.5 px-2 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center sm:gap-2 sm:px-4"
+      style={
+        compact
+          ? undefined
+          : { paddingBottom: `calc(${short ? "0.25rem" : "0.5rem"} + var(--safe-bottom))` }
+      }
+      className={
+        compact
+          ? "flex flex-col gap-1.5 px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)]"
+          : `flex flex-col gap-1.5 px-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:flex-wrap sm:items-center sm:gap-2 sm:px-4 ${short ? "pt-1" : "pt-2"}`
+      }
     >
-      {/* Under sm the controls take one nowrap strip that scrolls within
-          itself, so the fifth button is reachable instead of clipped, and the
-          assemble error drops to its own row underneath rather than off the
-          right edge. At sm and up the band dissolves and every control is a
-          direct child of the row. */}
-      <div className="controls-band flex items-center gap-1.5 sm:contents">
+      {/* The assemble error is its own row under the buttons on a phone and
+          sits inline beside them from sm up, where this row dissolves and
+          every control is a direct child of the outer one. */}
+      <div className={compact ? "flex items-center gap-1" : "flex items-center gap-1.5 sm:contents"}>
         <Button
           variant="primary"
           onClick={onAssemble}
           disabled={isAssembling}
           aria-label="assemble"
+          data-walkthrough="assemble"
           aria-busy={isAssembling}
           aria-keyshortcuts="F6"
           title="F6"
+          className={share("flex-[1.4]")}
         >
           <span>{isAssembling ? "loading…" : "assemble"}</span>
-          <Shortcut keys="F6" />
+          {chips && <ShortcutChip keys="F6" />}
         </Button>
         <Button
           variant="primary"
           onClick={isRunning ? onPause : onRun}
           aria-label={isRunning ? "pause" : "run"}
+          data-walkthrough="run"
           aria-keyshortcuts="F5"
           title="F5"
-          disabled={
-            (!programLoaded && (!runAssemblesFirst || isAssembling)) ||
-            (isHalted && !isRunning) ||
-            (blocked && !isRunning)
-          }
+          className={share("flex-1")}
+          disabled={isAssembling || (blocked && !isRunning)}
         >
           <span>{isRunning ? "pause" : "run"}</span>
-          <Shortcut keys="F5" />
+          {chips && <ShortcutChip keys="F5" />}
         </Button>
         <Button
           variant="secondary"
           onClick={onStep}
           aria-label="step"
+          data-walkthrough="step"
           aria-keyshortcuts="F10"
           title="F10"
+          className={share("flex-1")}
           disabled={!programLoaded || isRunning || isHalted || blocked}
         >
           <span>step</span>
-          <Shortcut keys="F10" />
+          {chips && <ShortcutChip keys="F10" />}
         </Button>
         {onStepBack && (
           <Button
@@ -117,10 +142,11 @@ export function Controls({
             aria-label="back"
             aria-keyshortcuts="Shift+F10"
             title="Shift+F10"
+            className={share("flex-1")}
             disabled={!programLoaded || isRunning || !canStepBack || blocked}
           >
             <span>back</span>
-            <Shortcut keys="Shift+F10" />
+            {chips && <ShortcutChip keys="Shift+F10" />}
           </Button>
         )}
         <Button
@@ -129,25 +155,28 @@ export function Controls({
           aria-label="reset"
           aria-keyshortcuts="Shift+F5"
           title="Shift+F5"
+          className={share("flex-1")}
         >
           <span>reset</span>
-          <Shortcut keys="Shift+F5" />
+          {chips && <ShortcutChip keys="Shift+F5" />}
         </Button>
 
-        <div className="controls-spacer flex-1" />
+        {/* With tools at the row's end, the count stays by the buttons and
+            the tools take the push to the right instead. */}
+        {!compact && !trailing && <div className="flex-1" />}
 
-        {stepCount != null && stepCount > 0 && (
+        {!compact && stepCount != null && stepCount > 0 && (
           <span
             key={stepCount}
-            className="hidden sm:inline text-[10px] text-[var(--text-secondary)] font-mono anim-step-pop"
+            className="hidden sm:inline text-[12px] text-[var(--text-secondary)] font-mono anim-step-pop"
             role="status"
-            aria-label={`${stepCount} instructions executed`}
+            aria-label={`${stepCount} ${stepCount === 1 ? "instruction" : "instructions"} executed`}
           >
-            {stepCount.toLocaleString()} steps
+            {formatSteps(stepCount)}
           </span>
         )}
 
-        {isHalted && !error && (
+        {!compact && isHalted && !error && (
           <span
             className="hidden sm:inline-flex items-center gap-2 font-sans text-xs tracking-wide text-[var(--text-secondary)]"
             role="status"
@@ -167,8 +196,12 @@ export function Controls({
           key={error}
           // A readable box, not a truncated line: long messages wrap in
           // full view (scrolling only past ~4 lines) instead of hiding
-          // behind a hover title.
-          className="anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left"
+          // behind a hover title. In a short window it takes a full-width
+          // line of its own under the buttons, so the tools keep their place
+          // beside them and the wider box needs fewer lines.
+          className={`anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left ${
+            short ? "sm:order-last sm:basis-full sm:max-w-none" : ""
+          }`}
           style={{
             borderColor: "color-mix(in srgb, var(--danger) 45%, transparent)",
             background: "color-mix(in srgb, var(--danger) 8%, transparent)",
@@ -178,28 +211,13 @@ export function Controls({
             {error}
           </p>
           {explanation && (
-            <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[11px] leading-snug text-[var(--text-tertiary)] sm:block">
+            <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-snug text-[var(--text-tertiary)] sm:block">
               {explanation.fix}
             </p>
           )}
         </div>
       )}
+      {trailing}
     </div>
-  );
-}
-
-function Shortcut({ keys }: { keys: string }) {
-  // Inherit the button's text color via currentColor so the chip reads on both
-  // the cyan-filled primaries and the surface-toned secondaries, at full
-  // strength so it clears WCAG AA on the filled cyan. aria-hidden keeps the
-  // chip out of the accessible name: the button's label stays the bare verb and
-  // aria-keyshortcuts already carries the key for AT.
-  return (
-    <kbd
-      aria-hidden="true"
-      className="hidden sm:inline-block text-[10px] font-mono leading-none border border-current rounded px-1 py-[2px]"
-    >
-      {keys}
-    </kbd>
   );
 }

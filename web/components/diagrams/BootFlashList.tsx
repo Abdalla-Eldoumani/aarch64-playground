@@ -16,12 +16,9 @@ function armedOnServer(): boolean {
 }
 
 /**
- * The jump table's list, arming its per-row boot-flash stagger only once the
- * client has taken over. The arming class is deliberately absent from the
- * server HTML: an entrance that runs during first paint costs FCP on a
- * throttled phone, and the landing rule is that entrances answer hydration,
- * never first paint. The rows arrive as children so they stay server-rendered
- * and this file is the only client code the section carries.
+ * The landing's route list. The flash class is added only after hydration,
+ * since an entrance during first paint slows first paint on a slow phone. The
+ * rows come in as children so they stay server-rendered.
  */
 export function BootFlashList({
   className,

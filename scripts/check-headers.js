@@ -14,6 +14,27 @@
 
 const SITE = process.argv[2] || process.env.SITE || "https://aarch64-playground.com";
 
+// The host each source in a CSP names, from every directive of every policy
+// (one header value can hold several, joined by commas). https: and http:
+// admit any host, so they read as *; a keyword such as 'self' or another
+// bare scheme such as blob: names none.
+function cspHosts(policy) {
+  return policy
+    .split(/[;,]/)
+    .flatMap((directive) => directive.trim().split(/\s+/).slice(1))
+    .map((source) => (/^https?:$/i.test(source) ? "*" : source))
+    .filter((source) => !source.startsWith("'") && !/^[a-z][a-z0-9+.-]*:$/i.test(source))
+    .map((source) => source.replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").split(/[/:]/)[0].toLowerCase());
+}
+
+// Whole-host comparison, so a look-alike such as cdn.jsdelivr.net.example.com
+// is not mistaken for the CDN, while a wildcard that covers it still counts.
+function allowsHost(policy, host) {
+  return cspHosts(policy).some(
+    (h) => h === host || h === "*" || (h.startsWith("*.") && host.endsWith(h.slice(1))),
+  );
+}
+
 const REQUIRED = {
   "x-content-type-options": (v) => v === "nosniff",
   "strict-transport-security": (v) => /max-age=\d/.test(v),
@@ -28,10 +49,13 @@ const REQUIRED = {
     /object-src 'none'/.test(v) &&
     // Monaco is vendored, so no third-party script origin may reappear, and
     // the dev-only eval allowance must never reach production.
-    !v.includes("cdn.jsdelivr.net") &&
+    !allowsHost(v, "cdn.jsdelivr.net") &&
     !/'unsafe-eval'/.test(v),
 };
 
+// Returns the exit code instead of calling process.exit: on Windows, exiting
+// while a fetch is still open aborts node with 0xC0000409 instead of the
+// code asked for (nodejs/node#56645).
 async function main() {
   let res;
   try {
@@ -43,12 +67,15 @@ async function main() {
     res = await fetch(SITE, { redirect: "manual", headers });
   } catch (e) {
     console.error(`fetch failed: ${e.message}`);
-    process.exit(1);
+    return 1;
   }
+  // Only the headers are checked; dropping the body closes the connection
+  // so node can end on its own.
+  await res.body?.cancel();
   console.log(`GET ${SITE} -> ${res.status}`);
   if (!res.ok) {
     console.error("non-2xx response, header check skipped");
-    process.exit(1);
+    return 1;
   }
   let failures = 0;
   for (const [name, predicate] of Object.entries(REQUIRED)) {
@@ -67,9 +94,13 @@ async function main() {
   }
   if (failures > 0) {
     console.error(`\n${failures} header check(s) failed`);
-    process.exit(1);
+    return 1;
   }
   console.log(`\nall ${Object.keys(REQUIRED).length} security headers present and valid`);
+  return 0;
 }
 
-main();
+// A test loads the predicates without fetching anything.
+if (require.main === module) main().then((code) => (process.exitCode = code));
+
+module.exports = { REQUIRED };

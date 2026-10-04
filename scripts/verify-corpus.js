@@ -1,7 +1,7 @@
-// Runs each hosted cpsc 355 example with a matching `.stdin` / `.stdout`
-// fixture pair under `web/public/examples/cpsc355/fixtures/` through the
-// WASM emulator and asserts stdout, exit code, and post-run VFS state,
-// then assembles every shipped example as a second gate.
+// Runs each shipped example that has an expected-output fixture under
+// `web/public/examples/cpsc355/fixtures/` through the WASM emulator and
+// checks stdout, exit code, and the files it wrote, then assembles every
+// shipped example as a second gate.
 //
 // Usage: node scripts/verify-corpus.js
 
@@ -13,32 +13,12 @@ const wasm = require(path.join(wasmDir, "aarch64_emulator.js"));
 
 const examplesDir = path.join(__dirname, "..", "web", "public", "examples");
 
-// Whitespace-quoted parser to keep the verifier's .args handling in sync
-// with the in-app `parseArgs` (web/lib/playground/args.ts). Supports double + single
-// quotes and `\` escapes; tolerant of unterminated quotes (rest of line
-// becomes the final token).
-function parseArgsLine(input) {
-  const out = [];
-  let buf = "";
-  let inQuote = null;
-  let hasToken = false;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "\\" && i + 1 < input.length) { buf += input[i + 1]; hasToken = true; i++; continue; }
-    if (inQuote) {
-      if (ch === inQuote) { inQuote = null; continue; }
-      buf += ch; hasToken = true; continue;
-    }
-    if (ch === '"' || ch === "'") { inQuote = ch; hasToken = true; continue; }
-    if (/\s/.test(ch)) {
-      if (hasToken) { out.push(buf); buf = ""; hasToken = false; }
-      continue;
-    }
-    buf += ch; hasToken = true;
-  }
-  if (hasToken) out.push(buf);
-  return out;
-}
+// The app's own argument parser, so a fixture's .args splits exactly the way
+// the args box does. Node 24 strips the file's types on load; the file
+// imports nothing, so no path alias has to resolve.
+const { parseArgs: parseArgsLine } = require(
+  path.join(__dirname, "..", "web", "lib", "playground", "args.ts"),
+);
 
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
@@ -85,12 +65,9 @@ function runHosted(file, stdin, args, vfsIn) {
 
 let passed = 0, failed = 0;
 
-// Hosted fixtures: every fixture stem under examples/cpsc355/fixtures/
-// runs with its `.stdin`, `.args`, and `.vfs.json` inputs (any subset),
-// and must match its `.stdout` (text) and `.vfsout.json` (post-run files)
-// when present. A stem qualifies if any of `.stdout` / `.vfsout.json`
-// exists; programs without either are reported as SKIP rather than
-// silently passing.
+// A fixture stem runs with whichever of `.stdin`, `.args`, and `.vfs.json`
+// it has. One with neither `.stdout` nor `.vfsout.json` to check against
+// prints SKIP, so it can never pass silently.
 const hostedRoot = path.join(examplesDir, "cpsc355");
 const fixturesRoot = path.join(hostedRoot, "fixtures");
 if (fs.existsSync(fixturesRoot)) {
@@ -129,11 +106,15 @@ if (fs.existsSync(fixturesRoot)) {
       continue;
     }
     let ok = true;
+    // Every shipped example ends with status 0 on the course servers; a
+    // main that forgets to set w0 exits with whatever printf left there.
+    if (Number(result.exitCode) !== 0) {
+      console.log(`  FAIL: exit code ${result.exitCode}, expected 0`);
+      ok = false;
+    }
     if (hasStdout) {
-      // Normalize CRLF to LF on the fixture side. On Windows, git's
-      // autocrlf can introduce CRLF endings on checkout; the WASM
-      // emulator always emits LF. Compare with both sides on LF so
-      // the test is byte-tolerant of contributor checkout settings.
+      // git's autocrlf can check fixtures out with CRLF on Windows, while
+      // the emulator always writes LF.
       const expected = fs.readFileSync(stdoutPath, "utf8").replace(/\r\n/g, "\n");
       const actual = result.stdout.replace(/\r\n/g, "\n");
       if (actual === expected) {
@@ -176,12 +157,9 @@ function collectStems(dir) {
 function findSource(root, stem) {
   const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const e of entries) {
-    // `fixtures` holds inputs, not programs. `dsav` and `deadzone` hold a
-    // multi-file program's HELPER files: each one is a fragment with no
-    // entry point, and their stems (array, sort, stack, input, player, ...)
-    // are exactly the names a future fixture is likely to use. Resolving a
-    // fixture to a helper would run the wrong file and report a confusing
-    // failure.
+    // `fixtures` holds inputs, and `dsav` / `deadzone` hold helper files
+    // with no entry point whose names (array, sort, input, ...) a future
+    // fixture may reuse, so a stem must never resolve to one of them.
     if (
       e.isDirectory() &&
       e.name !== "fixtures" &&
@@ -200,14 +178,9 @@ function findSource(root, stem) {
 }
 
 // ---------------------------------------------------------------------
-// Assembly gate.
-//
-// The fixture pass above only reaches a stem that records a `.stdout` or
-// `.vfsout.json`, so the terminal examples and every helper module behind
-// `dsav` and `deadzone` are invisible to it. A comment-trimming pass once
-// stripped `.string` directives and whole data definitions out of those
-// modules and nothing here noticed, because nothing here ever assembled
-// them. Every shipped example must at least assemble.
+// Assembly gate. The fixture pass never reaches the terminal examples or
+// the helper files behind `dsav` and `deadzone`; a past comment cleanup
+// broke those and nothing failed. Every shipped example must assemble.
 
 // EXAMPLE_FILES lives in TypeScript and node cannot require that, so the
 // table is parsed out of the real source rather than copied by hand: a
@@ -239,14 +212,6 @@ function combineSources(main, extras) {
   return parts.join("\n");
 }
 
-// is-prime.s ships as a leaf function with no entry point on purpose; its
-// own header says to assemble it beside a caller, and no such caller is a
-// shipped file. Naming it here rather than inferring "has no main" keeps a
-// main that goes missing from any other example a hard failure.
-const LEAF_ONLY = {
-  "is-prime": "leaf function, no entry point; no caller ships with it",
-};
-
 console.log(`\n=== assembly gate ===`);
 const exampleFiles = readExampleFiles(
   path.join(__dirname, "..", "web", "lib", "playground", "playground-handoff.ts"),
@@ -255,10 +220,6 @@ let assembleFailed = false;
 for (const file of fs.readdirSync(hostedRoot).sort()) {
   if (!file.endsWith(".s")) continue;
   const stem = file.slice(0, -2);
-  if (LEAF_ONLY[stem]) {
-    console.log(`  SKIP ${stem}: ${LEAF_ONLY[stem]}`);
-    continue;
-  }
   const helpers = (exampleFiles[stem] || []).map((name) => ({
     name,
     body: fs.readFileSync(path.join(hostedRoot, stem, name), "utf8"),

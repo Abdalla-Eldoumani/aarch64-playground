@@ -41,8 +41,13 @@ pub fn lint(source: &str) -> Vec<LintWarning> {
         return Vec::new();
     };
     let mut warnings = Vec::new();
-    macro_hygiene(source, &expanded, &mut warnings);
     frame_balance(&expanded, &mut warnings);
+    // The frame walk counts m4's output lines, which a macro body spanning
+    // lines pushes past the editor's.
+    for w in &mut warnings {
+        w.line = expanded.line_map.get(w.line.wrapping_sub(1)).copied().unwrap_or(w.line);
+    }
+    macro_hygiene(source, &expanded, &mut warnings);
     warnings.sort_by_key(|w| w.line);
     warnings
 }
@@ -196,7 +201,8 @@ fn scan_line_for_hygiene(
                              or drop the `#`"
                         ),
                     });
-                } else if i < bytes.len() && bytes[i] == b'(' {
+                } else if i < bytes.len() && bytes[i] == b'(' && !body.contains('$') {
+                    // A body that reads `$1` is meant to be called this way.
                     warnings.push(LintWarning {
                         line,
                         message: format!(
@@ -313,12 +319,9 @@ fn split_functions(text: &str) -> Vec<FunctionSegment> {
         }
         if rest.starts_with('.') {
             let lower = rest.to_ascii_lowercase();
-            // Deliberately its own prefix chain rather than the parser's
-            // DIRECTIVES table: `.section` always leaves .text here, even
-            // when it names `.section .text`, because the bare `.text`
-            // check runs first and `.section` never re-enters. The function
-            // segments this lint reports depend on that, so widening it to
-            // the parser's set would change which code gets linted.
+            // Its own prefix chain, not the parser's DIRECTIVES table:
+            // `.section` always leaves .text here, even `.section .text`,
+            // and the function segments this lint reports depend on that.
             if lower.starts_with(".text") {
                 in_text = true;
             } else if lower.starts_with(".data")
@@ -571,6 +574,27 @@ mod tests {
         assert_eq!(w.len(), 1, "{w:?}");
         assert_eq!(w[0].0, 7);
         assert!(w[0].1.contains("16 bytes"), "{}", w[0].1);
+    }
+
+    #[test]
+    fn a_frame_warning_below_a_multi_line_macro_lands_on_its_editor_line() {
+        // The macro's second line pushes every output line below it down
+        // by one; the warning still marks the `ldp` the student wrote.
+        let src = "define(two, `mov x0, 1\n  mov x1, 2')\n.text\nmain:\ntwo\nldp x29, x30, [sp], 16\nret\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 6, "{w:?}");
+    }
+
+    #[test]
+    fn an_argument_macro_is_meant_to_be_called_and_an_alias_is_not() {
+        // A body that reads `$1` wants its arguments; a register alias
+        // right before `(` still loses the text in the parentheses.
+        let src = "define(sq, `mul $1, $1, $1')\ndefine(t_r, x19)\n.text\nmain:\nsq(x0)\nmov t_r(1), 2\nret\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 6);
+        assert!(w[0].1.contains("`t_r(`"), "{}", w[0].1);
     }
 
     #[test]

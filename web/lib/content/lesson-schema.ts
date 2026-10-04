@@ -1,14 +1,7 @@
 /**
- * The lesson authoring contract: TypeScript types plus a hand-rolled
- * runtime validator. A lesson is author-supplied JSON, so it is untrusted
- * until `validateLesson` has narrowed it field-by-field. This is the single
- * source of truth for the lesson shape; the loader, the index, and the
- * article all import these types and call this validator, and only a
- * validated lesson is ever rendered.
- *
- * The validator is dependency-free and modeled on the defensive style in
- * upload-guard.ts and share.ts: narrow `unknown` one field at a time,
- * return a discriminated result, never throw.
+ * The lesson shape and its validator, the one source for both. Lesson files
+ * are untrusted JSON, so nothing is rendered until `validateLesson` has
+ * checked it field by field; it returns an error instead of throwing.
  */
 
 /** A single body block. The `type` tag selects the per-block fields. */
@@ -16,7 +9,25 @@ export type LessonBlock =
   | { type: "prose"; markdown: string }
   | { type: "code"; language: "asm" | "c" | "text"; source: string }
   | { type: "callout"; variant: "note" | "warning" | "pitfall" | "prereq"; markdown: string }
-  | { type: "editor"; starter: string; args?: string; stdin?: string };
+  | {
+      type: "editor";
+      starter: string;
+      args?: string;
+      stdin?: string;
+      expectedOutput?: ExpectedOutput;
+    };
+
+/**
+ * What a runnable editor's program prints when it runs with the block's own
+ * args and stdin: its stdout byte for byte and, when the lesson relies on it,
+ * the exit status. A test runs every lesson program and compares, so a
+ * lesson cannot quietly promise output its program no longer gives.
+ */
+export interface ExpectedOutput {
+  stdout: string;
+  /** 0 to 255, as the shell reports it. Omitted when the lesson never says. */
+  exitCode?: number;
+}
 
 /** Lesson metadata plus an ordered, non-empty body of blocks. */
 export interface Lesson {
@@ -25,6 +36,12 @@ export interface Lesson {
   slug: string;
   /** Sortable; the index orders by this, never by a week label. */
   order: number | string;
+  /**
+   * The day the content last changed, YYYY-MM-DD. The sitemap reads it:
+   * the deploy clones the repository without its history, so git cannot
+   * say when a page changed there.
+   */
+  lastUpdated?: string;
   /** Optional one-line index card summary. */
   summary?: string;
   /** Optional index filter tags. */
@@ -34,14 +51,10 @@ export interface Lesson {
 }
 
 /**
- * The row shape the learn index renders: exactly the five fields
- * LessonIndex reads, and nothing else. `body` is the rest of a Lesson and it
- * is 53 KB of the 55 KB the authored set serializes to, never read by the
- * index and never rendered by it, and it would otherwise cross the
- * server-to-client boundary on every visit. The type lives here rather than
- * beside the loader because the loader is server-only: a client component
- * naming that module is one dropped `type` keyword away from a confusing
- * build failure.
+ * The row the learn index renders: only the five fields LessonIndex reads, so
+ * the lesson bodies (53 KB of the set's 55 KB) never reach the browser. It
+ * lives here, not beside the server-only loader, so a client component can
+ * name the type without importing that module.
  */
 export interface LessonIndexRow {
   title: string;
@@ -56,6 +69,39 @@ export type LessonResult = { ok: true; lesson: Lesson } | { ok: false; error: st
 
 /** URL-safe kebab-case: lowercase alphanumerics joined by single dashes. */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+/**
+ * True for a YYYY-MM-DD date that exists on the calendar. The round trip
+ * through Date catches 2026-02-30, which the pattern alone lets through.
+ * Exercises share this rule for their own lastUpdated.
+ */
+export function isCalendarDate(value: unknown): value is string {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/**
+ * Narrow an editor's expectedOutput, or say what is wrong with it. The exit
+ * status must be one a shell can report, so a typo such as -1 or 256 fails
+ * the build instead of setting a comparison no program can meet.
+ */
+function validateExpectedOutput(raw: unknown): ExpectedOutput | string {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return "must be an object with a stdout string";
+  }
+  const o = raw as Record<string, unknown>;
+  if (typeof o.stdout !== "string") return "stdout must be a string";
+  const expected: ExpectedOutput = { stdout: o.stdout };
+  if (o.exitCode !== undefined) {
+    const code = o.exitCode;
+    if (typeof code !== "number" || !Number.isInteger(code) || code < 0 || code > 255) {
+      return "exitCode must be an integer from 0 to 255 when present";
+    }
+    expected.exitCode = code;
+  }
+  return expected;
+}
 
 /**
  * Validate one body block by its `type`, tagging every message with the
@@ -108,7 +154,7 @@ function validateBlock(
       if (typeof b.starter !== "string") {
         return { ok: false, error: `body[${index}] (editor): starter must be a string` };
       }
-      const block: { type: "editor"; starter: string; args?: string; stdin?: string } = {
+      const block: Extract<LessonBlock, { type: "editor" }> = {
         type: "editor",
         starter: b.starter,
       };
@@ -123,6 +169,13 @@ function validateBlock(
           return { ok: false, error: `body[${index}] (editor): stdin must be a string when present` };
         }
         block.stdin = b.stdin;
+      }
+      if (b.expectedOutput !== undefined) {
+        const expected = validateExpectedOutput(b.expectedOutput);
+        if (typeof expected === "string") {
+          return { ok: false, error: `body[${index}] (editor): expectedOutput ${expected}` };
+        }
+        block.expectedOutput = expected;
       }
       return { ok: true, block };
     }
@@ -158,6 +211,14 @@ export function validateLesson(data: unknown): LessonResult {
     return { ok: false, error: "order: expected a number or string" };
   }
 
+  let lastUpdated: string | undefined;
+  if (o.lastUpdated !== undefined) {
+    if (!isCalendarDate(o.lastUpdated)) {
+      return { ok: false, error: "lastUpdated: expected a YYYY-MM-DD date when present" };
+    }
+    lastUpdated = o.lastUpdated;
+  }
+
   let summary: string | undefined;
   if (o.summary !== undefined) {
     if (typeof o.summary !== "string") {
@@ -190,6 +251,7 @@ export function validateLesson(data: unknown): LessonResult {
   }
 
   const lesson: Lesson = { title, slug, order, body };
+  if (lastUpdated !== undefined) lesson.lastUpdated = lastUpdated;
   if (summary !== undefined) lesson.summary = summary;
   if (tags !== undefined) lesson.tags = tags;
   return { ok: true, lesson };

@@ -1,14 +1,10 @@
 "use client";
 
 /**
- * Named bookmarks persisted across page loads. A bookmark captures
- * the input state needed to re-reach a particular step in execution:
- * source + args + stdin + step count. Restore re-assembles the source
- * and steps the live CPU forward to `stepCount`.
- *
- * The Rust snapshot ring still holds the in-memory CPU state for step-back;
- * bookmarks are a different mechanism so they survive page reloads, can be
- * exported / imported, and don't grow as large as raw register + memory dumps.
+ * Named bookmarks that survive a reload: the source, args, stdin, and step
+ * count needed to reach one step again. Restore re-assembles and steps forward
+ * instead of storing registers and memory, so a bookmark stays small and can
+ * be exported.
  */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";

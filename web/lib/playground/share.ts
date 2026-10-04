@@ -1,5 +1,5 @@
-"use client";
-
+// Not a client module. The landing hero calls buildShareHash on the server
+// for its playground link, so the codec never ships on the landing.
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/hooks/use-deep-link";
 import { validateFileName } from "@/lib/playground/file-map";
@@ -53,11 +53,9 @@ function sourceChecksum(source: string): string {
 }
 
 /**
- * Encode the editor state as a shareable URL hash. lz-string's
- * `compressToEncodedURIComponent` keeps the payload safe inside a `#p2=...`
- * fragment and survives copy-paste through chat apps. The v2 prefix carries the
- * full state JSON; the older `#p=` form carrying just the source string is
- * still decoded by `readShareHash` so older `#p=` links keep working.
+ * `#p2=` carries the whole state as JSON, compressed into characters that
+ * survive copy-paste through chat apps. readShareHash still reads the older
+ * source-only `#p=` links.
  */
 export function buildShareHash(state: ShareState): string {
   const json = JSON.stringify({ ...state, h: sourceChecksum(state.source) });
@@ -65,13 +63,9 @@ export function buildShareHash(state: ShareState): string {
 }
 
 /**
- * The compressed payload length of a built hash, against the cap
- * `readShareHash` enforces on the way back in. The sender's browser is the only
- * place this can be caught: a link built over the cap copies, pastes, and opens
- * to "that share link is too large", with the sender none the wiser. A real
- * multi-file workspace clears 12 KB easily: the 17-file data-structures example
- * compresses to ~86,000 characters. So the dialog checks before it offers the
- * link.
+ * The payload length against the cap readShareHash enforces. Only the
+ * sender's browser can catch an oversize link (the 17-file data-structures
+ * example compresses to ~86,000 characters), so the dialog checks first.
  */
 export function shareHashSize(hash: string): { chars: number; max: number } {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
@@ -107,8 +101,7 @@ export function readShareHash(hash: string): ShareReadResult {
   const trimmed = hash.startsWith("#") ? hash.slice(1) : hash;
   if (trimmed.startsWith(PREFIX_V2)) {
     const compressed = trimmed.slice(PREFIX_V2.length);
-    // Bomb wall: bound the raw fragment before lz-string runs (see
-    // MAX_SHARE_HASH_BYTES for the sizing math).
+    // Cap the raw fragment before lz-string runs; MAX_SHARE_HASH_BYTES says why.
     if (compressed.length > MAX_SHARE_HASH_BYTES) return { kind: "too-large" };
     const decoded = safeDecompress(compressed);
     if (!decoded) return { kind: "corrupt" };
@@ -144,12 +137,10 @@ export function readShareHash(hash: string): ShareReadResult {
           name: f.name.trim(),
           body: f.body,
         }));
-        // A hostile NAME is not a mangle, so the whole link is refused rather
-        // than loaded minus its helpers: a newline in one writes its own
-        // assembly lines into the `// ---- name ----` marker combineSources
-        // builds, and the linker reads them as program text. A wrong-SHAPED
-        // files array stays tolerated above: that is an old or partial
-        // serialization, and nothing hostile survives it.
+        // A bad name refuses the whole link: a newline in one would write its
+        // own lines into combineSources' `// ---- name ----` marker, read as
+        // program text. A wrong-shaped files array is only an old link, so
+        // the check above just drops it.
         if (files.some((f, i) => validateFileName(f.name, files, i) !== null)) {
           return { kind: "corrupt" };
         }

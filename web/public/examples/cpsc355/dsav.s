@@ -1,11 +1,11 @@
-// main.asm - the home screen and dispatch
+// dsav.s - the home screen, and the jump to each module's menu
 // dsav: terminal data structures and algorithms visualizer
 
 define(fp, x29)
 define(lr, x30)
 
-// The roles ui.asm draws with. Each file assembles on its own, so every
-// module that names a role repeats the block; theme.asm holds the colours
+// The colour roles ui.s draws with. Each file assembles on its own, so every
+// module that names a role repeats the block; theme.s holds the colours
 // the numbers stand for.
     UI_ROLE_TEXT   = 0
     UI_ROLE_DIM    = 1

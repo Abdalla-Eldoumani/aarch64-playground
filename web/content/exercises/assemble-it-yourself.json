@@ -1,0 +1,76 @@
+{
+  "title": "Assemble it yourself",
+  "slug": "assemble-it-yourself",
+  "order": 30,
+  "lastUpdated": "2026-09-30",
+  "topic": "bitwise",
+  "difficulty": "challenge",
+  "prompt": "Be the assembler for one instruction: `add xD, xN, imm`, a 64-bit add with an immediate. Standard input gives D, N and the immediate; build the 32-bit word the assembler would produce and print it. With the stdin box as given the program prints:\n\n```\nprobe check: ok\nadd x3, x4, 100 = 0x91019083\n```\n\nThe add (immediate) format, from bit 31 down:\n\n| bits | 31 | 30 | 29 | 28-23 | 22 | 21-10 | 9-5 | 4-0 |\n|---|---|---|---|---|---|---|---|---|\n| field | sf = 1 | op = 0 | S = 0 | 100010 | sh = 0 | imm12 | Rn | Rd |\n\nBits 31 to 22 never change here, so the word starts as `0x91000000` (one `movz` with `lsl 16` can load it). Shift each field up to its place with `lsl` and combine them with `orr`. Write that as a subroutine, `encode`, because it runs twice:\n\n1. The starter holds a real `add x1, x2, 42` at the label `probe`. It never runs, but its four bytes can be loaded like any other word. Encode Rd = 1, Rn = 2 and 42 yourself and print `probe check: ok` when your word matches the assembler's, `probe check: mismatch` when it does not.\n2. Then encode the input and print the instruction and its word.\n\nA register number is 0 to 31, and in this format 31 means `sp` (`print_reg` already prints it that way). The immediate field has 12 bits, so it holds 0 to 4095. Anything outside those ranges, negatives included, prints `cannot encode that` and returns 1.\n\n## What is checked\n\n- both lines for the input in the stdin box, and for more inputs you cannot see\n- the exit status (0, or 1 when the input cannot be encoded)\n- the word is built with `lsl` and `orr`",
+  "starter": "// build the machine word for an add with an immediate, bit field by bit field\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(rd_r, x19)\ndefine(rn_r, x20)\ndefine(imm_r, x21)\ndefine(word_r, w22)\n\n.data\nfmt_in:     .string \"%ld %ld %ld\"\nfmt_ok:     .string \"probe check: ok\\n\"\nfmt_bad:    .string \"probe check: mismatch\\n\"\nfmt_add:    .string \"add \"\nfmt_comma:  .string \", \"\nfmt_tail:   .string \", %ld = 0x%08x\\n\"\nfmt_xreg:   .string \"x%ld\"\nfmt_sp:     .string \"sp\"\nfmt_range:  .string \"cannot encode that\\n\"\n\n.bss\n.align 3\nrd_in:      .skip 8\nrn_in:      .skip 8\nimm_in:     .skip 8\n\n.text\n\n// a real add for the encoder to match: it is never run, only read\n        .balign 4\nprobe:  add     x1, x2, 42\n\n// TODO: encode(x0 = Rd, x1 = Rn, x2 = imm12) -> w0 = the add (immediate)\n// word. Start from the fixed top bits and move each field into place.\n\n// print_reg(x0 = register number): 31 is sp in this format\n        .balign 4\n        .global print_reg\nprint_reg:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     x1, x0\n        ldr     x0, =fmt_xreg\n        cmp     x1, 31\n        b.ne    pr_print\n        ldr     x0, =fmt_sp\npr_print:\n        bl      printf\n\n        ldp     fp, lr, [sp], 16\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        // TODO:\n        //   - encode Rd = 1, Rn = 2, imm12 = 42 and compare the word with\n        //     the one the assembler put at probe; print fmt_ok or fmt_bad\n        //   - read Rd, Rn and the immediate with fmt_in into the three\n        //     .bss slots\n        //   - a register outside 0 to 31 or an immediate outside 0 to\n        //     4095 prints fmt_range and returns 1\n        //   - otherwise print the instruction and its word: fmt_add, Rd\n        //     through print_reg, fmt_comma, Rn through print_reg, then\n        //     fmt_tail with the immediate and the word\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "3 4 100\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "probe check: ok\nadd x3, x4, 100 = 0x91019083\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "lsl"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "orr"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1 2 42\n",
+      "stdout": "probe check: ok\nadd x1, x2, 42 = 0x9100a841\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0 31 16\n",
+      "stdout": "probe check: ok\nadd x0, sp, 16 = 0x910043e0\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "31 31 4095\n",
+      "stdout": "probe check: ok\nadd sp, sp, 4095 = 0x913fffff\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "9 10 0\n",
+      "stdout": "probe check: ok\nadd x9, x10, 0 = 0x91000149\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "5 5 4096\n",
+      "stdout": "probe check: ok\ncannot encode that\n",
+      "exitCode": 1,
+      "edge": true
+    },
+    {
+      "stdin": "32 1 1\n",
+      "stdout": "probe check: ok\ncannot encode that\n",
+      "exitCode": 1,
+      "edge": true
+    },
+    {
+      "stdin": "2 2 -1\n",
+      "stdout": "probe check: ok\ncannot encode that\n",
+      "exitCode": 1,
+      "edge": true
+    }
+  ]
+}

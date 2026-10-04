@@ -1,19 +1,11 @@
 /**
- * Client-only persistence for the per-exercise solved set, stored as a JSON
- * string[] of slugs under a single localStorage key. The stored value is
- * treated as untrusted on read: a tampered, absent, or malformed value
- * degrades to "nothing solved" rather than throwing. Every function is
- * SSR-safe (guards `typeof window`) and never throws, even when
- * localStorage is absent or throwing (private mode, sandboxed iframe,
- * quota), through the shared safe-storage helpers.
+ * The solved exercises, kept in localStorage. A stored value that is missing
+ * or broken reads as "nothing solved", and nothing here throws, even where
+ * storage is blocked (private mode, a sandboxed iframe, a full quota).
  *
- * The index reads this set and re-renders when it changes; the exercise
- * view writes to it when a check passes. The index also exports the set as
- * a versioned json file and imports one back: a browser that evicts
- * script-writable storage (Safari does, after seven days without a visit)
- * takes the set with it, and that file is the only way back. The same file
- * carries the answers from exercise-answers.ts, because the work a student
- * typed is lost to that eviction exactly as the ticks are.
+ * Safari clears script-written storage after seven days without a visit, so
+ * the index can export the set, with the saved answers, as a json file and
+ * import it back.
  */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
@@ -96,11 +88,8 @@ export function subscribeSolved(callback: () => void): () => void {
 }
 
 /**
- * The exported shape: versioned so a later format can be told apart.
- * `answers` arrived after the ticks and stays an OPTIONAL key at the same
- * version rather than a version bump, so the file travels both ways: a
- * build that predates the answers ignores the key, and a file written
- * without one still imports here.
+ * `answers` came later and stays optional at version 1, so an older build
+ * ignores it and a file without it still imports.
  */
 export interface ProgressBundle {
   version: 1;
@@ -112,11 +101,7 @@ export type ProgressImportResult =
   | { ok: true; added: number; total: number; answersAdded: number }
   | { ok: false; error: string };
 
-/**
- * Entries a bundle may carry, and the length of one. The catalog is a few
- * dozen exercises, so these are generous; they exist to bound a hostile
- * file, not to bound a real one.
- */
+/** Generous next to a few dozen exercises: they bound a hostile file, not a real one. */
 const MAX_BUNDLE_ENTRIES = 256;
 const MAX_SLUG_CHARS = 64;
 
@@ -126,12 +111,9 @@ export function buildProgressBundle(): ProgressBundle {
 }
 
 /**
- * Merge the bundle's answers into the store and return how many landed.
- * An answer fills an empty slot, and replaces a local one only when the
- * file's copy is strictly newer: a student who imports an old export onto
- * the device they have been working on keeps the work in front of them.
- * A single bad entry is skipped rather than failing the file, since the
- * ticks and the other answers are still worth landing.
+ * A file's answer replaces a local one only when strictly newer, so importing
+ * an old export keeps the work in front of the student. A bad entry is
+ * skipped; the rest of the file still lands.
  */
 function mergeAnswers(raw: Record<string, unknown>): number {
   let added = 0;
@@ -148,16 +130,10 @@ function mergeAnswers(raw: Record<string, unknown>): number {
 }
 
 /**
- * Validate a parsed bundle field by field and UNION it into the stored set.
- * Importing only ever adds: a student who solved something on this device
- * and imports an older file keeps what the file does not know about.
- * Unknown slugs are kept as written, so a bundle from a newer catalog
- * survives a round trip through an older build.
- *
- * A malformed bundle fails closed with a student-facing reason and writes
- * nothing at all; a partial import would leave the student unable to say what
- * actually landed. The answers ride along under the same rule, except that a
- * single unreadable answer is skipped rather than voiding the whole file.
+ * Importing only adds, so an older file cannot undo work done on this device.
+ * Unknown slugs are kept so a file from a newer catalog survives an older
+ * build. A malformed file writes nothing, since a partial import would leave
+ * the student unsure what landed; only a single bad answer is skipped.
  */
 export function importProgressBundle(raw: unknown): ProgressImportResult {
   if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {

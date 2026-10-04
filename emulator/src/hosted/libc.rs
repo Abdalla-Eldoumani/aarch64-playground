@@ -1,4 +1,4 @@
-//! Small libc helpers the cpsc 355 corpus reaches for directly. All of
+//! Small libc functions CPSC 355 programs call directly. All of
 //! them receive their arguments in the AAPCS64 GP registers (`x0..x7`)
 //! and write their return value into `x0` (or `d0` for `atof`).
 //!
@@ -296,18 +296,16 @@ pub fn fflush(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 /// servers.
 pub const RAND_MAX: i64 = 2_147_483_647;
 
-/// glibc's rand(): the TYPE_3 additive-feedback generator, not an LCG.
-/// State is a 31-word circular buffer with taps 3 words apart:
-/// `r[i] = r[i-31] + r[i-3] (mod 2^32)`, output `r[i] >> 1`. Seeding
-/// runs a 16807 Park-Miller LCG (Schrage's method) to fill the buffer,
-/// then discards 310 outputs. Reproducing it exactly is the point:
-/// an unseeded course program prints the same numbers here as on the
-/// servers, so students can diff against sample runs.
+/// glibc's TYPE_3 rand(), reproduced exactly so an unseeded course program
+/// prints the same numbers here as on the servers and students can diff
+/// against sample runs. State is 31 words with
+/// `r[i] = r[i-31] + r[i-3] (mod 2^32)` and output `r[i] >> 1`; seeding
+/// fills it with a Park-Miller generator (multiplier 16807) and then
+/// discards 310 outputs.
 ///
-/// `entropy` is the separate 64-bit word the getrandom syscall draws
-/// from: kept apart so reseeding rand never shifts a raw-mode game's
-/// food placement, and vice versa. The whole struct is `Copy` and rides
-/// in every snapshot, so step-back replays draws.
+/// `entropy` is the separate word the getrandom syscall draws from, so
+/// reseeding rand never shifts a raw-mode game's food placement, and vice
+/// versa. The struct rides in every snapshot, so step-back replays draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RandState {
     r: [u32; 31],
@@ -394,9 +392,9 @@ pub fn time(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
-/// Sentinel stub the loader stashes in `LR` before calling `main`. A
-/// program that returns out of `main` lands here and we halt with the
-/// caller's return value (the ARM64 AAPCS64 convention puts it in `w0`).
+/// The return address the loader puts in `LR` before calling `main`. A
+/// program that returns from `main` lands here and halts with main's
+/// return value, which is in `w0`.
 pub fn main_return(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     // Only the low 32 bits of x0 are meaningful as an exit code when
     // `int main()` returns.
@@ -676,6 +674,7 @@ mod tests {
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
         strtok_save: u64,
+        callbacks: crate::hosted::callback::CallbackState,
     }
 
     impl Host {
@@ -696,6 +695,7 @@ mod tests {
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
                 strtok_save: 0,
+                callbacks: Default::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -713,6 +713,7 @@ mod tests {
                 term: &mut self.term,
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
+                callbacks: &mut self.callbacks,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {

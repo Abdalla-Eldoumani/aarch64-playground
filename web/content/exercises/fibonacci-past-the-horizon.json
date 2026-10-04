@@ -1,0 +1,70 @@
+{
+  "title": "Fibonacci past the horizon",
+  "slug": "fibonacci-past-the-horizon",
+  "order": 3,
+  "lastUpdated": "2026-09-30",
+  "topic": "binary-arithmetic",
+  "difficulty": "challenge",
+  "prompt": "`fib(93)` is the last Fibonacci number that fits in 64 bits, read as unsigned. This program goes on to `fib(186)` by keeping each number in two registers, a high half and a low half: 128 bits together.\n\nAdding two 128-bit numbers takes two instructions. `adds` adds the low halves and sets the carry flag C when their sum does not fit in 64 bits. `adc` (add with carry) then adds the high halves plus C. A plain `add` on the high halves would drop that carry.\n\nThe starter reads `n` (0 to 186) into `nth_r` and prints `a` as 32 hex digits, high half first. Write the loop: `a` starts at fib(0) = 0 and `b` at fib(1) = 1, and each of the `n` steps makes `a + b` the new `b` while `a` takes the old `b`. When the loop ends, `a` is fib(n).\n\nWith the sample input `100` the program prints `fib(100) = 0x000000000000001333db76a7c594bfc3`.\n\n## What is checked\n\n- the line for the sample input\n- the program exits cleanly\n- the 128-bit add uses `adds` and `adc`\n- the right answer for other values of n, including 0, the first n whose answer needs the high half, and 186",
+  "starter": "// fib(n) for n up to 186, carried in a pair of 64-bit registers\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(nth_r, w19)\ndefine(step_r, w20)\ndefine(a_lo_r, x21)\ndefine(a_hi_r, x22)\ndefine(b_lo_r, x23)\ndefine(b_hi_r, x24)\n\n.data\nfmt_steps:  .string \"%d\"\nfmt_out:    .string \"fib(%d) = 0x%016lx%016lx\\n\"\n\n.bss\n.balign 4\nn_m:        .skip 4\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_steps              // read n into n_m\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     nth_r, [x9]\n\n        mov     a_lo_r, 0                   // replace these placeholders\n        mov     a_hi_r, 0\n\n        // TODO: start a at fib(0) and b at fib(1), then n times over\n        // make a + b the new b while a takes the old b. Each number is\n        // 128 bits wide: high half in a_hi_r or b_hi_r, low half in\n        // a_lo_r or b_lo_r. When the loop ends, a holds fib(n).\n\n        ldr     x0, =fmt_out\n        mov     w1, nth_r\n        mov     x2, a_hi_r                  // the high half prints first\n        mov     x3, a_lo_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "100\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "fib(100) = 0x000000000000001333db76a7c594bfc3\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "adds"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "adc"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "fib(0) = 0x00000000000000000000000000000000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "fib(1) = 0x00000000000000000000000000000001\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "93\n",
+      "stdout": "fib(93) = 0x0000000000000000a94fad42221f2702\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "94\n",
+      "stdout": "fib(94) = 0x000000000000000111f38ad0840bf6bf\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "150\n",
+      "stdout": "fib(150) = 0x0000007dd446c1f95e43f356255be4c8\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "186\n",
+      "stdout": "fib(186) = 0xfa63c8d9fa216a8fc8a7213b333270f8\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

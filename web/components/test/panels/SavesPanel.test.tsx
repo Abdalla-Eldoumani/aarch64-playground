@@ -27,7 +27,7 @@ function renderPanel(overrides: Partial<SavesPanelProps> = {}) {
 }
 
 describe("SavesPanel bookmark load", () => {
-  it("delivers the whole bookmark as one program handoff, then drives the restore", async () => {
+  it("loads the whole bookmark in one handoff, then restores it", async () => {
     act(() => {
       putSave({
         name: "week8 walk",
@@ -40,9 +40,8 @@ describe("SavesPanel bookmark load", () => {
     });
     const props = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: "load" }));
-    // Source, args, and stdin all ride one handoff: the machine resets and the
-    // bookmark's inputs become the seeds a later manual re-assemble
-    // re-applies, instead of whatever program was loaded before it.
+    // One handoff carries source, args, and stdin, so a later re-assemble
+    // reuses the bookmark's inputs, not the previous program's.
     expect(props.onLoadProgram).toHaveBeenCalledWith({
       source: "mov x0, 7",
       label: "week8 walk",
@@ -57,8 +56,8 @@ describe("SavesPanel bookmark load", () => {
         stepCount: 3,
       }),
     );
-    // Delivery precedes the restore drive, so the CPU the restore steps
-    // belongs to the handed-off program, not the one it replaced.
+    // The handoff comes first, or the restore would step the program it
+    // replaced.
     expect(
       (props.onLoadProgram as ReturnType<typeof vi.fn>).mock
         .invocationCallOrder[0],

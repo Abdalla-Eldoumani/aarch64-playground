@@ -2,96 +2,75 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
-import { useBreakpoint } from "@/lib/hooks/use-breakpoint";
+import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
-import { formatByte, formatWord64 } from "@/lib/emulator/format-hex";
-import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
+import { collectDiagnostic } from "@/lib/playground/diagnostic-bundle";
 import { formatAsm } from "@/lib/asm/asm-formatter";
-import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 import { useLaunchMode } from "@/lib/playground/use-launch-mode";
 import type { WorkingSet } from "@/lib/playground/use-working-set";
 import { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
 import { createTerminalContext } from "@/lib/playground/terminal-context";
-import {
-  describeTarget,
-  getImportTarget,
-  type ImportTarget,
-} from "@/lib/hooks/use-import-target";
+import { getImportTarget } from "@/lib/hooks/use-import-target";
 import { Editor } from "@/components/playground/lazy-editor";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
-import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { Controls } from "@/components/playground/Controls";
 import { DecodeStrip } from "@/components/panels/DecodeStrip";
 import { FirstRunState } from "@/components/playground/FirstRunState";
 import { FullLayout } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
-import {
-  RightTabs,
-  type DebugPanes,
-  type RightTab,
-} from "@/components/playground/RightTabs";
+import { Toolbar } from "@/components/playground/Toolbar";
+import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
 import {
   MultiFileTabs,
-  combineSources,
   type SourceFile,
 } from "@/components/playground/MultiFileTabs";
 import type { SourceFilesBackup } from "@/lib/hooks/use-source-files";
 import {
-  BaseConverter,
   InstructionView,
-  MemoryPanel,
-  MemoryWatches,
+  InterfaceWalkthrough,
   ReplayScrubber,
-  SavesPanel,
-  StackPanel,
-  TerminalPane,
   TutorialRunner,
-  WatchPanel,
 } from "@/components/playground/lazy-panels";
-import {
-  breakpointsForFile,
-  combinedLineFor,
-  diagnosticsForFile,
-  errorWithFileName,
-  planBreakpointRemap,
-  resolveLine,
-  validateFileName,
-  workspaceShape,
-  type Workspace,
-} from "@/lib/playground/file-map";
+import { validateFileName } from "@/lib/playground/file-map";
 import { useToast } from "@/components/ui/Toast";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { fileStub, useWorkspaceImport } from "@/components/playground/use-workspace-import";
+import { useFullChromeRun } from "@/components/playground/use-full-chrome-run";
 
+import { useActiveFile } from "@/components/playground/use-active-file";
+import { useDebugPanes } from "@/components/playground/use-debug-panes";
 /**
- * The handful of full-chrome actions the shell defers to. The shell owns the
- * program buffer and the imperative handle, but some of what it does to them
- * (adopting a payload's launch, dropping the console watermark, resetting
- * through a live terminal session) exists only on this surface, and this
- * surface loads lazily. So it publishes them upward when it mounts and the
- * shell reads them through a ref, falling back to the plain machine where they
- * are absent (embed and checker, which never load this module).
+ * The full-chrome actions the shell defers to. This surface loads lazily, so
+ * it publishes them upward on mount and the shell reads them through a ref,
+ * falling back to the plain machine in embed and checker.
  */
 export type FullChromeBridge = {
   /** A program handoff landed: adopt its launch and return the value the args
    *  box should take, drop the previous session's watermark, and set the
    *  shared-program banner. */
   onProgramLoaded: (payload: HandoffPayload) => string;
-  /** An assemble is about to reset the machine and empty the console. */
+  /** An assemble of the workspace on screen is about to reset the machine
+   *  and empty the console. */
   onAssemble: () => void;
   /** The buffer was replaced without a payload, so the launch mode it
    *  belonged to goes with it. */
   onSourceReplaced: () => void;
-  /** Reset through the drive, so a live foreground session stands down. */
+  /** Reset through the drive, so a live foreground session stands down, and
+   *  restart the program when the workspace still matches what was
+   *  assembled. */
   resetMachine: () => void;
   /** Run, which in terminal mode hands the pane over instead. */
   run: () => void;
+  /** Ctrl+Enter: assemble, then run the way a run press would. */
+  assembleAndRun: () => void;
   /** Whether the composite launch has somewhere to land. */
   launchable: () => boolean;
   launchInteractive: () => void;
   openConverter: () => void;
-  openTour: () => void;
+  openTutorials: () => void;
+  openWalkthrough: () => void;
 };
 
 export interface FullChromeSurfaceProps {
@@ -128,26 +107,15 @@ export interface FullChromeSurfaceProps {
   onOpenCommandPalette?: () => void;
   onOpenShortcutsHelp?: () => void;
   onOpenShareDialog?: () => void;
-  onToggleTheme?: () => void;
   /** Published on mount, cleared on unmount. */
   registerBridge: (bridge: FullChromeBridge | null) => void;
 }
 
 /**
- * The playground's own half of the shared shell: the header band, the files
- * strip, the three-column resizable layout with its eight machine views, the
- * controls, the tour, and the two hooks only this surface has a use for, the
- * launch mode and the terminal drive.
- *
- * Its own module, reached through dynamic(), because everything named above is
- * full-chrome only while the shell is what the landing hero mounts: reaching
- * it statically put react-resizable-panels, the terminal drive, the launch
- * tables and (through those) lz-string in the landing's script list for a
- * surface the landing never renders.
- *
- * The shell hands its state down and reads the few full-only actions back
- * through the bridge. The hub crosses exactly one boundary, into here, because
- * the two hooks below cannot be called anywhere else.
+ * The playground's own half of the shared shell. Its own module, loaded
+ * through dynamic(), so the landing hero, which mounts the shell, never ships
+ * the layouts, the terminal drive, or the launch tables. The hub crosses into
+ * here because the launch-mode and terminal-drive hooks live nowhere else.
  */
 export function FullChromeSurface({
   emu,
@@ -177,12 +145,19 @@ export function FullChromeSurface({
   onOpenCommandPalette,
   onOpenShortcutsHelp,
   onOpenShareDialog,
-  onToggleTheme,
   registerBridge,
 }: FullChromeSurfaceProps) {
   const toast = useToast();
   const bp = useBreakpoint();
+  const phone = usePhoneShape();
+  const height = useScreenHeight();
+  // A phone has its own compact chrome; the short layout is for the rest.
+  const short = height === "short" && phone === null;
   const [activeTab, setActiveTab] = useState<RightTab>("memory");
+  // The view the phone layout has on screen; the desktop tab state above
+  // says nothing about a phone.
+  const [phonePane, setPhonePane] = useState("code");
+  const shownPane = phone ? phonePane : activeTab;
   // Mirrors the palette's converter action into the phone layout, where the
   // desktop tab state has nothing to show.
   const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
@@ -194,6 +169,9 @@ export function FullChromeSurface({
   }, []);
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  // Each bump opens the walkthrough where the student left it.
+  const [walkthroughRequest, setWalkthroughRequest] = useState(0);
+  const openWalkthrough = useCallback(() => setWalkthroughRequest((n) => n + 1), []);
   // Who owns the pane when this program's run is pressed: a live terminal
   // session (the visualizer example, or the student's own choice) or the
   // classic console flow. The hook owns the persistence, the example stem
@@ -207,48 +185,8 @@ export function FullChromeSurface({
     reset: resetLaunch,
   } = useLaunchMode({ args: argsText, setArgs: setArgsText });
   const importTarget = getImportTarget(activeFile);
-
-  const handleImport = useCallback(
-    (target: ImportTarget, body: string) => {
-      resetLaunch();
-      switch (target.kind) {
-        case "main":
-          setSource(body);
-          toast.show("imported into main.asm");
-          return;
-        case "extra": {
-          const idx = target.index;
-          setExtraFiles(
-            extraFiles.map((f, i) => (i === idx ? { ...f, body } : f)),
-          );
-          toast.show(`imported into ${describeTarget(target, extraFiles)}`);
-          return;
-        }
-      }
-    },
-    [extraFiles, setExtraFiles, setSource, toast, resetLaunch],
-  );
-
-  // Multi-select import: a file named main.asm / main.s replaces the main
-  // buffer; every other file becomes (or refreshes) a named tab, so a
-  // whole multi-file program lands in one gesture.
-  const handleImportMany = useCallback(
-    (files: { name: string; body: string }[]) => {
-      resetLaunch();
-      const mainIdx = files.findIndex((f) => /^main\.(asm|s)$/i.test(f.name));
-      if (mainIdx >= 0) setSource(files[mainIdx].body);
-      const rest = files.filter((_, i) => i !== mainIdx);
-      const next = [...extraFiles];
-      for (const f of rest) {
-        const at = next.findIndex((x) => x.name === f.name);
-        if (at >= 0) next[at] = { name: f.name, body: f.body };
-        else next.push({ name: f.name, body: f.body });
-      }
-      setExtraFiles(next);
-      toast.show(`imported ${files.length} files`);
-    },
-    [extraFiles, setExtraFiles, setSource, toast, resetLaunch],
-  );
+  const { loadedSourceRef, loadedFilesRef, handleImport, handleImportMany, loadProgramWithConfirm } =
+    useWorkspaceImport({ source, setSource, extraFiles, setExtraFiles, toast, resetLaunch, loadProgram });
   // The terminal pane's foreground sessions: the shared drive, the console
   // watermark a session leaves behind, and the two rising edges (a blocked
   // read, a raw-mode program) that decide which pane comes forward.
@@ -267,57 +205,31 @@ export function FullChromeSurface({
     blocked: emu.blocked,
     stdout: emu.stdout,
     launchModeRef,
-    terminalTabActive: activeTab === "term",
+    terminalTabActive: shownPane === "term",
     requestPane,
   });
-  // The one-action interactive launch: assemble, then hand the pane over.
-  // Reached from the palette's launch action and from a run press in terminal
-  // mode with nothing assembled. It bypasses handleRun's finished-screen guard
-  // on purpose: that guard protects a completed program's output, and this just
-  // replaced the program with a freshly assembled one. The order matters: the
-  // assemble must land before the nonce, or the drive's programLoaded standdown
-  // tears the session down at once.
-  const launchInteractive = useCallback(async () => {
-    const ok = await assembleWithHistory();
-    // The failure already renders in Controls' error box, and the pane is
-    // left alone: a failed assemble must not wipe the terminal.
-    if (!ok) return;
-    requestPane("term");
-    requestTerminalRun();
-  }, [assembleWithHistory, requestPane, requestTerminalRun]);
-  // Run in terminal mode: hand the program the pane up front. Switch the tab,
-  // then let the attach effect below start the drive once the pane's io
-  // registration lands (the pane mounts lazily on the tab switch, so the drive
-  // cannot start synchronously here).
-  const handleRun = useCallback(() => {
-    if (launchMode === "terminal") {
-      // Cold load: nothing is assembled, so there is no screen to protect and
-      // nothing to hand over yet. This was a silent no-op; in terminal mode the
-      // press is the launch. The run button is disabled here, so this is the F5
-      // / palette / handle path.
-      if (!emu.programLoaded) {
-        void launchInteractive();
-        return;
-      }
-      // The terminal takeover WIPES the pane, so a finished or already running
-      // program is left alone: without this, F5 and the palette cleared a
-      // finished program's output and printed an exit line onto an empty
-      // screen. An assembled program hands over without re-assembling.
-      if (emu.isHalted || emu.isRunning) return;
-      requestPane("term");
-      requestTerminalRun();
-      return;
-    }
-    emu.run();
-  }, [launchMode, emu, launchInteractive, requestPane, requestTerminalRun]);
-  const handleRunRef = useRef(handleRun);
-  useEffect(() => {
-    handleRunRef.current = handleRun;
-  }, [handleRun]);
-
-  // Whether the composite launch has somewhere to land: only the terminal
-  // mode owns the pane at run press, and only this surface has a pane.
-  const launchable = launchMode === "terminal";
+  const {
+    launchInteractive,
+    assembleAndRun,
+    loadedRef,
+    noteAssembled,
+    handleRun,
+    handleRunRef,
+    restartProgram,
+    launchable,
+  } = useFullChromeRun({
+    emu,
+    emuRef,
+    source,
+    extraFiles,
+    argsText,
+    assembleWithHistory,
+    requestPane,
+    requestTerminalRun,
+    resetMachine,
+    foregroundLive,
+    launchMode,
+  });
 
   // Published upward once, as a stable object reading the live values through
   // a ref: the shell built the callbacks that call these before this module
@@ -325,8 +237,10 @@ export function FullChromeSurface({
   const liveRef = useRef({
     adoptLaunch,
     dropTerminalWatermark,
+    noteAssembled,
     resetLaunch,
-    resetMachine,
+    restartProgram,
+    assembleAndRun,
     launchable,
     launchInteractive,
   });
@@ -334,8 +248,10 @@ export function FullChromeSurface({
     liveRef.current = {
       adoptLaunch,
       dropTerminalWatermark,
+      noteAssembled,
       resetLaunch,
-      resetMachine,
+      restartProgram,
+      assembleAndRun,
       launchable,
       launchInteractive,
     };
@@ -354,58 +270,53 @@ export function FullChromeSurface({
         // A new program starts on a fresh console; no session owns it yet.
         liveRef.current.dropTerminalWatermark();
         setShareBanner(Boolean(payload.fromShare));
+        loadedSourceRef.current = payload.source;
+        loadedFilesRef.current = new Map((payload.files ?? []).map((f) => [f.name, f.body]));
         return nextArgs;
       },
-      onAssemble: () => liveRef.current.dropTerminalWatermark(),
+      onAssemble: () => {
+        liveRef.current.dropTerminalWatermark();
+        liveRef.current.noteAssembled();
+      },
       onSourceReplaced: () => liveRef.current.resetLaunch(),
-      resetMachine: () => liveRef.current.resetMachine(),
+      resetMachine: () => liveRef.current.restartProgram(),
       run: () => handleRunRef.current(),
+      assembleAndRun: () => void liveRef.current.assembleAndRun(),
       launchable: () => liveRef.current.launchable,
       launchInteractive: () => void liveRef.current.launchInteractive(),
       openConverter: () => requestPane("convert"),
-      openTour: () => setTutorialOpen(true),
+      openTutorials: () => setTutorialOpen(true),
+      openWalkthrough,
     };
     registerBridge(bridge);
     return () => registerBridge(null);
-  }, [registerBridge, requestPane]);
+  }, [registerBridge, requestPane, openWalkthrough, loadedSourceRef, loadedFilesRef, handleRunRef]);
 
-  // Editor wiring: main buffer vs an extra file tab.
-  const isMain = activeFile === -1;
-  const editorValue = isMain ? source : extraFiles[activeFile]?.body ?? "";
-  const onEditorChange = useCallback(
-    (next: string) => {
-      if (isMain) {
-        setSource(next);
-      } else {
-        setExtraFiles(
-          extraFiles.map((f, i) => (i === activeFile ? { ...f, body: next } : f)),
-        );
-      }
-    },
-    [isMain, activeFile, extraFiles, setExtraFiles, setSource],
-  );
-  // Machine-produced lines resolve against the ASSEMBLED workspace; only the
-  // gutter (which the student clicks in the buffer on screen) uses the live
-  // one. Before the first assemble there is nothing pinned, so both fall back
-  // to what is on screen.
-  const machineMain = assembledLayout?.main ?? source;
-  const machineExtras = assembledLayout?.extras ?? extraFiles;
-
-  // The decode strip reads the line under the pc out of the source it is
-  // handed, and `emu.currentLine` is a COMBINED-string line. Handing it
-  // main.asm alone indexed past the end for any pc inside a helper, so the
-  // gloss fell to its placeholder for the whole of a multi-file program, and
-  // helper `define` aliases never labelled a register. Keyed on the pin alone,
-  // so the concatenation happens once per assemble rather than on every
-  // keystroke of a large workspace. Nothing is pinned before the first
-  // assemble, and with no program there is no line to gloss.
-  const pinnedCombined = useMemo(() => {
-    if (!assembledLayout) return null;
-    return assembledLayout.extras.length > 0
-      ? combineSources(assembledLayout.main, assembledLayout.extras)
-      : assembledLayout.main;
-  }, [assembledLayout]);
-  const decodeSource = pinnedCombined ?? source;
+  const {
+    isMain,
+    editorValue,
+    onEditorChange,
+    decodeSource,
+    activeErrors,
+    activeLint,
+    activeCurrentLine,
+    executing,
+    activeBreakpoints,
+    toggleBreakpointInActive,
+    controlsError,
+  } = useActiveFile({
+    emu,
+    source,
+    setSource,
+    sourceRef,
+    extraFiles,
+    setExtraFiles,
+    extraFilesRef,
+    activeFile,
+    setActiveFile,
+    lintWarnings,
+    assembledLayout,
+  });
 
   const frameSlots = useMemo(() => parseFrameSlots(source), [source]);
   const fpValue = useMemo(() => {
@@ -417,85 +328,6 @@ export function FullChromeSurface({
 
   // Hidden file picker the terminal's `upload` command triggers.
   const terminalUploadRef = useRef<HTMLInputElement>(null);
-  // Per-file views of the combined-line diagnostics: the editor shows one
-  // buffer at a time, so markers, the current-line highlight, and gutter
-  // breakpoints each translate to the active file's local lines (and hide
-  // when they belong to another file).
-  const activeErrors = useMemo(
-    () => diagnosticsForFile(emu.assemblyErrors, machineMain, machineExtras, activeFile),
-    [emu.assemblyErrors, machineMain, machineExtras, activeFile],
-  );
-  const activeLint = useMemo(
-    () => diagnosticsForFile(lintWarnings, source, extraFiles, activeFile),
-    [lintWarnings, source, extraFiles, activeFile],
-  );
-  const activeCurrentLine = useMemo(() => {
-    if (emu.currentLine == null) return null;
-    const loc = resolveLine(emu.currentLine, machineMain, machineExtras);
-    return loc.file === activeFile ? loc.line : null;
-  }, [emu.currentLine, machineMain, machineExtras, activeFile]);
-  const activeBreakpoints = useMemo(
-    () => breakpointsForFile(emu.breakpoints, source, extraFiles, activeFile),
-    [emu.breakpoints, source, extraFiles, activeFile],
-  );
-  const toggleBreakpointInActive = useCallback(
-    (line: number) => {
-      emu.toggleBreakpoint(
-        combinedLineFor(activeFile, line, sourceRef.current, extraFilesRef.current),
-      );
-    },
-    [emu, activeFile, sourceRef, extraFilesRef],
-  );
-  // Breakpoints live in the hub as COMBINED-string lines, so inserting five
-  // lines in main.asm re-numbers every dot in every helper below it. Nothing
-  // re-anchored them: the dots slid into the wrong file on screen, and the
-  // next assemble re-keyed the stale numbers through a fresh line map onto
-  // instructions they never belonged to. Only the SHAPE of the workspace can
-  // move a line, so the re-anchor is keyed on line counts and typing inside a
-  // line costs nothing.
-  const layoutShape = useMemo(() => workspaceShape(source, extraFiles), [
-    source,
-    extraFiles,
-  ]);
-  // Seeded with the workspace as it stands at mount (the strip rehydrates
-  // from storage), so the first pass has nothing to move.
-  const bpLayoutRef = useRef<Workspace>({ main: source, extras: extraFiles });
-  // The shell's own latest-value refs are synced from ITS effects, and a
-  // child's effects run before its parent's, so the hub and the workspace read
-  // through them here would both be one render stale, and a re-anchor keyed on
-  // the shape gets exactly one chance at each change. This mirror is written
-  // from the effect declared immediately above the reader, and effects in one
-  // component run in declaration order.
-  const latestRef = useRef({
-    machine: emu,
-    workspace: { main: source, extras: extraFiles } as Workspace,
-  });
-  useEffect(() => {
-    latestRef.current = {
-      machine: emu,
-      workspace: { main: source, extras: extraFiles },
-    };
-  });
-  useEffect(() => {
-    const from = bpLayoutRef.current;
-    const { machine, workspace: to } = latestRef.current;
-    bpLayoutRef.current = to;
-    const moved = planBreakpointRemap(machine.breakpoints, from, to);
-    if (!moved) return;
-    machine.remapBreakpoints((line) => moved.get(line) ?? null);
-  }, [layoutShape]);
-  // Controls shows the first error as plain text; name the owning file
-  // when it is not the buffer labelled main.asm.
-  const controlsError = useMemo(
-    () =>
-      errorWithFileName(
-        emu.error,
-        emu.assemblyErrors[0]?.line,
-        machineMain,
-        machineExtras,
-      ),
-    [emu.error, emu.assemblyErrors, machineMain, machineExtras],
-  );
   // `gcc -o name` registers compiled source here; `./name` runs it. A ref,
   // so the registry survives every per-snapshot context rebuild.
   const terminalExecutablesRef = useRef<Map<string, string>>(new Map());
@@ -507,8 +339,7 @@ export function FullChromeSurface({
     () =>
       createTerminalContext({
         machine: emuRef,
-        combinedSource: () =>
-          combineSources(sourceRef.current, extraFilesRef.current),
+        workspace: () => ({ main: sourceRef.current, extras: extraFilesRef.current }),
         applySeeds,
         stageVfsFile,
         removeVfsFile,
@@ -538,7 +369,7 @@ export function FullChromeSurface({
             return;
           }
           const clean = name.trim();
-          const next: SourceFile = { name: clean, body: `// ${clean}\n` };
+          const next: SourceFile = { name: clean, body: fileStub(clean) };
           const idx = extraFiles.length;
           setExtraFiles([...extraFiles, next]);
           setActiveFile(idx);
@@ -561,7 +392,7 @@ export function FullChromeSurface({
           );
         }}
       />
-      <div className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0" data-walkthrough="editor">
         <Editor
           value={editorValue}
           onChange={onEditorChange}
@@ -573,6 +404,8 @@ export function FullChromeSurface({
           lintWarnings={activeLint}
           onCursorChange={isMain ? setCursor : undefined}
           focusRequest={errorFocus}
+          followCurrentLine={executing}
+          onRunShortcut={() => void assembleAndRun()}
           onFormat={() => {
             if (!isMain) return;
             const next = formatAsm(source);
@@ -584,31 +417,31 @@ export function FullChromeSurface({
     </div>
   );
 
-  const disasmBlock = (
-    <div className="h-full overflow-auto">
-      {emu.instructions.length === 0 ? (
-        // Cold load / nothing assembled: FirstRunState replaces
-        // InstructionView's bare "no program assembled" line with a
-        // what-this-is / what-to-press lead.
+  // The listing is its own scroll box, so it can follow the pc.
+  const disasmBlock =
+    emu.instructions.length === 0 ? (
+      // Cold load / nothing assembled: FirstRunState replaces
+      // InstructionView's bare "no program assembled" line with a
+      // what-this-is / what-to-press lead.
+      <div className="h-full overflow-auto">
         <FirstRunState onAssemble={assembleWithHistory} />
-      ) : (
-        <ErrorBoundary label="disassembly">
-          <InstructionView
-            instructions={emu.instructions}
-            pc={emu.pc}
-            running={emu.isRunning}
-            // Inside a libc call the pc is a trampoline word, which the
-            // listing does not hold; mark and follow the `bl` instead.
-            anchorPc={emu.externalCall?.callSitePc ?? null}
-          />
-        </ErrorBoundary>
-      )}
-    </div>
-  );
+      </div>
+    ) : (
+      <ErrorBoundary label="disassembly">
+        <InstructionView
+          instructions={emu.instructions}
+          pc={emu.pc}
+          running={emu.isRunning}
+          // Inside a libc call the pc is a trampoline word, which the
+          // listing does not hold; mark and follow the `bl` instead.
+          anchorPc={emu.externalCall?.callSitePc ?? null}
+        />
+      </ErrorBoundary>
+    );
 
   const regsBlock = (
     <ErrorBoundary label="registers">
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col" data-walkthrough="registers">
         {/* The always-on decode strip heads the registers column: the
             plain-language gloss plus the live bit-field view of the word under
             the program counter. */}
@@ -628,13 +461,19 @@ export function FullChromeSurface({
               : null
           }
           sessionStarted={emu.programLoaded}
+          // A short window drops the field meanings (the line under the
+          // fields names the registers instead), so the list below keeps
+          // about nine rows mid-run.
+          compact={short}
         />
         <ReplayScrubber
           frames={emu.replayFrames}
           currentStep={emu.stepCount}
           onSeek={emu.seekReplay}
         />
-        <div className="flex-1 min-h-0 overflow-auto">
+        {/* A phone on its side left the list no height under the decode
+            strip; the floor makes the phone's view scroll to it instead. */}
+        <div className={`flex-1 overflow-auto ${phone ? "min-h-[13rem]" : "min-h-0"}`}>
           <RegisterPanel
             registers={emu.registers}
             changedRegs={emu.changedRegs}
@@ -646,6 +485,7 @@ export function FullChromeSurface({
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}
+            running={emu.isRunning}
           />
         </div>
       </div>
@@ -657,160 +497,122 @@ export function FullChromeSurface({
   // switch remounts a failed one fresh. The editor stays unwrapped on purpose;
   // with the buffer surface itself broken, the route-level fault page is the
   // right fallback.
-  const memoryBlock = (
-    <ErrorBoundary label="memory">
-      <MemoryPanel
-        getMemory={emu.getMemory}
-        dirtyAddrs={emu.dirtyAddrs}
-        regions={emu.memoryRegions}
-        sp={emu.sp}
-      />
-    </ErrorBoundary>
-  );
-  const stackBlock = (
-    <ErrorBoundary label="stack">
-      <StackPanel
-        sp={emu.sp}
-        getMemory={emu.getMemory}
-        fp={fpValue}
-        frameSlots={frameSlots}
-      />
-    </ErrorBoundary>
-  );
-  const consoleBlock = (
-    <ErrorBoundary label="console">
-      <ConsolePanel
-        stdout={emu.stdout}
-        stderr={emu.stderr}
-        blocked={emu.blocked}
-        ownedByTerminal={foregroundLive || launchMode === "terminal"}
-        terminalOwnedFrom={terminalOwnedFrom}
-        exitCode={emu.exitCode}
-        vfsFiles={emu.vfsFiles}
-        pushStdin={emu.pushStdin}
-        closeStdin={emu.closeStdin}
-        uploadVfsFile={stageVfsFile}
-        clearConsole={clearConsoleAll}
-      />
-    </ErrorBoundary>
-  );
-  const terminalBlock = (
-    <ErrorBoundary label="terminal">
-      <div className="h-full relative">
-        <input
-          ref={terminalUploadRef}
-          type="file"
-          className="hidden"
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (!f) return;
-            const sizeError = checkUploadSize(f.size, MAX_VFS_BYTES, "file");
-            if (sizeError) {
-              toast.error(sizeError);
-              e.target.value = "";
-              return;
-            }
-            f.arrayBuffer().then((buf) => {
-              stageVfsFile(f.name, new Uint8Array(buf));
-            });
-            e.target.value = "";
-          }}
-        />
-        <TerminalPane
-          buildContext={buildTerminalContext}
-          onUploadRequest={() => terminalUploadRef.current?.click()}
-          onRegisterIO={registerTermIO}
-        />
-      </div>
-    </ErrorBoundary>
-  );
-  const watchBlock = (
-    <ErrorBoundary label="watches">
-      <WatchPanel
-        registers={emu.registers}
-        sp={emu.sp}
-        pc={emu.pc}
-        frameSlots={frameSlots}
-        getMemory={emu.getMemory}
-        getMemoryMapped={emu.getMemoryMapped}
-      />
-    </ErrorBoundary>
-  );
-  const memWatchBlock = (
-    <ErrorBoundary label="memory watch">
-      <MemoryWatches getMemory={emu.getMemory} />
-    </ErrorBoundary>
-  );
-  const converterBlock = (
-    <ErrorBoundary label="converter">
-      <BaseConverter />
-    </ErrorBoundary>
-  );
-  const savesBlock = (
-    <ErrorBoundary label="saves">
-      <SavesPanel
-        savedStates={emu.savedStates}
-        onSaveState={emu.saveState}
-        onLoadState={emu.loadState}
-        onDeleteState={emu.deleteState}
-        source={source}
-        args={argsText}
-        stepCount={emu.stepCount}
-        onLoadProgram={loadProgram}
-        onRestoreBookmark={emu.restoreBookmark}
-      />
-    </ErrorBoundary>
-  );
+  const panes = useDebugPanes({
+    emu,
+    source,
+    argsText,
+    loadProgram,
+    stageVfsFile,
+    fpValue,
+    frameSlots,
+    launchMode,
+    foregroundLive,
+    terminalOwnedFrom,
+    clearConsoleAll,
+    registerTermIO,
+    buildTerminalContext,
+    terminalUploadRef,
+    loadedRef,
+    toast,
+  });
 
-  // The eight machine views as one bundle: the tab strip and the phone
-  // layout each render the same set, so neither has to name them one by one.
-  const panes: DebugPanes = {
-    memory: memoryBlock,
-    stack: stackBlock,
-    console: consoleBlock,
-    terminal: terminalBlock,
-    watches: watchBlock,
-    converter: converterBlock,
-    memwatch: memWatchBlock,
-    saves: savesBlock,
-  };
+  // Output that lands while another tab is up (a run's printf behind the
+  // memory view) marks the console tab until the student opens it. The
+  // length seen is adjusted during render, not in an effect, so the mark
+  // never paints a frame after the console is already showing; a cleared
+  // console resets it.
+  const outputLength = emu.stdout.length + emu.stderr.length;
+  const [seenOutput, setSeenOutput] = useState(0);
+  if (seenOutput !== outputLength && (shownPane === "console" || outputLength < seenOutput)) {
+    setSeenOutput(outputLength);
+  }
+  const consoleUnread = shownPane !== "console" && outputLength > seenOutput;
+
+  // A run that stops because the program finished brings the console
+  // forward on a phone, where the code view gave no sign the run was over. A
+  // stop at a breakpoint, a pause, or a read leaves the view alone, and so
+  // does a finish reached by stepping. The halt lands a beat before the run
+  // flag drops, so both are read at the drop.
+  const [wasRunning, setWasRunning] = useState(emu.isRunning);
+  if (wasRunning !== emu.isRunning) {
+    setWasRunning(emu.isRunning);
+    if (phone && wasRunning && emu.isHalted && outputLength > 0) {
+      setPaneRequest((prev) => ({ pane: "console", nonce: (prev?.nonce ?? 0) + 1 }));
+    }
+  }
 
   const rightTabs = (
     <RightTabs
       activeTab={activeTab}
       onSelectTab={setActiveTab}
       consoleBlocked={emu.blocked}
+      consoleUnread={consoleUnread}
       panes={panes}
     />
   );
 
-  // The bug-report snapshot, built on click rather than per render: it reads
-  // the top of the stack out of the machine, which the toolbar must not have
-  // to hold.
-  const buildDiagnostic = (): DiagnosticBundle => ({
-    source,
-    args: argsText || undefined,
-    stdin: undefined,
-    stdout: emu.stdout || undefined,
-    stderr: emu.stderr || undefined,
-    exitCode: emu.exitCode,
-    registers: emu.registers,
-    sp: emu.sp,
-    pc: formatWord64(emu.pc),
-    stackBytes: (() => {
-      const spNum = Number(BigInt(emu.sp));
-      if (!Number.isFinite(spNum)) return undefined;
-      const top = emu.getMemory(spNum, 64);
-      if (!top.length) return undefined;
-      return Array.from(top).map(formatByte).join(" ");
-    })(),
-    error: emu.error,
-  });
+  // The bug-report snapshot, gathered when its dialog opens rather than per
+  // render: it reads memory and the virtual files out of the machine, which
+  // the toolbar must not have to hold. Lines the machine reports count in the
+  // assembled layout; the program it carries is the one on screen.
+  const buildDiagnostic = () =>
+    collectDiagnostic({
+      machine: emuRef.current,
+      workspace: { main: source, extras: extraFiles },
+      assembled: assembledLayout,
+      args: argsText,
+      userAgent: navigator.userAgent,
+    });
+
+  // The tools' actions, shared by the header band and, in a short window,
+  // the run row that carries the tools instead.
+  const openShare = () => onOpenShareDialog?.();
+  const openTutorials = () => setTutorialOpen(true);
+  const openCommandPalette = () => onOpenCommandPalette?.();
+  const openShortcuts = () => onOpenShortcutsHelp?.();
+
+  const controls = (
+    <Controls
+      onAssemble={assembleWithHistory}
+      onStep={emu.step}
+      onStepBack={emu.stepBack}
+      canStepBack={emu.canStepBack}
+      onRun={handleRun}
+      onPause={emu.pause}
+      onReset={restartProgram}
+      isRunning={emu.isRunning}
+      isAssembling={emu.isAssembling}
+      isHalted={emu.isHalted}
+      programLoaded={emu.programLoaded}
+      blocked={emu.blocked}
+      error={controlsError}
+      stepCount={emu.stepCount}
+      compact={phone !== null}
+      short={short}
+      trailing={
+        short ? (
+          <Toolbar
+            className="sm:ml-auto"
+            onShare={openShare}
+            onTutorials={openTutorials}
+            buildDiagnostic={buildDiagnostic}
+            onOpenCommandPalette={openCommandPalette}
+            onOpenShortcuts={openShortcuts}
+          />
+        ) : undefined
+      }
+    />
+  );
 
   return (
     <>
+      {/* Ahead of the header band, so the first-visit offer is the first
+          stop a Tab from the top reaches. */}
+      <InterfaceWalkthrough openRequest={walkthroughRequest} />
       <PlaygroundHeaderBand
-        onLoadProgram={loadProgram}
+        compact={phone !== null}
+        short={short}
+        onLoadProgram={loadProgramWithConfirm}
         source={source}
         files={extraFiles}
         importTarget={importTarget}
@@ -828,24 +630,24 @@ export function FullChromeSurface({
               }
             : null
         }
-        onShare={() => onOpenShareDialog?.()}
-        onTour={() => setTutorialOpen(true)}
-        onToggleTheme={() => onToggleTheme?.()}
+        onShare={openShare}
+        onTutorials={openTutorials}
         buildDiagnostic={buildDiagnostic}
-        onOpenCommandPalette={() => onOpenCommandPalette?.()}
-        onOpenShortcuts={() => onOpenShortcutsHelp?.()}
+        onOpenCommandPalette={openCommandPalette}
+        onOpenShortcuts={openShortcuts}
+        onWalkthrough={openWalkthrough}
       />
 
       {shareBanner && (
         <div
           role="status"
-          className="px-4 py-1 text-[11px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
+          className="px-4 py-1 text-[12px] text-[var(--cyan)] border-b border-[var(--border)] bg-[var(--bg-sunken)] flex items-center justify-between"
         >
           <span>loaded a shared program from the URL</span>
           <button
             type="button"
             onClick={() => setShareBanner(false)}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[11px] px-1"
+            className="touch-target text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-[12px] px-1"
           >
             dismiss
           </button>
@@ -854,34 +656,30 @@ export function FullChromeSurface({
 
       <FullLayout
         breakpoint={bp}
+        phone={phone}
+        height={height}
         editor={editorBlock}
         disassembly={disasmBlock}
         registers={regsBlock}
         rightTabs={rightTabs}
         panes={panes}
         consoleBlocked={emu.blocked}
+        consoleUnread={consoleUnread}
         paneRequest={paneRequest ?? undefined}
-      />
-
-      <Controls
-        onAssemble={assembleWithHistory}
-        onStep={emu.step}
-        onStepBack={emu.stepBack}
-        canStepBack={emu.canStepBack}
-        onRun={handleRun}
-        onPause={emu.pause}
-        onReset={resetMachine}
-        isRunning={emu.isRunning}
-        isAssembling={emu.isAssembling}
-        isHalted={emu.isHalted}
-        programLoaded={emu.programLoaded}
-        // Terminal mode's run press on a cold load assembles and starts the
-        // session, so the button must be reachable by mouse, or the one-action
-        // launch exists only for the keyboard.
-        runAssemblesFirst={launchable}
-        blocked={emu.blocked}
-        error={controlsError}
-        stepCount={emu.stepCount}
+        onPaneShown={setPhonePane}
+        runStatus={{
+          programLoaded: emu.programLoaded,
+          isRunning: emu.isRunning,
+          isHalted: emu.isHalted,
+          blocked: emu.blocked,
+          exitCode: emu.exitCode,
+          stepCount: emu.stepCount,
+          failed: controlsError != null,
+          registers: emu.registers,
+          sp: emu.sp,
+          changedRegs: emu.changedRegs,
+        }}
+        controls={controls}
       />
 
       <TutorialRunner
@@ -894,6 +692,10 @@ export function FullChromeSurface({
           // and re-apply the previous program's inputs instead.
           loadProgram({ source: src, label, args, stdin });
           setTutorialOpen(false);
+        }}
+        onStartWalkthrough={() => {
+          setTutorialOpen(false);
+          openWalkthrough();
         }}
         getRegister={(name) => {
           const lower = name.toLowerCase();

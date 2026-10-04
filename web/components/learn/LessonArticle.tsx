@@ -1,19 +1,14 @@
 "use client";
 
 /**
- * Renders one validated lesson as a reading-measure article with a table of
- * contents. Every author-Markdown surface (prose and callout bodies) flows
- * through the single sanitizing LessonMarkdown so there is no second Markdown
- * path and no raw-HTML injection; code blocks reuse the read-only CodeBlock and
- * carry an Open-in-playground deep link built with the shared buildShareHash;
- * editor blocks reuse the one EmbeddablePlayground (embed chrome), never a fork.
- * An author-supplied editor stdin is bounded by validateStdin before it reaches
- * the embed, so an oversize input is dropped at this boundary rather than
- * forwarded into the worker. The toc is built from the same extractToc the
- * renderer ids its headings with, so anchors and heading ids always agree.
+ * One lesson as an article with a table of contents. All author Markdown goes
+ * through LessonMarkdown, the one sanitizing renderer, so there is no raw-HTML
+ * path. Editor stdin is checked here so an oversize input never reaches the
+ * worker, and the toc comes from the same extractToc that ids the headings, so
+ * the anchors always match.
  */
 
-import type { JSX } from "react";
+import type { JSX, ReactNode } from "react";
 import type { Lesson } from "@/lib/content/lesson-schema";
 import { extractToc } from "@/lib/content/lesson-toc";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
@@ -25,27 +20,37 @@ import { buildShareHash } from "@/lib/playground/share";
 import { validateStdin } from "@/lib/playground/upload-guard";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
+import { OnThisPage } from "@/components/ui/OnThisPage";
 
 function safeStdin(stdin: string | undefined): string | undefined {
   if (stdin === undefined) return undefined;
   return validateStdin(stdin) === null ? stdin : undefined;
 }
 
-const TOC_LINK_CLASS =
-  "flex min-h-[44px] items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] [font:var(--type-small)] outline-none transition-colors hover:text-[var(--cyan)] focus-visible:[box-shadow:var(--ring)]";
+/** A `main:` label at the start of a line, the mark of a complete program. */
+const DEFINES_MAIN = /^[ \t]*main:/m;
+
+/** The lead line of the note that answers a lesson's Check yourself. */
+const ANSWERS_LEAD = "Answers:";
+const ANSWERS_SUMMARY = "fold-summary font-medium text-[var(--cyan)] hover:underline";
 
 export function LessonArticle({
   lesson,
   sheetNumber = "4.x",
+  children,
 }: {
   lesson: Lesson;
-  /** Datasheet coordinate for this lesson, e.g. "4.3" (position in the
-   *  sorted order); drives the kicker, the numbered TOC, and the figure
-   *  captions. Purely presentational: the lesson schema is untouched. */
+  /** The lesson's number, e.g. "4.3" (its place in the sorted order); it
+   *  numbers the kicker and the contents. */
   sheetNumber?: string;
+  /** The foot of the article, after the last block. A slot rather than a
+   *  prop of data, so the page can render it on the server. */
+  children?: ReactNode;
 }): JSX.Element {
   const toc = extractToc(lesson);
-  // Editor blocks are the numbered figures: FIGURE 4.N.k in body order.
+  // Editor blocks are examples 1, 2, 3 in body order. The 4.N.k numbers
+  // belong to the contents: one number naming a section and an example
+  // was ambiguous.
   const editorOrdinals = new Map<number, number>();
   lesson.body.forEach((block, index) => {
     if (block.type === "editor") editorOrdinals.set(index, editorOrdinals.size + 1);
@@ -57,41 +62,18 @@ export function LessonArticle({
 
   return (
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-6 py-12 lg:max-w-7xl lg:flex-row-reverse lg:items-start lg:gap-12">
-      <nav
-        aria-label="On this page"
-        className="lg:sticky lg:top-24 lg:h-fit lg:w-56 lg:shrink-0"
-      >
-        <details
-          open
-          className="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 lg:border-0 lg:bg-transparent lg:p-0"
-        >
-          <summary className="cursor-pointer select-none font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)] lg:list-none">
-            on this sheet
-          </summary>
-          <ul className="mt-3 flex flex-col lg:mt-0">
-            {toc.map((entry, i) => (
-              <li key={i}>
-                <a
-                  href={`#${entry.id}`}
-                  className={
-                    entry.depth === 3
-                      ? `${TOC_LINK_CLASS} pl-4`
-                      : TOC_LINK_CLASS
-                  }
-                >
-                  <span className="mr-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-                    {sheetNumber}.{i}
-                  </span>
-                  {entry.text}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      </nav>
+      <OnThisPage
+        sections={toc.map((entry, i) => ({
+          id: entry.id,
+          label: entry.text,
+          number: `${sheetNumber}.${i + 1}`,
+          depth: entry.depth,
+        }))}
+        className="lg:w-56 lg:shrink-0"
+      />
 
       <article className="w-full min-w-0">
-        <DocRule section={`sheet ${sheetNumber} · ${lesson.slug}`} context="learn" className="mb-6" />
+        <DocRule section={`lesson ${sheetNumber} · ${lesson.title}`} context="learn" className="mb-6" />
         <Kicker number={sheetNumber} title={lesson.title} className="mb-4" />
         <h1 className="mb-8 font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">
           {lesson.title}
@@ -103,9 +85,11 @@ export function LessonArticle({
               return (
                 <div
                   key={index}
+                  // At 19px a 320px phone set the lead 27 characters to a
+                  // line; 17px there reads closer to the body's measure.
                   className={
                     index === firstProseIndex
-                      ? "max-w-2xl [&_p:first-of-type]:[font:var(--type-lead)]"
+                      ? "max-w-2xl [&_p:first-of-type]:[font:var(--type-lead)] max-sm:[&_p:first-of-type]:text-[17px]"
                       : "max-w-2xl"
                   }
                 >
@@ -113,9 +97,9 @@ export function LessonArticle({
                 </div>
               );
             case "code": {
-              // Only assembly runs in the playground; C and plain-text blocks
-              // render without the hand-off (the emulator can't open them).
-              const openable = block.language === "asm";
+              // Only a whole assembly program opens: C and text cannot run,
+              // and a fragment with no main of its own refuses to link.
+              const openable = block.language === "asm" && DEFINES_MAIN.test(block.source);
               return (
                 <div key={index} className="my-6 max-w-2xl">
                   <CodeBlock
@@ -131,14 +115,27 @@ export function LessonArticle({
                 </div>
               );
             }
-            case "callout":
+            case "callout": {
+              // Open, the answers sat right under the questions and the eye
+              // read them first; folded, the reader answers, then looks.
+              const answers = block.markdown.startsWith(ANSWERS_LEAD);
               return (
                 <div key={index} className="my-6 max-w-2xl">
-                  <Callout type={block.variant}>
-                    <LessonMarkdown markdown={block.markdown} />
+                  <Callout type={block.variant} label={answers && "answers"}>
+                    {answers ? (
+                      // The marker and the expanded state the browser reports
+                      // say open or shut, so the label stays put.
+                      <details>
+                        <summary className={ANSWERS_SUMMARY}>show answers</summary>
+                        <LessonMarkdown markdown={block.markdown.slice(ANSWERS_LEAD.length)} />
+                      </details>
+                    ) : (
+                      <LessonMarkdown markdown={block.markdown} />
+                    )}
                   </Callout>
                 </div>
               );
+            }
             case "editor":
               return (
                 <div key={index} className="my-6">
@@ -152,13 +149,14 @@ export function LessonArticle({
                       startArgs={block.args}
                       startStdin={safeStdin(block.stdin)}
                       readOnly={false}
+                      registerHeadingLevel={3}
                     />
                   </div>
                   <div className="flex items-center justify-between gap-4">
-                    <span className="mt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                      figure {sheetNumber}.{editorOrdinals.get(index)}
+                    <span className="mt-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                      example {editorOrdinals.get(index)}
                       <span className="ml-2 font-serif normal-case italic tracking-normal text-[12px]">
-                        runnable: step it and watch the registers
+                        try it: run it, or step one instruction at a time
                       </span>
                     </span>
                     <OpenInPlayground
@@ -174,6 +172,7 @@ export function LessonArticle({
               );
           }
         })}
+        {children}
       </article>
     </div>
   );

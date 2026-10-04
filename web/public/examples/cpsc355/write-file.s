@@ -12,7 +12,7 @@ define(total_r, x20)
         .text
 fname:      .string "output.txt"
 line1:      .string "Line 1: Hello from assembly\n"
-line1_len = . - line1 - 1       // -1 drops the .string NUL
+line1_len = . - line1 - 1       // -1 leaves out the 0 byte .string adds
 line2:      .string "Line 2: File I/O works!\n"
 line2_len = . - line2 - 1
 
@@ -25,7 +25,7 @@ main:   stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
         // openat(AT_FDCWD, "output.txt", O_WRONLY|O_CREAT|O_TRUNC, 0644)
-        mov     w0, -100                // AT_FDCWD
+        mov     w0, -100                // AT_FDCWD: the current directory
         ldr     x1, =fname
         mov     w2, 01101               // O_WRONLY | O_CREAT | O_TRUNC
         mov     w3, 0644                // permissions

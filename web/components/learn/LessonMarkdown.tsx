@@ -1,21 +1,19 @@
-"use client";
-
 /**
- * The single sanitizing renderer for author-supplied Markdown across the whole
- * site: lesson prose and callout bodies both render through here, and nothing
- * else turns author Markdown into DOM. Author Markdown is untrusted, so it runs
- * through react-markdown + remark-gfm + rehype-sanitize, with no raw-HTML
- * injection path at all. The sanitize schema is the library
- * default widened by a single attribute (heading `id`); every other custom
- * attribute (the hover-define aria/tabindex) is added here, in the React
- * `components` layer, AFTER sanitization runs over the HTML AST.
+ * The one renderer for author Markdown on the site. Author Markdown is
+ * untrusted, so it runs through rehype-sanitize with no raw-HTML path; the
+ * hover-define attributes are added by the React components below, after
+ * sanitizing, so the schema widens the default only by a heading `id`.
+ *
+ * No "use client": it holds no state or handlers, so a server page can render
+ * it at build time and ship none of the markdown code (the practice index).
  */
 
-import { isValidElement, type JSX, type ReactNode } from "react";
+import { Children, isValidElement, type JSX, type ReactNode } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import type { Components } from "react-markdown";
+import { ScrollingPre } from "@/components/ui/ScrollingPre";
 import { slugify } from "@/lib/content/lesson-toc";
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 
@@ -41,16 +39,19 @@ const sanitizeSchema = {
 const REGISTER_ROLES = {
   arg: "argument and return register (x0-x7): carries the first eight arguments and the return value.",
   indirectResult:
-    "indirect-result register (x8): also holds the syscall number for svc.",
+    "result address or system call number (x8): where to write a large returned struct, or the call svc makes; a called routine may overwrite it.",
   temp: "caller-saved temporary (x9-x15): a called routine may overwrite it.",
-  ip: "intra-procedure-call scratch register (ip0/ip1, x16/x17).",
-  platform: "platform register (x18): reserved by the platform abi.",
+  ip:
+    "linker temporary (x16/x17, also called ip0/ip1): a bl may overwrite it, so do not keep a value here across a call.",
+  platform:
+    "reserved register (x18): some operating systems use it, so leave it alone.",
   calleeSaved:
     "callee-saved register (x19-x28): a routine must restore it before it returns.",
-  framePointer: "frame pointer (x29 / fp): anchors the current stack frame.",
+  framePointer:
+    "frame pointer (x29 / fp): points to the current function's stack frame.",
   linkRegister: "link register (x30 / lr): holds the return address set by bl.",
   stackPointer:
-    "stack pointer (sp): keep it 16-byte aligned at a public boundary.",
+    "stack pointer (sp): points to the top of the stack; keep it a multiple of 16.",
   zero: "zero register (xzr / wzr): reads as zero, writes are discarded.",
 } as const;
 
@@ -117,16 +118,49 @@ const UL_CLASS =
 const OL_CLASS =
   "my-4 list-decimal pl-6 text-[var(--text-primary)] [font:var(--type-body)]";
 const LI_CLASS = "my-1";
+// A list item that is nothing but a link (the "read these first" lists) is a
+// row of targets, not a sentence, so on a touch screen its link gets the
+// full 44px height. Links inside running text keep the line's height.
+const LINK_ROW_CLASS =
+  "[@media(pointer:coarse)]:[&>a]:inline-flex [@media(pointer:coarse)]:[&>a]:min-h-[44px] [@media(pointer:coarse)]:[&>a]:items-center";
+
+/** Whether an item's only content is one link. */
+function isLinkRow(children: ReactNode): boolean {
+  const parts = Children.toArray(children).filter(
+    (child) => !(typeof child === "string" && child.trim() === ""),
+  );
+  return (
+    parts.length === 1 &&
+    isValidElement<{ href?: string }>(parts[0]) &&
+    typeof parts[0].props.href === "string"
+  );
+}
+// Hover thickens the underline: fading the link took its text under 4.5:1.
 const LINK_CLASS =
-  "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:opacity-80 focus-visible:shadow-[var(--ring)]";
+  "rounded-[2px] text-[var(--cyan)] underline underline-offset-2 outline-none hover:decoration-2 focus-visible:[box-shadow:var(--ring)]";
 const PRE_CLASS =
-  "my-4 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
+  "rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]";
 const INLINE_CODE_CLASS =
-  "rounded-[var(--radius-control)] bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[0.9em] text-[var(--syntax-keyword)]";
+  "rounded-[var(--radius-control)] bg-[var(--bg-sunken)] px-1.5 py-0.5 font-mono text-[max(0.9em,12px)] text-[var(--syntax-keyword)]";
+// The wrapper, not the table, scrolls: a wide table on a phone scrolls
+// sideways inside the column instead of pushing the page wider.
+const TABLE_WRAP_CLASS = "my-4 overflow-x-auto";
+const TABLE_CLASS =
+  "border-collapse text-left text-[var(--text-primary)] [font:var(--type-small)]";
+// The table's font shorthand resets numeral spacing, so the cells set it.
+const TH_CLASS =
+  "border border-[var(--border)] border-b-[color:var(--border-strong)] bg-[var(--bg-sunken)] px-3 py-2 align-bottom font-semibold tabular-nums";
+// A term in a cell is often the cell's whole content (a register column), so
+// no sentence sets its height; on a touch screen it gets a 44px target.
+const TD_CLASS =
+  "border border-[var(--border)] px-3 py-2 align-top tabular-nums [@media(pointer:coarse)]:[&>[role=note]]:min-h-[44px] [@media(pointer:coarse)]:[&>[role=note]]:min-w-[44px] [@media(pointer:coarse)]:[&>[role=note]]:items-center";
 const HOVER_WRAP_CLASS =
-  "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:shadow-[var(--ring)]";
+  "group relative inline-flex rounded-[var(--radius-control)] align-baseline outline-none focus-visible:[box-shadow:var(--ring)]";
+// `term-card` (globals.css) places the card along the bottom edge: hung off
+// the term it ran past the right edge on a phone and past the bottom edge for
+// a term low in a laptop window.
 const TOOLTIP_CLASS =
-  "pointer-events-none absolute left-0 top-full z-10 mt-1 hidden w-max max-w-[18rem] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-2 py-1 text-[var(--text-secondary)] shadow-[var(--shadow-overlay)] [font:var(--type-small)] group-hover:block group-focus:block group-focus-within:block";
+  "term-card pointer-events-none hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] shadow-[var(--shadow-overlay)] [font:var(--type-small)] group-hover:block group-focus:block group-focus-within:block";
 
 const components: Components = {
   h2(props) {
@@ -153,7 +187,11 @@ const components: Components = {
     return <ol className={OL_CLASS}>{props.children}</ol>;
   },
   li(props) {
-    return <li className={LI_CLASS}>{props.children}</li>;
+    return (
+      <li className={isLinkRow(props.children) ? `${LI_CLASS} ${LINK_ROW_CLASS}` : LI_CLASS}>
+        {props.children}
+      </li>
+    );
   },
   a(props) {
     return (
@@ -163,7 +201,33 @@ const components: Components = {
     );
   },
   pre(props) {
-    return <pre className={PRE_CLASS}>{props.children}</pre>;
+    return (
+      <ScrollingPre className="my-4" preClassName={PRE_CLASS}>
+        {props.children}
+      </ScrollingPre>
+    );
+  },
+  table(props) {
+    return (
+      <div className={TABLE_WRAP_CLASS}>
+        <table className={TABLE_CLASS}>{props.children}</table>
+      </div>
+    );
+  },
+  // GFM column alignment arrives as an inline text-align style.
+  th(props) {
+    return (
+      <th className={TH_CLASS} style={props.style}>
+        {props.children}
+      </th>
+    );
+  },
+  td(props) {
+    return (
+      <td className={TD_CLASS} style={props.style}>
+        {props.children}
+      </td>
+    );
   },
   code(props) {
     const { className, children } = props;
@@ -186,33 +250,67 @@ const components: Components = {
       return <code className={INLINE_CODE_CLASS}>{children}</code>;
     }
 
+    // The instruction summaries mark code with backticks: the card renders
+    // them, and the attributes, which cannot hold markup, drop them.
+    const plainSummary = summary.replace(/`/g, "");
     return (
       <span
         tabIndex={0}
         role="note"
-        aria-label={summary}
-        title={summary}
+        aria-label={plainSummary}
+        title={plainSummary}
         className={HOVER_WRAP_CLASS}
       >
         <code className={INLINE_CODE_CLASS}>{children}</code>
         <span role="tooltip" aria-hidden="true" className={TOOLTIP_CLASS}>
-          {summary}
+          <LessonMarkdown inline markdown={summary} />
         </span>
       </span>
     );
   },
 };
 
+// A one-line excerpt that sits inside a link (a practice index row): inline
+// marks only, and code without the hover note, because a focusable note inside
+// a link is a control inside a control. A link in the excerpt keeps its text.
+const INLINE_ELEMENTS = ["p", "code", "em", "strong"];
+const inlineComponents: Components = {
+  p(props) {
+    return <>{props.children}</>;
+  },
+  code(props) {
+    return <code className={INLINE_CODE_CLASS}>{props.children}</code>;
+  },
+};
+
 /**
- * Render trusted-after-sanitization author Markdown.
+ * Render trusted-after-sanitization author Markdown. `inline` renders a
+ * phrase inside a `<span>` instead of blocks inside a `<div>`.
  */
 export function LessonMarkdown({
   markdown,
   className,
+  inline = false,
 }: {
   markdown: string;
   className?: string;
+  inline?: boolean;
 }): JSX.Element {
+  if (inline) {
+    return (
+      <span className={className}>
+        <Markdown
+          remarkPlugins={[remarkGfm]}
+          rehypePlugins={[[rehypeSanitize, sanitizeSchema]]}
+          components={inlineComponents}
+          allowedElements={INLINE_ELEMENTS}
+          unwrapDisallowed
+        >
+          {markdown}
+        </Markdown>
+      </span>
+    );
+  }
   return (
     <div className={className}>
       <Markdown

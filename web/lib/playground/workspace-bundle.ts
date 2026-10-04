@@ -53,12 +53,10 @@ export function readWorkspaceBundle(
     if (typeof name !== "string" || typeof body !== "string") {
       return { ok: false, error: "that workspace bundle has a malformed file" };
     }
-    // The name rides into the files strip and into combineSources' boundary
-    // comment, so it is checked as strictly as the body. Only the SHAPE rule
-    // applies here: a bundle carries the whole workspace, main.asm included,
-    // which validateFileName refuses by design. The name-shape reason carries
-    // no name; a body error does name the file, because that name already
-    // passed the shape check.
+    // The name reaches the files strip and combineSources' boundary comment,
+    // so it is checked as strictly as the body, by shape only: a bundle holds
+    // main.asm, which validateFileName refuses by design. Only a body error
+    // names the file, since only then has the name passed the check.
     const nameError = fileNameShapeError(name);
     if (nameError) return { ok: false, error: nameError };
     const bodyError = validateSource(body);

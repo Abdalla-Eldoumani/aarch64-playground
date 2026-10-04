@@ -7,20 +7,17 @@ import {
   CREDIBILITY,
 } from "@/lib/content/site";
 import { Wordmark } from "@/components/ui/Wordmark";
+import { SaveOffline } from "@/components/chrome/SaveOffline";
 
 // Footer links share one quiet -> cyan-on-hover treatment, all from tokens.
 const LINK_CLASS =
-  "rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+  "touch-target inline-flex items-center rounded-[var(--radius-control)] text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
- * The persistent site footer shared by the content layout and the 404: the brand
- * wordmark with a one-line description and the Rust-to-WASM engine note, the
- * route links, the repository and license links, the course context, the
- * open-source line, and the not-affiliated disclaimer. The one footer everywhere,
- * the landing included: it carries the project's credibility facts itself so no
- * page needs a second footer-like band above it. Stays a server component (no
- * hooks) so it ships no client JS and can be imported by server layouts. The
- * author's name lives only in the committed LICENSE, never here.
+ * The one footer on every page, the landing included, so it carries the
+ * project's facts and no page needs a second band above it. A server component,
+ * so the only client JS it ships is the save-for-offline control. The author's
+ * name lives only in LICENSE, never here.
  */
 export function SiteFooter() {
   return (
@@ -72,12 +69,15 @@ export function SiteFooter() {
           <span className="text-[var(--text-tertiary)]">
             {CREDIBILITY.courseContext}
           </span>
+          {/* The one place a tablet or desktop reader finds it: the phone
+              drawer and the iPhone install tip carry it too. */}
+          <SaveOffline />
         </div>
       </div>
 
       {/* The closing hairline row: the three credibility segments read as one
           line. */}
-      <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[10px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
+      <div className="mx-auto mt-8 flex w-full max-w-5xl flex-wrap gap-x-6 gap-y-1 border-t border-[var(--border)] pt-3 font-mono text-[12px] uppercase leading-[1.6] tracking-[0.08em] text-[var(--text-tertiary)]">
         <span>Open source · free to use and study</span>
         <span>{CREDIBILITY.privacyNote}</span>
         <span>{CREDIBILITY.disclaimer}</span>

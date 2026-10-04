@@ -1,5 +1,5 @@
-//! Constant-expression evaluator used by the parser and the linker. Shape
-//! of the grammar, lowest precedence first:
+//! Constant expressions for the parser and the linker, lowest precedence
+//! first:
 //!
 //! ```text
 //! or    := xor ('|' xor)*
@@ -12,15 +12,9 @@
 //! primary := IntLit | CharLit | Ident | '.' | '(' or ')'
 //! ```
 //!
-//! `.` resolves to the caller-supplied current address. Symbols resolve via
-//! the caller-supplied closure; returning `None` produces an
-//! undefined-symbol error, which the linker catches when it needs a second
-//! pass for forward references.
-//!
-//! Arithmetic is i64 with wrapping semantics on `+`, `-`, `*`. Division and
-//! remainder by zero error out. Shift amounts must be in 0..64. Encountering
-//! a `FloatLit` in an expression is an error: floats only appear in data
-//! directives like `.double`, never in integer offsets.
+//! An unknown symbol is an error rather than a guess, so the linker can
+//! retry it once every label is placed. A float is refused: only data
+//! directives such as `.double` take one.
 
 use super::lexer::{Token, TokenKind};
 use crate::errors::EmuError;
@@ -320,6 +314,7 @@ fn err(line: usize, message: &str) -> EmuError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
     use super::super::lexer::lex;
     use std::collections::HashMap;
 
@@ -365,7 +360,7 @@ mod tests {
         let src = format!("{}1{}", "(".repeat(128), ")".repeat(128));
         assert_eq!(run(&src).unwrap(), 1);
         let src = format!("{}1{}", "(".repeat(129), ")".repeat(129));
-        assert!(run(&src).is_err());
+        rejects(run(&src), "nests too deeply");
     }
 
     #[test]
@@ -430,7 +425,7 @@ mod tests {
 
     #[test]
     fn division_by_zero_errors() {
-        assert!(run("1 / 0").is_err());
+        rejects(run("1 / 0"), "division by zero");
     }
 
     #[test]
@@ -440,7 +435,7 @@ mod tests {
 
     #[test]
     fn modulo_by_zero_errors() {
-        assert!(run("1 % 0").is_err());
+        rejects(run("1 % 0"), "modulo by zero");
     }
 
     #[test]
@@ -495,23 +490,23 @@ mod tests {
 
     #[test]
     fn float_in_integer_expression_errors() {
-        assert!(run("0r1.5 + 1").is_err());
+        rejects(run("0r1.5 + 1"), "use it inside .double");
     }
 
     #[test]
     fn empty_expression_errors() {
         let v: Vec<Token> = Vec::new();
-        assert!(evaluate(&v, &nothing, 0, 1).is_err());
+        rejects(evaluate(&v, &nothing, 0, 1), "expected an expression");
     }
 
     #[test]
     fn trailing_tokens_error() {
-        assert!(run("1 + 2 3").is_err());
+        rejects(run("1 + 2 3"), "unexpected tokens after expression");
     }
 
     #[test]
     fn unclosed_paren_errors() {
-        assert!(run("(1 + 2").is_err());
+        rejects(run("(1 + 2"), "expected closing paren");
     }
 
     #[test]
@@ -524,8 +519,8 @@ mod tests {
 
     #[test]
     fn shift_amount_out_of_range_errors() {
-        assert!(run("1 << 64").is_err());
-        assert!(run("1 << -1").is_err());
+        rejects(run("1 << 64"), "shift amount out of range");
+        rejects(run("1 << -1"), "shift amount out of range");
     }
 
     #[test]

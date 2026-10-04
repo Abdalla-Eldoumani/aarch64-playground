@@ -3,32 +3,14 @@ import { loadLessonIndex } from "@/lib/content/lessons";
 import { LessonIndex } from "@/components/learn/LessonIndex";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { pageMetadata } from "@/lib/content/seo";
 
-const DESCRIPTION =
-  "Step-by-step AArch64 lessons that pair a short reading with a live, runnable editor.";
-
-export const metadata: Metadata = {
-  title: "learn",
-  description: DESCRIPTION,
-  alternates: { canonical: "/learn" },
-  // Open Graph and Twitter are not deep-merged across segments, so each route
-  // restates the full composed title and its own url instead of inheriting.
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "learn · cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/learn",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "learn · cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: "AArch64 assembly lessons",
+  description:
+    "Lessons in AArch64 assembly, from registers and loops to the stack, subroutines, floating point, and system calls, each with an editor you can run.",
+  path: "/learn",
+});
 
 // Server page: the server-only loader validates every lesson at build time and
 // the already-validated, order-sorted lessons are handed to the client index as
@@ -39,7 +21,7 @@ export default function LearnPage() {
   const lessons = loadLessonIndex();
   return (
     <section className="mx-auto w-full max-w-2xl px-6 py-10 sm:py-14">
-      <DocRule section="sheet 04 · learn" context="cpsc 355 study aid" className="mb-8" />
+      <DocRule section="learn" context="cpsc 355 study aid" className="mb-8" />
       <Kicker number="04" title="learn" className="mb-5" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
         Lessons

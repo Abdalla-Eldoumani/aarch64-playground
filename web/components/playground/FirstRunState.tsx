@@ -11,16 +11,13 @@ export interface FirstRunStateProps {
 }
 
 /**
- * The designed cold-load / no-program-assembled state. A short serif lead names
- * the surface and a plain line says what to press, anchored by the brand block
- * cursor (amber = the machine acting; it blinks via the cursor-blink motion
- * token and holds solid under prefers-reduced-motion). Kept self-contained so
- * the landing hero can reuse the same composition.
+ * Shown before anything is assembled, so a first visit says what the
+ * playground is and what to press instead of showing an empty listing.
  */
 export function FirstRunState({ onAssemble }: FirstRunStateProps) {
   return (
     <div
-      className="h-full w-full flex flex-col items-center justify-center gap-4 px-6 py-8 text-center"
+      className="min-h-full w-full flex flex-col items-center justify-center gap-4 px-6 py-8 text-center"
       aria-label="no program assembled"
     >
       <p className="font-serif text-[19px] leading-relaxed text-[var(--text-primary)]">
@@ -31,9 +28,9 @@ export function FirstRunState({ onAssemble }: FirstRunStateProps) {
         />
       </p>
       <p className="max-w-sm font-sans text-[13px] leading-relaxed text-[var(--text-secondary)]">
-        write or paste a program on the left, then press{" "}
+        write or paste a program in the editor, then press{" "}
         <span className="font-mono text-[var(--text-primary)]">assemble</span> to
-        load it. Press step to advance one instruction at a time, or run to go
+        load it. press step to advance one instruction at a time, or run to go
         to the end, and the registers, stack, and memory update as it executes.
       </p>
       {onAssemble && (

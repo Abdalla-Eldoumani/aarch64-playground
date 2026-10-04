@@ -27,7 +27,7 @@ describe("parseLineMap", () => {
     expect(map.lineToAddr.get(34)).toBe(CODE_BASE + 0x40);
   });
 
-  it("treats an empty array as an empty map (fall back to legacy)", () => {
+  it("treats an empty array as an empty map (callers fall back to line counting)", () => {
     const map = parseLineMap([]);
     expect(isEmptyLineMap(map)).toBe(true);
   });

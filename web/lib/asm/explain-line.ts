@@ -1,20 +1,15 @@
 /**
- * The single source of truth for turning one line of source into a
- * plain-English gloss of the instruction the CPU is on. Both the always-on
- * CURRENT strip and the legacy explain strip read from here so the describe
- * logic and the m4 alias resolution live in exactly one place.
+ * Turns one line of source into a plain-English gloss of the instruction the
+ * CPU is on, with m4 alias names resolved. The decode strip's "current
+ * instruction" line is its one reader.
  */
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 
 /**
- * Collect `define(name, value)` macro aliases from the full source so a gloss
- * can show `score1_r = w19` beside the line a student wrote.
- *
- * The regex is deliberately free of overlapping quantifiers: an earlier
- * shape (`\s*` around a lazy `[^)]+?`, all three matching whitespace across
- * lines) backtracked in O(n^3) on an unclosed `define(` and froze the tab
- * on boot. One greedy body run bounded to the line keeps matching linear,
- * and matches the emulator's own line-based define parsing.
+ * Collect `define(name, value)` aliases so a gloss can show `score1_r = w19`.
+ * The regex has no overlapping quantifiers and stops at the line end: an
+ * earlier shape backtracked in O(n^3) on an unclosed `define(` and froze the
+ * tab. Line-based matching also agrees with the emulator's m4 pass.
  */
 export function extractAliases(source: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -57,7 +52,9 @@ export function describeLine(
   // Only the substitutions are named. Annotating the whole operand list would
   // claim the untouched literals are aliases too.
   const detail = aliases ? aliasPairs(operands, aliases) : "";
-  return `${mnemonic.toLowerCase()} ${operands}${detail} · ${doc.summary}`;
+  // The summaries are written for the hover card, which renders Markdown;
+  // this gloss is plain text, where the code backticks would print raw.
+  return `${mnemonic.toLowerCase()} ${operands}${detail} · ${doc.summary.replace(/`/g, "")}`;
 }
 
 /**

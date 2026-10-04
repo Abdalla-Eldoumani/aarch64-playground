@@ -1,0 +1,60 @@
+{
+  "title": "High score keeper",
+  "slug": "high-score-keeper",
+  "order": 59,
+  "lastUpdated": "2026-09-30",
+  "topic": "io",
+  "difficulty": "challenge",
+  "prompt": "An arcade machine keeps its best score in a file called `best.dat`, so the record outlives any one game. Standard input gives a count and then that many scores. For each score, look at the file: if it does not exist yet, the score becomes the first record; if the score is higher than the saved one, it replaces it; otherwise the record stands. At the end, print the record from the file.\n\nWith the stdin box as given the program prints:\n\n```\nfirst score: 120\n95 does not beat 120\nnew best: 180 (was 120)\n180 does not beat 180\nhigh score: 180\n```\n\nTalk to the file with system calls (requests the operating system carries out for your program): put the service number in `x8`, the arguments in `x0` to `x3`, and run `svc 0`; the answer comes back in `x0`.\n\n- `openat` (56): `x0` = `AT_FDCWD` (the current folder), `x1` = the file name, `x2` = the flags, `x3` = the permission mode. The flags are bits, written in octal: 0 opens for reading, and `01101` asks for writing (01), creating the file when it is missing (0100), and emptying it when it is not (01000). A mode of `0644` lets the owner write it and everyone read it. A negative answer means the open failed; otherwise the answer is a file descriptor, the number you pass to the other calls.\n- `read` (63) and `write` (64): `x0` = the descriptor, `x1` = the address of the memory to read into or write from, `x2` = how many bytes.\n- `close` (57): `x0` = the descriptor.\n\nThe file holds the score as 8 raw bytes, exactly as the number sits in memory in `saved`, so one 8-byte read or write moves the whole thing. Scores can be larger than a 32-bit register holds.\n\n## What is checked\n\n- every line for the scores in the stdin box, and for more score lists you cannot see\n- the program exits cleanly\n- the file work goes through system calls (`svc` present)",
+  "starter": "// keep the best score in a file: every new score is checked against it\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\ndefine(i_r, x20)\ndefine(score_r, x21)\n\ndefine(AT_FDCWD, -100)\ndefine(SYS_OPENAT, 56)\ndefine(SYS_CLOSE, 57)\ndefine(SYS_READ, 63)\ndefine(SYS_WRITE, 64)\n\n.data\npath:       .string \"best.dat\"\nfmt_count:  .string \"%ld\"\nfmt_score:  .string \"%ld\"\nfmt_first:  .string \"first score: %ld\\n\"\nfmt_new:    .string \"new best: %ld (was %ld)\\n\"\nfmt_keep:   .string \"%ld does not beat %ld\\n\"\nfmt_high:   .string \"high score: %ld\\n\"\nfmt_empty:  .string \"no scores yet\\n\"\n\n.bss\n.align 3\ncount:      .skip 8\nscore_in:   .skip 8\nsaved:      .skip 8                         // the 8 bytes the file holds\n\n.text\n\n// TODO: write two subroutines that talk to the file through svc 0.\n//\n// load_best() -> x0 = 1 with the file's 8 bytes copied into saved, or\n// x0 = 0 when the file cannot be opened (a negative result from openat)\n//\n// save_best(x0 = score): store the score in saved, open the file for\n// writing (create it if missing, empty it if not), write the 8 bytes of\n// saved, and close it\n//\n// A subroutine that keeps a value in x19 to x28 saves that register\n// first and puts it back before ret.\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_count\n        ldr     x1, =count\n        bl      scanf\n        ldr     x9, =count\n        ldr     n_r, [x9]\n\n        // TODO: n times, read a score into score_in with fmt_score, then\n        //   - no saved file yet: print fmt_first and save the score\n        //   - the score beats the saved one: print fmt_new and save it\n        //   - otherwise: print fmt_keep with the score and the saved one\n        // At the end print fmt_high with the saved score, or fmt_empty\n        // when there is still no file.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "4\n120\n95\n180\n180\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "first score: 120\n95 does not beat 120\nnew best: 180 (was 120)\n180 does not beat 180\nhigh score: 180\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "svc"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1\n50\n",
+      "stdout": "first score: 50\nhigh score: 50\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "3\n10\n20\n30\n",
+      "stdout": "first score: 10\nnew best: 20 (was 10)\nnew best: 30 (was 20)\nhigh score: 30\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "3\n0\n0\n5\n",
+      "stdout": "first score: 0\n0 does not beat 0\nnew best: 5 (was 0)\nhigh score: 5\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "2\n3000000000\n2999999999\n",
+      "stdout": "first score: 3000000000\n2999999999 does not beat 3000000000\nhigh score: 3000000000\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "no scores yet\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

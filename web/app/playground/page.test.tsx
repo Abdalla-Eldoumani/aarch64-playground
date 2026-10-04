@@ -1,13 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 
-// page.tsx is the single keyboard-shortcut owner: it drives the playground
-// purely through the imperative handle, and Controls (full chrome only) no
-// longer binds keys. Mock the heavy surface and the page modals so the test
-// exercises only the page's keydown routing and proves each execution key
-// fires exactly once (no double-fire) with no shortcut lost.
+// page.tsx alone owns the keyboard shortcuts and drives the playground
+// through its handle; Controls binds no keys. The heavy surface and modals
+// are mocked so these tests see only the page's key routing, and can prove
+// each key fires exactly once.
 const handle = vi.hoisted(() => ({
   assemble: vi.fn(),
+  assembleAndRun: vi.fn(),
   run: vi.fn(),
   pause: vi.fn(),
   step: vi.fn(),
@@ -19,6 +19,7 @@ const handle = vi.hoisted(() => ({
   getArgs: vi.fn(() => ""),
   getCursor: vi.fn(() => ({ line: 1, column: 1 })),
   getCommands: vi.fn(() => []),
+  toggleBreakpoint: vi.fn(),
   notifyError: vi.fn(),
 }));
 
@@ -42,13 +43,23 @@ vi.mock("@/components/playground/EmbeddablePlayground", async () => {
   };
 });
 vi.mock("@/components/playground/CommandPalette", () => ({ CommandPalette: () => null }));
-vi.mock("@/components/playground/ShortcutsHelp", () => ({ ShortcutsHelp: () => null }));
+// The help modal renders its keys while open, so a test can see what `?` did
+// and what the help lists.
+vi.mock("@/components/playground/ShortcutsHelp", () => ({
+  ShortcutsHelp: ({ open, shortcuts }: { open: boolean; shortcuts: { keys: string }[] }) =>
+    open ? (
+      <div data-testid="shortcuts-help">
+        {shortcuts.map((s) => (
+          <kbd key={s.keys}>{s.keys}</kbd>
+        ))}
+      </div>
+    ) : null,
+}));
 vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
 vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
 
-// Boot failures surface through the playground handle's notifyError (the
-// page entry's own toast binding is a dead module instance in prod); the
-// tests observe the handle mock.
+// Boot failures go through the handle's notifyError, because in production
+// the page's own toast import is a separate copy no Toaster listens to.
 const toastError = () => handle.notifyError as ReturnType<typeof vi.fn>;
 
 import Home from "./page";
@@ -95,10 +106,86 @@ describe("page keyboard ownership", () => {
     fireEvent.keyDown(window, { key: "F5", shiftKey: true });
     expect(handle.reset).toHaveBeenCalledTimes(1);
   });
+
+  it("routes Ctrl+Enter to assemble-and-run, once", () => {
+    render(<Home />);
+    fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
+    expect(handle.assembleAndRun).toHaveBeenCalledTimes(1);
+    expect(handle.assemble).not.toHaveBeenCalled();
+  });
+
+  it("routes F9 and Ctrl+F8 to the caret-line breakpoint, and F8 alone nowhere", () => {
+    render(<Home />);
+    fireEvent.keyDown(window, { key: "F9" });
+    fireEvent.keyDown(window, { key: "F8", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "F8" });
+    expect(handle.toggleBreakpoint).toHaveBeenCalledTimes(2);
+  });
+
+  // The editor holds Ctrl+K as the start of its two-key commands, so the
+  // page has to see it first or the palette never opens from the editor.
+  it("opens the palette on Ctrl+K before the editor can keep the key", () => {
+    render(<Home />);
+    const editor = document.createElement("div");
+    editor.className = "monaco-editor";
+    const surface = document.createElement("textarea");
+    editor.appendChild(surface);
+    document.body.appendChild(editor);
+    const editorSaw = vi.fn();
+    editor.addEventListener("keydown", editorSaw);
+    try {
+      const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true, bubbles: true, cancelable: true });
+      surface.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+      expect(editorSaw).not.toHaveBeenCalled();
+      expect(handle.getCommands).toHaveBeenCalledTimes(1);
+    } finally {
+      editor.remove();
+    }
+  });
+});
+
+describe("the help key", () => {
+  it("opens the shortcuts help from anywhere outside a text surface", async () => {
+    const { findByTestId } = render(<Home />);
+    fireEvent.keyDown(document.body, { key: "?" });
+    expect(await findByTestId("shortcuts-help")).toBeTruthy();
+  });
+
+  it("lists the breakpoint key and the way out of the terminal", async () => {
+    const { findByTestId } = render(<Home />);
+    fireEvent.keyDown(document.body, { key: "?" });
+    const keys = [...(await findByTestId("shortcuts-help")).querySelectorAll("kbd")].map(
+      (k) => k.textContent,
+    );
+    expect(keys).toContain("F9");
+    expect(keys).toContain("Ctrl+M, then Tab");
+  });
+
+  it("leaves a ? typed in the editor to the editor", () => {
+    const { queryByTestId } = render(<Home />);
+    // Monaco's editing surface: a textarea in some browsers, and in Chrome a
+    // plain focusable div (EditContext), inside the .monaco-editor node.
+    const editor = document.createElement("div");
+    editor.className = "monaco-editor";
+    const surface = document.createElement("div");
+    surface.className = "native-edit-context";
+    surface.tabIndex = 0;
+    editor.appendChild(surface);
+    document.body.appendChild(editor);
+    try {
+      const event = new KeyboardEvent("keydown", { key: "?", bubbles: true, cancelable: true });
+      surface.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(false);
+      expect(queryByTestId("shortcuts-help")).toBeNull();
+    } finally {
+      editor.remove();
+    }
+  });
 });
 
 describe("page boot and handoff", () => {
-  it("boots a hard-loaded share hash into the start buffer without re-delivery", () => {
+  it("boots a share link from the first page load into the start buffer, without loading it twice", () => {
     window.history.replaceState(
       {},
       "",
@@ -112,7 +199,7 @@ describe("page boot and handoff", () => {
     expect(handle.loadProgram).not.toHaveBeenCalled();
   });
 
-  it("boots the autosave when no handoff is in the URL", () => {
+  it("boots the autosave when the URL carries no program", () => {
     window.localStorage.setItem(
       "aarch64-playground:auto-save:current",
       "// my saved work",
@@ -197,7 +284,7 @@ describe("page boot and handoff", () => {
     expect(payload.launch).toBeUndefined();
   });
 
-  it("ignores ?run= with no ?example=: there is no program to own", async () => {
+  it("ignores ?run= with no ?example=, since there is no program to apply it to", async () => {
     window.history.replaceState({}, "", "/playground?run=terminal");
     render(<Home />);
     // No delivery at all: the autosaved buffer is not a program handoff.

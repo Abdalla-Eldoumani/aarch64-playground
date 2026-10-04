@@ -8,46 +8,37 @@ describe("Wordmark", () => {
   it("renders one home link whose accessible name carries the visible brand text", () => {
     render(<Wordmark />);
 
-    // Primary query from the accessibility contract: the visible "aarch64"
-    // mark is part of the link's accessible name.
     const link = screen.getByRole("link", { name: /aarch64/i });
     expect(link.getAttribute("href")).toBe("/");
 
-    // The same link is also reachable by "home": its accessible name contains
-    // both the brand text and the "home" affordance (the sr-only span), so the
-    // two queries must resolve to one and the same element.
+    // "aarch64" and the screen-reader-only " home" name one link, not two.
     expect(screen.getByRole("link", { name: /home/i })).toBe(link);
   });
 
   it("carries no aria-label that could diverge from the visible text", () => {
-    // Regression guard for the fixed label-content-name-mismatch: the name is
-    // built from the visible "aarch64" text plus an sr-only " home", never from
-    // an aria-label that says something different from what is on screen.
+    // An aria-label would replace the visible "aarch64" in the link's name,
+    // so a screen reader could say something the screen does not.
     render(<Wordmark />);
     const link = screen.getByRole("link", { name: /aarch64/i });
     expect(link.getAttribute("aria-label")).toBeNull();
     expect(link.getAttribute("aria-labelledby")).toBeNull();
   });
 
-  it("keeps the contract with the label shown", () => {
+  it("keeps one home link with no aria-label when the label shows", () => {
     render(<Wordmark showLabel />);
     const link = screen.getByRole("link", { name: /aarch64/i });
     expect(link.getAttribute("aria-label")).toBeNull();
-    // Still one link, still reachable by both the brand text and "home" even
-    // with the "playground" label riding alongside.
     expect(screen.getByRole("link", { name: /home/i })).toBe(link);
     expect(screen.getByText("playground")).toBeTruthy();
   });
 
-  it("sm-up renders the label but yields it below sm and across the md band", () => {
+  it("sm-up shows the label but hides it below sm and across the md band", () => {
     render(<Wordmark showLabel="sm-up" />);
     const link = screen.getByRole("link", { name: /aarch64/i });
     expect(link.getAttribute("aria-label")).toBeNull();
     expect(screen.getByRole("link", { name: /home/i })).toBe(link);
-    // The label stays in the DOM (wide viewports show it) but must carry the
-    // responsive classes that keep it out of a 375px nav and out of the md
-    // band, where at exactly 768px the labeled mark, the route links, and the
-    // theme control overflow the viewport by 19px.
+    // A 375px nav has no room for the label, and at 768px the labeled mark,
+    // the route links and the theme control overflow the screen by 19px.
     const label = screen.getByText("playground");
     expect(label.className).toContain("hidden");
     expect(label.className).toContain("sm:inline");
@@ -55,12 +46,11 @@ describe("Wordmark", () => {
     expect(label.className).toContain("lg:inline");
   });
 
-  it("keeps the contract with the label hidden", () => {
+  it("keeps one home link with no aria-label when the label is off", () => {
     render(<Wordmark showLabel={false} />);
     const link = screen.getByRole("link", { name: /aarch64/i });
     expect(link.getAttribute("aria-label")).toBeNull();
     expect(screen.getByRole("link", { name: /home/i })).toBe(link);
-    // Collapsed: the quiet "playground" label is gone, the mark stands alone.
     expect(screen.queryByText("playground")).toBeNull();
   });
 });

@@ -10,7 +10,7 @@
 <text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">03 · RUN</text>
 <text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">One press of Run, in chunks the tab never feels</text>
 <line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
-<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 3/4</text>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · diagram 3 of 4</text>
 <rect x="38" y="112" width="144" height="34" fill="#DDF1F5" stroke="#0E7490" stroke-width="1"/>
 <text x="110.0" y="133.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Student</text>
 <line x1="110" y1="146" x2="110" y2="548" stroke="#C9CED6" stroke-width="1" stroke-dasharray="5 4"/>
@@ -48,11 +48,11 @@
 <text x="350" y="472" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">panels re-render from the snapshot: registers,</text>
 <text x="350" y="486" font-size="10" fill="#565E68" font-weight="400" text-anchor="middle">changedRegs, dirtyAddrs, stdoutDelta, pc</text>
 <path d="M 850 506 L 600 506" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
-<text x="725.0" y="500" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="middle">done: breakpoint, halt, blocked read, sleep budget, or step wall</text>
+<text x="725.0" y="500" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="middle">done: breakpoint, halt, blocked read, sleep, or step limit</text>
 <path d="M 600 526 L 350 526" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
 <text x="475.0" y="520" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">final StateSnapshot</text>
 <path d="M 350 544 L 110 544" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
 <text x="230.0" y="538" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="middle">console, markers, panels settle</text>
 <text x="40" y="580" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Bounds hold inside the machine, whatever the source: 10,000,000 cumulative steps, 8,192 mapped pages (32 MiB), 4 MiB of output.</text>
-<text x="40" y="596" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">A step-back ring keeps 128 frames before each step; a WaitingForInput outcome parks the loop until stdin arrives.</text>
+<text x="40" y="596" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Step back keeps the last 128 states, one saved before each step; a WaitingForInput outcome parks the loop until stdin arrives.</text>
 </svg>

@@ -1,13 +1,10 @@
 /**
- * Die floorplan motif: the interface drawn as a silicon floorplan. The
- * fetch/decode strip across the top with the program-counter marker, the
- * execute block lit amber (the machine acting), and the register file,
- * memory, and I/O blocks below, echoing the playground's own panel layout.
- * Pure CSS, decorative (`aria-hidden`); rides beside the landing headline
- * on wide viewports.
+ * The interface drawn as a chip floorplan, echoing the playground's own panel
+ * layout; the execute block is amber because that is the machine acting.
+ * Decorative (`aria-hidden`) and CSS only.
  */
 const BLOCK_LABEL =
-  "flex items-start border border-[var(--border)] px-2 py-1.5 font-mono text-[8px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
+  "flex items-start border border-[var(--border)] px-2 py-1.5 font-mono text-[12px] font-medium uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
 export function DieFloorplan({ className = "" }: { className?: string }) {
   return (

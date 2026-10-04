@@ -80,7 +80,7 @@ main:
         add     sum_r, score1_r, score2_r   // sum = s1 + s2
         add     sum_r, sum_r, score3_r      // sum += s3
         mov     w24, 3                      // w24 holds the divisor; sdiv takes no immediate
-        sdiv    avg_r, sum_r, w24           // integer divide, so 85.0 prints as 85
+        sdiv    avg_r, sum_r, w24           // integer divide drops the remainder: 257 / 3 = 85
 
         // Print average
         ldr     x0, =fmt_avg

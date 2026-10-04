@@ -8,12 +8,10 @@ import {
   useConsoleOutput,
 } from "@/lib/emulator/use-console-output";
 
-// The console scrollback's absolute-coordinate model: the machine counts
-// display BYTES from the start of the session, the scrollback holds a
-// bounded tail of them, and syncSeen keeps the two aligned in both
-// directions: forward when bytes went somewhere else (the terminal pane, a
-// cleared console), backward when a step back or a restored save undid what
-// was printed. Every expected byte count here is derived by hand.
+// The machine counts printed BYTES from the start of the session and the
+// scrollback keeps only the newest of them; syncSeen lines the two up again
+// after output went elsewhere or a step back undid it. Every expected count
+// is worked out by hand.
 
 afterEach(cleanup);
 
@@ -228,7 +226,7 @@ describe("useConsoleOutput byte position", () => {
 });
 
 describe("useConsoleOutput preserved history", () => {
-  // The tool-build case: `gcc foo.s` resets the machine's display counters
+  // A terminal build: `gcc foo.s` resets the machine's display counters
   // underneath the editor's console, and the scrollback the student was
   // reading must survive the reset-to-zero sync that follows.
   it("keeps preserved scrollback through a counter restart at zero", () => {
@@ -264,7 +262,7 @@ describe("useConsoleOutput preserved history", () => {
     expect(result.current.stdout).toBe("old session\n");
   });
 
-  it("charges a truncation against history before moving the byte anchor", () => {
+  it("trims old history to make room without shifting the machine's byte count", () => {
     const { result } = mount();
     const history = "h".repeat(MAX_CONSOLE_CHARS - 10);
     act(() => {
@@ -288,5 +286,21 @@ describe("useConsoleOutput preserved history", () => {
     expect(result.current.stdout).toBe(
       CONSOLE_TRIM_MARKER + "h".repeat(MAX_CONSOLE_CHARS - 30),
     );
+  });
+});
+
+describe("notes", () => {
+  it("accumulate in order, keep the newest 64, and go with the scrollback", () => {
+    const { result } = mount();
+    act(() => result.current.appendNotes(["first", "second"]));
+    expect(result.current.notes).toEqual(["first", "second"]);
+    // 70 more: the list keeps 64, so the oldest six of 72 drop.
+    const more = Array.from({ length: 70 }, (_, i) => `n${i}`);
+    act(() => result.current.appendNotes(more));
+    expect(result.current.notes).toHaveLength(64);
+    expect(result.current.notes[0]).toBe("n6");
+    expect(result.current.notes[63]).toBe("n69");
+    act(() => result.current.clearScrollback());
+    expect(result.current.notes).toEqual([]);
   });
 });

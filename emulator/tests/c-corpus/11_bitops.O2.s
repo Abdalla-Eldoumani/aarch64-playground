@@ -1,12 +1,12 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	popcount
 popcount:
 	mov	w1, w0
 	mov	w0, 0
 	cbz	w1, .L1
-	.align 5
+	.p2align 5,,15
 .L3:
 	and	w2, w1, 1
 	lsr	w1, w1, 1
@@ -15,13 +15,13 @@ popcount:
 .L1:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	reverse_bits
 reverse_bits:
 	mov	w1, w0
 	mov	w2, 32
 	mov	w0, 0
-	.align 5
+	.p2align 5,,15
 .L8:
 	and	w3, w1, 1
 	subs	w2, w2, #1
@@ -30,7 +30,7 @@ reverse_bits:
 	bne	.L8
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	rotl
 rotl:
 	neg	w1, w1
@@ -60,7 +60,7 @@ rotl:
 	.string	"%d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -16]!

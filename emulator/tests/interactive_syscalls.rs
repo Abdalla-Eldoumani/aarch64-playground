@@ -1,10 +1,6 @@
-//! The interactive syscall surface: ioctl termios raw mode, fcntl
-//! O_NONBLOCK with -EAGAIN reads, nanosleep pacing (the Sleeping
-//! outcome, the virtual clock, and the budget refunds with their
-//! lifetime cap), clock_gettime, and getrandom's deterministic draws.
-//! These are the calls a real-time terminal program (the snake example)
-//! stands on, so each contract is pinned end to end through
-//! `assemble_hosted` -> `run_until_break`.
+//! The system calls a real-time terminal program (the snake example) needs:
+//! raw mode through ioctl, non-blocking reads through fcntl, nanosleep and
+//! the virtual clock, clock_gettime, and getrandom's repeatable draws.
 
 use aarch64_emulator::cpu::{Cpu, StepOutcome, MAX_SLEEP_NS};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;

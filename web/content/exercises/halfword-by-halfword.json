@@ -1,0 +1,67 @@
+{
+  "title": "Halfword by halfword",
+  "slug": "halfword-by-halfword",
+  "order": 5,
+  "lastUpdated": "2026-09-30",
+  "topic": "armv8",
+  "difficulty": "intro",
+  "prompt": "A locker's 64-bit code is `0xbeefcafef00dffff`. Build it in `code_r`; the starter then adds a number `n` read from input and prints the code, `n`, and the sum.\n\nOne `mov` can only place a 16-bit piece of a number, a **halfword**, into a register. `movz` writes one halfword and clears every other bit. `movk` writes one halfword and keeps the other bits as they were (the k is for keep). Add `lsl 16`, `lsl 32` or `lsl 48` to pick which halfword. The code splits into four:\n\n| bits | halfword |\n|---|---|\n| 63 to 48 | `0xbeef` |\n| 47 to 32 | `0xcafe` |\n| 31 to 16 | `0xf00d` |\n| 15 to 0 | `0xffff` |\n\nStart with one `movz`, then add three `movk`. Try an input of `1`: the low halfword rolls over from `0xffff` to `0x0000` and carries into the next one, because the four pieces are one number.\n\n## What is checked\n\n- with input `0` the line reads `0xbeefcafef00dffff + 0 = 0xbeefcafef00dffff`\n- the program exits cleanly\n- the code is built with `movz` and `movk`, not written as one number\n- the program also runs on inputs you do not see, so it has to work for any input, not only this one",
+  "starter": "// build a 64-bit code one halfword at a time, then add a number from input\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(code_r, x19)\ndefine(n_r, x20)\ndefine(sum_r, x21)\n\n.data\nfmt_in:     .string \"%ld\"\nfmt_out:    .string \"0x%lx + %ld = 0x%lx\\n\"\n\n.bss\n        .balign 8\nn_in:       .skip 8                         // scanf stores n here\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read n: scanf gets its own lesson later\n        ldr     x1, =n_in\n        bl      scanf\n        ldr     x9, =n_in\n        ldr     n_r, [x9]\n\n        mov     code_r, 0                   // replace this placeholder\n\n        // TODO: build the code in code_r, one halfword per instruction:\n        // one movz, then three movk\n\n        add     sum_r, code_r, n_r          // the code plus n\n\n        ldr     x0, =fmt_out\n        mov     x1, code_r\n        mov     x2, n_r\n        mov     x3, sum_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "0\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "0xbeefcafef00dffff + 0 = 0xbeefcafef00dffff\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "movz"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "movk"
+      },
+      {
+        "kind": "forbids-literal",
+        "value": "cafef00d"
+      },
+      {
+        "kind": "forbids-literal",
+        "value": "CAFEF00D"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1\n",
+      "stdout": "0xbeefcafef00dffff + 1 = 0xbeefcafef00e0000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-1\n",
+      "stdout": "0xbeefcafef00dffff + -1 = 0xbeefcafef00dfffe\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "65536\n",
+      "stdout": "0xbeefcafef00dffff + 65536 = 0xbeefcafef00effff\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "4294967297\n",
+      "stdout": "0xbeefcafef00dffff + 4294967297 = 0xbeefcafff00e0000\n",
+      "exitCode": 0
+    }
+  ]
+}

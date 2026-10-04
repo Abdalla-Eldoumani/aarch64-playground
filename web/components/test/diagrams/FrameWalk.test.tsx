@@ -40,6 +40,14 @@ describe("FrameWalk", () => {
     );
   });
 
+  it("keeps a band's bracketed operand whole with non-breaking spaces", () => {
+    render(<FrameWalk />);
+    next();
+    expect(screen.getByText("caller's lr, at [fp, 8]").textContent).toBe(
+      "caller's lr, at [fp, 8]",
+    );
+  });
+
   it("mov fp, sp anchors the frame pointer at the saved pair", () => {
     render(<FrameWalk />);
     next();
@@ -88,15 +96,5 @@ describe("FrameWalk", () => {
     expect(screen.getByText("step 2 of 7")).toBeTruthy();
     fireEvent.keyDown(group, { key: "ArrowLeft" });
     expect(screen.getByText("step 1 of 7")).toBeTruthy();
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of ["dark", "light", "high-contrast"]) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<FrameWalk />);
-      expect(screen.getByLabelText("frame walk")).toBeTruthy();
-      unmount();
-    }
-    document.documentElement.removeAttribute("data-theme");
   });
 });

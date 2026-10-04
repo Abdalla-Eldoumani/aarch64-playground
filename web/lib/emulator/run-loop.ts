@@ -1,15 +1,10 @@
 import type { RunResultPayload } from "@/lib/worker/protocol";
 
 /**
- * The chunked run loop both emulator hosts drive.
- *
- * A run cannot be one wasm call: the machine would hold its thread until
- * the program finished, so a pause would never be read, panels would never
- * refresh, and an endless loop would wedge the tab. Both hosts run the
- * program in bounded chunks and come up for air between them instead. This is
- * the only copy of that loop. What the hosts differ in (how a chunk's wasm
- * record is coerced, how a mid-run snapshot is surfaced) arrives as injection
- * points.
+ * The run loop both emulator hosts share. One wasm call per run would hold
+ * the thread until the program ended: no pause, no panel refresh, and an
+ * endless loop would freeze the tab. So it runs short chunks and yields
+ * between them; each host plugs in how it reads a chunk and sends a snapshot.
  */
 
 /** Instructions one chunk runs before the loop comes up for air. */
@@ -22,7 +17,7 @@ export const CHUNK_STEPS = 10_000;
  * chunks at full speed against a stuck CPU.
  */
 export const NO_PROGRESS_ERROR =
-  "the emulator made no progress and was stopped. this is a playground bug: press 'copy diagnostic bundle' and open an issue with what it copies";
+  "the emulator made no progress and was stopped. this is a playground bug: press 'diagnostic bundle', copy the report, and open an issue with it";
 
 /**
  * The machine the loop drives plus the two facts only the host knows:
@@ -52,11 +47,9 @@ export interface RunLoopHost {
 
 export interface RunLoopOptions {
   /**
-   * Milliseconds between heartbeats; 0 emits one per chunk. The worker
-   * spends 50 here because each of its heartbeats is a postMessage, and a
-   * storm of them floods the very thread the pacing exists to keep
-   * responsive. Nothing else hangs off this pace: the pause and epoch reads
-   * happen every chunk either way.
+   * Milliseconds between heartbeats; 0 sends one per chunk. The worker uses
+   * 50 because each heartbeat is a postMessage, and too many flood the page.
+   * Pause and epoch checks still run every chunk.
    */
   heartbeatIntervalMs?: number;
   /** Hand the event loop back. Injectable so tests stay deterministic. */
@@ -147,13 +140,11 @@ const yieldWaiters: Array<() => void> = [];
 let yieldChannel: MessageChannel | null = null;
 
 /**
- * Hand the event loop one turn. MessageChannel rather than setTimeout(0):
- * HTML clamps a nested setTimeout to 4ms once the chain is five deep, and
- * this loop yields after every chunk, so the clamp alone would cost more
- * than the chunk it separates. setTimeout is the fallback where no
- * MessageChannel exists.
+ * Hand the event loop one turn. MessageChannel, not setTimeout(0): browsers
+ * clamp nested timeouts to 4ms, more than the chunk between them costs.
+ * setTimeout is the fallback where MessageChannel is missing.
  */
-function yieldToEventLoop(): Promise<void> {
+export function yieldToEventLoop(): Promise<void> {
   const channel = ensureYieldChannel();
   if (!channel) {
     return new Promise<void>((resolve) => setTimeout(resolve, 0));

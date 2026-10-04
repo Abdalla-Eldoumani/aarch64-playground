@@ -1,0 +1,136 @@
+{
+  "title": "Decisions in one instruction: csel, cinc, and cbz",
+  "slug": "csel-and-cbz",
+  "order": 12.5,
+  "lastUpdated": "2026-10-01",
+  "summary": "Pick one of two values with csel, count with cinc and cset, and branch on zero with cbz and cbnz, in fewer lines than cmp and b.cond need.",
+  "tags": [
+    "conditionals",
+    "branching"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Conditionals with cmp and b.cond](/learn/assembly-conditionals-basics)\n- [Pre-test loops](/learn/pretest-loop)\n- [Post-test loops](/learn/post-test-loop)"
+    },
+    {
+      "type": "prose",
+      "markdown": "An if-else that only chooses between two values costs a `cmp`, two branches, and two labels. AArch64 has instructions that make the choice in one line after the `cmp`, and branches that test a register for zero with no `cmp` at all. This lesson covers both kinds and uses them in three short programs."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Picking a value with csel\n\n`csel w0, w1, w2, cond` (*conditional select*) reads the flags the same way `b.cond` does. When the condition holds, it copies `w1` into `w0`. When it does not, it copies `w2`. It never jumps. C writes the same choice with the `?:` operator:"
+    },
+    {
+      "type": "code",
+      "language": "c",
+      "source": "level = (raw < 0) ? 0 : raw;"
+    },
+    {
+      "type": "prose",
+      "markdown": "Here is that line in assembly twice, first with branches and then with `csel`:"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "        // with branches: two jumps and two labels\n        cmp     raw_r, 0\n        b.ge    keep_raw\n        mov     level_r, 0\n        b       picked\nkeep_raw:\n        mov     level_r, raw_r\npicked:\n\n        // with csel: one line after the cmp\n        cmp     raw_r, 0\n        csel    level_r, wzr, raw_r, lt"
+    },
+    {
+      "type": "prose",
+      "markdown": "The condition names are the ones `b.cond` uses: `lt`, `le`, `gt` and `ge` for signed values, `lo`, `ls`, `hi` and `hs` for unsigned ones, and `eq` and `ne` for both. `wzr`, the zero register, always reads as 0, so it hands `csel` a zero without using up a register. Both sources must be registers, so to choose any other constant, `mov` it into a register first.\n\nThe program below clamps each reading into the range 0 to 100, the way a volume knob stops at either end: below 0 becomes 0 and above 100 becomes 100. Two `csel` instructions do the work, so the clamp itself has no conditional branch (no `b.cond`). It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "raw  -30 -> level   0\nraw   15 -> level  15\nraw   60 -> level  60\nraw  105 -> level 100\nraw  150 -> level 100\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Squeeze each raw reading into the range 0 to 100 with two csel\n// instructions, so the clamp itself has no conditional branch (no b.cond)\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(raw_r, w19)\ndefine(level_r, w20)\n\ndefine(FIRST, -30)\ndefine(LAST, 150)\ndefine(STEP, 45)\ndefine(TOP, 100)\n\n.data\nfmt_row:    .string \"raw %4d -> level %3d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     raw_r, FIRST\n        b       clamp_test\nclamp_loop:\n        cmp     raw_r, 0\n        csel    level_r, wzr, raw_r, lt     // below 0: take 0, else take raw\n        mov     w9, TOP\n        cmp     level_r, w9\n        csel    level_r, w9, level_r, gt    // above 100: take 100, else keep it\n\n        ldr     x0, =fmt_row\n        mov     w1, raw_r\n        mov     w2, level_r\n        bl      printf\n\n        add     raw_r, raw_r, STEP\nclamp_test:\n        cmp     raw_r, LAST\n        b.le    clamp_loop\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "raw  -30 -> level   0\nraw   15 -> level  15\nraw   60 -> level  60\nraw  105 -> level 100\nraw  150 -> level 100\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`w9` holds 100 only from its `mov` to the second `csel`, with no call in between, so a scratch register is safe there. `raw_r` and `level_r` must still hold their values after `printf`, so they live in `w19` and `w20`."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Counting with cset and cinc\n\nTwo more instructions turn a condition into a number. `cset w0, cond` (*conditional set*) writes 1 to `w0` when the condition holds and 0 when it does not. `cinc w0, w1, cond` (*conditional increment*) writes `w1 + 1` when the condition holds and `w1` unchanged when it does not. Written as `cinc count_r, count_r, eq`, it adds one to a count only when the last compare found the two values equal:"
+    },
+    {
+      "type": "code",
+      "language": "asm",
+      "source": "        cmp     w0, 0\n        cset    w1, lt                      // w1 = 1 when w0 is negative, else 0\n        cinc    w2, w2, ge                  // one more in w2 when w0 is not negative"
+    },
+    {
+      "type": "prose",
+      "markdown": "The program below counts the numbers from 1 to 100 that 3 divides, that 5 divides, and that both divide. The remainder comes from `udiv` and `msub`, as in [Arithmetic, and the missing remainder](/learn/arithmetic-instructions), and a number is divisible when its remainder is 0. For both at once, the program adds the two remainders. Neither one is ever negative, so their sum is 0 only when both are 0. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "1 to 100: 33 divisible by 3, 20 by 5, 6 by both\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Count the numbers from 1 to 100 that 3 divides, that 5 divides, and that\n// both divide, with one cinc per count and no branch inside the loop\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(n_r, w19)\ndefine(by3_r, w20)\ndefine(by5_r, w21)\ndefine(both_r, w22)\n\ndefine(LAST, 100)\n\n.data\nfmt_out:    .string \"1 to %d: %d divisible by 3, %d by 5, %d by both\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     by3_r, 0\n        mov     by5_r, 0\n        mov     both_r, 0\n        mov     w12, 3                      // the divisors stay in registers:\n        mov     w13, 5                      // udiv and msub take no immediates\n\n        mov     n_r, 1\n        b       count_test\ncount_loop:\n        udiv    w9, n_r, w12\n        msub    w9, w9, w12, n_r            // w9 = n % 3\n        udiv    w10, n_r, w13\n        msub    w10, w10, w13, n_r          // w10 = n % 5\n\n        cmp     w9, 0\n        cinc    by3_r, by3_r, eq            // one more when n % 3 is 0\n        cmp     w10, 0\n        cinc    by5_r, by5_r, eq            // one more when n % 5 is 0\n        add     w11, w9, w10                // two remainders that are never negative\n        cmp     w11, 0                      // add to 0 only when both are 0\n        cinc    both_r, both_r, eq\n\n        add     n_r, n_r, 1\ncount_test:\n        cmp     n_r, LAST\n        b.le    count_loop\n\n        ldr     x0, =fmt_out\n        mov     w1, LAST\n        mov     w2, by3_r\n        mov     w3, by5_r\n        mov     w4, both_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "1 to 100: 33 divisible by 3, 20 by 5, 6 by both\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "`cset` and `cinc` are other names for `csinc` (*conditional select increment*), which gives its first source when the condition holds and its second source plus 1 when it does not. `cinc w0, w1, eq` is `csinc w0, w1, w1, ne`, with the condition turned around, so a disassembler may show you the `csinc` form."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Branching on zero with cbz and cbnz\n\nTesting a register against 0 is common enough to have its own branches. `cbz w19, label` (*compare and branch on zero*) jumps when `w19` is 0, and `cbnz w19, label` jumps when it is not. Each one does the work of a `cmp w19, 0` followed by `b.eq` or `b.ne`, in one instruction.\n\nThe countdown below uses both. The `cbz` before the loop skips the loop when the count starts at 0, the job the jump to the test does in a pre-test loop. The `cbnz` at the bottom sends it round again until the count reaches 0. It prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "5...\n4...\n3...\n2...\n1...\nliftoff\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Count down to liftoff: cbz and cbnz test the counter for zero\n// without a cmp in front of them\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(count_r, w19)\n\ndefine(START, 5)                                // try 0 too\n\n.data\nfmt_tick:   .string \"%d...\\n\"\nfmt_go:     .string \"liftoff\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     count_r, START\n        cbz     count_r, launch             // a start of 0 skips the countdown\ntick:\n        ldr     x0, =fmt_tick\n        mov     w1, count_r\n        bl      printf\n        sub     count_r, count_r, 1         // sub leaves the flags alone\n        cbnz    count_r, tick               // go again until the count reaches 0\nlaunch:\n        ldr     x0, =fmt_go\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "5...\n4...\n3...\n2...\n1...\nliftoff\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "Set `START` to 0 and the program prints only `liftoff`: the `cbz` jumps straight past the loop."
+    },
+    {
+      "type": "callout",
+      "variant": "pitfall",
+      "markdown": "`cbz` and `cbnz` compare with 0 and nothing else; to stop at 10, use `cmp` and `b.cond`. They also leave the flags alone, so a `b.eq` after a `cbz` reads whatever the last `cmp` left behind, not the result of the `cbz`."
+    },
+    {
+      "type": "prose",
+      "markdown": "[tbz](/reference#tbz) and [tbnz](/reference#tbnz) do the same job for a single bit: they jump when the bit you name is 0, or when it is 1. Every instruction in this lesson has a reference entry with an example to run: [csel](/reference#csel), [cset](/reference#cset), [cinc](/reference#cinc), [csinc](/reference#csinc), [cbz](/reference#cbz) and [cbnz](/reference#cbnz)."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. After `cmp w1, w2`, which one instruction puts the smaller of the two in `w0`, reading both as signed?\n2. After `cmp w3, w3`, what do `cset w4, eq` and `cset w5, ne` leave in `w4` and `w5`?\n3. `w6` holds 7. What does it hold after `cmp w6, 10` and then `cinc w6, w6, gt`?\n4. Which one instruction does the work of `cmp w19, 0` followed by `b.ne again`?\n5. In the clamp program, the first `csel` gets its 0 from `wzr`. Why does the second one need `w9`?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. `csel w0, w1, w2, lt`. With `le` it also works: when the two are equal, either one is the smaller.\n2. `w4` holds 1 and `w5` holds 0. The values are equal, so the compare set Z.\n3. Still 7. The condition 7 > 10 is false, so `cinc` leaves the value as it was.\n4. `cbnz w19, again`.\n5. `csel` chooses between two registers. `wzr` always reads as 0, but no register always reads as 100, so the program puts 100 in `w9` first."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\n- [Pick the bigger one](/practice/pick-the-bigger-one): try it with one `csel` and no branch.\n- [Rock, paper, scissors referee](/practice/rock-paper-scissors-referee): once the compares are done, `csel` can pick which message to print.\n- [Basic quiz: branching](/practice/quiz-basic-branching): reading the flags, with `cbz` and `csel` among the questions.\n- [Fill in the blank: branching (core)](/practice/blanks-branching): write the `csel`, `cset`, `cinc` or `cbz` a line needs.\n- [Predict: branching (challenge)](/practice/predict-branching): what conditional selects and zero tests leave behind, `csinc` included.\n- [Fill in the blank: loops (core)](/practice/blanks-loops) and [Intermediate quiz: loops](/practice/quiz-inter-loops): each ends a countdown with `cbnz`."
+    }
+  ]
+}

@@ -1,19 +1,14 @@
-//! FILE*-level stdio over the VFS: fopen, fprintf, fclose.
+//! FILE*-level stdio over the VFS: fopen, fprintf, fclose and the rest.
 //!
-//! A FILE* here is an opaque handle (`FILE_HANDLE_BASE + fd * 16`), a
-//! pure function of the descriptor open_vfs hands out, so no new
-//! machine state exists and snapshots/step-back restore streams for
-//! free. The handle page sits above the host-stub table, past the last
-//! address any section, the heap, the argv page or the stack can reach;
-//! a program that dereferences a FILE* faults on the unmapped page, the
-//! same as dereferencing glibc's opaque FILE struct.
+//! A FILE* here is just `FILE_HANDLE_BASE + fd * 16`, computed from the
+//! descriptor, so it adds no machine state and step-back restores streams
+//! for free. The handle page is unmapped and above everything a program
+//! can reach, so dereferencing a FILE* faults, as it would on glibc's
+//! opaque struct.
 //!
-//! Course usage (assignment 4 shape): `fopen("assign4.log", "w")`, the
-//! FILE* moved between registers, `fprintf(FILE*, fmt, ...)` per cell,
-//! one `fclose` at the end. fprintf reuses the printf engine with the
-//! vararg cursor starting at x2 (x0 = stream, x1 = format), and the
-//! bytes route through the same fd path (and the same VFS caps) as
-//! the write syscall.
+//! fprintf reuses the printf engine with varargs starting at x2 (x0 is the
+//! stream, x1 the format) and writes through the same fd path and VFS caps
+//! as the write syscall.
 
 use crate::errors::EmuError;
 use crate::hosted::printf::{format_into, read_c_string};
@@ -27,19 +22,11 @@ use crate::memory::Memory;
 pub const FILE_HANDLE_BASE: u64 = 0xFFFF_2000;
 const FILE_HANDLE_STRIDE: u64 = 16;
 
-/// Base of the loader-written stdio globals: `stdin` at +0, `stdout` at
-/// +8, `stderr` at +16, one 8-byte word each holding that descriptor's
-/// FILE* handle.
-///
-/// glibc's `stdout` names a word that HOLDS a FILE*, not the FILE*
-/// itself (gcc-compiled code does `adrp`/`add` to the symbol and then
-/// `ldr`s the handle out of memory), so the three linker symbols have to
-/// address real memory for `ldr x0, =stdout` + `ldr x0, [x0]` to answer
-/// what it answers on the course servers.
-///
-/// The page sits immediately above the argv page and below the heap
-/// window, in the gap `ARGV_BASE` already left for it, so no section, the
-/// stack, or the heap can reach it.
+/// The loader-written `stdin`, `stdout` and `stderr` words (+0, +8, +16),
+/// each holding that stream's FILE* handle. glibc's `stdout` is a word that
+/// holds a FILE*, which code loads out of memory (`ldr x0, =stdout` then
+/// `ldr x0, [x0]`), so the symbols must point at real memory. The page
+/// sits in the gap `ARGV_BASE` left above the argv page, below the heap.
 pub const STDIO_GLOBALS_BASE: u64 = 0x0080_1000;
 
 /// The word `__ctype_b_loc` returns the address OF: it holds a pointer
@@ -143,9 +130,9 @@ pub fn fopen(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
     let plus = mode.contains('+');
     let opened = match mode.chars().next() {
-        Some('r') => open_vfs(ctx, &path, plus, false, false, false),
-        Some('w') => open_vfs(ctx, &path, true, true, true, false),
-        Some('a') => open_vfs(ctx, &path, true, true, false, true),
+        Some('r') => open_vfs(ctx, &path, plus, false, false, false).ok(),
+        Some('w') => open_vfs(ctx, &path, true, true, true, false).ok(),
+        Some('a') => open_vfs(ctx, &path, true, true, false, true).ok(),
         _ => None,
     };
     match opened {
@@ -167,7 +154,7 @@ pub fn fprintf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(1, true);
     // x0 = stream and x1 = format are the fixed params; varargs start at x2.
     let out = format_into(ctx, fmt_ptr, 2, "fprintf's format string")?;
-    let n = write_to_fd(ctx, fd as u64, &out);
+    let n = write_to_fd(ctx, fd as u64, &out).max(-1);
     ctx.regs.write_gpr(0, true, n as u64);
     Ok(HostOutcome::Continue)
 }
@@ -182,17 +169,71 @@ pub fn fputs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         return Err(not_a_stream("fputs", handle));
     };
     let bytes = read_c_string(ctx.mem, str_ptr, "fputs's string")?;
-    let n = write_to_fd(ctx, fd as u64, &bytes);
+    let n = write_to_fd(ctx, fd as u64, &bytes).max(-1);
     ctx.regs.write_gpr(0, true, n as u64);
     Ok(HostOutcome::Continue)
 }
 
-/// fgets(buf, n, stream) -> buf, or NULL at end of input.
-/// Reads at most `n - 1` bytes, stops just past a newline and KEEPS it,
-/// and always terminates what it stored. From stdin it follows scanf's
-/// stall contract: a line that has not arrived yet pauses the machine
-/// rather than returning a short read, because a student typing at a
-/// prompt is mid-line, not at end of file.
+/// putc(c, stream), and fputc beside it: one byte to a stream, answered
+/// as an unsigned char, or EOF when the write is refused. glibc's putchar
+/// is `putc(c, stdout)`, which is the call optimized code makes.
+pub fn putc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let byte = ctx.regs.read_gpr(0, true) as u8;
+    let handle = ctx.regs.read_gpr(1, true);
+    let Some(fd) = fd_of(ctx, handle) else {
+        return Err(not_a_stream("putc", handle));
+    };
+    let written = write_to_fd(ctx, fd as u64, &[byte]) == 1;
+    ctx.regs.write_gpr(0, true, if written { u64::from(byte) } else { EOF });
+    Ok(HostOutcome::Continue)
+}
+
+/// getc(stream): the next byte as an unsigned char, or EOF. On stdin it is
+/// getchar, stall contract included; glibc's getchar is `getc(stdin)`.
+pub fn getc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let handle = ctx.regs.read_gpr(0, true);
+    let Some(fd) = fd_of(ctx, handle) else {
+        return Err(not_a_stream("getc", handle));
+    };
+    if fd == 0 {
+        return crate::hosted::libc::getchar(ctx);
+    }
+    // An output stream has no open-file entry, so it reads as end of file.
+    let byte = take_line_from_file(ctx, fd, 1);
+    ctx.regs.write_gpr(0, true, byte.first().map_or(EOF, |b| u64::from(*b)));
+    Ok(HostOutcome::Continue)
+}
+
+/// fwrite(ptr, size, n, stream) -> how many whole items went out. gcc
+/// turns `fputs("text", f)` into an fwrite of the length it can see.
+pub fn fwrite(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let ptr = ctx.regs.read_gpr(0, true);
+    let size = ctx.regs.read_gpr(1, true);
+    let count = ctx.regs.read_gpr(2, true);
+    let handle = ctx.regs.read_gpr(3, true);
+    let Some(fd) = fd_of(ctx, handle) else {
+        return Err(not_a_stream("fwrite", handle));
+    };
+    // Grown as far as mapped memory goes, never pre-reserved from the
+    // guest's count, the same rule the write syscall keeps.
+    let mut bytes = Vec::new();
+    for i in 0..size.saturating_mul(count) {
+        bytes.push(ctx.mem.read_u8(ptr.wrapping_add(i))?);
+    }
+    let written = write_to_fd(ctx, fd as u64, &bytes);
+    let items = if written <= 0 || size == 0 { 0 } else { written as u64 / size };
+    ctx.regs.write_gpr(0, true, items);
+    Ok(HostOutcome::Continue)
+}
+
+/// C's EOF in a 64-bit register.
+const EOF: u64 = u64::MAX;
+
+/// fgets(buf, n, stream) -> buf, or NULL at end of input. Reads at most
+/// `n - 1` bytes, stops after a newline and keeps it, and always
+/// terminates the string. On
+/// stdin a line not yet typed pauses the machine, as scanf does, since a
+/// student at a prompt is mid-line, not at end of file.
 pub fn fgets(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let buf = ctx.regs.read_gpr(0, true);
     let n = ctx.regs.read_gpr(1, false) as u32 as i32;
@@ -335,6 +376,7 @@ mod tests {
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
         strtok_save: u64,
+        callbacks: crate::hosted::callback::CallbackState,
     }
 
     impl Host {
@@ -356,6 +398,7 @@ mod tests {
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
                 strtok_save: 0,
+                callbacks: Default::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -373,6 +416,7 @@ mod tests {
                 term: &mut self.term,
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
+                callbacks: &mut self.callbacks,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {

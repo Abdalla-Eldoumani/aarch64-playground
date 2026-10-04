@@ -1,31 +1,10 @@
 "use client";
 
 /**
- * The two-pane instruction reference. The left pane is a sticky, filterable,
- * keyboard-navigable index grouped by category; the right pane is the
- * per-instruction detail, laid out as the datasheet reads: the mnemonic with
- * its plain-language summary (through the shared sanitizing Markdown renderer,
- * so register tokens keep their hover-defines), the syntax as a bordered mono
- * chip, the full-width encoding bit-field with bit-range headers when the
- * instruction has one (with the worked field bits when the data authors them),
- * the C equivalent as a second chip, and an NZCV flags row driven by the
- * FLAG_SETTERS set; the try-in-playground link composes the shared share-hash
- * and sits quietly at the top right of the detail. Every entry can also
- * run its worked example in place: "run this example" swaps the static block
- * for the one shared EmbeddablePlayground seeded with the same
- * playgroundSource payload the deep link carries, so reading and running are
- * one surface (the embed is dynamically imported and mounts only on demand,
- * keeping the route light). Flag-setting entries additionally render the
- * FlagEffect panel with a fragment link over to b.cond, and the b.cond entry
- * renders the CondCodeExplorer that unpacks each condition code; the link is
- * a plain `#b-cond` anchor because a hashchange already clears the pick and
- * hands selection back to the fragment store below.
- * Data arrives as a prop and the type is the only import
- * from the data module, so this stays decoupled from the emulator. Selecting
- * an instruction reflects a stable per-mnemonic id into the URL fragment so a
- * detail is permalinkable; the fragment is read through useSyncExternalStore
- * so the first client render matches the server and then restores the
- * selection after hydration.
+ * The two-pane instruction reference: a filterable index and one
+ * instruction's detail. Data arrives as a prop, so this stays decoupled from
+ * the emulator. The pick is written to the URL fragment so a detail can be
+ * linked to, and read after hydration so the first render matches the server.
  */
 
 import {
@@ -34,7 +13,6 @@ import {
   useMemo,
   useRef,
   useState,
-  useSyncExternalStore,
   type JSX,
   type KeyboardEvent,
 } from "react";
@@ -48,7 +26,10 @@ import { Button } from "@/components/ui/Button";
 import { FlagEffect, FLAG_SETTERS, type FlagMnemonic } from "@/components/diagrams/FlagEffect";
 import { CondCodeExplorer } from "@/components/diagrams/CondCodeExplorer";
 import { buildShareHash } from "@/lib/playground/share";
+import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
 import { playgroundSource } from "@/lib/playground/playground-source";
+import { referenceId } from "@/lib/content/site";
+import { matchesAllWords } from "@/lib/content/search-words";
 
 // The emulator surface loads only when an example is run in place, so
 // browsing the reference never ships or mounts the embed's chunk.
@@ -60,30 +41,21 @@ const EmbeddablePlayground = dynamic(
   { ssr: false, loading: () => null },
 );
 
-/**
- * Stable, fragment-safe id for a mnemonic: lowercased with dots turned into
- * dashes so `b.cond` becomes `b-cond`. The one helper drives the element id, the
- * URL fragment written on select, and the on-load lookup, so the three agree.
- */
-function hashId(mnemonic: string): string {
-  return mnemonic.toLowerCase().replace(/\./g, "-");
+/** Below lg the detail sits under the whole index, some 14,000px down on a
+ *  phone, so a pick there has to bring it into view or nothing seems to
+ *  happen. */
+function stacked(): boolean {
+  return typeof window !== "undefined" && window.matchMedia("(max-width: 1023.98px)").matches;
 }
 
-// The URL fragment as an external store: the server snapshot and the first
-// client render read empty (matching the server), then the post-hydration read
-// returns the real fragment id without a setState-in-effect.
-function subscribeHash(callback: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  window.addEventListener("hashchange", callback);
-  return () => window.removeEventListener("hashchange", callback);
-}
-function readHashFragment(): string {
-  if (typeof window === "undefined") return "";
-  return window.location.hash.replace(/^#/, "");
+function reveal(node: HTMLElement | null | undefined, block: ScrollLogicalPosition): void {
+  const reduce =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  node?.scrollIntoView({ block, behavior: reduce ? "auto" : "smooth" });
 }
 
 const ITEM_BASE =
-  "flex min-h-[36px] w-full items-center px-3 text-left font-mono text-[13px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)]";
+  "touch-target flex min-h-[36px] w-full items-center px-3 text-left font-mono text-[13px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)]";
 const ITEM_SELECTED =
   "bg-[color-mix(in_srgb,var(--cyan)_8%,transparent)] text-[var(--cyan)] [box-shadow:inset_2px_0_0_0_var(--cyan)]";
 const ITEM_IDLE = "text-[var(--text-secondary)] hover:text-[var(--text-primary)]";
@@ -91,16 +63,16 @@ const GROUP_LABEL =
   "px-2 [font:var(--type-label)] uppercase tracking-wide text-[var(--text-tertiary)]";
 // The datasheet section label: ENCODING, C EQUIVALENT, FLAGS, and the category.
 const LABEL =
-  "font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]";
+  "font-mono text-[12px] font-semibold uppercase tracking-[0.16em] text-[var(--text-tertiary)]";
 // The bordered mono chip that carries the syntax and the C-equivalent lines.
 const CHIP =
   "self-start rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-1.5 font-mono text-[var(--text-primary)]";
 const ACTION_LINK =
-  "ml-auto inline-flex min-h-[44px] items-center gap-1 font-mono text-[11px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+  "ml-auto inline-flex min-h-[44px] items-center gap-1 font-mono text-[12px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 // NZCV in register order, the four condition-flag chips of the FLAGS row.
 const NZCV = ["N", "Z", "C", "V"] as const;
 const PERMALINK =
-  "inline-flex min-h-[44px] items-center font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+  "touch-target inline-flex min-h-[44px] items-center font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
 
 export function InstructionReference({
   instructions,
@@ -118,11 +90,12 @@ export function InstructionReference({
   // to keep in sync and at most one emulator exists.
   const [benchFor, setBenchFor] = useState<string | null>(null);
 
-  const fragment = useSyncExternalStore(subscribeHash, readHashFragment, () => "");
+  const fragment = useHashFragment();
 
   const filterId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const detailRef = useRef<HTMLElement>(null);
 
   // Category order follows first appearance in the data, so the index sections
   // keep the document's order rather than an alphabetical one.
@@ -138,11 +111,18 @@ export function InstructionReference({
     return order;
   }, [instructions]);
 
+  // A piece of a mnemonic still finds it ("sw" finds ldrsw); the words of the
+  // summary and category let a student who does not know "ldr" type "load".
   const filtered = useMemo(() => {
     const query = filter.trim().toLowerCase();
     if (!query) return instructions;
-    return instructions.filter((instruction) =>
-      instruction.mnemonic.toLowerCase().includes(query),
+    return instructions.filter(
+      (instruction) =>
+        instruction.mnemonic.toLowerCase().includes(query) ||
+        matchesAllWords(
+          query,
+          `${instruction.mnemonic} ${instruction.summary} ${instruction.category}`,
+        ),
     );
   }, [instructions, filter]);
 
@@ -169,7 +149,7 @@ export function InstructionReference({
     if (picked !== null && instructions.some((i) => i.mnemonic === picked)) {
       return picked;
     }
-    const fromFragment = instructions.find((i) => hashId(i.mnemonic) === fragment);
+    const fromFragment = instructions.find((i) => referenceId(i.mnemonic) === fragment);
     if (fromFragment) return fromFragment.mnemonic;
     return instructions[0]?.mnemonic ?? "";
   }, [picked, fragment, instructions]);
@@ -195,10 +175,12 @@ export function InstructionReference({
     if (typeof window === "undefined") return;
     const raw = window.location.hash.replace(/^#/, "");
     if (!raw) return;
-    const match = instructions.find((i) => hashId(i.mnemonic) === raw);
-    if (match) {
-      itemRefs.current[match.mnemonic]?.scrollIntoView({ block: "nearest" });
-    }
+    const match = instructions.find((i) => referenceId(i.mnemonic) === raw);
+    if (!match) return;
+    // A link to one instruction wants its detail; beside the index that is
+    // already on screen, under it the detail has to be brought up.
+    if (stacked()) detailRef.current?.scrollIntoView({ block: "start" });
+    else itemRefs.current[match.mnemonic]?.scrollIntoView({ block: "nearest" });
   }, [instructions]);
 
   // A click pins the selection via `picked` and writes the fragment with
@@ -242,9 +224,17 @@ export function InstructionReference({
     setPicked(mnemonic);
     setActivePick(mnemonic);
     if (typeof window !== "undefined") {
-      window.history.replaceState(null, "", `#${hashId(mnemonic)}`);
+      window.history.replaceState(null, "", `#${referenceId(mnemonic)}`);
+    }
+    if (stacked()) {
+      reveal(detailRef.current, "start");
+      return;
     }
     itemRefs.current[mnemonic]?.scrollIntoView({ block: "nearest" });
+    // Reaching an item low in the sticky index can scroll the page as well,
+    // which carried the detail's heading off the top of the screen.
+    const detail = detailRef.current;
+    if (detail && detail.getBoundingClientRect().top < 0) reveal(detail, "start");
   }
 
   function moveActive(delta: 1 | -1) {
@@ -290,6 +280,16 @@ export function InstructionReference({
     if (event.key === "Escape") {
       event.preventDefault();
       setFilter("");
+    } else if (event.key === "Enter" && flat.length > 0) {
+      event.preventDefault();
+      // The mnemonic typed in full wins over the first row: "b" opens b, not
+      // the first mnemonic that happens to contain the letter. Next comes a
+      // mnemonic that contains what was typed, ahead of a row listed only
+      // for a word of its summary or category ("d" opens add, not mov).
+      const typed = filter.trim().toLowerCase();
+      const exact = flat.find((i) => i.mnemonic.toLowerCase() === typed);
+      const partial = flat.find((i) => i.mnemonic.toLowerCase().includes(typed));
+      openInstruction((exact ?? partial ?? flat[0]).mnemonic);
     }
   }
 
@@ -314,12 +314,15 @@ export function InstructionReference({
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={onFilterKeyDown}
             placeholder="filter mnemonics"
+            spellCheck={false}
+            autoCorrect="off"
+            autoCapitalize="off"
             aria-keyshortcuts="/"
             className="block min-h-[44px] w-full rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] py-0 pl-3 pr-9 font-mono text-[14px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] focus:outline-none focus-visible:border-[var(--focus)] focus-visible:[box-shadow:var(--ring)]"
           />
           <kbd
             aria-hidden="true"
-            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[10px] leading-none text-[var(--text-tertiary)]"
+            className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 [@media(pointer:coarse)]:hidden rounded-[var(--radius-control)] border border-[var(--border)] px-1.5 py-[2px] font-mono text-[12px] leading-none text-[var(--text-tertiary)]"
           >
             /
           </kbd>
@@ -345,7 +348,7 @@ export function InstructionReference({
                       <li key={instruction.mnemonic}>
                         <button
                           type="button"
-                          id={hashId(instruction.mnemonic)}
+                          id={referenceId(instruction.mnemonic)}
                           ref={(node) => {
                             itemRefs.current[instruction.mnemonic] = node;
                           }}
@@ -369,11 +372,34 @@ export function InstructionReference({
       </div>
 
       <section
+        ref={detailRef}
         aria-label="instruction detail"
-        className="flex min-w-0 flex-col gap-4"
+        // A fragment link in here (the b.cond link, the permalink) makes the
+        // browser jump to the index row with that id. Stacked, the detail
+        // sits some 12,000px under that row, so once the jump lands it is
+        // brought back; the link itself still navigates, so back still works.
+        onClick={(event) => {
+          const href = (event.target as Element).closest?.('a[href^="#"]')?.getAttribute("href");
+          if (!href || !stacked()) return;
+          if (!instructions.some((i) => referenceId(i.mnemonic) === href.slice(1))) return;
+          requestAnimationFrame(() => detailRef.current?.scrollIntoView({ block: "start" }));
+        }}
+        // Clear of the site bar when a pick scrolls it into view.
+        className="flex min-w-0 scroll-mt-20 flex-col gap-4"
       >
         {current && (
           <>
+            <button
+              type="button"
+              onClick={() => {
+                const item = itemRefs.current[current.mnemonic];
+                reveal(item, "center");
+                item?.focus({ preventScroll: true });
+              }}
+              className={`${PERMALINK} self-start lg:hidden`}
+            >
+              back to the list
+            </button>
             <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
               <h2 className="font-mono text-[28px] font-bold leading-none tracking-[-0.01em] text-[var(--text-primary)]">
                 {current.mnemonic}
@@ -388,7 +414,7 @@ export function InstructionReference({
                 aria-label={`try in playground: ${current.mnemonic}`}
                 className={ACTION_LINK}
               >
-                run example <span aria-hidden="true">{"\u2197"}</span>
+                try in playground <span aria-hidden="true">{"\u2197"}</span>
               </Link>
             </header>
 
@@ -409,12 +435,21 @@ export function InstructionReference({
               </div>
             )}
 
-            {current.cExample && (
-              <div className="flex flex-col gap-2">
-                <p className={LABEL}>c equivalent</p>
-                <p className={`${CHIP} text-[13px]`}>{current.cExample}</p>
-              </div>
-            )}
+            <div className="flex flex-col gap-2">
+              <p className={LABEL}>c equivalent</p>
+              <CodeBlock code={current.cExample} language="c" />
+              {current.intrinsic && (
+                <p className="font-sans text-[13px] text-[var(--text-secondary)]">
+                  In C, the intrinsic{" "}
+                  <code className="font-mono text-[var(--text-primary)]">
+                    {current.intrinsic}
+                  </code>{" "}
+                  (from{" "}
+                  {current.intrinsic.startsWith("__") ? "arm_acle.h" : "arm_neon.h"}
+                  ) is a function the compiler turns into this instruction.
+                </p>
+              )}
+            </div>
 
             <div
               role="group"
@@ -426,8 +461,8 @@ export function InstructionReference({
                 {NZCV.map((flag) => (
                   <span
                     key={flag}
-                    className={`flex h-5 w-5 items-center justify-center rounded-[3px] border font-mono text-[10px] ${
-                      FLAG_SETTERS.has(current.mnemonic)
+                    className={`flex h-5 w-5 items-center justify-center rounded-[3px] border font-mono text-[12px] ${
+                      current.setsFlags
                         ? "border-[var(--border-strong)] text-[var(--text-secondary)]"
                         : "border-[var(--border)] text-[var(--text-tertiary)]"
                     }`}
@@ -437,9 +472,7 @@ export function InstructionReference({
                 ))}
               </span>
               <span className="font-sans text-[13px] text-[var(--text-secondary)]">
-                {FLAG_SETTERS.has(current.mnemonic)
-                  ? "sets nzcv"
-                  : "does not set flags"}
+                {current.setsFlags ? "sets nzcv" : "does not set flags"}
               </span>
             </div>
 
@@ -452,6 +485,8 @@ export function InstructionReference({
                   chrome="embed"
                   startSource={playgroundSource(current)}
                   readOnly={false}
+                  registerView={current.registerView}
+                  registerHeadingLevel={3}
                 />
               </div>
             ) : (
@@ -487,17 +522,17 @@ export function InstructionReference({
               <FlagEffect
                 key={current.mnemonic}
                 mnemonic={current.mnemonic as FlagMnemonic}
-                condHref={`#${hashId("b.cond")}`}
+                condHref={`#${referenceId("b.cond")}`}
               />
             )}
 
             {current.mnemonic === "b.cond" && <CondCodeExplorer />}
 
             <a
-              href={`#${hashId(current.mnemonic)}`}
+              href={`#${referenceId(current.mnemonic)}`}
               className={`${PERMALINK} self-start`}
             >
-              #{hashId(current.mnemonic)}
+              #{referenceId(current.mnemonic)}
             </a>
           </>
         )}

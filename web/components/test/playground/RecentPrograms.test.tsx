@@ -26,7 +26,7 @@ describe("RecentPrograms", () => {
     expect(trigger.disabled).toBe(true);
   });
 
-  it("renders one option per entry plus the clear sentinel", () => {
+  it("renders one option per entry plus 'clear history'", () => {
     const entries = [
       { id: "a", name: "first.asm", body: "// a", savedAt: 1 },
       { id: "b", name: "second.asm", body: "// b", savedAt: 2 },
@@ -47,7 +47,7 @@ describe("RecentPrograms", () => {
     expect(onLoad).toHaveBeenCalledWith("// the body");
   });
 
-  it("calls onClear when the user picks the clear sentinel", () => {
+  it("calls onClear when the user picks 'clear history'", () => {
     const onClear = vi.fn();
     const entries = [{ id: "a", name: "first.asm", body: "// a", savedAt: 1 }];
     render(<RecentPrograms entries={entries} onLoad={() => {}} onClear={onClear} />);

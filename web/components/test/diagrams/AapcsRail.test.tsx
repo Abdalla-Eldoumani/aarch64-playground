@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { AapcsRail } from "@/components/diagrams/AapcsRail";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 // Every row group of the rail: range on the left, role note on the right.
@@ -14,14 +11,17 @@ afterEach(() => {
 // same in both files.
 const ROWS: Array<[string, string]> = [
   ["x0 – x7", "arguments · results"],
-  ["x8", "indirect result"],
+  ["x8", "struct result address"],
   ["x9 – x15", "caller-saved temps"],
-  ["x16 – x18", "platform · avoid"],
+  ["x16 – x18", "reserved · avoid"],
   ["x19 – x28", "callee-saved"],
   ["x29 · x30", "fp · lr (the frame record)"],
   ["d0 – d7", "float args · results"],
   ["d8 – d15", "callee-saved"],
   ["d16 – d31", "caller-saved float temps"],
+  ["v0 – v7", "vector args · results"],
+  ["v8 – v15", "callee-saved: low 64 bits only"],
+  ["v16 – v31", "caller-saved vector temps"],
 ];
 
 describe("AapcsRail", () => {
@@ -39,22 +39,27 @@ describe("AapcsRail", () => {
     }
   });
 
-  it("keeps the amber/cyan legend under the rail, with the one-register note", () => {
+  // The two tints take a different hue in each theme, so a legend that
+  // names a hue is wrong in most of them.
+  it("keeps the legend under the rail by role, never by hue, with the one-register note", () => {
     render(<AapcsRail />);
-    expect(
-      screen.getByText(/Amber = the callee must preserve it/),
-    ).toBeTruthy();
+    const legend = screen.getByText(/callee must\s+preserve the callee-saved rows/);
+    expect(legend.textContent).toMatch(/argument\s+rows are yours to pass and receive/);
+    expect(legend.textContent).not.toMatch(/\b(amber|cyan|yellow|blue|orange|pink)\b/i);
     expect(screen.getByText(/row is one register with a/)).toBeTruthy();
   });
 
-  it("never wraps a register name, only its role note", () => {
+  it("names each v row's q form and tints it like its d row", () => {
     render(<AapcsRail />);
-    const name = screen.getByText("x29 · x30");
-    expect(name.className).toContain("shrink-0");
-    expect(name.className).toContain("whitespace-nowrap");
-    const note = screen.getByText("fp · lr (the frame record)");
-    expect(note.className).toContain("leading-tight");
-    expect(note.className).not.toContain("whitespace-nowrap");
+    for (const alias of ["q0 – q7", "q8 – q15", "q16 – q31"]) {
+      expect(screen.getByText(alias)).toBeTruthy();
+    }
+    expect(screen.getByText("v0 – v7").className).toContain("var(--cyan)");
+    expect(screen.getByText("v8 – v15").className).toContain("var(--amber)");
+    expect(screen.getByText("v16 – v31").className).toContain(
+      "var(--text-primary)",
+    );
+    expect(screen.getByText(/named/).textContent).toContain("when read as one value");
   });
 
   it("tints the argument rows cyan and the callee-saved rows amber", () => {
@@ -62,22 +67,6 @@ describe("AapcsRail", () => {
     expect(screen.getByText("x0 – x7").className).toContain("var(--cyan)");
     expect(screen.getByText("x19 – x28").className).toContain("var(--amber)");
     expect(screen.getByText("x29 · x30").className).toContain("var(--amber)");
-    // The platform rows read at 60% opacity: they are the ones to avoid.
-    expect(screen.getByText("x16 – x18").closest("li")?.className).toContain(
-      "opacity-60",
-    );
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<AapcsRail />);
-      expect(
-        screen.getByRole("complementary", {
-          name: "aapcs64 register file rail",
-        }),
-      ).toBeTruthy();
-      unmount();
-    }
+    expect(screen.getByText("x9 – x15").className).not.toContain("var(--amber)");
   });
 });

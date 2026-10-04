@@ -1,17 +1,12 @@
-import { lookupDoc } from "@/lib/asm/instruction-docs";
+import { docKey, INSTRUCTION_DOCS } from "@/lib/asm/instruction-docs";
+import { C_EQUIVALENTS } from "@/lib/asm/c-equivalents";
+import type { RegView } from "@/lib/emulator/emulator-state";
 
 /**
- * The rich data source for the two-pane instruction reference. It is derived
- * from docs/instruction-reference.md (the canonical mnemonic list, the eight
- * category sections, and the Form column) and merges the hover-card prose from
- * instruction-docs.ts by mnemonic, so the one-line summary and the C-equivalent
- * keep a single source rather than being retyped here. A guard
- * (reference-data.test.ts) pins this set to the documented set so the two
- * cannot drift apart.
- *
- * `encoding` is authored for a small, instructive subset only: each layout
- * follows the real AArch64 form and its bit widths sum to 32. Instructions
- * without an authored encoding omit the field and render without a diagram.
+ * The data behind the instruction reference page. Mnemonics, categories and
+ * syntax follow docs/instruction-reference.md (reference-data.test.ts keeps
+ * them equal); the summary and the C come from instruction-docs.ts and
+ * c-equivalents.ts so they are never retyped. Only a few rows draw an encoding.
  */
 
 /**
@@ -54,8 +49,16 @@ export interface ReferenceInstruction {
   summary: string;
   /** Short snippet: the merged hover example, else an authored fallback. */
   example: string;
-  /** One-line C equivalent, merged from instruction-docs when present. */
-  cExample?: string;
+  /** The C equivalent, merged from c-equivalents: one block per form. */
+  cExample: string;
+  /** The intrinsic that compiles to this instruction, where one exists. */
+  intrinsic?: string;
+  /** True when the instruction writes the NZCV flags. */
+  setsFlags: boolean;
+  /** The register file the worked example writes, so the in-place run opens
+   *  the registers panel on it: v for a vector register, d for a scalar
+   *  floating-point one, x otherwise. */
+  registerView: RegView;
   /** Authored notes for traps worth calling out. */
   gotchas?: string[];
   /** Authored bit-field layout for the curated subset; widths sum to 32. */
@@ -72,7 +75,7 @@ export interface ReferenceInstruction {
 
 /**
  * One authored row before the instruction-docs merge. The summary and the
- * C-equivalent come from the merge, so a seed carries only what the doc owns:
+ * C equivalent come from the merge, so a seed carries only what the doc owns:
  * its category, its Form-derived syntax, the reference-page example, and the
  * optional authored extras.
  */
@@ -80,20 +83,12 @@ interface ReferenceSeed {
   mnemonic: string;
   category: ReferenceCategory;
   syntax: string;
-  /** Worked example for the reference page: concrete values and the result
-   *  in a comment, so reading it teaches and running it in place shows real
-   *  state. Wins over the terse hover example; absent, the hover's is used.
-   *
-   *  Two conventions hold across every example. Comments start at column 32,
-   *  which is column 40 once playground-source indents the body by eight
-   *  spaces (the course's comment column); a line whose code already reaches
-   *  32 takes a two-space gap instead. Immediates follow the row: a general-
-   *  register row writes them bare, the way the course does, and a vector
-   *  row carries the `#` on every line, its scalar setup lines included, so
-   *  no block mixes the two spellings. The vector shift and compare-against-
-   *  zero parsers reject the bare spelling, so the hashed one is the only
-   *  form those rows can use, and it is what the reference's Form cells and
-   *  the conformance inventory carry for them. */
+  /** Worked example for the reference page, result in a comment; absent, the
+   *  hover card's is used. Comments start at column 32 (the course's column 40
+   *  once playground-source indents the body), or two spaces after a longer
+   *  line. General-register rows write immediates bare, as the course does;
+   *  vector rows write `#` on every line so no block mixes the two, since the
+   *  vector shift and compare-with-zero forms accept only `#`. */
   example?: string;
   gotchas?: string[];
   encoding?: BitField[];
@@ -487,6 +482,28 @@ main:
         svc     0
 `;
 
+const runBrk = `// brk stops the program with a breakpoint trap; what printed before it stays
+define(fp, x29)
+define(lr, x30)
+
+        .data
+msg:    .string "printed before the trap"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =msg
+        bl      puts
+        brk     #1000           // stops here: Trace/breakpoint trap
+        mov     w0, 0           // never runs
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
 const referenceSeeds: ReferenceSeed[] = [
   // data processing
   {
@@ -494,9 +511,7 @@ const referenceSeeds: ReferenceSeed[] = [
     category: "Data processing",
     syntax: "mov xd, xn / mov xd, #imm / mov xd, sp / mov vd.T, vn.T",
     example: `mov     x9, 42                  // x9 = 42
-mov     x10, x9                 // copy: x10 = 42 too
-movi    v1.16b, #12
-mov     v3.16b, v1.16b          // every lane = 12`,
+mov     x10, x9                 // copy: x10 = 42 too`,
     gotchas: [
       "the immediate form only takes a value that fits one shifted 16-bit field; a wider constant needs a move-wide then keep sequence.",
     ],
@@ -531,10 +546,7 @@ movk    x9, 0xbeef, lsl 16      // keep the rest: x9 = 0xbeef1234`,
     example: `mov     x9, 6
 mov     x10, 7
 add     x11, x9, x10            // x11 = 13
-add     x12, x11, 100           // immediate form: x12 = 113
-movi    v1.16b, #12
-movi    v2.16b, #5
-add     v3.16b, v1.16b, v2.16b  // every lane = 0x11`,
+add     x12, x11, 100           // immediate form: x12 = 113`,
     encoding: encAddImm,
     encodedAsm: "add x19, x0, 8",
   },
@@ -550,10 +562,7 @@ adds    w10, w9, 7              // w10 = 12, and nzcv describes the sum`,
     category: "Data processing",
     syntax: "sub xd, xn, xm / sub xd, xn, #imm / sub vd.T, vn.T, vm.T",
     example: `mov     x9, 50
-sub     x10, x9, 8              // x10 = 42
-movi    v1.16b, #12
-movi    v2.16b, #5
-sub     v3.16b, v1.16b, v2.16b  // every lane = 7`,
+sub     x10, x9, 8              // x10 = 42`,
     encoding: encAddSubShifted,
     encodedAsm: "sub x19, x0, x1",
   },
@@ -617,10 +626,7 @@ sbcs    x11, x9, x10            // x11 = 5 - 3 - 0 = 2, and nzcv updated`,
     syntax: "mul xd, xn, xm / mul vd.T, vn.T, vm.T",
     example: `mov     x9, 6
 mov     x10, 7
-mul     x11, x9, x10            // x11 = 42
-movi    v1.16b, #12
-movi    v2.16b, #5
-mul     v3.8h, v1.8h, v2.8h     // every lane = 0x783c`,
+mul     x11, x9, x10            // x11 = 42`,
   },
   {
     mnemonic: "madd",
@@ -661,10 +667,7 @@ negs    x10, x9                 // x10 = -1 and n is set: subs from zero`,
     syntax: "smull xd, wn, wm / smull vd.8h, vn.8b, vm.8b",
     example: `mov     w9, -3
 mov     w10, 5
-smull   x11, w9, w10            // x11 = -15, exact in 64 bits
-movi    v1.16b, #12
-movi    v2.16b, #5
-smull   v3.8h, v1.8b, v2.8b     // every lane = 0x003c`,
+smull   x11, w9, w10            // x11 = -15, exact in 64 bits`,
   },
   {
     mnemonic: "umull",
@@ -672,10 +675,7 @@ smull   v3.8h, v1.8b, v2.8b     // every lane = 0x003c`,
     syntax: "umull xd, wn, wm / umull vd.8h, vn.8b, vm.8b",
     example: `mov     w9, 0xffffffff
 mov     w10, 2
-umull   x11, w9, w10            // x11 = 0x1fffffffe: no 32-bit wrap
-movi    v1.16b, #12
-movi    v2.16b, #5
-umull   v3.8h, v1.8b, v2.8b     // every lane = 0x003c`,
+umull   x11, w9, w10            // x11 = 0x1fffffffe: no 32-bit wrap`,
   },
   {
     mnemonic: "smulh",
@@ -772,21 +772,16 @@ sdiv    x11, x9, x10            // x11 = -8: truncation goes toward zero`,
   {
     mnemonic: "neg",
     category: "Data processing",
-    syntax: "neg xd, xm / neg vd.T, vn.T",
+    syntax: "neg xd, xm / neg xd, xm, lsl #k / neg vd.T, vn.T",
     example: `mov     x9, 7
-neg     x10, x9                 // x10 = -7
-movi    v1.16b, #12
-neg     v3.16b, v1.16b          // every lane = 0xf4`,
+neg     x10, x9                 // x10 = -7`,
   },
   {
     mnemonic: "and",
     category: "Data processing",
     syntax: "and xd, xn, xm / and xd, xn, #imm / and vd.T, vn.T, vm.T (8b / 16b)",
     example: `mov     w9, 0x2c
-and     w10, w9, 0xf            // keep the low nibble: w10 = 0xc
-movi    v1.16b, #12
-movi    v2.16b, #5
-and     v3.16b, v1.16b, v2.16b  // every lane = 4`,
+and     w10, w9, 0xf            // keep the low nibble: w10 = 0xc`,
   },
   {
     mnemonic: "ands",
@@ -801,10 +796,7 @@ ands    w10, w9, 1              // w10 = 0 and z is set: 6 is even`,
     syntax: "orr xd, xn, xm / orr vd.T, vn.T, vm.T (8b / 16b) / orr vd.T, #imm8",
     example: `mov     w9, 0xf0
 mov     w10, 0x0f
-orr     w11, w9, w10            // w11 = 0xff
-movi    v1.16b, #12
-movi    v2.16b, #5
-orr     v3.16b, v1.16b, v2.16b  // every lane = 13`,
+orr     w11, w9, w10            // w11 = 0xff`,
   },
   {
     mnemonic: "eor",
@@ -812,19 +804,14 @@ orr     v3.16b, v1.16b, v2.16b  // every lane = 13`,
     syntax: "eor xd, xn, xm / eor vd.T, vn.T, vm.T (8b / 16b)",
     example: `mov     w9, 0xff
 mov     w10, 0x0f
-eor     w11, w9, w10            // shared bits cancel: w11 = 0xf0
-movi    v1.16b, #12
-movi    v2.16b, #5
-eor     v3.16b, v1.16b, v2.16b  // every lane = 9`,
+eor     w11, w9, w10            // shared bits cancel: w11 = 0xf0`,
   },
   {
     mnemonic: "mvn",
     category: "Data processing",
     syntax: "mvn xd, xm / mvn vd.T, vn.T (8b / 16b)",
     example: `mov     w9, 0xf
-mvn     w10, w9                 // every bit flipped: w10 = 0xfffffff0
-movi    v1.16b, #12
-mvn     v3.16b, v1.16b          // every lane = 0xf3`,
+mvn     w10, w9                 // every bit flipped: w10 = 0xfffffff0`,
   },
   {
     mnemonic: "bic",
@@ -832,10 +819,7 @@ mvn     v3.16b, v1.16b          // every lane = 0xf3`,
     syntax: "bic xd, xn, xm / bic vd.T, vn.T, vm.T (8b / 16b) / bic vd.T, #imm8",
     example: `mov     w9, 0xff
 mov     w10, 0x0f
-bic     w11, w9, w10            // clear w10's bits out of w9: w11 = 0xf0
-movi    v1.16b, #12
-movi    v2.16b, #5
-bic     v3.16b, v1.16b, v2.16b  // every lane = 8`,
+bic     w11, w9, w10            // clear w10's bits out of w9: w11 = 0xf0`,
     gotchas: [
       "register form only: there is no bic with an immediate. clear a constant mask with `and` and the inverted bits instead.",
       "does not set flags; pair with `tst` when the cleared result drives a branch.",
@@ -847,10 +831,7 @@ bic     v3.16b, v1.16b, v2.16b  // every lane = 8`,
     syntax: "orn xd, xn, xm / orn vd.T, vn.T, vm.T (8b / 16b)",
     example: `mov     x1, 0
 mov     x2, 0xff
-orn     x0, x1, x2              // x0 = 0xffffffffffffff00
-movi    v1.16b, #12
-movi    v2.16b, #5
-orn     v3.16b, v1.16b, v2.16b  // every lane = 0xfe`,
+orn     x0, x1, x2              // x0 = 0xffffffffffffff00`,
   },
   {
     mnemonic: "eon",
@@ -868,9 +849,7 @@ eon     x0, x1, x2              // x0 = -1: equal inputs make xnor all-ones`,
 movk    w1, 0x0123, lsl 16      // w1 = 0x01234567
 clz     w0, w1                  // w0 = 7
 mov     x2, 0
-clz     x3, x2                  // x3 = 64: zero answers the full width
-movi    v1.16b, #12
-clz     v3.16b, v1.16b          // every lane = 4`,
+clz     x3, x2                  // x3 = 64: zero answers the full width`,
   },
   {
     mnemonic: "cls",
@@ -879,9 +858,7 @@ clz     v3.16b, v1.16b          // every lane = 4`,
     example: `mov     x1, -1
 cls     x0, x1                  // x0 = 63: 64 sign bits, minus the top one
 mov     x2, 0
-cls     x3, x2                  // x3 = 63 as well
-movi    v1.16b, #12
-cls     v3.16b, v1.16b          // every lane = 3`,
+cls     x3, x2                  // x3 = 63 as well`,
   },
   {
     mnemonic: "rbit",
@@ -889,9 +866,7 @@ cls     v3.16b, v1.16b          // every lane = 3`,
     syntax: "rbit xd, xn / rbit wd, wn / rbit vd.T, vn.T (8b / 16b)",
     example: `movz    w1, 0x4567
 movk    w1, 0x0123, lsl 16      // w1 = 0x01234567
-rbit    w0, w1                  // w0 = 0xe6a2c480
-movi    v1.16b, #12
-rbit    v3.16b, v1.16b          // every lane = 0x30`,
+rbit    w0, w1                  // w0 = 0xe6a2c480`,
   },
   {
     mnemonic: "rev",
@@ -910,9 +885,7 @@ rev     w0, w1                  // w0 = 0x67452301`,
     syntax: "rev16 xd, xn / rev16 wd, wn / rev16 vd.T, vn.T (8b / 16b)",
     example: `movz    w1, 0x4567
 movk    w1, 0x0123, lsl 16      // w1 = 0x01234567
-rev16   w0, w1                  // w0 = 0x23016745
-movi    v1.8h, #12, lsl #8
-rev16   v3.16b, v1.16b          // v3 = 12 0 repeating`,
+rev16   w0, w1                  // w0 = 0x23016745`,
   },
   {
     mnemonic: "rev32",
@@ -920,9 +893,7 @@ rev16   v3.16b, v1.16b          // v3 = 12 0 repeating`,
     syntax: "rev32 xd, xn / rev32 vd.T, vn.T (b and h lanes)",
     example: `mov     x1, 0xff
 rev32   x0, x1                  // x0 = 0xff000000
-rev     x2, x1                  // x2 = 0xff00000000000000: the same opcode, the other width
-movi    v1.4s, #12, lsl #24
-rev32   v3.16b, v1.16b          // v3 = 12 0 0 0 repeating`,
+rev     x2, x1                  // x2 = 0xff00000000000000: the same opcode, the other width`,
     gotchas: [
       "there is no `rev32 wd, wn`. the 32-bit byte-swap is `rev wd, wn`, which shares this opcode at the other width.",
     ],
@@ -955,6 +926,17 @@ asr     w10, w9, 2              // w10 = -8: asr copies the sign bit down`,
     syntax: "ror xd, xn, #imm",
     example: `mov     x9, 0xf
 ror     x10, x9, 4              // the low nibble wraps to the top`,
+  },
+  {
+    mnemonic: "extr",
+    category: "Data processing",
+    syntax: "extr xd, xn, xm, #lsb / extr wd, wn, wm, #lsb",
+    example: `mov     x9, 0xab
+mov     x10, 0x1200
+extr    x11, x9, x10, 8         // x11 = 0xab00000000000012: xm from bit 8, xn's low byte on top`,
+    gotchas: [
+      "with the same register twice it is `ror`: `extr x0, x1, x1, 4` and `ror x0, x1, 4` are one instruction.",
+    ],
   },
   {
     mnemonic: "sbfx",
@@ -1214,14 +1196,10 @@ cneg    x8, x6, eq              // condition false: x8 = 7`,
 mov     x9, 42
 str     x9, [sp, 8]
 ldr     x10, [sp, 8]            // x10 = 42
-add     sp, sp, 16
-movi    v1.16b, #12
-sub     sp, sp, #16
-str     q1, [sp]
-ldr     q3, [sp]                // q3 = 0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c
-add     sp, sp, #16`,
+add     sp, sp, 16`,
     gotchas: [
       "the `=label` form loads the symbol's address; read the value it points at with a second load.",
+      "memory is little-endian: the byte at the lowest address holds a value's lowest 8 bits, so `ldrb` from a word's address reads the word's low byte.",
     ],
     encoding: encLdrUoff,
     encodedAsm: "ldr x19, [x20, 16]",
@@ -1234,12 +1212,7 @@ add     sp, sp, #16`,
 mov     w9, 7
 str     w9, [sp, 12]            // the register width picks the store size
 ldr     w10, [sp, 12]           // read back: w10 = 7
-add     sp, sp, 16
-movi    v1.16b, #12
-sub     sp, sp, #16
-str     q1, [sp]
-ldr     q3, [sp]                // every lane = 12
-add     sp, sp, #16`,
+add     sp, sp, 16`,
     encoding: encStrUoff,
     encodedAsm: "str x19, [x20, 16]",
   },
@@ -1290,13 +1263,7 @@ add     sp, sp, 16`,
     example: `mov     x9, 7
 mov     x10, 9
 stp     x9, x10, [sp, -16]!
-ldp     x11, x12, [sp], 16      // one instruction, two loads: 7 and 9
-movi    v1.16b, #12
-movi    v2.16b, #5
-sub     sp, sp, #32
-stp     q1, q2, [sp]
-ldp     q3, q4, [sp]            // q3 = 0x0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c
-add     sp, sp, #32`,
+ldp     x11, x12, [sp], 16      // one instruction, two loads: 7 and 9`,
   },
   {
     mnemonic: "stp",
@@ -1305,15 +1272,9 @@ add     sp, sp, #32`,
     example: `mov     x9, 1
 mov     x10, 2
 stp     x9, x10, [sp, -16]!     // push the pair; sp drops 16 first
-ldp     x11, x12, [sp], 16      // pop it back: x11 = 1, x12 = 2
-movi    v1.16b, #12
-movi    v2.16b, #5
-sub     sp, sp, #32
-stp     q1, q2, [sp]
-ldp     q3, q4, [sp]            // every lane = 12
-add     sp, sp, #32`,
+ldp     x11, x12, [sp], 16      // pop it back: x11 = 1, x12 = 2`,
     gotchas: [
-      "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved fp registers.",
+      "d and s pairs work too: `stp d8, d9, [sp, -16]!` is how a prologue saves the callee-saved floating-point registers (d8-d15).",
     ],
   },
   {
@@ -1351,6 +1312,17 @@ add     sp, sp, 16`,
     ],
   },
   {
+    mnemonic: "ldpsw",
+    category: "Memory",
+    syntax: "ldpsw xt1, xt2, [xn, #imm] / [xn, #imm]! / [xn], #imm",
+    example: `sub     sp, sp, 16
+mov     w9, -5
+mov     w10, 7
+stp     w9, w10, [sp]
+ldpsw   x11, x12, [sp]          // x11 = -5 across all 64 bits, x12 = 7
+add     sp, sp, 16`,
+  },
+  {
     mnemonic: "ldur",
     category: "Memory",
     syntax: "ldur bt/ht/st/dt/qt, [xn, #imm]",
@@ -1360,7 +1332,7 @@ stur    d1, [sp, 4]             // an offset the scaled form cannot encode
 ldur    d3, [sp, 4]             // d3 = 2.0
 add     sp, sp, 16`,
     gotchas: [
-      "simd&fp targets only, and the immediate runs [-256, 255] unscaled.",
+      "floating-point and vector registers only (b, h, s, d, q), and the offset runs from -256 to 255 in bytes, not scaled by the size.",
       "`ldr` picks this encoding itself for a negative or unaligned offset, so a course file rarely spells it.",
     ],
   },
@@ -1504,7 +1476,20 @@ ret                             // back to the caller: exit code 7`,
     category: "System",
     syntax: "svc #0",
     example: "svc 0",
+    gotchas: [
+      "x8 picks the call: 63 read, 64 write, 56 openat, 57 close, 93 exit. the result comes back in x0, and a negative result is an error.",
+    ],
     runnable: runSvc,
+  },
+  {
+    mnemonic: "brk",
+    category: "System",
+    syntax: "brk #imm",
+    example: "brk #1000",
+    runnable: runBrk,
+    gotchas: [
+      "gcc plants one where it proved the code can only fault, such as a use of a pointer that is null on that path. reaching it stops the program with `Trace/breakpoint trap`, as on the servers.",
+    ],
   },
 
   // floating point: each example lands its result in an integer register
@@ -1514,11 +1499,10 @@ ret                             // back to the caller: exit code 7`,
     category: "Floating point",
     syntax: "fmov dd, dn / fmov dd, xn / fmov xd, dn / fmov dd, #imm / fmov vd.T, #imm / fmov vd.d[1], xn / fmov xd, vn.d[1]",
     example: `fmov    d16, 5.0                // one of the encodable immediates
-fcvtzs  x9, d16                 // x9 = 5: the double, made visible
-fmov    v3.4s, #2.0             // every lane = 2.0`,
+fcvtzs  x9, d16                 // x9 = 5: the double, made visible`,
     gotchas: [
       "the immediate is 8 bits of float: a power-of-two multiple of 1.0 through 1.9375. constants like 5.0 and 9.0 fit; 0.0 and most decimals do not, so load those from a `.double` in `.data`.",
-      "the between-files forms (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
+      "the forms that move between integer and floating-point registers (`fmov d0, x0`, `fmov x0, d0`, and the s/w pair) copy raw bits with no conversion: `fmov d0, x0` with x0 = 42 is not 42.0. convert with `scvtf`/`fcvtzs`.",
     ],
   },
   {
@@ -1528,10 +1512,7 @@ fmov    v3.4s, #2.0             // every lane = 2.0`,
     example: `fmov    d16, 1.5
 fmov    d17, 2.5
 fadd    d18, d16, d17           // d18 = 4.0
-fcvtzs  x9, d18                 // x9 = 4
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fadd    v3.4s, v1.4s, v2.4s     // every lane = 5.0`,
+fcvtzs  x9, d18                 // x9 = 4`,
   },
   {
     mnemonic: "fsub",
@@ -1540,10 +1521,7 @@ fadd    v3.4s, v1.4s, v2.4s     // every lane = 5.0`,
     example: `fmov    d16, 5.0
 fmov    d17, 1.5
 fsub    d18, d16, d17           // d18 = 3.5
-fcvtzs  x9, d18                 // x9 = 3: conversion truncates
-fmov    v1.4s, #5.0
-fmov    v2.4s, #3.0
-fsub    v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
+fcvtzs  x9, d18                 // x9 = 3: conversion truncates`,
   },
   {
     mnemonic: "fmul",
@@ -1552,10 +1530,7 @@ fsub    v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
     example: `fmov    d16, 2.5
 fmov    d17, 4.0
 fmul    d18, d16, d17           // d18 = 10.0
-fcvtzs  x9, d18                 // x9 = 10
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmul    v3.4s, v1.4s, v2.4s     // every lane = 6.0`,
+fcvtzs  x9, d18                 // x9 = 10`,
   },
   {
     mnemonic: "fdiv",
@@ -1564,10 +1539,7 @@ fmul    v3.4s, v1.4s, v2.4s     // every lane = 6.0`,
     example: `fmov    d16, 9.0
 fmov    d17, 2.0
 fdiv    d18, d16, d17           // d18 = 4.5
-fcvtzs  x9, d18                 // x9 = 4: the fraction is cut, not rounded
-fmov    v1.4s, #6.0
-fmov    v2.4s, #2.0
-fdiv    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
+fcvtzs  x9, d18                 // x9 = 4: the fraction is cut, not rounded`,
   },
   {
     mnemonic: "fneg",
@@ -1575,9 +1547,7 @@ fdiv    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
     syntax: "fneg dd, dn / fneg sd, sn / fneg vd.T, vn.T (2s, 4s, 2d)",
     example: `fmov    d16, 2.0
 fneg    d16, d16                // d16 = -2.0: only the sign bit changes
-fcvtzs  x9, d16                 // x9 = -2
-fmov    v1.4s, #2.0
-fneg    v3.4s, v1.4s            // every lane = -2.0`,
+fcvtzs  x9, d16                 // x9 = -2`,
     gotchas: [
       "the alternating-sign series idiom: `fneg sign, sign` each pass flips a running +1/-1 factor without a branch.",
     ],
@@ -1589,9 +1559,7 @@ fneg    v3.4s, v1.4s            // every lane = -2.0`,
     example: `fmov    d16, 3.0
 fneg    d16, d16                // d16 = -3.0
 fabs    d17, d16                // d17 = 3.0: distance from zero
-fcvtzs  x9, d17                 // x9 = 3
-fmov    v1.4s, #-2.0
-fabs    v3.4s, v1.4s            // every lane = 2.0`,
+fcvtzs  x9, d17                 // x9 = 3`,
     gotchas: [
       "the convergence-test idiom: take `fabs` of an error term before `fcmp` against the epsilon, so the loop exits on distance from zero, not direction.",
     ],
@@ -1602,9 +1570,7 @@ fabs    v3.4s, v1.4s            // every lane = 2.0`,
     syntax: "fsqrt dd, dn / fsqrt sd, sn / fsqrt vd.T, vn.T (2s, 4s, 2d)",
     example: `fmov    d16, 9.0
 fsqrt   d17, d16                // d17 = 3.0
-fcvtzs  x9, d17                 // x9 = 3
-fmov    v1.4s, #4.0
-fsqrt   v3.4s, v1.4s            // every lane = 2.0`,
+fcvtzs  x9, d17                 // x9 = 3`,
     gotchas: [
       "a negative operand gives NaN instead of an error, and NaN compares unordered: `fcmp` against it sets c and v, so a `b.lt` after it never takes. check the sign before taking the root.",
     ],
@@ -1612,7 +1578,7 @@ fsqrt   v3.4s, v1.4s            // every lane = 2.0`,
   {
     mnemonic: "fcmp",
     category: "Floating point",
-    syntax: "fcmp dn, dm / fcmp sn, sm",
+    syntax: "fcmp dn, dm / fcmp sn, sm / fcmp dn, #0.0",
     example: `fmov    d16, 1.5
 fmov    d17, 2.5
 fcmp    d16, d17                // same nzcv flags as integer cmp
@@ -1626,6 +1592,29 @@ cset    w9, lt                  // w9 = 1: d16 is below d17`,
 fmov    d17, 2.5
 fcmpe   d16, d17                // gcc's spelling for float < and >
 cset    w9, lt                  // w9 = 1`,
+  },
+  {
+    mnemonic: "fccmp",
+    category: "Floating point",
+    syntax: "fccmp dn, dm, #nzcv, cond / fccmp sn, sm, #nzcv, cond",
+    example: `fmov    d16, 1.5
+fmov    d17, 2.5
+fcmp    d16, d17
+fccmp   d17, d16, 0, lt         // the first test held, so compare again
+cset    w9, gt                  // w9 = 1: a < b && b > a, no branch taken`,
+    gotchas: [
+      "the untaken path writes the literal into nzcv, as `ccmp` does. a nan compares unordered (c and v set), so the literal decides what the chain does with one only when the first test failed.",
+    ],
+  },
+  {
+    mnemonic: "fccmpe",
+    category: "Floating point",
+    syntax: "fccmpe dn, dm, #nzcv, cond / fccmpe sn, sm, #nzcv, cond",
+    example: `fmov    d16, 1.5
+fmov    d17, 2.5
+fcmpe   d16, d17
+fccmpe  d16, d17, 4, lt         // lt held: compare again, z stays clear
+cset    w9, ne                  // w9 = 1`,
   },
   {
     mnemonic: "fcvt",
@@ -1647,9 +1636,7 @@ fcvtzs  x9, d1                  // x9 = 2`,
 scvtf   d16, x9                 // d16 = 7.0
 fcvtzs  x10, d16                // x10 = 7: round-tripped
 mov     x11, 6
-scvtf   d17, x11, 2             // d17 = 1.5: the fixed-point form divides by 4
-movi    v1.4s, #6
-scvtf   v3.4s, v1.4s            // every lane = 6.0`,
+scvtf   d17, x11, 2             // d17 = 1.5: the fixed-point form divides by 4`,
   },
   {
     mnemonic: "fcvtzs",
@@ -1658,9 +1645,7 @@ scvtf   v3.4s, v1.4s            // every lane = 6.0`,
     example: `fmov    d16, 1.9375             // the largest encodable mantissa
 fcvtzs  w9, d16                 // w9 = 1: toward zero, never rounding
 fmov    d17, 1.5
-fcvtzs  w10, d17, 2             // w10 = 6: the fixed-point form scales by 4 first
-fmov    v1.4s, #2.5
-fcvtzs  v3.4s, v1.4s            // every lane = 2`,
+fcvtzs  w10, d17, 2             // w10 = 6: the fixed-point form scales by 4 first`,
     gotchas: [
       "`fbits` runs 1 to 32 for a w destination and 1 to 64 for an x one; it is stored in the word as 64 minus that.",
     ],
@@ -1673,9 +1658,7 @@ fcvtzs  v3.4s, v1.4s            // every lane = 2`,
 fcvtns  w1, d0                  // w1 = 2: the tie goes to the even neighbor
 fcvtzs  w2, d0                  // w2 = 2 as well, but by truncation
 fmov    d3, 3.5
-fcvtns  w4, d3                  // w4 = 4: ties to even lands upward here
-fmov    v1.4s, #2.5
-fcvtns  v3.4s, v1.4s            // every lane = 2`,
+fcvtns  w4, d3                  // w4 = 4: ties to even lands upward here`,
   },
   {
     mnemonic: "fcvtnu",
@@ -1684,9 +1667,7 @@ fcvtns  v3.4s, v1.4s            // every lane = 2`,
     example: `fmov    d0, 2.5
 fcvtnu  w1, d0                  // w1 = 2
 fmov    d2, -2.5
-fcvtnu  w3, d2                  // w3 = 0: negatives saturate
-fmov    v1.4s, #2.5
-fcvtnu  v3.4s, v1.4s            // every lane = 2`,
+fcvtnu  w3, d2                  // w3 = 0: negatives saturate`,
   },
   {
     mnemonic: "fcvtzu",
@@ -1695,9 +1676,7 @@ fcvtnu  v3.4s, v1.4s            // every lane = 2`,
     example: `fmov    d0, 2.5
 fcvtzu  w1, d0                  // w1 = 2: the fraction is cut, not rounded
 fmov    d2, -1.5
-fcvtzu  w3, d2                  // w3 = 0: negatives saturate
-fmov    v1.4s, #2.5
-fcvtzu  v3.4s, v1.4s            // every lane = 2`,
+fcvtzu  w3, d2                  // w3 = 0: negatives saturate`,
   },
   {
     mnemonic: "fcvtas",
@@ -1707,18 +1686,14 @@ fcvtzu  v3.4s, v1.4s            // every lane = 2`,
 fcvtas  w1, d0                  // w1 = 3: the tie goes away from zero
 fcvtns  w2, d0                  // w2 = 2: the tie goes to the even neighbour
 fmov    d3, -2.5
-fcvtas  w4, d3                  // w4 = -3: away from zero in both directions
-fmov    v1.4s, #2.5
-fcvtas  v3.4s, v1.4s            // every lane = 3`,
+fcvtas  w4, d3                  // w4 = -3: away from zero in both directions`,
   },
   {
     mnemonic: "fcvtau",
     category: "Floating point",
     syntax: "fcvtau wd, dn / fcvtau xd, sn / fcvtau vd.T, vn.T / fcvtau sd, sn",
     example: `fmov    d0, 2.5
-fcvtau  w1, d0                  // w1 = 3
-fmov    v1.4s, #2.5
-fcvtau  v3.4s, v1.4s            // every lane = 3`,
+fcvtau  w1, d0                  // w1 = 3`,
   },
   {
     mnemonic: "fcvtms",
@@ -1726,18 +1701,14 @@ fcvtau  v3.4s, v1.4s            // every lane = 3`,
     syntax: "fcvtms wd, dn / fcvtms xd, sn / fcvtms vd.T, vn.T / fcvtms sd, sn",
     example: `fmov    d0, -0.5
 fcvtms  w1, d0                  // w1 = -1: floor, so it walks away from zero
-fcvtzs  w2, d0                  // w2 = 0: truncation walks toward it
-fmov    v1.4s, #2.5
-fcvtms  v3.4s, v1.4s            // every lane = 2`,
+fcvtzs  w2, d0                  // w2 = 0: truncation walks toward it`,
   },
   {
     mnemonic: "fcvtmu",
     category: "Floating point",
     syntax: "fcvtmu wd, dn / fcvtmu xd, sn / fcvtmu vd.T, vn.T / fcvtmu sd, sn",
     example: `fmov    d0, 2.5
-fcvtmu  w1, d0                  // w1 = 2
-fmov    v1.4s, #2.5
-fcvtmu  v3.4s, v1.4s            // every lane = 2`,
+fcvtmu  w1, d0                  // w1 = 2`,
   },
   {
     mnemonic: "fcvtps",
@@ -1746,18 +1717,14 @@ fcvtmu  v3.4s, v1.4s            // every lane = 2`,
     example: `fmov    d0, -0.5
 fcvtps  w1, d0                  // w1 = 0: ceiling
 fmov    d2, 2.5
-fcvtps  w3, d2                  // w3 = 3
-fmov    v1.4s, #2.5
-fcvtps  v3.4s, v1.4s            // every lane = 3`,
+fcvtps  w3, d2                  // w3 = 3`,
   },
   {
     mnemonic: "fcvtpu",
     category: "Floating point",
     syntax: "fcvtpu wd, dn / fcvtpu xd, sn / fcvtpu vd.T, vn.T / fcvtpu sd, sn",
     example: `fmov    d0, 2.5
-fcvtpu  w1, d0                  // w1 = 3
-fmov    v1.4s, #2.5
-fcvtpu  v3.4s, v1.4s            // every lane = 3`,
+fcvtpu  w1, d0                  // w1 = 3`,
   },
   {
     mnemonic: "ucvtf",
@@ -1765,9 +1732,7 @@ fcvtpu  v3.4s, v1.4s            // every lane = 3`,
     syntax: "ucvtf dd, xn / ucvtf sd, wn / ucvtf vd.T, vn.T{, #fbits} / ucvtf sd, sn",
     example: `mov     x0, -1
 scvtf   d0, x0                  // d0 = -1.0
-ucvtf   d1, x0                  // d1 = 1.8446744073709552e19: the same bits, read unsigned
-movi    v1.4s, #6
-ucvtf   v3.4s, v1.4s            // every lane = 6.0`,
+ucvtf   d1, x0                  // d1 = 1.8446744073709552e19: the same bits, read unsigned`,
   },
   {
     mnemonic: "fcsel",
@@ -1792,10 +1757,7 @@ fcvtzs  x9, d3                  // x9 = 1`,
     example: `fmov    d1, 3.0
 fmov    d2, 5.0
 fmax    d3, d1, d2              // d3 = 5.0
-fcvtzs  x9, d3                  // x9 = 5
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmax    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
+fcvtzs  x9, d3                  // x9 = 5`,
     gotchas: [
       "a nan operand makes the result nan. for the c `fmax()` behaviour, where the number wins, use `fmaxnm`.",
     ],
@@ -1807,10 +1769,7 @@ fmax    v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
     example: `fmov    d1, 3.0
 fmov    d2, 5.0
 fmin    d4, d1, d2              // d4 = 3.0
-fcvtzs  x9, d4                  // x9 = 3
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmin    v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
+fcvtzs  x9, d4                  // x9 = 3`,
   },
   {
     mnemonic: "fmaxnm",
@@ -1822,10 +1781,7 @@ fsqrt   d1, d1                  // d1 = nan
 fmov    d2, 5.0
 fmaxnm  d3, d1, d2              // d3 = 5.0: the nan is ignored
 fmax    d4, d1, d2              // d4 = nan
-fcvtzs  x9, d3                  // x9 = 5
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fmaxnm  v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
+fcvtzs  x9, d3                  // x9 = 5`,
   },
   {
     mnemonic: "fminnm",
@@ -1834,10 +1790,7 @@ fmaxnm  v3.4s, v1.4s, v2.4s     // every lane = 3.0`,
     example: `fmov    d1, 3.0
 fmov    d2, 5.0
 fminnm  d3, d1, d2              // d3 = 3.0
-fcvtzs  x9, d3                  // x9 = 3
-fmov    v1.4s, #2.0
-fmov    v2.4s, #3.0
-fminnm  v3.4s, v1.4s, v2.4s     // every lane = 2.0`,
+fcvtzs  x9, d3                  // x9 = 3`,
   },
   {
     mnemonic: "fnmul",
@@ -2035,7 +1988,7 @@ cmge    v3.8b, v7.8b, v21.8b    // every lane = all ones`,
 movi    v21.16b, #5
 cmhi    v3.8b, v7.8b, v21.8b    // every lane = all ones`,
     gotchas: [
-      "the `S`/`U` pair to watch: `CMGT` and `CMHI` differ only in how the lane is read.",
+      "`CMGT` reads each lane as signed and `CMHI` as unsigned; that is the only difference.",
     ],
   },
   {
@@ -2427,7 +2380,7 @@ cnt     v3.8b, v7.8b            // every lane = 2`,
     example: `movi    v7.4s, #12
 rev64   v3.8b, v7.8b            // v3 = 0 0 0 12 0 0 0 12`,
     gotchas: [
-      "the lane has to be narrower than the container, which is why each of the three takes a different set.",
+      "the lane has to be narrower than the block being reversed (16, 32 or 64 bits), which is why `rev16`, `rev32` and `rev64` each accept a different set of lanes.",
     ],
   },
   {
@@ -2464,7 +2417,7 @@ saddl   v3.8h, v7.8b, v21.8b    // every lane = 0x0011`,
 movi    v21.16b, #5
 saddl2  v3.8h, v7.16b, v21.16b  // every lane = 0x0011`,
     gotchas: [
-      "every `2` form in this table is its base form reading those lanes instead of the low ones.",
+      "every widening `2` form is its base form reading the upper half of the narrow sources instead of the lower half.",
     ],
   },
   {
@@ -3328,7 +3281,7 @@ movi    v7.16b, #0x11
 movi    v21.8b, #40
 tbx     v3.8b, {v7.16b}, v21.8b // every lane = 0x99: index 40 is past the table, so the byte survives`,
     gotchas: [
-      "that is the whole difference between the two.",
+      "an index past the table leaves the destination byte alone instead of zeroing it; that is the only difference from `tbl`.",
     ],
   },
   {
@@ -3899,13 +3852,38 @@ add     sp, sp, #32`,
   },
 ];
 
+/**
+ * Every instruction that writes NZCV. The badge and the flags test read this
+ * one list; FlagEffect's panel covers only the compares it can model.
+ */
+export const NZCV_WRITERS: ReadonlySet<string> = new Set([
+  "adds", "subs", "adcs", "sbcs", "ands", "negs",
+  "cmp", "cmn", "tst", "ccmp", "ccmn", "fcmp", "fcmpe", "fccmp", "fccmpe",
+]);
+
+const VECTOR_REGISTER = /\b[vq](?:[12]?[0-9]|3[01])\b/;
+const FP_REGISTER = /\b[bhsd](?:[12]?[0-9]|3[01])\b/;
+
+/** Which register file a program's code (comments aside) writes to. */
+function registerViewOf(program: string): ReferenceInstruction["registerView"] {
+  const code = program.replace(/\/\/.*$/gm, "");
+  if (VECTOR_REGISTER.test(code)) return "v";
+  if (FP_REGISTER.test(code)) return "d";
+  return "x";
+}
+
 export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map(
   (seed): ReferenceInstruction => {
-    const doc = lookupDoc(seed.mnemonic);
-    if (!doc) {
+    const key = docKey(seed.mnemonic);
+    if (key === undefined) {
       throw new Error(
         `reference-data: no instruction-docs entry for ${seed.mnemonic}`,
       );
+    }
+    const doc = INSTRUCTION_DOCS[key];
+    const c = C_EQUIVALENTS[key];
+    if (!c) {
+      throw new Error(`reference-data: no C equivalent for ${seed.mnemonic}`);
     }
     // The seed's worked example wins on the reference page; the hover card
     // keeps its own terse example straight from instruction-docs.
@@ -3919,7 +3897,10 @@ export const REFERENCE_INSTRUCTIONS: ReferenceInstruction[] = referenceSeeds.map
       syntax: seed.syntax,
       summary: doc.summary,
       example,
-      ...(doc.cExample !== undefined ? { cExample: doc.cExample } : {}),
+      cExample: c.c,
+      ...(c.intrinsic !== undefined ? { intrinsic: c.intrinsic } : {}),
+      setsFlags: NZCV_WRITERS.has(seed.mnemonic),
+      registerView: registerViewOf(seed.runnable ?? example),
       ...(seed.gotchas !== undefined ? { gotchas: seed.gotchas } : {}),
       ...(seed.encoding !== undefined ? { encoding: seed.encoding } : {}),
       ...(seed.encodedAsm !== undefined ? { encodedAsm: seed.encodedAsm } : {}),

@@ -1,6 +1,7 @@
-// Shared constants for every deadzone module: screen geometry, syscall
-// numbers, termios and fcntl values, key codes, ANSI colours, frame timing,
-// game states and pool sizes. Included first so the rest can rely on them.
+// Shared constants for every deadzone module: screen size, syscall numbers,
+// terminal settings (termios and fcntl values), key codes, ANSI colours,
+// frame timing, game states and the enemy and projectile limits. Included
+// first so the rest can rely on them.
 
 define(fp, x29)
 define(lr, x30)
@@ -11,9 +12,10 @@ SCREEN_HEIGHT = 24                              // Terminal height in rows
 SCREEN_SIZE = SCREEN_WIDTH * SCREEN_HEIGHT      // Total screen characters
 
 // Play screen rows
-// A marquee on row 0, the arena between the two rules, then the four-row
-// status bar along the bottom. The field has to stop at ROW_FIELD_LAST for
-// the bar to fit, and player.s bounds the player inside those rows.
+// A title band on row 0, the arena between two horizontal lines (rules), then
+// the four-row status bar along the bottom. The field has to stop at
+// ROW_FIELD_LAST for the bar to fit, and player.s keeps the player inside
+// those rows.
 ROW_MARQUEE = 0                                 // Game name, dark band
 ROW_TOP_BORDER = 1                              // Top rule of the arena
 ROW_FIELD_FIRST = 2                             // First playable row
@@ -56,14 +58,14 @@ TERMIOS_CC_VTIME = 5                            // VTIME index in c_cc array
 
 // Termios flag values
 // Local flags (c_lflag)
-ICANON = 0x0002                                 // Canonical mode
+ICANON = 0x0002                                 // Canonical mode: input arrives a line at a time
 ECHO = 0x0008                                   // Echo input
-ISIG = 0x0001                                   // Enable signals
+ISIG = 0x0001                                   // Ctrl-C and Ctrl-Z interrupt the program
 IEXTEN = 0x8000                                 // Extended input processing
 
 // Input flags (c_iflag)
-ICRNL = 0x0100                                  // Map CR to NL
-IXON = 0x0400                                   // Enable XON/XOFF flow control
+ICRNL = 0x0100                                  // Turn CR (carriage return) into NL (newline)
+IXON = 0x0400                                   // Ctrl-S and Ctrl-Q pause and resume output
 
 // Fcntl commands and file status flags
 F_GETFL = 3                                     // Read the file status flags

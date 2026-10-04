@@ -60,8 +60,8 @@ describe("ConsolePanel stdin validation", () => {
   });
 
   it("submits without the echo flag when the host opts out", () => {
-    // The checker chrome grades the live stdout on its unchanged-source
-    // fast path; an echoed byte there would fail a correct program.
+    // The exercise checker grades the live output when the source has not
+    // changed; an echoed byte there would fail a correct program.
     const { pushStdin, input } = setup({ echoStdin: false });
     fireEvent.change(input, { target: { value: "42" } });
     fireEvent.submit(input.closest("form")!);
@@ -79,13 +79,28 @@ describe("ConsolePanel stdin validation", () => {
     expect(closeStdin).toHaveBeenCalledTimes(1);
   });
 
-  it("rejects an over-cap stdin submission without reaching the emulator", () => {
+  it("rejects a stdin line over the size cap before it reaches the emulator", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const { pushStdin, input } = setup();
+    const onInputSent = vi.fn();
+    const { pushStdin, input } = setup({ onInputSent });
     fireEvent.change(input, { target: { value: "x".repeat(MAX_STDIN_BYTES + 1) } });
     fireEvent.submit(input.closest("form")!);
     expect(pushStdin).not.toHaveBeenCalled();
+    expect(onInputSent).not.toHaveBeenCalled();
     expect(warn).toHaveBeenCalled();
+  });
+
+  it("reports a sent line and an end of input, after the bytes are queued", () => {
+    const order: string[] = [];
+    const { input } = setup({
+      pushStdin: () => order.push("push"),
+      closeStdin: () => order.push("close"),
+      onInputSent: () => order.push("sent"),
+    });
+    fireEvent.change(input, { target: { value: "3 4" } });
+    fireEvent.submit(input.closest("form")!);
+    fireEvent.keyDown(input, { key: "d", ctrlKey: true });
+    expect(order).toEqual(["push", "sent", "close", "sent"]);
   });
 });
 
@@ -108,7 +123,7 @@ describe("ConsolePanel vfs upload", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("rejects an over-cap upload with the guard message and never touches the vfs", () => {
+  it("rejects an upload over the size cap with the guard message and never touches the vfs", () => {
     const { uploadVfsFile } = setup();
     const big = new File(["x"], "huge.bin");
     // The size guard runs synchronously off file.size, before the bytes are read.
@@ -137,17 +152,114 @@ describe("ConsolePanel controls and state", () => {
     expect(clearConsole).toHaveBeenCalledTimes(1);
   });
 
-  it("surfaces the waiting-for-input status and placeholder when blocked", () => {
+  it("surfaces the waiting-for-input status and a placeholder short enough to read whole", () => {
     const { input } = setup({ blocked: true });
     expect(screen.getByRole("status").textContent).toBe("waiting for input");
-    expect(input.placeholder).toBe(
-      "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input",
-    );
+    // A lesson frame's box is about 300px wide: room for some 30 characters.
+    expect(input.placeholder).toBe("type a line, or Ctrl+D to end");
   });
 
-  it("shows a zero exit code (the != null edge, not falsiness)", () => {
+  it("says how to answer a waiting read in place of the idle hint", () => {
+    setup({ blocked: true });
+    expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+    expect(
+      screen.getByText(
+        "Your program is reading input. Type a line and press Enter, or press Ctrl+D with the box empty to end the input.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("keeps the instruction under a prompt the program already printed", () => {
+    setup({ blocked: true, stdout: "enter n: " });
+    expect(screen.getByText("enter n:")).toBeTruthy();
+    expect(screen.getByText(/press Ctrl\+D with the box empty to end the input/)).toBeTruthy();
+  });
+
+  it("ends the input from a button while a read waits on a touch screen, which has no Ctrl", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("coarse"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      const onInputSent = vi.fn();
+      const { closeStdin } = setup({ blocked: true, onInputSent });
+      fireEvent.click(screen.getByRole("button", { name: "end input" }));
+      expect(closeStdin).toHaveBeenCalledTimes(1);
+      expect(onInputSent).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("leaves the button out where Ctrl+D is at hand, so the box keeps its width", () => {
+    setup({ blocked: true });
+    expect(screen.queryByRole("button", { name: "end input" })).toBeNull();
+  });
+
+  it("offers neither the instruction nor the button when nothing is reading", () => {
+    setup({ blocked: false, stdout: "done\n" });
+    expect(screen.queryByRole("button", { name: "end input" })).toBeNull();
+    expect(screen.queryByText(/Your program is reading input/)).toBeNull();
+    cleanup();
+    setup({ blocked: true, ownedByTerminal: true });
+    expect(screen.queryByRole("button", { name: "end input" })).toBeNull();
+    expect(screen.queryByText(/Your program is reading input/)).toBeNull();
+  });
+
+  it("words a waiting read for tapping on a touch screen", () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("coarse"),
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    }));
+    try {
+      const { input } = setup({ blocked: true });
+      expect(screen.getByText(/Type a line and tap send, or tap end input/)).toBeTruthy();
+      expect(screen.queryByText(/Ctrl\+D/)).toBeNull();
+      expect(input.placeholder).toBe("type a line");
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("shows each note under the output, in place of the idle hint", () => {
+    setup({ notes: ["Line 6 reads x9, but the printf call on line 5 overwrote it."] });
+    const note = screen.getByRole("note");
+    expect(note.textContent).toBe(
+      "note: Line 6 reads x9, but the printf call on line 5 overwrote it.",
+    );
+    expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
+  });
+
+  it("shows an exit code of 0, which a truthy check would hide", () => {
     setup({ exitCode: 0 });
     expect(screen.getByText("exit 0")).toBeTruthy();
+  });
+
+  it("names F10 and F5 only where the page binds them", () => {
+    const props = {
+      stdout: "",
+      stderr: "",
+      blocked: false,
+      exitCode: null,
+      vfsFiles: [],
+      pushStdin: vi.fn(),
+      closeStdin: vi.fn(),
+      uploadVfsFile: vi.fn(),
+      clearConsole: vi.fn(),
+    };
+    const { rerender } = render(<ConsolePanel {...props} />);
+    expect(screen.getByText(/Step with F10, run with F5/)).toBeTruthy();
+    rerender(<ConsolePanel {...props} keyHints={false} />);
+    expect(screen.queryByText(/F10|F5/)).toBeNull();
+    expect(screen.getByText(/Press step or run under the editor/)).toBeTruthy();
+    // A frame with no step button (the landing demo) names only run.
+    rerender(<ConsolePanel {...props} keyHints={false} stepButton={false} />);
+    expect(screen.getByText(/Press run under the editor/)).toBeTruthy();
+    expect(screen.queryByText(/step or run/)).toBeNull();
   });
 
   it("shows the idle hint with no output and the stream once it arrives", () => {
@@ -183,7 +295,7 @@ describe("ConsolePanel controls and state", () => {
     expect(screen.queryByText("Output prints here as your program runs.")).toBeNull();
   });
 
-  it("swaps the idle hint to touch copy on a coarse pointer", () => {
+  it("words the idle hint for tapping on a touch screen", () => {
     vi.stubGlobal("matchMedia", (query: string) => ({
       matches: query.includes("coarse"),
       media: query,
@@ -260,7 +372,31 @@ describe("ConsolePanel output a terminal session produced", () => {
     expect(screen.getByText(/warning: no such file/)).toBeTruthy();
   });
 
-  it("renders a classic run byte for byte with no watermark", () => {
+  it("drops the screen codes a program sent before it claimed the terminal", () => {
+    // Hide the cursor, clear, home: written in cooked mode, a moment before
+    // the raw-mode switch that marks where the terminal took over.
+    const esc = String.fromCharCode(27);
+    const prelude = `${esc}[?25l${esc}[2J${esc}[Hloading\n`;
+    const { container } = render(
+      <ConsolePanel
+        stdout={`${prelude}${esc}[2J frame`}
+        stderr=""
+        blocked={false}
+        exitCode={null}
+        vfsFiles={[]}
+        pushStdin={vi.fn()}
+        closeStdin={vi.fn()}
+        uploadVfsFile={vi.fn()}
+        clearConsole={vi.fn()}
+        terminalOwnedFrom={prelude.length}
+      />,
+    );
+    expect(container.textContent).toContain("loading");
+    expect(container.textContent).not.toContain(esc);
+    expect(container.textContent).not.toContain("[?25l");
+  });
+
+  it("renders a run the terminal never took over byte for byte, with no note", () => {
     setup({ stdout: "sum = 10\n", stderr: "" });
     expect(screen.getByText(/sum = 10/)).toBeTruthy();
     expect(screen.queryByText(NOTE)).toBeNull();

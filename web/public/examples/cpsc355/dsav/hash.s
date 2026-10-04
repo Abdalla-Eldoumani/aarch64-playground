@@ -1,13 +1,15 @@
-// hash.s - open-addressed hash table with linear probing
+// hash.s - hash table with linear probing: a key whose bucket is taken
+// steps on to the next slot until it finds a free one
 //
 // Thirteen buckets, listed on the left and laid out flat on the strip
 // below, so the walk a collision forces is visible as a walk. A key that did
 // not land in its own bucket says where it came from, so the probe's cost is
 // on screen.
 //
-// Deleting writes a tombstone rather than clearing the slot: a cleared
-// slot would cut every probe path that once passed through it, and the
-// keys behind it would vanish.
+// Deleting writes a tombstone, a marker that says a key was once here,
+// rather than clearing the slot: a cleared slot would cut every probe
+// path that once passed through it, and the keys behind it could no
+// longer be found.
 
 define(fp, x29)
 define(lr, x30)
@@ -21,8 +23,8 @@ define(lr, x30)
     HASH_USED = 1
     HASH_TOMB = 2
 
-// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here so
-// this file also assembles on its own, the way the web build feeds it.
+// Role numbers mirror ui.s's UI_ROLE_* set. They are repeated here
+// because the playground assembles each file on its own.
     HASH_ROLE_TEXT  = 0
     HASH_ROLE_DIM   = 1
     HASH_ROLE_FAINT = 2
@@ -728,8 +730,8 @@ hash_cell_close:
     ldp     fp, lr, [sp], 64
     ret
 
-// hash_draw_state() - the load factor as a bar of thirteen blocks, and
-// the counts behind it
+// hash_draw_state() - the load factor (the share of slots holding a key)
+// as a bar of thirteen blocks, and the counts behind it
 hash_draw_state:
     stp     fp, lr, [sp, -64]!
     mov     fp, sp

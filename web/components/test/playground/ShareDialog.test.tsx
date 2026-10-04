@@ -7,8 +7,8 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { ShareDialog } from "@/components/playground/ShareDialog";
 import { readShareHash, type ShareState } from "@/lib/playground/share";
 
-// readShareHash returns a discriminated verdict; these tests only
-// care about the ok payload.
+// readShareHash returns either a state or the reason it failed; these tests
+// only need the state.
 function okShareState(hash: string) {
   const r = readShareHash(hash);
   if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
@@ -69,28 +69,56 @@ describe("ShareDialog", () => {
     expect(writeText).toHaveBeenCalledWith(urlValue());
   });
 
-  it("falls back to copy when the platform has no navigator.share", async () => {
-    const writeText = stubClipboard();
+  it("offers copy alone when the platform has no share sheet", () => {
     renderDialog();
     expect("share" in navigator).toBe(false);
-    fireEvent.click(screen.getByRole("button", { name: "share" }));
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
+    // A share button there could only copy: two buttons, one action.
+    expect(screen.queryByRole("button", { name: "share" })).toBeNull();
+    expect(screen.getByRole("button", { name: "copy link" })).toBeTruthy();
+  });
+
+  it("hands the URL to the platform share sheet where there is one", async () => {
+    const share = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(window.navigator, "share", { configurable: true, value: share });
+    try {
+      renderDialog();
+      fireEvent.click(screen.getByRole("button", { name: "share" }));
+      await waitFor(() => expect(share).toHaveBeenCalledTimes(1));
+      expect(share.mock.calls[0][0].url).toBe(urlValue());
+    } finally {
+      Reflect.deleteProperty(window.navigator, "share");
+    }
+  });
+
+  it("stays open when a double press's second click lands on the backdrop", () => {
+    const onClose = renderDialog();
+    fireEvent.click(screen.getByRole("dialog", { name: "share program" }), { detail: 2 });
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
-    const onClose = renderDialog();
-    fireEvent.click(screen.getByLabelText("shareable url"));
-    expect(onClose).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "close" }));
-    fireEvent.click(screen.getByRole("dialog", { name: "share program" }));
-    fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(3);
+    // The backdrop ignores a click in the first half second (a double tap's
+    // second tap), so the clock moves past it before the backdrop is clicked.
+    let now = 1000;
+    const clock = vi.spyOn(performance, "now").mockImplementation(() => now);
+    try {
+      const onClose = renderDialog();
+      fireEvent.click(screen.getByLabelText("shareable url"));
+      expect(onClose).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole("button", { name: "close" }));
+      now += 600;
+      fireEvent.click(screen.getByRole("dialog", { name: "share program" }));
+      fireEvent.keyDown(document, { key: "Escape" });
+      expect(onClose).toHaveBeenCalledTimes(3);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 
-describe("ShareDialog over the fragment cap", () => {
+describe("ShareDialog with a program too large for a link", () => {
   // A real multi-file workspace does not fit in a URL fragment: the
-  // receiver's 12 KB wall rejects it. Offering the link anyway moves the
+  // receiver's 16 KB limit rejects it. Offering the link anyway moves the
   // failure to the recipient's screen.
   const BIG: ShareState = {
     source: "mov x0, 1\nret\n",
@@ -113,10 +141,6 @@ describe("ShareDialog over the fragment cap", () => {
       "disabled",
       true,
     );
-    expect(screen.getByRole("button", { name: "share" })).toHaveProperty(
-      "disabled",
-      true,
-    );
     // Closing is still the way out.
     expect(screen.getByRole("button", { name: "close" })).toHaveProperty(
       "disabled",
@@ -124,7 +148,7 @@ describe("ShareDialog over the fragment cap", () => {
     );
   });
 
-  it("leaves a workspace that does fit completely alone", () => {
+  it("still offers the link for a multi-file workspace that fits", () => {
     render(
       <ShareDialog
         open

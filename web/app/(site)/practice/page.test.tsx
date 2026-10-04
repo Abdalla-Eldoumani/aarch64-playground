@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import fs from "node:fs";
+import path from "node:path";
 
 // The client renderers are replaced with text markers so this test exercises the
 // server route wiring (loader -> page -> props) without pulling in the editor,
@@ -14,8 +16,23 @@ vi.mock("@/components/practice/ExerciseView", () => ({
     `exercise-view:${exercise.slug}`,
 }));
 
-// notFound throws a sentinel like the real one halts rendering, so an unknown
-// slug is observable here as a rejection plus a spy call.
+// The real loaders, read once as the file loads. Every call reads and
+// validates all the exercise files, and with every test worker busy one call
+// took seconds, so five of them overran the five-second test limit.
+vi.mock("@/lib/content/exercises", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/content/exercises")>();
+  const all = real.loadAllExercises();
+  const index = real.loadExerciseIndex();
+  return {
+    ...real,
+    loadAllExercises: () => all,
+    loadExerciseIndex: () => index,
+    loadExercise: (slug: string) => all.find((exercise) => exercise.slug === slug),
+  };
+});
+
+// notFound throws, as the real one does to stop rendering, so an unknown slug
+// shows up here as a rejection plus a spy call.
 vi.mock("next/navigation", () => ({
   notFound: vi.fn(() => {
     throw new Error("NEXT_NOT_FOUND");
@@ -23,11 +40,17 @@ vi.mock("next/navigation", () => ({
 }));
 
 import { notFound } from "next/navigation";
-import { loadAllExercises } from "@/lib/content/exercises";
 import PracticePage from "./page";
 import ExercisePage, { dynamicParams, generateStaticParams } from "./[slug]/page";
 
 const SEEDED_SLUGS = ["sum-to-n", "fix-the-loop-bound"];
+
+// Each exercise file is named after its slug, so the folder is a list
+// the loader under test did not produce.
+const FILE_SLUGS = fs
+  .readdirSync(path.join(process.cwd(), "content/exercises"))
+  .filter((name) => name.endsWith(".json"))
+  .map((name) => name.slice(0, -".json".length));
 
 afterEach(() => {
   cleanup();
@@ -35,16 +58,16 @@ afterEach(() => {
 });
 
 describe("practice routes", () => {
-  it("statically enumerates exactly the seeded exercise slugs", () => {
+  it("builds one static page per exercise file", () => {
     const slugs = generateStaticParams().map((entry) => entry.slug);
-    expect(slugs).toEqual(loadAllExercises().map((exercise) => exercise.slug));
+    expect([...slugs].sort()).toEqual([...FILE_SLUGS].sort());
     for (const slug of SEEDED_SLUGS) expect(slugs).toContain(slug);
     // dynamicParams off means only these slugs render; anything else 404s.
     expect(dynamicParams).toBe(false);
   });
 
   it("renders the index from every validated exercise", () => {
-    const expectedCount = loadAllExercises().length;
+    const expectedCount = FILE_SLUGS.length;
     render(<PracticePage />);
     expect(screen.getByText(`exercise-index:${expectedCount}`)).toBeTruthy();
   });
@@ -58,7 +81,7 @@ describe("practice routes", () => {
     expect(vi.mocked(notFound)).not.toHaveBeenCalled();
   });
 
-  it("not-founds an unknown slug", async () => {
+  it("sends an unknown slug to the 404 page", async () => {
     await expect(
       ExercisePage({ params: Promise.resolve({ slug: "does-not-exist" }) }),
     ).rejects.toThrow("NEXT_NOT_FOUND");

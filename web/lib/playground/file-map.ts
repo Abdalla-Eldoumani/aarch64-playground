@@ -1,10 +1,7 @@
 /**
- * The multi-file program model: main.asm plus any number of extra source
- * files, concatenated into the one string the assembler sees. This module
- * is the single source of truth for that concatenation and for translating
- * line numbers between the combined string and the individual files, so
- * error markers, the current-line marker, breakpoints, and jump-to-error
- * all land in the right file at the right line.
+ * main.asm plus any extra files, joined into the one string the assembler
+ * sees. This module owns that join and the line mapping back to each file, so
+ * error markers, the current line, and breakpoints land in the right place.
  */
 
 /** One auxiliary source file in the workspace (main.asm is implicit). */
@@ -37,11 +34,9 @@ function boundaryComment(name: string): string {
 }
 
 /**
- * Concatenate main + extras with a file-boundary comment BEFORE each
- * extra. main.asm must stay line-for-line identical to the editor buffer:
- * a header line above it would shift every line-map entry, error line, and
- * breakpoint by one for the whole session, since the editor shows main.asm
- * while the assembler sees the combined string.
+ * The marker comment goes before each extra file, never above main.asm: the
+ * editor shows main.asm as it is, so a line above it would shift every error
+ * line and breakpoint by one.
  */
 export function combineSources(main: string, extras: SourceFile[]): string {
   if (extras.length === 0) return main;
@@ -75,20 +70,15 @@ const MAIN_NAMES = /^main\.(asm|s)$/i;
 const MAX_FILE_NAME_CHARS = 64;
 
 /**
- * The characters a file name may use: it must start with a letter or a digit,
- * then letters, digits, dot, dash, and underscore. Everything else is refused,
- * which is what keeps a name out of `combineSources`'s `// ---- name ----`
- * marker as anything but a comment: a name carrying a newline wrote its own
- * assembly lines into the program the linker saw. Excluding the slash also
- * rules out `../` traversal wherever a name reaches a fetch path.
+ * Letters, digits, dot, dash, and underscore, starting with a letter or digit.
+ * A newline in a name would write its own lines into the program through the
+ * `// ---- name ----` marker, and a slash would allow `../` in a fetch path.
  */
 const FILE_NAME_SHAPE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 /**
- * Whether `name` is shaped like a file name at all, independent of what is
- * already open. Split out from `validateFileName` because the decode
- * boundaries share the shape rule but not the main.asm rule: a `.json`
- * workspace bundle carries main.asm as its first entry.
+ * The shape rule alone, without `validateFileName`'s main.asm rule, because a
+ * `.json` workspace bundle carries main.asm as its first entry.
  */
 export function fileNameShapeError(name: string): string | null {
   const trimmed = name.trim();
@@ -103,10 +93,9 @@ export function fileNameShapeError(name: string): string | null {
 }
 
 /**
- * Whether `name` may be used for the helper file at `exceptIndex` (omit for
- * a new tab). Returns a student-facing reason, or null when the name is
- * fine. Duplicate names are compared exactly: the course servers are
- * case-sensitive, so `Q.s` and `q.s` are genuinely two files.
+ * Why `name` cannot be used for the file at `exceptIndex` (omit for a new
+ * tab), or null. Names compare case-sensitively, as on the course servers,
+ * so `Q.s` and `q.s` are two files.
  */
 export function validateFileName(
   name: string,
@@ -125,10 +114,9 @@ export function validateFileName(
 }
 
 /**
- * Resolve a 1-based line in the combined string to its owning file and
- * local line. Boundary-comment lines attribute to line 1 of the file they
- * introduce, so a diagnostic can never fall between files. Lines past the
- * end resolve to the last line of the last file.
+ * The file and local line for a 1-based combined line. A marker line counts
+ * as line 1 of the file it introduces, so nothing falls between files; a line
+ * past the end lands on the last line of the last file.
  */
 export function resolveLine(
   combinedLine: number,
@@ -234,10 +222,9 @@ export function workspaceShape(main: string, extras: SourceFile[]): string {
 }
 
 /**
- * Where every stored breakpoint moves when the workspace changes shape,
- * or null when none of them move (nothing to re-anchor). A line whose
- * owning file is gone maps to null: a closed tab takes its dots with it
- * rather than donating them to whichever file inherited its numbers.
+ * Where each stored breakpoint moves when the workspace changes shape, or
+ * null when none move. A breakpoint in a closed file maps to null rather than
+ * landing in whichever file took over its line numbers.
  */
 export function planBreakpointRemap(
   stored: ReadonlySet<number>,
@@ -265,22 +252,47 @@ export function planBreakpointRemap(
   return changed ? moved : null;
 }
 
+/** Two workspaces with the same files, names, and text. */
+export function sameWorkspace(a: Workspace, b: Workspace): boolean {
+  return (
+    a.main === b.main &&
+    a.extras.length === b.extras.length &&
+    a.extras.every((f, i) => f.name === b.extras[i].name && f.body === b.extras[i].body)
+  );
+}
+
+/** Whether a source defines the `main` label, so an import can tell which
+ *  picked file is the program and which are its helpers. A file saved on
+ *  Windows may open with a byte order mark. */
+export function definesMain(body: string): boolean {
+  return /^[﻿ \t]*main[ \t]*:/m.test(body);
+}
+
 /**
- * A machine error prefixed with the file it happened in, for the single
- * plain-text line Controls shows. Only a helper file earns the prefix:
- * main.asm is the buffer the student is already looking at.
+ * A machine error led by where it happened, for the one plain-text line
+ * Controls shows: "line N" in a one-file program, "<file> line N" once helper
+ * files are open, with combined lines turned back into the file's own. Only
+ * the error `first` belongs to is located: an assemble error is its message,
+ * and a run stop arrives as "line N: message" with N combined. A label
+ * defined twice also names where it "first appears".
  */
-export function errorWithFileName(
+export function errorWithLocation(
   error: string | null,
-  firstErrorLine: number | undefined,
+  first: { line: number; message: string } | undefined,
   main: string,
   extras: SourceFile[],
 ): string | null {
-  if (!error) return error;
-  if (firstErrorLine == null || firstErrorLine <= 0 || extras.length === 0) {
-    return error;
-  }
-  const loc = resolveLine(firstErrorLine, main, extras);
-  if (loc.file === MAIN_FILE) return error;
-  return `${loc.name} line ${loc.line}: ${error}`;
+  if (!error || !first || first.line <= 0) return error;
+  const stopPrefix = `line ${first.line}: `;
+  const owned = error === first.message || error === stopPrefix + first.message;
+  if (!owned) return error;
+  const where = (line: number) => {
+    const loc = resolveLine(line, main, extras);
+    return extras.length === 0 ? `line ${loc.line}` : `${loc.name} line ${loc.line}`;
+  };
+  const body = first.message.replace(
+    /first appears on line (\d+)/,
+    (_, line: string) => `first appears on ${where(Number(line))}`,
+  );
+  return `${where(first.line)}: ${body}`;
 }

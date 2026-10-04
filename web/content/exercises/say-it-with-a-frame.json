@@ -1,0 +1,50 @@
+{
+  "title": "Say it with a frame",
+  "slug": "say-it-with-a-frame",
+  "order": 54,
+  "lastUpdated": "2026-09-30",
+  "topic": "io",
+  "difficulty": "intro",
+  "prompt": "Draw a box around one word read from input. For the input `hello`:\n\n```\n+------------+\n| hello      |\n+------------+\n```\n\nThe starter reads the word into `word_buf` and already holds the middle line's format string, `fmt_mid`. Add a border string to `.data` (a `+`, twelve `-`, a `+`), then print three lines: the border, the middle line, and the border again. One border string is enough; load its address into `x0` a second time for the bottom line.\n\n`printf` prints exactly the characters it is given and never adds a line break of its own, so the border string needs its own `\\n`. In `fmt_mid`, `%-10s` is replaced by the string whose address is in `x1`, padded with spaces to 10 characters, which keeps the right edge in place for any word. The starter's `scanf` cuts a longer word to its first 10 characters.\n\n## What is checked\n\n- with input `hello` the output is exactly the three lines above\n- the program exits cleanly\n- the program also runs on words you do not see: one of exactly 10 letters, one longer than 10, and no word at all",
+  "starter": "// draw a box around one word read from input\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_in:     .string \"%10s\"\nfmt_mid:    .string \"| %-10s |\\n\"\n\n.bss\nword_buf:   .skip 11                        // up to 10 characters and the zero byte\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read one word, cut to 10 characters\n        ldr     x1, =word_buf\n        bl      scanf\n\n        // TODO: add a border string to .data, then print three lines:\n        // the border, fmt_mid with the address of word_buf in x1,\n        // and the border again\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "hello\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "+------------+\n| hello      |\n+------------+\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "abcdefghij\n",
+      "stdout": "+------------+\n| abcdefghij |\n+------------+\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "supercalifragilistic\n",
+      "stdout": "+------------+\n| supercalif |\n+------------+\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "two words\n",
+      "stdout": "+------------+\n| two        |\n+------------+\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "",
+      "stdout": "+------------+\n|            |\n+------------+\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

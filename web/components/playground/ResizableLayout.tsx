@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Group,
   Panel,
@@ -8,53 +8,76 @@ import {
   useGroupRef,
   type Layout,
 } from "react-resizable-panels";
-import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
+import type { Breakpoint, ScreenHeight } from "@/lib/hooks/use-breakpoint";
 import { useLayoutPersistence } from "@/lib/hooks/use-layout-persistence";
 
 export interface ResizableLayoutProps {
   breakpoint: Breakpoint;
+  /** A short or tall window (useScreenHeight) opens on its own splits and
+   *  saves its own. */
+  height?: ScreenHeight;
   editor: ReactNode;
   disassembly: ReactNode;
   registers: ReactNode;
   rightTabs: ReactNode;
 }
 
-/** What one draggable pair is: its panes, its opening split, its floors, and
- *  the name a screen reader reads off the grip between them. */
+/** What one draggable pair is: its panes, its opening split (percent, with
+ *  its own for a short or tall window), its floors in pixels, and the name a
+ *  screen reader reads off the grip between them. */
 export interface SplitSpec {
   ids: [string, string];
   defaults: [number, number];
-  minSizes: [string, string];
+  byHeight?: Partial<Record<ScreenHeight, [number, number]>>;
+  minSizes: [number, number];
+  /** Floors under a coarse pointer, where tabs and rows are 44px targets. */
+  coarseMinSizes?: [number, number];
   label: string;
 }
 
+// The floors are pixels, so a pane keeps a usable size on any screen: a
+// percentage floor let the disassembly shrink to two rows on a short laptop
+// and grow a wasted band on a tall one.
 export const MAIN_SPLIT: SplitSpec = {
   ids: ["panel-left", "panel-right"],
   defaults: [55, 45],
-  minSizes: ["25%", "25%"],
+  minSizes: [360, 320],
   label: "resize editor and debug column",
 };
 
+// A short window gives the editor more of its column: at 1366x657 the
+// authored 70% left it 15 lines, and 76% keeps 18 or more.
 export const EDITOR_SPLIT: SplitSpec = {
   ids: ["panel-editor", "panel-disasm"],
   defaults: [70, 30],
-  minSizes: ["20%", "15%"],
+  byHeight: { short: [76, 24] },
+  minSizes: [160, 80],
   label: "resize editor and disassembly",
 };
 
+// The registers take the larger share: after one step they must show the
+// write without scrolling at laptop heights, and the tabs below stay tall
+// enough for a readable memory dump and console. With 12px labels in the
+// decode strip, 56% held 14 x registers at 1440x900, under the 16 the panel
+// aims for. In a short window the decode strip and replay bar that a run
+// adds left 62% about six rows mid-run at 1366x657, so the registers take
+// nearly three quarters there. On a 1440px-tall screen the list ended
+// halfway down its pane, so a tall window gives the tabs the more.
+// Under a coarse pointer the tabs wrap to two rows of 44px and the console's
+// rows are touch targets, so 40% left a landscape iPad two console lines;
+// 300px keeps six.
 export const DEBUG_SPLIT: SplitSpec = {
   ids: ["panel-regs", "panel-tabs"],
-  defaults: [45, 55],
-  minSizes: ["20%", "20%"],
+  defaults: [60, 40],
+  byHeight: { short: [73, 27], tall: [44, 56] },
+  minSizes: [160, 140],
+  coarseMinSizes: [160, 300],
   label: "resize registers and tabs",
 };
 
-// The one grip. A bare <Separator /> is a zero-width transparent div, so the
-// seam has to be drawn here: a 6px band in --border that takes the
-// interaction pole (--cyan) on hover, focus and drag, with a centred mark so
-// the band reads as a handle rather than a rule. The three states the library
-// publishes on data-separator cover the cases :hover cannot -- a pointer that
-// has left the element mid-drag is still dragging.
+// A bare <Separator /> is a zero-width transparent div, so the band is drawn
+// here. The library's data-separator states cover what :hover cannot: a
+// pointer that has left the grip mid-drag is still dragging.
 const SEPARATOR_CLASS = [
   // z-10 so the focus ring paints over the neighbouring panes rather than
   // under the edge of whichever one happens to come later in the flow.
@@ -80,6 +103,32 @@ const GRIP_CLASS = [
   "group-data-[separator=focus]/grip:bg-[var(--cyan-dim)]",
 ].join(" ");
 
+// On a touch screen the band keeps its 6px look but takes a finger across
+// 44px: a transparent ::before reaches 19px past each edge, and the group's
+// resizeTargetMinimumSize widens the library's own hit test to match.
+const TOUCH_HIT_X =
+  "[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-y-0 [@media(pointer:coarse)]:before:-inset-x-[19px]";
+const TOUCH_HIT_Y =
+  "[@media(pointer:coarse)]:before:absolute [@media(pointer:coarse)]:before:inset-x-0 [@media(pointer:coarse)]:before:-inset-y-[19px]";
+const HIT_SIZE = { coarse: 44, fine: 10 };
+
+const COARSE_POINTER = "(pointer: coarse)";
+
+function subscribePointer(onChange: () => void): () => void {
+  const query = window.matchMedia(COARSE_POINTER);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+/** Whether the main pointer is a finger; false on the server. */
+function useCoarsePointer(): boolean {
+  return useSyncExternalStore(
+    subscribePointer,
+    () => window.matchMedia(COARSE_POINTER).matches,
+    () => false,
+  );
+}
+
 function toArray(layout: Layout | undefined, ids: string[], fallback: number[]): number[] {
   if (!layout) return fallback;
   return ids.map((id, i) => layout[id] ?? fallback[i] ?? 0);
@@ -97,26 +146,34 @@ export interface PaneSplitProps {
   orientation: "horizontal" | "vertical";
   spec: SplitSpec;
   /** localStorage scope: one entry per breakpoint per group. */
-  storageKey: Breakpoint;
+  storageKey: string;
+  /** A short or tall window keeps a split of its own, opening on the spec's
+   *  split for that height. */
+  height?: ScreenHeight;
   first: ReactNode;
   second: ReactNode;
 }
 
 /**
- * Two panes and the grip between them. Every split in the playground is one
- * of these, so the band, the states, the aria-label, the keyboard resize the
- * library binds to the focused separator, and the double-click reset are
- * written once and worn by all of them.
+ * Two panes and the grip between them. Every split in the playground uses this,
+ * so the grip's look, keyboard resize, and double-click reset live in one place.
  */
 export function PaneSplit({
   orientation,
   spec,
   storageKey,
+  height = "regular",
   first,
   second,
 }: PaneSplitProps) {
-  const { ids, defaults, minSizes, label } = spec;
-  const [sizes, save, , ready] = useLayoutPersistence(storageKey, defaults);
+  const { ids, label } = spec;
+  const coarse = useCoarsePointer();
+  const minSizes = (coarse && spec.coarseMinSizes) || spec.minSizes;
+  const defaults = spec.byHeight?.[height] ?? spec.defaults;
+  const [sizes, save, , ready] = useLayoutPersistence(
+    height === "regular" ? storageKey : `${storageKey}-${height}`,
+    defaults,
+  );
   const groupRef = useGroupRef();
   // The opening split, frozen at mount. A Panel re-registers with the group
   // whenever its `defaultSize` prop changes, and re-registering mid-drag
@@ -132,14 +189,9 @@ export function PaneSplit({
     groupRef.current?.setLayout(toLayout(defaults, ids));
   }, [defaults, groupRef, ids, save]);
 
-  // The stored split arrives one render late: useLayoutPersistence reads
-  // localStorage in an effect, and `defaultLayout` / `defaultSize` are read
-  // only at mount, so without this the group opens on the authored default
-  // and the reader's saved sizes are lost on every reload. It waits on
-  // `ready` so it reconciles against the LOADED sizes, never the fallback.
-  // The equality guard is load-bearing: a drag reports through
-  // onLayoutChange -> save -> new sizes -> this effect, and pushing that same
-  // layout back would loop.
+  // The saved split loads in an effect, after the group has read its default
+  // layout at mount, so it is applied here once `ready`. The drift check stops
+  // a loop: a drag saves new sizes, which run this effect again.
   useEffect(() => {
     if (!ready) return;
     const handle = groupRef.current;
@@ -159,6 +211,7 @@ export function PaneSplit({
       groupRef={groupRef}
       defaultLayout={toLayout(opening, ids)}
       onLayoutChange={(layout) => save(toArray(layout, ids, sizes))}
+      resizeTargetMinimumSize={HIT_SIZE}
       style={{ height: "100%" }}
     >
       <Panel
@@ -171,7 +224,7 @@ export function PaneSplit({
       <Separator
         aria-label={label}
         className={`${SEPARATOR_CLASS} ${
-          horizontal ? "w-1.5 cursor-col-resize" : "h-1.5 cursor-row-resize"
+          horizontal ? `w-1.5 cursor-col-resize ${TOUCH_HIT_X}` : `h-1.5 cursor-row-resize ${TOUCH_HIT_Y}`
         }`}
         disableDoubleClick
         onDoubleClick={reset}
@@ -193,13 +246,12 @@ export function PaneSplit({
 }
 
 /**
- * Laptop-and-up (lg+) layout: an outer horizontal split between the
- * editor column and the debug column. Each column is itself a vertical
- * split. All three grips persist their position per breakpoint so
- * resizing at laptop width doesn't clobber tablet/phone defaults.
+ * Each grip saves its position per breakpoint, and per short or tall window,
+ * so resizing at laptop width leaves the tablet split alone.
  */
 export function ResizableLayout({
   breakpoint,
+  height = "regular",
   editor,
   disassembly,
   registers,
@@ -210,11 +262,13 @@ export function ResizableLayout({
       orientation="horizontal"
       spec={MAIN_SPLIT}
       storageKey={breakpoint}
+      height={height}
       first={
         <PaneSplit
           orientation="vertical"
           spec={EDITOR_SPLIT}
-          storageKey={`${breakpoint}-left` as Breakpoint}
+          storageKey={`${breakpoint}-left`}
+          height={height}
           first={editor}
           second={disassembly}
         />
@@ -223,7 +277,8 @@ export function ResizableLayout({
         <PaneSplit
           orientation="vertical"
           spec={DEBUG_SPLIT}
-          storageKey={`${breakpoint}-right` as Breakpoint}
+          storageKey={`${breakpoint}-right`}
+          height={height}
           first={registers}
           second={rightTabs}
         />

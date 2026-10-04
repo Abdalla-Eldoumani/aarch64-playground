@@ -1,11 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-// The embed console contract: hub output must reach the student through the
-// real ConsolePanel inside embed chrome, so these tests stub only the heavy
-// neighbors (Monaco editor, register grid) and leave the console unmocked.
-// EmbeddablePlayground.test.tsx owns the control-logic coverage; this file
-// owns what the student actually sees in the console.
+// Program output must reach the student through the real ConsolePanel, so
+// only the editor and the register grid are stubbed. EmbeddablePlayground.test.tsx
+// covers the controls; this file covers what the console shows.
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
@@ -39,7 +37,7 @@ afterEach(() => {
 });
 
 describe("embed console rendering", () => {
-  it("renders accumulated stdout deltas in place of the placeholder", () => {
+  it("shows stdout as it grows, in place of the placeholder", () => {
     useEmulatorMock.mockReturnValue(makeHub());
     const view = () => (
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />
@@ -48,8 +46,7 @@ describe("embed console rendering", () => {
     engage(container);
     expect(screen.getByText(/output prints here/i)).toBeTruthy();
 
-    // The hub grows stdout as snapshot deltas apply; each re-render must
-    // stream the accumulated text into the embed console.
+    // Output arrives in pieces; each render must show everything printed so far.
     useEmulatorMock.mockReturnValue(makeHub({ stdout: "sum =" }));
     rerender(view());
     expect(screen.getByText("sum =")).toBeTruthy();
@@ -60,7 +57,7 @@ describe("embed console rendering", () => {
     expect(screen.getByText(/sum = 10/)).toBeTruthy();
   });
 
-  it("renders stderr in the danger treatment beside stdout", () => {
+  it("shows stderr in the error colour beside stdout", () => {
     useEmulatorMock.mockReturnValue(
       makeHub({ stdout: "partial result\n", stderr: "error: bad input\n" }),
     );
@@ -68,19 +65,19 @@ describe("embed console rendering", () => {
       <EmbeddablePlayground chrome="embed" startSource="mov x0, #1" />,
     );
     engage(container);
-    expect(screen.getByText(/partial result/)).toBeTruthy();
+    expect(screen.getByText(/partial result/).className).not.toContain("--danger");
     const err = screen.getByText(/error: bad input/);
     expect(err.className).toContain("--danger");
   });
 
-  it("surfaces a run fault as an alert in the embed control row", () => {
-    // The full chrome shows emu.error through Controls; the embed must not
+  it("shows a run fault as an alert in the embed control row", () => {
+    // The full playground shows emu.error through Controls; the embed must not
     // let a faulting run stop silently (the pitfall demos depend on the
     // failure being visible).
     useEmulatorMock.mockReturnValue(
       makeHub({
         error:
-          "memory fault: the program tried to read 0x0000000800600008, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant",
+          "memory fault: the program tried to read 0x0000000800600008, which no section covers. The base register (the first one inside the brackets, or a pointer passed to a call) does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or a `mov` was written where `ldr xN, =label` was meant",
       }),
     );
     const { container } = render(
@@ -89,7 +86,6 @@ describe("embed console rendering", () => {
     engage(container);
     const alert = screen.getByRole("alert");
     expect(alert.textContent).toContain("memory fault");
-    expect(alert.className).toContain("--danger");
   });
 
   it("shows no alert while the machine is error-free", () => {

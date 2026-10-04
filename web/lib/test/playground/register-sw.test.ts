@@ -32,12 +32,12 @@ function setSecureContext(secure: boolean): void {
 }
 
 describe("registerServiceWorker", () => {
-  test("no-ops when serviceWorker isn't on navigator", () => {
+  test("does nothing when navigator has no serviceWorker", () => {
     setNavigator({});
     expect(() => registerServiceWorker()).not.toThrow();
   });
 
-  test("no-ops over plain http on a non-localhost host", () => {
+  test("does nothing over plain http on a host other than localhost", () => {
     const register = vi.fn();
     setNavigator({ serviceWorker: { register } });
     setSecureContext(false);
@@ -63,7 +63,7 @@ describe("registerServiceWorker", () => {
       configurable: true,
     });
     registerServiceWorker();
-    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/" });
+    expect(register).toHaveBeenCalledWith("/sw.js", { scope: "/", updateViaCache: "none" });
   });
 
   test("swallows registration rejections silently", async () => {
@@ -74,7 +74,17 @@ describe("registerServiceWorker", () => {
       value: "complete",
       configurable: true,
     });
-    expect(() => registerServiceWorker()).not.toThrow();
-    await Promise.resolve();
+    // The rejection lands after registerServiceWorker returns, so what counts
+    // is that nothing reaches the process as an unhandled rejection.
+    const unhandled = vi.fn();
+    process.on("unhandledRejection", unhandled);
+    try {
+      registerServiceWorker();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(register).toHaveBeenCalledTimes(1);
+      expect(unhandled).not.toHaveBeenCalled();
+    } finally {
+      process.off("unhandledRejection", unhandled);
+    }
   });
 });

@@ -8,7 +8,7 @@ import type { LessonBlock } from "@/lib/content/lesson-schema";
 afterEach(() => cleanup());
 
 describe("LessonMarkdown", () => {
-  it("gives an h2 a slugified id matching the toc", () => {
+  it("gives an h2 a slugified id matching the table of contents", () => {
     const { container } = render(<LessonMarkdown markdown="## Moving Values" />);
     const h2 = container.querySelector("h2");
     expect(h2).not.toBeNull();
@@ -36,7 +36,7 @@ describe("LessonMarkdown", () => {
     }
   });
 
-  it("makes a known instruction a focusable hover-define carrying its summary", () => {
+  it("makes a known instruction a focusable hover definition carrying its summary", () => {
     const { container } = render(
       <LessonMarkdown markdown="use the `mov` instruction" />,
     );
@@ -49,7 +49,32 @@ describe("LessonMarkdown", () => {
     expect(label + title).toContain(expected);
   });
 
-  it("renders an unknown token as plain code with no hover affordance", () => {
+  it("renders a summary's code as code in the card, and drops its backticks from the label", () => {
+    const { container } = render(<LessonMarkdown markdown="then `neg` it" />);
+    const card = container.querySelector('[role="tooltip"]');
+    expect(card?.querySelector("code")?.textContent).toBe("SUB Rd, ZR, Rn");
+    expect(card?.textContent).not.toContain("`");
+    const note = container.querySelector('[role="note"]');
+    expect(note?.getAttribute("aria-label")).toBe("Rd = -Rn (alias for SUB Rd, ZR, Rn).");
+    expect(note?.getAttribute("title")).toBe("Rd = -Rn (alias for SUB Rd, ZR, Rn).");
+  });
+
+  it("renders an inline excerpt as a phrase: code without a hover note, a link as its text", () => {
+    const { container } = render(
+      <LessonMarkdown inline markdown="Read `mov` with **care** and [print](/learn) it" />,
+    );
+    const root = container.firstElementChild;
+    expect(root?.tagName).toBe("SPAN");
+    expect(root?.querySelector("p, div")).toBeNull();
+    expect(root?.querySelector("code")?.textContent).toBe("mov");
+    expect(root?.querySelector("strong")?.textContent).toBe("care");
+    // Inside a practice row's link a focusable note or a second link would be
+    // a control nested in a control.
+    expect(root?.querySelector("[tabindex], [role='note'], a")).toBeNull();
+    expect(root?.textContent).toBe("Read mov with care and print it");
+  });
+
+  it("renders an unknown token as plain code with no hover definition", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `zzz` token is plain" />,
     );
@@ -58,19 +83,56 @@ describe("LessonMarkdown", () => {
     expect(code?.textContent).toBe("zzz");
   });
 
-  it("renders an unlabeled multi-line fenced block as block code, not an inline hover-define", () => {
+  it("renders an unlabeled multi-line fenced block as block code, not an inline hover definition", () => {
     const markdown = ["```", "mov x0, 1", "add x1, x1, 2", "```"].join("\n");
     const { container } = render(<LessonMarkdown markdown={markdown} />);
     // The fence lands in a <pre>, and its <code> takes the plain block style,
     // not the inline-code chrome.
     expect(container.querySelector("pre")).not.toBeNull();
     expect(container.querySelector("pre code")?.className).toBe("font-mono");
-    // No hover-define affordance is attached anywhere inside the fence.
+    // A code listing is not a word to define, so nothing inside it hovers.
     expect(container.querySelector('[tabindex="0"]')).toBeNull();
     expect(container.querySelector('[role="note"]')).toBeNull();
   });
 
-  it("makes a register a focusable hover-define with a non-empty role", () => {
+  // A phone shows no scrollbar until a swipe, so a fence cut at the right
+  // edge needs the same cue a CodeBlock gives.
+  it("fades a fenced block's right edge only while a line runs past it", () => {
+    const markdown = ["```", "mov x0, 1 // a comment long enough to run past a phone", "```"].join("\n");
+    const widths = (scroll: number, client: number) => {
+      Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => scroll });
+      Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => client });
+    };
+    const fade = (root: HTMLElement) =>
+      root.querySelector("pre")?.parentElement?.querySelector('[aria-hidden="true"].bg-gradient-to-l');
+    try {
+      widths(600, 300);
+      const wide = render(<LessonMarkdown markdown={markdown} />);
+      expect(fade(wide.container)).toBeTruthy();
+      wide.unmount();
+      widths(300, 300);
+      const fits = render(<LessonMarkdown markdown={markdown} />);
+      expect(fade(fits.container)).toBeNull();
+    } finally {
+      // The prototype getters are jsdom's zeros; drop the overrides.
+      delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+  });
+
+  // Tailwind reads a shadow utility over var(--ring) as a shadow colour and
+  // paints no ring, so the ring has to be set as the box-shadow itself.
+  it("rings a link and a hover definition on keyboard focus", () => {
+    const { container } = render(
+      <LessonMarkdown markdown="see [the stack](/learn/stack) and the `mov` instruction" />,
+    );
+    const controls = [container.querySelector("a"), container.querySelector('[role="note"]')];
+    for (const control of controls) {
+      expect(control?.className).toContain("focus-visible:[box-shadow:var(--ring)]");
+    }
+  });
+
+  it("makes a register a focusable hover definition that names its role", () => {
     const { container } = render(
       <LessonMarkdown markdown="the `x0` register holds an argument" />,
     );
@@ -82,7 +144,7 @@ describe("LessonMarkdown", () => {
     expect((label + title).length).toBeGreaterThan(0);
   });
 
-  it("keeps a formatted heading's id equal to the toc's id", () => {
+  it("keeps a formatted heading's id equal to its table of contents id", () => {
     const markdown = "## the `mov` instruction";
     const { container } = render(<LessonMarkdown markdown={markdown} />);
     const h2 = container.querySelector("h2");
@@ -90,5 +152,22 @@ describe("LessonMarkdown", () => {
     const block: LessonBlock = { type: "prose", markdown };
     const tocId = extractToc({ body: [block] })[0].id;
     expect(h2?.id).toBe(tocId);
+  });
+
+  it("renders a markdown table inside a sideways scroller", () => {
+    const markdown = [
+      "| Specifier | Bytes |",
+      "| --- | ---: |",
+      "| `%d` | 4 |",
+    ].join("\n");
+    const { container } = render(<LessonMarkdown markdown={markdown} />);
+    const table = container.querySelector("table");
+    // A wide table scrolls inside its box instead of widening a phone's page.
+    expect(table?.parentElement?.className).toContain("overflow-x-auto");
+    expect(container.querySelector("th")?.textContent).toBe("Specifier");
+    const td = container.querySelectorAll("td");
+    // The column's right alignment survives sanitizing.
+    expect(td[1]?.style.textAlign).toBe("right");
+    expect(td[1]?.textContent).toBe("4");
   });
 });

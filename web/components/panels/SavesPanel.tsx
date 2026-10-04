@@ -54,7 +54,7 @@ export function SavesPanel({
 
   return (
     <div className="p-3 text-xs flex flex-col h-full overflow-auto">
-      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
+      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px] mb-2">
         save states (this session)
       </h2>
       <form
@@ -72,19 +72,19 @@ export function SavesPanel({
           value={saveName}
           onChange={(e) => setSaveName(e.target.value)}
           placeholder="checkpoint name"
-          className="flex-1 bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)]"
+          className="touch-target flex-1 bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-0.5 text-[12px] text-[var(--text-primary)]"
           aria-label="save state name"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)]"
+          className="touch-target px-2 py-0.5 text-[12px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)]"
         >
           save
         </button>
       </form>
       <ul className="space-y-1 mb-4">
         {savedStates.length === 0 && (
-          <li className="text-[10px] text-[var(--text-secondary)]">
+          <li className="text-[12px] text-[var(--text-secondary)]">
             no saved states yet.
           </li>
         )}
@@ -98,14 +98,14 @@ export function SavesPanel({
               <button
                 type="button"
                 onClick={() => onLoadState(name)}
-                className="text-[10px] text-[var(--cyan)] hover:underline"
+                className="touch-target text-[12px] text-[var(--cyan)] hover:underline"
               >
                 load
               </button>
               <button
                 type="button"
                 onClick={() => onDeleteState(name)}
-                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
+                className="touch-target text-[12px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
               >
                 delete
               </button>
@@ -115,7 +115,7 @@ export function SavesPanel({
       </ul>
 
       <div className="flex items-center justify-between mb-2">
-        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px]">
+        <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px]">
           bookmarks (persistent)
         </h2>
         <div className="flex items-center gap-2">
@@ -130,14 +130,14 @@ export function SavesPanel({
                 toast.error("clipboard write failed");
               }
             }}
-            className="text-[10px] text-[var(--cyan)] hover:underline"
+            className="touch-target text-[12px] text-[var(--cyan)] hover:underline"
           >
             export json
           </button>
           <button
             type="button"
             onClick={() => bookmarkImportRef.current?.click()}
-            className="text-[10px] text-[var(--cyan)] hover:underline"
+            className="touch-target text-[12px] text-[var(--cyan)] hover:underline"
           >
             import json
           </button>
@@ -170,7 +170,7 @@ export function SavesPanel({
             } else if (result.added === 0 && result.skipped > 0) {
               toast.error(`no bookmarks imported: all ${result.skipped} entries were invalid or already saved`);
             } else {
-              toast.show(`imported ${result.added} added, ${result.skipped} skipped`);
+              toast.show(`imported ${result.added}, skipped ${result.skipped}`);
             }
           } catch {
             toast.error("invalid bookmark bundle");
@@ -207,19 +207,19 @@ export function SavesPanel({
           value={bookmarkName}
           onChange={(e) => setBookmarkName(e.target.value)}
           placeholder="bookmark name"
-          className="flex-1 bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-0.5 text-[11px] text-[var(--text-primary)]"
+          className="touch-target flex-1 bg-[var(--bg-sunken)] border border-[var(--border)] rounded px-2 py-0.5 text-[12px] text-[var(--text-primary)]"
           aria-label="bookmark name"
         />
         <button
           type="submit"
-          className="px-2 py-0.5 text-[11px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)]"
+          className="touch-target px-2 py-0.5 text-[12px] rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)]"
         >
           bookmark
         </button>
       </form>
       <ul className="space-y-1">
         {namedSaves.saves.length === 0 && (
-          <li className="text-[10px] text-[var(--text-secondary)]">
+          <li className="text-[12px] text-[var(--text-secondary)]">
             no bookmarks yet.
           </li>
         )}
@@ -246,11 +246,6 @@ export function SavesPanel({
                     args: s.args,
                     stdin: s.stdin,
                   });
-                  // Drive the backend through assemble + stdin push +
-                  // step-to-count so the live CPU lands at the same
-                  // execution point the bookmark captured. Toast
-                  // surfaces the result so the student sees what
-                  // happened.
                   try {
                     const verdict = await onRestoreBookmark({
                       source: s.source,
@@ -271,14 +266,14 @@ export function SavesPanel({
                     toast.error(`restore failed for ${s.name}`);
                   }
                 }}
-                className="text-[10px] text-[var(--cyan)] hover:underline"
+                className="touch-target text-[12px] text-[var(--cyan)] hover:underline"
               >
                 load
               </button>
               <button
                 type="button"
                 onClick={() => namedSaves.remove(s.name)}
-                className="text-[10px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
+                className="touch-target text-[12px] text-[var(--text-secondary)] hover:text-[var(--danger)]"
               >
                 delete
               </button>

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import nextConfig, { SECURITY_HEADERS } from "./next.config.mjs";
 
 // vercel.json and next.config.mjs each promise the security headers on their
@@ -44,5 +44,19 @@ describe("security header lockstep", () => {
     expect(csp).not.toMatch(/(?<!wasm-)'unsafe-eval'/);
     expect(csp).not.toContain("cdn.jsdelivr.net");
     expect(csp).toContain("'wasm-unsafe-eval'");
+  });
+});
+
+describe("build id", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("takes the id the deploy script pins, so its two builds share one", async () => {
+    vi.stubEnv("PLAYGROUND_BUILD_ID", "pinned-id");
+    expect(await nextConfig.generateBuildId!()).toBe("pinned-id");
+  });
+
+  it("leaves Next to choose an id for an ordinary build", async () => {
+    vi.stubEnv("PLAYGROUND_BUILD_ID", "");
+    expect(await nextConfig.generateBuildId!()).toBeNull();
   });
 });

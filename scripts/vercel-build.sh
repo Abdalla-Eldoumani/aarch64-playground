@@ -56,5 +56,15 @@ cd "$repo_root/web"
 # Use the project's canonical build command (next build --webpack). The
 # next.config webpack() hook (e.g. the `?raw` source-import rule) only
 # applies under webpack, so the deploy must match local/CI, not the
-# default bundler.
+# default bundler. The same script then writes public/sw.js, the service
+# worker with this build's file list.
+#
+# Vercel's adapter collects public/ during next build, so a worker written
+# after it never ships. A second build with the same build id ships it, and
+# --check fails the deploy if the second build's files differ from the list.
+# Redraw an id containing "ad", as Next does for its own: ad blockers match it.
+PLAYGROUND_BUILD_ID="$(node -e "const c=require('node:crypto');let id;do id=c.randomBytes(12).toString('base64url');while(/ad/i.test(id));console.log(id)")"
+export PLAYGROUND_BUILD_ID
 npm run build
+npx next build --webpack
+node ../scripts/write-precache-list.js --check

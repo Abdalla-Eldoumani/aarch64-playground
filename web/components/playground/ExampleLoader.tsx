@@ -8,6 +8,9 @@ interface ExampleLoaderProps {
   /** Receives the complete program payload: source plus any args, stdin,
    *  and VFS fixture files the example declares. */
   onLoad: (payload: HandoffPayload) => void;
+  /** Take the row's free width and truncate the label within it, for the
+   *  phone bar where the picker shares a 320px row with two buttons. */
+  fill?: boolean;
 }
 
 interface Example {
@@ -21,18 +24,16 @@ interface ExampleGroup {
 }
 
 /**
- * Examples presented as a level-up path, in the order the concepts
- * build: first programs, data and memory, stack and locals, records
- * and arrays, subroutines, static data and arguments, floating point,
- * files and I/O, a vector-register stage the course does not teach,
- * then a miscellaneous stage for playable extras. Each stage carries at
- * least one program; the labels are the stage names, with no
- * course-week text.
+ * The examples in the order the ideas build on each other. Labels name the
+ * stage, never a course week.
  */
 const GROUPS: ExampleGroup[] = [
   {
     label: "First programs",
-    items: [{ name: "arithmetic", stem: "basics" }],
+    items: [
+      { name: "arithmetic", stem: "basics" },
+      { name: "distance from zero", stem: "distance" },
+    ],
   },
   {
     label: "Data and memory",
@@ -104,7 +105,7 @@ const GROUPS: ExampleGroup[] = [
   },
 ];
 
-export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
+export function ExampleLoader({ onLoad, fill = false }: ExampleLoaderProps) {
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const handleSelect = useCallback(
@@ -131,9 +132,12 @@ export function ExampleLoader({ onLoad }: ExampleLoaderProps) {
   );
 
   return (
-    <div className="flex items-center gap-2">
+    <div className={fill ? "flex min-w-0 flex-1 items-center gap-2" : "flex items-center gap-2"}>
+      {/* The phone bar leaves a 320px screen 84px for the label, which cut
+          "load example..." short; the accessible name says the rest. */}
       <Select
-        placeholder="load example..."
+        className={fill ? "min-w-0 flex-1" : ""}
+        placeholder={fill ? "examples" : "load example..."}
         ariaLabel="load an example program"
         onSelect={(stem) => void handleSelect(stem)}
         groups={GROUPS.map((group) => ({

@@ -1,18 +1,20 @@
 {
   "title": "Fix the loop bound",
   "slug": "fix-the-loop-bound",
-  "order": 4,
+  "order": 18,
+  "lastUpdated": "2026-09-30",
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "This program should compute `n` factorial, the product `1 * 2 * ... * n`, and print it. With `n` set to 5 it runs and prints a number, but the number is wrong: the loop stops one step too early, so the last value never makes it into the product.\n\nFind the loop's exit condition and correct the bound so every value from 1 through `n` is included. Leave the rest of the program as it is, and let the loop do the work rather than writing the result in directly.\n\n## what is checked\n\n- the corrected product is printed on its own line\n- the program exits cleanly\n- the product is still computed by the loop, not written in as a constant",
-  "starter": "// compute n factorial and print the result\ndefine(acc_r, x19)\ndefine(i_r, x20)\ndefine(n_r, x21)\n\n        .data\nfmt:    .string \"result = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     n_r, 5\n        mov     acc_r, 1                    // running product\n        mov     i_r, 1                      // loop counter\nloop:\n        cmp     i_r, n_r\n        b.ge    done\n        mul     acc_r, acc_r, i_r\n        add     i_r, i_r, 1\n        b       loop\ndone:\n        ldr     x0, =fmt\n        mov     x1, acc_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
+  "prompt": "This program should compute `n` factorial, the product `1 * 2 * ... * n`, for the `n` it reads, and print it. With `n` set to 5 it runs and prints a number, but the number is wrong: the loop stops one step too early, so the last value never makes it into the product.\n\nFind the loop's exit condition and correct the bound so every value from 1 through `n` is included. Leave the rest of the program as it is, and let the loop do the work rather than writing the result in directly.\n\n## What is checked\n\n- the corrected product is printed on its own line\n- the program exits cleanly\n- the product is still computed by the loop, not written in as a constant\n- the same holds for other values of `n` you do not see, 0 among them (`0!` is 1)",
+  "starter": "// compute n factorial and print the result\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(acc_r, x19)\ndefine(i_r, x20)\ndefine(n_r, x21)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_out:    .string \"%lld! = %lld\\n\"\n\n        .bss\n        .balign 8\nn_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read n\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n\n        mov     acc_r, 1                    // running product\n        mov     i_r, 1                      // loop counter\nloop:\n        cmp     i_r, n_r\n        b.ge    done\n        mul     acc_r, acc_r, i_r\n        add     i_r, i_r, 1\n        b       loop\ndone:\n        ldr     x0, =fmt_out\n        mov     x1, n_r\n        mov     x2, acc_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "5\n",
   "variant": "identify-bug",
   "acceptance": {
     "results": [
       {
         "kind": "stdout",
-        "equals": "result = 120\n"
+        "equals": "5! = 120\n"
       },
       {
         "kind": "exit",
@@ -25,5 +27,29 @@
         "value": 120
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "0! = 1\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "1! = 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "6\n",
+      "stdout": "6! = 720\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "20\n",
+      "stdout": "20! = 2432902008176640000\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
 }

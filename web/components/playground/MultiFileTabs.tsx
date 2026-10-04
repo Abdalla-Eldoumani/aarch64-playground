@@ -9,7 +9,7 @@ import { combineSources, type SourceFile } from "@/lib/playground/file-map";
 export { combineSources, type SourceFile };
 
 export interface MultiFileTabsProps {
-  /** Current active file index in the auxiliary list (main.asm is implicit). */
+  /** The helper files; main.asm is not in this list, and index -1 selects it. */
   files: SourceFile[];
   activeIndex: number;
   onSelect: (idx: number) => void;
@@ -22,10 +22,8 @@ export interface MultiFileTabsProps {
 }
 
 /**
- * Tab strip for multi-file assembly. The main editor holds `main.asm`; this
- * strip manages any number of extra source files the linker will concatenate
- * with main before assembling. The tutorials that split `bl` callers and
- * callees across files need it.
+ * Tab strip for the helper files joined onto main.asm before assembling, for
+ * the tutorials that split `bl` callers and callees across files.
  */
 export function MultiFileTabs({
   files,
@@ -39,6 +37,7 @@ export function MultiFileTabs({
 }: MultiFileTabsProps) {
   const [pending, setPending] = useState("");
   const tabRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   function promptRename(idx: number, current: string) {
     const next = window.prompt("rename file", current);
@@ -69,7 +68,8 @@ export function MultiFileTabs({
     <div
       role="group"
       aria-label="source files"
-      className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]"
+      data-walkthrough="files"
+      className="flex flex-wrap items-center gap-1 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[12px]"
     >
       <span className="text-[var(--text-secondary)] mr-1">files:</span>
       <button
@@ -81,7 +81,7 @@ export function MultiFileTabs({
         }}
         onClick={() => onSelect(-1)}
         onKeyDown={(e) => onTabKeyDown(e, -1)}
-        className={`px-2 py-0.5 rounded ${
+        className={`touch-target px-2 py-0.5 rounded ${
           activeIndex === -1
             ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -115,7 +115,7 @@ export function MultiFileTabs({
               }
               onTabKeyDown(e, i);
             }}
-            className="px-2 py-0.5"
+            className="touch-target px-2 py-0.5"
           >
             {f.name}
           </button>
@@ -123,7 +123,7 @@ export function MultiFileTabs({
             type="button"
             onClick={() => onRemove(i)}
             aria-label={`remove ${f.name}`}
-            className="inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--danger)]"
+            className="touch-target inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--danger)]"
           >
             x
           </button>
@@ -135,21 +135,31 @@ export function MultiFileTabs({
           if (pending.trim()) {
             onAdd(pending.trim());
             setPending("");
+          } else {
+            // "+" with no name did nothing at all; send the student to the
+            // box the name goes in.
+            nameInputRef.current?.focus();
           }
         }}
         className="inline-flex items-center gap-1 ml-1"
       >
         <input
+          ref={nameInputRef}
           type="text"
           value={pending}
           onChange={(e) => setPending(e.target.value)}
-          placeholder="new.asm"
+          // A file-like placeholder ("new.asm") read as a second tab. Short
+          // enough to fit the box whole.
+          placeholder="file name"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           aria-label="new file name"
-          className="w-20 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[11px] text-[var(--text-primary)]"
+          className="touch-target w-20 [@media(pointer:coarse)]:w-28 bg-[var(--bg-raised)] border border-[var(--border)] rounded px-1 py-0.5 text-[12px] text-[var(--text-primary)]"
         />
         <button
           type="submit"
-          className="inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--cyan)]"
+          className="touch-target inline-flex items-center justify-center min-w-[24px] min-h-[24px] px-1 text-[var(--text-secondary)] hover:text-[var(--cyan)]"
           aria-label="add file"
         >
           +
@@ -159,9 +169,10 @@ export function MultiFileTabs({
         <button
           type="button"
           onClick={onRestoreBackup}
-          className="ml-1 rounded px-2 py-0.5 text-[var(--cyan)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+          className="touch-target ml-1 rounded px-2 py-0.5 text-[var(--cyan)] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         >
-          restore {backupCount} replaced file{backupCount === 1 ? "" : "s"}
+          {/* Removed or replaced by a program load: the word covers both. */}
+          restore {backupCount} file{backupCount === 1 ? "" : "s"}
         </button>
       )}
     </div>

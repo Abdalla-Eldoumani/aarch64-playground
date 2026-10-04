@@ -1,17 +1,15 @@
-//! Hosted-runtime dispatch: libc stubs, syscalls, and the virtual FS that
-//! turn the bare-metal interpreter into a "plausibly Linux" environment
-//! for cpsc 355 programs. Organized so the assembler/linker can ask
-//! "what address should a `bl printf` resolve to?" and the executor can
-//! ask "was this BL to a host address? if so, run the stub".
+//! The C library calls, Linux syscalls and in-memory files a CPSC 355
+//! program uses, run by the emulator itself. The linker asks "what address
+//! does `bl printf` go to?" and the executor asks "did this BL land on one
+//! of those addresses? then run that function".
 //!
-//! Stub entries live at synthetic addresses starting at
-//! `cpu::HOST_STUB_BASE` (`0xFFFF_0000`), 16 bytes apart. The address
-//! range never overlaps .text/.data/.bss/.rodata or the stack, so there's
-//! no way for a well-formed program to collide with it accidentally.
+//! Those addresses start at `cpu::HOST_STUB_BASE` (`0xFFFF_0000`), 16 bytes
+//! apart, a range that never overlaps .text/.data/.bss/.rodata or the stack.
 
 use crate::cpu::{HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE};
 use crate::errors::EmuError;
 
+pub mod callback;
 pub mod ctype;
 pub mod heap;
 pub mod libc;
@@ -43,6 +41,9 @@ pub enum HostOutcome {
     Sleep(u64),
     /// Program asked to exit.
     Exited(i64),
+    /// Run a function of the program (a qsort comparator): the stub has
+    /// set its arguments and the link register, and the CPU goes there.
+    Call(u64),
 }
 
 /// The exit status C hands around: `exit(int)`, `return` from `int main`,
@@ -52,6 +53,16 @@ pub enum HostOutcome {
 pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
     regs.read_gpr(0, false) as i32 as i64
 }
+
+/// The stubs whose result comes back in d0. Every stub on neither list
+/// answers an int, a size, or a pointer in x0: the one caller-saved
+/// register a call's return leaves meaningful.
+pub const RETURNS_IN_D0: &[&str] = &[
+    "atof", "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor", "fabs", "fmod",
+];
+
+/// The stubs that return nothing (C's `void`).
+pub const RETURNS_NOTHING: &[&str] = &["srand", "free", "qsort", "sincos"];
 
 /// Context passed to each host stub. Split out so stubs can borrow what
 /// they need without holding a `&mut Cpu` (which would conflict with the
@@ -85,6 +96,9 @@ pub struct HostContext<'a> {
     /// stepping back into the middle of a tokenizing loop resumes at the
     /// token it was really on. Zero is glibc's NULL start.
     pub strtok_save: &'a mut u64,
+    /// qsort and bsearch calls waiting on a comparator. On the `Cpu` and
+    /// in every snapshot, like `strtok_save`.
+    pub callbacks: &'a mut crate::hosted::callback::CallbackState,
 }
 
 /// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
@@ -232,6 +246,7 @@ mod tests {
         term: &'a mut crate::cpu::TermState,
         heap: &'a mut crate::hosted::heap::HeapState,
         strtok_save: &'a mut u64,
+        callbacks: &'a mut crate::hosted::callback::CallbackState,
     ) -> HostContext<'a> {
         HostContext {
             regs,
@@ -247,6 +262,7 @@ mod tests {
             term,
             heap,
             strtok_save,
+            callbacks,
         }
     }
 
@@ -294,9 +310,10 @@ mod tests {
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         let mut strtok_save = 0u64;
+        let mut callbacks = crate::hosted::callback::CallbackState::default();
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state, &mut term, &mut heap, &mut strtok_save,
+            &mut rand_state, &mut term, &mut heap, &mut strtok_save, &mut callbacks,
         );
         let outcome = t.dispatch(addr, &mut ctx).unwrap().unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
@@ -318,9 +335,10 @@ mod tests {
         let mut term = crate::cpu::TermState::default();
         let mut heap = crate::hosted::heap::HeapState::default();
         let mut strtok_save = 0u64;
+        let mut callbacks = crate::hosted::callback::CallbackState::default();
         let mut ctx = fresh_ctx(
             &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state, &mut term, &mut heap, &mut strtok_save,
+            &mut rand_state, &mut term, &mut heap, &mut strtok_save, &mut callbacks,
         );
         // Address past the end of the table.
         assert!(t

@@ -1,11 +1,7 @@
-// pins the wasm wrapper's defensive seam with a FAKE module in place of the
-// build: 64-bit values arrive as BigInt and leave as padded hex strings or
-// plain numbers, a step result's absent fields normalize to null/"advance"
-// (exit code 0 stays 0, it is not "no exit code"), and every optional export
-// is feature-detected: a wasm build without it degrades to an empty
-// array/null/true instead of throwing. lib/test/emulator/wasm-contract.test.ts
-// pins the real build's own behavior; this suite pins only the marshalling and
-// the absence paths, which a shipped build cannot exercise.
+// A fake wasm module stands in for the build so this suite can pin the
+// wrapper's value conversions plus the cases a shipped build never produces:
+// an older build missing an optional export, a result with fields left off.
+// wasm-contract.test.ts covers the real build.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EmulatorInstance } from "@/lib/emulator/emulator";
 

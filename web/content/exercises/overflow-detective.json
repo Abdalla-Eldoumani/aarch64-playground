@@ -1,0 +1,65 @@
+{
+  "title": "The overflow detective",
+  "slug": "overflow-detective",
+  "order": 2,
+  "lastUpdated": "2026-09-30",
+  "topic": "binary-arithmetic",
+  "difficulty": "core",
+  "prompt": "A 32-bit add can go wrong in two different ways, and the flags record both:\n\n- V (overflow) is set when the answer does not fit as a signed number: two positives giving a negative, or two negatives giving a positive.\n- C (carry) is set when the answer does not fit as an unsigned number: a 1 carried out of bit 31.\n\nThe starter reads two integers into `left_r` and `right_r` and prints the report. Add them into `sum_r` with `adds`, which sets the flags (a plain `add` does not). Then point `ovf_r` at `str_yes` when V is set, and `carry_r` at `str_yes` when C is set. The conditions `vs` and `vc` test V; `cs` and `cc` test C. Keep the add in `w` registers: the same numbers added in `x` registers would never overflow.\n\nWith the sample input `2147483647 1` the program prints `2147483647 + 1 = -2147483648 (overflow: yes, carry: no)`.\n\n## What is checked\n\n- the report for the sample input\n- the program exits cleanly\n- the sum comes from `adds`\n- the right report for other pairs, including 0 + 0, two negatives, and a pair that sets both flags",
+  "starter": "// add two 32-bit integers and report signed overflow and unsigned carry\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(left_r, w19)\ndefine(right_r, w20)\ndefine(sum_r, w21)\ndefine(ovf_r, x22)\ndefine(carry_r, x23)\n\n.data\nfmt_pair:   .string \"%d %d\"\nfmt_out:    .string \"%d + %d = %d (overflow: %s, carry: %s)\\n\"\nstr_yes:    .string \"yes\"\nstr_no:     .string \"no\"\n\n.bss\n.balign 4\nleft_m:     .skip 4\nright_m:    .skip 4\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_pair               // read the two numbers\n        ldr     x1, =left_m\n        ldr     x2, =right_m\n        bl      scanf\n        ldr     x9, =left_m\n        ldr     left_r, [x9]\n        ldr     x9, =right_m\n        ldr     right_r, [x9]\n\n        mov     sum_r, 0                    // replace these placeholders\n        ldr     ovf_r, =str_no\n        ldr     carry_r, =str_no\n\n        // TODO: add left_r and right_r into sum_r with an instruction\n        // that sets the flags. Then point ovf_r at str_yes when the sum\n        // overflowed as a signed number, and carry_r at str_yes when the\n        // add carried out of bit 31.\n\n        ldr     x0, =fmt_out\n        mov     w1, left_r\n        mov     w2, right_r\n        mov     w3, sum_r\n        mov     x4, ovf_r\n        mov     x5, carry_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "2147483647 1\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "2147483647 + 1 = -2147483648 (overflow: yes, carry: no)\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "adds"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0 0\n",
+      "stdout": "0 + 0 = 0 (overflow: no, carry: no)\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-1 1\n",
+      "stdout": "-1 + 1 = 0 (overflow: no, carry: yes)\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-2147483648 -1\n",
+      "stdout": "-2147483648 + -1 = 2147483647 (overflow: yes, carry: yes)\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "100 -30\n",
+      "stdout": "100 + -30 = 70 (overflow: no, carry: yes)\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-5 -7\n",
+      "stdout": "-5 + -7 = -12 (overflow: no, carry: yes)\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1073741824 1073741824\n",
+      "stdout": "1073741824 + 1073741824 = -2147483648 (overflow: yes, carry: no)\n",
+      "exitCode": 0
+    }
+  ]
+}

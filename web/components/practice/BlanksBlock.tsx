@@ -1,17 +1,18 @@
 "use client";
 
 /**
- * One fill-in-the-blank question: the code renders around a native input
- * embedded at the `___` marker (the schema guarantees exactly one), and the
- * attempt passes when the trimmed, case-folded input matches any accepted
- * string. Before a wrong answer is corrected the block shows only the
- * author's hint, never the explanation or the accepted answers. `onAttempt`
- * reports each submission upward for the exercise-level solved state.
+ * One fill-in-the-blank question, with the input at the `___` marker (the
+ * schema guarantees exactly one). A wrong answer shows only the author's
+ * hint, never the explanation or the accepted answers.
  */
 
 import { useId, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { FeedbackAlert } from "@/components/practice/FeedbackAlert";
+import { typedAnswerIsRight } from "@/lib/content/theory-answers";
+
+/** The empty blank's width in characters: room for a mnemonic like `ldrsw`. */
+const BLANK_MIN_CH = 8;
 
 export function BlanksBlock({
   prompt,
@@ -21,6 +22,7 @@ export function BlanksBlock({
   hint,
   value,
   onValueChange,
+  locked,
   onAttempt,
 }: {
   prompt: string;
@@ -36,6 +38,9 @@ export function BlanksBlock({
   value?: string;
   /** Fires on every keystroke so the sheet can persist it. */
   onValueChange?: (value: string) => void;
+  /** Opens answered when the sheet restored this question as already
+   *  checked and right; honoured only while the restored answer still is. */
+  locked?: boolean;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
@@ -51,11 +56,10 @@ export function BlanksBlock({
   };
 
   const parts = code.split("___");
-  const isCorrect = blanks.some(
-    (accepted) => accepted.trim().toLowerCase() === inputVal.trim().toLowerCase(),
-  );
+  const isCorrect = typedAnswerIsRight(blanks, inputVal);
+  const answered = submitted || (locked === true && isCorrect);
 
-  const inputTone = submitted
+  const inputTone = answered
     ? isCorrect
       ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] text-[var(--success)]"
       : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] text-[var(--danger)]"
@@ -64,7 +68,7 @@ export function BlanksBlock({
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Fill in the Blank
+        Fill in the blank
       </h3>
       <label
         htmlFor={inputId}
@@ -80,14 +84,23 @@ export function BlanksBlock({
           type="text"
           value={inputVal}
           onChange={(event) => setInputVal(event.target.value)}
-          disabled={submitted}
-          className={`inline-block w-20 border-b-2 px-1 py-0.5 text-center font-mono text-[14px] font-bold outline-none transition-colors ${inputTone}`}
+          disabled={answered}
+          // Mnemonics are not words: a phone must not capitalise, correct,
+          // or underline them.
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          // Grows with what is typed, so a two-word answer is never clipped,
+          // and never with the answer's own length, which would be a hint.
+          style={{ width: `${Math.max(BLANK_MIN_CH, inputVal.length + 2)}ch` }}
+          className={`touch-target inline-block max-w-full border-b-2 px-1 py-0.5 text-center font-mono text-[14px] font-bold outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${inputTone}`}
         />
         {parts[1]}
       </div>
 
       <div className="flex flex-col items-start gap-4">
-        {!submitted ? (
+        {!answered ? (
           <Button
             disabled={inputVal.trim() === ""}
             onClick={() => {

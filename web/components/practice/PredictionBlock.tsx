@@ -1,17 +1,16 @@
 "use client";
 
 /**
- * One mental-trace question: a code snippet, a question about the state it
- * leaves behind, and a free-form input graded by trimmed, case-folded
- * string equality against the validated answer. Before a wrong answer is
- * corrected the block shows only the author's hint, never the explanation
- * or the answer. `onAttempt` reports each submission upward for the
- * exercise-level solved state.
+ * One prediction question: a snippet the student works through by hand and a
+ * typed answer. A wrong answer shows only the author's hint, never the
+ * explanation or the answer.
  */
 
 import { useId, useState, type JSX } from "react";
 import { Button } from "@/components/ui/Button";
 import { FeedbackAlert } from "@/components/practice/FeedbackAlert";
+import { ScrollingPre } from "@/components/ui/ScrollingPre";
+import { typedAnswerIsRight } from "@/lib/content/theory-answers";
 
 export function PredictionBlock({
   code,
@@ -21,6 +20,7 @@ export function PredictionBlock({
   hint,
   value,
   onValueChange,
+  locked,
   onAttempt,
 }: {
   /** The snippet the student traces by hand; it is never executed. */
@@ -36,6 +36,9 @@ export function PredictionBlock({
   value?: string;
   /** Fires on every keystroke so the sheet can persist it. */
   onValueChange?: (value: string) => void;
+  /** Opens answered when the sheet restored this question as already
+   *  checked and right; honoured only while the restored answer still is. */
+  locked?: boolean;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
@@ -50,9 +53,10 @@ export function PredictionBlock({
     if (onValueChange) onValueChange(next);
   };
 
-  const isCorrect = inputVal.trim().toLowerCase() === answer.trim().toLowerCase();
+  const isCorrect = typedAnswerIsRight([answer], inputVal);
+  const answered = submitted || (locked === true && isCorrect);
 
-  const inputTone = submitted
+  const inputTone = answered
     ? isCorrect
       ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_10%,transparent)] font-medium text-[var(--success)]"
       : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,transparent)] font-medium text-[var(--danger)]"
@@ -61,12 +65,16 @@ export function PredictionBlock({
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Mental Trace
+        Predict the result
       </h3>
 
-      <pre className="mb-6 overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 font-mono text-[14px] leading-relaxed text-[var(--text-primary)]">
+      <ScrollingPre
+        className="mb-6"
+        preClassName="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-elevated)] px-4 py-3 font-mono text-[14px] leading-relaxed text-[var(--text-primary)]"
+        fadeClassName="rounded-r-[var(--radius-card)] from-[var(--bg-elevated)]"
+      >
         {code}
-      </pre>
+      </ScrollingPre>
 
       <label
         htmlFor={inputId}
@@ -81,12 +89,18 @@ export function PredictionBlock({
           type="text"
           value={inputVal}
           onChange={(event) => setInputVal(event.target.value)}
-          disabled={submitted}
+          disabled={answered}
           placeholder="your answer"
-          className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors disabled:opacity-80 ${inputTone}`}
+          // Register values and mnemonics are not words: a phone must not
+          // capitalise, correct, or underline them.
+          autoCapitalize="off"
+          autoCorrect="off"
+          autoComplete="off"
+          spellCheck={false}
+          className={`w-full max-w-sm rounded-[var(--radius-control)] border px-4 py-2.5 font-mono text-[14px] outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${inputTone}`}
         />
 
-        {!submitted ? (
+        {!answered ? (
           <Button
             disabled={inputVal.trim() === ""}
             onClick={() => {

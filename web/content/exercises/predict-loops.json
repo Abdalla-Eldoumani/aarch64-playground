@@ -1,0 +1,47 @@
+{
+  "title": "Predict: loops",
+  "slug": "predict-loops",
+  "order": 118,
+  "lastUpdated": "2026-10-01",
+  "topic": "loops",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Trace counting loops, a post-test loop, a loop inside a loop, and an unsigned test, and say what a register holds when each one ends.",
+  "predictions": [
+    {
+      "code": "    mov w19, 0  // sum\n    mov w20, 1  // i\n    b test\nbody:\n    add w19, w19, w20\n    add w20, w20, 2\ntest:\n    cmp w20, 9\n    b.le body",
+      "question": "What does w19 hold when the loop ends? Answer in decimal.",
+      "answer": "25",
+      "explanation": "The jump to test checks i before the first pass. The body runs for i = 1, 3, 5, 7 and 9, adding each one to the sum, and the loop stops when i reaches 11. 1 + 3 + 5 + 7 + 9 = 25.",
+      "hint": "List the values i takes while the test i <= 9 still holds."
+    },
+    {
+      "code": "    mov w19, 0  // passes\n    mov w20, 12 // i\nagain:\n    add w19, w19, 1\n    add w20, w20, 1\n    cmp w20, 10\n    b.lt again",
+      "question": "This loop has no jump to its test before the first pass. How many passes does it make, as counted in w19? Answer in decimal.",
+      "answer": "1",
+      "explanation": "Nothing is tested until the body has run, so the first pass always happens: w19 becomes 1 and i becomes 13. The test 13 < 10 fails, so there is no second pass. A pre-test loop with the same test would make none.",
+      "hint": "The body runs before the first compare."
+    },
+    {
+      "code": "// for (i = 0; i < 10; i += 4)\n    mov w20, 0  // i\n    b test\nbody:\n    add w20, w20, 4\ntest:\n    cmp w20, 10\n    b.lt body",
+      "question": "What does w20 hold when the loop ends? Answer in decimal.",
+      "answer": "12",
+      "explanation": "i takes the values 0, 4 and 8, which all pass the test, and the step after 8 makes it 12. 12 < 10 fails, so the loop stops with i one step past its last pass, not at 10.",
+      "hint": "The loop stops at the first value of i that fails the test."
+    },
+    {
+      "code": "    mov w19, 0  // count\n    mov w20, 0  // row\nrow_top:\n    mov w21, 0  // col\ncol_top:\n    add w19, w19, 1\n    add w21, w21, 1\n    cmp w21, w20\n    b.le col_top\n    add w20, w20, 1\n    cmp w20, 4\n    b.lt row_top",
+      "question": "How many times does the inner body run, as counted in w19? Answer in decimal.",
+      "answer": "10",
+      "explanation": "Both loops test at the bottom, so each pass runs before its test. The outer loop runs for row = 0, 1, 2 and 3. For each row the inner loop runs until col passes row, which takes row + 1 passes, so the count is 1 + 2 + 3 + 4 = 10.",
+      "hint": "Work out the inner passes for row 0 and for row 1 first, then look for the pattern."
+    },
+    {
+      "code": "    mov w19, 0  // passes\n    mov w20, -2 // i\nloop:\n    add w19, w19, 1\n    add w20, w20, 1\n    cmp w20, 2\n    b.lo loop",
+      "question": "How many passes does the loop make, as counted in w19? Answer in decimal.",
+      "answer": "1",
+      "explanation": "lo compares as unsigned. After the first pass i is -1, which as a word is 0xffffffff, the largest unsigned value there is, so it is not below 2 and the loop stops. The signed b.lt would run four passes, for i = -2, -1, 0 and 1.",
+      "hint": "Write -1 as an unsigned 32-bit number before you compare it with 2."
+    }
+  ]
+}

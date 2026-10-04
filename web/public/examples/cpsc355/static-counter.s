@@ -51,7 +51,6 @@ loop:
 test:   cmp     i_r, 3
         b.le    loop
 
-        // main returns printf's byte count, not 0: the exit status is not
-        // part of what this example demonstrates.
+        mov     w0, 0                  // exit status 0
         ldp     fp, lr, [sp], 16
         ret

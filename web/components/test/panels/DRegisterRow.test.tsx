@@ -9,21 +9,20 @@ afterEach(() => cleanup());
 const BITS_3_5 = "0x400c000000000000";
 
 describe("DRegisterRow", () => {
-  it("decodes the raw bit pattern to the decimal double", () => {
+  it("decodes the raw bit pattern to the decimal double, and shows only that", () => {
     render(<DRegisterRow index={0} bitsHex={BITS_3_5} />);
     expect(screen.getByText("3.5")).toBeTruthy();
-    expect(screen.getByText(BITS_3_5)).toBeTruthy();
+    expect(screen.queryByText(BITS_3_5)).toBeNull();
     expect(screen.getByText("D0")).toBeTruthy();
   });
 
-  it("swaps primary and secondary in hex mode", () => {
+  it("shows the raw bits and nothing else in hex mode", () => {
     render(<DRegisterRow index={4} bitsHex={BITS_3_5} hexMode />);
-    // Hex leads (13px primary), decimal rides beneath; both visible.
-    const primary = screen.getByTitle("3.5");
-    expect(primary.textContent).toBe(BITS_3_5);
+    expect(screen.getByText(BITS_3_5)).toBeTruthy();
+    expect(screen.queryByText("3.5")).toBeNull();
   });
 
-  it("carries the aapcs aliases for d0-d15 only", () => {
+  it("shows the calling-convention names (arg, save) for d0-d15 only", () => {
     const { unmount } = render(<DRegisterRow index={3} bitsHex="0x0" />);
     expect(screen.getByText("arg3")).toBeTruthy();
     unmount();
@@ -41,10 +40,26 @@ describe("DRegisterRow", () => {
     expect(screen.getByText("4.5f")).toBeTruthy();
   });
 
-  it("renders integral doubles with one decimal and zero as 0.0", () => {
+  it("renders a whole-number double with one decimal place", () => {
     // 42.0 is 0x4045000000000000.
     render(<DRegisterRow index={1} bitsHex="0x4045000000000000" />);
     expect(screen.getByText("42.0")).toBeTruthy();
+  });
+
+  it("names infinities and NaN instead of printing their bits as a number", () => {
+    // +inf, -inf and the default NaN as doubles, then a single's NaN left by
+    // an s write, which takes no f suffix.
+    const cases: Array<[string, string]> = [
+      ["0x7ff0000000000000", "inf"],
+      ["0xfff0000000000000", "-inf"],
+      ["0x7ff8000000000000", "nan"],
+      ["0x000000007fc00000", "nan"],
+    ];
+    for (const [bits, text] of cases) {
+      const { unmount } = render(<DRegisterRow index={5} bitsHex={bits} />);
+      expect(screen.getByTitle(text).textContent).toBe(text);
+      unmount();
+    }
   });
 
   it("tints the value with --changed and plays the flash on a write", () => {
@@ -53,6 +68,6 @@ describe("DRegisterRow", () => {
     );
     const row = container.firstElementChild as HTMLElement;
     expect(row.className).toContain("anim-reg-flash");
-    expect(screen.getByTitle(BITS_3_5).className).toContain("var(--changed)");
+    expect(screen.getByText("3.5").className).toContain("var(--changed)");
   });
 });

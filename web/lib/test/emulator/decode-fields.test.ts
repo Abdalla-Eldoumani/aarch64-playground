@@ -160,8 +160,8 @@ describe("decodeFields", () => {
     expect(decoded.destIndex).toBeNull();
   });
 
-  // The six classes tier 2 added. Their words come from `as` and
-  // `objdump -d` on the course server, not from this file's arithmetic.
+  // Words for the six newer classes come from `as` and `objdump -d` on the
+  // course server, not from this file's arithmetic.
   it("re-concatenates every word of the newly mapped classes", () => {
     for (const word of [
       0x1f420c20, 0x1f628c20, 0x1f020c20, // fmadd/fnmsub d, fmadd s
@@ -175,7 +175,7 @@ describe("decodeFields", () => {
     }
   });
 
-  it("names the addend of an fp 3-source word and keeps it last", () => {
+  it("names the addend of an fp 3-source word", () => {
     // fmadd d0, d1, d2, d3 = 0x1f420c20. Ra is the addend, not a source
     // of the product, which is the whole reason the strip splits it out.
     const decoded = decodeFields(0x1f420c20);
@@ -259,6 +259,91 @@ describe("decodeFields", () => {
     expect(fromInt.fields.find((f) => f.label === "Rn")?.meaning).toBe("x0");
     expect(fromInt.fields[fromInt.destIndex!].meaning).toBe("d0");
     expect(decodeFields(0x1e650000).fields.find((f) => f.label === "opcode")?.meaning).toBe("fcvtau");
+  });
+
+  // The optimized-gcc reach: fp compares, extr, ldpsw and brk. Each word is
+  // the assembler's; the expected fields are read off the source line.
+  const reach = assembleWords(`        .text
+        .global main
+main:
+        fcmp    d0, d1
+        fcmpe   s2, #0.0
+        fccmp   d0, d1, 4, ne
+        fccmpe  s1, s2, 0, ge
+        extr    x0, x1, x2, 12
+        ldpsw   x3, x4, [x5, 8]
+        ldp     d8, d9, [sp], 16
+        brk     0x3e8
+        svc     0
+`);
+  const field = (word: number, label: string) =>
+    decodeFields(word).fields.find((f) => f.label === label);
+
+  it("re-concatenates every word of the compare, extract, pair and brk layouts", () => {
+    expect(reach).toHaveLength(9);
+    for (const word of reach) {
+      expect(decodeFields(word).fields.length, `word 0x${word.toString(16)}`).toBeGreaterThan(1);
+      expect(reassembled(word), `word 0x${word.toString(16)}`).toBe(expected32(word));
+    }
+  });
+
+  it("splits an fp compare, names its form, and marks no register write", () => {
+    const [fcmp, fcmpeZero] = reach;
+    expect(decodeFields(fcmp).fields.map((f) => f.label)).toEqual([
+      "000", "11110", "ftype", "1", "Rm", "001000", "Rn", "opc",
+    ]);
+    expect(field(fcmp, "Rm")?.meaning).toBe("d1");
+    expect(field(fcmp, "Rn")?.meaning).toBe("d0");
+    expect(field(fcmp, "opc")?.meaning).toBe("fcmp");
+    expect(decodeFields(fcmp).destIndex).toBeNull();
+    // The #0.0 form leaves Rm zero and unused.
+    expect(field(fcmpeZero, "opc")?.meaning).toBe("fcmpe with #0.0");
+    expect(field(fcmpeZero, "Rm")?.meaning).toBe("unused");
+    expect(field(fcmpeZero, "Rn")?.meaning).toBe("s2");
+  });
+
+  it("splits an fp conditional compare like ccmp", () => {
+    const [, , fccmp, fccmpe] = reach;
+    expect(decodeFields(fccmp).fields.map((f) => f.label)).toEqual([
+      "000", "11110", "ftype", "1", "Rm", "cond", "01", "Rn", "op", "nzcv",
+    ]);
+    expect(field(fccmp, "cond")?.meaning).toBe("ne");
+    expect(field(fccmp, "op")?.meaning).toBe("fccmp");
+    expect(field(fccmp, "nzcv")?.value).toBe("0100");
+    expect(decodeFields(fccmp).destIndex).toBeNull();
+    expect(field(fccmpe, "op")?.meaning).toBe("fccmpe");
+    expect(field(fccmpe, "cond")?.meaning).toBe("ge");
+    expect(field(fccmpe, "Rm")?.meaning).toBe("s2");
+  });
+
+  it("splits extr with Rd as the destination", () => {
+    const extr = reach[4];
+    const decoded = decodeFields(extr);
+    expect(decoded.fields.map((f) => f.label)).toEqual([
+      "sf", "00", "100111", "N", "0", "Rm", "imms", "Rn", "Rd",
+    ]);
+    expect(field(extr, "imms")?.meaning).toBe("from bit 12");
+    expect(field(extr, "Rm")?.meaning).toBe("x2");
+    expect(field(extr, "Rn")?.meaning).toBe("x1");
+    expect(decoded.fields[decoded.destIndex!].meaning).toBe("x0");
+  });
+
+  it("names ldpsw, and the fp registers of an fp pair", () => {
+    const [, , , , , ldpsw, ldpD] = reach;
+    expect(field(ldpsw, "L")?.meaning).toBe("ldpsw");
+    expect(field(ldpsw, "Rt")?.meaning).toBe("x3");
+    expect(field(ldpsw, "Rt2")?.meaning).toBe("x4");
+    // opc 01 on the fp registers is the D width, not ldpsw.
+    expect(field(ldpD, "L")?.meaning).toBe("ldp");
+    expect(field(ldpD, "Rt")?.meaning).toBe("d8");
+    expect(field(ldpD, "Rt2")?.meaning).toBe("d9");
+  });
+
+  it("tells brk from svc in the exception layout", () => {
+    const [brk, svc] = reach.slice(7);
+    expect(field(brk, "opc")?.meaning).toBe("brk");
+    expect(field(brk, "imm16")?.meaning).toBe("1000");
+    expect(field(svc, "opc")?.meaning).toBe("svc");
   });
 
   it("reads the fixed-point scale as 64 minus the field", () => {

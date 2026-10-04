@@ -2,7 +2,7 @@ import { describe, expect, test } from "vitest";
 import { emptyStateSnapshot } from "@/lib/worker/protocol";
 
 describe("emptyStateSnapshot", () => {
-  test("carries the full 31-register file so the cold panel never collapses to SP/PC", () => {
+  test("carries all 31 registers so the panel never shrinks to SP and PC before the first assemble", () => {
     const snap = emptyStateSnapshot();
     // An init snapshot with an empty registers array overwrites the hook's
     // 31-zero default.

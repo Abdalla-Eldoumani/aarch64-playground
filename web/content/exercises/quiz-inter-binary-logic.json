@@ -1,7 +1,8 @@
 {
-  "title": "Quiz: binary logic",
+  "title": "Intermediate quiz: binary logic",
   "slug": "quiz-inter-binary-logic",
-  "order": 33,
+  "order": 73,
+  "lastUpdated": "2026-09-30",
   "topic": "binary-logic",
   "difficulty": "core",
   "variant": "quiz",
@@ -13,7 +14,7 @@
         "-32,768 to +32,767",
         "0 to 4,294,967,295",
         "-2,147,483,648 to +2,147,483,647",
-        "-2^63 to +2^63-1"
+        "-9,223,372,036,854,775,808 to +9,223,372,036,854,775,807"
       ],
       "correctAnswer": 2,
       "explanation": "Thirty-two bits give 2^32 distinct patterns. Two's complement splits them into 2^31 negative values and 2^31 non-negative values, and zero uses one of the non-negative slots, so the positive end stops one short at 2,147,483,647.",
@@ -34,24 +35,24 @@
     {
       "question": "The tst instruction is an alias for which base instruction?",
       "options": [
-        "and",
         "ands",
+        "and",
         "orr",
-        "eor"
+        "subs"
       ],
-      "correctAnswer": 1,
-      "explanation": "tst x0, x1 assembles as ands xzr, x0, x1. The AND is computed and the flags are set from it, then the result is discarded by writing it to xzr, so only the flags survive for a following conditional branch.",
+      "correctAnswer": 0,
+      "explanation": "tst x0, x1 assembles as ands xzr, x0, x1. The AND is computed and the flags are set from it, then the result is discarded by writing it to xzr, the zero register, so only the flags survive for a following conditional branch.",
       "hint": "Only the s-suffixed form of a logical instruction updates the condition flags."
     },
     {
       "question": "What logical operation does the bic (bit clear) instruction perform?",
       "options": [
+        "AND NOT",
         "OR NOT",
         "EOR NOT",
-        "AND NOT",
         "NAND"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 0,
       "explanation": "bic xd, xn, xm computes xn AND NOT xm, so every bit set in the second operand is turned off in the result and the rest of xn passes through unchanged. That is different from NAND, which would invert the whole AND.",
       "hint": "The second operand is a mask of the bits you want turned off, so it is inverted before the operation."
     },
@@ -59,11 +60,11 @@
       "question": "What is the difference between a logical shift right (lsr) and an arithmetic shift right (asr)?",
       "options": [
         "lsr drops the bits shifted out, while asr saves them in a separate register.",
-        "lsr shifts a 0 into the leftmost bit, while asr copies the sign bit to preserve the sign.",
         "lsr is for 64-bit registers and asr is for 32-bit registers.",
+        "lsr shifts a 0 into the leftmost bit, while asr copies the sign bit to preserve the sign.",
         "lsr rotates bits around the register, while asr drops them completely."
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": "lsr shifts zeros into the vacated high bits, so a negative value stops being negative. asr replicates the sign bit into those bits, which keeps a negative value negative, and that is why asr is the shift to use on signed data.",
       "hint": "One of the two is 'arithmetic', meaning it knows the difference between a positive and a negative value."
     },
@@ -71,11 +72,11 @@
       "question": "What does the sxtb wd, wn instruction do?",
       "options": [
         "Extracts bits 0-7 of wn and shifts them to the left.",
-        "Zero-extends the low byte of wn into wd, clearing bits 8-31.",
         "Sign-extends bit 7 of wn into bits 8-31 of wd.",
+        "Zero-extends the low byte of wn into wd, clearing bits 8-31.",
         "Swaps the upper and lower halfwords of wn."
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 1,
       "explanation": "Sign Extend Byte copies bit 7 of wn, the sign bit of the byte, through bits 8-31 of wd. A byte holding -1 (0xff) therefore becomes 0xffffffff, which is still -1 when read as a 32-bit signed value.",
       "hint": "It takes a signed byte and widens it to a full 32-bit word without changing its value."
     },
@@ -83,11 +84,11 @@
       "question": "In the bitfield insert instruction bfi wd, wn, #lsb, #width, what does #lsb specify?",
       "options": [
         "The number of bits copied out of wn.",
-        "The bit position in wd where the inserted field starts.",
         "The left shift applied to wn before the operation.",
-        "The position of the sign bit."
+        "The position of the sign bit.",
+        "The bit position in wd where the inserted field starts."
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "bfi copies the low #width bits of wn into wd starting at bit position #lsb. The two immediates describe the destination field: #width is how many bits move, #lsb is where they land, and the bits of wd outside that field are left alone.",
       "hint": "Two immediates describe the same destination field, one giving its size and the other its starting bit."
     },

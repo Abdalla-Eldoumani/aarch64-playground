@@ -11,14 +11,9 @@ import { ThemeControl } from "@/components/chrome/ThemeControl";
 import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
 
 /**
- * A route link that starts cold and warms on intent. `prefetch={false}` means
- * never in the App Router, viewport and hover alike, so hover warming has to
- * be built: swap back to the default once a pointer or the keyboard arrives
- * and Next prefetches then. That keeps four route payloads off the landing's
- * initial network while a reader who aims at a route still gets it warm.
- * `onFocus` rides along because the nav is a keyboard landmark and tabbing
- * through should warm what hovering does. The flag is `warm`, not `active`,
- * which already means the current route in the map below.
+ * In the App Router `prefetch={false}` also stops hover prefetch, so the link
+ * returns to the default on hover or focus. The landing's first load skips
+ * four route payloads, and a link a reader aims at still arrives warm.
  */
 function HoverPrefetchLink({
   href,
@@ -40,19 +35,10 @@ function HoverPrefetchLink({
 }
 
 /**
- * The persistent top navigation: one component, two variants driven by a prop so
- * there is no second nav to keep in sync. `full` is the content-page bar: the
- * wordmark carries its "playground" label and an "Open playground" call to action
- * sits in the actions cluster. `slim` is the playground bar: no label, no CTA,
- * and a shorter desktop height so it never steals the debugger's vertical space.
- * Both reuse the same wordmark, route data, theme control, and mobile drawer; the
- * variant only toggles the label, the CTA, and the height. Under md the routes and
- * the GitHub link fold into the shared drawer, leaving the wordmark, a compact
- * theme control, and the drawer trigger.
- *
- * `stars` is optional because only the server-rendered mounts can supply it; the
- * playground's client-mounted slim bar passes nothing and keeps the icon-only
- * link, which is also what a failed lookup renders.
+ * One nav with two variants, so there is no second bar to keep in sync. `slim`
+ * is the playground's shorter bar, kept low so the debugger keeps its height.
+ * `stars` is optional because only server-rendered mounts know it; null shows
+ * the icon-only link, the same as a failed lookup.
  */
 export function SiteNav({
   variant,
@@ -70,11 +56,14 @@ export function SiteNav({
       aria-label="primary"
       // The full nav floats over the blueprint paper, so it takes a
       // translucent base with a backdrop blur (the artboards' rgba band);
-      // the slim playground nav stays opaque over the flat debugger.
-      className={`safe-area-top w-full border-b border-[var(--border)] ${
+      // the slim playground nav stays opaque over the flat debugger. The top
+      // padding is the notch's safe area, so no py-* belongs on this bar. The
+      // height adds that inset back, so the row under it keeps its full
+      // height and the menu toggle lines up with the drawer's close button.
+      className={`pt-[var(--safe-top)] w-full border-b border-[var(--border)] ${
         full
-          ? "h-14 bg-[color-mix(in_srgb,var(--bg-base)_72%,transparent)] backdrop-blur-md md:h-16"
-          : "h-14 bg-[var(--bg-base)] md:h-12"
+          ? "h-[calc(3.5rem+var(--safe-top))] bg-[color-mix(in_srgb,var(--bg-base)_72%,transparent)] backdrop-blur-md md:h-[calc(4rem+var(--safe-top))]"
+          : "h-[calc(3.5rem+var(--safe-top))] bg-[var(--bg-base)] md:h-[calc(3rem+var(--safe-top))]"
       }`}
     >
       <div className="mx-auto flex h-full w-full max-w-screen-xl items-center justify-between gap-3 px-4">
@@ -127,7 +116,7 @@ export function SiteNav({
             {starCount === null ? null : (
               <span
                 aria-hidden="true"
-                className="font-mono text-[11px] tabular-nums text-[var(--text-tertiary)]"
+                className="font-mono text-[12px] tabular-nums text-[var(--text-tertiary)]"
               >
                 {starCount}
               </span>
@@ -144,7 +133,7 @@ export function SiteNav({
           {full ? (
             <Link
               href="/playground"
-              className="hidden min-h-[44px] items-center rounded-[var(--radius-control)] bg-[var(--cyan)] px-4 font-sans text-[14px] font-medium text-[var(--on-cyan)] transition-opacity hover:opacity-90 focus:outline-none focus-visible:[box-shadow:var(--ring)] lg:inline-flex"
+              className="hidden min-h-[44px] items-center rounded-[var(--radius-control)] bg-[var(--cyan)] px-4 font-sans text-[14px] font-medium text-[var(--on-cyan)] transition-colors hover:bg-[color-mix(in_srgb,var(--cyan)_88%,var(--text-primary))] focus:outline-none focus-visible:[box-shadow:var(--ring)] lg:inline-flex"
             >
               Open playground
             </Link>

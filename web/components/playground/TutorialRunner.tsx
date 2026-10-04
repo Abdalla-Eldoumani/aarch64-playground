@@ -8,7 +8,6 @@ import {
   type ExpectedRegister,
   type Tutorial,
 } from "@/lib/content/tutorials";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { Select } from "@/components/ui/Select";
 
 export interface TutorialRunnerProps {
@@ -21,6 +20,9 @@ export interface TutorialRunnerProps {
    * `expect` clause against what the CPU actually holds.
    */
   getRegister?: (name: string) => string | null;
+  /** The walk around the interface itself, offered beside the program
+   *  tutorials so it can be found again after its first-visit offer. */
+  onStartWalkthrough?: () => void;
 }
 
 function readRegisterDecimal(name: string, getter?: (n: string) => string | null): number | null {
@@ -28,12 +30,14 @@ function readRegisterDecimal(name: string, getter?: (n: string) => string | null
   const raw = getter(name);
   if (raw == null) return null;
   // Accept hex (0x...) or decimal.
-  if (raw.startsWith("0x") || raw.startsWith("0X")) {
-    const big = BigInt(raw);
-    return Number.parseInt(big.toString(), 10);
+  let value: bigint;
+  try {
+    value = BigInt(raw.trim());
+  } catch {
+    return null;
   }
-  const n = Number(raw);
-  return Number.isFinite(n) ? n : null;
+  // The getter hands back the whole x register; a w name means its low half.
+  return Number(/^w/i.test(name) ? BigInt.asUintN(32, value) : value);
 }
 
 function ExpectedRegisterCheck({
@@ -72,23 +76,30 @@ function ExpectedRegisterCheck({
 }
 
 /**
- * Modal that walks the student through a tutorial, one step at a time.
- * Each tutorial backs a real source file under `/examples/cpsc355/`; the
- * runner can fetch it on demand and hand it to the editor with the
- * tutorial's prefilled args/stdin so the student can step alongside the
- * prose.
+ * Walks the student through a tutorial one step at a time. Not modal: a step
+ * says "step, then watch x19", so the run controls and the registers must
+ * stay usable under it.
  */
 export function TutorialRunner({
   open,
   onClose,
   onLoadSnippet,
   getRegister,
+  onStartWalkthrough,
 }: TutorialRunnerProps) {
   const [activeId, setActiveId] = useState<string>(TUTORIALS[0]?.id ?? "");
   const [progress, setProgress] = useState(() => loadProgress());
   const [loadError, setLoadError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
-  useFocusTrap(open, ref, onClose);
+
+  // Opening moves focus into the panel and closing hands it back, as a
+  // dialog does; no trap, since the playground around it stays usable.
+  useEffect(() => {
+    if (!open) return;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    ref.current?.querySelector<HTMLElement>("button")?.focus();
+    return () => previouslyFocused?.focus?.();
+  }, [open]);
 
   useEffect(() => saveProgress(progress), [progress]);
 
@@ -120,18 +131,20 @@ export function TutorialRunner({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-3"
+      ref={ref}
       role="dialog"
-      aria-modal="true"
-      aria-label="guided tutorial"
-      onClick={onClose}
+      aria-modal="false"
+      aria-label="tutorials"
+      // Escape inside the panel closes it; the editor keeps its own Escape.
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onClose();
+      }}
+      className="fixed inset-x-2 top-[calc(3rem+var(--safe-top))] z-50 flex max-h-[45dvh] flex-col rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl sm:inset-x-auto sm:bottom-20 sm:right-4 sm:top-auto sm:max-h-[60vh] sm:w-[28rem]"
     >
-      <div
-        ref={ref}
-        className="w-full max-w-2xl max-h-[80vh] rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
+      <div className="flex flex-1 min-h-0 flex-col">
+        {/* Under sm the picker takes a row of its own: in one row with the
+            step count and both buttons, close ran past a 320px screen. */}
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 px-4 py-2 border-b border-[var(--border)]">
           <Select
             value={activeId}
             placeholder="tutorial..."
@@ -140,32 +153,33 @@ export function TutorialRunner({
               { options: TUTORIALS.map((t) => ({ value: t.id, label: t.title })) },
             ]}
             onSelect={(id) => setActiveId(id)}
+            className="basis-full sm:basis-auto min-w-0"
           />
-          <span className="text-[11px] text-[var(--text-secondary)]">
+          <span className="whitespace-nowrap text-[12px] text-[var(--text-secondary)]">
             step {stepIndex + 1} / {tutorial.steps.length}
           </span>
           <div className="flex-1" />
           <button
             type="button"
             onClick={loadSource}
-            className="text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            className="touch-target text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             load source
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1"
           >
             close
           </button>
         </div>
         <div className="flex-1 overflow-auto p-4 text-sm">
-          <p className="text-[11px] text-[var(--text-secondary)] mb-2">
+          <p className="text-[12px] text-[var(--text-secondary)] mb-2">
             {tutorial.summary}
           </p>
           {loadError && (
-            <p className="text-[11px] text-[var(--danger)] mb-2" role="alert">
+            <p className="text-[12px] text-[var(--danger)] mb-2" role="alert">
               {loadError}
             </p>
           )}
@@ -176,12 +190,12 @@ export function TutorialRunner({
             {step?.body}
           </p>
           {step?.highlight && (
-            <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+            <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
               focus: lines {step.highlight.start}-{step.highlight.end} of the source
             </p>
           )}
           {step?.watchReg && (
-            <p className="mt-2 text-[11px] text-[var(--text-secondary)]">
+            <p className="mt-2 text-[12px] text-[var(--text-secondary)]">
               watch hint: add{" "}
               <span className="font-mono text-[var(--text-primary)]">{step.watchReg}</span>{" "}
               to the watch panel
@@ -196,16 +210,26 @@ export function TutorialRunner({
             type="button"
             onClick={() => setStep(stepIndex - 1)}
             disabled={stepIndex === 0}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:opacity-40 rounded px-2 py-1"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] disabled:text-[var(--text-tertiary)] rounded px-2 py-1"
           >
             back
           </button>
+          <div className="flex-1" />
+          {onStartWalkthrough && (
+            <button
+              type="button"
+              onClick={onStartWalkthrough}
+              className="touch-target text-xs text-[var(--cyan)] hover:underline rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            >
+              interface walkthrough
+            </button>
+          )}
           <div className="flex-1" />
           <button
             type="button"
             onClick={() => setStep(stepIndex + 1)}
             disabled={stepIndex === tutorial.steps.length - 1}
-            className="text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:opacity-40 px-2 py-1"
+            className="touch-target text-xs rounded bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] text-[var(--text-primary)] disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] px-2 py-1"
           >
             next
           </button>

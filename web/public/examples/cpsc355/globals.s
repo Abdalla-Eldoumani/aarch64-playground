@@ -1,8 +1,6 @@
 // globals.s - multiply two values held in .data and store the product back
-// Loads x and y from the .data section, multiplies them, writes the
-// product into a third .data word, then reads that word back to show the
-// store landed in memory, and prints it. The load-compute-store cycle over
-// global storage, with no stack locals: the frame exists only so main can
+// The product is read back from memory before printing to show the store
+// landed. There are no stack locals: the frame exists only so main can
 // call printf.
 
 define(fp, x29)
@@ -32,7 +30,7 @@ main:
         mul     prod_r, x_r, y_r        // product = 15
 
         ldr     x0, =result_m
-        str     prod_r, [x0]            // commit the product to .data
+        str     prod_r, [x0]            // write the product into .data
         ldr     w1, [x0]                // read it back from memory
 
         ldr     x0, =fmt_out

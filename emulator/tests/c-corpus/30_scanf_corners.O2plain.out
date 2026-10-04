@@ -1,0 +1,9 @@
+r=2 a=12 b=-7
+r=1 c=Q
+r=1 w=word
+r=1 x=255
+r=1 L=-99999999999
+r=1 a=123
+r=1 (expect 0, junk)
+r=1 w=junk
+r=0 (expect -1 EOF)

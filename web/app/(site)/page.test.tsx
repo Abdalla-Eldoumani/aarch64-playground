@@ -2,10 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { CREDIBILITY } from "@/lib/content/site";
 
-// Stub the three sections so this test proves only the order the page stacks
-// them in, without pulling Monaco, the WASM worker, or the shared embeddable
-// through the live Hero. Each section has its own test; here each is a
-// lightweight marker carrying a unique data-testid.
+// Stub the three sections so this test checks only the order the page stacks
+// them in, without loading the Monaco editor, the WASM worker, or the shared
+// playground that the live Hero brings in. Each section has its own test.
 vi.mock("@/components/landing/Hero", async () => {
   const React = await import("react");
   return { Hero: () => React.createElement("div", { "data-testid": "hero" }) };

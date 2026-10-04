@@ -1,43 +1,44 @@
 {
-  "title": "Quiz: subroutines",
+  "title": "Intermediate quiz: subroutines",
   "slug": "quiz-inter-subroutines",
-  "order": 58,
+  "order": 98,
+  "lastUpdated": "2026-09-30",
   "topic": "subroutines",
   "difficulty": "core",
   "variant": "quiz",
-  "prompt": "Follow a call through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and indirect results.",
+  "prompt": "Follow a call through the AArch64 procedure call convention: the link register, the frame record chain, saved registers, argument passing, and large results returned through memory.",
   "questions": [
     {
       "question": "When a bl instruction executes, what value is placed in the link register (x30)?",
       "options": [
-        "The address of the bl instruction itself",
         "The address of the instruction immediately after bl, which is PC + 4",
-        "The current stack pointer minus 16",
-        "The current frame pointer plus 16"
+        "The address of the bl instruction itself, so ret has to add 4 before jumping",
+        "The current stack pointer minus 16, where the frame record will be saved",
+        "The current frame pointer plus 16, the start of the caller's locals"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "bl writes the return address into x30 before branching. Every AArch64 instruction is 4 bytes, so that address is the one immediately after the bl. A later ret branches to whatever x30 holds.",
       "hint": "The callee has to know where execution resumes once it finishes."
     },
     {
       "question": "How do frame pointers let a program walk back through previous stack frames?",
       "options": [
-        "Each saved frame pointer points at the previous frame record, forming a chain.",
         "Each frame pointer stores all of the arguments passed to the program.",
+        "Each saved frame pointer points at the previous frame record, forming a chain.",
         "Each frame pointer holds the address of the next instruction to execute.",
         "Each frame pointer stores a copy of every register the subroutine used."
       ],
-      "correctAnswer": 0,
-      "explanation": "The frame record at the base of a frame holds the caller's x29 and x30. Because the saved x29 points at the caller's own frame record, following those links walks backward through every active call, which is what a backtrace does.",
+      "correctAnswer": 1,
+      "explanation": "The frame record at the base of a frame holds the caller's x29 and x30. Because the saved x29 points at the caller's own frame record, following those links walks backward through every active call. A debugger follows this chain to print a backtrace, the list of calls in progress.",
       "hint": "Think about what the saved copy of x29 inside a frame record points at."
     },
     {
       "question": "A subroutine wants to use x19 as a working register. What must it do to follow the AArch64 procedure call convention?",
       "options": [
-        "Move the value into x0 before changing x19.",
+        "Move the value into x0 before changing x19, so the caller can find it there.",
         "Save the incoming value of x19 and restore it before returning.",
         "Nothing, because x19 is a caller-saved register.",
-        "Set x19 to zero before returning."
+        "Set x19 to zero before returning, so the caller does not see stale data."
       ],
       "correctAnswer": 1,
       "explanation": "x19 through x28 are callee-saved. A subroutine that writes one of them must save the incoming value, usually on the stack, and restore it before ret so the caller sees the value it left there.",
@@ -58,13 +59,13 @@
     {
       "question": "A subroutine returns a large composite result that does not fit in the normal result registers. How does the caller tell it where to put that result?",
       "options": [
-        "The caller passes the address of the result space in x8.",
         "The caller passes the address in x30.",
         "The caller pushes space onto the stack and the callee locates it from sp.",
+        "The caller passes the address of the result space in x8.",
         "The caller splits the address across x0 and x1."
       ],
-      "correctAnswer": 0,
-      "explanation": "x8 is the indirect result location register. The caller allocates memory for the result, puts that address in x8, and the callee writes the result through it.",
+      "correctAnswer": 2,
+      "explanation": "x8 is set aside for this job. The caller reserves memory for the result, puts its address in x8, and the callee stores the result at that address.",
       "hint": "One dedicated register sits just past the eight argument registers and carries an address, not a value."
     },
     {
@@ -95,9 +96,9 @@
       "question": "A subroutine is called with nine integer arguments. Where is the ninth argument passed under the AArch64 procedure call convention?",
       "options": [
         "In stack memory set up by the caller",
-        "In x8",
-        "In the link register x30",
-        "In x9"
+        "In x8, the register after the eight argument registers",
+        "In the link register x30, which the callee reads first",
+        "In x9, the first of the temporary registers"
       ],
       "correctAnswer": 0,
       "explanation": "The first eight integer arguments travel in x0 through x7. Anything beyond that goes in the argument area the caller builds on the stack, and the callee reads it at a positive offset from the frame it was given.",

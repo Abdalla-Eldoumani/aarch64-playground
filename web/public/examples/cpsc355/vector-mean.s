@@ -1,6 +1,7 @@
-// Mean of eight floats, four lanes at a time.
+// Mean of eight floats, four at a time.
+// A v register holds four floats side by side, one in each lane.
 // fadd sums four pairs at once; faddp adds neighbouring lanes, so two of
-// them fold four partial sums into one. The result is widened to a
+// them fold four partial sums into one. The result is converted to a
 // double because printf takes doubles.
 
 define(fp, x29)

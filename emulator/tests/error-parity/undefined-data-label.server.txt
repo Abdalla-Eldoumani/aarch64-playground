@@ -1,0 +1,5 @@
+$ gcc undefined-data-label.s -o program
+/usr/bin/ld.bfd: undefined-data-label.o: in function `msgs':
+(.data+0x18): undefined reference to `byee'
+collect2: error: ld returned 1 exit status
+[exit 1]

@@ -1,6 +1,6 @@
-// Persistence and achievements. One 120-byte binary file holds the top five
-// scores, lifetime statistics and the achievement bitmask; the achievement
-// rules and the unlock banner live here too.
+// The save file and achievements. One 120-byte binary file holds the top
+// five scores, lifetime statistics and the achievement bitmask (one bit per
+// achievement); the achievement rules and the unlock banner live here too.
 
 // Save file constants
 SAVE_VERSION = 1                                // Save file version
@@ -9,7 +9,7 @@ MAX_HIGH_SCORES = 5                             // Number of high scores to keep
 // High score structure (16 bytes)
 HS_SCORE = 0                                    // Score (4 bytes)
 HS_WAVE = 4                                     // Wave reached (2 bytes)
-// Offset 6 is not 4-byte aligned; the word loads here are unaligned by design
+// Offset 6 is not 4-byte aligned; word loads and stores here are unaligned on purpose
 HS_KILLS = 6                                    // Kill count (4 bytes)
 HS_LEVEL = 10                                   // Player level (2 bytes)
 HS_PADDING = 12                                 // Padding (4 bytes)
@@ -26,7 +26,7 @@ STAT_PADDING = 28                               // Padding (4 bytes)
 STAT_SIZE = 32                                  // Total size
 
 // Save file structure
-// Header: 8 bytes (magic + version)
+// Header: 8 bytes (a magic number that marks the file as a save, then the version)
 // High Scores: 5 * 16 = 80 bytes
 // Statistics: 32 bytes
 // Total: 120 bytes
@@ -39,8 +39,8 @@ SAVE_FILE_SIZE = 120
 O_RDONLY = 0                                    // Open read-only
 O_WRONLY = 1                                    // Open write-only
 O_RDWR = 2                                      // Open read-write
-O_CREAT = 64                                    // Create if not exists
-O_TRUNC = 512                                   // Truncate file
+O_CREAT = 64                                    // Create the file if it does not exist
+O_TRUNC = 512                                   // Empty an existing file first
 AT_FDCWD = -100                                 // Current directory
 
                 .data
@@ -372,7 +372,7 @@ end_game_add_score:
                 ldp     fp, lr, [sp], 48
                 ret
 
-// save_add_high_score - Add score to high score list if qualifies
+// save_add_high_score - Add score to high score list if it qualifies
 // Parameters: w0 = score, w1 = wave, w2 = kills, w3 = level
 // Returns: w0 = rank (1-5) or 0 if didn't qualify
 save_add_high_score:

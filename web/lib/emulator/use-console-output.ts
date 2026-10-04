@@ -10,6 +10,8 @@ export const MAX_CONSOLE_CHARS = 256 * 1024;
 /** Visible marker so trimmed output is never mistaken for all of it. */
 export const CONSOLE_TRIM_MARKER = "[...earlier output trimmed...]\n";
 
+const MAX_NOTES = 64;
+
 /** Which of the machine's two display streams a call is about. */
 export type ConsoleStream = "stdout" | "stderr";
 
@@ -55,23 +57,17 @@ export function appendBounded(prev: string, delta: string): string {
 }
 
 /**
- * Where the scrollback sits in the machine's stream, in absolute bytes.
- * `seenBase` is the byte offset scrollback position 0 maps to (the trim
- * marker excluded, since it is web text the machine never wrote), and
- * `bytesHeld` is how many machine bytes the scrollback still represents.
- * `historyBytes` is preserved text at the head of the scrollback that
- * stands for zero machine bytes (a tool build reset the counters under
- * it), so no unprint may ever cut into it.
- *
- * Known limit: the counter counts raw machine bytes while the scrollback
- * holds lossily-decoded text, so non-UTF-8 output (a putchar above 0x7F)
- * inflates `bytesHeld` past the raw count and the next sync can shave a
- * couple of display bytes. Raw bytes are not recoverable from the decoded
- * text, and every shipped program prints ASCII,
+ * Where the scrollback sits in the machine's output, in absolute bytes.
+ * Known limit: output that is not UTF-8 (a putchar above 0x7F) decodes
+ * lossily and can overcount `bytesHeld`; every shipped program prints ASCII.
  */
 interface StreamPosition {
+  /** The byte offset of scrollback position 0; the trim marker is not counted. */
   seenBase: number;
+  /** How many machine bytes the scrollback still shows. */
   bytesHeld: number;
+  /** Kept text at the head that stands for no machine bytes (a tool build
+   *  reset the counters under it), so an unprint never cuts into it. */
   historyBytes: number;
 }
 
@@ -80,13 +76,15 @@ export interface ConsoleOutput {
   stderr: string;
   appendStdout: (delta: string) => void;
   appendStderr: (delta: string) => void;
+  /** The machine's notes about the program (lib/emulator/clobber-note),
+   *  shown under the output and cleared with it. */
+  notes: string[];
+  appendNotes: (texts: string[]) => void;
   /**
-   * Align a stream's scrollback with the machine's cumulative display
-   * counter after a snapshot's deltas have been appended. A counter that
-   * ran ahead of the scrollback only re-anchors the offset (the terminal
-   * pane held the bytes, or a clear dropped them); a counter that moved BACK
-   * (step back, a named restore) unprints down to it, so a re-run reprints
-   * without duplicating what the undone step wrote.
+   * Match the scrollback to the machine's output counter. A counter ahead of
+   * it only moves the offset (the terminal pane or a clear took those bytes);
+   * one that moved back (step back, a restore) removes text down to it, so a
+   * re-run does not print twice.
    */
   syncSeen: (stream: ConsoleStream, seen: number) => void;
   /** Empty the scrollback without telling the machine: an editor assemble
@@ -115,6 +113,7 @@ export function useConsoleOutput(
 ): ConsoleOutput {
   const [stdout, setStdout] = useState("");
   const [stderr, setStderr] = useState("");
+  const [notes, setNotes] = useState<string[]>([]);
   const outputTapRef = useRef<((text: string) => void) | null>(null);
   // The scrollback is mirrored in refs so an append can move the byte
   // position in the same pass: a functional setState updater runs twice
@@ -135,9 +134,9 @@ export function useConsoleOutput(
     (stream: ConsoleStream, delta: string) => {
       const pos = posRef.current[stream];
       const { text, droppedBytes } = appendBoundedTracked(textRef.current[stream], delta);
-      // A truncation eats the oldest text first, and the oldest text is the
-      // preserved history at the head, and those bytes never move seenBase,
-      // because the machine never wrote them.
+      // A trim eats the oldest text first, which is the kept history at the
+      // head; those bytes never move seenBase, because the machine never
+      // wrote them.
       const fromHistory = Math.min(pos.historyBytes, droppedBytes);
       pos.historyBytes -= fromHistory;
       pos.bytesHeld += byteLength(delta) - (droppedBytes - fromHistory);
@@ -164,6 +163,12 @@ export function useConsoleOutput(
     },
     [append],
   );
+
+  // A run notes each register at most once, but terminal runs keep the
+  // scrollback, so the list is capped like the text beside it.
+  const appendNotes = useCallback((texts: string[]) => {
+    setNotes((prev) => [...prev, ...texts].slice(-MAX_NOTES));
+  }, []);
 
   const syncSeen = useCallback(
     (stream: ConsoleStream, seen: number) => {
@@ -205,6 +210,7 @@ export function useConsoleOutput(
       posRef.current[stream].historyBytes = 0;
       write(stream, "");
     }
+    setNotes([]);
   }, [write]);
 
   // The text stays, its byte accounting goes: everything shown becomes
@@ -237,6 +243,8 @@ export function useConsoleOutput(
     stderr,
     appendStdout,
     appendStderr,
+    notes,
+    appendNotes,
     syncSeen,
     clearScrollback,
     preserveScrollback,

@@ -5,7 +5,7 @@
 	.string	"lines=%d words=%d chars=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -48]!
@@ -51,12 +51,12 @@ main:
 	ldp	x21, x22, [sp, 32]
 	ldp	x29, x30, [sp], 48
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	sub	w0, w0, #32
 	bl	putchar
 	b	.L2
-	.align 2
+	.p2align 2,,3
 .L14:
 	add	w22, w22, 1
 	mov	w19, 0

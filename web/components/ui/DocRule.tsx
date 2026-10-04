@@ -1,32 +1,31 @@
+import { SITE_NAME } from "@/lib/content/site";
+
 /**
- * Document rule: the datasheet header strip at the top of every reading
- * surface. Mono, uppercase, tertiary ink over a hairline. The segments name
- * the product, the sheet, and its context, with the section segment in amber
- * (the machine pole carries the sheet number, as on a real datasheet).
- * On phones the strip collapses to the product code alone so it never wraps.
+ * The small header strip at the top of each reading page: the site name, a
+ * section label in amber, and a context label on the right. Phones show only
+ * the name, which fits a 320px screen whole, so the strip never wraps.
  */
 export function DocRule({
   section,
   context,
   className = "",
 }: {
-  /** Sheet identifier, e.g. "SECTION 4 · LEARN"; rendered amber. */
+  /** Section label, e.g. "learn"; rendered amber. */
   section?: string;
-  /** Right-aligned context, e.g. "CPSC 355 STUDY AID". */
+  /** Right-aligned context, e.g. "cpsc 355 study aid". */
   context?: string;
   className?: string;
 }) {
   return (
     <div
-      className={`border-b border-[var(--border)] pb-2 font-mono text-[10px] uppercase leading-[1.4] tracking-[0.08em] text-[var(--text-tertiary)] ${className}`}
+      className={`border-b border-[var(--border)] pb-2 font-mono text-[12px] uppercase leading-[1.4] tracking-[0.08em] text-[var(--text-tertiary)] ${className}`}
     >
       <div className="flex items-baseline gap-3">
-        <span className="whitespace-nowrap">
-          <span className="sm:hidden">aarch64-pg</span>
-          <span className="hidden sm:inline">aarch64 playground</span>
-        </span>
+        <span className="whitespace-nowrap">{SITE_NAME}</span>
+        {/* A lesson's section names it by title; where a long one meets a
+            narrow sheet it ends in an ellipsis, since the h1 below says it whole. */}
         {section ? (
-          <span className="hidden whitespace-nowrap text-[var(--amber)] sm:inline">
+          <span className="hidden min-w-0 truncate text-[var(--amber)] sm:inline">
             {section}
           </span>
         ) : null}

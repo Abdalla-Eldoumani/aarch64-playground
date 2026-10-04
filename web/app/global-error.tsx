@@ -4,19 +4,10 @@ import { useEffect, useState } from "react";
 import { loadAutoSavedBuffer } from "@/lib/playground/auto-save";
 
 /**
- * The last resort: the error boundary for the root layout itself. Per the Next
- * contract it replaces the whole document, so it renders its own <html> and
- * <body>. Because the root layout never ran, none of what the layout installs
- * is available here: no globals.css custom properties, no next/font
- * variables, no theme attribute on <html>.
- *
- * So this file is the one documented exception to the "colors come from tokens"
- * rule: every value below is the literal dark-theme token from
- * app/globals.css, restated because `var(--bg-base)` would resolve to nothing
- * on a page whose stylesheet may not have loaded. When a token moves in
- * globals.css, move it here too. Fonts fall back to generic stacks for the
- * same reason. It wears the same fault-card register as the 404 and the route
- * error page.
+ * The error boundary for the root layout itself. It replaces the whole
+ * document, so the stylesheet, font variables and theme may all be missing:
+ * the colors below restate the dark tokens from lib/theme/tokens.ts and must move
+ * with them, and the fonts fall back to generic stacks.
  */
 
 const BG_BASE = "#0B0C10";
@@ -25,7 +16,7 @@ const BG_ELEVATED = "#212630";
 const BORDER = "#262B33";
 const TEXT_PRIMARY = "#EDEEF1";
 const TEXT_SECONDARY = "#A5ACB6";
-const TEXT_TERTIARY = "#79808B";
+const TEXT_TERTIARY = "#8B939E";
 const DANGER = "#FF6B6B";
 const CYAN = "#3EC5E8";
 const ON_CYAN = "#052430";
@@ -54,12 +45,9 @@ export default function GlobalError({
 }) {
   const [copyState, setCopyState] = useState<"idle" | "ok" | "error">("idle");
 
-  // The report is the whole bundle format, and this boundary needs it only
-  // when the button is pressed, so the builder arrives through a dynamic
-  // import: reaching it statically put the format in the script list of every
-  // document, including the landing's. It is built as soon as the chunk lands
-  // rather than inside the handler, so the clipboard write still happens in
-  // the same task as the press.
+  // Imported on demand, since a static import put the report builder in every
+  // page's scripts. The report is built as soon as it loads, not in the click
+  // handler, so the clipboard write happens in the same task as the press.
   const [report, setReport] = useState<string | null>(null);
   useEffect(() => {
     let live = true;
@@ -77,8 +65,11 @@ export default function GlobalError({
         // rather than failing the copy.
         source: loadAutoSavedBuffer() ?? "",
         error: detail,
+        // The path rides in the status line, since the report ends with the
+        // two sections the student fills in.
+        status: `the page ${window.location.pathname} stopped with the error below`,
       });
-      setReport(`${markdown}**route:** \`${window.location.pathname}\`\n`);
+      setReport(markdown);
     });
     return () => {
       live = false;
@@ -129,7 +120,7 @@ export default function GlobalError({
               borderBottom: `1px solid ${BORDER}`,
               paddingBottom: 8,
               fontFamily: MONO,
-              fontSize: 10,
+              fontSize: 12,
               textTransform: "uppercase",
               letterSpacing: "0.08em",
               color: TEXT_TERTIARY,
@@ -148,7 +139,7 @@ export default function GlobalError({
               color: TEXT_PRIMARY,
             }}
           >
-            something broke
+            Something broke
           </h1>
 
           <p

@@ -1,0 +1,55 @@
+{
+  "title": "Vending machine brain",
+  "slug": "vending-machine-brain",
+  "order": 63,
+  "lastUpdated": "2026-09-30",
+  "topic": "external-data",
+  "difficulty": "challenge",
+  "prompt": "A snack machine sells one thing for 75 cents. It takes nickels (5), dimes (10), quarters (25), loonies (100) and toonies (200), and hands anything else straight back. Pulling the return lever, input 0, gives back whatever credit is in the machine.\n\nThe starter's `main` reads the inputs one at a time, calls `coin(value)` for each, and prints a summary at the end. Write `coin`. The machine's memory, the credit so far and the number of snacks sold, lives in the `.bss` words `credit` and `sold`, not in registers, so it lasts from one call to the next: `coin` loads what it needs, updates it, and stores it back.\n\nEach input prints exactly one line:\n\n- a value it does not take: `rejected v`, and the credit is unchanged\n- the return lever: `returned c`, and the credit goes back to 0\n- a coin that leaves the credit under 75: `credit c`\n- a coin that brings the credit to 75 or more: `vend! change c`, where c is the credit minus 75; the credit goes back to 0 and `sold` goes up by 1\n\nThe starter's input prints:\n\n```\ncredit 25\ncredit 35\ncredit 60\ncredit 70\nvend! change 0\nsold 1, holding 0\n```\n\n`coin` calls `printf`, so it needs a frame, and any of x19 to x28 it uses must be saved and restored.\n\n## What is checked\n\n- the lines above\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden: exactly 75 cents, a toonie, rejected values (a negative one too), the lever on an empty machine, and no input at all\n- the state is written back to memory (`str`)",
+  "starter": "// a snack machine that sells one item for 75 cents; its memory lives in .bss\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(PRICE, 75)\n\n.data\nfmt_in:     .string \"%d\"\nfmt_credit: .string \"credit %d\\n\"\nfmt_vend:   .string \"vend! change %d\\n\"\nfmt_back:   .string \"returned %d\\n\"\nfmt_reject: .string \"rejected %d\\n\"\nfmt_end:    .string \"sold %d, holding %d\\n\"\n\n.bss\n.align 4\ncredit:     .skip 4                         // cents put in toward the next snack\nsold:       .skip 4                         // snacks handed out so far\nvalue_in:   .skip 4                         // scanf's landing spot\n\n.text\n\n// coin(w0 = coin value in cents, or 0 for the return lever)\n        .balign 4\n        .global coin\ncoin:\n        // TODO: load the credit from .bss, decide what this input does,\n        // print its one line, and store the new credit (and sold, after\n        // a sale) back so the next call sees them.\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n        b       fill_test\n\nnext_value:\n        ldr     x9, =value_in\n        ldr     w0, [x9]\n        bl      coin\n\nfill_test:\n        ldr     x0, =fmt_in\n        ldr     x1, =value_in\n        bl      scanf\n        cmp     w0, 1                       // 1 value matched; -1 means the input ran out\n        b.eq    next_value\n\n        ldr     x0, =fmt_end\n        ldr     x9, =sold\n        ldr     w1, [x9]\n        ldr     x9, =credit\n        ldr     w2, [x9]\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "25 10 25 10 5\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "credit 25\ncredit 35\ncredit 60\ncredit 70\nvend! change 0\nsold 1, holding 0\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "str"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "25 25 25 200\n",
+      "stdout": "credit 25\ncredit 50\nvend! change 0\nvend! change 125\nsold 2, holding 0\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1 10 -5 0 0 50\n",
+      "stdout": "rejected 1\ncredit 10\nrejected -5\nreturned 10\nreturned 0\nrejected 50\nsold 0, holding 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "100 5 10\n",
+      "stdout": "vend! change 25\ncredit 5\ncredit 15\nsold 1, holding 15\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "",
+      "stdout": "sold 0, holding 0\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

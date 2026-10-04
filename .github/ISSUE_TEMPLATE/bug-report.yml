@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        The server (GAS, glibc, GNU m4 on csarm) is the reference for every behaviour here. The most useful report carries the program and the two outputs that disagree.
+        The course server (csarm) is the reference: the playground should do exactly what it does. The most useful report includes the program and the two outputs that disagree.
   - type: textarea
     id: program
     attributes:

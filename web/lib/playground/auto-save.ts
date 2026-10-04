@@ -29,14 +29,9 @@ export function loadAutoSavedBuffer(): string | null {
 }
 
 /**
- * Auto-save the editor buffer on change, debounced by 500ms. The effect
- * writes whenever the incoming `value` stabilizes for the debounce
- * window, so fast typing doesn't hammer localStorage.
- *
- * `enabled` gates the write: only the full playground persists to the
- * shared buffer. Embedded surfaces (the landing hero, lessons, exercises)
- * pass `false` so their host-supplied program never overwrites the
- * playground's saved work.
+ * Save the buffer once it has been still for 500ms, so typing does not write
+ * on every key. Embedded copies (the hero, lessons, exercises) pass `false`
+ * for `enabled` so their program never overwrites the playground's saved work.
  */
 export function useAutoSave(value: string, enabled: boolean = true): void {
   const lastSavedRef = useRef<string | null>(null);
@@ -52,10 +47,9 @@ export function useAutoSave(value: string, enabled: boolean = true): void {
 }
 
 /**
- * Stored entries are untrusted: another tab, an older build, or a hand-edited
- * localStorage can hold anything. A wrong-shaped element reaches the recents
- * list, where a missing body loads an empty program and a non-string name
- * renders as whatever it is.
+ * Stored entries are untrusted: another tab, an older build, or a hand edit
+ * can leave anything there, and a wrong-shaped one would load an empty
+ * program or show a name that is not text.
  */
 function isValidRecent(v: unknown): v is RecentEntry {
   if (v == null || typeof v !== "object") return false;

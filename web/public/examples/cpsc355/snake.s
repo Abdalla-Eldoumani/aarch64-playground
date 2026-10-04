@@ -69,8 +69,9 @@ LEVEL_HYPER = 5
 LEVEL_MINEFIELD = 6
 LEVEL_QUIT = 7
 
-// Score constants. The cap exists so the add and the file parse share
-// one clamp; nine digits keeps every rendering column stable.
+// Score cap. Adding points and reading the score file both stop here,
+// so a score never grows past nine digits and every column that
+// shows one keeps its width.
 MAX_SCORE = 999999999
 
 // Minefield pacing: one new mine this many seconds apart
@@ -293,7 +294,7 @@ draw_logo_row_with_glow:
     mov     x24, x21                // x24 = remaining length
     mov     w25, 0                 // x25 = current column (character index)
 
-    // Glow zone: snake_x - 2 to snake_x + 5
+    // Glow zone: snake_x - 2 to snake_x + 6
     sub     w26, w19, 2            // x26 = glow start
 
 anim_row_loop:
@@ -418,7 +419,7 @@ level_selection_loop:
 
     bl      display_level_options
 
-    // Try to read input (non-blocking)
+    // Try to read a key (non-blocking: read returns at once when no key is waiting)
     mov     x0, STDIN_FILENO
     ldr     x1, =input_buffer
     mov     x2, 1
@@ -452,7 +453,7 @@ level_selection_loop:
     cmp     w0, 'Q'
     b.eq    level_quick_quit
 
-    // Check for escape sequence (arrow keys)
+    // ESC (0x1b) starts the three-byte code an arrow key sends
     cmp     w0, 0x1b
     b.eq    level_handle_arrows
 
@@ -891,7 +892,7 @@ set_raw_mode:
     mov     x2, 60                  // sizeof(struct termios) on aarch64 Linux
     bl      memcpy
     
-    // Modify c_lflag: disable ICANON and ECHO
+    // In c_lflag, turn off ICANON (input waits for enter) and ECHO (typed keys are shown)
     ldr     x0, =termios_raw
     ldr     w1, [x0, 12]            // c_lflag sits 12 bytes into termios
     mov     w2, ICANON
@@ -899,7 +900,7 @@ set_raw_mode:
     bic     w1, w1, w2
     str     w1, [x0, 12]
     
-    // Set VMIN=1, VTIME=0
+    // VMIN=1, VTIME=0: a read returns as soon as one key arrives
     mov     w1, 1
     strb    w1, [x0, 17]
     mov     w1, 0
@@ -1022,7 +1023,7 @@ init_game:
     str     wzr, [x0]
 
     // Fresh run: reset the streak, the per-run records, the gold
-    // timer, and the obstacle census
+    // timer, and the obstacle count
     ldr     x0, =combo_mult
     mov     w1, 1
     str     w1, [x0]
@@ -1151,9 +1152,9 @@ init_obstacles_done:
     ldp     fp, lr, [sp], 16
     ret
 
-// Add one obstacle at a random empty cell, away from the snake's
-// head, for the maze escalation. Gives up quietly at the array's
-// capacity or after too many placement attempts on a crowded board.
+// Add one obstacle at a random empty cell away from the snake's head,
+// for maze and minefield modes. Gives up quietly when the array is
+// full or after 200 tries on a crowded board.
 add_obstacle:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
@@ -1448,7 +1449,7 @@ move_right:
     add     w2, w2, 1
 
 update_head:
-    // Calculate new head index (circular buffer)
+    // New head index; it wraps back to 0 at the end of the array
     ldr     x0, =snake_head_index
     ldr     w1, [x0]
     add     w4, w1, 1
@@ -2305,7 +2306,7 @@ draw_snake_cell:
     b       draw_cell_done
 
 draw_body_cell:
-    // Checkerboard shading (by cell parity) gives the body texture
+    // Checkerboard shading (row + column odd or even) gives the body texture
     add     w2, w19, w20
     tst     w2, 1
     b.ne    draw_body_cell_alt
@@ -2552,12 +2553,12 @@ skip_combo_indicator:
     mov     x8, SYS_WRITE
     svc     0
 
-    // Calculate seconds remaining (timer / 5 to approximate seconds)
-    // Timer starts at 50, each game loop is ~200-400ms
+    // Show timer / 5 as a rough countdown. The timer starts at 50 and
+    // drops by one each game tick (a tick sleeps 400 ms in slow-mo)
     ldr     x0, =powerup_timer
     ldr     w0, [x0]
     mov     w1, 5
-    udiv    w0, w0, w1          // w0 = timer / 5 (approximate seconds)
+    udiv    w0, w0, w1          // w0 = timer / 5
     add     w0, w0, 1          // Add 1 to avoid showing 0 while active
 
     ldr     x1, =slowmo_timer_buffer
@@ -2726,7 +2727,7 @@ display_game_over:
     bl      play_game_over_sound
 
     // Start the panel on a blank screen: drawn over the board (or over
-    // a previous game over) the lines interleave with stale text
+    // a previous game over) the lines would mix with old text
     bl      clear_screen
     mov     x0, STDOUT_FILENO
     ldr     x1, =move_cursor_home
@@ -2878,8 +2879,8 @@ wait_for_restart_or_quit:
     mov     fp, sp
 
 restart_input_loop:
-    // Poll for a key. stdin is still non-blocking here, so a miss
-    // must sleep before retrying or the wait would spin the CPU.
+    // Check for a key. stdin is still non-blocking here, so when no key
+    // is waiting, sleep before trying again or the loop keeps the CPU busy.
     mov     x0, STDIN_FILENO
     ldr     x1, =input_buffer
     mov     x2, 1
@@ -3606,7 +3607,7 @@ file_open_success:
     mov     x8, SYS_CLOSE
     svc     0
     
-    // close() reported the error, not write()
+    // This checks close()'s result; write()'s result is not checked
     cmp     x0, 0
     b.lt    save_high_scores_error
     
@@ -3933,9 +3934,9 @@ super_fast_speed:
     b       apply_sleep_time
 
 hyper_speed:
-    // Level 5: starts leisurely and accelerates with every meal, not
-    // with length: max(50ms, 250ms - food*10ms). Around the twentieth
-    // bite it is faster than SPEED ever gets.
+    // Level 5: starts slow and speeds up with every meal, not with
+    // length: max(50ms, 250ms - food*10ms). By the twentieth bite it
+    // is faster than SPEED's starting pace.
     ldr     x0, =food_count
     ldr     w1, [x0]
     mov     w2, 10
@@ -4243,8 +4244,8 @@ game_paused:    .word 0
 quit_flag:      .word 0
 current_level:  .word LEVEL_NORMAL
 
-// Obstacle data: the six starting obstacles plus room for the walls
-// maze mode adds as the game escalates, each an x,y pair
+// Obstacle data, each an x,y pair: the six starting maze obstacles plus
+// room for the ones maze and minefield modes add during play
 obstacle_positions: .skip ((NUM_OBSTACLES + MAX_EXTRA_OBSTACLES) * 8)
 obstacle_count: .word 0
 
@@ -4381,7 +4382,8 @@ logo_subtitle_len = . - logo_subtitle
 anim_newline: .ascii "\n"
 anim_newline_len = . - anim_newline
 
-// ANSI escape sequences
+// ANSI escape sequences: terminal codes that clear the screen and move
+// or hide the cursor
 clear_screen_seq: .ascii "\x1b[2J"
 clear_screen_seq_len = . - clear_screen_seq
 

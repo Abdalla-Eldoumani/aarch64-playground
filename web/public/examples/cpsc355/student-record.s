@@ -8,7 +8,7 @@ define(lr, x30)
 stu_name  = 16          // char name[20], 20 bytes
 stu_id    = 36          // int id, 4 bytes (16 + 20 = 36)
 stu_grade = 40          // char grade, 1 byte (16 + 24 = 40)
-// total struct: 28 bytes (with 3 trailing padding)
+// total struct: 28 bytes (25 used, then 3 bytes of padding)
 
 alloc = -(16 + 32) & -16       // -48
 dealloc = -alloc

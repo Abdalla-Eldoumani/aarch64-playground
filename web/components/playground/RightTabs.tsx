@@ -15,10 +15,8 @@ export type RightTab =
   | "saves";
 
 /**
- * The eight machine views the debug column switches between. They arrive as
- * rendered nodes rather than as hub fields: the shell owns the single
- * `useEmulator()` hub and builds every panel from it, so no part of the hub
- * has to cross into the layout components that only arrange them.
+ * Rendered nodes, not hub fields: the shell owns the one `useEmulator()` hub,
+ * so the layouts that only arrange these panes never touch it.
  */
 export interface DebugPanes {
   memory: ReactNode;
@@ -36,6 +34,8 @@ export interface RightTabsProps {
   onSelectTab: (tab: RightTab) => void;
   /** Marks the console tab while the machine waits on a stdin read. */
   consoleBlocked: boolean;
+  /** Marks the console tab when output arrived while another tab was up. */
+  consoleUnread?: boolean;
   panes: DebugPanes;
 }
 
@@ -51,16 +51,14 @@ const TABS: readonly RightTab[] = [
 ];
 
 /**
- * The debug column's tab strip (tablet and laptop layouts; the phone layout
- * reaches the same panes through MobileLayout's group switcher). The selected
- * tab is the shell's state so a command-palette action can bring a pane
- * forward, but which panes have ever been MOUNTED is this component's own
- * business; see the terminal latch below.
+ * The shell owns the selected tab so a command-palette action can bring a
+ * pane forward; which panes have been mounted stays in here.
  */
 export function RightTabs({
   activeTab,
   onSelectTab,
   consoleBlocked,
+  consoleUnread = false,
   panes,
 }: RightTabsProps) {
   // The terminal mounts lazily on first use and then stays mounted (it hides
@@ -74,13 +72,23 @@ export function RightTabs({
   return (
     <div className="h-full flex flex-col">
       <div
-        className="flex flex-wrap border-b border-[var(--border)] bg-[var(--bg-sunken)] overflow-x-auto"
+        className="flex flex-wrap border-b border-[var(--border)] bg-[var(--bg-sunken)] overflow-x-auto [container-type:inline-size]"
         role="tablist"
         aria-label="debug view"
       >
         {TABS.map((tab) => {
           const selected = activeTab === tab;
-          const showDot = tab === "console" && consoleBlocked && !selected;
+          // The dot is drawn for sight; the same fact rides in the tab's
+          // name for a screen reader, since a colored dot alone says nothing.
+          const dotReason =
+            tab !== "console" || selected
+              ? null
+              : consoleBlocked
+                ? "waiting for input"
+                : consoleUnread
+                  ? "new output"
+                  : null;
+          const showDot = dotReason !== null;
           return (
             <button
               key={tab}
@@ -88,7 +96,11 @@ export function RightTabs({
               role="tab"
               aria-selected={selected}
               aria-controls={`right-panel-${tab}`}
-              className={`relative min-h-[2.25rem] px-4 py-1 text-xs transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+              // The eight labels take 352px. px-3 fits them on one row in a
+              // 1280px window's 573px column; a narrower strip (1024's is
+              // 458px) wrapped to a second row, so under 34rem the padding
+              // tightens to 6px.
+              className={`touch-target relative min-h-[2.25rem] px-3 py-1 text-xs transition-colors [@container(max-width:34rem)]:px-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
                   ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -97,10 +109,13 @@ export function RightTabs({
             >
               {tab}
               {showDot && (
-                <span
-                  aria-hidden="true"
-                  className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"
-                />
+                <>
+                  <span
+                    aria-hidden="true"
+                    className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-[var(--cyan)]"
+                  />
+                  <span className="sr-only">, {dotReason}</span>
+                </>
               )}
             </button>
           );

@@ -14,10 +14,9 @@ const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
 
 /**
- * A minimal course-style module that puts the worked instruction at the entry
- * point, so the word to check is always the word at the loaded pc. Branch
- * examples need their labels laid out at the exact distances the authored
- * imm26 bits claim (b: two instructions ahead; bl: three).
+ * The worked instruction goes first, so the word to check is the one at the
+ * loaded pc. A branch's label sits where its authored imm26 bits say (b: two
+ * instructions ahead; bl: three).
  */
 function probeSource(asm: string): string {
   const prologue = "        .text\n        .balign 4\n        .global main\nmain:\n";

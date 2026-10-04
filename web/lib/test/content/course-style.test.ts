@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
+import { escapeRegExp } from "@/lib/asm/escape-regexp";
 
-// Course tutorial files never write these directives; each entry notes the
-// spelling the course uses instead. Authored programs must read like course
-// work, so a hit in any shipped payload is a style regression. The emulator
-// still accepts several of them (`.type`, `.section`, `.quad`) so pasted GCC
-// output keeps assembling; this guard covers what the site authors, not what
-// the machine tolerates. docs/cpsc355-style-guide.md states the rule.
+// Directives course files never write, each noted with the spelling the course
+// uses instead (docs/cpsc355-style-guide.md). The emulator still accepts some
+// so pasted gcc output assembles; this check covers only what the site ships.
 const BANNED_DIRECTIVES = [
   ".type", // GCC function metadata; course files declare main with .global alone
   ".size", // GCC function metadata; never written by hand in course files
@@ -21,9 +19,12 @@ const BANNED_DIRECTIVES = [
   ".set", // same: assembler-level aliasing never appears in course files
 ];
 
-const bannedRe = new RegExp(
-  `(${BANNED_DIRECTIVES.map((d) => d.replace(/\./g, "\\.")).join("|")})\\b`,
-);
+/** Any of the names, read as literal text, ending at a word boundary. */
+function literalAlternation(names: readonly string[]): RegExp {
+  return new RegExp(`(${names.map(escapeRegExp).join("|")})\\b`);
+}
+
+const bannedRe = literalAlternation(BANNED_DIRECTIVES);
 
 function assertClean(file: string, raw: string): void {
   const hit = bannedRe.exec(raw);
@@ -46,15 +47,24 @@ function walk(dir: string, ext: string): string[] {
 
 const rel = (file: string): string => path.relative(process.cwd(), file);
 
+// Every lesson and exercise file, read once as the suite loads: with every
+// test worker busy, one pass over them took seconds inside a test.
+const CONTENT = ["content/lessons", "content/exercises"]
+  .flatMap((dir) => walk(path.join(process.cwd(), dir), ".json"))
+  .map((file) => ({ file: rel(file), raw: fs.readFileSync(file, "utf8") }));
+
 describe("authored programs stay inside the course directive vocabulary", () => {
+  it("reads each banned name as literal text, not regex syntax", () => {
+    const re = literalAlternation([".a+b", ".c\\d"]);
+    expect(re.test("x .a+b y")).toBe(true);
+    expect(re.test("x .aab y")).toBe(false);
+    expect(re.test("x .c\\d y")).toBe(true);
+    expect(re.test("x .c7 y")).toBe(false);
+  });
+
   it("lessons and exercises carry no banned directive", () => {
-    const files = ["content/lessons", "content/exercises"].flatMap((dir) =>
-      walk(path.join(process.cwd(), dir), ".json"),
-    );
-    expect(files.length).toBeGreaterThanOrEqual(4);
-    for (const file of files) {
-      assertClean(rel(file), fs.readFileSync(file, "utf8"));
-    }
+    expect(CONTENT.length).toBeGreaterThanOrEqual(4);
+    for (const { file, raw } of CONTENT) assertClean(file, raw);
   });
 
   it("public example programs carry no banned directive", () => {
@@ -74,13 +84,30 @@ describe("authored programs stay inside the course directive vocabulary", () => 
 
   it("pitfall demo programs carry no banned directive", () => {
     // Same shape as reference-data: pure authored payload (card snippets plus
-    // the runnable fault/fix programs), so the raw scan covers all of it.
-    const file = path.join(process.cwd(), "lib", "content", "pitfall-data.ts");
-    assertClean("lib/content/pitfall-data.ts", fs.readFileSync(file, "utf8"));
+    // the runnable broken and fixed programs), so the raw scan covers all of it.
+    const files = walk(path.join(process.cwd(), "lib", "content", "pitfalls"), ".ts");
+    expect(files.length).toBeGreaterThanOrEqual(8);
+    for (const file of files) assertClean(rel(file), fs.readFileSync(file, "utf8"));
+  });
+
+  it("calling-convention examples carry no banned directive", () => {
+    const file = path.join(process.cwd(), "lib", "content", "calling-convention-examples.ts");
+    assertClean("lib/content/calling-convention-examples.ts", fs.readFileSync(file, "utf8"));
   });
 
   it("authoring guide payloads carry no banned directive", () => {
     const guide = path.join(process.cwd(), "..", "docs", "authoring-content.md");
     assertClean("docs/authoring-content.md", fs.readFileSync(guide, "utf8"));
+  });
+});
+
+// One check for both content folders: lessons and exercises are authored
+// alike, and each used to carry its own copy of this pattern.
+describe("authored content stays anonymous and undated", () => {
+  it("lessons and exercises carry no week labels, archive numbers, or personal data", () => {
+    const banned = /week\s*\d|tutorial\s*\d|assignment\s*\d|@[a-z0-9.-]+\.[a-z]{2,}/i;
+    for (const { file, raw } of CONTENT) {
+      expect(banned.test(raw), `${file} matched a banned pattern`).toBe(false);
+    }
   });
 });

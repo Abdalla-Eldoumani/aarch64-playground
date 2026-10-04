@@ -28,7 +28,7 @@ FIRE_RATE = 10                                  // Frames between shots
 
                 .data
 
-// Projectile pool
+// Projectile pool: a fixed array of reusable slots
                 .balign 8
 projectile_pool: .skip  MAX_PROJECTILES * PROJ_STRUCT_SIZE
 
@@ -226,7 +226,7 @@ find_enemy_loop:
                 ldrsh   w2, [x0, ENEMY_X]       // Enemy X
                 ldrsh   w3, [x0, ENEMY_Y]       // Enemy Y
 
-                // Calculate Manhattan distance
+                // Distance in grid steps (Manhattan distance): |dx| + |dy|
                 sub     w4, w2, w19             // dx = ex - px
                 cmp     w4, 0
                 b.ge    find_abs_dx_done
@@ -339,7 +339,7 @@ proj_check_collision:
                 // Check if boss died (returns XP if dead)
                 cbz     w0, proj_deactivate     // Boss alive, just deactivate projectile
 
-                // Boss died! Spawn big explosion
+                // Boss died: one more explosion where the shot hit
                 mov     w0, w23
                 mov     w1, w24
                 mov     w2, 99                  // effects_spawn_explosion ignores the type; kept distinct for readers
@@ -382,7 +382,7 @@ proj_check_enemies:
                 cmp     w0, 0
                 b.eq    proj_deactivate         // Enemy not dead, just deactivate projectile
 
-                // Save XP value before calling effects (w0 will be clobbered)
+                // Save XP value before calling effects (the call can overwrite w0)
                 mov     w25, w0                 // w25 = XP value
 
                 mov     w0, w23
@@ -462,7 +462,7 @@ multi_shot_loop:
                 add     w1, w20, w21            // Offset Y by shot number
                 bl      projectiles_fire
 
-                // Fire with negative Y offset too if more than 1 extra
+                // Fire with a negative Y offset too when the shot number is above 1
                 cmp     w21, 1
                 b.le    multi_shot_next
                 mov     w0, w19

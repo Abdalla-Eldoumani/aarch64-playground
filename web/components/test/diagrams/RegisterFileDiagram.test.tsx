@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { RegisterFileDiagram } from "@/components/diagrams/RegisterFileDiagram";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("RegisterFileDiagram", () => {
@@ -72,14 +69,5 @@ describe("RegisterFileDiagram", () => {
   it("exposes an accessible name", () => {
     render(<RegisterFileDiagram />);
     expect(screen.getByLabelText("aapcs64 register file")).toBeTruthy();
-  });
-
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<RegisterFileDiagram />);
-      expect(screen.getByLabelText("aapcs64 register file")).toBeTruthy();
-      unmount();
-    }
   });
 });

@@ -10,8 +10,9 @@ define(lr, x30)
     .data
     .balign 8
 
-// Foreground escapes, \x1b[38;5;Nm. Roles: chrome first, then the states a
-// running algorithm paints.
+// Foreground escapes: the terminal reads \x1b[38;5;Nm as "text in colour N".
+// Roles: plain text and borders first, then the states a running algorithm
+// paints.
 th_fg_text:         .string "\x1b[38;5;189m"   // body text
 th_fg_dim:          .string "\x1b[38;5;146m"   // secondary text, units
 th_fg_faint:        .string "\x1b[38;5;243m"   // borders, rules, hints
@@ -90,7 +91,7 @@ th_off:
     ldp     fp, lr, [sp], 16
     ret
 
-// th_bold_on() / th_dim_on() - weight, cleared by th_off
+// th_bold_on() / th_dim_on() - bold or dim text, cleared by th_off
     .global th_bold_on
 th_bold_on:
     stp     fp, lr, [sp, -16]!

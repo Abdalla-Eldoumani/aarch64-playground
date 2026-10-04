@@ -1,0 +1,7 @@
+$ gcc undefined-label.s -o program
+/usr/bin/ld.bfd: undefined-label.o: in function `loop':
+(.text+0x30): undefined reference to `lopo'
+/usr/bin/ld.bfd: undefined-label.o: conditional branch to undefined symbol `lopo' not allowed
+(.text+0x30): dangerous relocation: unsupported relocation
+collect2: error: ld returned 1 exit status
+[exit 1]

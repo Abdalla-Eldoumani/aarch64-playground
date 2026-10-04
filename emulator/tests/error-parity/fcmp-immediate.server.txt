@@ -1,0 +1,4 @@
+$ gcc fcmp-immediate.s -o program
+fcmp-immediate.s: Assembler messages:
+fcmp-immediate.s:10: Error: immediate zero expected at operand 2 -- `fcmp d0,#1.0'
+[exit 1]

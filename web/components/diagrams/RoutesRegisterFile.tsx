@@ -25,15 +25,9 @@ function MicroFieldBox({ lit, onPrimary }: { lit: number; onPrimary: boolean }) 
 }
 
 /**
- * The site routes rendered as a register file / memory map: each destination is
- * a row with a mono register-style label (x0..x3), the destination name, and
- * its route address in the right "value" column, echoing RegisterRow's grammar
- * (mono labels, aligned columns, tabular value) so the block reads as a register
- * table rather than a generic card row. The playground is the cyan primary (x0);
- * Learn / Practice / Reference are quiet rows that go cyan on hover/focus. The
- * hrefs come from ROUTE_REGISTERS, which derives them from NAV_ROUTES, so the
- * addresses never drift. A server component: the one piece of client code
- * under it is BootFlashList, which arms the boot stagger after mount.
+ * The site's routes drawn as a register table, matching RegisterRow. Hrefs
+ * come from ROUTE_REGISTERS, derived from NAV_ROUTES, so they never drift.
+ * A server component: its only client code is BootFlashList.
  */
 export function RoutesRegisterFile() {
   return (
@@ -42,9 +36,9 @@ export function RoutesRegisterFile() {
       className="mx-auto w-full max-w-5xl px-6 py-12 sm:py-16"
     >
       <h2 id="routes-heading" className="sr-only">
-        jump table
+        Where to go
       </h2>
-      <Kicker number="01" title="jump table" className="mb-4" />
+      <Kicker number="01" title="where to go" className="mb-4" />
       <BootFlashList className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-sunken)]">
         {ROUTE_REGISTERS.map((route, index) => (
           // Each row plays the register-write flash once the list arms itself

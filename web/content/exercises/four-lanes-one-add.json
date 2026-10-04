@@ -1,0 +1,68 @@
+{
+  "title": "Four lanes, one add",
+  "slug": "four-lanes-one-add",
+  "order": 138,
+  "lastUpdated": "2026-10-01",
+  "topic": "floating-point",
+  "difficulty": "core",
+  "prompt": "Four players finish a round, and each of them earns the same bonus. The starter reads the four scores and then the bonus (`12 30 7 25` and `5` in the stdin box) into memory. Add the bonus to all four scores with one vector `add`, then total the new scores with `addv`.\n\nLoad the scores into the lanes of `v0` with `ld1`, and put the bonus in every lane of `v1` with `dup`. `printf` reads its `%d` values from `w` registers and may change any `v` register, so copy the lanes out with `mov w1, v2.s[0]` and the like, and keep the total in `total_r` before the first call. The vectors lesson shows each of these instructions.\n\n## What is checked\n\n- the four new scores print on one line, and the total on the next\n- the program exits cleanly\n- the work is done in the lanes (`ld1`, `dup` and `addv`), and the total is not hardcoded\n- the same holds for other scores you do not see, negative scores and a bonus of 0 or below among them",
+  "starter": "// add one bonus to four scores with a single vector add, then total them\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(total_r, w19)\n\n        .data\nfmt_in:     .string \"%d %d %d %d %d\"\nfmt_scores: .string \"scores: %d %d %d %d\\n\"\nfmt_total:  .string \"total: %d\\n\"\n\n        .bss\n        .align 4\nscores_m:   .skip 16                        // four ints, one v register's worth\nbonus_m:    .skip 4\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read four scores, then the bonus\n        ldr     x1, =scores_m\n        add     x2, x1, 4\n        add     x3, x1, 8\n        add     x4, x1, 12\n        ldr     x5, =bonus_m\n        bl      scanf\n\n        // TODO: load the four scores into the lanes of one v register,\n        // put the bonus in every lane of another, and add the two in one\n        // instruction. Total the four new scores with addv into total_r.\n        mov     total_r, 0\n\n        ldr     x0, =fmt_scores\n        ldr     x9, =scores_m               // for now, the scores without the bonus\n        ldr     w1, [x9]\n        ldr     w2, [x9, 4]\n        ldr     w3, [x9, 8]\n        ldr     w4, [x9, 12]\n        bl      printf\n\n        ldr     x0, =fmt_total\n        mov     w1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "12 30 7 25\n5\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "scores: 17 35 12 30\ntotal: 94\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ld1"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "dup"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "addv"
+      },
+      {
+        "kind": "forbids-literal",
+        "value": 94
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0 0 0 0\n0\n",
+      "stdout": "scores: 0 0 0 0\ntotal: 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-5 10 -20 3\n7\n",
+      "stdout": "scores: 2 17 -13 10\ntotal: 16\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "100 200 300 400\n-50\n",
+      "stdout": "scores: 50 150 250 350\ntotal: 800\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1 2 3 4\n1000000\n",
+      "stdout": "scores: 1000001 1000002 1000003 1000004\ntotal: 4000010\n",
+      "exitCode": 0
+    }
+  ]
+}

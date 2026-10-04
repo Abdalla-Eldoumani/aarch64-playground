@@ -1,7 +1,8 @@
 {
-  "title": "Quiz: system architecture",
+  "title": "Basic quiz: system architecture",
   "slug": "quiz-basic-architecture",
-  "order": 28,
+  "order": 68,
+  "lastUpdated": "2026-09-30",
   "topic": "architecture",
   "difficulty": "intro",
   "variant": "quiz",
@@ -32,14 +33,14 @@
       "hint": "One kind of memory needs power to hold its contents, the other does not."
     },
     {
-      "question": "In the context of computer architectures, what does the acronym RISC stand for?",
+      "question": "In computer architecture, what does RISC stand for?",
       "options": [
-        "Reduced Instruction Set Computer",
         "Rapid Integrated System Controller",
         "Random Internal Storage Cache",
+        "Reduced Instruction Set Computer",
         "Redundant Instruction Sequence Component"
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 2,
       "explanation": "RISC stands for Reduced Instruction Set Computer. The instruction set is kept small and regular, instructions are a fixed width, and memory is reached only through load and store instructions, which is why AArch64 arithmetic works on registers rather than directly on memory.",
       "hint": "The first word describes the size of the instruction set, not the speed of the chip."
     },
@@ -47,16 +48,16 @@
       "question": "During the fetch step of the fetch-execute cycle, where does the CPU get the next instruction from, and where does it put it?",
       "options": [
         "From secondary memory, such as a disk drive, into the ALU",
-        "From primary memory, into the instruction register (IR)",
         "From the system bus, which holds instructions between cycles",
-        "From the arithmetic logic unit, which produces the next instruction"
+        "From the arithmetic logic unit, which produces the next instruction",
+        "From RAM, into the instruction register (IR)"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 3,
       "explanation": "The fetch step uses the address in the program counter to read the next instruction out of primary memory and copies it into the instruction register, where the decode step can look at it. Secondary storage is far too slow to be read once per instruction.",
       "hint": "Instructions live in RAM and have to reach a register inside the CPU before they can be decoded."
     },
     {
-      "question": "In an AArch64 GAS source file, how is a comment appended to the end of an instruction line?",
+      "question": "In an AArch64 assembly file, how do you add a comment at the end of an instruction line?",
       "options": [
         "After a // delimiter",
         "After an @ delimiter",

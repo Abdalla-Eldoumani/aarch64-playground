@@ -1,0 +1,374 @@
+	.text
+	.align	2
+	.p2align 5,,15
+once:
+	ubfx	x1, x0, 4, 8
+	add	w0, w1, w0, uxtb
+	ret
+	.section .rodata
+	.align	3
+.LC0:
+	.string	"alloca(%d): mod16=%d len=%d first=%c\n"
+	.text
+	.align	2
+	.p2align 5,,15
+odd:
+	stp	x29, x30, [sp, -64]!
+	mov	x29, sp
+	stp	x21, x22, [sp, 32]
+	adrp	x22, .LC0
+	add	x22, x22, :lo12:.LC0
+	str	x23, [sp, 48]
+	adrp	x23, .LANCHOR0
+	add	x23, x23, :lo12:.LANCHOR0
+	stp	x19, x20, [sp, 16]
+	mov	w20, 0
+	.p2align 5,,15
+.L5:
+	ldr	w21, [x23, w20, sxtw 2]
+	add	w1, w20, 97
+	add	w20, w20, 1
+	sxtw	x19, w21
+	add	x0, x19, 15
+	mov	x2, x19
+	and	x0, x0, -16
+	sub	sp, sp, x0
+	add	x19, sp, x19
+	mov	x0, sp
+	bl	memset
+	mov	x0, sp
+	strb	wzr, [x19, -1]
+	bl	strlen
+	mov	w3, w0
+	cmp	w21, 1
+	ldrb	w4, [sp]
+	mov	w0, 45
+	mov	w1, w21
+	csel	w4, w4, w0, gt
+	mov	w2, 0
+	mov	x0, x22
+	bl	printf
+	cmp	w20, 6
+	bne	.L5
+	mov	sp, x29
+	ldr	x23, [sp, 48]
+	ldp	x19, x20, [sp, 16]
+	ldp	x21, x22, [sp, 32]
+	ldp	x29, x30, [sp], 64
+	ret
+	.section .rodata
+	.align	3
+.LC1:
+	.string	"block %d of %d"
+	.align	3
+.LC2:
+	.string	"pile: %s | %s | total=%d\n"
+	.text
+	.align	2
+	.p2align 5,,15
+pile:
+	stp	x29, x30, [sp, -368]!
+	mov	x29, sp
+	stp	x19, x20, [sp, 16]
+	adrp	x20, .LC1
+	add	x20, x20, :lo12:.LC1
+	str	x21, [sp, 32]
+	add	x21, x29, 48
+	mov	x19, 24
+	.p2align 5,,15
+.L10:
+	add	x1, x21, x19, lsl 3
+	add	x0, x19, 15
+	and	x0, x0, -16
+	sub	w2, w19, #24
+	sub	sp, sp, x0
+	add	x19, x19, 1
+	mov	x0, sp
+	mov	w3, 40
+	str	x0, [x1, -192]
+	mov	x1, x20
+	bl	sprintf
+	cmp	x19, 64
+	bne	.L10
+	mov	x19, 1
+	mov	w20, 0
+	.p2align 5,,15
+.L11:
+	add	x0, x21, x19, lsl 3
+	ldr	x0, [x0, -8]
+	bl	strlen
+	madd	w20, w0, w19, w20
+	add	x19, x19, 1
+	cmp	x19, 41
+	bne	.L11
+	ldr	x1, [x29, 48]
+	mov	w3, w20
+	ldr	x2, [x29, 360]
+	adrp	x0, .LC2
+	add	x0, x0, :lo12:.LC2
+	bl	printf
+	mov	sp, x29
+	ldr	x21, [sp, 32]
+	ldp	x19, x20, [sp, 16]
+	ldp	x29, x30, [sp], 368
+	ret
+	.align	2
+	.p2align 5,,15
+big.constprop.0:
+	stp	x29, x30, [sp, -32]!
+	mov	x0, -4464
+	movk	x0, 0xfffe, lsl 16
+	mov	x29, sp
+	mov	x2, 4464
+	str	x19, [sp, 16]
+	add	sp, sp, x0
+	movk	x2, 0x1, lsl 16
+	mov	w1, 17
+	mov	x0, sp
+	bl	memset
+	mov	x1, 8246
+	mov	x19, sp
+	mov	x0, 0
+	mov	x2, 4099
+	movk	x1, 0x1, lsl 16
+	.p2align 5,,15
+.L16:
+	strb	w0, [x19, x0]
+	add	x0, x0, x2
+	cmp	x0, x1
+	bne	.L16
+	add	x3, x19, 69632
+	mov	x1, x19
+	add	x3, x3, 1155
+	mov	w0, 0
+	.p2align 5,,15
+.L17:
+	ldrb	w2, [x1]
+	add	w0, w0, w0, lsl 2
+	add	x1, x1, 997
+	add	w0, w2, w0
+	cmp	x1, x3
+	bne	.L17
+	add	x19, x19, 69632
+	ldrb	w1, [x19, 367]
+	mov	sp, x29
+	add	w0, w1, w0
+	ldr	x19, [sp, 16]
+	ldp	x29, x30, [sp], 32
+	ret
+	.align	2
+	.p2align 5,,15
+survive.constprop.0:
+	adrp	x1, .LANCHOR1
+	add	x0, x1, :lo12:.LANCHOR1
+	stp	x29, x30, [sp, -16]!
+	mov	x29, sp
+	sub	sp, sp, #112
+	ldp	q29, q30, [x0, 16]
+	mov	x2, sp
+	ldr	q31, [x1, :lo12:.LANCHOR1]
+	mov	x4, sp
+	sub	sp, sp, #400
+	mov	x1, x2
+	stp	q31, q29, [sp, 400]
+	ldp	q29, q31, [x0, 48]
+	stp	q30, q29, [sp, 432]
+	mov	x3, sp
+	ldr	q30, [x0, 80]
+	mov	w0, 576
+	str	w0, [x2, 96]
+	mov	x0, sp
+	stp	q31, q30, [x2, 64]
+	mvni	v31.4s, 0
+	.p2align 5,,15
+.L22:
+	str	q31, [x0], 16
+	cmp	x0, x1
+	bne	.L22
+	movi	v31.4s, 0
+	ldr	w0, [x3, 100]
+	mov	x1, x2
+	mov	sp, x4
+	add	x3, x2, 96
+	.p2align 5,,15
+.L23:
+	ldr	q30, [x1], 16
+	add	v31.4s, v30.4s, v31.4s
+	cmp	x1, x3
+	bne	.L23
+	addv	s31, v31.4s
+	fmov	w1, s31
+	add	w0, w0, w1
+	ldr	w1, [x2, 96]
+	mov	sp, x29
+	add	w0, w0, w1
+	ldp	x29, x30, [sp], 16
+	ret
+	.align	2
+	.p2align 5,,15
+chain.constprop.0:
+	stp	x29, x30, [sp, -16]!
+	adrp	x2, .LANCHOR1+96
+	mov	x1, 0
+	mov	x29, sp
+	ldr	q28, [x2, :lo12:.LANCHOR1+96]
+	adrp	x2, .LC10
+	ldr	q29, [x2, :lo12:.LC10]
+	b	.L31
+	.p2align 2,,3
+.L28:
+	sub	w0, w0, #1
+	mov	x1, sp
+.L31:
+	dup	v30.4s, w0
+	sub	sp, sp, #48
+	mov	v31.16b, v29.16b
+	mov	v27.16b, v29.16b
+	str	x1, [sp]
+	smlal	v31.2d, v30.2s, v28.2s
+	smlal2	v27.2d, v30.4s, v28.4s
+	str	q31, [sp, 8]
+	str	q27, [sp, 24]
+	cmp	w0, 0
+	bgt	.L28
+	fmov	x0, d31
+	mov	w3, 1
+	cbz	x1, .L30
+	.p2align 5,,15
+.L29:
+	ubfiz	x4, x3, 3, 2
+	add	x0, x0, x0, lsl 1
+	add	x2, x1, x4
+	add	w3, w3, 1
+	ldr	x1, [x1]
+	ldr	x2, [x2, 8]
+	add	x0, x0, x2
+	cbnz	x1, .L29
+.L30:
+	mov	sp, x29
+	add	x0, x0, w3, sxtw
+	ldp	x29, x30, [sp], 16
+	ret
+	.section .rodata
+	.align	3
+.LC11:
+	.string	"once x%d: sum=%lld\n"
+	.align	3
+.LC12:
+	.string	"chain=%llu\n"
+	.align	3
+.LC13:
+	.string	"survive=%d\n"
+	.align	3
+.LC14:
+	.string	"big=%u\n"
+	.text
+	.align	2
+	.p2align 5,,15
+	.global	main
+main:
+	stp	x29, x30, [sp, -32]!
+	mov	x29, sp
+	str	x19, [sp, 16]
+	adrp	x19, .LANCHOR0
+	add	x19, x19, :lo12:.LANCHOR0
+	bl	odd
+	bl	pile
+	ldr	w0, [x19, 24]
+	cmp	w0, 0
+	ble	.L39
+	mov	w3, 0
+	mov	x2, 0
+	.p2align 5,,15
+.L38:
+	mov	w0, w3
+	bl	once
+	add	x2, x2, w0, sxtw
+	ldr	w0, [x19, 24]
+	add	w3, w3, 1
+	cmp	w0, w3
+	bgt	.L38
+.L37:
+	ldr	w1, [x19, 24]
+	adrp	x0, .LC11
+	add	x0, x0, :lo12:.LC11
+	bl	printf
+	ldr	w0, [x19, 28]
+	bl	chain.constprop.0
+	mov	x1, x0
+	adrp	x0, .LC12
+	add	x0, x0, :lo12:.LC12
+	bl	printf
+	bl	survive.constprop.0
+	mov	w1, w0
+	adrp	x0, .LC13
+	add	x0, x0, :lo12:.LC13
+	bl	printf
+	bl	big.constprop.0
+	mov	w1, w0
+	adrp	x0, .LC14
+	add	x0, x0, :lo12:.LC14
+	bl	printf
+	ldr	x19, [sp, 16]
+	mov	w0, 0
+	ldp	x29, x30, [sp], 32
+	ret
+.L39:
+	mov	x2, 0
+	b	.L37
+	.section .rodata
+	.align	4
+	.LANCHOR1:
+.LC3:
+	.word	0
+	.word	1
+	.word	4
+	.word	9
+.LC4:
+	.word	16
+	.word	25
+	.word	36
+	.word	49
+.LC5:
+	.word	64
+	.word	81
+	.word	100
+	.word	121
+.LC6:
+	.word	144
+	.word	169
+	.word	196
+	.word	225
+.LC7:
+	.word	256
+	.word	289
+	.word	324
+	.word	361
+.LC8:
+	.word	400
+	.word	441
+	.word	484
+	.word	529
+.LC9:
+	.word	1
+	.word	2
+	.word	3
+	.word	4
+.LC10:
+	.xword	-200
+	.xword	-200
+	.data
+	.align	4
+	.LANCHOR0:
+odd_sizes:
+	.word	1
+	.word	3
+	.word	17
+	.word	33
+	.word	100
+	.word	4097
+calls:
+	.word	3000
+chain_depth:
+	.word	120
+

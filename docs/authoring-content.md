@@ -12,8 +12,8 @@ application code, no database: drop a file in the right folder and it shows up.
 The `slug` is the file name without `.json` and becomes the page URL, so keep
 it unique and url-safe: lowercase letters and digits joined by single dashes,
 like `adding-two-registers`. The index lists every file in the folder and
-sorts by the `order` field, so `order` sets the sequence. Plain numbers work;
-leave gaps to insert something later.
+sorts by the `order` field, so `order` sets the sequence. Lessons and
+exercises number it differently; their sections below say how.
 
 Long text fields are Markdown (a lesson's prose, an exercise's prompt). They
 render through a sanitizer: headings, lists, links, and inline code work, raw
@@ -34,34 +34,77 @@ Metadata:
   spelling (AArch64, ARMv8, `printf`, `.data`, `x19`), and nothing else.
   No trailing period, and no "in ARMv8 AArch64 Assembly" suffix: every
   page here is that, and the suffix pushes the words that tell one lesson
-  from another off the end of an index card.
+  from another off the end of an index card. Keep it under 60 characters,
+  about what a search result shows.
 - `slug`: url-safe kebab-case, matching the file name.
-- `order`: the index sorts by this; a number or string.
+- `order`: the index sorts by this; a number or string. The page numbers
+  each lesson by its position (4.1, 4.2, and so on), so `order` need not be
+  whole. To put a lesson between two others, give it a half order, such as
+  12.5 between 12 and 13, instead of renumbering every lesson after it.
+- `lastUpdated`: the day you last changed the lesson, as `YYYY-MM-DD`. The
+  sitemap tells search engines this date, so set it to today whenever you
+  edit the file. A shipped file without it fails the content tests.
 - `summary`: optional one-line blurb for the index card. Say what the
-  reader will be able to do, not that the lesson covers a topic.
+  reader will be able to do, not that the lesson covers a topic. It is
+  also the page's search-result snippet, so keep it under 155 characters
+  and different from every other page's.
 - `tags`: optional list of strings for the index filter. A tag is
   lowercase, written with spaces rather than dashes, and names a concept
   a reader would search for instead of restating the title. The shipped
-  lessons use twelve between them: branching, conditionals, format
-  strings, frame pointer, immediates, loops, post-test loop, pre-test
-  loop, printing, registers, stack, variables. Reuse one of those unless
-  the lesson teaches something none of them names.
+  lessons use these between them: armv8 basics, arrays, binary
+  arithmetic, binary logic, bitwise, branching, command-line arguments,
+  conditionals, external data, floating point, format strings, frame
+  pointer, immediates, input and output, loops, memory and the stack,
+  post-test loop, pre-test loop, printing, registers, stack, strings,
+  subroutines, system architecture, variables. Most of them match a
+  practice topic. Reuse one of those unless the lesson teaches something
+  none of them names.
 
 `body` is an ordered, non-empty list of blocks. Each block's `type` selects
 its remaining fields:
 
 - `{ "type": "prose", "markdown": "..." }`: a passage of Markdown.
 - `{ "type": "code", "language": "asm", "source": "..." }`: a read-only
-  listing with a corner copy button. `language` is `asm`, `c`, or `text`; an
-  `asm` listing also gets a button to open it in the playground, while `c` and
-  `text` render without one since the emulator only runs assembly.
+  listing with a corner copy button. `language` is `asm`, `c`, or `text`. An
+  `asm` listing that is a whole program (it has a `main:` label) also gets a
+  button to open it in the playground. A fragment, and every `c` or `text`
+  listing, renders without one: a fragment alone fails to link, and the
+  emulator only runs assembly.
 - `{ "type": "callout", "variant": "note", "markdown": "..." }`: a
   highlighted aside. `variant` is `note`, `warning`, `pitfall`, or `prereq`.
-- `{ "type": "editor", "starter": "...", "args": "...", "stdin": "..." }`: an
-  inline editor the reader can run and change in place. Only `starter` is
-  required; `args` and `stdin` are optional.
+- `{ "type": "editor", "starter": "...", "args": "...", "stdin": "...",
+  "expectedOutput": { "stdout": "...", "exitCode": 0 } }`: an inline editor
+  the reader can run and change in place. Only `starter` is required.
+  `args` and `stdin` are optional. `expectedOutput` is optional in the
+  schema but every shipped editor carries one: `stdout` is exactly what the
+  program prints when it runs with the block's own `args` and `stdin`, byte
+  for byte, and `exitCode` (0 to 255) is the exit status, which can be left
+  out when the lesson never mentions it. A test runs every lesson program on
+  the emulator with its input closed after `stdin`, the way `./program <
+  file` runs on the servers, and fails when the output differs, so write the
+  value from a real run on the servers, never from memory.
 
-Blocks render top to bottom.
+Blocks render top to bottom. Every lesson after the first two opens with a
+`prereq` callout, and every lesson ends with a `## Check yourself` heading, a
+`note` callout holding the numbered answers, and a `## Practice` list.
+
+### the practice links
+
+`## Practice` lists the exercises and theory sets that go with the lesson,
+each with one line on what it practises. The site reads these links too:
+every `[text](/practice/<slug>)` link in a lesson's prose or callouts (code
+blocks are skipped) becomes a card in the list at the foot of the page, with
+coding exercises and theory sets apart. Tests hold the links to four rules:
+
+- A link to an exercise that does not exist fails the build.
+- The link text is the exercise's `title`, the title with its difficulty in
+  brackets, or the difficulty alone after a sibling named in full, the way
+  the foot card names it. Renaming an exercise means updating the lessons
+  that link to it.
+- Every lesson links at least one coding exercise and one theory set.
+- Every practice topic has both coding exercises and theory sets, except
+  `architecture` and `binary-logic`, which are worked by hand and have no
+  coding side.
 
 ### a worked lesson
 
@@ -103,6 +146,7 @@ main:
   "title": "Adding two registers",
   "slug": "adding-two-registers",
   "order": 2,
+  "lastUpdated": "2026-09-27",
   "summary": "Load two values, add them with the add instruction, and print the result.",
   "tags": [
     "registers",
@@ -125,11 +169,18 @@ main:
     },
     {
       "type": "editor",
-      "starter": "// change the two values and run to watch the sum follow\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6\n        mov     b, 7\n        add     a, a, b\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+      "starter": "// change the two values and run to watch the sum follow\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"sum = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 6\n        mov     b, 7\n        add     a, a, b\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum = 13\n",
+        "exitCode": 0
+      }
     }
   ]
 }
 ```
+
+The example leaves out the opening callout and the closing sections to stay
+short. A shipped lesson needs them.
 
 ## exercises
 
@@ -144,35 +195,71 @@ Fields every variant carries:
   the tier and the index prints it as its own chip. The page's metadata
   title composes the two as `<title> (<difficulty>)`, so the three sets of
   a theory family still get three distinct browser tabs and share cards
-  while the heading on the page stays bare.
+  while the heading on the page stays bare. Keep that composed title under
+  60 characters.
 - `slug`: url-safe kebab-case, matching the file name.
 - `order`: the index sorts by this; a number or string. The sheet runs
-  every coding exercise first (1 to 27 today) and then every theory set
-  (28 onward), so give a new set the next number after the last one on its
-  side. Nothing checks that two files share a number, so look before you
-  pick.
+  every coding exercise first and then every theory set, each side grouped
+  by topic in course order, and the number is the exercise's position on
+  that sheet. A new coding exercise goes where its topic and lesson put it,
+  and every exercise after it moves down one. Nothing checks that two files
+  share a number, so look before you pick.
 - `topic`: optional string; the practice page groups exercises under it.
   The sixteen topics, their order on the page, and their printed labels
   live in `web/lib/content/practice-topics.ts`; a topic missing from that
   table still renders (its id is the label) but sorts after every listed
   one, so a new topic wants a row there.
+- `lastUpdated`: the day you last changed the exercise, as `YYYY-MM-DD`,
+  as for a lesson.
 - `difficulty`: optional, one of `intro`, `core`, or `challenge`.
 - `prompt`: the task description, Markdown. Open with the task itself: what
   the starter gives the reader, and what the program has to do. A sentence
   that only sets a mood should become a hint ("One pass over the array is
-  enough") or go.
+  enough") or go. The prompt's opening sentences, without its lists and
+  code, become the page's search-result snippet, and its first line,
+  clipped at 140 characters, is the exercise's summary on `/practice`.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
   or `blanks`. The variant decides where the exercise appears: `write` and
   `identify-bug` sit in the coding column of the practice page, the other
   three in the theory column.
 
+The two columns stay the same length. A test fails unless there are exactly
+as many theory sets as coding exercises, so a new coding exercise ships with
+a new theory set in the same change, and the other way round.
+
+`/practice` sends the browser one short row per exercise: the title, slug,
+order, topic, difficulty, variant, and that summary. `npm run size` fails
+once those rows pass 16 kB, and 136 exercises measured 15.2 kB, so keep a
+prompt's first line short. If a new exercise still pushes the rows over the
+limit, say so in the pull request instead of raising the limit.
+
 The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
 
 - `starter`: the source loaded into the editor; may be empty.
-- `args`: optional command-line arguments for the run.
-- `stdin`: optional input piped to the run.
+- `args`: optional command-line arguments for the run. When it is not empty
+  the editor shows an args box holding it, so the reader can try others with
+  run. Check always runs these authored args, whatever the box holds,
+  because the expected output belongs to them.
+- `stdin`: optional input for the run. Check feeds it and then ends the
+  input, the way `./program < file` does on the servers, so a read past it
+  sees end of file.
 - `acceptance`: the criteria below.
+- `hiddenCases`: more runs the reader never sees, checked once the visible
+  one passes. Each is
+  `{ "args": "...", "stdin": "...", "stdout": "...", "exitCode": 0, "edge": true }`:
+  the program starts with `args` (optional), reads `stdin` (optional) and
+  then end of input, and must print exactly `stdout` and exit with
+  `exitCode` (0 to 255). `edge` marks a boundary input such as 0, a
+  negative number, an empty line, no input at all, or the largest value.
+  Every shipped coding exercise carries at least three cases, one of them
+  an edge; a content test checks that, and runs its reference solution
+  (kept beside the tests in `web/lib/test/content/exercise-solutions/`,
+  never in the exercise file) against every case. A hidden run also fails
+  when `main` returns with `sp` somewhere other than where it started, or
+  when the program writes above `main`'s frame, into its caller's stack.
+  A failing case shows the reader its input and their own output, never
+  the expected text.
 
 `acceptance.results` is a non-empty list of checks against the run:
 
@@ -187,9 +274,21 @@ broken program the reader fixes) add:
 useful for requiring an approach or ruling out a shortcut:
 
 - `{ "kind": "uses-instruction", "mnemonic": "sub" }`: the source must use an
-  instruction.
+  instruction. The mnemonic may carry its operand, as in `"bl fact"`.
+- `{ "kind": "forbids-instruction", "mnemonics": ["mul", "madd"] }`: none of
+  these may appear. Each entry is matched as a whole word, so it can also
+  name a register such as `x19`.
 - `{ "kind": "forbids-literal", "value": 12 }`: the source must not contain a
-  literal (a number or a string), which stops someone hardcoding the answer.
+  literal, which stops someone hardcoding the answer. A number is matched as
+  a whole token and never shown to the reader. A string is matched anywhere
+  and is shown (`does not contain %lo`), so use strings for shortcuts the
+  prompt already rules out, not for the answer; the hidden cases already
+  catch a hardcoded answer.
+
+Any structural check can add `"in": "label"` to look only inside one
+function: from that label to the next label that starts a function (`main`,
+any `bl` target, any `.global` name). That is how `call-yourself` requires
+`bl fact` inside `fact` itself, where a `bl` in `main` does not count.
 
 The checker runs the program and compares its output against these checks. It
 never compares against a stored solution, so any correct approach passes and
@@ -200,7 +299,9 @@ a coding exercise's file carries no answer key.
 The interactive variants skip the editor and grade entirely in the page, so
 their files declare the expected answers (coding exercises still store none).
 They ship in families named `quiz-basic-<family>`, `quiz-inter-<family>`, and
-`quiz-advance-<family>` (all three titled "Quiz: <subject>"),
+`quiz-advance-<family>` ("Basic quiz: <subject>", "Intermediate quiz:
+<subject>", and "Advanced quiz: <subject>", since no two exercises share a
+title),
 `blanks-<family>` ("Fill in the blank: <subject>"), and
 `predict-<family>` ("Predict: <subject>"). Every set on one topic uses
 the same subject name, so a reader scanning the theory column sees three
@@ -224,7 +325,10 @@ name once. Each carries one question list in place of
   `{ "prompt": "...", "code": "ldr x0, ___", "blanks": ["=label"],
   "explanation": "...", "hint": "..." }`. `code` carries exactly one `___`
   marker where the input field lands, and `blanks` lists every accepted
-  answer.
+  answer. Accept every spelling that assembles to the same instruction: a
+  number as decimal, `#` decimal, hex, and `#` hex (`32`, `#32`, `0x20`,
+  `#0x20`), and a zero register as the `wzr` or `xzr` the operand's width
+  takes. Grading ignores case, so list each spelling once, in lower case.
 
 `hint` is optional everywhere and is the only feedback a wrong attempt sees;
 the explanation renders only after a correct one. Unlike the exercise
@@ -273,9 +377,10 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
   "title": "Subtract two numbers",
   "slug": "subtract-two-numbers",
   "order": 2,
+  "lastUpdated": "2026-09-27",
   "topic": "armv8",
   "difficulty": "intro",
-  "prompt": "The starter loads two values, `a` and `b`. Subtract `b` from `a` so the difference ends up in `a`, then let the program print it.\n\n## what is checked\n\n- the printed line reads `diff = 12`\n- the program exits cleanly\n- the difference is computed, not written in as a constant",
+  "prompt": "The starter loads two values, `a` and `b`. Subtract `b` from `a` so the difference ends up in `a`, then let the program print it.\n\n## What is checked\n\n- the printed line reads `diff = 12`\n- the program exits cleanly\n- the difference is computed, not written in as a constant",
   "starter": "// subtract b from a and print the difference\ndefine(a, x19)\ndefine(b, x20)\n\n        .data\nfmt:    .string \"diff = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n\n        mov     a, 20\n        mov     b, 8\n\n        // TODO: subtract b from a, leaving the result in a\n\n        ldr     x0, =fmt\n        mov     x1, a\n        bl      printf\n\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n",
   "args": "",
   "variant": "write",
@@ -303,6 +408,41 @@ Saved as `web/content/exercises/subtract-two-numbers.json`:
   }
 }
 ```
+
+That is the smallest file the schema accepts. Before it ships it also needs
+`hiddenCases`, which means reading `a` and `b` from `stdin` with `scanf`
+rather than fixing them with `mov` (otherwise every case prints the same
+line), and a reference solution, `subtract-two-numbers.s`, in
+`web/lib/test/content/exercise-solutions/`.
+
+## pitfalls
+
+The common mistakes on the reference page's Pitfalls tab are TypeScript, not
+JSON: one file per group in `web/lib/content/pitfalls/` (`registers.ts`,
+`flags.ts`, and so on), joined in group order by
+`web/lib/content/pitfall-data.ts`. Each card is one object:
+
+- `slug`: the card's url-safe id. `/reference#pitfall-<slug>` opens the tab
+  at that card.
+- `title`, `mistake`, `fix`: what goes wrong and how to put it right.
+  `mistake` and `fix` are Markdown.
+- `server` and `playground`: what the course server and the playground do
+  with the broken program. The card prints them after "The broken program"
+  and "It", so each starts with a verb.
+- `wrong` and `right`: the two short snippets the card shows side by side.
+- `broken` and `fixed`: the two whole programs, each with the `stdout` the
+  course server printed and how its run ended (`ends`: an exit status, a
+  signal, still running after 10 seconds, or the build error).
+- `source`: where the rule is written down: the Arm Architecture Reference
+  Manual, the A64 instruction pages, the GNU as manual, or AAPCS64.
+- `group`, `lesson`, `reference`: the group the card sits in, the lesson that
+  teaches the rule, and the reference entry (a mnemonic, or
+  `calling convention`).
+
+Run both programs on the course server and copy what they printed into
+`stdout` and `ends`: `pitfall-data.playground.test.ts` holds the playground to
+them. The lesson a card names lists the card in a `pitfall` callout, and
+`pitfall-data.test.ts` checks that the links go both ways.
 
 ## writing the assembly
 

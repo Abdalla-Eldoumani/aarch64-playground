@@ -1,17 +1,29 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
+// A relative path: Tailwind loads this file outside the bundler, where the
+// `@/` alias does not resolve.
+import { themeCssBlocks } from "./lib/theme/tokens";
 
 const config: Config = {
   // lib/ is scanned because the shared syntax highlighter keeps its class map
   // there (lib/asm/highlight-arm64.ts); without the glob its arbitrary
   // `--syntax-*` color utilities are never generated and code renders unlit.
-  content: ["./app/**/*.{ts,tsx}", "./components/**/*.{ts,tsx}", "./lib/**/*.{ts,tsx}"],
+  // Tests are left out: the style guards hold sample classes (hex colours,
+  // faded text) that must never reach the shipped stylesheet.
+  content: [
+    "./app/**/*.{ts,tsx}",
+    "./components/**/*.{ts,tsx}",
+    "./lib/**/*.{ts,tsx}",
+    "!./**/test/**",
+    "!./**/*.test.{ts,tsx}",
+  ],
   theme: {
     extend: {
       fontFamily: {
         mono: ["JetBrains Mono", "Fira Code", "Consolas", "monospace"],
       },
       // The rounded scale resolves to the radius tokens, so the corner
-      // doctrine in globals.css holds everywhere a utility is used and
+      // rules in globals.css hold everywhere a utility is used and
       // no element can carry a framework default.
       borderRadius: {
         none: "0",
@@ -32,7 +44,9 @@ const config: Config = {
       },
     },
   },
-  plugins: [],
+  // Every theme's colour tokens, written as custom properties into the base
+  // layer from the one TypeScript source the editor and terminal read too.
+  plugins: [plugin(({ addBase }) => addBase(themeCssBlocks()))],
 };
 
 export default config;

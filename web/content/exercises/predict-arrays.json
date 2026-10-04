@@ -1,11 +1,12 @@
 {
   "title": "Predict: arrays and structures",
   "slug": "predict-arrays",
-  "order": 51,
+  "order": 91,
+  "lastUpdated": "2026-09-28",
   "topic": "arrays",
   "difficulty": "challenge",
   "variant": "prediction",
-  "prompt": "Block sizes and byte offsets: how a C array declaration maps onto an AArch64 memory operand.",
+  "prompt": "Block sizes and byte offsets: how a C array declaration turns into the bytes to reserve and the offset a load uses.",
   "predictions": [
     {
       "code": "// C: int ia[5];\n\n        .bss\n        .balign 4\nia:     .skip N",
@@ -16,7 +17,7 @@
     },
     {
       "code": "// C: char array[2][3];\n// x20 holds the address of array[0][0]\n\nldrb w21, [x20, OFFSET]",
-      "question": "Arrays are laid out in row-major order. What decimal byte offset replaces OFFSET to load array[1][2]?",
+      "question": "Arrays are laid out in row-major order: all of row 0, then all of row 1. What decimal byte offset replaces OFFSET to load array[1][2]?",
       "answer": "5",
       "explanation": "Row-major order stores one whole row before the next, so the offset of array[i][j] is (i * columns + j) * element size. Here that is (1 * 3 + 2) * 1, which is 5.",
       "hint": "Step over one full row of 3 bytes, then 2 more elements."

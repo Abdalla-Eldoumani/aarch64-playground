@@ -1,12 +1,14 @@
 {
   "title": "Sum a global array",
   "slug": "sum-a-global-array",
-  "order": 17,
+  "order": 34,
+  "lastUpdated": "2026-09-30",
   "topic": "arrays",
   "difficulty": "core",
-  "prompt": "A global array of eight scores lives in `.data`, and its length sits beside it. Add every element and print the total.\n\nThis is the course's array idiom in one loop: a base address in an `x` register, a word index in a `w` register, and the scaled-index load `ldr wX, [base, wI, sxtw 2]`, which sign-extends the index and shifts it left two bits to turn a word count into a byte offset.\n\n## what is checked\n\n- the total is printed on its own line\n- the program exits cleanly\n- elements are loaded with the scaled-index form (`sxtw` present, total not written in)",
-  "starter": "// sum every element of a global word array\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x22)\ndefine(i_r, w19)\ndefine(n_r, w20)\ndefine(sum_r, w21)\ndefine(elem_r, w23)\n\n        .data\nscores:     .word 12, 9, 41, 7, 30, 5, 22, 18\nn_scores:   .word 8\n\nfmt:    .string \"sum = %d\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     base_r, =scores\n        ldr     x9, =n_scores\n        ldr     n_r, [x9]\n        mov     sum_r, 0\n        mov     i_r, 0\n\n        // TODO: loop i_r from 0 to n_r - 1, loading each word with the\n        // scaled index form  ldr wX, [base_r, wI, sxtw 2]  and adding\n        // it into sum_r.\n\n        ldr     x0, =fmt\n        mov     w1, sum_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "A global array of scores lives in `.bss`, and the starter fills it from input: first the count, then that many scores. Add every element and print the total.\n\nWalk the array the usual way: a base address in an `x` register, a word index in a `w` register, and the scaled-index load `ldr wX, [base, wI, sxtw 2]`. The `sxtw 2` widens the index to 64 bits, keeping its sign, then multiplies it by 4 (a left shift of two bits) to turn a word count into a byte offset.\n\n## What is checked\n\n- the total is printed on its own line\n- the program exits cleanly\n- elements are loaded with the scaled-index form (`sxtw` present, total not written in)\n- the same holds for other arrays you do not see, an empty one (count 0) and negative scores among them",
+  "starter": "// sum every element of a global word array\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x22)\ndefine(i_r, w19)\ndefine(n_r, w20)\ndefine(total_r, w21)\ndefine(elem_r, w23)\n\n        .data\nfmt_in:     .string \"%d\"\nfmt_out:    .string \"sum = %d\\n\"\n\n        .bss\n        .balign 4\nn_m:        .skip 4\nscores:     .skip 128                       // room for 32 words\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // how many values follow\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n        ldr     base_r, =scores\n        mov     i_r, 0\n        b       fill_test\nfill_loop:\n        ldr     x0, =fmt_in                 // read the next value into its slot\n        add     x1, base_r, i_r, sxtw 2\n        bl      scanf\n        add     i_r, i_r, 1\nfill_test:\n        cmp     i_r, n_r\n        b.lt    fill_loop\n\n        mov     total_r, 0\n        mov     i_r, 0\n\n        // TODO: loop i_r from 0 to n_r - 1, loading each word with the\n        // scaled index form  ldr wX, [base_r, wI, sxtw 2]  and adding\n        // it into total_r.\n\n        ldr     x0, =fmt_out\n        mov     w1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "8\n12 9 41 7 30 5 22 18\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -29,5 +31,28 @@
         "value": 144
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "sum = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n-7\n",
+      "stdout": "sum = -7\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "5\n1 2 3 4 5\n",
+      "stdout": "sum = 15\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "4\n-100 50 -25 75\n",
+      "stdout": "sum = 0\n",
+      "exitCode": 0
+    }
+  ]
 }

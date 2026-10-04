@@ -1,16 +1,19 @@
-# cpsc 355 style guide
+# CPSC 355 style guide
 
-What the playground accepts, expressed in the same vocabulary the course
-uses. If your tutorial file follows these conventions, the playground
-runs it end to end without modification.
+What the playground accepts, in the words the course uses. A course file
+that follows these conventions runs here without changes. The error messages
+in the editor link to the sections below.
 
 ## m4 preprocessing
 
-Two forms are recognized:
+Three forms are recognized:
 
 ```
 define(fp, x29)                 // token-boundary substitution
 define(score1_r, w19)
+
+define(sq, `mul $1, $1, $1')    // a macro with arguments
+sq(x20)                         // becomes mul x20, x20, x20
 
 alloc = -(16 + 16) & -16        // expression symbol, evaluated at this
                                  // point in the section walk
@@ -18,8 +21,13 @@ msg_len = . - msg - 1
 ```
 
 - `define(NAME, BODY)` substitutes every standalone `NAME` with `BODY`
-  in the rest of the source. Fixed-point; up to 32 rounds before the
-  playground flags a cycle.
+  in the rest of the source. Expansion repeats until nothing changes, up
+  to 32 rounds, before the playground reports a cycle.
+- `NAME(ARG, ...)` uses a macro with arguments: `$1`, `$2`, and so on in
+  the body take the arguments, `$#` their count, and `$*` all of them.
+  Quote a body that holds commas or spans lines, as `sq` does above. The
+  arguments of a use close on its own line, and a body that spans lines
+  steps as the one line that used it.
 - `NAME = EXPRESSION` records a symbol evaluated where it appears. `.` is
   the address of the assignment line, so `msg_len = . - msg - 1` is the
   length of string `msg` minus its null terminator, wherever `msg_len` is
@@ -28,8 +36,8 @@ msg_len = . - msg - 1
 Comments strip before substitution: `//` to end of line.
 
 `ifdef`, `ifelse`, `forloop`, and `dnl` are rejected with a clear error
-rather than silently ignored, and so is a backtick anywhere except
-``undefine(`NAME')``, whose m4 quotes are legal. Undefining a name ends that
+rather than silently ignored, and so is a backtick outside a `define` or
+``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends that
 define's reach at that line, so an alias can be rebound per function.
 
 ### Where GNU m4's text-level rules bite
@@ -75,6 +83,10 @@ the author meant:
 .type / .size                            // silently accepted
 ```
 
+The directive table in [instruction-reference.md](instruction-reference.md#directives)
+lists every spelling, including the ones gcc writes (`.xword`, `.p2align`,
+`.space`, `.2byte`). `.equ` and `.set` are refused: write `NAME = value`.
+
 Base addresses:
 
 | section      | base          |
@@ -88,12 +100,11 @@ Base addresses:
 
 ## authored program style
 
-The list above is what the machine accepts, which is wider than what the
-course writes. Course tutorial and assignment files use a fixed directive
-vocabulary, so every program the site ships as course-style source (lesson
-and exercise programs, the built-in examples, the authoring-guide payloads)
-stays inside it. A content test (`web/lib/test/content/course-style.test.ts`) enforces
-the difference list:
+The playground accepts more than course files write. Course tutorial and
+assignment files use a fixed set of directives, so every program the site
+ships (the lessons, the exercises, the examples, and the programs in the
+authoring guide) stays inside that set. A content test
+(`web/lib/test/content/course-style.test.ts`) enforces this list:
 
 | never authored     | what course files write               |
 | ------------------ | ------------------------------------- |
@@ -105,9 +116,9 @@ the difference list:
 | `.p2align`         | `.balign` (bytes) or `.align` (2^N)   |
 | `.equ` / `.set`    | m4 `define(...)` or `name = expr`     |
 
-The wider acceptance is deliberate, so unmodified gcc `-S` output still
-loads. The authored rule keeps every shipped program reading like a course
-file.
+The playground accepts the wider set so that most of what gcc `-S` writes
+assembles as it is. A whole `-S` file still needs a few edits, listed under
+[GCC output compatibility](instruction-reference.md#gcc-output-compatibility).
 
 ## addressing modes
 
@@ -126,7 +137,10 @@ All four signed-offset widths (`B` / `H` / `W` / `X`) emit correctly;
 plain `LDR` / `STR` auto-pick 32 vs 64 bit based on whether the target
 register is `Wt` or `Xt`.
 
-Unaligned access succeeds (matches Linux userspace with SCTLR.A = 0).
+Unaligned access succeeds (matches Linux userspace with SCTLR.A = 0),
+except through `sp`: a load or store based on `sp`, or a libc call, while
+`sp` is not a multiple of 16 stops with `Bus error`, as it does on the
+servers.
 
 ## literal pool
 
@@ -151,7 +165,7 @@ add  x0, x0, :lo12:msg  // plus the low 12 bits
 forms assemble. The course leans on the literal pool, but gcc output using
 the `adrp` / `add` pair runs unchanged.
 
-## hosted runtime
+## C library and system calls
 
 Pre-registered libc stubs at addresses `0xFFFF_0000 + idx * 16`:
 
@@ -166,6 +180,9 @@ malloc, free, calloc, realloc,
 fflush, fopen, fprintf, fgets, fputs, fclose
 ```
 
+`putc`, `fputc`, `getc`, `fwrite`, `qsort`, and `bsearch` are registered
+too; [instruction-reference.md](instruction-reference.md) has the full table.
+
 The `stdin`, `stdout`, and `stderr` symbols resolve to loader-written
 words holding their `FILE*` handles, so `fprintf(stderr, ...)` and
 `fputs(s, stdout)` link and run the way they do on the servers. The
@@ -178,6 +195,9 @@ argument in `d1` for `pow` and `fmod`, result in `d0`):
 ```
 sqrt, pow, sin, cos, tan, log, log10, exp, floor, fabs, fmod
 ```
+
+`sincos` is there too: it takes its argument in `d0` and stores the sine and
+cosine through the pointers in `x0` and `x1`.
 
 Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
 
@@ -206,21 +226,21 @@ single imm26 offset. The linker plants a per-host trampoline after
 `.text` (LDR X16, =<stub>; BR X16) and rewrites `bl printf` to target
 that trampoline.
 
-Main returning via `ret` lands on the `__main_return` sentinel the
-loader pre-stashed in LR; that stub halts the CPU with `w0` as the exit
-code.
+When `main` returns with `ret`, it jumps to `__main_return`, a stub whose
+address the loader put in LR before the program started; that stub stops
+the program with `w0` as the exit code.
 
 ## virtual filesystem
 
-`cpu.upload_vfs_file(path, bytes)` registers a file that `openat(path)`
-finds. `write(fd, ...)` on a VFS fd grows the file; `read(fd, ...)` advances
-the offset. The console panel's file-upload dropzone stages a file into the
-working set, which reaches this on the next seed apply, so file tutorials
-run against files the student just dropped in.
+Programs read and write files in a small virtual filesystem (VFS) kept in
+the browser. A file you upload in the console or with the terminal's `upload`
+is copied into it before the program runs, so `openat` finds it by name.
+`write` on an open file grows it, and `read` moves its offset forward.
+`Emulator::upload_vfs_file` in `emulator/src/lib.rs` is the entry point.
 
 ## naming conventions
 
-The corpus follows a convention that shows up in the alias names:
+Course files follow a naming convention that shows up in the alias names:
 
 | suffix | meaning                        | example                    |
 | ------ | ------------------------------ | -------------------------- |
@@ -228,6 +248,6 @@ The corpus follows a convention that shows up in the alias names:
 | `_s`   | stack-frame slot (bytes)       | `score2_s = 20`            |
 | `_m`   | `.data` / `.bss` object        | `count_m: .word 0`         |
 
-`lower_operands` relies on this convention: when it sees `[fp, score2_s]`
-it looks up `score2_s` in the symbol table, substitutes `20`, and hands
-`[fp, 20]` to the encoder.
+`lower_operands` resolves these names like any other symbol: when it sees
+`[fp, score2_s]` it looks up `score2_s` in the symbol table, substitutes
+`20`, and hands `[fp, 20]` to the encoder.

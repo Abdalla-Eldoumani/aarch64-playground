@@ -1,0 +1,16 @@
+path 0: 5 -5 10
+path 1: 6 -3 13
+path 2: -35 -5 15
+path 3: -34 -3 18
+path 4: -45 120 -65
+path 5: -44 122 -62
+scaled 132 -366 186 from -44 122 -62
+triple 1472 214 -624
+nine -8455
+fib(10) mod p = 55
+fib(50) mod p = 586268941
+fib(90) mod p = 210345902
+fib(1000000) mod p = 918091266
+ada lovelace 7 1815 12 | !da lovelace 14 16322 12 | 40
+blob 5 6266 ac4a5bf288a1a0e8
+direct 4206 9710a5060fd12013

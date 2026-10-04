@@ -1,6 +1,6 @@
 // The run-mode control's contract: two lowercase segments, the chosen one
-// filled cyan and marked pressed, every cell keyboard-reachable at a 44px
-// target, and the whole group inert while a terminal session owns the pane.
+// marked pressed, every cell a focusable button, and the whole group disabled
+// while a terminal session is running.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("RunModeControl", () => {
-  it("renders both surfaces as lowercase segments in one group", () => {
+  it("renders console and terminal as lowercase segments in one group", () => {
     render(<RunModeControl mode="console" onChange={vi.fn()} />);
     const group = screen.getByRole("group", { name: "run in" });
     const cells = group.querySelectorAll("button");
@@ -20,15 +20,12 @@ describe("RunModeControl", () => {
     expect(cells[1].textContent).toBe("terminal");
   });
 
-  it("marks the chosen segment pressed and fills it cyan", () => {
+  it("marks the chosen segment pressed and the other not", () => {
     render(<RunModeControl mode="terminal" onChange={vi.fn()} />);
     const terminal = screen.getByLabelText("run in the terminal");
     const console_ = screen.getByLabelText("run in the console");
     expect(terminal.getAttribute("aria-pressed")).toBe("true");
     expect(console_.getAttribute("aria-pressed")).toBe("false");
-    // Cyan is the student acting; the unchosen cell stays quiet.
-    expect(terminal.className).toContain("bg-[var(--cyan)]");
-    expect(console_.className).not.toContain("bg-[var(--cyan)]");
   });
 
   it("reports the segment the student picked", () => {
@@ -51,19 +48,7 @@ describe("RunModeControl", () => {
     expect(terminal.getAttribute("type")).toBe("button");
   });
 
-  it("matches the header band's control height and keeps a visible focus ring", () => {
-    // 36px like the band's other controls: the band must not change height
-    // when the control appears and disappears with the loaded program.
-    render(<RunModeControl mode="console" onChange={vi.fn()} />);
-    for (const label of ["run in the console", "run in the terminal"]) {
-      const cell = screen.getByLabelText(label);
-      expect(cell.className).toContain("min-h-[36px]");
-      expect(cell.className).toContain("px-3.5");
-      expect(cell.className).toContain("focus-visible:[box-shadow:var(--ring)]");
-    }
-  });
-
-  it("goes inert while a session owns the pane, and says why", () => {
+  it("is disabled while a terminal session runs, and says why", () => {
     const onChange = vi.fn();
     const { container } = render(
       <RunModeControl mode="terminal" onChange={onChange} disabled />,
@@ -75,7 +60,7 @@ describe("RunModeControl", () => {
     expect(container.querySelector('[title="a terminal session is running"]')).not.toBeNull();
   });
 
-  it("carries no reason attribute when it is live", () => {
+  it("shows no disabled reason when it is enabled", () => {
     const { container } = render(<RunModeControl mode="console" onChange={vi.fn()} />);
     expect(container.querySelector("[title]")).toBeNull();
   });

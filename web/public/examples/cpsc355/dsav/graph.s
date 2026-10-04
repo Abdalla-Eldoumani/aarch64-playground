@@ -1,11 +1,10 @@
 // graph.s - an undirected graph, walked breadth first and depth first
 //
 // One drawing, two orders. The eight vertices sit at hand-picked cells so
-// every edge the module can draw is either a straight run or an exact
-// diagonal: no line algorithm. The frontier
-// (a queue for the breadth first walk, a stack for the depth first one)
-// is on screen the whole time, because which end of it empties next is the
-// only difference between the two walks.
+// every edge is a straight run or an exact diagonal, with no line-drawing
+// math. The frontier, the vertices waiting their turn (a queue for breadth
+// first, a stack for depth first), stays on screen, because which end of it
+// empties next is the only difference between the two walks.
 
 define(fp, x29)
 define(lr, x30)
@@ -14,7 +13,7 @@ define(lr, x30)
     graph_seg_n = 13                        // pairs this layout can draw
     graph_fcap = 64                         // frontier capacity, with slack
 
-    // role numbers understood by th_fg, th_bg, ui_text and ui_badge
+    // colour role numbers understood by th_fg, th_bg, ui_text and ui_badge
     graph_role_text = 0
     graph_role_dim = 1
     graph_role_faint = 2
@@ -113,7 +112,7 @@ graph_segs:
 graph_default:
     .byte 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1
 
-// Components cycle through four inks so neighbouring blobs never match.
+// Components cycle through four colours, so the first four each get their own.
 graph_comp_ink:
     .byte graph_role_key, graph_role_ok, graph_role_warn, graph_role_accent
 
@@ -337,13 +336,13 @@ graph_hold:
     str     x19, [sp, 16]
 
     mov     w19, w0
-    mov     x0, 0                           // fflush(0) drains every stream
+    mov     x0, 0                           // fflush(0) prints all held output
     bl      fflush
 
     ldr     x0, =graph_speed
     ldr     w0, [x0]
     lsr     w0, w0, w19
-    cmp     w0, 20                          // below this nothing reads
+    cmp     w0, 20                          // any shorter is too fast to see
     b.ge    graph_hold_wait
     mov     w0, 20
 graph_hold_wait:
@@ -492,7 +491,7 @@ graph_order_push:
     mov     w2, ' '
     strb    w2, [x1, w0, sxtw]
     add     w0, w0, 1
-    strb    wzr, [x1, w0, sxtw]             // it stays a C string
+    strb    wzr, [x1, w0, sxtw]             // a zero byte ends the text
     str     w0, [x20]
 
 graph_order_out:
@@ -646,7 +645,7 @@ graph_edges_ready:
     cmp     w26, 0
     b.ne    graph_edges_diag
 
-    // a straight run is contiguous, so park once and repeat
+    // a straight run sits on one row, so move the cursor once and repeat
     mov     w0, w24
     mov     w1, w25
     bl      ui_at
@@ -988,8 +987,8 @@ graph_paint:
     ret
 
 // graph_legend(w0 = view) - what the colours mean, spelled out under the
-// map. The components view paints by blob rather than by walk state, so it
-// gets its own line instead of the four chips.
+// map. The components view paints by component rather than by walk state,
+// so it gets its own line instead of the four chips.
 graph_legend:
     stp     fp, lr, [sp, -16]!
     mov     fp, sp
@@ -1520,7 +1519,7 @@ graph_walk_out:
     ret
 
 // graph_components() - flood out from every vertex nothing has reached, so
-// each blob comes up in its own ink and the count falls out of the walk
+// each component is painted as it is found and counted along the way
 graph_components:
     stp     fp, lr, [sp, -96]!
     mov     fp, sp

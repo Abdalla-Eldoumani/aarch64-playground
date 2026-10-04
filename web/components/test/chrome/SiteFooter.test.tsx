@@ -50,7 +50,7 @@ describe("SiteFooter", () => {
     expect(links.some((l) => l.getAttribute("href") === LICENSE_URL)).toBe(true);
   });
 
-  it("carries the merged credibility content: engine note and the open-source line", () => {
+  it("carries the engine note and the open-source line", () => {
     render(<SiteFooter />);
     // The footer is the single home for two facts: how the emulator is built,
     // and that it is open source.

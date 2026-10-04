@@ -18,8 +18,8 @@ import { spawnEmulatorWorker } from "@/lib/worker/client";
 import { safeGetItem } from "@/lib/playground/safe-storage";
 
 /**
- * Async surface every emulator backend exposes. WorkerBackend serves
- * this from a separate thread; MainThreadBackend wraps the in-process
+ * Async surface every emulator backend exposes. WorkerClient (lib/worker)
+ * serves this from a separate thread; MainThreadBackend wraps the in-process
  * EmulatorInstance with Promise.resolve so useEmulator can treat both
  * paths identically.
  */
@@ -41,8 +41,8 @@ export interface EmulatorBackend {
   pushStdin(text: string, interactive?: boolean): Promise<StateSnapshot>;
   /** Signal end-of-input (ctrl-d / a fully-queued redirect). */
   closeStdin(): Promise<StateSnapshot>;
-  /** Pause/resume the step-back snapshot ring (live terminal sessions:
-   *  the per-step clone costs more than the step). */
+  /** Pause/resume the step-back snapshot ring (live terminal sessions,
+   *  where stepping back has no meaning). */
   setSnapshotsPaused(paused: boolean): Promise<void>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   /** Whether every page in the range is mapped (watch fault display). */
@@ -76,7 +76,7 @@ export interface EmulatorBackend {
 
 /**
  * MainThreadBackend wraps EmulatorInstance to expose the same async
- * surface as WorkerBackend. State snapshots are constructed on the
+ * surface as WorkerClient. State snapshots are constructed on the
  * main thread after each call. Used as a fallback when Worker is
  * unavailable (SSR, sandboxed iframes) and for tests.
  */
@@ -308,6 +308,7 @@ class MainThreadBackend implements EmulatorBackend {
     // the key then stays off the snapshot so the hub skips the unprint.
     const stdoutSeen = this.emu.stdoutSeen();
     const stderrSeen = this.emu.stderrSeen();
+    const clobberNotes = this.emu.takeClobberNotes();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -326,6 +327,7 @@ class MainThreadBackend implements EmulatorBackend {
       stderrDelta: this.emu.takeStderr(),
       ...(stdoutSeen != null ? { stdoutSeen } : {}),
       ...(stderrSeen != null ? { stderrSeen } : {}),
+      ...(clobberNotes.length ? { clobberNotes } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
@@ -358,11 +360,8 @@ function looksLikeSnapshot(v: unknown): boolean {
 }
 
 /**
- * Pick a backend based on environment + opt-in flag. Honors the
- * `aarch64-playground:backend` localStorage key:
- * - `"main"` -> always main-thread (fallback)
- * - `"worker"` -> worker, throws if unavailable
- * - any other value (or absent) -> worker if available, else main-thread.
+ * The worker when one can start, else the main thread. Setting the
+ * `aarch64-playground:backend` storage key to "main" forces the main thread.
  */
 export function pickBackend(): EmulatorBackend {
   const force = safeGetItem("aarch64-playground:backend");

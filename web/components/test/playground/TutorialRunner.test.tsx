@@ -1,8 +1,8 @@
-// pins the tutorial runner: a modal that walks fixture steps with
+// pins the tutorial runner: a non-modal panel that walks fixture steps with
 // clamped back/next, persists per-tutorial progress through the real
-// localStorage store, fetches the backing source on demand (surfacing
-// fetch failures inline), and verifies expected-register checks as
-// OK / no / ? against the live getter.
+// localStorage store, fetches the backing source on demand (showing
+// fetch failures inline), and marks expected-register checks as
+// ok / not yet / not read against the live getter.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TutorialRunner } from "@/components/playground/TutorialRunner";
@@ -32,7 +32,7 @@ const FIX = vi.hoisted(() => {
       title: "other tutorial",
       summary: "a one step fixture",
       sourcePath: "/examples/cpsc355/other.s",
-      steps: [{ title: "only step", body: "solo" }],
+      steps: [{ title: "only step", body: "solo", expect: { reg: "w0", value: 3 } }],
     },
   ];
   return { tutorials };
@@ -80,22 +80,28 @@ describe("TutorialRunner open and close", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
-  it("opens as a modal on the first tutorial's first step", () => {
+  it("opens on the first tutorial's first step, as a panel that leaves the page live", () => {
+    // A full-screen modal caught every tap, so a step that said "step, then
+    // watch x19" could not be followed.
     renderRunner();
-    expect(screen.getByRole("dialog", { name: "guided tutorial" })).toBeTruthy();
+    const panel = screen.getByRole("dialog", { name: "tutorials" });
+    expect(panel.getAttribute("aria-modal")).toBe("false");
+    expect(panel.className).not.toContain("inset-0");
     expect(screen.getByText("a three step fixture")).toBeTruthy();
     expect(screen.getByText("step 1 / 3")).toBeTruthy();
     expect(screen.getByText("first step")).toBeTruthy();
   });
 
-  it("closes from the close button, the backdrop, and Escape, but not inner clicks", () => {
+  it("closes from the close button and from Escape inside it, but not inner clicks", () => {
     const { onClose } = renderRunner();
     fireEvent.click(screen.getByText("read the prologue"));
     expect(onClose).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "close" }));
-    fireEvent.click(screen.getByRole("dialog", { name: "guided tutorial" }));
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "tutorials" }), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(2);
+    // An Escape meant for the editor elsewhere on the page leaves it open.
     fireEvent.keyDown(document, { key: "Escape" });
-    expect(onClose).toHaveBeenCalledTimes(3);
+    expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -153,7 +159,7 @@ describe("TutorialRunner load source", () => {
     expect(onLoadSnippet).toHaveBeenCalledWith("mov x0, 1", "fixture tutorial", "3 4", "7\n");
   });
 
-  it("surfaces an http failure inline and loads nothing", async () => {
+  it("shows an http failure inline and loads nothing", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({ ok: false, status: 404, statusText: "Not Found" }),
@@ -165,7 +171,7 @@ describe("TutorialRunner load source", () => {
     expect(onLoadSnippet).not.toHaveBeenCalled();
   });
 
-  it("surfaces a network failure's message", async () => {
+  it("shows a network failure's message", async () => {
     vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("network down")));
     renderRunner();
     fireEvent.click(screen.getByRole("button", { name: "load source" }));
@@ -191,6 +197,15 @@ describe("TutorialRunner expected-register check", () => {
     expect(screen.getByText("[not yet, actual 5]")).toBeTruthy();
   });
 
+  it("reads a w name as the low 32 bits of the x register the getter returns", () => {
+    // fixture-b's only step expects w0 = 3; the upper half holds leftovers.
+    window.localStorage.setItem(PROGRESS_KEY, JSON.stringify({ "fixture-b": 0 }));
+    renderRunner({ getRegister: () => "0xffffffff00000003" });
+    fireEvent.click(screen.getByRole("combobox", { name: "tutorial" }));
+    fireEvent.pointerDown(screen.getByText("other tutorial"));
+    expect(screen.getByText("[ok, actual 3]")).toBeTruthy();
+  });
+
   it("marks not read when no live state is available", () => {
     openOnExpectStep(() => null);
     expect(screen.getByText("[not read]")).toBeTruthy();
@@ -201,5 +216,17 @@ describe("TutorialRunner expected-register check", () => {
     expect(screen.getByText("x19")).toBeTruthy();
     expect(screen.getByText("47")).toBeTruthy();
     expect(screen.getByText(/a = 47/)).toBeTruthy();
+  });
+});
+
+describe("TutorialRunner and the interface walkthrough", () => {
+  it("starts the walkthrough from its own button, and hides it with no handler", () => {
+    const onStartWalkthrough = vi.fn();
+    renderRunner({ onStartWalkthrough });
+    fireEvent.click(screen.getByRole("button", { name: "interface walkthrough" }));
+    expect(onStartWalkthrough).toHaveBeenCalledTimes(1);
+    cleanup();
+    renderRunner();
+    expect(screen.queryByRole("button", { name: "interface walkthrough" })).toBeNull();
   });
 });

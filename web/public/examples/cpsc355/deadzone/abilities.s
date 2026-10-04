@@ -2,7 +2,8 @@
 // that stops every enemy, both on cooldowns counted in frames.
 
 // Cooldowns, counted in frames. Deriving them from TARGET_FPS keeps the
-// durations here and the seconds the HUD prints tied to the same frame rate.
+// durations here and the seconds the HUD (the status bar) prints tied to
+// the same frame rate.
 BOMB_COOLDOWN = 20 * TARGET_FPS                 // 20 seconds
 FREEZE_COOLDOWN = 15 * TARGET_FPS               // 15 seconds
 FREEZE_DURATION = 3 * TARGET_FPS                // 3 seconds
@@ -31,7 +32,7 @@ ability_hud_ready: .string "READY"
 ability_hud_freeze_key: .string "FREEZE"
 ability_hud_active: .string "ACTIVE"
 
-// Charge gauges, the same idiom as the health bar
+// Charge gauges, drawn the same way as the health bar
 ABILITY_METER_SEGMENTS = 10                     // Segments per charge gauge
 ABILITY_BOMB_LABEL_X = 2                        // Where the bomb field starts
 ABILITY_BOMB_X = 9                              // Its gauge
@@ -399,7 +400,7 @@ ability_draw_state:
                 mov     w0, w19
                 mov     w1, TARGET_FPS
                 udiv    w0, w0, w1
-                add     w0, w0, 1               // Round up to the next second
+                add     w0, w0, 1               // + 1 so it never shows 0s before READY
                 bl      write_num
                 mov     w0, 's'
                 bl      write_char

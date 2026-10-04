@@ -1,7 +1,8 @@
-// pins which arrangement each width gets and, at tablet, that the two
-// half-width columns are real vertical splits: same grips, same labels, and
+// pins which arrangement each viewport gets and, at tablet, that the two
+// half-width columns are real vertical splits: same handles, same labels, and
 // their own persistence keys, so a tablet reader's sizes never land on the
-// laptop layout's entries.
+// laptop layout's entries. Also pins that the editor survives a change of
+// arrangement: it is the same node before and after.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -83,7 +84,7 @@ vi.mock("react-resizable-panels", async () => {
 });
 
 import { FullLayout } from "@/components/playground/FullLayout";
-import type { Breakpoint } from "@/lib/hooks/use-breakpoint";
+import type { Breakpoint, PhoneShape } from "@/lib/hooks/use-breakpoint";
 
 const KEY = "aarch64-playground:layout:";
 
@@ -98,18 +99,38 @@ const PANES = {
   saves: <span>SAVES</span>,
 };
 
-function renderLayout(breakpoint: Breakpoint) {
-  return render(
+const RUN_STATUS = {
+  programLoaded: false,
+  isRunning: false,
+  isHalted: false,
+  blocked: false,
+  exitCode: null,
+  stepCount: 0,
+  failed: false,
+  registers: [],
+  sp: "0x0",
+  changedRegs: new Set<number>(),
+};
+
+function layout(breakpoint: Breakpoint, phone: PhoneShape = null) {
+  return (
     <FullLayout
       breakpoint={breakpoint}
-      editor={<span>EDITOR</span>}
+      phone={phone}
+      editor={<textarea aria-label="EDITOR" defaultValue="EDITOR" />}
       disassembly={<span>DISASM</span>}
       registers={<span>REGS</span>}
       rightTabs={<span>TABS</span>}
       panes={PANES}
+      controls={<span>CONTROLS</span>}
+      runStatus={RUN_STATUS}
       consoleBlocked={false}
-    />,
+    />
   );
+}
+
+function renderLayout(breakpoint: Breakpoint, phone: PhoneShape = null) {
+  return render(layout(breakpoint, phone));
 }
 
 function panel(id: string): HTMLElement {
@@ -154,13 +175,13 @@ describe("FullLayout", () => {
         .filter((c) => c.hasAttribute("data-panel"))
         .map((c) => c.getAttribute("data-panel")),
     ).toEqual(["panel-regs", "panel-tabs"]);
-    expect(panel("panel-editor").textContent).toBe("EDITOR");
+    expect(panel("panel-editor").querySelector("textarea")?.value).toBe("EDITOR");
     expect(panel("panel-disasm").textContent).toBe("DISASM");
     expect(panel("panel-regs").textContent).toBe("REGS");
     expect(panel("panel-tabs").textContent).toBe("TABS");
   });
 
-  it("wears the same two grips the laptop layout wears", () => {
+  it("has the same two resize handles as the laptop layout", () => {
     renderLayout("md");
     const labels = Array.from(document.querySelectorAll('[role="separator"]')).map(
       (el) => el.getAttribute("aria-label"),
@@ -177,12 +198,12 @@ describe("FullLayout", () => {
     }
   });
 
-  it("opens the tablet columns on the authored splits", () => {
+  it("opens the tablet columns at their default sizes", () => {
     renderLayout("md");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-disasm").getAttribute("data-size")).toBe("30%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("60%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("40%");
   });
 
   it("keeps the tablet sizes under their own two keys", () => {
@@ -199,10 +220,10 @@ describe("FullLayout", () => {
     window.localStorage.setItem(`${KEY}md-left`, "[85,15]");
     window.localStorage.setItem(`${KEY}md-right`, "[20,80]");
     renderLayout("md");
-    // The Panels open on the authored split; the stored one is pushed
+    // The Panels open on the default split; the stored one is pushed
     // through each group's handle once the storage read has run.
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("60%");
     // Exactly one push per group: a second would be the reconcile loop.
     expect(setLayoutCalls).toHaveLength(2);
     expect(setLayoutCalls).toEqual(
@@ -219,9 +240,26 @@ describe("FullLayout", () => {
     expect(document.querySelectorAll('[role="separator"]').length).toBe(3);
   });
 
-  it("hands phone widths the single-pane layout, with no split at all", () => {
-    renderLayout("sm");
+  it("hands a phone the phone layout, with no split at all", () => {
+    renderLayout("sm", "portrait");
     expect(document.querySelectorAll("[data-group]").length).toBe(0);
     expect(document.querySelectorAll('[role="separator"]').length).toBe(0);
+  });
+
+  it("gives a phone on its side the phone layout even at tablet width", () => {
+    // 844x390 used to get the tablet split: an editor five lines tall and no
+    // register rows at all.
+    renderLayout("md", "landscape");
+    expect(document.querySelectorAll("[data-group]").length).toBe(0);
+    expect(document.querySelector('[role="tablist"][aria-label="playground view"]')).toBeTruthy();
+  });
+
+  it("keeps the same editor node through a change of arrangement", () => {
+    const { rerender } = renderLayout("md");
+    const before = document.querySelector('textarea[aria-label="EDITOR"]');
+    rerender(layout("lg"));
+    rerender(layout("sm", "portrait"));
+    rerender(layout("md", "landscape"));
+    expect(document.querySelector('textarea[aria-label="EDITOR"]')).toBe(before);
   });
 });

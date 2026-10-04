@@ -1,9 +1,6 @@
-/** Interactive tutorial definitions. Each step shows a prose explanation
- *  plus an optional source highlight, watch hint, and expected register
- *  check the runner can verify against the live CPU state.
- *
- *  Sources are kept in `/examples/cpsc355/` so a tutorial loads the same
- *  file the student gets from the example loader, with no parallel copies. */
+/** Guided tutorials. Each loads its program from `/examples/cpsc355/`, the
+ *  same file the example loader gives the student, so there is no second
+ *  copy to keep in step. */
 
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
@@ -51,7 +48,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Aliases and operands",
         body:
-          "The m4 defines at the top map readable names (a, b, result) to physical registers. After assemble, watch x19 (a) and x20 (b) take their initial values 47 and 5.",
+          "The m4 defines at the top map readable names (a, b, result) to physical registers. After you assemble, watch x19 (a) and x20 (b) take their initial values 47 and 5.",
         highlight: { start: 4, end: 27 },
         watchReg: "x19",
         expect: { reg: "x19", value: 47, note: "a = 47" },
@@ -90,7 +87,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "scanf the first score",
         body:
-          "`add x1, fp, score1_s` produces the address of the on-stack slot for score 1. `bl scanf` blocks until the runtime feeds the next stdin line; the prefilled fixture sends 85.",
+          "`add x1, fp, score1_s` produces the address of the on-stack slot for score 1. `bl scanf` waits for the next line of input; the prefilled input sends 85.",
         highlight: { start: 35, end: 41 },
         watchReg: "x1",
       },
@@ -132,7 +129,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "scanf %s into the name field",
         body:
-          "`add x1, fp, stu_name` is the address of the 20-byte name buffer. scanf with %s reads a whitespace-terminated token from stdin (Alice).",
+          "`add x1, fp, stu_name` is the address of the 20-byte name buffer. scanf with %s reads one word from stdin (Alice), stopping at the first space or newline.",
         highlight: { start: 32, end: 37 },
         watchReg: "x1",
       },
@@ -186,9 +183,9 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Verify the result",
         body:
-          "After find_max returns, w20 holds the max. The final printf formats it. Step past the printf and check w0 in the register panel: it should be 70.",
+          "find_max returns the max in w0, and main copies it into w20 at once, because printf returns the number of characters it printed in w0. Step past the final printf and check w20 in the register panel: it should be 70, while w0 now holds 14, the length of `Max value: 70` and its newline.",
         highlight: { start: 89, end: 96 },
-        expect: { reg: "w0", value: 70, note: "max of arr is 70" },
+        expect: { reg: "w20", value: 70, note: "max of arr is 70" },
       },
     ],
   },
@@ -196,7 +193,7 @@ export const TUTORIALS: Tutorial[] = [
     id: "static-vs-argv",
     title: "Static locals and argv",
     summary:
-      "Compare a function with a static counter (file-scope state) against main's argv (per-invocation state).",
+      "Compare a counter in .data, which keeps its value between calls, with main's argv, which the loader sets up for each run.",
     sourcePath: "/examples/cpsc355/static-counter.s",
     steps: [
       {
@@ -215,9 +212,9 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Calling increment three times",
         body:
-          "main loops i_r from 1 to 3, calling increment each time. Step through the third call: the counter in memory should reach 3.",
+          "main loops i_r from 1 to 3, calling increment each time and keeping what it returns in w20, because printf then puts its own count of printed characters in w0. Step through the third call: the counter in memory reaches 3, and so does w20.",
         highlight: { start: 36, end: 56 },
-        expect: { reg: "w0", value: 3, note: "third return value" },
+        expect: { reg: "w20", value: 3, note: "third return value" },
       },
       {
         title: "Switching to argv",
@@ -227,7 +224,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Loop over argv",
         body:
-          "The loop indexes argv with `[argv_r, i_r, sxtw 3]`: an 8-byte stride, because each pointer is 64 bits. printf %s prints the C string the pointer points at.",
+          "The loop indexes argv with `[argv_r, i_r, sxtw 3]`: i_r times 8, because each pointer is 64 bits. printf %s prints the C string the pointer points at.",
       },
       {
         title: "Static vs argv",
@@ -258,7 +255,7 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Multiply by pi",
         body:
-          "`pi_m: .double 0r3.14159...` is a literal double in `.data`. Two `fmul` instructions compute r*r then pi*(r*r) into d0. The .double directive uses GAS's 0r prefix for floats.",
+          "`pi_m: .double 0r3.14159...` is a literal double in `.data`. Two `fmul` instructions compute r*r then pi*(r*r) into d0. The .double directive uses the GNU assembler's 0r prefix for floats.",
         highlight: { start: 38, end: 44 },
       },
       {
@@ -273,14 +270,14 @@ export const TUTORIALS: Tutorial[] = [
     id: "syscalls",
     title: "Raw Linux syscalls",
     summary:
-      "Use write (64), read (63), and exit (93) directly via SVC, without going through libc.",
+      "Use the write (64) and read (63) system calls directly with svc, without going through the C library.",
     sourcePath: "/examples/cpsc355/echo.s",
     stdin: "hi there\n",
     steps: [
       {
         title: "Write the prompt",
         body:
-          "`x8 = 64; svc 0` is the write syscall. x0 is the fd (1 for stdout), x1 is the buffer, x2 is the byte count. The prompt is written before scanf so the user knows what to type.",
+          "`x8 = 64; svc 0` is the write syscall. x0 is the fd (1 for stdout), x1 is the buffer, x2 is the byte count. The prompt is written before the read so the user knows what to type.",
         highlight: { start: 27, end: 33 },
       },
       {
@@ -299,13 +296,13 @@ export const TUTORIALS: Tutorial[] = [
       {
         title: "Print the buffer",
         body:
-          "This call goes through the libc trampoline: printf is a host stub at 0xFFFF_*. The `bl printf` instruction is rewritten by the linker to jump through a per-host trampoline so the imm26 offset stays in range.",
+          "printf is in the C library, far from your code in memory. `bl` only reaches nearby addresses, so the linker points `bl printf` at a short jump stored with your program, and that jump carries on to printf.",
         highlight: { start: 47, end: 50 },
       },
       {
         title: "Exit cleanly",
         body:
-          "The function returns via the standard epilogue. The loader stashed a `__main_return` sentinel in lr so the final `ret` halts the CPU and stamps w0 (set to 0 above) as the exit code.",
+          "The function returns through the standard epilogue. Before main started, the loader put a halt address in lr, so the final `ret` stops the program and w0 (set to 0 above) becomes the exit code.",
         highlight: { start: 52, end: 54 },
         expect: { reg: "w0", value: 0, note: "exit code 0" },
       },

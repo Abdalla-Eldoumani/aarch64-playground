@@ -1,5 +1,5 @@
 // echo.s
-// Read a line from stdin using svc, then print it using printf.
+// Read a line from stdin using a system call (svc), then print it using printf.
 //
 // Compile: m4 echo.s > echo.gen.s && gcc echo.gen.s -o echo
 //
@@ -25,12 +25,12 @@ fmt:    .string "You typed: %s"
 main:   stp     fp, lr, [sp, alloc]!
         mov     fp, sp
 
-        // Print prompt with write(stdout, prompt, prompt_len)
-        // 12 = "Enter text: " visible bytes; the .string directive's
-        // implicit NUL must not be written or printf below picks it up.
+        // Print the prompt with write(stdout, prompt, length).
+        // 12 counts the visible bytes of "Enter text: "; the zero byte
+        // .string adds at the end is left out so it never reaches the output.
         mov     w0, 1                   // fd = 1 (stdout)
         ldr     x1, =prompt
-        mov     x2, 12                  // hand-counted: edit prompt and this changes too
+        mov     x2, 12                  // counted by hand: change it when the prompt changes
         mov     x8, 64                  // syscall number for write
         svc     0
 

@@ -1,52 +1,33 @@
 # docs
 
-The written docs for aarch64-playground: how to run it, how it is built, and
-how to add to it. The code is the source of truth; these cover the parts that
-are not obvious from reading it.
-
-New here? Read [getting-started.md](getting-started.md) for a tour of the site,
-then [ARCHITECTURE.md](ARCHITECTURE.md) for how the Rust-to-WASM emulator and
-the Next.js frontend fit together. Before you change code,
-[CONTRIBUTING.md](CONTRIBUTING.md) has the setup, the directory layout, and the
-PR flow.
-
-## By task
+How to use the playground, how it is built, and how to add to it. The code is
+the final word; these docs cover what reading it will not tell you quickly.
+To run the site on your machine, start with the [README](../README.md).
 
 | You want to | Read |
 | --- | --- |
-| See what the site does | [getting-started.md](getting-started.md) |
-| Understand how it works | [ARCHITECTURE.md](ARCHITECTURE.md) |
-| Set up and open a PR | [CONTRIBUTING.md](CONTRIBUTING.md) |
-| Run the tests | [TESTING.md](TESTING.md) |
-| Deploy it | [DEPLOY.md](DEPLOY.md) |
-| Understand the security stance | [security.md](security.md) |
-| Find where a feature lives | [features.md](features.md) |
-| Write a lesson or exercise | [authoring-content.md](authoring-content.md) |
-| Add or look up an instruction | [instruction-reference.md](instruction-reference.md), then [cpsc355-style-guide.md](cpsc355-style-guide.md) |
+| Take a tour of the site | [getting-started.md](getting-started.md) |
 | Use the terminal pane | [terminal.md](terminal.md) |
+| Look up an instruction, library call, or system call | [instruction-reference.md](instruction-reference.md) |
+| Write assembly the way course files do | [cpsc355-style-guide.md](cpsc355-style-guide.md) |
+| Understand how the emulator and the site fit together | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Find the file behind a feature | [features.md](features.md) |
+| Set up, change code, and open a pull request | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| Run the tests | [TESTING.md](TESTING.md) |
+| Write a lesson or an exercise | [authoring-content.md](authoring-content.md) |
+| Deploy it | [DEPLOY.md](DEPLOY.md) |
+| Check what it defends against | [security.md](security.md) |
 | See what changed between versions | [Releases](https://github.com/Abdalla-Eldoumani/aarch64-playground/releases) |
 
-## Two kinds of doc
+Two docs are checked by tests, so an edit to them can fail the build:
 
-Project docs describe the codebase as it is: getting-started, ARCHITECTURE,
-CONTRIBUTING, TESTING, DEPLOY, and security.
+- `instruction-reference.md`: the Rust and web test suites fail when its
+  instruction tables and the `/reference` page drift from what the assembler
+  accepts.
+- `authoring-content.md`: its two worked examples must pass the lesson and
+  exercise validators and the course-style check, and the lesson's program
+  must print the output the example says it does.
 
-`diagrams/` holds the four architecture sheets ARCHITECTURE.md embeds (system
-map, assemble pipeline, run loop, address space). They are hand-written SVGs
-with no external resources; the numbers on them come from the constants in
-`emulator/src`, so a change to a base address or a bound updates the sheet too.
-
-One doc feeds a page: instruction-reference is read by the web and Rust test
-suites, which fail when the `/reference` tables drift from it, so editing it
-changes what the site is allowed to ship. The rest are reference docs no code
-reads: cpsc355-style-guide is the course voice the guide and the pitfalls
-catalog are written to, authoring-content documents the lesson and exercise
-JSON format, terminal is the terminal-pane command reference, and features.md
-is an index into the source tree.
-
-## Test coverage
-
-The suite gates every PR and is green on `main`; the current shape and
-counts live in [TESTING.md](TESTING.md), along with how to run each
-layer (the Rust suites, the web suite, the example fixtures, and the
-50-program C corpus).
+`diagrams/` holds the four SVG diagrams in `ARCHITECTURE.md`. Their addresses
+and limits come from constants in `emulator/src`, so a change to one of those
+needs the same change in the diagram.

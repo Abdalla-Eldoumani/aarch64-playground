@@ -1,16 +1,10 @@
 "use client";
 
 /**
- * Hands-on 16-byte alignment probe for the calling-convention guide: a column
- * of 8-byte stack cells, sp as an amber marker, and preset buttons that move
- * sp exactly the way the course prologue lines do. Pure client-side
- * arithmetic: sp starts at 0x7fffff00, every preset is authored data, no
- * emulator and no worker. The verdict is an aria-live region that reads the new
- * sp and its low bits on every move: a success-tinted "aligned" chip while
- * sp % 16 == 0, a danger-tinted note when an odd multiple of 8 breaks the
- * boundary the next bl needs. Amber marks the machine's pointer, the buttons
- * are the reader acting (the shared Button chrome), and every state is
- * discrete, so there is no motion to reduce.
+ * Hands-on 16-byte alignment check for the calling-convention guide. The
+ * presets are authored data and the arithmetic is plain client code, so no
+ * emulator or worker runs. Every state is discrete, so there is no motion to
+ * reduce.
  */
 
 import { useState, type JSX } from "react";
@@ -77,7 +71,7 @@ export function StackAlignment({
           move sp yourself
         </p>
         <p className="text-[12px] text-[var(--text-secondary)]">
-          every cell is 8 bytes; sp starts at {hex(START_SP)}, on the boundary.
+          every cell is 8 bytes; sp starts at {hex(START_SP)}, a multiple of 16.
         </p>
       </header>
 
@@ -141,7 +135,7 @@ export function StackAlignment({
             </span>
             {sp === START_SP && (
               <span
-                className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+                className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
                 style={SP_MARKER_STYLE}
               >
                 {"<- sp"}
@@ -171,7 +165,7 @@ export function StackAlignment({
                 </span>
                 {base === sp && (
                   <span
-                    className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+                    className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
                     style={SP_MARKER_STYLE}
                   >
                     {"<- sp"}

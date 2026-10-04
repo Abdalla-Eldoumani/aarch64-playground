@@ -1,0 +1,18 @@
+score 44850 last 9009
+d 1 5: 4 4 4 bytes 144
+d 5 0: -5 -5 -5 bytes -180
+-3:7:vcjqxel -3:0:ahovcjq -2:10:elszgnu -2:3:jqxelsz
+-1:6:szgnubi 0:9:bipwdkr 0:2:gnubipw 1:5:pwdkryf
+2:8:yfmtaho 2:1:dkryfmt 3:11:hovcjqx 3:4:mtahovc
+-1 0 2 4 5 7 8 10 -1
+F51,57 E41,47 D31,37 D28,76 B11,17 A1,7
+grid 80030 100010 408
+grow 1
+grow 2
+grow 4
+grow 8
+grow 16
+grow 32
+grow 64
+vec 40 64 752419740
+sizes 12 20 24 36

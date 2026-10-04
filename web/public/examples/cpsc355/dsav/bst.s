@@ -305,9 +305,9 @@ bst_delete:
     ret
 
 // bst_delete_node(x0 = node, w20 = value) -> x0 = the new subtree root
-// The value rides in w20 rather than w1: the recursion needs it to
-// survive the calls it makes, and a callee-saved register does that for
-// free.
+// The value rides in w20 rather than w1 because w20 is callee-saved: any
+// function that changes it puts it back before returning, so it survives
+// the calls the recursion makes.
 bst_delete_node:
     cbz     x0, bst_delete_absent
 
@@ -343,8 +343,9 @@ bst_delete_this:
     cbz     x1, bst_delete_lift_right
     cbz     x2, bst_delete_lift_left
 
-    // two children: the successor value moves up, and the successor node
-    // is deleted from the right subtree, where it has at most one child
+    // two children: the successor (the smallest value in the right subtree)
+    // moves up, and its old node is deleted from the right subtree, where
+    // it has at most one child
     ldr     x0, [x19, BST_RIGHT]
     bl      bst_find_min
     ldr     w1, [x0, BST_DATA]
@@ -614,7 +615,7 @@ bst_chip:
 
     ldr     x0, =bst_cell
     mov     w1, w3
-    mov     w2, 2                           // the cell is two columns wide
+    mov     w2, 2                           // pad the value to two columns
     bl      ui_num
 
     mov     w0, w19
@@ -856,7 +857,7 @@ bst_render_empty:
 bst_render_stats:
     mov     w0, 16
     mov     w1, 55
-    // 18 columns of literal plus two counts. Values run 0..99, so a full
+    // 18 columns of fixed text plus two counts. Values run 0..99, so a full
     // tree is 100 nodes and an ascending run makes it 100 deep: both
     // counts reach three digits and the line reaches column 78.
     mov     w2, 24
@@ -943,7 +944,7 @@ bst_order_add:
 
     mov     x0, x21
     mov     w1, w19
-    mov     w2, 0                           // the strip spaces itself
+    mov     w2, 0                           // no padding: a space goes after it
     bl      ui_num
 
     sxtw    x2, w0
@@ -1093,8 +1094,8 @@ bst_ask_prompt:
     b       bst_ask_done
 
 bst_ask_range:
-    // Say why and ask again. Answering 0 here would be indistinguishable
-    // from a closed stdin, and the operation was being abandoned silently.
+    // Say why and ask again. Returning 0 here would look the same as a
+    // closed stdin, and the operation would quietly give up.
     ldr     x0, =bst_msg_range
     mov     w1, 0
     mov     w2, 0
@@ -1880,7 +1881,7 @@ bst_postorder_walk:
 bst_postorder_walk_done:
     ret
 
-// bst_traverse_frame(x0 = screen title) - the chrome every traversal shares
+// bst_traverse_frame(x0 = screen title) - the frame every traversal shares
 bst_traverse_frame:
     stp     fp, lr, [sp, -32]!
     mov     fp, sp
@@ -2019,7 +2020,8 @@ bst_postorder_int_done:
     ret
 
 // bst_levelorder_interactive() - the one traversal with no recursion in
-// it: a queue holds the frontier, so the tree comes out a level at a time
+// it: a queue holds the nodes waiting to be visited, so the tree comes out
+// a level at a time
 bst_levelorder_interactive:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -2036,8 +2038,8 @@ bst_levelorder_interactive:
     b.le    bst_level_int_empty
 
     ldr     x19, =bst_queue
-    mov     w20, 0                          // the end values come off
-    mov     w21, 0                          // the end children go on
+    mov     w20, 0                          // front: nodes come off here
+    mov     w21, 0                          // back: children go on here
     mov     w22, 0                          // how many are waiting
 
     ldr     x0, =bst_root
@@ -2052,7 +2054,7 @@ bst_level_int_loop:
 
     ldr     x23, [x19, w20, uxtw 3]
     add     w20, w20, 1
-    and     w20, w20, 63                    // the ring holds sixty-four
+    and     w20, w20, 63                    // after slot 63, wrap back to 0
     sub     w22, w22, 1
 
     // the children join the back before the node is painted, so the

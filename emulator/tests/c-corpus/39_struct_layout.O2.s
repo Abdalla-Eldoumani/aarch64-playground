@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	mk
 mk:
 	add	x1, x0, 1
@@ -12,7 +12,7 @@ mk:
 	str	w0, [x8, 32]
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	tot
 tot:
 	ldp	x1, x2, [x0]
@@ -38,7 +38,7 @@ tot:
 	.string	"%ld %ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -144]!

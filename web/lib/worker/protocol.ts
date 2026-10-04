@@ -1,15 +1,7 @@
 /**
- * Worker request/response protocol for the WASM emulator.
- *
- * Every call from the main thread to the worker is a `Request` carrying
- * an `id`. The worker replies with a `Response` echoing the same id, so
- * the client can match awaiters. During long-running operations (the
- * run loop) the worker also emits unsolicited `Heartbeat` messages with
- * id = -1 carrying a fresh `StateSnapshot` so panels update mid-run.
- *
- * The protocol mirrors the EmulatorInstance surface but everything
- * is async; the in-process fallback wraps sync calls in Promise.resolve
- * to expose the same shape.
+ * Messages between the main thread and the emulator worker, an async copy of
+ * the EmulatorInstance surface. A reply echoes its request's id; heartbeats
+ * (id -1) carry a fresh snapshot so panels update during a run.
  */
 
 export type RequestKind =
@@ -166,12 +158,10 @@ export interface RunResultPayload {
 }
 
 /**
- * The external call a paused program counter sits inside. A hosted call
- * (`bl printf`) costs three steps on addresses the student never wrote (two
- * trampoline words and the synthetic stub), so the wasm side names the callee
- * and recovers the call site from LR-4 for all three. Null whenever the pc is
- * an instruction the program itself holds, and absent on wasm builds that
- * predate the export.
+ * The library call the pc is inside. A call like `bl printf` spends three
+ * steps in code the student never wrote, so the wasm side names the callee
+ * and its call site (from LR-4). Null on the program's own instructions and
+ * absent on older wasm builds.
  */
 export interface ExternalCall {
   /** The libc function being called ("printf", "scanf", ...). */
@@ -183,13 +173,9 @@ export interface ExternalCall {
 }
 
 /**
- * Snapshot of all state the UI needs after an operation. Sent in the
- * `ok` response of every state-mutating call (assemble/step/run/reset/
- * stepBack/loadState) and as the `snapshot` field of heartbeats.
- *
- * The `frame` field is a monotonically increasing counter the cache
- * layer uses as part of its cache key so memory reads from earlier
- * frames are invalidated when the worker advances.
+ * All the state the UI needs after an operation, sent with every
+ * state-changing reply and every heartbeat. `frame` only ever grows; the
+ * memory cache keys on it so reads from an earlier frame are dropped.
  */
 export interface StateSnapshot {
   frame: number;
@@ -211,11 +197,9 @@ export interface StateSnapshot {
   stdoutDelta: string;
   stderrDelta: string;
   /**
-   * Bytes the machine has ever written to stdout, echoed input included: an
-   * absolute count the console scrollback aligns to. Step back and a named
-   * restore roll it back to the frame's value, which is how the web unprints
-   * what an undone step wrote. Undefined on wasm builds that predate the
-   * counters, which hides the feature.
+   * Total bytes ever written to stdout, echoed input included. Step back and a
+   * restore roll it back, which is how the console removes what an undone step
+   * printed. Undefined on older wasm builds, which hides the feature.
    */
   stdoutSeen?: number;
   /** The same counter for stderr (see `stdoutSeen`). */
@@ -236,6 +220,12 @@ export interface StateSnapshot {
    */
   externalCall?: ExternalCall | null;
   /**
+   * Caller-saved registers the program read after a library call overwrote
+   * them, since the previous snapshot: four numbers per note, worded by
+   * lib/emulator/clobber-note. Undefined on wasm builds that predate them.
+   */
+  clobberNotes?: number[];
+  /**
    * `(addr, len)` pairs of memory ranges written since the previous
    * snapshot. Drives memory-cell diff highlighting in the replay scrubber.
    * Flat array of `[addr, len, addr, len, ...]`.
@@ -244,12 +234,9 @@ export interface StateSnapshot {
 }
 
 /**
- * The reset-state snapshot for a machine with no program loaded: all 31
- * general-purpose registers zeroed, the stack pointer at the top of the
- * mapped region, and the program counter at the code base where the first
- * instruction will land. Both backends return this before the first
- * assemble, so the cold register panel shows the full register file (not
- * just SP/PC) and the worker and main-thread paths agree byte for byte.
+ * The snapshot before any program is loaded: registers zeroed, sp at the
+ * stack top, pc at the code base. Both backends return it before the first
+ * assemble, so the register panel starts full and the two paths agree.
  */
 export function emptyStateSnapshot(frame = 0): StateSnapshot {
   return {

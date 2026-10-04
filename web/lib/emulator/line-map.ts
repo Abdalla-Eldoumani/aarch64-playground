@@ -1,16 +1,9 @@
 /**
- * Pure helpers for the linker's authoritative address -> editor-line map.
- *
- * The map crosses the worker boundary as a flat `[addr, line, addr, line,
- * ...]` number array (see `Emulator::get_line_map` in the Rust crate,
- * sourced from `LinkedImage.line_map`). The current-line marker, the
- * disassembly text, and breakpoint placement all key off this map instead of
- * counting non-label source-text lines, which double-counts m4 `define()` and
- * directive lines and drifts on complex programs.
- *
- * A malformed or empty array parses to an empty map, and the lookups return
- * null on a miss, so the caller falls back to the legacy line-count path
- * rather than throwing in render or indexing an array by an unchecked offset.
+ * The linker's address -> editor-line map (`Emulator::get_line_map` in the
+ * Rust crate). The current-line marker, the disassembly, and breakpoints use
+ * it because counting source lines double-counts m4 `define()` and directive
+ * lines. A bad or empty array gives an empty map and lookups return null, so
+ * callers fall back to line counting instead of throwing during a render.
  */
 
 export interface LineMap {

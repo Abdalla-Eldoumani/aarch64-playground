@@ -1,0 +1,47 @@
+{
+  "title": "Predict: strings",
+  "slug": "predict-strings",
+  "order": 126,
+  "lastUpdated": "2026-10-01",
+  "topic": "strings",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "Work out the character codes, lengths, and numbers that byte loads, byte stores, and the `strlen` function leave behind.",
+  "predictions": [
+    {
+      "code": "        .data\nchip_m: .string \"ARM64\"\n\n        .text\n        ldr     x19, =chip_m\n        ldrb    w20, [x19, 2]",
+      "question": "What value does w20 hold after ldrb w20, [x19, 2]? Answer in decimal.",
+      "answer": "77",
+      "explanation": "The offset counts from 0, so [x19, 2] is the third byte of ARM64, the letter M. ldrb loads its ASCII code, 77.",
+      "hint": "A is byte 0. Find the letter at byte 2; A's code is 65."
+    },
+    {
+      "code": "        mov     w20, 'k'\n        eor     w21, w20, 0x20",
+      "question": "What value does w21 hold after the eor? Answer in decimal.",
+      "answer": "75",
+      "explanation": "A capital and its lower-case letter differ only in bit 5, which is worth 32 (0x20). k is 107, which has bit 5 set, so the eor clears it and leaves 75, the code for K. The same eor on 75 gives 107 back.",
+      "hint": "107 is the code of k. Is bit 5 of 107 a 1 or a 0?"
+    },
+    {
+      "code": "        .data\nnum_m:  .string \"58\"\n\n        .text\n        ldr     x19, =num_m\n        ldrb    w20, [x19]\n        ldrb    w21, [x19, 1]\n        sub     w20, w20, '0'\n        sub     w21, w21, '0'\n        mov     w22, 10\n        madd    w23, w20, w22, w21",
+      "question": "What value does w23 hold after the madd? Answer in decimal.",
+      "answer": "58",
+      "explanation": "The two bytes are the codes 53 and 56. Taking 48, the code of '0', from each leaves the digits 5 and 8, and madd computes 5 * 10 + 8 = 58, the number the text spells. atoi does the same for any number of digits.",
+      "hint": "madd w23, w20, w22, w21 computes w20 * w22 + w21."
+    },
+    {
+      "code": "        .data\npart_m: .ascii  \"fire\"\nrest_m: .string \"fly\"\n\n        .text\n        ldr     x0, =part_m\n        bl      strlen",
+      "question": "strlen counts the bytes before the first zero byte. What value does x0 hold after strlen returns? Answer in decimal.",
+      "answer": "7",
+      "explanation": ".ascii stores f, i, r and e with no zero byte after them, and rest_m starts right behind them. strlen keeps counting through fly and stops at the zero byte that .string put after it: 4 + 3 = 7.",
+      "hint": "Which of the two directives adds a zero byte, and where does that byte sit?"
+    },
+    {
+      "code": "        .data\nfood_m: .string \"sandwich\"\n\n        .text\n        ldr     x19, =food_m\n        strb    wzr, [x19, 4]\n        mov     x0, x19\n        bl      strlen",
+      "question": "What length does strlen return for food_m after the strb? Answer in decimal.",
+      "answer": "4",
+      "explanation": "wzr is the zero register, so strb wzr, [x19, 4] stores a 0 over byte 4, the w. The string now reads sand and then a terminator, so strlen returns 4. The bytes after it are still in memory, but strlen stops at the first 0.",
+      "hint": "Bytes 0 to 3 are s, a, n and d. What does byte 4 hold after the store?"
+    }
+  ]
+}

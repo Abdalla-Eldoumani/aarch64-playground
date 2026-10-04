@@ -1,39 +1,174 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+// Pins the theme chooser: one radiogroup of six swatches (keys, names, the
+// server markup and hydration), and the site bar's button that opens it
+// sideways and closes on Escape, a press outside, or tabbing away.
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToStaticMarkup, renderToString } from "react-dom/server";
 import { ThemeControl } from "@/components/chrome/ThemeControl";
 
 afterEach(() => cleanup());
 
+// use-theme keeps one store for the page, so each test starts back on dark.
 beforeEach(() => {
+  render(<ThemeControl size="comfortable" />);
+  fireEvent.click(screen.getByRole("radio", { name: "dark" }));
+  cleanup();
   window.localStorage.clear();
   document.documentElement.removeAttribute("data-theme");
 });
 
-describe("ThemeControl", () => {
-  it("renders exactly three theme options with full accessible names", () => {
-    render(<ThemeControl />);
-    expect(screen.getByRole("button", { name: "dark theme" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "light theme" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "high-contrast theme" })).toBeTruthy();
-    expect(screen.getAllByRole("button")).toHaveLength(3);
+const NAMES = ["dark", "light", "high contrast", "ember", "forest", "paper"];
+
+function checkedName(): string | null {
+  return screen.getAllByRole("radio").find((r) => r.getAttribute("aria-checked") === "true")?.getAttribute("aria-label") ?? null;
+}
+
+describe("ThemeControl in the phone menus", () => {
+  it("is one radiogroup named theme, a radio per theme named by its label", () => {
+    render(<ThemeControl size="comfortable" />);
+    const group = screen.getByRole("radiogroup", { name: "theme" });
+    expect(within(group).getAllByRole("radio").map((r) => r.getAttribute("aria-label"))).toEqual(NAMES);
   });
 
-  it("marks exactly one option active with aria-pressed (the default)", () => {
-    render(<ThemeControl />);
-    const pressed = screen
-      .getAllByRole("button")
-      .filter((b) => b.getAttribute("aria-pressed") === "true");
-    expect(pressed).toHaveLength(1);
-    // matchMedia is stubbed to "not light" and localStorage is cleared, so the
-    // hook's default resolves to dark.
-    expect(pressed[0].getAttribute("aria-label")).toBe("dark theme");
+  it("checks exactly one swatch, the current theme, and gives only it the tab stop", () => {
+    render(<ThemeControl size="comfortable" />);
+    expect(checkedName()).toBe("dark");
+    const tabbable = screen.getAllByRole("radio").filter((r) => r.tabIndex === 0);
+    expect(tabbable.map((r) => r.getAttribute("aria-label"))).toEqual(["dark"]);
   });
 
-  it("selecting light sets data-theme=light and moves aria-pressed", () => {
-    render(<ThemeControl />);
-    const light = screen.getByRole("button", { name: "light theme" });
-    fireEvent.click(light);
+  it("checks no swatch in the server HTML, since the server cannot know the theme", () => {
+    const html = renderToStaticMarkup(<ThemeControl size="comfortable" />);
+    expect(html).not.toContain('aria-checked="true"');
+    expect(html.match(/aria-checked="false"/g)).toHaveLength(6);
+    // The sliding frame says which one is current, so it waits for hydration.
+    expect(html).not.toContain("theme-marker");
+  });
+
+  it("hydrates that HTML with nothing logged, then checks the resolved theme", async () => {
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(<ThemeControl size="comfortable" />);
+    document.body.appendChild(container);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    const recovered: unknown[] = [];
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    await act(async () => {
+      root = hydrateRoot(container, <ThemeControl size="comfortable" />, { onRecoverableError: (e) => recovered.push(e) });
+    });
+    expect(recovered).toEqual([]);
+    expect(logged.mock.calls.map((c) => String(c[0]))).toEqual([]);
+    const checked = [...container.querySelectorAll('[role="radio"][aria-checked="true"]')].map((b) => b.getAttribute("aria-label"));
+    expect(checked).toEqual([document.documentElement.getAttribute("data-theme")]);
+    logged.mockRestore();
+    act(() => root?.unmount());
+    container.remove();
+  });
+
+  it("applies a clicked swatch and slides the frame to it", () => {
+    const { container } = render(<ThemeControl size="comfortable" />);
+    fireEvent.click(screen.getByRole("radio", { name: "light" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
-    expect(light.getAttribute("aria-pressed")).toBe("true");
+    expect(checkedName()).toBe("light");
+    expect((container.querySelector(".theme-marker") as HTMLElement).style.transform).toBe("translateX(100%)");
+  });
+
+  it("moves and chooses with the arrows, wrapping, and jumps with Home and End", () => {
+    render(<ThemeControl size="comfortable" />);
+    const group = screen.getByRole("radiogroup", { name: "theme" });
+    const press = (key: string) => fireEvent.keyDown(document.activeElement ?? group, { key });
+    screen.getByRole("radio", { name: "dark" }).focus();
+    press("ArrowLeft");
+    expect(checkedName()).toBe("paper");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("paper");
+    press("ArrowRight");
+    press("ArrowDown");
+    expect(checkedName()).toBe("light");
+    press("ArrowUp");
+    expect(checkedName()).toBe("dark");
+    press("End");
+    expect(checkedName()).toBe("paper");
+    press("Home");
+    expect(checkedName()).toBe("dark");
+    expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
+  });
+});
+
+describe("ThemeControl in the site bar", () => {
+  function bar() {
+    render(
+      <>
+        <ThemeControl />
+        <button type="button">elsewhere</button>
+      </>,
+    );
+    return {
+      button: screen.getByRole("button", { name: /^theme/ }),
+      strip: screen.getByRole("radiogroup", { name: "theme" }),
+    };
+  }
+
+  it("names no theme in the server HTML, and starts closed", () => {
+    const html = renderToStaticMarkup(<ThemeControl />);
+    expect(html).toContain('aria-label="theme"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('data-open="false"');
+  });
+
+  it("names the current theme once hydrated and controls the closed, inert row", () => {
+    const { button, strip } = bar();
+    expect(button.getAttribute("aria-label")).toBe("theme: dark");
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(button.getAttribute("aria-controls")).toBe(strip.id);
+    expect(strip.hasAttribute("inert")).toBe(true);
+    expect(strip.getAttribute("data-open")).toBe("false");
+  });
+
+  it("opens on the button, hands focus to the checked swatch, and stays open on a choice", () => {
+    const { button, strip } = bar();
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(strip.hasAttribute("inert")).toBe(false);
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("dark");
+    fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
+    expect(document.documentElement.getAttribute("data-theme")).toBe("light");
+    fireEvent.click(screen.getByRole("radio", { name: "ember" }));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("ember");
+    expect(button.getAttribute("aria-label")).toBe("theme: ember");
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    expect(window.localStorage.getItem("aarch64-playground:theme")).toBe("ember");
+  });
+
+  it("closes on Escape and gives focus back to the button", () => {
+    const { button } = bar();
+    fireEvent.click(button);
+    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+    expect(document.activeElement).toBe(button);
+  });
+
+  it("closes on a press outside, not on one inside", () => {
+    const { button } = bar();
+    fireEvent.click(button);
+    fireEvent.pointerDown(screen.getByRole("radio", { name: "forest" }));
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.pointerDown(document.body);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("closes when focus tabs out of it", () => {
+    const { button } = bar();
+    fireEvent.click(button);
+    fireEvent.focusOut(document.activeElement!, { relatedTarget: button });
+    expect(button.getAttribute("aria-expanded")).toBe("true");
+    fireEvent.focusOut(document.activeElement!, { relatedTarget: screen.getByRole("button", { name: "elsewhere" }) });
+    expect(button.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("toggles closed from the button", () => {
+    const { button } = bar();
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(button.getAttribute("aria-expanded")).toBe("false");
   });
 });

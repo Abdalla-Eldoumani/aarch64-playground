@@ -1,0 +1,56 @@
+{
+  "title": "Tower of Hanoi",
+  "slug": "tower-of-hanoi",
+  "order": 51,
+  "lastUpdated": "2026-09-30",
+  "topic": "subroutines",
+  "difficulty": "challenge",
+  "prompt": "Three pegs, A, B and C, and a tower of n discs on peg A, the smallest on top. Move the whole tower to peg C one disc at a time, never putting a bigger disc on a smaller one. The starter's `main` reads n (0 to 10) and calls `hanoi(n, 'A', 'C', 'B')`. Write `hanoi` so it prints every move and returns how many moves it made.\n\n`hanoi` is recursive: it calls itself on a smaller tower. To move n discs from `from` to `to`, move the top n - 1 discs from `from` to `spare`, move disc n from `from` to `to`, then move the n - 1 discs from `spare` to `to`. A tower of 0 discs needs no moves. Print the move of disc d as `disc d: X -> Y`, with the pegs printed as characters (`%c`).\n\nEvery call of `hanoi` still needs n, the three pegs, and its running count after its own calls return, so keep them in x19 to x28. Its caller is using those registers too, so save the ones you use in the frame on entry and restore them before `ret`.\n\nFor n = 2 the output is:\n\n```\ndisc 1: A -> B\ndisc 2: A -> C\ndisc 1: B -> C\nmoves: 3\n```\n\n## What is checked\n\n- every move, then the count, for the starter's input (n = 3)\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden, including an empty tower",
+  "starter": "// print every move that shifts a tower of n discs from peg A to peg C\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\nfmt_discs:  .string \"%d\"\nfmt_move:   .string \"disc %d: %c -> %c\\n\"\nfmt_total:  .string \"moves: %d\\n\"\n\n.bss\n.align 4\nn_in:       .skip 4                         // scanf's landing spot\n\n.text\n\n// hanoi(w0 = n, w1 = from peg, w2 = to peg, w3 = spare peg) -> w0 = moves made\n        .balign 4\n        .global hanoi\nhanoi:\n        // TODO: a tower of 0 discs needs no moves. Otherwise move n - 1\n        // discs from the from peg to the spare peg, print the move of\n        // disc n with fmt_move, move the n - 1 discs from the spare peg\n        // to the to peg, and return the total number of moves.\n        // hanoi calls itself and printf: keep what you still need in\n        // x19 to x28, and save and restore them in this frame.\n        mov     w0, 0                       // replace this placeholder\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_discs\n        ldr     x1, =n_in\n        bl      scanf                       // no input leaves n_in at 0\n\n        ldr     x9, =n_in\n        ldr     w0, [x9]\n        mov     w1, 'A'\n        mov     w2, 'C'\n        mov     w3, 'B'\n        bl      hanoi\n\n        mov     w1, w0                      // the count goes straight to printf\n        ldr     x0, =fmt_total\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "3\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "disc 1: A -> C\ndisc 2: A -> B\ndisc 1: C -> B\ndisc 3: A -> C\ndisc 1: B -> A\ndisc 2: B -> C\ndisc 1: A -> C\nmoves: 7\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "bl hanoi",
+        "in": "hanoi"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "moves: 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "disc 1: A -> C\nmoves: 1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "5\n",
+      "stdout": "disc 1: A -> C\ndisc 2: A -> B\ndisc 1: C -> B\ndisc 3: A -> C\ndisc 1: B -> A\ndisc 2: B -> C\ndisc 1: A -> C\ndisc 4: A -> B\ndisc 1: C -> B\ndisc 2: C -> A\ndisc 1: B -> A\ndisc 3: C -> B\ndisc 1: A -> C\ndisc 2: A -> B\ndisc 1: C -> B\ndisc 5: A -> C\ndisc 1: B -> A\ndisc 2: B -> C\ndisc 1: A -> C\ndisc 3: B -> A\ndisc 1: C -> B\ndisc 2: C -> A\ndisc 1: B -> A\ndisc 4: B -> C\ndisc 1: A -> C\ndisc 2: A -> B\ndisc 1: C -> B\ndisc 3: A -> C\ndisc 1: B -> A\ndisc 2: B -> C\ndisc 1: A -> C\nmoves: 31\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "",
+      "stdout": "moves: 0\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

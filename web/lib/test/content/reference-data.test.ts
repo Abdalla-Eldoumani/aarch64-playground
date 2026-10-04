@@ -4,15 +4,10 @@ import path from "node:path";
 import { REFERENCE_INSTRUCTIONS, type ReferenceCategory } from "@/lib/content/reference-data";
 import { lookupDoc } from "@/lib/asm/instruction-docs";
 
-// The web half of the drift guard. The Rust side
-// (emulator/tests/reference_consistency.rs) pins the documented set to the
-// assembler; this pins the same documented set to the reference UI data and to
-// the hover cards, so the doc, the emulator, the reference, and the hover cards
-// stay one consistent set. The parse below mirrors the Rust guard and is
-// self-contained (no import from the Rust side). The one intentional
-// difference: the reference models the conditional-branch family as a single UI
-// entry, so this canon folds that family to one `B.COND` rather than the two
-// placeholders the Rust guard keeps.
+// emulator/tests/reference_consistency.rs holds the documented set to the
+// assembler; this holds the same set to the reference page and the hover
+// cards. The parse copies the Rust one, except that the reference shows the
+// conditional branches as one entry, so they fold to a single `B.COND`.
 
 // The 4-bit AArch64 condition codes the reference documents for the
 // conditional-branch family.
@@ -56,12 +51,9 @@ function firstBacktickToken(cell: string): string | undefined {
   return cell.slice(start + 1, end).trim();
 }
 
-// Parse the documented mnemonic set from the reference's instruction tables.
-// An "instruction table" is any Markdown table whose first header cell is
-// exactly `Mnemonic`; that selects the eight instruction tables and skips the
-// directive / pseudo / m4 / host-stub / syscall tables and all prose. Only the
-// first column of each body row is read, so back-ticked aliases in the
-// Form/Notes columns never leak in.
+// Only tables headed `Mnemonic` list instructions; the directive, m4, and
+// syscall tables do not. Only the first column is read, so aliases in the
+// Form and Notes columns never count as instructions.
 function documentedMnemonics(markdown: string): Set<string> {
   const set = new Set<string>();
   let inInstructionTable = false;
@@ -142,5 +134,34 @@ describe("reference-data matches the documented instruction set", () => {
       (insn) => !CATEGORIES.has(insn.category),
     ).map((insn) => insn.mnemonic);
     expect(invalid).toEqual([]);
+  });
+
+  it("carries C text for every one of the 370 instructions", () => {
+    const withC = REFERENCE_INSTRUCTIONS.filter(
+      (insn) => /[;{}]/.test(insn.cExample),
+    );
+    expect(REFERENCE_INSTRUCTIONS.length).toBe(370);
+    expect(withC.length).toBe(370);
+  });
+
+  it("keeps vector lines out of the examples of scalar rows", () => {
+    const vectorLine = /\b[vq](?:[12]?[0-9]|3[01])\b/;
+    const mixed = REFERENCE_INSTRUCTIONS.filter(
+      (insn) =>
+        insn.category !== "Vector" &&
+        insn.example
+          .split("\n")
+          .some((line) => vectorLine.test(line.replace(/\/\/.*$/, ""))),
+    ).map((insn) => insn.mnemonic);
+    expect(mixed).toEqual([]);
+  });
+
+  it("opens the live example on the register file its example writes", () => {
+    const view = (m: string) =>
+      REFERENCE_INSTRUCTIONS.find((insn) => insn.mnemonic === m)?.registerView;
+    expect(view("add")).toBe("x");
+    expect(view("fmadd")).toBe("d");
+    expect(view("addv")).toBe("v");
+    expect(view("ld1")).toBe("v");
   });
 });

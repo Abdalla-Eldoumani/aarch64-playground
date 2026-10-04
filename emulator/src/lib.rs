@@ -10,6 +10,8 @@ pub mod hosted;
 pub mod memory;
 pub mod registers;
 pub mod snapshot;
+#[cfg(test)]
+mod test_support;
 
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
@@ -25,7 +27,7 @@ use cpu::{Cpu, StepOutcome};
 /// new stub is registered without being named here.
 pub const HOSTED_LIBC_NAMES: &[&str] = &[
     // console and formatted output
-    "printf", "scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
+    "printf", "scanf", "__isoc99_scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
     // strings
     "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strchr",
     "strstr", "strtok", "memset", "memcpy", "memmove", "memcmp",
@@ -37,10 +39,13 @@ pub const HOSTED_LIBC_NAMES: &[&str] = &[
     "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
     "__ctype_toupper_loc", "__ctype_tolower_loc",
     // FILE*-level stdio
-    "fopen", "fprintf", "fgets", "fputs", "fclose",
+    "fopen", "fprintf", "fgets", "fputs", "fclose", "putc", "fputc", "getc",
+    "fwrite",
+    // sorting and searching with the program's comparator
+    "qsort", "bsearch",
     // libm
     "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor",
-    "fabs", "fmod",
+    "fabs", "fmod", "sincos",
 ];
 
 /// Decide whether the source uses the hosted cpsc 355 feature set
@@ -109,14 +114,11 @@ pub struct MemoryRegionJs {
     pub end: u32,
 }
 
-/// The address bands a cpsc 355 program can touch, in address order. They
-/// describe the STATIC layout, not live frontiers: the heap row spans the
-/// whole malloc window rather than the current bump pointer, and the stub
-/// row the whole table capacity, because a panel labelling an address wants
-/// the band it belongs to regardless of what the program has reached. Built
-/// outside the wasm boundary so a native test pins every row to the
-/// constant it comes from: the panel's labels and jump targets are only
-/// trustworthy while they agree with the loader.
+/// The address bands a program can touch, in address order. Each row is the
+/// band's full fixed window (the heap row is the whole malloc range, not how
+/// far malloc has reached), since the panel labels an address by the band it
+/// falls in. Built outside the wasm boundary so a native test can pin every
+/// row to the loader constant it comes from.
 pub fn memory_map() -> Vec<MemoryRegionJs> {
     let section = |name, base: u64| MemoryRegionJs {
         name,
@@ -172,24 +174,36 @@ pub struct HostCallContext {
     pub call_site_line: Option<u32>,
 }
 
-/// Resolve the external-call context for the cpu's current pc, or `None`
-/// when the pc is an instruction the program itself holds. `line_map` is
-/// the flat `[addr, line, ...]` map the wasm wrapper carries.
+/// The external call the cpu's pc sits inside, or `None` when the pc is an
+/// instruction the program itself holds. `line_map` is the flat
+/// `[addr, line, ...]` map the wasm wrapper carries.
 ///
-/// The call site is LR-4, the same recovery `error_line_for` uses for a
-/// fault raised inside a stub: LR holds the address the `bl` will return
-/// to, and the instruction before it is the `bl`. It has to be dynamic:
-/// one trampoline serves every call site of a function, so nothing static
-/// can say which `printf` line the pc belongs to.
+/// The call site is LR-4 (LR holds the return address, so the word before
+/// it is the `bl`), read at run time because one trampoline serves every
+/// call site of a function.
 pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext> {
     let name = cpu.host_call_name(cpu.regs.read_pc())?.to_string();
     let call_site_pc = cpu.regs.read_gpr(30, true).wrapping_sub(4);
-    let target = call_site_pc as u32;
-    let call_site_line = line_map
+    let call_site_line = line_at(line_map, call_site_pc);
+    Some(HostCallContext { name, call_site_pc, call_site_line })
+}
+
+/// Editor line of `pc` in the flat `[addr, line, ...]` map.
+fn line_at(line_map: &[u32], pc: u64) -> Option<u32> {
+    let target = pc as u32;
+    line_map
         .chunks_exact(2)
         .find(|pair| pair[0] == target)
-        .map(|pair| pair[1]);
-    Some(HostCallContext { name, call_site_pc, call_site_line })
+        .map(|pair| pair[1])
+}
+
+/// Turn the two pcs of each `Cpu::take_clobber_notes` row into the editor
+/// lines the web words the note from, 0 where the map has none.
+pub fn clobber_note_lines(rows: &mut [u32], line_map: &[u32]) {
+    for row in rows.chunks_exact_mut(4) {
+        row[2] = line_at(line_map, u64::from(row[2])).unwrap_or(0);
+        row[3] = line_at(line_map, u64::from(row[3])).unwrap_or(0);
+    }
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -209,12 +223,11 @@ fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
 #[wasm_bindgen]
 pub struct Emulator {
     cpu: Cpu,
-    /// Flat `[addr, line, addr, line, ...]` authoritative address ->
-    /// editor-source-line map from the most recent hosted assemble.
-    /// Empty for the legacy bare-metal path and after a failed assemble;
-    /// the web layer treats an empty map as "fall back to the source-text
-    /// line-count heuristic". Stored on the wrapper rather than on `cpu`
-    /// to keep the cpu module focused on execution state.
+    /// Flat `[addr, line, ...]` map from address to editor line, from the
+    /// most recent hosted assemble. Empty on the bare-metal path and after a
+    /// failed assemble, which tells the web layer to count source lines
+    /// instead. Kept here rather than on `cpu` because it is not execution
+    /// state.
     line_map: Vec<u32>,
 }
 
@@ -419,13 +432,10 @@ impl Emulator {
         }
     }
 
-    /// Same as `assemble_and_load` but additionally writes argc/argv at
-    /// `argv::ARGV_BASE` so the program's `main(int argc, char **argv)`
-    /// sees the supplied arguments. `args` is argv[1..]: the loader
-    /// owns argv[0] (`./program`), so no caller prepends a program
-    /// name. Bare-metal sources (no hosted features) ignore args:
-    /// argc/argv only have meaning for hosted programs that read them
-    /// through w0/x1.
+    /// `assemble_and_load`, plus argc/argv written at `argv::ARGV_BASE` for
+    /// `main(int argc, char **argv)`. `args` is argv[1..]: the loader
+    /// supplies argv[0] (`./program`) itself. Bare-metal sources ignore
+    /// args, since only a hosted `main` reads them.
     pub fn assemble_and_load_with_args(
         &mut self,
         source: &str,
@@ -717,12 +727,10 @@ impl Emulator {
         serde_wasm_bindgen::to_value(&warnings).unwrap()
     }
 
-    /// Run the m4 pass alone over a source file, exactly as `assemble_and_load`
-    /// would before lexing: block comments blanked, `define()` aliases
-    /// substituted (their lines left blank so line numbers hold), `name = expr`
-    /// assignments kept inline. Powers the terminal's `m4 file.asm > file.s`
-    /// step so the course toolchain replays one command at a time. Returns
-    /// `{ success, text?, error?, error_line? }`.
+    /// Run only the m4 pass, as `assemble_and_load` would, for the terminal's
+    /// `m4 file.asm > file.s` step. Each `define()` leaves one blank line, as
+    /// GNU m4 does, so `gcc file.s` names the lines the server's gcc names.
+    /// Returns `{ success, text?, error?, error_line? }`.
     pub fn m4_expand(&self, source: &str) -> JsValue {
         match frontend::m4::expand(source) {
             Ok(expanded) => serde_wasm_bindgen::to_value(&M4ResultJs {
@@ -771,24 +779,19 @@ impl Emulator {
         cpu::CODE_BASE as u32
     }
 
-    /// Flat `[addr, line, addr, line, ...]` authoritative address ->
-    /// editor-source-line map from the most recent hosted assemble. The
-    /// worker threads this to the hook, which keys the current-line
-    /// marker, the disassembly text, and breakpoint placement off it
-    /// instead of counting source-text lines. Empty for the legacy
-    /// bare-metal path; the web layer falls back to the source-text
-    /// heuristic when it is empty.
+    /// The address-to-editor-line map from the most recent hosted assemble,
+    /// as flat `[addr, line, ...]`. The web layer places the current-line
+    /// marker, the disassembly text, and breakpoints from it, and counts
+    /// source lines instead when it is empty (the bare-metal path).
     pub fn get_line_map(&self) -> Vec<u32> {
         self.line_map.clone()
     }
 
-    /// The external call the pc currently sits inside as
+    /// The external call the pc sits inside as
     /// `{ name, call_site_pc, call_site_line }`, or JS `null` when the pc is
-    /// an instruction the program holds. Answers for each of the three steps
-    /// a hosted call takes and for a `scanf` parked waiting on input, always
-    /// naming the call site the `bl` came from, so the stepping UI can say
-    /// "printf runs inside the runtime" instead of showing a synthetic
-    /// address with no source line. Reads state only.
+    /// an instruction the program holds. The stepping UI uses it to name the
+    /// call and its `bl` line instead of showing a stub address with no
+    /// source line. Reads state only.
     #[wasm_bindgen(js_name = hostCallContext)]
     pub fn host_call_context(&self) -> JsValue {
         match host_call_context(&self.cpu, &self.line_map) {
@@ -800,6 +803,15 @@ impl Emulator {
             .unwrap(),
             None => JsValue::NULL,
         }
+    }
+
+    /// The caller-saved registers the program read after a library call
+    /// overwrote them, as `[register, read_by, call_line, read_line]` rows
+    /// (see `Cpu::take_clobber_notes`), drained: each arrives once.
+    pub fn take_clobber_notes(&mut self) -> Vec<u32> {
+        let mut rows = self.cpu.take_clobber_notes();
+        clobber_note_lines(&mut rows, &self.line_map);
+        rows
     }
 
     // -- hosted runtime --
@@ -861,9 +873,9 @@ impl Emulator {
     }
 
     /// Pause or resume the step-back snapshot ring. The terminal pane's
-    /// foreground drive pauses it for live sessions: the per-step clone
-    /// costs far more than the step, and stepping back into the middle
-    /// of a live session has no meaning. Cleared by load and reset.
+    /// foreground drive pauses it for live sessions: stepping back into
+    /// the middle of a live session has no meaning. Cleared by load and
+    /// reset.
     pub fn set_snapshots_paused(&mut self, paused: bool) {
         self.cpu.snapshots_paused = paused;
     }
@@ -920,12 +932,9 @@ impl Emulator {
         self.cpu.resolve_label(name)
     }
 
-    /// Drain the dirty-write buffer (per-write `(addr, len)` ranges)
-    /// accumulated since the last call. JS uses these to highlight
-    /// changed memory cells during replay scrubbing. Returned as a
-    /// flat `Vec<u32>` of `[addr, len, addr, len, ...]`. Every cpsc
-    /// 355 address fits in u32 (max is `0xFFFF_FFFF` for the host
-    /// stub range) so the high half isn't carried.
+    /// Drain the `(addr, len)` of every memory write since the last call, as
+    /// a flat `[addr, len, ...]`, so the UI can highlight changed cells. u32
+    /// is enough: the highest address is the stub range's `0xFFFF_FFFF`.
     pub fn take_dirty_addrs(&mut self) -> Vec<u32> {
         let mut out = Vec::new();
         for (addr, len) in self.cpu.mem.take_dirty() {
@@ -1090,8 +1099,8 @@ mod hosted_mode_tests {
     fn every_registered_stub_is_detected_as_hosted() {
         // A stub registered in `Cpu::new` but missing here leaves
         // `bl <name>` on the bare-metal path, where the call resolves to
-        // nothing. The table is the source of truth; the two sentinels are
-        // not names a program can call.
+        // nothing. The table is the source of truth; the two internal stubs
+        // are not names a program can call.
         let cpu = crate::cpu::Cpu::new();
         let missing: Vec<String> = cpu
             .host

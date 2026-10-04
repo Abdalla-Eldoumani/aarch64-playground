@@ -1,0 +1,65 @@
+{
+  "title": "Fill in the blank: input and output",
+  "slug": "blanks-io",
+  "order": 122,
+  "lastUpdated": "2026-10-01",
+  "topic": "io",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing token in calls to `scanf` and `printf`, and to the `read` and `write` system calls.",
+  "blanks": [
+    {
+      "prompt": "The format string's address is already in x0. Pass the address of the .bss slot count_n as scanf's second argument.",
+      "code": "ldr     ___, =count_n",
+      "blanks": [
+        "x1"
+      ],
+      "explanation": "Arguments go in x0, x1, x2 and so on, in order. The format string is the first, in x0, so the address of the slot that receives the number is the second, in x1. It takes the whole x register because an address is 64 bits.",
+      "hint": "Count the arguments: the format string comes first."
+    },
+    {
+      "prompt": "Pick the write system call before svc 0.",
+      "code": "mov     x8, ___",
+      "blanks": [
+        "64",
+        "#64",
+        "0x40",
+        "#0x40"
+      ],
+      "explanation": "On Linux for AArch64, write is service number 64, and svc 0 reads it from x8. read is 63, openat 56, close 57, and exit 93.",
+      "hint": "It is one more than the number for read, 63."
+    },
+    {
+      "prompt": "done_m labels the 5-byte message .ascii \"done\\n\". Let the assembler count its bytes for write, on the line right after it.",
+      "code": "done_len = ___ - done_m",
+      "blanks": [
+        "."
+      ],
+      "explanation": "A dot stands for the current address, which here is just past the last byte of the message. Taking away the message's first address leaves its length, 5, and the assembler works it out again whenever the text changes.",
+      "hint": "One character stands for the address the assembler has reached."
+    },
+    {
+      "prompt": "A read system call (x8 = 63) is to take up to 16 bytes from standard input. Pick the file descriptor.",
+      "code": "mov     x0, ___",
+      "blanks": [
+        "0",
+        "#0",
+        "0x0",
+        "#0x0",
+        "xzr"
+      ],
+      "explanation": "x0 holds the file descriptor to read from, and standard input is descriptor 0. Descriptor 1 is standard output and 2 is standard error.",
+      "hint": "Standard input is the first of the three descriptors every program starts with."
+    },
+    {
+      "prompt": "Print a long, held in x1, after the word total.",
+      "code": "fmt_total:  .string \"total: %___\\n\"",
+      "blanks": [
+        "ld",
+        "li"
+      ],
+      "explanation": "%ld prints a signed long, all 64 bits of x1. %d would print only the low 32 bits, so a total past about two billion would print wrong. In printf, %li means the same as %ld.",
+      "hint": "The specifier needs the letter for long in front of the d."
+    }
+  ]
+}

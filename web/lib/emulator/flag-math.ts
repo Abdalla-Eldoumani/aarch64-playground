@@ -1,9 +1,7 @@
 /**
- * The NZCV arithmetic behind the reference's flag panels: the flags each
- * integer flag-setter and `fcmp` leave, plus the operand parsers those panels
- * read their inputs with. The rules are the ones the emulator's executor
- * applies, restated here by hand so a teaching panel can show a compare's
- * effect without a round trip through the machine.
+ * The NZCV flags behind the reference's flag panels. The emulator's rules are
+ * restated here so a panel can show a compare's effect without running the
+ * machine.
  */
 
 export interface Flags {
@@ -17,11 +15,8 @@ export interface Flags {
 export type IntOp = "sub" | "add" | "and";
 
 /**
- * NZCV for the integer flag-setters at a register width, the same rules the
- * executor applies: N = sign bit of the result, Z = zero, C = no-borrow for
- * subtraction / carry-out for addition / cleared by the logical ops, V =
- * signed overflow (operand signs agree for add, differ for sub, and the
- * result sign disagrees with the first operand).
+ * NZCV for the integer flag-setters at a register width. C is no-borrow for
+ * a subtract, carry-out for an add, and clear for the logical ops.
  */
 export function computeIntFlags(
   op: IntOp,

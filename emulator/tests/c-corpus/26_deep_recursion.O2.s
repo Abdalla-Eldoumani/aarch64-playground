@@ -1,13 +1,13 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	depth
 depth:
 	mov	w2, w0
 	add	w3, w1, w0
 	mov	w0, w1
 	cbz	w2, .L1
-	.align 5
+	.p2align 5,,15
 .L4:
 	sub	w2, w2, #1
 	mov	w0, w3
@@ -16,23 +16,23 @@ depth:
 .L1:
 	ret
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	is_even
 is_even:
 	cbnz	w0, .L12
 	mov	w0, 1
 	ret
-	.align 2
+	.p2align 2,,3
 .L12:
 	sub	w0, w0, #1
 	b	is_odd
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	is_odd
 is_odd:
 	cbnz	w0, .L15
 	ret
-	.align 2
+	.p2align 2,,3
 .L15:
 	sub	w0, w0, #1
 	b	is_even
@@ -45,7 +45,7 @@ is_odd:
 	.string	"%d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!

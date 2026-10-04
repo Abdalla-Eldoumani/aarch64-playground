@@ -1,12 +1,14 @@
 {
   "title": "The overeager counter",
   "slug": "the-overeager-counter",
-  "order": 5,
+  "order": 11,
+  "lastUpdated": "2026-09-30",
   "topic": "loops",
   "difficulty": "intro",
-  "prompt": "This countdown should print `5` through `1` and stop. Run it and look closely at the output: it goes one line too far.\n\nThe loop's exit test is the culprit. Fix the condition so the countdown ends where it should, and leave everything else alone.\n\n## what is checked\n\n- exactly five lines, `5` down to `1`\n- the program exits cleanly\n- the countdown still comes from the loop",
-  "starter": "// count down from five to one, one number per line\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(i_r, x19)\n\n        .data\nfmt:    .string \"%lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     i_r, 5                      // start of the countdown\nloop:\n        cmp     i_r, 0\n        b.lt    done                        // stop once i_r runs out\n        ldr     x0, =fmt\n        mov     x1, i_r\n        bl      printf\n        sub     i_r, i_r, 1\n        b       loop\ndone:\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "This countdown should print `n` down to `1`, one number per line, and stop. Run it with the `5` in the stdin box and look closely at the output: it goes one line too far.\n\nThe loop's exit test is the culprit. Fix the condition so the countdown ends where it should, and leave everything else alone.\n\n## What is checked\n\n- exactly five lines, `5` down to `1`\n- the program exits cleanly\n- the countdown still comes from the loop\n- the same holds for other starting values you do not see; a start of 0 or below prints nothing at all",
+  "starter": "// count down from n to one, one number per line\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(i_r, x19)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_out:    .string \"%lld\\n\"\n\n        .bss\n        .balign 8\nstart_m:    .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read where the countdown starts\n        ldr     x1, =start_m\n        bl      scanf\n        ldr     x9, =start_m\n        ldr     i_r, [x9]\nloop:\n        cmp     i_r, 0\n        b.lt    done                        // stop once i_r runs out\n        ldr     x0, =fmt_out\n        mov     x1, i_r\n        bl      printf\n        sub     i_r, i_r, 1\n        b       loop\ndone:\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "5\n",
   "variant": "identify-bug",
   "acceptance": {
     "results": [
@@ -25,5 +27,29 @@
         "mnemonic": "sub"
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1\n",
+      "stdout": "1\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-2\n",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "12\n",
+      "stdout": "12\n11\n10\n9\n8\n7\n6\n5\n4\n3\n2\n1\n",
+      "exitCode": 0
+    }
+  ]
 }

@@ -1,6 +1,6 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.6.1",
+  "version": "2.7.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
@@ -10,7 +10,7 @@
     "dev": "next dev --webpack",
     "wasm:watch": "node ../scripts/wasm-watch.mjs",
     "dev:all": "concurrently --kill-others-on-fail --names wasm,web --prefix-colors yellow,cyan \"npm run wasm:watch\" \"npm run dev\"",
-    "build": "next build --webpack",
+    "build": "next build --webpack && node ../scripts/write-precache-list.js",
     "start": "next start",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
@@ -26,17 +26,17 @@
   "size-limit": [
     {
       "name": "learn route entry js (index + lesson page chunks)",
-      "path": ".next/static/chunks/app/\\(site\\)/learn/**/page-*.js",
+      "path": ".next/static/chunks/app/[(]site[)]/learn/**/page-*.js",
       "limit": "8.6 KB"
     },
     {
       "name": "practice route entry js (index + exercise page chunks)",
-      "path": ".next/static/chunks/app/\\(site\\)/practice/**/page-*.js",
+      "path": ".next/static/chunks/app/[(]site[)]/practice/**/page-*.js",
       "limit": "15.4 KB"
     },
     {
       "name": "reference route entry js (page chunk)",
-      "path": ".next/static/chunks/app/\\(site\\)/reference/**/page-*.js",
+      "path": ".next/static/chunks/app/[(]site[)]/reference/**/page-*.js",
       "limit": "19 KB"
     },
     {
@@ -58,22 +58,22 @@
     {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
-      "limit": "200 KB"
+      "limit": "211 KB"
     },
     {
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
       "path": ".next/static/css/*.css",
-      "limit": "35 KB"
+      "limit": "36 KB"
     },
     {
       "name": "practice index flight payload (the rows the server sends)",
       "path": ".next/server/app/practice.rsc",
-      "limit": "8.8 KB"
+      "limit": "16 KB"
     },
     {
       "name": "learn index flight payload (the rows the server sends)",
       "path": ".next/server/app/learn.rsc",
-      "limit": "4.6 KB"
+      "limit": "6.4 KB"
     }
   ],
   "dependencies": {
@@ -85,34 +85,34 @@
     "cmdk": "1.1.1",
     "lz-string": "1.5.0",
     "monaco-editor": "0.56.0",
-    "next": "16.3.4",
-    "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "react-hot-toast": "2.6.0",
+    "next": "16.3.8",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-hot-toast": "2.6.1",
     "react-markdown": "10.1.0",
     "react-resizable-panels": "4.12.3",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1"
   },
   "devDependencies": {
-    "@size-limit/file": "12.1.0",
+    "@size-limit/file": "14.0.1",
     "@testing-library/react": "16.3.2",
-    "@types/node": "24.13.4",
-    "@types/react": "19.2.18",
-    "@types/react-dom": "19.2.7",
-    "@vitest/coverage-v8": "5.0.0",
-    "autoprefixer": "10.5.4",
+    "@types/node": "24.19.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitest/coverage-v8": "5.0.2",
+    "autoprefixer": "10.6.1",
     "concurrently": "9.2.4",
     "eslint": "9.39.4",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.3.8",
     "jsdom": "30.0.1",
     "lighthouse": "13.4.1",
     "playwright": "1.59.1",
     "postcss": "8.5.23",
-    "size-limit": "12.1.0",
+    "size-limit": "14.0.1",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
-    "vitest": "5.0.0"
+    "vitest": "5.0.2"
   },
   "overrides": {
     "dompurify": "3.4.14",

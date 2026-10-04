@@ -3,26 +3,27 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   INSTRUCTION_DOCS,
+  docKey,
+  docKeyAt,
   lookupDoc,
-  lookupDocAt,
 } from "@/lib/asm/instruction-docs";
 
-describe("instruction-docs cExample", () => {
-  it("LDR carries a C-equivalent for its load form", () => {
-    expect(INSTRUCTION_DOCS.LDR.cExample).toBeDefined();
-    expect(INSTRUCTION_DOCS.LDR.cExample).toMatch(/Rd =.*\(int\*\)/);
+describe("docKey", () => {
+  it("upper-cases a known mnemonic and folds every b.cond spelling", () => {
+    expect(docKey("csel")).toBe("CSEL");
+    expect(docKey("b.ne")).toBe("B.COND");
+    expect(docKey("B.cond")).toBe("B.COND");
   });
 
-  it("MOV carries a C assignment", () => {
-    expect(INSTRUCTION_DOCS.MOV.cExample).toMatch(/Rd =/);
+  it("answers nothing for an unknown word, including Object's own names", () => {
+    expect(docKey("frobnicate")).toBeUndefined();
+    expect(docKey("constructor")).toBeUndefined();
+    expect(docKey("hasOwnProperty")).toBeUndefined();
   });
 
-  it("CSEL carries the ternary form", () => {
-    expect(INSTRUCTION_DOCS.CSEL.cExample).toMatch(/cond \? Rn : Rm/);
-  });
-
-  it("entries without a c equivalent simply omit the field", () => {
-    expect(INSTRUCTION_DOCS.NOP.cExample).toBeUndefined();
+  it("gives the hover path the same key for a dotted conditional", () => {
+    const line = "        b.lt    loop";
+    expect(docKeyAt(line, "lt", line.indexOf("lt") + 1)).toBe("B.COND");
   });
 });
 
@@ -36,36 +37,28 @@ describe("lookupDoc", () => {
   });
 });
 
-// The editor's hover provider (components/playground/Editor.tsx) does nothing
-// but hand Monaco's word and its column to lookupDocAt, so driving that
-// function over real source lines pins the whole hover path without Monaco.
-// The word an editor reports is what Monaco's default word scan would give:
-// letters and digits, broken at the dot.
-describe("lookupDocAt (the editor's hover path)", () => {
+// The editor's hover provider (components/playground/Editor.tsx) hands
+// Monaco's word and its column to docKeyAt and reads both tables with the key
+// it returns, so driving that function over real source lines pins the whole
+// hover path without Monaco. The word an editor reports is what Monaco's
+// default word scan would give: letters and digits, broken at the dot.
+describe("docKeyAt (the editor's hover path)", () => {
   /** The line, and the mnemonic's 1-based start column in it. */
   const hover = (line: string, word: string) =>
-    lookupDocAt(line, word, line.indexOf(word) + 1);
+    docKeyAt(line, word, line.indexOf(word) + 1);
 
   it("resolves a vector mnemonic exactly as it resolves stp", () => {
-    expect(hover("        stp     x29, x30, [sp, -16]!", "stp")).toBe(
-      INSTRUCTION_DOCS.STP,
-    );
-    expect(hover("        movi    v1.4s, 0x7f", "movi")).toBe(
-      INSTRUCTION_DOCS.MOVI,
-    );
-    expect(hover("        addv    s2, v1.4s", "addv")).toBe(
-      INSTRUCTION_DOCS.ADDV,
-    );
-    expect(hover("        ld4r    {v4.8b, v5.8b, v6.8b, v7.8b}, [x7]", "ld4r"))
-      .toBe(INSTRUCTION_DOCS.LD4R);
+    expect(hover("        stp     x29, x30, [sp, -16]!", "stp")).toBe("STP");
+    expect(hover("        movi    v1.4s, 0x7f", "movi")).toBe("MOVI");
+    expect(hover("        addv    s2, v1.4s", "addv")).toBe("ADDV");
+    expect(
+      hover("        ld4r    {v4.8b, v5.8b, v6.8b, v7.8b}, [x7]", "ld4r"),
+    ).toBe("LD4R");
   });
 
   it("re-attaches the letter before the dot for a conditional branch", () => {
     // Monaco's word scan breaks `b.eq` at the dot and reports `eq`.
-    const line = "        b.eq    done";
-    expect(lookupDocAt(line, "eq", line.indexOf("eq") + 1)).toBe(
-      INSTRUCTION_DOCS["B.COND"],
-    );
+    expect(hover("        b.eq    done", "eq")).toBe("B.COND");
   });
 
   it("answers nothing for an operand or an unknown word", () => {
@@ -82,12 +75,9 @@ describe("lookupDocAt (the editor's hover path)", () => {
   });
 });
 
-// The hover-card list must cover every mnemonic the canonical reference
-// documents. The web half of the Rust drift guard (emulator/tests/
-// reference_consistency.rs): it parses the same instruction tables out of
-// docs/instruction-reference.md and asserts lookupDoc resolves each, so the
-// doc and the Monaco hover cards never drift apart. Parsing is
-// self-contained here (no import from the Rust side).
+// The web half of emulator/tests/reference_consistency.rs: every mnemonic
+// docs/instruction-reference.md documents must have a hover card, so the two
+// never drift apart.
 
 // The 4-bit AArch64 condition codes the reference documents for the
 // conditional-branch family.
@@ -119,12 +109,9 @@ function firstBacktickToken(cell: string): string | undefined {
   return cell.slice(start + 1, end).trim();
 }
 
-// Parse the documented mnemonic set from the reference's instruction tables.
-// An "instruction table" is any Markdown table whose first header cell is
-// exactly `Mnemonic`; that selects the instruction tables and skips the
-// directive / pseudo / m4 / host-stub / syscall tables and all prose. Only the
-// first column of each body row is read, so back-ticked aliases in the
-// Form/Notes columns never leak in.
+// Only tables headed `Mnemonic` hold instructions, and only their first
+// column is read, so the directive tables and the aliases in the Form and
+// Notes columns stay out.
 function documentedMnemonics(markdown: string): Set<string> {
   const set = new Set<string>();
   let inInstructionTable = false;

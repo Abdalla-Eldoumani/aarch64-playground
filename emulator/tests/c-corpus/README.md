@@ -1,7 +1,8 @@
 # The C corpus
 
-Fifty small C programs, the assembly gcc generates for them, and the
-output a real AArch64 Linux machine produces when it runs them. The
+A hundred and one small C programs, the assembly gcc generates for them
+at three optimization levels, and the output a real AArch64 Linux
+machine produces when it runs them. The
 corpus test (`cargo test --test c_corpus`) assembles each program's `.s`
 in the emulator, runs it, and requires stdout and the exit code to match
 the reference byte for byte. It needs no compiler, no qemu, and no
@@ -18,31 +19,38 @@ found a silent wrong-target bug in every dotless conditional branch
 - `NAME.s`: gcc's `-O0` assembly, sanitized (exactly what a student
   could paste into the playground)
 - `NAME.out` / `NAME.code`: reference stdout and exit code
-- `NAME.O2.s` / `NAME.O2.out` / `NAME.O2.code`: the `-O2` tier, run as an
-  ignored coverage map (`cargo test --test c_corpus -- --ignored`). It is
-  not a correctness gate, but it holds a recorded floor: 50 of 50 must
-  pass, and growth is recorded by raising the floor. The `-O0` tier is
-  the gate and all 50 of 50 match
+- `NAME.O2.s` / `NAME.O2.out` / `NAME.O2.code`: `-O2` with the corpus
+  flags (`-fno-inline -fno-builtin`), so printf stays printf and every
+  function stays a call
+- `NAME.O2plain.s` / `.out` / `.code`: plain `-O2`, the way a real build
+  compiles: printf becomes puts or putchar, small functions inline away,
+  loops vectorize, and libc calls such as `fwrite`, `putc` and `sincos`
+  appear that the C never wrote
 - `NAME.stdin`, `NAME.args`, `NAME.flags`: optional program input,
   arguments, and per-program compile flags
+
+The `-O0` tier is the gate every pull request runs. The two optimized
+tiers are `#[ignore]`d there because replaying them triples the suite's
+time; the weekly workflow runs them (`cargo test --test c_corpus --
+--ignored`). All 101 programs match at all three tiers.
 
 ## Where the references came from
 
 The tracked references were produced by gcc 16.2.1 20260819 running
-natively on an AArch64 Fedora server (dynamically linked, collected
-2026-08-30). `tools/sanitize.py regen` rebuilds everything with a cross
+natively on an AArch64 Fedora server (dynamically linked): programs 1 to
+50 at `-O0` and `-O2` collected 2026-08-30, programs 51 to 101 and every
+plain `-O2` reference 2026-09-27. `tools/sanitize.py regen` rebuilds
+everything (all three tiers, or one with `--tier`) with a cross
 compiler and qemu-user and fails on any drift from the tracked files, so
 a toolchain change announces itself; a scheduled workflow runs it weekly.
 
 Exit codes use the shell convention: a program killed by signal N records
 128+N (139 for SIGSEGV, 135 for SIGBUS).
 
-Both pending lists in the corpus test are empty: every program assembles
-and matches at both tiers. The last two exceptions were `13_float_double`
-and `14_float_single`, each waiting at -O2 alone on the vector immediate
-gcc zeroes with (`movi d31, #0` and `movi v0.2s, #0`), and both now pass.
-The lists stay in the test so a future gap has to be recorded to be
-tolerated, and either turns red the day its program starts assembling.
+The pending lists in the corpus test are empty: every program assembles
+and matches at every tier. The lists stay in the test so a future gap
+has to be recorded to be tolerated, and each turns red the day its
+program starts assembling.
 
 Three programs crash on purpose, and the corpus test asserts the
 emulator's own diagnosis instead of an output match:

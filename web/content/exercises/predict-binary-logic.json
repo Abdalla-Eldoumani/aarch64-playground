@@ -1,7 +1,8 @@
 {
   "title": "Predict: binary logic",
   "slug": "predict-binary-logic",
-  "order": 36,
+  "order": 76,
+  "lastUpdated": "2026-10-01",
   "topic": "binary-logic",
   "difficulty": "challenge",
   "variant": "prediction",
@@ -22,11 +23,11 @@
       "hint": "lsr does not preserve the sign bit. What fills the top bit after the shift?"
     },
     {
-      "code": "mov x20, 0xFF\nmov x21, 0x3C\nbic x19, x20, x21",
-      "question": "Write the low 8 bits of x19 as eight binary digits, with no prefix.",
-      "answer": "11000011",
-      "explanation": "bic computes an AND with the inverted second operand, so every bit set in x21 (0011 1100) is cleared in the copy of x20 (1111 1111). What survives is 1100 0011, or 0xC3.",
-      "hint": "The mask clears the middle four bits and leaves the outer two pairs alone."
+      "code": "mov w22, 0xB7\nmov w23, 0x0F\nbic w24, w22, w23",
+      "question": "Write the low 8 bits of w24 as eight binary digits, with no prefix.",
+      "answer": "10110000",
+      "explanation": "bic computes an AND with the inverted second operand, so every bit set in w23 (0000 1111) is cleared in the copy of w22 (1011 0111). The low four bits become 0 and the high four survive: 1011 0000, or 0xB0.",
+      "hint": "The mask clears the low four bits and leaves the high four alone."
     },
     {
       "code": "mov w20, 0xFF\nsxtb w19, w20",

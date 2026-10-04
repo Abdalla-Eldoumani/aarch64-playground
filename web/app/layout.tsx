@@ -1,104 +1,62 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans, JetBrains_Mono, Source_Serif_4 } from "next/font/google";
+import localFont from "next/font/local";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { ToastHost } from "@/components/ui/Toast";
 import { OfflineBadge } from "@/components/chrome/OfflineBadge";
 import { RegisterSW } from "@/components/chrome/RegisterSW";
-import { SHARE_CARD_IMAGE, SITE_URL } from "@/lib/content/site";
+import { HOME_DESCRIPTION, HOME_TITLE, SITE_NAME, SITE_URL } from "@/lib/content/site";
+import { composeTitle, pageMetadata } from "@/lib/content/seo";
+import { PRE_PAINT_SCRIPT } from "@/lib/theme/pre-paint";
+import { THEME_TOKENS } from "@/lib/theme/tokens";
 
-// Datasheet trio: Source Serif 4 in editorial chrome (reading-surface
-// titles, leads, empty-state heads), IBM Plex Sans for UI controls, body,
-// and display headlines, JetBrains Mono everywhere code, registers, labels,
-// or document rules appear. Each font is pinned to a CSS variable so
-// component-level utility classes can pull the right family without a
-// Tailwind config rewrite.
-const fontSerif = Source_Serif_4({
-  subsets: ["latin"],
-  weight: ["400", "600"],
-  // Upright only: the drawn italic costs twelve @font-face rules and four
-  // woff2 files in the render-blocking stylesheet on every route, for two
-  // small captions. Those two keep `italic` and take the browser's
+// Each font is bound to a CSS variable so utility classes and the --type-*
+// tokens in globals.css can pick a family without a Tailwind config change.
+// The files live in app/fonts (each with its OFL license), so a build needs
+// no font download. Each is the variable Latin subset of the family, and
+// `weight` is the range that file covers. A character outside the subset (no
+// page of the site uses one; a student's program might) takes the fallback
+// face; add the latin-ext file if a page ever needs one.
+const fontSerif = localFont({
+  src: "./fonts/source-serif-4-latin.woff2",
+  weight: "200 900",
+  // Upright only: the drawn italic would be one more file on every route for
+  // two small captions, which keep `italic` and take the browser's
   // synthesized oblique.
   display: "swap",
+  adjustFontFallback: "Times New Roman",
   variable: "--font-serif",
 });
-const fontSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const fontSans = localFont({
+  src: "./fonts/ibm-plex-sans-latin.woff2",
+  weight: "100 700",
   display: "swap",
   variable: "--font-sans",
 });
-const fontMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const fontMono = localFont({
+  src: "./fonts/jetbrains-mono-latin.woff2",
+  weight: "400 800",
   display: "swap",
   variable: "--font-mono",
 });
 
-const DESCRIPTION =
-  "Browser-based ARMv8 emulator with a visual debugger, tuned for the cpsc 355 tutorial corpus";
-
-// Structured data, code-authored literals only: no user input reaches either
-// object, so JSON.stringify into a ld+json script is the whole story. The
-// WebSite entry names the site; the SoftwareApplication entry says what it is
-// (a free, browser-run educational tool) for the search surfaces that show it.
-const WEBSITE_JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "WebSite",
-  name: "cpsc 355 playground",
-  url: SITE_URL,
-  description: DESCRIPTION,
-};
-
-const APPLICATION_JSON_LD = {
-  "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "cpsc 355 playground",
-  url: SITE_URL,
-  description: DESCRIPTION,
-  applicationCategory: "EducationalApplication",
-  operatingSystem: "Web",
-  offers: {
-    "@type": "Offer",
-    price: 0,
-    priceCurrency: "CAD",
-  },
-  audience: {
-    "@type": "EducationalAudience",
-    educationalRole: "student",
-  },
-};
-
+// The home page's card and canonical, as the fallback for any page that
+// states none. Relative urls resolve against metadataBase, so the https
+// origin is written once. Structured data lives on the pages it describes.
 export const metadata: Metadata = {
+  ...pageMetadata({ title: HOME_TITLE, description: HOME_DESCRIPTION, path: "/" }),
   metadataBase: new URL(SITE_URL),
   title: {
-    default: "cpsc 355 playground",
-    template: "%s · cpsc 355 playground",
+    default: composeTitle(HOME_TITLE),
+    template: `%s · ${SITE_NAME}`,
   },
-  description: DESCRIPTION,
-  // Relative canonical: resolved against metadataBase, so the one origin above
-  // is the only place the production host is written. Every addressable route
-  // restates its own; the 404 deliberately has none.
-  alternates: { canonical: "/" },
+  // iOS before 16.4 ignores the web manifest and reads a home-screen app's
+  // name and standalone launch from these tags.
+  appleWebApp: { capable: true, title: SITE_NAME },
   // Search Console URL-prefix verification; the domain property is verified
   // via DNS separately, so this tag is a second anchor, not the primary.
   verification: { google: "RJmIR859S00gRMvoEXI-3lhiav4ygzIp6oUW6lP54j4" },
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
 };
 
 export const viewport: Viewport = {
@@ -107,12 +65,14 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  // One entry per OS preference, matching the --bg-base of the theme the
-  // pre-paint script picks: an OS-light visitor gets a light browser chrome
-  // around a light first paint instead of a dark band above it.
+  // A soft keyboard shrinks the layout, not just the visible part, so the
+  // playground's bottom bars sit above it instead of behind it on Android.
+  interactiveWidget: "resizes-content",
+  // One entry per OS preference, for a browser that runs no script. The
+  // pre-paint script puts the chosen theme's colour in front of both.
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#FCFCFD" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B0C10" },
+    { media: "(prefers-color-scheme: light)", color: THEME_TOKENS.light["bg-base"] },
+    { media: "(prefers-color-scheme: dark)", color: THEME_TOKENS.dark["bg-base"] },
   ],
 };
 
@@ -124,24 +84,15 @@ export default function RootLayout({
   const fontClasses = `${fontSerif.variable} ${fontSans.variable} ${fontMono.variable}`;
   return (
     // suppressHydrationWarning covers exactly one attribute mismatch: the
-    // pre-paint script below writes data-theme before React hydrates, so a
-    // saved light/high-contrast theme differs from the server markup by
-    // design. The suppression scopes to this element only.
+    // pre-paint script below writes data-theme before React hydrates, so the
+    // attribute differs from the server markup by design. The suppression
+    // scopes to this element only.
     <html lang="en" className={fontClasses} suppressHydrationWarning>
       <head>
-        {/* Set data-theme from the saved preference BEFORE first paint, so a
-            light or high-contrast user does not see a flash of the default
-            dark theme every load. With nothing saved the OS preference
-            decides. Nothing is persisted here: use-theme writes the choice
-            on mount. Static, code-authored script (no user input); the CSP
-            permits inline scripts. Kept in lockstep with the
-            "aarch64-playground:theme" key in lib/hooks/use-theme. */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              'try{var d=document.documentElement,t=localStorage.getItem("aarch64-playground:theme");if(t==="light"||t==="dark"||t==="high-contrast")d.setAttribute("data-theme",t);else if(window.matchMedia("(prefers-color-scheme: light)").matches)d.setAttribute("data-theme","light");}catch(e){}',
-          }}
-        />
+        {/* Runs before first paint so a saved theme never flashes another on
+            load; with nothing saved, the OS decides. A fixed script built
+            from the theme list, with no user input, which the CSP allows. */}
+        <script dangerouslySetInnerHTML={{ __html: PRE_PAINT_SCRIPT }} />
       </head>
       <body className="flex flex-col min-h-dvh font-mono">
         {/* First focusable element in the document: a keyboard visitor reaches
@@ -153,14 +104,6 @@ export default function RootLayout({
         <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }}
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(APPLICATION_JSON_LD) }}
-        />
         <Analytics />
         <SpeedInsights />
       </body>

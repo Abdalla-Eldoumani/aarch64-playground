@@ -1,13 +1,12 @@
 // ui.s - the screen every module draws through
 //
-// One frame, one title bar, one footer, one way to draw a panel. A
-// module says what it wants ("a panel called Heap here", "this run is
-// O(n log n)") and never positions a border itself, so the whole program
-// changes shape from this file alone.
+// A module asks for what it wants ("a panel called Heap here") and never
+// draws a border itself, so the whole layout changes from this file alone.
 //
-// The canvas is a fixed 80x24: the frame is rows 1 and 24, the title bar
-// row 2, rules on rows 3 and 21, the footer row 22, and the message row 23
-// that utils.s writes input complaints into. Modules own rows 4-20.
+// The screen is a fixed 80x24: the frame on rows 1 and 24, the title bar on
+// row 2, horizontal lines (rules) on rows 3 and 21, the footer on row 22,
+// and row 23 for the messages utils.s prints about bad input. Modules own
+// rows 4-20.
 
 define(fp, x29)
 define(lr, x30)
@@ -30,8 +29,8 @@ define(lr, x30)
     .data
     .balign 8
 
-// Rounded corners and a light weight keep the data the loudest thing on
-// screen.
+// Thin lines and rounded corners keep the border quiet so the data stands
+// out.
 ui_tl:              .string "\xe2\x95\xad"   // rounded top-left
 ui_tr:              .string "\xe2\x95\xae"   // rounded top-right
 ui_bl:              .string "\xe2\x95\xb0"   // rounded bottom-left
@@ -60,7 +59,7 @@ ui_lbl_complexity:  .string "complexity"
     .text
     .balign 4
 
-// ui_at(w0 = row, w1 = col) - park the cursor
+// ui_at(w0 = row, w1 = col) - move the cursor there
     .global ui_at
 ui_at:
     stp     fp, lr, [sp, -32]!
@@ -74,7 +73,7 @@ ui_at:
     ldp     fp, lr, [sp], 32
     ret
 
-// ui_repeat(x0 = glyph, w1 = count) - draw one glyph n times
+// ui_repeat(x0 = character, w1 = count) - print one character count times
     .global ui_repeat
 ui_repeat:
     stp     fp, lr, [sp, -32]!
@@ -97,11 +96,10 @@ ui_repeat_done:
     ldp     fp, lr, [sp], 32
     ret
 
-// ui_cols(x0 = string) -> w0 = how many columns the string occupies
-// strlen counts bytes, and every box glyph in this file is three of them.
-// Borders are drawn in columns, so anything measured against a border has
-// to be counted the same way: one column per byte that is not a UTF-8
-// continuation byte.
+// ui_cols(x0 = string) -> w0 = how many columns the string takes on screen
+// strlen counts bytes, but each box-drawing character here is three bytes
+// in UTF-8 and one column on screen. So count one column per byte, skipping
+// the extra bytes that continue a character (they look like 10xxxxxx).
     .global ui_cols
 ui_cols:
     stp     fp, lr, [sp, -16]!
@@ -115,7 +113,7 @@ ui_cols_loop:
     cbz     w2, ui_cols_done
     and     w3, w2, 0xC0
     cmp     w3, 0x80
-    b.eq    ui_cols_loop                    // trailing byte of the same glyph
+    b.eq    ui_cols_loop                    // a later byte of the same character
     add     w0, w0, 1
     b       ui_cols_loop
 
@@ -124,11 +122,10 @@ ui_cols_done:
     ret
 
 // ui_num(x0 = dest, w1 = value, w2 = minimum width) -> w0 = characters
-// written, not counting the terminator.
-// The hosted runtime gives us printf but no sprintf, so a value that has to
-// end up in a buffer rather than on the screen (a badge label, a growing
-// order strip) is converted here. Right-aligned, padded with spaces to
-// the width, and always terminated.
+// written, not counting the zero byte that ends the string.
+// For a number that goes into a buffer rather than onto the screen (a badge
+// label, a growing order strip): right-aligned, padded with spaces to the
+// width, and always zero-terminated.
     .global ui_num
 ui_num:
     stp     fp, lr, [sp, -96]!
@@ -149,7 +146,7 @@ ui_num:
     neg     w20, w20
 
 ui_num_digits:
-    add     x23, sp, 64                     // scratch, least significant first
+    add     x23, sp, 64                     // digit buffer, lowest digit first
     mov     w22, 0
     mov     w2, 10
 
@@ -198,7 +195,7 @@ ui_num_emit:
     ldp     fp, lr, [sp], 96
     ret
 
-// ui_rule(w0 = row) - a full-width rule joined into the frame
+// ui_rule(w0 = row) - a full-width horizontal line joined into the frame
     .global ui_rule
 ui_rule:
     stp     fp, lr, [sp, -16]!
@@ -285,7 +282,7 @@ ui_screen_sides:
     b       ui_screen_sides
 
 ui_screen_bars:
-    // title bar: the app mark, then this screen's name
+    // title bar: the program's name, then this screen's name
     mov     w0, 2
     mov     w1, 4
     bl      ui_at
@@ -322,8 +319,9 @@ ui_screen_bars:
     ldp     fp, lr, [sp], 32
     ret
 
-// ui_tagline() - what the program is, set right on the title bar. Only the
-// home screen shows it; every other screen keeps the bar for its own name.
+// ui_tagline() - a one-line description of the program, right-aligned on
+// the title bar. Only the home screen shows it; every other screen keeps the
+// bar for its own name.
     .global ui_tagline
 ui_tagline:
     stp     fp, lr, [sp, -32]!
@@ -420,7 +418,7 @@ ui_panel:
     // fill what the title left
     mov     x0, x23
     bl      ui_cols
-    add     w24, w0, 5                      // corner + 2 rule + 2 spaces
+    add     w24, w0, 5                      // corner + 2 line pieces + 2 spaces
     sub     w24, w21, w24
     sub     w24, w24, 1
     ldr     x0, =ui_h
@@ -488,7 +486,7 @@ ui_panel_bottom:
     ret
 
 // ui_badge(w0 = row, w1 = col, w2 = role, x3 = text)
-// A filled chip. Menu numbers and state markers use these.
+// Text on a coloured background. Menu numbers and state markers use these.
     .global ui_badge
 ui_badge:
     stp     fp, lr, [sp, -32]!
@@ -536,7 +534,8 @@ ui_text:
 
 // ui_complexity(w0 = row, w1 = col, x2 = best, x3 = avg, x4 = worst,
 //               x5 = space)
-// What the run just watched costs, in the three cases and in memory.
+// How much time the algorithm just shown takes in the best, average and
+// worst case, and how much memory it needs.
     .global ui_complexity
 ui_complexity:
     stp     fp, lr, [sp, -80]!
@@ -633,10 +632,9 @@ ui_clear_body_done:
     ldp     fp, lr, [sp], 32
     ret
 
-// ui_prompt(w0 = row, w1 = col, x2 = label) - a label plus the input
-// caret, positioned so utils.s's reader picks up from here. The cursor
-// comes back for this one moment: every other screen hides it, and a
-// student typing wants to see where the characters land.
+// ui_prompt(w0 = row, w1 = col, x2 = label) - a label, then the typing
+// cursor, placed so utils.s's reader starts here. Every other screen hides
+// the cursor; it comes back here so a student sees where their typing lands.
     .global ui_prompt
 ui_prompt:
     stp     fp, lr, [sp, -32]!

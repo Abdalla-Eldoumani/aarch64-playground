@@ -1,7 +1,8 @@
 {
   "title": "Predict: memory and the stack",
   "slug": "predict-frame-stack",
-  "order": 56,
+  "order": 96,
+  "lastUpdated": "2026-09-28",
   "topic": "memory",
   "difficulty": "challenge",
   "variant": "prediction",
@@ -46,7 +47,7 @@
       "code": "fp .req x29\nc_s = -4\nmov fp, 0x8000\nmov w21, 10\nstr w21, [fp, c_s]",
       "question": "The frame pointer holds 0x8000. What hex address does the str write to? Write it with no leading zeros, for example 0x1234.",
       "answer": "0x7ffc",
-      "explanation": "The equate c_s is -4, so the store address is 0x8000 - 4 = 0x7ffc. A block-local variable is always reached through a negative offset from fp, so it sits at a lower address than the frame record fp points at.",
+      "explanation": "The line c_s = -4 makes c_s stand for -4, so the store address is 0x8000 - 4 = 0x7ffc. A block-local variable (space a block of code claims by moving sp down after fp is set) is always reached through a negative offset from fp, so it sits at a lower address than the frame record, the saved x29 and x30 that fp points at.",
       "hint": "Subtract 4 from 0x8000."
     },
     {

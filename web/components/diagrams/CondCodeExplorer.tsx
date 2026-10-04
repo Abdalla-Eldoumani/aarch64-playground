@@ -1,19 +1,9 @@
 "use client";
 
 /**
- * The condition-code explorer for the b.cond reference entry. Ten chips:
- * the course's condition codes grouped either-sign / signed / unsigned, and
- * a detail card that answers, for the picked code: the question it asks after
- * `cmp a, b`, the exact flag formula, why that formula answers the question,
- * and the C reading. Below, a live compare: the student types the two
- * operands and the panel shows the four flags with the ones this code ignores
- * dimmed, then the taken / falls-through verdict. Picking a code and typing
- * operands is the user acting (cyan); the computed flags and the verdict are
- * the machine acting (amber). The flag math is computeIntFlags from
- * lib/emulator/flag-math (the same NZCV rules the executor applies), and
- * operands are fixed at the 32-bit w registers; the width story lives in the
- * FlagEffect panel on the flag-setting entries. Native buttons and inputs; no
- * animation, so reduced motion needs no fallback.
+ * The b.cond explorer. Flag math is computeIntFlags, the same NZCV rules the
+ * emulator runs. Operands stay 32-bit because FlagEffect already covers width.
+ * No animation, so no reduced-motion fallback.
  */
 
 import { useId, useState, type JSX } from "react";
@@ -341,15 +331,25 @@ export function CondCodeExplorer({
                   aria-label={`${flag.toUpperCase()} ${FLAG_WORDS[flag]}: ${
                     lit ? 1 : 0
                   }, ${read ? "read by" : "ignored by"} b.${picked.code}`}
+                  // An ignored flag steps down one text token and takes a
+                  // dashed edge; fading it took its text under 4.5:1.
                   className={`flex min-w-[4.5rem] flex-col items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-2 ${
-                    read ? "" : "opacity-50"
+                    read ? "" : "border-dashed"
                   }`}
                   style={lit && read ? LIT_STYLE : undefined}
                 >
-                  <span className="font-mono text-[15px] font-semibold text-[var(--text-primary)]">
+                  <span
+                    className={`font-mono text-[15px] font-semibold ${
+                      read ? "text-[var(--text-primary)]" : "text-[var(--text-secondary)]"
+                    }`}
+                  >
                     {flag.toUpperCase()} = {lit ? 1 : 0}
                   </span>
-                  <span className="[font:var(--type-label)] text-[var(--text-secondary)]">
+                  <span
+                    className={`[font:var(--type-label)] ${
+                      read ? "text-[var(--text-secondary)]" : "text-[var(--text-tertiary)]"
+                    }`}
+                  >
                     {read ? FLAG_WORDS[flag] : "ignored"}
                   </span>
                 </li>

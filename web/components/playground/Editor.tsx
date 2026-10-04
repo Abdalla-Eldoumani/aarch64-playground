@@ -1,324 +1,21 @@
 "use client";
 
-import MonacoEditor, { loader, type OnMount } from "@monaco-editor/react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import MonacoEditor, { type OnMount } from "@monaco-editor/react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
-import { lookupDocAt } from "@/lib/asm/instruction-docs";
-import {
-  MNEMONIC_ALTERNATION,
-  REGISTER_PATTERN,
-} from "@/lib/asm/highlight-arm64";
-import { explainError } from "@/lib/asm/error-explain";
-import { buildSuggestions, type Suggestion } from "@/lib/asm/asm-completion";
-import { LINE_COMMENT, toggleLineComment } from "@/lib/asm/line-comment";
+import { errorHoverMarkdown } from "@/lib/asm/error-explain";
 import { useToast } from "@/components/ui/Toast";
+import { TouchEditor } from "@/components/playground/TouchEditor";
 import { MAX_SOURCE_BYTES, checkUploadSize, validateSource } from "@/lib/playground/upload-guard";
-
-// The editor runtime is vendored from the monaco-editor dependency instead
-// of fetched from the loader's default CDN: the installed PWA has to keep
-// working offline, and a campus network that filters public CDNs would
-// otherwise leave a student with an empty editor pane. One dependency pin
-// now decides both the runtime build and the compile-time types.
-//
-// Two details of the arrangement carry their own reasons:
-//   - the editor-only build is two entries, `editor` for the API surface
-//     and `features/register.all` for every widget the playground uses
-//     (suggest, hover, find). Neither one pulls a bundled language
-//     service, and this editor registers arm64 itself and never asks for
-//     another language, so those services, and the extra workers they
-//     need, would be megabytes of dead weight.
-//   - the import is dynamic because monaco is a browser-only module and
-//     this component is rendered on the server too, and because the editor
-//     belongs in its own async chunk: the landing page composes this same
-//     component, and a reader who never types should not download an
-//     editor.
-let monacoLoad: Promise<void> | null = null;
-
-function loadMonaco(): Promise<void> {
-  monacoLoad ??= (async () => {
-    // Monaco reads this global lazily, when it first needs a worker. The
-    // base editor worker is the only one to wire up (no language services),
-    // and it is bundled from the package for the same offline reason.
-    self.MonacoEnvironment = {
-      getWorker: () =>
-        new Worker(
-          new URL("monaco-editor/editor/editor.worker.js", import.meta.url),
-          // The worker name is also the bundler's chunk name, which is what
-          // lets the bundle budget in package.json glob the editor's assets
-          // by name instead of by a hashed webpack id that moves with any
-          // change to the module graph.
-          { name: "monaco-worker" },
-        ),
-    };
-    // Registering the widgets is a pure side effect of importing them, and
-    // the API entry exports without registering anything, so both have to
-    // be asked for. They share a chunk name so the budget still measures
-    // one file, and they are ordered the way monaco's own all-in entry
-    // orders them: contributions first, the API that reads them second.
-    await import(/* webpackChunkName: "monaco" */ "monaco-editor/features/register.all");
-    const monaco = await import(/* webpackChunkName: "monaco" */ "monaco-editor/editor");
-    loader.config({ monaco });
-  })();
-  return monacoLoad;
-}
-
-let arm64Registered = false;
-
-// Monaco reads `fontFamily` as a literal CSS font list and never resolves a
-// custom property through it, so this one option cannot just name
-// --font-mono the way every other surface does. Hardcoding the stack instead
-// dropped the half of it that matters most: next/font emits the webfont as
-// "JetBrains Mono" AND a metric-matched local stand-in, "JetBrains Mono
-// Fallback" (size-adjust + ascent-override tuned to the real face), and
-// publishes both as --font-mono on <html> (app/layout.tsx). Monaco measures
-// one glyph's advance at creation and lays the whole grid on it, so an editor
-// created during the swap window measured Consolas and kept the wrong column
-// width. Resolving the variable puts the metric-matched face in front of the
-// generic ones, and keeps the page's stack the only place it is written.
-const MONO_FALLBACKS = "'JetBrains Mono', 'Fira Code', Consolas, monospace";
-let monoFontFamily: string | null = null;
-
-function resolveMonoFontFamily(): string {
-  if (monoFontFamily) return monoFontFamily;
-  if (typeof document === "undefined") return MONO_FALLBACKS;
-  const resolved = getComputedStyle(document.documentElement)
-    .getPropertyValue("--font-mono")
-    .trim();
-  // An empty read means the font stylesheet has not landed yet; answer with
-  // the fallbacks and leave the cache unset so a later mount can still catch
-  // the real family instead of pinning the miss for the whole session.
-  if (!resolved) return MONO_FALLBACKS;
-  monoFontFamily = `${resolved}, ${MONO_FALLBACKS}`;
-  return monoFontFamily;
-}
-
-/** Set Monaco's global theme from the document's data-theme. Called per
- *  mount (the MonacoEditor `theme` prop re-asserts arm64-dark on every
- *  mount) and by the module-level attribute observer on theme switches. */
-function applyDocumentTheme(monaco: Parameters<OnMount>[1]): void {
-  const t = document.documentElement.getAttribute("data-theme");
-  const id = t === "light" ? "arm64-light" : t === "high-contrast" ? "arm64-hc" : "arm64-dark";
-  monaco.editor.setTheme(id);
-}
-
-/**
- * One-time global Monaco setup: the arm64 language, its tokenizer and
- * themes, the theme-attribute observer, and the completion + hover
- * providers. Monaco's registries are tab-global and CONCATENATE
- * providers, so registering per mount stacked N copies of every hover
- * card and completion after N mounts (the pitfalls catalog remounts
- * the embed on every fault/fix toggle). Per-editor wiring stays in
- * handleMount.
- */
-function ensureArm64Registered(monaco: Parameters<OnMount>[1]): void {
-  if (arm64Registered) return;
-  arm64Registered = true;
-
-  monaco.languages.register({ id: "arm64" });
-  // Comment tokens drive Monaco's built-in toggles: Ctrl+/ (Cmd+/) line-
-  // toggles with `//`, Shift+Alt+A block-toggles with the GAS `/* */` pair
-  // the m4 pass strips. The commands read this config live, so registering
-  // it here (once, before first keypress) is enough.
-  monaco.languages.setLanguageConfiguration("arm64", {
-    comments: { lineComment: LINE_COMMENT, blockComment: ["/*", "*/"] },
-  });
-  monaco.languages.setMonarchTokensProvider("arm64", {
-    ignoreCase: true,
-    tokenizer: {
-      root: [
-        [/\/\*/, "comment", "@blockComment"],
-        [/\/\/.*$/, "comment"],
-        [/;.*$/, "comment"],
-        // The keyword set is the highlighter's, which is the hover-card
-        // table's, which the drift guards pin to the assembler's own
-        // SUPPORTED_MNEMONICS: one list, three surfaces. Only the conditional
-        // branches are added here, because that table folds the whole family
-        // onto a single placeholder entry.
-        [
-          new RegExp(
-            `\\b(${[MNEMONIC_ALTERNATION, ...COND_BRANCHES].join("|")})\\b`,
-            "i",
-          ),
-          "keyword",
-        ],
-        // The register file, from the same alternation the reading surfaces
-        // test against, so the two cannot drift. Its trailing lookahead is
-        // what stops Monarch colouring a prefix of a name that is not one:
-        // `x31` and `v3.3s` stay plain.
-        [new RegExp(REGISTER_PATTERN, "i"), "variable"],
-        [/#-?0x[0-9a-fA-F]+/, "number.hex"],
-        [/#-?[0-9]+/, "number"],
-        [/\w+:/, "type.identifier"],
-      ],
-      blockComment: [
-        [/[^/*]+/, "comment"],
-        [/\*\//, "comment", "@pop"],
-        [/[/*]/, "comment"],
-      ],
-    },
-  });
-
-  // Monaco themes take literal hex only, so these restate token values
-  // from app/globals.css: the editor sits on --bg-base with --bg-raised
-  // as the resting line highlight, line numbers read --text-tertiary,
-  // and the caret is the brand block cursor in --amber (the machine's
-  // color: the block marks where the machine will write next). Keep the
-  // two files in step when a token moves.
-  monaco.editor.defineTheme("arm64-dark", {
-    base: "vs-dark",
-    inherit: true,
-    rules: [
-      { token: "keyword", foreground: "6fa8ff", fontStyle: "bold" },
-      { token: "variable", foreground: "ff7eb6" },
-      { token: "number", foreground: "b49bff" },
-      { token: "number.hex", foreground: "b49bff" },
-      { token: "comment", foreground: "7a828c", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "3dd68c" },
-    ],
-    colors: {
-      "editor.background": "#0B0C10",
-      "editor.lineHighlightBackground": "#14171DAA",
-      "editorGutter.background": "#0B0C10",
-      "editorLineNumber.foreground": "#79808B",
-      "editorCursor.foreground": "#FFB224",
-      "editorCursor.background": "#0B0C10",
-    },
-  });
-
-  monaco.editor.defineTheme("arm64-light", {
-    base: "vs",
-    inherit: true,
-    rules: [
-      { token: "keyword", foreground: "1d4ed8", fontStyle: "bold" },
-      { token: "variable", foreground: "be185d" },
-      { token: "number", foreground: "6d28d9" },
-      { token: "number.hex", foreground: "6d28d9" },
-      { token: "comment", foreground: "6b7280", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "047857" },
-    ],
-    colors: {
-      "editor.background": "#FFFFFF",
-      "editor.lineHighlightBackground": "#F4F5F7CC",
-      "editorGutter.background": "#FFFFFF",
-      "editorLineNumber.foreground": "#626A73",
-      "editorCursor.foreground": "#A86A0F",
-      "editorCursor.background": "#FFFFFF",
-    },
-  });
-
-  monaco.editor.defineTheme("arm64-hc", {
-    base: "hc-black",
-    inherit: true,
-    rules: [
-      { token: "keyword", foreground: "8be0ff", fontStyle: "bold" },
-      { token: "variable", foreground: "ffb6e6" },
-      { token: "number", foreground: "d4b6ff" },
-      { token: "number.hex", foreground: "d4b6ff" },
-      { token: "comment", foreground: "d1d5db", fontStyle: "italic" },
-      { token: "type.identifier", foreground: "9ef0c1" },
-    ],
-    colors: {
-      "editor.background": "#000000",
-      "editor.lineHighlightBackground": "#1A1A1A",
-      "editorGutter.background": "#000000",
-      "editorLineNumber.foreground": "#C7C7C7",
-      "editorCursor.foreground": "#FFC247",
-      "editorCursor.background": "#000000",
-    },
-  });
-
-  const observer = new MutationObserver(() => applyDocumentTheme(monaco));
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-theme"],
-  });
-
-  // Completion provider: builds context-aware suggestions from the
-  // current line + the full source (for labels and m4 aliases).
-  type CompletionModel = Parameters<
-    Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
-  >[0];
-  type CompletionPos = Parameters<
-    Parameters<typeof monaco["languages"]["registerCompletionItemProvider"]>[1]["provideCompletionItems"]
-  >[1];
-  monaco.languages.registerCompletionItemProvider("arm64", {
-    triggerCharacters: [".", " ", ",", "[", "$", "_"],
-    provideCompletionItems(model: CompletionModel, position: CompletionPos) {
-      const line = model.getLineContent(position.lineNumber);
-      const source = model.getValue();
-      const word = model.getWordUntilPosition(position);
-      const range = new monaco.Range(
-        position.lineNumber,
-        word.startColumn,
-        position.lineNumber,
-        word.endColumn,
-      );
-      const suggestions = buildSuggestions({
-        source,
-        line,
-        position: position.column,
-      });
-      return {
-        suggestions: suggestions.map((s) => mapSuggestion(s, monaco, range)),
-      };
-    },
-  });
-
-  // Hover provider: surface a short course-voice summary of the
-  // mnemonic under the cursor. Falls back to no-hover when the
-  // token under the cursor isn't one we recognize.
-  type MonacoModule = typeof monaco;
-  type TextModel = Parameters<
-    Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
-  >[0];
-  type MonacoPosition = Parameters<
-    Parameters<MonacoModule["languages"]["registerHoverProvider"]>[1]["provideHover"]
-  >[1];
-  monaco.languages.registerHoverProvider("arm64", {
-    provideHover(model: TextModel, position: MonacoPosition) {
-      const word = model.getWordAtPosition(position);
-      if (!word) return null;
-      // The lookup rule (including the dotted conditional form) lives beside
-      // the table in lib/asm/instruction-docs, so this provider holds none of
-      // it and the whole path is pinned without Monaco.
-      const line = model.getLineContent(position.lineNumber);
-      const doc = lookupDocAt(line, word.word, word.startColumn);
-      if (!doc) return null;
-      const lines: string[] = [
-        `**${word.word.toLowerCase()}** · ${doc.summary}`,
-      ];
-      if (doc.details) {
-        lines.push("", ...doc.details);
-      }
-      if (doc.example) {
-        lines.push("", "```", doc.example, "```");
-      }
-      if (doc.cExample) {
-        lines.push("", `**c equivalent:** \`${doc.cExample}\``);
-      }
-      return {
-        range: new monaco.Range(
-          position.lineNumber,
-          word.startColumn,
-          position.lineNumber,
-          word.endColumn,
-        ),
-        contents: [{ value: lines.join("\n") }],
-      };
-    },
-  });
-}
+import { applyDocumentTheme, loadMonaco, resolveMonoFontFamily } from "@/components/playground/monaco-setup";
 
 interface EditorProps {
   value: string;
   onChange: (value: string) => void;
   currentLine: number | null;
-  /**
-   * True while the pc is inside a hosted libc call, where `currentLine` is
-   * the call SITE rather than the executing instruction. The current-line
-   * decoration takes a quieter variant (dashed rule, lighter fill) so three
-   * steps spent inside printf do not read as three steps on the `bl`.
-   */
+  /** The pc is inside a libc call and `currentLine` is the call site, so the
+   *  marker goes quieter: three steps inside printf should not read as three
+   *  steps on the `bl`. */
   currentLineInCall?: boolean;
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
@@ -337,13 +34,21 @@ interface EditorProps {
   /** Jump the editor to a line (an error the student should fix): the
    *  parent bumps the nonce so the same line can be requested twice. */
   focusRequest?: { line: number; nonce: number } | null;
+  /** Keep the current line in view. Off during a run (the marker moves many
+   *  times a second) and before the first step (assembling must not scroll
+   *  away from the line being edited); turning it back on reveals the line,
+   *  which shows a breakpoint hit when a run stops. */
+  followCurrentLine?: boolean;
+  /** Ctrl+Enter (Cmd+Enter) inside the editor. Monaco binds that chord to
+   *  "insert line below" and stops the key there, so the page's own shortcut
+   *  never saw it; a surface that runs programs passes its action here. */
+  onRunShortcut?: () => void;
+  /** Wrap long lines in Monaco instead of scrolling them sideways: a frame in
+   *  a reading column is too narrow for a comment at the end of a line, and
+   *  its horizontal scrollbar stays hidden until hovered. The touch editor
+   *  scrolls sideways with a visible bar either way. */
+  wrapLines?: boolean;
 }
-
-const COND_BRANCHES = [
-  "B.EQ", "B.NE", "B.HS", "B.LO", "B.MI", "B.PL",
-  "B.VS", "B.VC", "B.HI", "B.LS", "B.GE", "B.LT", "B.GT", "B.LE",
-  "B.CS", "B.CC",
-];
 
 function isCoarsePointer(): boolean {
   if (typeof window === "undefined") return false;
@@ -355,9 +60,14 @@ function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function isNarrow(): boolean {
+// Touch screens get the textarea editor at every size: Monaco's caret jumps
+// lines when a soft keyboard shrinks the view, and its iPad keyboard button
+// sits on the code. Pointer type never changes on rotation, so the editor, its
+// caret, and its undo history survive a turn of the phone. A mouse gets it
+// only in a window too narrow for Monaco's gutter and code together.
+function wantsTouchEditor(): boolean {
   if (typeof window === "undefined") return false;
-  return window.innerWidth < 480;
+  return isCoarsePointer() || window.innerWidth < 480;
 }
 
 export function Editor({
@@ -373,14 +83,20 @@ export function Editor({
   onFormat,
   readOnly,
   focusRequest,
+  followCurrentLine = true,
+  onRunShortcut,
+  wrapLines = false,
 }: EditorProps) {
   const editorRef = useRef<Parameters<OnMount>[0] | null>(null);
   const monacoRef = useRef<Parameters<OnMount>[1] | null>(null);
   const decorationsRef = useRef<string[]>([]);
   // Lint markers live in Monaco's marker system (owner "lint"), separate
   // from the decoration pipeline: markers give the yellow squiggle, the
-  // hover message, and the problems affordance for free.
-  useEffect(() => {
+  // hover message, and the problems affordance for free. The first lint of a
+  // page load often lands while Monaco is still loading, so the mount applies
+  // the latest warnings too, not only a change to them.
+  const lintRef = useRef(lintWarnings);
+  const applyLint = useCallback(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
     const model = editor?.getModel();
@@ -388,7 +104,7 @@ export function Editor({
     monaco.editor.setModelMarkers(
       model,
       "lint",
-      lintWarnings.map((w) => ({
+      lintRef.current.map((w) => ({
         severity: monaco.MarkerSeverity.Warning,
         message: w.message,
         startLineNumber: w.line,
@@ -397,14 +113,39 @@ export function Editor({
         endColumn: model.getLineMaxColumn(Math.min(w.line, model.getLineCount())),
       })),
     );
-  }, [lintWarnings]);
-  const [fallback, setFallback] = useState<boolean>(() => isNarrow());
+  }, []);
+  useEffect(() => {
+    lintRef.current = lintWarnings;
+    applyLint();
+  }, [lintWarnings, applyLint]);
+  const [fallback, setFallback] = useState<boolean>(() => wantsTouchEditor());
   // Keep the latest format handler accessible from the Monaco command
   // (registered once at mount).
   const onFormatRef = useRef(onFormat);
   useEffect(() => {
     onFormatRef.current = onFormat;
   }, [onFormat]);
+  // Same for the run chord, plus the context key that decides whether Monaco
+  // gives the chord to it at all: without a handler, Ctrl+Enter keeps its
+  // stock "insert line below".
+  const onRunShortcutRef = useRef(onRunShortcut);
+  const canRunKeyRef = useRef<{ set: (value: boolean) => void } | null>(null);
+  useEffect(() => {
+    onRunShortcutRef.current = onRunShortcut;
+    canRunKeyRef.current?.set(Boolean(onRunShortcut));
+  }, [onRunShortcut]);
+  // Monaco calls the mount handler once, so a gutter click or F9 reading the
+  // prop from there would keep the first tab's line mapping after a switch.
+  const onToggleBreakpointRef = useRef(onToggleBreakpoint);
+  useEffect(() => {
+    onToggleBreakpointRef.current = onToggleBreakpoint;
+  }, [onToggleBreakpoint]);
+  // The same for the caret report: the host passes none while another file's
+  // tab is open, so that caret never stands in for main.asm's.
+  const onCursorChangeRef = useRef(onCursorChange);
+  useEffect(() => {
+    onCursorChangeRef.current = onCursorChange;
+  }, [onCursorChange]);
   const toast = useToast();
   // The vendored build has to be named to the loader BEFORE
   // @monaco-editor/react asks for it: an unnamed instance is exactly what sends
@@ -446,11 +187,11 @@ export function Editor({
     [onChange, toast],
   );
 
-  // Re-evaluate the narrow-viewport fallback on resize so a student
-  // who rotates their phone doesn't get stuck in the wrong mode.
+  // Re-evaluate on resize so a desktop window dragged narrow or wide gets
+  // the editor that fits it.
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const onResize = () => setFallback(isNarrow());
+    const onResize = () => setFallback(wantsTouchEditor());
     window.addEventListener("resize", onResize);
     return () => window.removeEventListener("resize", onResize);
   }, []);
@@ -488,31 +229,14 @@ export function Editor({
       });
     }
 
-    // assembly errors: the hover bubble carries both the raw message and, when
-    // the explainer recognizes the variant, a structured {what / why / fix /
-    // consult} block keyed to a style-guide section.
     for (const err of assemblyErrors) {
-      const explanation = explainError(err.message);
-      const md = explanation
-        ? [
-            `**${err.message}**`,
-            "",
-            `*what:* ${explanation.what}`,
-            "",
-            `*why:* ${explanation.why}`,
-            "",
-            `*fix:* ${explanation.fix}`,
-            "",
-            `*consult:* ${explanation.styleSection} (docs/cpsc355-style-guide.md)`,
-          ].join("\n")
-        : err.message;
       decorations.push({
         range: new monaco.Range(err.line, 1, err.line, 1),
         options: {
           isWholeLine: true,
           className: "error-line-highlight",
           glyphMarginClassName: "error-glyph",
-          hoverMessage: { value: md, isTrusted: false },
+          hoverMessage: { value: errorHoverMarkdown(err.message), isTrusted: false },
         },
       });
     }
@@ -522,24 +246,48 @@ export function Editor({
       decorations
     );
   }, [currentLine, currentLineInCall, breakpoints, assemblyErrors]);
+  const updateDecorationsRef = useRef(updateDecorations);
+  useEffect(() => {
+    updateDecorationsRef.current = updateDecorations;
+    updateDecorations();
+  }, [updateDecorations]);
 
   // Jump-to-error: reveal, place the cursor, and focus so the student
-  // lands on the offending line instead of hunting for it.
-  useEffect(() => {
-    if (!focusRequest) return;
+  // lands on the offending line instead of hunting for it. A request made
+  // while Monaco is still loading waits for the mount. One already there when
+  // this editor mounted is not replayed, as in the touch editor, so a remount
+  // never steals the focus.
+  const focusRequestRef = useRef(focusRequest);
+  const seenFocusRef = useRef(focusRequest?.nonce ?? null);
+  const applyFocusRequest = useCallback(() => {
     const editor = editorRef.current;
-    if (!editor) return;
-    editor.revealLineInCenter(focusRequest.line);
-    editor.setPosition({ lineNumber: focusRequest.line, column: 1 });
+    const request = focusRequestRef.current;
+    if (!editor || !request || request.nonce === seenFocusRef.current) return;
+    seenFocusRef.current = request.nonce;
+    editor.revealLineInCenter(request.line);
+    editor.setPosition({ lineNumber: request.line, column: 1 });
     editor.focus();
-  }, [focusRequest]);
+  }, []);
+  useEffect(() => {
+    focusRequestRef.current = focusRequest;
+    // The touch editor takes a request made while it is the one on screen.
+    if (fallback) seenFocusRef.current = focusRequest?.nonce ?? seenFocusRef.current;
+    else applyFocusRequest();
+  }, [focusRequest, fallback, applyFocusRequest]);
+
+  // Follow the pc: a step or a stop below the fold brings the line into view
+  // by the nearest scroll, as the phone fallback does, so stepping through
+  // visible code never scrolls. The cursor stays where the student left it.
+  useEffect(() => {
+    if (currentLine == null || !followCurrentLine) return;
+    editorRef.current?.revealLine(currentLine);
+  }, [currentLine, followCurrentLine]);
 
   const handleMount: OnMount = useCallback(
     (editor, monaco) => {
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      ensureArm64Registered(monaco);
       // Per mount: the component prop above just forced arm64-dark; put
       // the document's theme back before first paint settles.
       applyDocumentTheme(monaco);
@@ -548,25 +296,34 @@ export function Editor({
       // can encode it. The callback fires on arrow keys, click, and any
       // edit; the parent throttles persistence as needed.
       editor.onDidChangeCursorPosition((e) => {
-        onCursorChange?.({ line: e.position.lineNumber, column: e.position.column });
+        onCursorChangeRef.current?.({ line: e.position.lineNumber, column: e.position.column });
       });
 
       // Set an aria-label so screen readers announce the editor as more
       // than "edit text"; Monaco's default label is generic.
       editor.getDomNode()?.setAttribute("aria-label", "ARM64 assembly source code editor");
 
-      // Escape blurs the editor when no internal Monaco widget is open,
-      // so keyboard-only users aren't trapped inside Monaco when they
-      // hit Esc to back out of a focused control. The context expression
-      // is what makes "no widget open" hold: a command registered without
-      // one outranks Monaco's own Escape bindings, which left the find
-      // widget with nothing to close it from the keyboard.
+      // Escape leaves the editor so a keyboard user is not trapped (Tab indents
+      // in here). Focus sits on Monaco's inner input, so that is what blurs.
+      // The context lets Monaco's own Escape go first, closing find or suggest
+      // or collapsing a selection; a second Escape leaves.
       editor.addCommand(
         monaco.KeyCode.Escape,
         () => {
-          editor.getDomNode()?.blur();
+          const active = document.activeElement;
+          if (active instanceof HTMLElement && editor.getDomNode()?.contains(active)) {
+            active.blur();
+          }
         },
-        "!findWidgetVisible",
+        "!findWidgetVisible && !suggestWidgetVisible && !editorHasSelection && !editorHasMultipleSelections",
+      );
+
+      const canRun = editor.createContextKey("playgroundCanRun", Boolean(onRunShortcutRef.current));
+      canRunKeyRef.current = canRun;
+      editor.addCommand(
+        monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
+        () => onRunShortcutRef.current?.(),
+        "playgroundCanRun",
       );
 
       // Ctrl+Shift+F invokes the playground's source formatter (the
@@ -583,9 +340,18 @@ export function Editor({
         }
         const line = e.target.position?.lineNumber;
         if (line != null) {
-          onToggleBreakpoint(line);
+          onToggleBreakpointRef.current(line);
         }
       });
+
+      // The gutter dot is a mouse target, so the keyboard sets or clears a
+      // breakpoint on the caret's line: F9, or Ctrl+F8 as in other debuggers.
+      const toggleAtCaret = () => {
+        const line = editor.getPosition()?.lineNumber;
+        if (line != null) onToggleBreakpointRef.current(line);
+      };
+      editor.addCommand(monaco.KeyCode.F9, toggleAtCaret);
+      editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.F8, toggleAtCaret);
 
       // On coarse pointers, the breakpoint gesture is a single tap on the glyph
       // margin. The CSS below widens that margin to 32px so a fingertip lands
@@ -606,14 +372,15 @@ export function Editor({
         }
       }
 
-      updateDecorations();
+      // Monaco keeps the first mount handler it was given, so the markers and
+      // the jump come from refs: a run that reported an error while the
+      // editor loaded would otherwise mark and reveal nothing.
+      updateDecorationsRef.current();
+      applyLint();
+      applyFocusRequest();
     },
-    [onToggleBreakpoint, updateDecorations, onCursorChange]
+    [applyLint, applyFocusRequest]
   );
-
-  useEffect(() => {
-    updateDecorations();
-  }, [currentLine, currentLineInCall, breakpoints, assemblyErrors, updateDecorations]);
 
   const onDrop = useCallback(
     (e: React.DragEvent) => {
@@ -648,24 +415,22 @@ export function Editor({
   );
 
   if (fallback) {
-    // Under 480px, Monaco's keyboard behavior on iOS is unreliable
-    // (the soft keyboard jumps the caret to the wrong line when the
-    // visual viewport shrinks). Fall back to a plain textarea with a
-    // synced gutter that surfaces line numbers, breakpoint dots, the
-    // current PC line, and the first assembler error so a student can
-    // still navigate errors and toggle breakpoints on a phone.
-    return <FallbackEditor
-      value={value}
-      onChange={handleChange}
-      currentLine={currentLine}
-      currentLineInCall={currentLineInCall}
-      breakpoints={breakpoints}
-      onToggleBreakpoint={onToggleBreakpoint}
-      assemblyErrors={assemblyErrors}
-      onDrop={onDrop}
-      onCursorChange={onCursorChange}
-      readOnly={readOnly}
-    />;
+    return (
+      <TouchEditor
+        value={value}
+        onChange={handleChange}
+        currentLine={currentLine}
+        currentLineInCall={currentLineInCall}
+        breakpoints={breakpoints}
+        onToggleBreakpoint={onToggleBreakpoint}
+        assemblyErrors={assemblyErrors}
+        onDrop={onDrop}
+        onCursorChange={onCursorChange}
+        readOnly={readOnly}
+        focusRequest={focusRequest}
+        followCurrentLine={followCurrentLine}
+      />
+    );
   }
 
   return (
@@ -711,7 +476,19 @@ export function Editor({
             scrollBeyondLastLine: false,
             automaticLayout: true,
             tabSize: 4,
-            wordWrap: isCoarsePointer() ? "on" : "off",
+            wordWrap: wrapLines || isCoarsePointer() ? "on" : "off",
+            // Monaco's stock colour finder reads `#112` as a CSS colour and
+            // drew a swatch before the immediate.
+            defaultColorDecorators: "never",
+            // The pinned scope header covered a line and named the label above
+            // `main` (a string's `fmt:`) as its scope, and took a Tab stop
+            // that showed no focus.
+            stickyScroll: { enabled: false },
+            // Hover cards are fixed to the window, so a frame's overflow no
+            // longer cuts them: an embed clipped up to 139 px off a card's
+            // right edge, and the playground's pane hid the top of an error
+            // card that opened above it.
+            fixedOverflowWidgets: true,
             // The block caret is the site's brand cursor, here in the one place
             // it is a real cursor. It blinks hard on/off; when the reader asks
             // for reduced motion it holds solid instead, same fallback as the
@@ -719,6 +496,17 @@ export function Editor({
             cursorStyle: "block",
             cursorBlinking: prefersReducedMotion() ? "solid" : "blink",
             accessibilitySupport: "auto",
+            // Off: the site's high-contrast theme is the answer to a reader
+            // who wants more contrast. On, Monaco re-checks forced colours at
+            // every options update and can swap that theme for its stock one.
+            autoDetectHighContrast: false,
+            // Enter always ends the line; Tab takes a suggestion. With the
+            // stock setting, `mov x0, x1` then Enter accepted `x1` from the
+            // open list and the next instruction landed on the same line.
+            acceptSuggestionOnEnter: "off",
+            // What a screen reader announces on entering the editor: the way
+            // out, since Tab is taken by indentation in here.
+            ariaLabel: "assembly source. Tab indents; press Escape, then Tab, to leave the editor",
             readOnly,
           }}
         />
@@ -730,237 +518,6 @@ export function Editor({
           loading editor...
         </div>
       )}
-    </div>
-  );
-}
-
-interface FallbackEditorProps {
-  value: string;
-  onChange: (value: string) => void;
-  currentLine: number | null;
-  currentLineInCall?: boolean;
-  breakpoints: Set<number>;
-  onToggleBreakpoint: (line: number) => void;
-  assemblyErrors: AssemblyError[];
-  onDrop: (e: React.DragEvent) => void;
-  onCursorChange?: (pos: { line: number; column: number }) => void;
-  readOnly?: boolean;
-}
-
-type MonacoForCompletion = Parameters<OnMount>[1];
-
-function mapSuggestion(
-  s: Suggestion,
-  monaco: MonacoForCompletion,
-  range: { startLineNumber: number; startColumn: number; endLineNumber: number; endColumn: number },
-) {
-  const KIND = monaco.languages.CompletionItemKind;
-  const kindMap: Record<Suggestion["kind"], number> = {
-    directive: KIND.Keyword,
-    instruction: KIND.Function,
-    register: KIND.Variable,
-    alias: KIND.Variable,
-    label: KIND.Reference,
-    libc: KIND.Function,
-  };
-  return {
-    label: s.label,
-    kind: kindMap[s.kind],
-    detail: s.detail,
-    insertText: s.insertText ?? s.label,
-    range,
-  };
-}
-
-/**
- * Phone-mode editor: bare `<textarea>` plus a synced gutter strip that shows
- * line numbers, breakpoint dots, current-PC marker, and the first error line.
- * Students on iPhone SE need to be able to toggle a breakpoint, see which line
- * their error is on, and watch the PC move during step, all without Monaco's
- * larger virtual surface.
- */
-// Vertical padding shared by gutter and textarea so the first line
-// of code aligns with the first gutter button. Both elements offset by
-// the same constant so the running translateY math stays simple.
-const FALLBACK_PAD_Y = 12;
-const FALLBACK_LINE_H = 24;
-// The gutter draws a window around the scroll offset, not one button per
-// line. A share link is allowed a 1 MB buffer, and 1 MB of bare newlines is
-// a million lines: a million buttons committed in one synchronous render, on
-// a phone, with no click required. 240 rows is 5760px of gutter, more than
-// any viewport this fallback runs in (under 480px wide) can show at once,
-// and the overscan keeps a flick-scroll from outrunning the scroll handler.
-const FALLBACK_GUTTER_ROWS = 240;
-const FALLBACK_GUTTER_OVERSCAN = 20;
-
-function FallbackEditor({
-  value,
-  onChange,
-  currentLine,
-  currentLineInCall = false,
-  breakpoints,
-  onToggleBreakpoint,
-  assemblyErrors,
-  onDrop,
-  onCursorChange,
-  readOnly = false,
-}: FallbackEditorProps) {
-  const [scrollTop, setScrollTop] = useState(0);
-  const taRef = useRef<HTMLTextAreaElement>(null);
-  const gutterRef = useRef<HTMLDivElement>(null);
-  // The textarea owns the offset, so the gutter's transform is written to the
-  // element in the frame of the scroll that caused it. The state write only
-  // decides which window of rows the next render commits; letting it drive the
-  // transform too left the numbers a frame behind the code.
-  const paintGutter = useCallback((top: number) => {
-    const gutter = gutterRef.current;
-    if (gutter) gutter.style.transform = `translateY(${FALLBACK_PAD_Y - top}px)`;
-  }, []);
-  // A comment toggle changes the controlled `value`, so the DOM selection is
-  // lost on the re-render. Stash the target range and reapply it after the
-  // new value lands (before paint, so the caret never visibly jumps).
-  const pendingSelRef = useRef<{ start: number; end: number } | null>(null);
-  const lineCount = Math.max(1, value.split("\n").length);
-  const errorLines = new Set(assemblyErrors.map((e) => e.line));
-  const gutterFirst = Math.max(
-    0,
-    Math.floor(scrollTop / FALLBACK_LINE_H) - FALLBACK_GUTTER_OVERSCAN,
-  );
-  const gutterRows = Math.max(0, Math.min(FALLBACK_GUTTER_ROWS, lineCount - gutterFirst));
-
-  useLayoutEffect(() => {
-    const pending = pendingSelRef.current;
-    const ta = taRef.current;
-    if (!pending || !ta) return;
-    pendingSelRef.current = null;
-    const max = ta.value.length;
-    ta.setSelectionRange(Math.min(pending.start, max), Math.min(pending.end, max));
-  });
-
-  // Follow the pc the way Monaco's revealLine does: nearest, so the buffer
-  // moves only as far as it must. Monaco gets this for free; without it the
-  // marker walks off-screen on a phone during autoplay and during any step
-  // past the visible window.
-  useEffect(() => {
-    const ta = taRef.current;
-    if (!ta || currentLine == null) return;
-    const top = FALLBACK_PAD_Y + (currentLine - 1) * FALLBACK_LINE_H;
-    const above = top < ta.scrollTop;
-    const below = top + FALLBACK_LINE_H > ta.scrollTop + ta.clientHeight;
-    if (!above && !below) return;
-    const next = Math.max(0, above ? top : top + FALLBACK_LINE_H - ta.clientHeight);
-    ta.scrollTop = next;
-    // The scroll event this write raises carries the new offset into state
-    // and re-picks the row window; the paint here is what keeps the numbers
-    // aligned in the meantime.
-    paintGutter(next);
-  }, [currentLine, paintGutter]);
-
-  // Ctrl/Cmd + / toggles line comments on the touched lines, mirroring the
-  // desktop Monaco editor's built-in commentLine. `onChange` (the parent's
-  // over-cap guard) may reject a near-cap add, in which case nothing changes.
-  const handleCommentToggle = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (readOnly) return;
-    if (!(e.ctrlKey || e.metaKey) || e.key !== "/") return;
-    e.preventDefault();
-    const ta = e.currentTarget;
-    const next = toggleLineComment(ta.value, ta.selectionStart, ta.selectionEnd);
-    if (next.text === ta.value) return;
-    pendingSelRef.current = { start: next.selStart, end: next.selEnd };
-    onChange(next.text);
-  };
-
-  // Outer wrapper carries `min-h-0 overflow-hidden` so the gutter's natural
-  // content height (lineCount * 24px, often well past the viewport on phones)
-  // cannot expand its parent and push the rest of the page off-screen. Without
-  // it the pane balloons to thousands of pixels and pushes the rest of the
-  // chrome off an iPhone portrait screen.
-  return (
-    <div className="h-full w-full min-h-0 overflow-hidden flex bg-[var(--bg-base)]">
-      <div
-        className="flex-shrink-0 w-10 overflow-hidden border-r border-[var(--border)] bg-[var(--bg-sunken)] select-none relative"
-        role="presentation"
-      >
-        <div
-          ref={gutterRef}
-          className="absolute left-0 right-0 will-change-transform"
-          style={{
-            // Scroll and window are split across two properties so the scroll
-            // half can be written imperatively without fighting this render.
-            transform: `translateY(${FALLBACK_PAD_Y - scrollTop}px)`,
-            paddingTop: `${gutterFirst * FALLBACK_LINE_H}px`,
-          }}
-        >
-          {Array.from({ length: gutterRows }, (_, i) => gutterFirst + i + 1).map((n) => {
-            const isBreak = breakpoints.has(n);
-            const isError = errorLines.has(n);
-            const isCurrent = currentLine === n;
-            const cls = isError
-              ? "text-[var(--danger)] font-bold"
-              : isBreak
-              ? "text-[var(--danger)]"
-              : isCurrent
-              ? // Inside a libc call the marker is on the call site, not on
-                // the executing instruction: same amber, without the weight.
-                currentLineInCall
-                ? "text-[var(--amber)] opacity-70"
-                : "text-[var(--amber)] font-bold"
-              : "text-[var(--text-secondary)]";
-            return (
-              <button
-                key={n}
-                type="button"
-                onClick={() => onToggleBreakpoint(n)}
-                className={`block w-full h-6 leading-6 text-right pr-2 text-[11px] tabular-nums focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] ${cls}`}
-                aria-label={
-                  isBreak
-                    ? `line ${n}, breakpoint set, tap to clear`
-                    : `line ${n}, tap to set breakpoint`
-                }
-              >
-                {isBreak ? "●" : n}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-      <textarea
-        // caret-color keeps the phone fallback's native caret in the same
-        // amber as Monaco's block cursor, so the brand cursor survives the
-        // textarea downgrade.
-        className="flex-1 h-full min-h-0 resize-none bg-[var(--bg-base)] text-[var(--text-primary)] [caret-color:var(--amber)] font-mono text-[16px] pl-2 pr-3 focus:outline-none leading-6 whitespace-pre"
-        style={{
-          WebkitAppearance: "none",
-          paddingTop: `${FALLBACK_PAD_Y}px`,
-          paddingBottom: `${FALLBACK_PAD_Y}px`,
-          lineHeight: `${FALLBACK_LINE_H}px`,
-          overflow: "auto",
-        }}
-        ref={taRef}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        onKeyDown={handleCommentToggle}
-        readOnly={readOnly}
-        spellCheck={false}
-        autoCapitalize="off"
-        autoCorrect="off"
-        onDragOver={(e) => e.preventDefault()}
-        onDrop={onDrop}
-        onScroll={(e) => {
-          paintGutter(e.currentTarget.scrollTop);
-          setScrollTop(e.currentTarget.scrollTop);
-        }}
-        onSelect={(e) => {
-          if (!onCursorChange) return;
-          const ta = e.currentTarget;
-          const upto = ta.value.slice(0, ta.selectionStart);
-          const lines = upto.split("\n");
-          const line = lines.length;
-          const column = (lines[lines.length - 1]?.length ?? 0) + 1;
-          onCursorChange({ line, column });
-        }}
-        aria-label="assembly source"
-      />
     </div>
   );
 }

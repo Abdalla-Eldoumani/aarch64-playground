@@ -52,16 +52,30 @@ function setup(source = "mov x0, 1\nsvc 0\n") {
 }
 
 describe("ImportExport import path", () => {
-  it("routes a valid imported file body to the active target", async () => {
-    const { onImport, fileInput } = setup();
+  it("hands a single picked file to onImportMany with its name", async () => {
+    const { onImport, onImportMany, fileInput } = setup();
     const body = "mov x0, 7\nsvc 0\n";
-    const file = new File([body], "main.s", { type: "text/plain" });
+    const file = new File([body], "cube.s", { type: "text/plain" });
 
     fireEvent.change(fileInput, { target: { files: [file] } });
 
-    await waitFor(() => expect(onImport).toHaveBeenCalledTimes(1));
-    expect(onImport).toHaveBeenCalledWith(TARGET, body);
+    await waitFor(() => expect(onImportMany).toHaveBeenCalledTimes(1));
+    expect(onImportMany).toHaveBeenCalledWith([{ name: "cube.s", body }]);
+    expect(onImport).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("routes a single file's body to the active target when the host takes no names", async () => {
+    const onImport = vi.fn();
+    const { container } = render(
+      <ImportExport source="" onImport={onImport} target={TARGET} />,
+    );
+    const body = "mov x0, 7\nsvc 0\n";
+    fireEvent.change(container.querySelector('input[type="file"]')!, {
+      target: { files: [new File([body], "main.s", { type: "text/plain" })] },
+    });
+
+    await waitFor(() => expect(onImport).toHaveBeenCalledWith(TARGET, body));
   });
 
   it("hands a multi-select pick to onImportMany with names and bodies", async () => {
@@ -80,7 +94,7 @@ describe("ImportExport import path", () => {
     expect(toastError).not.toHaveBeenCalled();
   });
 
-  it("rejects an over-cap file by size with the guard message and never imports", () => {
+  it("rejects a file over the size limit with the guard's message and never imports", () => {
     const { onImport, fileInput } = setup();
     const oversized = new File(["x".repeat(MAX_SOURCE_BYTES + 1)], "big.s");
 
@@ -93,7 +107,7 @@ describe("ImportExport import path", () => {
     expect(onImport).not.toHaveBeenCalled();
   });
 
-  it("rejects over-cap decoded content with the guard message and a console warning", async () => {
+  it("rejects file text over the size limit with the guard's message and a console warning", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { onImport, fileInput } = setup();
 
@@ -188,9 +202,9 @@ describe("ImportExport export path", () => {
 });
 
 describe("ImportExport workspace bundle", () => {
-  // The share link is the only other carrier for a multi-file program, and a
-  // real workspace exceeds the fragment cap, so the bundle is the export that
-  // carries the helpers.
+  // The share link is the only other way to move a multi-file program, and a
+  // real workspace is too long for a link, so the bundle is the export that
+  // keeps the helpers.
   const FILES = [
     { name: "util.s", body: "// util\n" },
     { name: "sort.s", body: "// sort\n" },
@@ -334,6 +348,7 @@ describe("ImportExport and the command palette", () => {
   const paletteDeps: PaletteDeps = {
     blocked: false,
     programLoaded: true,
+    isRunning: false,
     canStepBack: true,
     launchable: false,
     source: "",
@@ -347,7 +362,8 @@ describe("ImportExport and the command palette", () => {
     formatSource: noop,
     openShare: noop,
     openShortcuts: noop,
-    openTour: noop,
+    openTutorials: noop,
+    openWalkthrough: noop,
     openConverter: noop,
     toggleTheme: noop,
   };

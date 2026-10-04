@@ -1,16 +1,8 @@
-//! External-call context for the stepping UI.
-//!
-//! A `bl printf` costs three steps that hold no source line: the two words
-//! of the trampoline that reaches the 0xFFFF_0000 stub range, then the stub
-//! address itself. Stepping through them used to leave the marker nowhere
-//! and the decode strip showing a synthetic address. `host_call_context`
-//! answers for all three: which libc function, and the call site the `bl`
-//! came from, recovered from LR at run time because ONE trampoline serves
-//! every call site of the same function.
-//!
-//! These tests pin that contract on original programs: two printf sites on
-//! different lines, a scanf parked waiting on input, a pc in plain `.text`,
-//! and a program that calls nothing hosted.
+//! What the stepping view shows inside a library call. A `bl printf` takes
+//! three steps with no source line (two trampoline words, then the stub),
+//! which used to leave the line marker nowhere. `host_call_context` names
+//! the function and the `bl` it came from, read from LR at run time because
+//! one trampoline serves every call site of that function.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
@@ -235,8 +227,8 @@ fn a_program_with_no_libc_calls_never_answers() {
     let seen = observe_in_call_pcs(&mut cpu, &image);
     assert!(cpu.is_halted(), "the program ran to its ret");
     assert_eq!(cpu.exit_code(), Some(42), "7 * 6 came back as the exit code");
-    // Includes the step where pc rests on the `__main_return` sentinel: the
-    // loader's return address is not a call the program made.
+    // This includes the step where pc sits on the address main returns to:
+    // the loader set that up, and the program never called it.
     assert!(seen.is_empty(), "no pc in the program belongs to an external call");
 }
 
@@ -246,7 +238,7 @@ fn loading_a_bare_metal_program_drops_the_previous_trampolines() {
     let tramp = image.trampoline_base;
     assert!(cpu.host_call_name(tramp).is_some(), "the hosted image has a trampoline");
 
-    // The legacy path has no trampolines at all; a stale base would label
+    // A bare-metal program has no trampolines at all; a stale base would label
     // one of the new program's own instructions as a libc call.
     cpu.load_program(&[0xD503_201F]);
     assert!(cpu.trampoline_names.is_empty());

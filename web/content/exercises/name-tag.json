@@ -1,0 +1,44 @@
+{
+  "title": "Name tag",
+  "slug": "name-tag",
+  "order": 55,
+  "lastUpdated": "2026-09-30",
+  "topic": "io",
+  "difficulty": "intro",
+  "prompt": "Print a name tag from two initials and an age read from input. For the input `A B 19` the tag reads:\n\n```\nHELLO my name is\nA.B. (age 19)\n```\n\nThe starter reads the input and leaves the first initial in `first_r`, the second in `last_r`, and the age in `age_r`. Add one format string to `.data` and print the whole tag with a single `printf`.\n\nEach format specifier (a `%` code such as `%d`) takes the next argument register in order: the first reads `w1`, the second `w2`, the third `w3`. `%c` prints the character whose code is in the register, and `%d` prints a 32-bit signed whole number, so `w` registers are the right width for all three. A `\\n` in the middle of the format string starts the second line.\n\n## What is checked\n\n- with input `A B 19` the output is exactly the two lines above\n- the program exits cleanly\n- the program also runs on inputs you do not see, so it has to work for any input, not only this one",
+  "starter": "// print a name tag from two initials and an age read from input\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(first_r, w19)\ndefine(last_r, w20)\ndefine(age_r, w21)\n\n.data\nfmt_in:     .string \" %c %c %d\"\n\n.bss\nfirst_in:   .skip 1                         // scanf stores one character here\nlast_in:    .skip 1                         // and one here\n        .balign 4\nage_in:     .skip 4                         // and the age here\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the initials and the age\n        ldr     x1, =first_in\n        ldr     x2, =last_in\n        ldr     x3, =age_in\n        bl      scanf\n\n        ldr     x9, =first_in               // bring all three into registers\n        ldrb    first_r, [x9]\n        ldr     x9, =last_in\n        ldrb    last_r, [x9]\n        ldr     x9, =age_in\n        ldr     age_r, [x9]\n\n        // TODO: add a format string to .data, then print the whole tag\n        // with one printf: the initials and the age go in w1, w2 and w3\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "A B 19\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "HELLO my name is\nA.B. (age 19)\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "Z Q 0\n",
+      "stdout": "HELLO my name is\nZ.Q. (age 0)\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "e m 102\n",
+      "stdout": "HELLO my name is\ne.m. (age 102)\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "JD 7\n",
+      "stdout": "HELLO my name is\nJ.D. (age 7)\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

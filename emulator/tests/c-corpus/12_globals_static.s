@@ -36,12 +36,12 @@ name:
 	.align	2
 	.global	next_id
 next_id:
-	adrp	x0, id__0
-	add	x0, x0, :lo12:id__0
+	adrp	x0, id.0
+	add	x0, x0, :lo12:id.0
 	ldr	w0, [x0]
 	add	w2, w0, 1
-	adrp	x1, id__0
-	add	x1, x1, :lo12:id__0
+	adrp	x1, id.0
+	add	x1, x1, :lo12:id.0
 	str	w2, [x1]
 	ret
 	.section .rodata
@@ -164,7 +164,7 @@ main:
 	ret
 	.data
 	.align	2
-id__0:
+id.0:
 	.word	100
 
 

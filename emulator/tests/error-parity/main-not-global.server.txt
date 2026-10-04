@@ -1,0 +1,5 @@
+$ gcc main-not-global.s -o program
+/usr/bin/ld.bfd: /usr/lib/gcc/aarch64-redhat-linux/16/../../../../lib64/crt1.o: in function `__wrap_main':
+(.text+0x38): undefined reference to `main'
+collect2: error: ld returned 1 exit status
+[exit 1]

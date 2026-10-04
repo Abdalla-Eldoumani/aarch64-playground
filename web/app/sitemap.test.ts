@@ -10,8 +10,11 @@ describe("sitemap", () => {
   // The expected slug sets come from the same loaders the pages use, so adding
   // a lesson or exercise cannot leave the sitemap behind; the derived count
   // fails loudly if the fixed-route set drifts.
-  const lessonSlugs = loadAllLessons().map((lesson) => lesson.slug);
-  const exerciseSlugs = loadAllExercises().map((exercise) => exercise.slug);
+  // Read once: each loader call rereads and revalidates the whole folder.
+  const lessons = loadAllLessons();
+  const exercises = loadAllExercises();
+  const lessonSlugs = lessons.map((lesson) => lesson.slug);
+  const exerciseSlugs = exercises.map((exercise) => exercise.slug);
 
   it("lists the five fixed routes plus every lesson and exercise", () => {
     expect(entries).toHaveLength(5 + lessonSlugs.length + exerciseSlugs.length);
@@ -39,9 +42,9 @@ describe("sitemap", () => {
     }
   });
 
-  it("emits absolute URLs anchored to the single site origin", () => {
+  it("emits absolute https URLs on the bare domain", () => {
     for (const entry of entries) {
-      expect(entry.url.startsWith(SITE_URL)).toBe(true);
+      expect(entry.url).toMatch(/^https:\/\/aarch64-playground\.com\//);
     }
   });
 
@@ -53,17 +56,46 @@ describe("sitemap", () => {
     expect(home?.priority).toBe(1);
   });
 
-  it("includes the dedicated playground route", () => {
+  it("lists the playground as a nav route with no date, since no content file dates it", () => {
     const playground = entries.find(
       (entry) => entry.url === new URL("/playground", SITE_URL).toString(),
     );
-    expect(playground).toBeDefined();
+    expect(playground?.priority).toBe(0.8);
+    expect(playground && "lastModified" in playground).toBe(false);
   });
 
   it("gives every entry a change frequency and a numeric priority", () => {
     for (const entry of entries) {
       expect(entry.changeFrequency).toBeDefined();
       expect(typeof entry.priority).toBe("number");
+    }
+  });
+
+  it("dates each lesson and exercise from its own lastUpdated field", () => {
+    const pages = [
+      ...lessons.map((item) => ({ path: `/learn/${item.slug}`, date: item.lastUpdated })),
+      ...exercises.map((item) => ({ path: `/practice/${item.slug}`, date: item.lastUpdated })),
+    ];
+    for (const page of pages) {
+      const entry = entries.find((candidate) => candidate.url === new URL(page.path, SITE_URL).toString());
+      expect(page.date, page.path).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(entry?.lastModified, page.path).toBe(page.date);
+    }
+  });
+
+  it("dates each index by its newest item and leaves undated what no content file dates", () => {
+    const newest = (dates: (string | undefined)[]) => dates.filter(Boolean).sort().at(-1);
+    const lastmod = (path: string) =>
+      entries.find((entry) => entry.url === new URL(path, SITE_URL).toString())?.lastModified;
+    expect(lastmod("/learn")).toBe(newest(lessons.map((item) => item.lastUpdated)));
+    expect(lastmod("/practice")).toBe(newest(exercises.map((item) => item.lastUpdated)));
+    for (const path of ["/", "/playground", "/reference"]) expect(lastmod(path), path).toBeUndefined();
+  });
+
+  it("never stamps the build time", () => {
+    // A date is always a content file's string, never a Date made at build.
+    for (const entry of entries) {
+      expect(entry.lastModified === undefined || typeof entry.lastModified === "string", entry.url).toBe(true);
     }
   });
 });
@@ -80,7 +112,7 @@ describe("robots", () => {
     expect(rule?.allow).toBe("/");
   });
 
-  it("references the sitemap", () => {
-    expect(sitemapUrl?.endsWith("/sitemap.xml")).toBe(true);
+  it("references the sitemap at its https address", () => {
+    expect(sitemapUrl).toBe("https://aarch64-playground.com/sitemap.xml");
   });
 });

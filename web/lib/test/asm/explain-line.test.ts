@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { aliasPairs, describeLine, extractAliases } from "@/lib/asm/explain-line";
 
 describe("describeLine", () => {
-  it("resolves a known mnemonic to its course-voice summary", () => {
+  it("describes a known mnemonic with its one-line summary", () => {
     const out = describeLine("    mov x0, 1");
     expect(out).not.toBeNull();
     expect(out!.toLowerCase()).toContain("mov");
@@ -21,6 +21,17 @@ describe("describeLine", () => {
     expect(describeLine("   ")).toBeNull();
     expect(describeLine("main:")).toBeNull();
     expect(describeLine("// just a comment")).toBeNull();
+  });
+
+  it("prints code in a summary as plain text, without Markdown backticks", () => {
+    // The cmp summary names the instruction it stands for in code quotes,
+    // which only the Markdown hover card can render.
+    const cmp = describeLine("    cmp x0, x1");
+    expect(cmp).toContain("Same as SUBS with the zero register");
+    expect(cmp).not.toContain("`");
+    const ldp = describeLine("    ldp x29, x30, [sp], 16");
+    expect(ldp).toContain("LDP Xt1, Xt2");
+    expect(ldp).not.toContain("`");
   });
 
   it("describes directives even though they have no instruction doc", () => {
@@ -44,7 +55,7 @@ describe("extractAliases", () => {
   });
 
   it("does not match a define whose body spans lines", () => {
-    // The emulator's m4 pass is line-based; the gloss must agree.
+    // The emulator's m4 pass reads one line at a time; the explanation must agree.
     const aliases = extractAliases("define(fp,\nx29)\n");
     expect(aliases.fp).toBeUndefined();
   });

@@ -1,0 +1,84 @@
+{
+  "title": "Basic quiz: input and output",
+  "slug": "quiz-basic-io",
+  "order": 121,
+  "lastUpdated": "2026-10-01",
+  "topic": "io",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "How `printf`, `scanf` and system calls move text in and out of a program: the addresses `scanf` needs, format specifiers, file descriptors, and the registers `svc 0` reads.",
+  "questions": [
+    {
+      "question": "A program reads one int with scanf into a .bss slot named age_n. What goes in x1 before bl scanf?",
+      "options": [
+        "The format string's address, from ldr x1, =fmt_in",
+        "The value now in age_n, loaded with ldr w1",
+        "The size of the slot in bytes, 4 for an int",
+        "The address of age_n, from ldr x1, =age_n"
+      ],
+      "correctAnswer": 3,
+      "explanation": "scanf has to store the number somewhere, so it takes an address, and ldr x1, =age_n puts the slot's address in x1. The format string's address goes in x0. Passing the value instead makes scanf treat the number as an address and write wherever it points.",
+      "hint": "scanf changes the variable, so it needs to know where the variable is."
+    },
+    {
+      "question": "Which file descriptor does a program write to when it sends a message to standard error?",
+      "options": [
+        "0",
+        "1",
+        "2",
+        "3"
+      ],
+      "correctAnswer": 2,
+      "explanation": "Every program starts with three descriptors open: 0 is standard input, 1 is standard output, and 2 is standard error. A file the program opens itself usually gets 3, the lowest number not in use.",
+      "hint": "Standard input is 0, and the other two follow it."
+    },
+    {
+      "question": "Before svc 0, which register holds the number that picks the system call?",
+      "options": [
+        "x0",
+        "x8",
+        "x16",
+        "x30"
+      ],
+      "correctAnswer": 1,
+      "explanation": "x8 holds the service number, such as 64 for write. x0 to x5 carry the call's arguments, and x0 holds the result afterwards. x30 is the link register that bl fills, and x16 holds the number on macOS, not on Linux.",
+      "hint": "The arguments start at x0, so the call number sits in a register past them."
+    },
+    {
+      "question": "printf gets a 64-bit long in x1. Which conversion specifier prints all 64 bits?",
+      "options": [
+        "%ld",
+        "%d",
+        "%lf",
+        "%u"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The l in %ld means long, which is 8 bytes and fills a whole x register. %d and %u read only the low 32 bits, w1. %lf prints a double, and printf looks for that in d0, not in x1.",
+      "hint": "Look for the letter that stands for long."
+    },
+    {
+      "question": "What does w0 hold when scanf(\"%d %d\", ...) returns?",
+      "options": [
+        "How many numbers scanf stored in memory",
+        "The first of the two numbers that were read",
+        "How many characters scanf took from the input",
+        "0 if both reads worked, -1 if either one failed"
+      ],
+      "correctAnswer": 0,
+      "explanation": "scanf returns how many numbers it converted and stored: 2 here when both are there, 1 when the second item is not a number. The numbers themselves are in memory, at the addresses in x1 and x2. It returns -1 only when the input ends before the first number.",
+      "hint": "The numbers went to the addresses in x1 and x2, not to w0."
+    },
+    {
+      "question": "A program calls printf, then sends a second line with the write system call, and its output goes to a file. Which line comes first in the file?",
+      "options": [
+        "The printf line, since every call is finished before the next instruction runs",
+        "Either line, picked at random each run, since the kernel handles both calls at once",
+        "Only the write line appears, since printf drops its text when output goes to a file",
+        "The write line, since printf holds its text in a buffer and passes it on later"
+      ],
+      "correctAnswer": 3,
+      "explanation": "printf collects its text in a buffer. When the output is a file, it passes the buffer to write only when the buffer fills or the program ends, so the line from the write system call reaches the file first. On a screen, printf sends each line as it ends, which hides the problem.",
+      "hint": "printf does not call write for every line when the output is a file."
+    }
+  ]
+}

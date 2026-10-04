@@ -1,0 +1,25 @@
+sum_to=72018001000
+even(3001)=0 odd(3001)=1
+rotate n=1500 a=1 e=5 h=8 i=9
+rotate n=1200 a=541157 e=726468 h=452934 i=723512
+rotate n=900 a=27437 e=249388 h=208231 i=221949
+rotate n=600 a=506217 e=518650 h=277974 i=784191
+rotate n=300 a=549308 e=290495 h=580991 i=355643
+rotate n=0 a=783909 e=411034 h=235172 i=627126
+rotate=-216095
+gcd(fib 24, fib 23)=1 in 23 steps
+gcd(fib 47, fib 46)=1 in 46 steps
+gcd(fib 70, fib 69)=1 in 69 steps
+gcd(fib 93, fib 92)=1 in 92 steps
+machine=3350095680
+machine(empty)=664
+ack(2,0)=3 calls=5
+ack(3,0)=5 calls=15
+ack(2,1)=5 calls=14
+ack(3,1)=13 calls=106
+ack(2,2)=7 calls=27
+ack(3,2)=29 calls=541
+ack(2,3)=9 calls=44
+ack(3,3)=61 calls=2432
+ack(2,4)=11 calls=65
+ack(3,4)=125 calls=10307

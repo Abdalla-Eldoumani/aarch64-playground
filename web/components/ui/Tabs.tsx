@@ -21,10 +21,8 @@ export interface TabsProps {
 }
 
 /**
- * The base tab strip every screen draws from. Owns the full WAI-ARIA tabs
- * structure (tablist / tab / tabpanel): the selected tab is marked with the cyan
- * token (the active-route indicator), carries a roving tabindex, and the arrow
- * keys move selection so the keyboard reaches every tab. Each tab is 44px tall.
+ * The shared tab strip, with the WAI-ARIA tabs roles and a roving tabindex so
+ * the arrow keys reach every tab.
  */
 export function Tabs({
   items,
@@ -61,13 +59,14 @@ export function Tabs({
 
   return (
     <div className={className}>
-      {/* overflow-x-auto: four labeled 44px tabs outgrow a 375px viewport, and a
-          strip that scrolls within itself beats shrinking the targets or leaking
-          document-level horizontal scroll. */}
+      {/* Four labeled 44px tabs outgrow a phone, so under sm they wrap to a
+          second row: a strip that scrolled within itself hid the last tab past
+          the edge with nothing to say it was there. overflow-x-auto stays as
+          the guard against a label too long for any row. */}
       <div
         role="tablist"
         aria-label={label}
-        className="flex overflow-x-auto"
+        className="flex overflow-x-auto max-sm:flex-wrap"
         onKeyDown={onKeyDown}
       >
         {items.map((item) => {

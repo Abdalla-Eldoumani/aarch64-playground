@@ -1,12 +1,9 @@
-// Pins the hero's static-editor configuration: the program is in the render
-// before the embed engages, the pre-engage frame is the SAME grid the engaged
-// frame is, the embed paints its panes before the hub finishes loading, full
-// chrome keeps its loading beat, and a static view asked for without readOnly
-// warns in development.
+// The landing page uses staticEditor so it never loads the code editor; its
+// frame must look the same before and after the first press, or the page jumps.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 
 // Monaco stays stubbed (jsdom must never instantiate the editor); the static
 // view and the two panes are the real components, because whether they render
@@ -56,7 +53,7 @@ afterEach(() => {
 });
 
 describe("EmbeddablePlayground staticEditor", () => {
-  it("renders the program before the embed engages, with no editor mount", () => {
+  it("shows the program before the first press, without mounting the editor", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
     );
@@ -67,7 +64,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByText("loading editor...")).toBeNull();
   });
 
-  it("paints the same grid areas before and after the embed engages", () => {
+  it("paints the same grid areas before and after the first press", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
     );
@@ -81,8 +78,8 @@ describe("EmbeddablePlayground staticEditor", () => {
       "embed-area-registers",
       "embed-area-console",
     ]);
-    // The panes are the real components, so this also pins that both render
-    // against no hub at all.
+    // The panes are the real components, so this also checks that both render
+    // with no emulator at all.
     expect(screen.getByRole("heading", { name: "regfile" })).toBeTruthy();
     expect(container.querySelector(".embed-area-editor")?.textContent).toContain(
       "mov",
@@ -96,12 +93,113 @@ describe("EmbeddablePlayground staticEditor", () => {
     );
   });
 
-  it("keeps the loading beat for an embed without the prop", () => {
+  it("passes the host's heading level to the registers label before and after engaging", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    const { container } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor registerHeadingLevel={3} />,
+    );
+    expect(screen.getByRole("heading", { name: "regfile", level: 3 })).toBeTruthy();
+    engage(container);
+    expect(screen.getByRole("heading", { name: "regfile", level: 3 })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "regfile", level: 2 })).toBeNull();
+  });
+
+  // The press engages the frame, and the swap to the live panes takes the
+  // pressed button away before its click lands: a phone needed a second tap.
+  it("runs on the press that engages the frame, once the hub loads", async () => {
+    const hub = makeHub({ isLoaded: false, assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    const { rerender } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
+    );
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    });
+    expect(hub.run).not.toHaveBeenCalled();
+    const loaded = { ...hub, isLoaded: true };
+    useEmulatorMock.mockReturnValue(loaded);
+    await act(async () => {
+      rerender(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    });
+    expect(loaded.assemble).toHaveBeenCalledTimes(1);
+    expect(loaded.run).toHaveBeenCalledTimes(1);
+  });
+
+  // The run assembles and queues the input itself. A second copy queued as the
+  // hub came up could land after that assemble's reset: 56 bytes for 28.
+  it("queues a reading program's input once when the engaging press runs it", async () => {
+    const hub = makeHub({ isLoaded: false, assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    const frame = () => (
+      <EmbeddablePlayground chrome="embed" startSource={SRC} startStdin={"5\n"} readOnly staticEditor />
+    );
+    const { rerender } = render(frame());
+    act(() => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    });
+    const loaded = { ...hub, isLoaded: true };
+    useEmulatorMock.mockReturnValue(loaded);
+    await act(async () => {
+      rerender(frame());
+    });
+    expect(loaded.run).toHaveBeenCalledTimes(1);
+    expect(loaded.pushStdin).toHaveBeenCalledTimes(1);
+    expect((loaded.assemble as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]).toBeLessThan(
+      (loaded.pushStdin as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0],
+    );
+  });
+
+  it("only wakes the frame for a press that is not run, step or check", async () => {
+    const hub = makeHub({ assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    await act(async () => {
+      fireEvent.mouseDown(screen.getByRole("button", { name: "reset" }));
+    });
+    expect(hub.assemble).not.toHaveBeenCalled();
+    expect(hub.run).not.toHaveBeenCalled();
+  });
+
+  it("gives focus back to the same control after focus engages the frame", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    const before = screen.getByRole("group", { name: "register values" });
+    act(() => before.focus());
+    const after = screen.getByRole("group", { name: "register values" });
+    // The live panes replaced the pre-engage copy, so the focus had to move.
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  it("gives focus back to a field named only by its <label>", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(
+      <EmbeddablePlayground chrome="checker" startSource={SRC} startArgs="1 2" showArgs readOnly staticEditor />,
+    );
+    const before = screen.getByLabelText("args");
+    act(() => before.focus());
+    const after = screen.getByLabelText("args");
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  it("gives focus back to a button named only by its text", () => {
+    useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
+    render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    const tab = () => within(screen.getByRole("group", { name: "view" })).getByRole("button", { name: "console" });
+    const before = tab();
+    act(() => before.focus());
+    const after = tab();
+    expect(after).not.toBe(before);
+    expect(document.activeElement).toBe(after);
+  });
+
+  it("still shows 'loading editor...' for an embed without staticEditor", () => {
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly />);
     expect(screen.getByText("loading editor...")).toBeTruthy();
   });
 
-  it("renders the embed's editor, registers, and console before the hub loads", () => {
+  it("renders the embed's editor, registers, and console before the emulator loads", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
@@ -110,14 +208,14 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByText("loading emulator...")).toBeNull();
     expect(container.querySelector(".embed-layout")).not.toBeNull();
     // The panes render their initial state rather than being withheld, so the
-    // frame's layout is the same before and after the hub arrives.
+    // frame's layout is the same before and after the emulator loads.
     expect(screen.getByRole("heading", { name: "regfile" })).toBeTruthy();
     expect(container.querySelector(".embed-area-console")?.textContent).toContain(
       "console",
     );
   });
 
-  it("still shows the loading beat for full chrome while the hub loads", () => {
+  it("still shows 'loading emulator...' in full chrome while the emulator loads", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(<EmbeddablePlayground chrome="full" startSource={SRC} />);
     expect(screen.getByText("loading emulator...")).toBeTruthy();
@@ -134,7 +232,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     warn.mockRestore();
   });
 
-  it("does not warn when the pair is passed as intended", () => {
+  it("does not warn when staticEditor comes with readOnly", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,

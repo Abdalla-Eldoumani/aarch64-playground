@@ -2,145 +2,98 @@
 import { describe, expect, it } from "vitest";
 import path from "node:path";
 import { createRequire } from "node:module";
-import { PITFALLS } from "@/lib/content/pitfall-data";
+import { PITFALLS, type PitfallRun } from "@/lib/content/pitfall-data";
 
-// Every pitfall demo runs on the real node-target emulator: each fault must
-// misbehave exactly the way its card promises (that is the teaching payload),
-// and each fix must run clean. A demo that assembles but fails differently,
-// or does not fail at all, would teach the wrong lesson, so the behavior
-// itself is pinned here.
+// Every broken and fixed program runs on the real node-target emulator and is
+// held to what the course server did with it (the stdout and the end each
+// card stores, captured on the server). A broken program that misbehaves
+// differently here would teach the wrong lesson, so the behaviour is pinned.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
 
-interface RunOutcome {
+// Enough for every program that ends; a program the server stopped at its
+// 10-second limit must still be running here after this many steps.
+const STEPS = 200_000;
+
+interface Outcome {
+  buildError: string | null;
   stdout: string;
   halted: boolean;
   exitCode: number | null;
   error: string | null;
 }
 
-function runProgram(source: string, maxSteps: number): RunOutcome {
+function run(source: string): Outcome {
   const emu = new Emulator();
-  const asm = emu.assemble_and_load_with_args(source, []) as {
-    error?: string | null;
-  };
-  expect(asm.error ?? null, "demo program failed to assemble").toBeNull();
-  const result = emu.run_until_break(maxSteps) as { error?: string | null };
-  const exit = emu.get_exit_code();
-  return {
-    stdout: emu.take_stdout(),
-    halted: emu.is_halted(),
-    exitCode: exit === undefined ? null : Number(exit),
-    error: result.error ?? null,
-  };
+  try {
+    const asm = emu.assemble_and_load_with_args(source, []) as { error?: string | null };
+    if (asm.error) {
+      return { buildError: asm.error, stdout: "", halted: false, exitCode: null, error: null };
+    }
+    const result = emu.run_until_break(STEPS) as { error?: string | null };
+    const exit = emu.get_exit_code();
+    return {
+      buildError: null,
+      stdout: emu.take_stdout(),
+      halted: emu.is_halted(),
+      exitCode: exit === undefined ? null : Number(exit),
+      error: result.error ?? null,
+    };
+  } finally {
+    emu.free();
+  }
 }
 
-const byTitle = new Map(PITFALLS.map((pitfall) => [pitfall.title, pitfall]));
-
-function demo(title: string) {
-  const pitfall = byTitle.get(title);
-  expect(pitfall, `no pitfall titled "${title}"`).toBeDefined();
-  return pitfall as NonNullable<typeof pitfall>;
+function expectServerEnd(label: string, expected: PitfallRun, got: Outcome): void {
+  const { ends } = expected;
+  if ("buildError" in ends) {
+    // as refused it; the playground refuses it too, in words of its own for
+    // the immediate errors, so only the refusal is compared.
+    expect(got.buildError, `${label}: should not build`).toBeTruthy();
+    return;
+  }
+  expect(got.buildError, `${label}: should build`).toBeNull();
+  expect(got.stdout, `${label}: stdout`).toBe(expected.stdout);
+  if ("exit" in ends) {
+    expect(got.error, `${label}: run error`).toBeNull();
+    expect(got.halted, `${label}: halted`).toBe(true);
+    expect(got.exitCode, `${label}: exit status`).toBe(ends.exit);
+  } else if ("signal" in ends) {
+    expect(got.halted, `${label}: halted`).toBe(true);
+    expect(got.error, `${label}: fault`).toBeTruthy();
+    // The server's bus error is the stack-alignment fault; the playground
+    // names it the same way, and words every other fault on its own.
+    expect(/^Bus error/.test(got.error ?? ""), `${label}: bus error`).toBe(ends.signal === "SIGBUS");
+  } else {
+    expect(got.halted, `${label}: still running`).toBe(false);
+    expect(got.error, `${label}: run error`).toBeNull();
+  }
 }
 
-describe("pitfall demos fail and recover exactly as taught", () => {
-  it("ships a fault, a fix, and a watch line on all seven pitfalls", () => {
-    expect(PITFALLS).toHaveLength(7);
+describe("pitfall programs behave as they did on the course server", () => {
+  for (const pitfall of PITFALLS) {
+    it(`${pitfall.slug}: broken and fixed`, () => {
+      expectServerEnd(`${pitfall.slug} broken`, pitfall.broken, run(pitfall.broken.source));
+      expectServerEnd(`${pitfall.slug} fixed`, pitfall.fixed, run(pitfall.fixed.source));
+    });
+  }
+
+  it("every fixed program builds and exits 0", () => {
     for (const pitfall of PITFALLS) {
-      expect(pitfall.fault.length, pitfall.title).toBeGreaterThan(0);
-      expect(pitfall.fix.length, pitfall.title).toBeGreaterThan(0);
-      expect(pitfall.watch.length, pitfall.title).toBeGreaterThan(0);
+      expect(pitfall.fixed.ends, pitfall.slug).toEqual({ exit: 0 });
     }
   });
 
-  it("16-byte stack alignment: the fault stops at the call, the fix prints 0", () => {
-    const pitfall = demo("16-byte stack alignment");
-    // The push itself is legal (SA0 checks sp before writeback); the bl
-    // with sp off the boundary is where linux dies inside printf, and
-    // the playground stops there with the call-boundary wording.
-    const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("");
-    expect(fault.halted).toBe(true);
-    expect(fault.error).toContain("at this call");
-    const fix = runProgram(pitfall.fix, 100_000);
-    expect(fix.stdout).toContain("sp & 15 = 0");
-    expect(fix.halted).toBe(true);
-    expect(fix.exitCode).toBe(0);
-  });
-
-  it(
-    "fp and lr: the fault loops on its own ret and never halts, the fix exits 0",
-    { timeout: 30_000 },
-    () => {
-      const pitfall = demo("saving and restoring fp and lr");
-      // A bounded run is enough to prove the loop: thousands of steps past the
-      // print with no halt and no error means ret is chasing its own tail.
-      const fault = runProgram(pitfall.fault, 20_000);
-      expect(fault.stdout).toBe("greet ran\n"); // printed exactly once
-      expect(fault.halted).toBe(false);
-      expect(fault.error).toBeNull();
-      const fix = runProgram(pitfall.fix, 100_000);
-      expect(fix.stdout).toBe("greet ran\n");
-      expect(fix.halted).toBe(true);
-      expect(fix.exitCode).toBe(0);
-    },
-  );
-
-  it("sign extension: the fault reads a wild address and faults, the fix reads vals[1]", () => {
-    const pitfall = demo("sign extension");
-    const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.error).toMatch(/memory fault/);
-    // A runtime fault halts the machine and disables the controls.
-    expect(fault.halted).toBe(true);
-    const fix = runProgram(pitfall.fix, 100_000);
-    expect(fix.stdout).toBe("neighbor = 200\n");
-    expect(fix.exitCode).toBe(0);
-  });
-
-  it("off-by-one: the fault drags the sentinel into the sum, the fix stops at 15", () => {
-    const pitfall = demo("off-by-one loop bounds");
-    const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("sum = 10014\n");
-    const fix = runProgram(pitfall.fix, 100_000);
-    expect(fix.stdout).toBe("sum = 15\n");
-    expect(fix.exitCode).toBe(0);
-  });
-
-  it("local allocation: the fault stops at the first sp store, the alloc formula holds", () => {
-    const pitfall = demo("non-16-byte local allocation");
-    const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("");
-    expect(fault.halted).toBe(true);
-    expect(fault.error).toContain("multiple of 16");
-    const fix = runProgram(pitfall.fix, 100_000);
-    expect(fix.stdout).toContain("sp & 15 = 0");
-    expect(fix.exitCode).toBe(0);
-  });
-
-  it("caller-saved: the callee's scratch eats the parked sum, the fix keeps 42", () => {
-    const pitfall = demo("caller-saved registers do not survive a call");
-    const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("step 1 done\nsum = 1\n"); // announce's leftover, not 42
-    expect(fault.halted).toBe(true);
-    const fix = runProgram(pitfall.fix, 100_000);
-    expect(fix.stdout).toBe("step 1 done\nsum = 42\n");
-    expect(fix.halted).toBe(true);
-    expect(fix.exitCode).toBe(0);
-  });
-
-  it("misaligned call: the fault stops at the sp store, the fix prints the line", () => {
-    const pitfall = demo("misaligned stack at a call");
-    // SA0 faults every sp-based access while sp is off the boundary, so
-    // the store to the local, not the later bl, is where linux and the
-    // playground stop this program.
-    const fault = runProgram(pitfall.fault, 100_000);
-    expect(fault.stdout).toBe("");
-    expect(fault.halted).toBe(true);
-    expect(fault.error).toContain("multiple of 16");
-    const fix = runProgram(pitfall.fix, 100_000);
-    expect(fix.stdout).toBe("n = 7, sp & 15 = 0\n");
-    expect(fix.halted).toBe(true);
-    expect(fix.exitCode).toBe(0);
+  it("every broken program misbehaves where the server can see it", () => {
+    // A broken program either fails on the server or prints something other
+    // than its fix does; one that behaved identically would teach nothing.
+    for (const pitfall of PITFALLS) {
+      const same =
+        "exit" in pitfall.broken.ends &&
+        pitfall.broken.ends.exit === 0 &&
+        pitfall.broken.stdout === pitfall.fixed.stdout;
+      expect(same, pitfall.slug).toBe(false);
+    }
   });
 });

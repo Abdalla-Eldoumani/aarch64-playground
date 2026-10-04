@@ -10,12 +10,8 @@ interface ReplayScrubberProps {
 }
 
 /**
- * Slider + play button above the RegisterPanel that lets a student scrub
- * through the last N captured frames. Renders nothing when there are fewer than
- * two frames, so the panel is empty until the student steps a couple of times.
- * Visual-only: scrubbing applies the captured frame to React state without
- * touching the underlying CPU; the next forward `step` resumes from the live
- * PC.
+ * Scrubbing only repaints the registers from a saved frame and never touches
+ * the CPU, so the next step resumes from the live pc.
  */
 export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberProps) {
   const [playing, setPlaying] = useState(false);
@@ -58,6 +54,13 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
   if (frames.length < 2) return null;
 
   const idx = sliderIdx ?? liveIdx;
+  // The slider walks the KEPT frames, not every step: a step keeps its own
+  // frame, a run keeps only the step it stopped on. Naming the step and the
+  // frame position together keeps the knob and the label telling one story
+  // (a label reading "step 2 / 274" over a knob a third of the way along
+  // told two).
+  const stepShown = frames[idx]?.stepCount ?? 0;
+  const position = `${idx + 1} of ${frames.length}`;
 
   const onChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const v = parseInt(e.target.value, 10);
@@ -101,22 +104,25 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
     }, interval);
   };
 
+  // One noun for the row and one verb for its button: "play" and "replay"
+  // beside run and step read as three ways to run the program, when this row
+  // only shows steps already taken.
   return (
     <div
-      className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[11px]"
+      className="flex items-center gap-2 px-3 py-1 border-b border-[var(--border)] bg-[var(--bg-sunken)] text-[12px]"
       aria-label="replay scrubber"
     >
+      <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap">
+        history
+      </span>
       <button
         type="button"
         onClick={togglePlay}
-        className="text-[var(--cyan)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] rounded px-1"
-        aria-label={playing ? "pause replay" : "play replay"}
+        className="touch-target text-[var(--cyan)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:ring-1 focus-visible:ring-[var(--cyan)] rounded px-1"
+        aria-label={playing ? "stop the replay" : "replay the saved steps"}
       >
-        {playing ? "pause" : "play"}
+        {playing ? "stop" : "replay"}
       </button>
-      <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap">
-        replay
-      </span>
       <input
         type="range"
         min={0}
@@ -124,11 +130,16 @@ export function ReplayScrubber({ frames, currentStep, onSeek }: ReplayScrubberPr
         step={1}
         value={idx}
         onChange={onChange}
-        className="flex-1 accent-[var(--amber)]"
+        className="touch-target flex-1 accent-[var(--amber)]"
         aria-label="replay step slider"
+        aria-valuetext={`step ${stepShown}, frame ${position}`}
       />
-      <span className="text-[var(--text-secondary)] font-mono whitespace-nowrap tabular-nums">
-        step {frames[idx]?.stepCount ?? 0} / {frames[frames.length - 1]?.stepCount ?? 0}
+      <span
+        className="text-[var(--text-secondary)] font-mono whitespace-nowrap tabular-nums"
+        title="each step is saved as a frame; a run saves only the step it stopped on. dragging the slider changes the registers only: the console and memory stay where the program is now"
+      >
+        step {stepShown} · {position}
+        {sliderIdx !== null && " · registers only"}
       </span>
     </div>
   );

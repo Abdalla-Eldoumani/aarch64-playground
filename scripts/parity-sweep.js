@@ -1,37 +1,23 @@
-// Differential server-parity sweep: every program the site ships is run
-// twice, once through the WASM emulator (the node-target build, driven the
-// way scripts/verify-corpus.js drives it) and once through the real course
-// toolchain on csarm (`m4 | gcc`, then the binary), and the two sides are
-// compared byte for byte on stdout, exit code, and the files the program
-// wrote.
+// Runs every program the site ships twice, once in the emulator (the
+// node-target build) and once with the course toolchain on csarm
+// (`m4 | gcc`, then the binary), and compares stdout, exit code, and the
+// files each run wrote, byte for byte.
 //
-// The program set is derived from the tree on every run, never from a
-// checked-in list: the shipped examples plus their fixtures, every lesson
-// editor starter, every write / identify-bug exercise starter, the two
-// starters in docs/authoring-content.md, every reference-entry payload the
-// try-in-playground link carries, both halves of every pitfall, and the
-// landing hero. A program that lands in any of those sources is swept the
-// next time this runs, with no edit here.
-//
-// Scratch lives OUTSIDE the tree (default: aarch64-playground-parity under
-// the OS temp directory, override with PARITY_SCRATCH): one directory per
-// program holding program.s, stdin, args, its vfs files, and meta.json,
-// plus results/ from each side and the report.
+// The program list is read from the tree on every run, never kept as a
+// copy, so a new example, lesson, exercise, reference entry, or pitfall is
+// swept with no edit here. Scratch files go under the OS temp directory
+// (override with PARITY_SCRATCH), never into the repository.
 //
 // Usage:
-//   node scripts/parity-sweep.js                  enumerate, both sides, compare
-//   node scripts/parity-sweep.js --playground-only enumerate + emulator side only
-//   node scripts/parity-sweep.js --server-only     reuse a downloaded csarm
-//                                                  results directory and compare
-//   node scripts/parity-sweep.js --reuse-remote    rerun the csarm side over the
-//                                                  tree already uploaded there
+//   node scripts/parity-sweep.js                  both sides, then compare
+//   node scripts/parity-sweep.js --playground-only emulator side only
+//   node scripts/parity-sweep.js --server-only     compare against csarm results
+//                                                  already in <scratch>/server-results/
+//   node scripts/parity-sweep.js --reuse-remote    rerun on csarm over the
+//                                                  programs already there
 //   node scripts/parity-sweep.js --no-report       skip writing report.md
 //
-// --server-only consumes what a previous full run downloaded (or what was
-// copied in by hand into <scratch>/server-results/); it still runs the
-// emulator side, because that side is free and the comparison needs it.
-//
-// Requires web/lib/wasm-node (wasm-pack build --target nodejs --out-dir
+// Needs web/lib/wasm-node (wasm-pack build --target nodejs --out-dir
 // ../web/lib/wasm-node from emulator/) and, for the server side, key-based
 // ssh to csarm.
 
@@ -102,31 +88,13 @@ function loadWebModules() {
   };
 }
 
-// Whitespace-quoted argv tokenizer, the same shape verify-corpus.js uses so
-// both verifiers read a `.args` fixture the way web/lib/playground/args.ts
-// reads the args box.
-function parseArgsLine(input) {
-  const out = [];
-  let buf = "";
-  let inQuote = null;
-  let hasToken = false;
-  for (let i = 0; i < input.length; i++) {
-    const ch = input[i];
-    if (ch === "\\" && i + 1 < input.length) { buf += input[i + 1]; hasToken = true; i++; continue; }
-    if (inQuote) {
-      if (ch === inQuote) { inQuote = null; continue; }
-      buf += ch; hasToken = true; continue;
-    }
-    if (ch === '"' || ch === "'") { inQuote = ch; hasToken = true; continue; }
-    if (/\s/.test(ch)) {
-      if (hasToken) { out.push(buf); buf = ""; hasToken = false; }
-      continue;
-    }
-    buf += ch; hasToken = true;
-  }
-  if (hasToken) out.push(buf);
-  return out;
-}
+// The app's own argument parser, the one verify-corpus.js uses too, so a
+// `.args` fixture or an `args` field splits exactly the way the args box
+// does. Node strips the file's types on load; the file imports nothing, so
+// no path alias has to resolve.
+const { parseArgs: parseArgsLine } = require(
+  path.join(webRoot, "lib", "playground", "args.ts"),
+);
 
 // Mirrors combineSources in web/lib/playground/file-map.ts: main first so
 // line numbers still point at the editor buffer, each helper behind its
@@ -146,20 +114,14 @@ const slug = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(
 
 // ---------------------------------------------------------------------
 // Enumeration. Every entry is {id, source, kind, program, args, stdin,
-// vfs, note}. `kind` is console (run and compare), interactive (a
+// vfs, note}. `kind` is console (run and compare) or interactive (a
 // terminal face: assembled and linked on both sides, never compared byte
-// for byte) or leaf (no entry point by design; both sides must refuse it).
+// for byte).
 
-// is-prime ships as a leaf function with no entry point on purpose; its own
-// header says to assemble it beside a caller and no such caller ships.
-// Naming it keeps a main that goes missing from any other example a finding.
-const LEAF_ONLY = { "is-prime": "leaf function, no entry point; no caller ships with it" };
-
-// The three examples that wear a plain console face under the `console`
-// argv token drive that face here with the scripted session from
-// emulator/tests/filler_examples.rs, so their output is comparable rather
-// than a full-screen ANSI frame. temp-convert is absent: it already carries
-// a one-shot `.args` fixture, which is the deterministic face it ships.
+// Examples with a console mode run it here (argv `console`) with the
+// scripted session from emulator/tests/filler_examples.rs, so their output
+// can be compared instead of a full-screen terminal frame. temp-convert is
+// left out: its `.args` fixture already gives it a one-shot run.
 const CONSOLE_FACE_DRIVES = {
   calc: "2+3*4\nsqrt(9)\ndeg\nsin(30)\n5/0\nq\n",
   "two-sum": "4\n2\n1000\n7\n11\n15\n9\n",
@@ -190,12 +152,6 @@ function enumerateExamples(mods) {
       vfs: {},
       note: helpers.length > 0 ? `${helpers.length} helper files` : "",
     };
-    if (LEAF_ONLY[stem]) {
-      entry.kind = "leaf";
-      entry.note = LEAF_ONLY[stem];
-      out.push(entry);
-      continue;
-    }
     const argsRaw = readFixture(stem, "args");
     const stdinRaw = readFixture(stem, "stdin");
     const vfsRaw = readFixture(stem, "vfs.json");
@@ -329,14 +285,14 @@ function enumerateReference(mods) {
 function enumeratePitfalls(mods) {
   const out = [];
   mods.pitfalls.PITFALLS.forEach((p, i) => {
-    for (const half of ["fault", "fix"]) {
+    for (const half of ["broken", "fixed"]) {
       out.push({
         id: `pitfall-${i + 1}-${half}`,
         source: "pitfalls",
         kind: "console",
-        program: p[half],
+        program: p[half].source,
         args: [], stdin: "", vfs: {},
-        // A fault half is authored to misbehave; parity means it misbehaves
+        // A broken half is authored to misbehave; parity means it misbehaves
         // the same way on both sides, not that it succeeds.
         note: `${p.title} (${half})`,
       });
@@ -576,12 +532,9 @@ function runServerSide(programs) {
     step = scp([runnerPath, `${SSH_HOST}:~/${REMOTE_ROOT}/`], SSH_CALL_TIMEOUT_MS);
     if (step.status !== 0) throw new Error(`runner upload failed: ${step.stderr || step.error}`);
   } else {
-    // A stale tree from a previous sweep would leave orphan results, so the
-    // remote root is emptied before the upload rather than merged into. Best
-    // effort: csarm's home is on NFS, and a file an interrupted run still
-    // holds open lingers as a .nfsXXXX handle that nothing can unlink yet.
-    // The upload overwrites everything that matters, so a leftover is a
-    // warning rather than the end of the sweep.
+    // Emptied, not merged into, so a previous sweep leaves no stray results.
+    // Best effort: on csarm's NFS home a file an interrupted run still holds
+    // open cannot be removed yet, and the upload overwrites all that matters.
     step = ssh(`mkdir -p ~/${REMOTE_ROOT} && find ~/${REMOTE_ROOT} -mindepth 1 -delete; exit 0`);
     if ((step.stderr || "").trim()) console.log("  note: remote wipe left something behind");
     console.log(`  uploading ${programs.length} program directories`);
@@ -743,6 +696,12 @@ function compare(p, pg, sv) {
 
 const oneLine = (s) => String(s == null ? "" : s).replace(/\s+/g, " ").trim().slice(0, 160);
 
+// Text placed inside one cell of a markdown table row. Backslashes are
+// doubled first so one in the text cannot cancel the escape a pipe gets, and
+// a line break would end the row.
+const markdownCell = (s) =>
+  s.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\r\n?|\n/g, " ");
+
 // The diagnosis behind each row that came back `differs` when the sweep was
 // last read by hand. A row with no entry here prints as undiagnosed, which is
 // the point: a NEW disagreement stands out instead of blending into the five
@@ -811,7 +770,7 @@ function report(programs, pgAll, svAll, machine) {
     lines.push("| program | source | verdict | note |");
     lines.push("| --- | --- | --- | --- |");
     for (const row of rows) {
-      lines.push(`| ${row.p.id} | ${row.p.source} | ${row.verdict} | ${row.note.replace(/\|/g, "\\|")} |`);
+      lines.push(`| ${markdownCell(row.p.id)} | ${markdownCell(row.p.source)} | ${row.verdict} | ${markdownCell(row.note)} |`);
     }
     const diffs = rows.filter((r) => r.verdict === "differs");
     if (diffs.length > 0) {
@@ -861,4 +820,7 @@ function main() {
   report(programs, pgAll, readServerResults(programs), machine);
 }
 
-main();
+// A test loads the report helpers without starting a sweep.
+if (require.main === module) main();
+
+module.exports = { markdownCell };

@@ -2,7 +2,7 @@
 
 import { Command } from "cmdk";
 import { useRef } from "react";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import type { Action } from "@/lib/playground/commands";
 
 export interface CommandPaletteProps {
@@ -30,7 +30,7 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
       role="dialog"
       aria-modal="true"
       aria-label="command palette"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={cardRef}
@@ -58,12 +58,12 @@ export function CommandPalette({ open, onClose, actions }: CommandPaletteProps) 
               >
                 <div className="flex flex-col">
                   <span>{a.label}</span>
-                  <span className="text-[10px] text-[var(--text-secondary)]">
+                  <span className="text-[12px] text-[var(--text-secondary)]">
                     {a.description}
                   </span>
                 </div>
                 {a.shortcut && (
-                  <kbd className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
+                  <kbd className="[@media(pointer:coarse)]:hidden text-[12px] px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-secondary)] border border-[var(--border)]">
                     {a.shortcut}
                   </kbd>
                 )}

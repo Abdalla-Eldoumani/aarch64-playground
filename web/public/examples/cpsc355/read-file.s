@@ -27,7 +27,7 @@ main:   stp     fp, lr, [sp, alloc]!
         mov     fp, sp
 
         // openat(AT_FDCWD, "input.txt", O_RDONLY, 0)
-        mov     w0, -100
+        mov     w0, -100                // AT_FDCWD: look in the current directory
         ldr     x1, =fname
         mov     w2, 0                   // O_RDONLY
         mov     w3, 0
@@ -42,7 +42,7 @@ read_loop:
         // read(fd, buf, buf_size - 1)
         mov     w0, fd_r
         add     x1, fp, buf_s
-        mov     x2, buf_size - 1        // leave room for null
+        mov     x2, buf_size - 1        // leave room for the null (0) byte
         mov     x8, 63                  // read
         svc     0
         mov     n_read_r, x0
