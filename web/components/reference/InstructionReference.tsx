@@ -451,7 +451,8 @@ export function InstructionReference({
           </kbd>
         </div>
 
-        {offersCourse && (
+        {/* A search nothing answers leaves nothing to switch between. */}
+        {offersCourse && view.allCount > 0 && (
           <button
             type="button"
             onClick={() => writeFinder({ ...finder, all: !finder.all }, true)}
@@ -475,7 +476,7 @@ export function InstructionReference({
               className={GROUP_CHIP}
             >
               {group.label}{" "}
-              <span className="font-mono tabular-nums">{view.counts.get(group.id) ?? 0}</span>
+              <span className="ml-1.5 font-mono tabular-nums">{view.counts.get(group.id) ?? 0}</span>
             </button>
           ))}
         </div>
