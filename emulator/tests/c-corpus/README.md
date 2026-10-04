@@ -73,8 +73,12 @@ The playground names the fault where the server prints a bare
 ## Adding a program
 
 Drop `NAME.c` (plus `.stdin`/`.args`/`.flags` if it needs them) beside
-the others, run `tools/sanitize.py regen --only NAME --write` on a
-machine with the cross toolchain, and commit the files it writes. The
+the others. The `.s` files can come from `tools/sanitize.py regen --only
+NAME --write` on a machine with the cross toolchain, but the `.out` and
+`.code` files it writes are qemu-user's run, not the reference: compile and
+run the program on a real AArch64 Linux machine with glibc at each tier,
+and commit that machine's stdout and exit code (with the sanitized `.s`
+gcc produced there). The
 corpus test discovers programs by directory scan; no list to edit. Keep
 new programs inside the hosted libc surface (the playground's
 instruction reference lists it).
