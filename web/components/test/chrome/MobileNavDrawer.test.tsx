@@ -108,7 +108,7 @@ describe("MobileNavDrawer", () => {
     expect(container.firstElementChild?.className).toContain("md:hidden");
     fireEvent.click(screen.getByRole("button", { name: "open navigation" }));
     const dialog = screen.getByRole("dialog");
-    expect(within(dialog).getAllByRole("radio")).toHaveLength(6);
+    expect(within(dialog).getAllByRole("radio")).toHaveLength(10);
     expect(within(dialog).getByRole("radiogroup", { name: "theme" })).toBeTruthy();
   });
 
