@@ -105,10 +105,13 @@ and memory, and copies it or a link that reopens the program.
   [terminal.md](terminal.md).
 - The **watches** tab evaluates expressions such as `x0`, `*x0`, and
   `[fp, score1_s]` each time the program stops. A stack offset also takes an
-  index: `score1_s[1]` reads the 8 bytes at `fp + score1_s + 8`. Name
-  registers directly (`w19`). An m4 alias such as `score1_r` and a `.data`
-  label such as `fmt_prompt` are not understood there. **memwatch** pins
-  address ranges you name.
+  index: `score1_s[1]` reads the 8 bytes at `fp + score1_s + 8`. A `.data`
+  label takes one too, when a `.byte`, `.hword`, `.word`, or `.dword` line
+  follows it: `nums[2]` reads the third element, 1, 2, 4, or 8 bytes wide to
+  match. A label with no such line, or with mixed sizes, is refused rather
+  than guessed. Name registers directly (`w19`); an m4 alias such as
+  `score1_r` is not understood there. **memwatch** pins address ranges you
+  name.
 - The **convert** tab shows one value as binary, octal, decimal, and hex,
   signed and unsigned, and as an IEEE-754 float at 32 or 64 bits. Click a bit
   to flip it.
@@ -119,7 +122,9 @@ and memory, and copies it or a link that reopens the program.
 - The register panel switches between the integer (`x`), floating-point (`d`),
   and 128-bit vector (`v`) registers, each in decimal or hex. A vector
   register splits into 8, 16, 32, or 64-bit lanes, or float lanes.
-- **theme** cycles through dark, light, and high contrast.
+- The **theme** button beside the GitHub link, at the top of every page,
+  opens the six themes: dark, light, high contrast, ember, forest, and paper.
+  On a phone they sit in the menu. The choice is remembered.
 - `?embed=1` on the playground's address hides everything but the editor,
   registers, and console, for slides.
 - After one visit the playground works offline. **Save every page for
