@@ -24,8 +24,10 @@ pub enum Condition {
 
 /// Condition codes: primary spelling, aliases, and the 4-bit encoding. The
 /// one list the assembler, the hosted pipeline, and the drift tests all
-/// read. NV (0b1111) is left out: GAS rejects it in every form the course
-/// uses, and `from_u8` runs it as AL, as the hardware does.
+/// read. NV (0b1111) is left out: GAS rejects it in the dotless branch and
+/// the cset family, the few forms that take it (`b.nv`, `ccmp`, `fcsel`)
+/// spell it on their own paths, and `from_u8` runs it as AL, as the
+/// hardware does.
 pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
     ("EQ", &[], 0b0000),
     ("NE", &[], 0b0001),
@@ -67,9 +69,8 @@ pub fn reg_alias(name: &str) -> Option<(u8, bool)> {
 }
 
 impl Condition {
-    /// Decode a 4-bit condition field. The reserved 0b1111 folds onto AL,
-    /// matching hardware: cond 1111 executes as always, it just has no
-    /// assembler spelling.
+    /// Decode a 4-bit condition field. NV (0b1111) folds onto AL, matching
+    /// hardware: cond 1111 executes as always, so `b.nv` is taken.
     pub fn from_u8(val: u8) -> Result<Self, EmuError> {
         match val & 0xF {
             0b0000 => Ok(Self::EQ),
