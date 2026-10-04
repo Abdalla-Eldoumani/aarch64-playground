@@ -26,7 +26,7 @@ fn is_condition(s: &str) -> bool {
     matches!(
         s,
         "EQ" | "NE" | "HS" | "CS" | "LO" | "CC" | "MI" | "PL"
-            | "VS" | "VC" | "HI" | "LS" | "GE" | "LT" | "GT" | "LE" | "AL"
+            | "VS" | "VC" | "HI" | "LS" | "GE" | "LT" | "GT" | "LE" | "AL" | "NV"
     )
 }
 
