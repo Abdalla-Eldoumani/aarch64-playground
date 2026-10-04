@@ -34,7 +34,8 @@ const DEPS: PaletteDeps = {
   toggleTheme: noop,
 };
 
-// A machine stopped inside a frame: fp at 0x1000, a frame slot sum_s at 16.
+// A machine stopped inside a frame: fp at 0x1000, a frame slot sum_s at 16,
+// and a .word array nums at 0x420000.
 const CTX: EvalContext = {
   readRegister: (name) => {
     const values: Record<string, bigint> = { fp: 0x1000n, sp: 0x1000n, lr: 0x400100n, w19: 5n, x21: 0x1010n };
@@ -42,7 +43,8 @@ const CTX: EvalContext = {
   },
   readMemory: () => 0x48n,
   resolveSlotOffset: (name) => (name === "sum_s" ? 16n : null),
-  resolveLabelAddress: () => null,
+  resolveLabelAddress: (name) => (name === "nums" ? 0x420000n : null),
+  labelElementSize: (name) => (name === "nums" ? { size: 4 } : { error: "its label is not in the source" }),
 };
 
 describe("DirectivesAndDebugger", () => {
@@ -75,7 +77,7 @@ describe("DirectivesAndDebugger", () => {
   });
 
   it("lists only watches the watch grammar reads", () => {
-    expect(WATCH_FORMS.map((w) => w.form)).toEqual(["w19", "[fp, 16]", "[fp, sum_s]", "sum_s[1]", "*x21"]);
+    expect(WATCH_FORMS.map((w) => w.form)).toEqual(["w19", "[fp, 16]", "[fp, sum_s]", "sum_s[1]", "nums[2]", "*x21"]);
     for (const { form } of WATCH_FORMS) {
       expect(evaluateWatch(form, CTX), form).not.toHaveProperty("error");
     }
