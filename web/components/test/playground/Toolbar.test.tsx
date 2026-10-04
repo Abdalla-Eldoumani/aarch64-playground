@@ -38,8 +38,8 @@ describe("Toolbar", () => {
     }
   });
 
-  // The site bar's theme control and GitHub link cover both, so the toolbar
-  // does not repeat them.
+  // The site bar's theme control and GitHub link cover both (the phone menu
+  // sheet carries them on a phone), so the toolbar does not repeat them.
   it("carries no theme button and no source link", () => {
     setup();
     expect(screen.queryByRole("button", { name: /theme/ })).toBeNull();
