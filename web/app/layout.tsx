@@ -54,9 +54,6 @@ export const metadata: Metadata = {
   // iOS before 16.4 ignores the web manifest and reads a home-screen app's
   // name and standalone launch from these tags.
   appleWebApp: { capable: true, title: SITE_NAME },
-  // Search Console URL-prefix verification; the domain property is verified
-  // via DNS separately, so this tag is a second anchor, not the primary.
-  verification: { google: "RJmIR859S00gRMvoEXI-3lhiav4ygzIp6oUW6lP54j4" },
 };
 
 export const viewport: Viewport = {
