@@ -1904,3 +1904,23 @@ done:
     );
     assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "");
 }
+
+// GAS takes `b.nv` and encodes condition 1111 (objdump: `5400004f  b.nv`),
+// and the hardware runs 1111 as always, like `b.al`. On csarm this exits 1:
+// the branch skips the `mov w0, 2`.
+#[test]
+fn b_nv_is_always_taken() {
+    let source = "\t.text
+\t.global\tmain
+main:\tstp\tx29, x30, [sp, -16]!
+\tmov\tx29, sp
+\tmov\tw0, 1
+\tb.nv\ttaken
+\tmov\tw0, 2
+taken:\tldp\tx29, x30, [sp], 16
+\tret
+";
+    let (cpu, out) = run_with_stdin(source, "");
+    assert_eq!(out, "");
+    assert_eq!(cpu.exit_code(), Some(1));
+}

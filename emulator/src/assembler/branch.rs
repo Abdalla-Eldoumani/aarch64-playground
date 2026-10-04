@@ -310,4 +310,16 @@ mod tests {
             assert_eq!(word, 0x5400_004E, "{spelling}");
         }
     }
+
+    #[test]
+    fn b_nv_assembles_with_condition_1111() {
+        // csarm's objdump: `5400004f  b.nv` for a target two words on.
+        let labels = HashMap::from([("target".to_string(), 8u64)]);
+        for spelling in ["b.nv target", "B.NV target", "b.Nv target"] {
+            let word = encode_line(spelling, 0, &labels, 1).unwrap();
+            assert_eq!(word, 0x5400_004F, "{spelling}");
+        }
+        // GAS refuses the dotless spelling.
+        crate::test_support::rejects(encode_line("bnv target", 0, &labels, 1), "unknown mnemonic");
+    }
 }

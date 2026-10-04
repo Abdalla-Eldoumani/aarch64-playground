@@ -139,8 +139,9 @@ export function EmbedLayout({
       <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {args && (
-            // The next run or check assembles with whatever this holds, so a
-            // student can try the command lines the hidden inputs use.
+            // The next run assembles with whatever this holds, so a student
+            // can try the command lines the hidden inputs use. Check keeps the
+            // authored args, since the expected output was written for them.
             <label className="inline-flex shrink-0 basis-full items-center gap-1.5 font-mono text-[12px] text-[var(--text-secondary)] sm:basis-auto">
               args
               <input

@@ -275,7 +275,8 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "ADR", "ADRP",
     // branches
     "B", "BL", "BR", "BLR", "RET",
-    // conditional branches (both spellings of each condition)
+    // conditional branches (both spellings of each condition; NV is
+    // dotted only, as GAS refuses `bnv`)
     "B.EQ", "BEQ",
     "B.NE", "BNE",
     "B.HS", "B.CS", "BHS", "BCS",
@@ -291,6 +292,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "B.GT", "BGT",
     "B.LE", "BLE",
     "B.AL", "BAL",
+    "B.NV",
     // compare/test and branch
     "CBZ", "CBNZ", "TBZ", "TBNZ",
     // conditional select
@@ -870,6 +872,7 @@ svc 0").unwrap();
                 arms.insert(format!("B{cc}"));
             }
         }
+        arms.insert("B.NV".to_string());
 
         let listed: std::collections::BTreeSet<String> =
             SUPPORTED_MNEMONICS.iter().map(|m| (*m).to_string()).collect();
@@ -905,6 +908,7 @@ svc 0").unwrap();
                 expected.insert(format!("B{alias}"));
             }
         }
+        expected.insert("B.NV".to_string());
         let listed: std::collections::BTreeSet<String> = SUPPORTED_MNEMONICS
             .iter()
             .filter(|m| bcond_condition(m).is_some())

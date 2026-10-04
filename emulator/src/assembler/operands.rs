@@ -187,8 +187,8 @@ fn condition_code_list() -> String {
 }
 
 /// The condition operand of the instructions GAS lets carry `nv`.
-/// `CONDITIONS` leaves NV out because no conditional branch spells it
-/// (GAS refuses `bnv`), but `ccmp`, `ccmn` and `fcsel` all take it, and
+/// `CONDITIONS` leaves NV out because GAS refuses the dotless `bnv` and
+/// the cset family, but `ccmp`, `ccmn` and `fcsel` all take it, and
 /// the hardware runs condition 1111 as always, exactly like AL.
 pub(super) fn parse_condition_allowing_nv(s: &str, line_num: usize) -> Result<u8, EmuError> {
     if s.trim().eq_ignore_ascii_case("NV") {
@@ -207,9 +207,13 @@ fn condition_bits(name: &str) -> Option<u8> {
 /// The condition bits of a conditional-branch mnemonic (`B.<cc>` or `B<cc>`,
 /// uppercase), or None for anything else. The bare form matches only when
 /// the whole tail is a condition spelling, so `BL`, `BLR` and `BIC` never
-/// strip to one.
+/// strip to one. GAS takes `b.nv` (it branches, like `b.al`) but refuses
+/// the dotless `bnv`, so NV is accepted on the dotted form only.
 pub(super) fn bcond_condition(mn: &str) -> Option<u8> {
     if let Some(tail) = mn.strip_prefix("B.") {
+        if tail == "NV" {
+            return Some(0b1111);
+        }
         return condition_bits(tail);
     }
     condition_bits(mn.strip_prefix('B')?)

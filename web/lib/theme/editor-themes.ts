@@ -22,7 +22,7 @@ function mix(a: string, b: string, amount: number): string {
 }
 
 /**
- * The editor theme for one site theme; Editor.tsx registers it as `arm64-<id>`.
+ * The editor theme for one site theme; monaco-setup.ts registers it as `arm64-<id>`.
  *
  * `colourIds` is every colour Monaco can draw: its colour registry in the
  * browser, the installed package's source in the tests. Monaco paints any id a

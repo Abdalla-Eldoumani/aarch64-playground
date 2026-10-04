@@ -15,6 +15,7 @@ import { formatByte, formatWord32, formatWord64 } from "@/lib/emulator/format-he
 import { formatSteps } from "@/lib/emulator/format-steps";
 import {
   combineSources,
+  sameWorkspace,
   validateFileName,
   type SourceFile,
   type Workspace,
@@ -342,14 +343,6 @@ function squeezeRepeats(text: string): string {
     first = last + 1;
   }
   return out.join("\n");
-}
-
-function sameWorkspace(a: Workspace, b: Workspace): boolean {
-  return (
-    a.main === b.main &&
-    a.extras.length === b.extras.length &&
-    a.extras.every((f, i) => f.name === b.extras[i].name && f.body === b.extras[i].body)
-  );
 }
 
 function runStatus(m: DiagnosticMachine, edited: boolean): string {

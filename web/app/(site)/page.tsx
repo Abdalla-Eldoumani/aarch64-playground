@@ -17,7 +17,7 @@ export const metadata: Metadata = {
 
 // Each section sets its own width and spacing, so the page only orders them.
 // It ends at the catalog because the footer already carries the project facts.
-// A server component, so only the client Hero ships JS.
+// A server component, so only the hero's client island, HeroDemo, ships JS.
 export default function LandingPage() {
   return (
     <>
