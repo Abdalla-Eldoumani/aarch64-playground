@@ -95,7 +95,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `CNEG`   | `CNEG Xd, Xn, cond`             | Xd = cond ? -Xn : Xn. Alias for `CSNEG Xd, Xn, Xn, !cond`. |
 
 Condition codes: `EQ`, `NE`, `HS`/`CS`, `LO`/`CC`, `MI`, `PL`, `VS`, `VC`, `HI`, `LS`, `GE`, `LT`, `GT`, `LE`, and `AL`.
-`NV` is taken only where GAS takes it, on `ccmp`, `ccmn`, and `fcsel`; GAS refuses `bnv`, so there is no `NV` branch here either.
+`NV` is taken only where GAS takes it: on `ccmp`, `ccmn`, `fcsel`, and the dotted `b.nv`, which branches every time, exactly like `b.al`. GAS refuses the dotless `bnv`, and so does the playground.
 
 The five `cset`-family aliases encode the inverse of the condition you write,
 which is why none of them accepts `AL` or `NV`.
