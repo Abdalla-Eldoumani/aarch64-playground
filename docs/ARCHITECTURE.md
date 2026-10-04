@@ -260,7 +260,10 @@ for an error that left the wasm unusable (`dead-instance.ts`). `pickBackend()`
 in `web/lib/emulator/backend.ts` uses the worker when the browser has one and
 runs the emulator on the page otherwise. Both run the same loop
 (`web/lib/emulator/run-loop.ts`): 10,000 steps at a time, checking for pause
-between chunks, with a snapshot at most every 50 ms so the panels stay live.
+between chunks. Snapshots during the run keep the panels live. The worker
+sends one at most every 50 ms, because each is a `postMessage` and too many
+flood the page. The main-thread backend calls its listeners directly, so it
+sends one after every chunk.
 
 ## Where errors show
 
