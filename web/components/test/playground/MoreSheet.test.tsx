@@ -14,7 +14,7 @@ describe("MoreSheet", () => {
     render(<MoreSheet open onClose={vi.fn()} sections={[]} />);
     const site = screen.getByRole("navigation", { name: "site" });
     const group = within(site).getByRole("radiogroup", { name: "theme" });
-    expect(within(group).getAllByRole("radio")).toHaveLength(6);
+    expect(within(group).getAllByRole("radio")).toHaveLength(10);
     const source = within(site).getByRole("link", { name: "source on github" });
     expect(source.getAttribute("href")).toMatch(/^https:\/\/github\.com\//);
     expect(source.getAttribute("target")).toBe("_blank");

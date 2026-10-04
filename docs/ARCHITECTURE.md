@@ -7,7 +7,10 @@ This doc explains how the parts fit together and why they are built this way.
 changes, [CONTRIBUTING.md](CONTRIBUTING.md) has the folder layout, and
 [features.md](features.md) maps each feature to its files.
 
-![System map: the student's page composes EmbeddablePlayground, whose useEmulator hub fans StateSnapshots out to the panels and talks to the Rust interpreter through a Web Worker](diagrams/01-system-map.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/system-map-dark.svg">
+  <img src="diagrams/system-map-light.svg" alt="System map. On the page's main thread, the editor sends the source and the args box sends the program arguments to the useEmulator hub. The hub calls assemble, step, and runUntilBreak on WorkerClient, or on MainThreadBackend when no Worker can start, and passes each StateSnapshot to the panels. WorkerClient sends requests to emulator.worker.ts in a Web Worker, which calls step and run_until_break on the Rust emulator compiled to wasm and sends a StateSnapshot back.">
+</picture>
 
 ## Two halves
 
@@ -120,7 +123,10 @@ so prompts, starters, and answers stay off the index pages.
 5. After each call the backend sends a `StateSnapshot`, and React applies it
    in one update.
 
-![Assemble pipeline: editor buffers pass through m4, the lexer, the parser, section grouping and the linker; the assembler encodes each line into a LinkedImage the CPU loads, and the line map carries addresses back to Monaco markers](diagrams/02-assemble-pipeline.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/assemble-pipeline-dark.svg">
+  <img src="diagrams/assemble-pipeline-light.svg" alt="Assemble pipeline. The editor's files become one source string. detect_hosted_mode sends source that uses directives, m4 macros, or library calls through m4.rs, lexer.rs, parser.rs, and pipeline.rs in frontend/, and sends bare-metal source to assembler.rs, which pipeline.rs also sends one line at a time to get back its instruction word. cpu/loader.rs writes the result into memory. Error lines and the line map go back to the editor.">
+</picture>
 
 The pipeline runs m4 (`m4.rs`), the lexer, and the parser, groups the lines by
 section, and links (`pipeline.rs`). Linking places the labels, resolves
@@ -161,7 +167,10 @@ so the program stops on it instead of running some other instruction.
 
 ## Memory
 
-![Address space: .text at 0x0040_0000, .rodata, .data and .bss in 1 MiB windows, argv at 0x0080_0000, a 16 MiB heap at 0x0090_0000, an 8 MiB stack below 0x8000_0000, and the host stubs at 0xFFFF_0000](diagrams/04-address-space.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/address-space-dark.svg">
+  <img src="diagrams/address-space-light.svg" alt="Address space, highest address at the top: the host stubs at 0xFFFF_0000 (4 KiB), the 8 MiB stack from 0x7F80_0000 up to 0x8000_0000, the 16 MiB heap at 0x0090_0000, the libc globals at 0x0080_1000 (8 KiB), argv at 0x0080_0000 (4 KiB), then .bss, .data, .rodata, and .text in 1 MiB windows from 0x0070_0000 down to 0x0040_0000, and the null page at 0, where any load or store faults. Not to scale.">
+</picture>
 
 Memory is a `HashMap<u64, Rc<Vec<u8>>>` of 4 KiB pages. The first write to an
 address maps its page. A named save shares pages with the live machine, and a
@@ -210,6 +219,11 @@ lists them all.
 
 ## Step back and save states
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/step-back-dark.svg">
+  <img src="diagrams/step-back-light.svg" alt="Step back. Each step pushes a frame that holds what the step overwrote onto a ring of the last 128 steps, and back undoes the newest frame. Named saves are whole copies kept beside the ring, and loading one clears the ring.">
+</picture>
+
 Each step records a frame in a ring of the last 128 steps: what the step
 changed in the registers, memory, and the heap, and the state of input and
 files. **back** undoes the newest frame. The ring stops recording, and clears,
@@ -234,7 +248,10 @@ Panels read memory through `getMemory(addr, len)`. A cached range answers at
 once; a miss fetches the bytes and redraws when they arrive. The cache clears
 on every new frame.
 
-![Run sequence: a click reaches the hub, the worker runs the program in 10,000-step chunks, heartbeat snapshots flow back at most every 50 ms, and the final snapshot settles the panels](diagrams/03-run-loop.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/run-loop-dark.svg">
+  <img src="diagrams/run-loop-light.svg" alt="Run sequence. Pressing run sends runUntilBreak to the worker with a budget of 1,000,000 steps. The worker loops in run-loop.ts: the emulator runs 10,000 steps and returns a RunResult, the worker yields and stops if the run was paused or reset, and it sends a StateSnapshot at most every 50 ms, which updates the panels and the console during the run. The loop ends on a halt, an error, a breakpoint, a read with no input, a sleep, or the budget. The final reply redraws the panels. If the run stopped to wait for input, sending a line pushes it to stdin and starts the run again.">
+</picture>
 
 The emulator runs in a Web Worker so a long run cannot freeze the page.
 `web/lib/worker/` holds the message types (`protocol.ts`), the worker
@@ -243,7 +260,10 @@ for an error that left the wasm unusable (`dead-instance.ts`). `pickBackend()`
 in `web/lib/emulator/backend.ts` uses the worker when the browser has one and
 runs the emulator on the page otherwise. Both run the same loop
 (`web/lib/emulator/run-loop.ts`): 10,000 steps at a time, checking for pause
-between chunks, with a snapshot at most every 50 ms so the panels stay live.
+between chunks. Snapshots during the run keep the panels live. The worker
+sends one at most every 50 ms, because each is a `postMessage` and too many
+flood the page. The main-thread backend calls its listeners directly, so it
+sends one after every chunk.
 
 ## Where errors show
 

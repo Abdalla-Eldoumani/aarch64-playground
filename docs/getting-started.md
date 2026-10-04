@@ -123,8 +123,9 @@ and memory, and copies it or a link that reopens the program.
   and 128-bit vector (`v`) registers, each in decimal or hex. A vector
   register splits into 8, 16, 32, or 64-bit lanes, or float lanes.
 - The **theme** button beside the GitHub link, at the top of every page,
-  opens the six themes: dark, light, high contrast, ember, forest, and paper.
-  On a phone they sit in the menu. The choice is remembered.
+  opens the ten themes: dark, light, high contrast, midnight, ember, forest,
+  dusk, paper, glacier, and rose. On a phone they sit in the menu, in two rows
+  of five. The choice is remembered.
 - `?embed=1` on the playground's address hides everything but the editor,
   registers, and console, for slides.
 - After one visit the playground works offline. **Save every page for
@@ -157,8 +158,13 @@ and memory, and copies it or a link that reopens the program.
   compares the output; it never looks at a stored answer, so any correct
   approach passes. Your progress and answers stay in this browser; the
   **progress** row exports them to a file and imports them on another device.
-- **Reference**: filter the instructions with the box (`/` jumps to it). Each
-  entry shows the syntax, an example, the C it matches, and the flags it sets.
+- **Reference**: the list starts with the instructions the course uses, and
+  a button above it shows all of them. Type a mnemonic or plain words in the
+  box (`/` jumps to it): `multiply`, `load a byte`, and `x * y` all work, and
+  a small typo such as `mvo` still finds `mov`. The group buttons narrow the
+  list, and when nothing matches it shows the closest instructions. The
+  address keeps the search, so a link opens the same list. Each entry shows
+  the syntax, an example, the C it matches, and the flags it sets.
   The calling-convention guide steps through a stack frame, and each mistake
   in the pitfalls catalog runs in place.
 

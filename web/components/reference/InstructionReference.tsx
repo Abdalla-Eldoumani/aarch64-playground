@@ -13,9 +13,11 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   type JSX,
   type KeyboardEvent,
 } from "react";
+import { flushSync } from "react-dom";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import type { ReferenceInstruction, ReferenceCategory } from "@/lib/content/reference-data";
@@ -29,7 +31,46 @@ import { buildShareHash } from "@/lib/playground/share";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
 import { playgroundSource } from "@/lib/playground/playground-source";
 import { referenceId } from "@/lib/content/site";
-import { matchesAllWords } from "@/lib/content/search-words";
+import {
+  FINDER_GROUPS,
+  closestInstructions,
+  finderEntries,
+  finderSearch,
+  findInstructions,
+  readFinderState,
+  type FinderEntry,
+  type FinderGroupId,
+  type FinderState,
+} from "@/lib/content/instruction-finder";
+
+// The finder's state lives in the URL query, read as an external store like
+// the fragment: "" on the server and the first client render, so hydration
+// matches, then the real query. Back and forward send popstate; the finder's
+// own history writes send FINDER_EVENT.
+const FINDER_EVENT = "instruction-finder";
+
+function subscribeSearch(callback: () => void): () => void {
+  window.addEventListener("popstate", callback);
+  window.addEventListener(FINDER_EVENT, callback);
+  return () => {
+    window.removeEventListener("popstate", callback);
+    window.removeEventListener(FINDER_EVENT, callback);
+  };
+}
+
+function readSearch(): string {
+  return window.location.search;
+}
+
+/** Typing replaces the history entry, so back is not one step per letter;
+ *  a group or course choice pushes one, so back undoes it. */
+function writeFinder(state: FinderState, push: boolean): void {
+  const { pathname, search, hash } = window.location;
+  const url = `${pathname}${finderSearch(state, search)}${hash}`;
+  if (push) window.history.pushState(null, "", url);
+  else window.history.replaceState(null, "", url);
+  window.dispatchEvent(new Event(FINDER_EVENT));
+}
 
 // The emulator surface loads only when an example is run in place, so
 // browsing the reference never ships or mounts the embed's chunk.
@@ -73,13 +114,27 @@ const ACTION_LINK =
 const NZCV = ["N", "Z", "C", "V"] as const;
 const PERMALINK =
   "touch-target inline-flex min-h-[44px] items-center font-mono text-[13px] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+// The pitfall chips' look, a size down to fit the index column; a coarse
+// pointer still gets 44px.
+const GROUP_CHIP =
+  "touch-target inline-flex min-h-[32px] shrink-0 items-center whitespace-nowrap rounded-[var(--radius-control)] border border-[var(--border)] px-2 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+const TEXT_ACTION =
+  "touch-target inline-flex min-h-[32px] items-center self-start text-left [font:var(--type-small)] text-[var(--cyan)] outline-none hover:underline focus-visible:[box-shadow:var(--ring)]";
+// How many near rows a search that finds nothing offers instead.
+const CLOSEST = 6;
 
 export function InstructionReference({
   instructions,
+  course,
 }: {
   instructions: ReferenceInstruction[];
+  /** The mnemonics the course's programs use. Without it every row counts as
+   *  the course's and the course or all choice is not offered. */
+  course?: readonly string[];
 }): JSX.Element {
-  const [filter, setFilter] = useState("");
+  const search = useSyncExternalStore(subscribeSearch, readSearch, () => "");
+  const finder = useMemo(() => readFinderState(search), [search]);
+  const filter = finder.query;
   // `picked` is the user's explicit choice (click / Enter); `activePick` is the
   // roving keyboard focus that the arrows move. Both stay null until the user
   // acts, so the fragment store drives the initial selection.
@@ -111,37 +166,82 @@ export function InstructionReference({
     return order;
   }, [instructions]);
 
-  // A piece of a mnemonic still finds it ("sw" finds ldrsw); the words of the
-  // summary and category let a student who does not know "ldr" type "load".
-  const filtered = useMemo(() => {
-    const query = filter.trim().toLowerCase();
-    if (!query) return instructions;
-    return instructions.filter(
-      (instruction) =>
-        instruction.mnemonic.toLowerCase().includes(query) ||
-        matchesAllWords(
-          query,
-          `${instruction.mnemonic} ${instruction.summary} ${instruction.category}`,
-        ),
-    );
-  }, [instructions, filter]);
+  const entries = useMemo(() => finderEntries(instructions), [instructions]);
+  const courseSet = useMemo(
+    () => new Set(course ?? instructions.map((i) => i.mnemonic)),
+    [course, instructions],
+  );
+  const offersCourse = course !== undefined && courseSet.size < instructions.length;
+  const searching = filter.trim() !== "";
 
+  // Every row that answers the search, best first, then narrowed by the
+  // course choice (shown), and by the group chip. The chip counts are taken
+  // before the chip, so each says what pressing it would show.
+  const view = useMemo(() => {
+    const hits = findInstructions(entries, filter, courseSet);
+    const inCourse = (e: FinderEntry) => courseSet.has(e.instruction.mnemonic);
+    const inGroup = (e: FinderEntry) => finder.group === null || e.group === finder.group;
+    const scoped = finder.all || !offersCourse ? hits : hits.filter(inCourse);
+    const counts = new Map<FinderGroupId, number>();
+    for (const e of scoped) counts.set(e.group, (counts.get(e.group) ?? 0) + 1);
+    const shown = scoped.filter(inGroup);
+    // No dead ends: a search the view cannot answer offers what the whole
+    // reference has for it, else the nearest rows by the same rules.
+    const closest =
+      shown.length > 0
+        ? []
+        : (hits.length > 0 ? hits : closestInstructions(entries, filter, courseSet)).slice(
+            0,
+            CLOSEST,
+          );
+    return {
+      counts,
+      shown: shown.map((e) => e.instruction),
+      closest: closest.map((e) => e.instruction),
+      // The closest rows are real matches the course or group choice hid.
+      elsewhere: shown.length === 0 && hits.length > 0,
+      courseCount: hits.filter((e) => inCourse(e) && inGroup(e)).length,
+      allCount: hits.filter(inGroup).length,
+    };
+  }, [entries, filter, courseSet, finder.group, finder.all, offersCourse]);
+
+  // Browsing keeps the reference's category sections; a search lists its
+  // answers best first, so Enter and the top of the list agree.
   const groups = useMemo(
     () =>
-      categoryOrder
-        .map((category) => ({
-          category,
-          items: filtered.filter(
-            (instruction) => instruction.category === category,
-          ),
-        }))
-        .filter((group) => group.items.length > 0),
-    [categoryOrder, filtered],
+      searching
+        ? []
+        : categoryOrder
+            .map((category) => ({
+              category,
+              items: view.shown.filter((instruction) => instruction.category === category),
+            }))
+            .filter((group) => group.items.length > 0),
+    [searching, categoryOrder, view.shown],
   );
 
-  // Flattened in the same order the index renders, so arrow nav steps through
-  // the visible list across category boundaries.
-  const flat = useMemo(() => groups.flatMap((group) => group.items), [groups]);
+  // In the order the index renders, so arrow nav steps through the visible
+  // list across category boundaries.
+  const flat = useMemo(
+    () =>
+      view.shown.length === 0
+        ? view.closest
+        : searching
+          ? view.shown
+          : groups.flatMap((group) => group.items),
+    [searching, view, groups],
+  );
+
+  function setFilter(query: string) {
+    writeFinder({ ...finder, query }, false);
+  }
+
+  // The clear button removes itself, so focus goes back to the box rather
+  // than falling to the top of the page.
+  function clearFinder() {
+    flushSync(() => writeFinder({ ...finder, query: "", group: null }, true));
+    inputRef.current?.focus();
+  }
 
   // The user's pick wins; otherwise the fragment when it names a known
   // instruction; otherwise the first instruction.
@@ -280,17 +380,40 @@ export function InstructionReference({
     if (event.key === "Escape") {
       event.preventDefault();
       setFilter("");
-    } else if (event.key === "Enter" && flat.length > 0) {
+    } else if (event.key === "Enter" && view.shown.length > 0) {
+      // The first row is the best answer: the mnemonic typed in full, then
+      // one that starts with it, then one that holds it, then a description.
+      // The closest rows offered for a search with no answer are not opened.
       event.preventDefault();
-      // The mnemonic typed in full wins over the first row: "b" opens b, not
-      // the first mnemonic that happens to contain the letter. Next comes a
-      // mnemonic that contains what was typed, ahead of a row listed only
-      // for a word of its summary or category ("d" opens add, not mov).
-      const typed = filter.trim().toLowerCase();
-      const exact = flat.find((i) => i.mnemonic.toLowerCase() === typed);
-      const partial = flat.find((i) => i.mnemonic.toLowerCase().includes(typed));
-      openInstruction((exact ?? partial ?? flat[0]).mnemonic);
+      openInstruction(flat[0].mnemonic);
     }
+  }
+
+  function renderItems(items: ReferenceInstruction[]): JSX.Element {
+    return (
+      <ul className="flex flex-col">
+        {items.map((instruction) => {
+          const isSelected = instruction.mnemonic === selected;
+          return (
+            <li key={instruction.mnemonic}>
+              <button
+                type="button"
+                id={referenceId(instruction.mnemonic)}
+                ref={(node) => {
+                  itemRefs.current[instruction.mnemonic] = node;
+                }}
+                onClick={() => openInstruction(instruction.mnemonic)}
+                onFocus={() => setActivePick(instruction.mnemonic)}
+                aria-current={isSelected ? "true" : undefined}
+                className={`${ITEM_BASE} ${isSelected ? ITEM_SELECTED : ITEM_IDLE}`}
+              >
+                {instruction.mnemonic}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+    );
   }
 
   return (
@@ -313,7 +436,7 @@ export function InstructionReference({
             value={filter}
             onChange={(event) => setFilter(event.target.value)}
             onKeyDown={onFilterKeyDown}
-            placeholder="filter mnemonics"
+            placeholder="ldr, multiply, x * y"
             spellCheck={false}
             autoCorrect="off"
             autoCapitalize="off"
@@ -328,43 +451,71 @@ export function InstructionReference({
           </kbd>
         </div>
 
+        {/* A search nothing answers leaves nothing to switch between. */}
+        {offersCourse && view.allCount > 0 && (
+          <button
+            type="button"
+            onClick={() => writeFinder({ ...finder, all: !finder.all }, true)}
+            className={TEXT_ACTION}
+          >
+            {finder.all
+              ? `all ${view.allCount} shown, show the ${view.courseCount} used in the course`
+              : `${view.courseCount} used in the course, show all ${view.allCount}`}
+          </button>
+        )}
+
+        <div role="group" aria-label="instruction groups" className="flex flex-wrap gap-1.5">
+          {FINDER_GROUPS.map((group) => (
+            <button
+              key={group.id}
+              type="button"
+              aria-pressed={finder.group === group.id}
+              onClick={() =>
+                writeFinder({ ...finder, group: finder.group === group.id ? null : group.id }, true)
+              }
+              className={GROUP_CHIP}
+            >
+              {group.label}{" "}
+              <span className="ml-1.5 font-mono tabular-nums">{view.counts.get(group.id) ?? 0}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex min-h-[32px] flex-wrap items-center gap-x-3">
+          <p aria-live="polite" className="[font:var(--type-small)] text-[var(--text-tertiary)]">
+            {view.shown.length === 0
+              ? view.elsewhere
+                ? `none here, ${view.closest.length} from the whole reference`
+                : `no match, ${view.closest.length} closest shown`
+              : searching
+                ? `${view.shown.length} ${view.shown.length === 1 ? "match" : "matches"}`
+                : `${view.shown.length} instructions`}
+          </p>
+          {(searching || finder.group !== null) && (
+            <button type="button" onClick={clearFinder} className={TEXT_ACTION}>
+              clear
+            </button>
+          )}
+        </div>
+
         <nav
           aria-label="instruction index"
           onKeyDown={onIndexKeyDown}
           className="flex flex-col gap-4"
         >
-          {groups.length === 0 ? (
-            <p className="px-2 [font:var(--type-small)] text-[var(--text-tertiary)]">
-              no instructions match.
+          {view.shown.length === 0 && (
+            <p className="px-2 [font:var(--type-small)] text-[var(--text-secondary)]">
+              Nothing in this list matches{searching ? ` \u201c${filter.trim()}\u201d` : ""}.{" "}
+              {view.elsewhere ? "From the whole reference:" : "The closest instructions:"}
             </p>
+          )}
+          {groups.length === 0 ? (
+            renderItems(flat)
           ) : (
             groups.map((group) => (
               <div key={group.category} className="flex flex-col gap-1">
                 <p className={GROUP_LABEL}>{group.category}</p>
-                <ul className="flex flex-col">
-                  {group.items.map((instruction) => {
-                    const isSelected = instruction.mnemonic === selected;
-                    return (
-                      <li key={instruction.mnemonic}>
-                        <button
-                          type="button"
-                          id={referenceId(instruction.mnemonic)}
-                          ref={(node) => {
-                            itemRefs.current[instruction.mnemonic] = node;
-                          }}
-                          onClick={() => openInstruction(instruction.mnemonic)}
-                          onFocus={() => setActivePick(instruction.mnemonic)}
-                          aria-current={isSelected ? "true" : undefined}
-                          className={`${ITEM_BASE} ${
-                            isSelected ? ITEM_SELECTED : ITEM_IDLE
-                          }`}
-                        >
-                          {instruction.mnemonic}
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
+                {renderItems(group.items)}
               </div>
             ))
           )}

@@ -159,6 +159,41 @@ const highContrast: ThemeTokens = {
   "syntax-label": "#9EF0C1",
 };
 
+// Deep navy: gold for the machine, bright blue for you.
+const midnight: ThemeTokens = {
+  "bg-base": "#0B1231",
+  "bg-sunken": "#0E1638",
+  "bg-raised": "#131D42",
+  "bg-panel": "#18234C",
+  "bg-elevated": "#202D5A",
+  border: "#26315E",
+  "border-strong": "#3B4780",
+  "border-control": "#6D79B0",
+  "text-primary": "#E8ECFF",
+  "text-secondary": "#AEB6DA",
+  "text-tertiary": "#949DC8",
+  "text-disabled": "#727BA8",
+  amber: "#F5C542",
+  "amber-dim": "#6E5310",
+  cyan: "#6B9BFF",
+  "cyan-dim": "#2A4596",
+  "on-cyan": "#07102E",
+  success: "#5EE3A1",
+  warning: "#FF914F",
+  danger: "#FF6F7D",
+  changed: "#E08BFF",
+  focus: "#6B9BFF",
+  selection: "#6B9BFF33",
+  "grid-line": "#E8ECFF09",
+  crop: "#4C5892",
+  "syntax-keyword": "#7FD4FF",
+  "syntax-register": "#FF8FC8",
+  "syntax-number": "#C3A6FF",
+  "syntax-string": "#C3A6FF",
+  "syntax-comment": "#949DC8",
+  "syntax-label": "#6FE3B0",
+};
+
 // Warm charcoal: the running program glows orange, your controls are teal.
 const ember: ThemeTokens = {
   "bg-base": "#14100D",
@@ -229,6 +264,41 @@ const forest: ThemeTokens = {
   "syntax-label": "#B4E36A",
 };
 
+// Dark plum: pink for the machine, lilac for you.
+const dusk: ThemeTokens = {
+  "bg-base": "#1A1124",
+  "bg-sunken": "#1E142A",
+  "bg-raised": "#251A32",
+  "bg-panel": "#2B1F3A",
+  "bg-elevated": "#352845",
+  border: "#3B2D4C",
+  "border-strong": "#554468",
+  "border-control": "#8A7A9F",
+  "text-primary": "#F4ECFA",
+  "text-secondary": "#C8B8D8",
+  "text-tertiary": "#AE9DC0",
+  "text-disabled": "#86759A",
+  amber: "#F976C4",
+  "amber-dim": "#7A2A58",
+  cyan: "#B3ABFD",
+  "cyan-dim": "#4A3F99",
+  "on-cyan": "#1A0F3A",
+  success: "#6FDF90",
+  warning: "#F4A75A",
+  danger: "#FB7367",
+  changed: "#E6DC7D",
+  focus: "#B3ABFD",
+  selection: "#B3ABFD2E",
+  "grid-line": "#F4ECFA09",
+  crop: "#66527C",
+  "syntax-keyword": "#9CC0FF",
+  "syntax-register": "#7FE0D2",
+  "syntax-number": "#D2B8FF",
+  "syntax-string": "#D2B8FF",
+  "syntax-comment": "#AE9DC0",
+  "syntax-label": "#86E3B4",
+};
+
 // Warm cream and brown ink, dark gold for the machine, teal for you.
 const paper: ThemeTokens = {
   "bg-base": "#FBF7EE",
@@ -264,21 +334,95 @@ const paper: ThemeTokens = {
   "syntax-label": "#17613F",
 };
 
+// Pale blue-green and navy ink, burnt orange for the machine, blue for you.
+const glacier: ThemeTokens = {
+  "bg-base": "#F2F8F8",
+  "bg-sunken": "#EBF3F4",
+  "bg-raised": "#FAFDFD",
+  "bg-panel": "#FAFDFD",
+  "bg-elevated": "#DFEBED",
+  border: "#D3E2E5",
+  "border-strong": "#B5C9CE",
+  "border-control": "#6D838B",
+  "text-primary": "#0E1F33",
+  "text-secondary": "#3A4F66",
+  "text-tertiary": "#475A70",
+  "text-disabled": "#76879A",
+  amber: "#9A4200",
+  "amber-dim": "#F1CBAA",
+  cyan: "#1256B0",
+  "cyan-dim": "#A9C8F0",
+  "on-cyan": "#FFFFFF",
+  success: "#17653B",
+  warning: "#6D5D00",
+  danger: "#AC1D44",
+  changed: "#7F3399",
+  focus: "#1256B0",
+  selection: "#1256B026",
+  "grid-line": "#0E1F330A",
+  crop: "#A9C0C6",
+  "syntax-keyword": "#1D4FD0",
+  "syntax-register": "#A61E6E",
+  "syntax-number": "#6B3FC4",
+  "syntax-string": "#6B3FC4",
+  "syntax-comment": "#475A70",
+  "syntax-label": "#0B6450",
+};
+
+// Soft pink and berry ink, teal for the machine, berry for you.
+const rose: ThemeTokens = {
+  "bg-base": "#FCF3F4",
+  "bg-sunken": "#F8EDEF",
+  "bg-raised": "#FFFAFA",
+  "bg-panel": "#FFFAFA",
+  "bg-elevated": "#F1E2E6",
+  border: "#EAD6DA",
+  "border-strong": "#D6BCC2",
+  "border-control": "#94737F",
+  "text-primary": "#3A1024",
+  "text-secondary": "#6B3A50",
+  "text-tertiary": "#7A4A60",
+  "text-disabled": "#9E7787",
+  amber: "#00666E",
+  "amber-dim": "#B3DBD8",
+  cyan: "#9A2270",
+  "cyan-dim": "#F0B9D6",
+  "on-cyan": "#FFFFFF",
+  success: "#3A5518",
+  warning: "#7A4906",
+  danger: "#A9121E",
+  changed: "#3A2596",
+  focus: "#9A2270",
+  selection: "#9A227024",
+  "grid-line": "#3A10240A",
+  crop: "#D6BCC2",
+  "syntax-keyword": "#3148B8",
+  "syntax-register": "#9A2270",
+  "syntax-number": "#633AA6",
+  "syntax-string": "#633AA6",
+  "syntax-comment": "#7A4A60",
+  "syntax-label": "#17604A",
+};
+
 export const THEME_TOKENS: Record<ThemeId, ThemeTokens> = {
   dark,
   light,
   "high-contrast": highContrast,
+  midnight,
   ember,
   forest,
+  dusk,
   paper,
+  glacier,
+  rose,
 };
 
 type AnsiHue = "red" | "green" | "yellow" | "blue" | "magenta" | "cyan";
 
 /**
  * Which token each ANSI hue borrows in the terminal. A program that prints
- * yellow expects yellow, so a theme whose machine colour is orange takes its
- * yellow from another token of that hue.
+ * yellow expects yellow, so a theme whose machine colour is orange, pink or
+ * teal takes its yellow from another token of that hue.
  */
 const ANSI_DEFAULT: Record<AnsiHue, keyof ThemeTokens> = {
   red: "danger",
@@ -293,9 +437,13 @@ export const ANSI_SOURCES: Record<ThemeId, Record<AnsiHue, keyof ThemeTokens>> =
   dark: ANSI_DEFAULT,
   light: ANSI_DEFAULT,
   "high-contrast": ANSI_DEFAULT,
+  midnight: { ...ANSI_DEFAULT, blue: "cyan", magenta: "changed", cyan: "syntax-keyword" },
   ember: { ...ANSI_DEFAULT, yellow: "warning", blue: "syntax-number", magenta: "changed" },
   forest: { ...ANSI_DEFAULT, magenta: "changed" },
+  dusk: { ...ANSI_DEFAULT, yellow: "changed", magenta: "amber", cyan: "syntax-register" },
   paper: { ...ANSI_DEFAULT, magenta: "changed" },
+  glacier: { ...ANSI_DEFAULT, yellow: "warning", magenta: "changed", cyan: "syntax-label" },
+  rose: { ...ANSI_DEFAULT, yellow: "warning", magenta: "cyan", cyan: "amber" },
 };
 
 /** Colour tokens every theme shares, written once on :root. */

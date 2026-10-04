@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
 import { loadLessonIndex } from "@/lib/content/lessons";
+import { courseMnemonics } from "@/lib/content/course-instructions";
 import { ReferenceView } from "@/components/reference/ReferenceView";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
@@ -14,14 +15,15 @@ export const metadata: Metadata = pageMetadata({
 });
 
 // Server page: it owns the route metadata and statically generates. The
-// build-time instruction set and the lesson titles the pitfall cards link to
-// are handed to the client view as plain data, and a wider measure than the
+// build-time instruction set, the ones the course's programs use, and the
+// lesson titles the pitfall cards link to are handed to the client view as plain data, and a wider measure than the
 // article routes makes room for the two-pane index; the guide and catalog
 // keep their own inner measure.
 export default function ReferencePage() {
   const lessonTitles = Object.fromEntries(
     loadLessonIndex().map((lesson) => [lesson.slug, lesson.title]),
   );
+  const course = courseMnemonics(REFERENCE_INSTRUCTIONS.map((i) => i.mnemonic));
   return (
     <section className="mx-auto w-full max-w-screen-xl px-6 py-10 sm:py-14">
       <DocRule section="reference" context="cpsc 355 study aid" className="mb-8" />
@@ -33,7 +35,11 @@ export default function ReferencePage() {
         A searchable map of the supported instructions and the calling convention.
       </p>
       <div className="mt-10">
-        <ReferenceView instructions={REFERENCE_INSTRUCTIONS} lessonTitles={lessonTitles} />
+        <ReferenceView
+          instructions={REFERENCE_INSTRUCTIONS}
+          course={course}
+          lessonTitles={lessonTitles}
+        />
       </div>
     </section>
   );

@@ -9,7 +9,7 @@ import path from "node:path";
 // opening tag, so a renamed or removed field fails here instead of passing
 // unchecked.
 const CODE_INPUTS = [
-  { what: "the reference filter", file: "components/reference/InstructionReference.tsx", marker: 'placeholder="filter mnemonics"' },
+  { what: "the reference filter", file: "components/reference/InstructionReference.tsx", marker: 'placeholder="ldr, multiply, x * y"' },
   { what: "the watch box", file: "components/panels/WatchPanel.tsx", marker: 'aria-label="watch expression"' },
   { what: "the memory address box", file: "components/panels/MemoryPanel.tsx", marker: 'aria-label="memory base address"' },
   { what: "a memory watch's label", file: "components/panels/MemoryWatches.tsx", marker: 'aria-label="watch label"' },

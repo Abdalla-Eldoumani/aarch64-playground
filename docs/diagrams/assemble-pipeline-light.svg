@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="776" viewBox="0 0 800 776" role="img" aria-labelledby="title" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">
+<title id="title">Assemble pipeline: the editor's source goes through m4, the lexer, the parser and the linker in frontend/, or through the one-pass assembler for bare-metal source, and the loader writes the result into memory; error lines and the line map go back to the editor</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#565E68"/></marker>
+</defs>
+<rect width="800" height="776" fill="#FCFCFD"/>
+
+<rect x="236" y="216" width="304" height="408" rx="4" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="524" y="240" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-weight="600" fill="#565E68">frontend/</text>
+
+<rect x="260" y="24" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="388" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="#14161A">Editor</text>
+<text x="388" y="68" text-anchor="middle" fill="#565E68">your .asm files</text>
+
+<rect x="260" y="128" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="388" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">detect_hosted_mode</text>
+<text x="388" y="172" text-anchor="middle" fill="#565E68">directives, m4 or libc calls?</text>
+
+<rect x="260" y="256" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="388" y="280" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">m4.rs</text>
+<text x="388" y="300" text-anchor="middle" fill="#565E68">expands define( macros</text>
+
+<rect x="260" y="352" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="388" y="376" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">lexer.rs</text>
+<text x="388" y="396" text-anchor="middle" fill="#565E68">splits lines into tokens</text>
+
+<rect x="260" y="448" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="388" y="472" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">parser.rs</text>
+<text x="388" y="492" text-anchor="middle" fill="#565E68">one statement per line</text>
+
+<rect x="260" y="544" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="388" y="568" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">pipeline.rs</text>
+<text x="388" y="588" text-anchor="middle" fill="#565E68">labels, pool, libc jumps</text>
+
+<rect x="260" y="664" width="256" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="388" y="688" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">cpu/loader.rs</text>
+<text x="388" y="708" text-anchor="middle" fill="#565E68">writes sections, sets pc, lr</text>
+
+<rect x="600" y="544" width="176" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="688" y="568" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">assembler.rs</text>
+<text x="688" y="588" text-anchor="middle" fill="#565E68">encodes one line</text>
+
+<path d="M388 80V128" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="396" y="108" fill="#565E68">one source string</text>
+
+<path d="M388 184V256" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="380" y="205" text-anchor="end" fill="#565E68">yes</text>
+
+<path d="M388 312V352" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="396" y="336" fill="#565E68">expanded text</text>
+
+<path d="M388 408V448" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="396" y="432" fill="#565E68">tokens</text>
+
+<path d="M388 504V544" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="396" y="528" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">Program</text>
+
+<path d="M388 600V664" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="396" y="650" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">LinkedImage</text>
+
+<path d="M516 156H688V544" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="602" y="148" text-anchor="middle" fill="#565E68">no: bare metal</text>
+
+<path d="M516 572H600" fill="none" stroke="#565E68" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="570" y="564" text-anchor="middle" fill="#565E68">a line</text>
+<text x="570" y="591" text-anchor="middle" fill="#565E68">its word</text>
+
+<path d="M688 600V692H516" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="600" y="684" text-anchor="middle" fill="#565E68">instruction words</text>
+
+<path d="M236 420H188V52H260" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="180" y="230" text-anchor="end" fill="#565E68">error line,</text>
+<text x="180" y="248" text-anchor="end" fill="#565E68">line map</text>
+
+<rect x="32" y="746" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="56" y="757" fill="#565E68">you and your code</text>
+<rect x="200" y="746" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="224" y="757" fill="#565E68">Rust interpreter</text>
+</svg>

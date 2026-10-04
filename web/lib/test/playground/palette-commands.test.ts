@@ -184,7 +184,7 @@ describe("the descriptions that carry the reason", () => {
     const actions = buildPaletteCommands(makeDeps());
     // Every theme in the lineup, not just two.
     expect(row(actions, "toggle-theme").description).toBe(
-      "cycle through the six colour themes",
+      "cycle through the ten colour themes",
     );
     // The row opens the dialog; it copies nothing by itself.
     expect(row(actions, "share").description).toBe(

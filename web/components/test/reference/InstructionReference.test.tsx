@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { REFERENCE_INSTRUCTIONS, type ReferenceInstruction } from "@/lib/content/reference-data";
 
 // Echo the markdown the component feeds the sanitizing renderer, so the usage
@@ -217,7 +217,7 @@ describe("InstructionReference", () => {
   it("advertises the / shortcut on the filter itself, not in the placeholder", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const input = screen.getByLabelText(/filter/i) as HTMLInputElement;
-    expect(input.placeholder).toBe("filter mnemonics");
+    expect(input.placeholder).toBe("ldr, multiply, x * y");
     expect(input.getAttribute("aria-keyshortcuts")).toBe("/");
   });
 
@@ -234,8 +234,8 @@ describe("InstructionReference", () => {
   it("opens the first mnemonic that contains the filter when Enter is pressed", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const input = screen.getByLabelText(/filter/i);
-    // "d" lists mov first, for its category "Data processing", then add,
-    // adcs, ldr and addv, whose mnemonics hold the letter.
+    // "d" matches mov only through its category "Data processing", so the
+    // rows whose mnemonics hold the letter (add, ldr, adcs, addv) rank first.
     fireEvent.change(input, { target: { value: "d" } });
     fireEvent.keyDown(input, { key: "Enter" });
     expect(screen.getByLabelText("instruction detail").textContent).toContain("add xd, xn, xm");
@@ -505,5 +505,107 @@ describe("InstructionReference", () => {
       screen.getByRole("navigation", { name: /instruction index/i }),
     ).toBeTruthy();
     expect(screen.getByRole("button", { name: "mov" })).toBeTruthy();
+  });
+});
+
+// The course uses five of the seven fixture rows; adcs and addv stay out.
+const COURSE = ["mov", "add", "cmp", "ldr", "b.cond"];
+
+describe("InstructionReference finder", () => {
+  function filterBox(): HTMLInputElement {
+    return screen.getByLabelText(/^filter$/i) as HTMLInputElement;
+  }
+
+  it("lists the course's instructions first, with one control to show all", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    expect(screen.getByRole("button", { name: "mov" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "addv" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "5 used in the course, show all 7" }));
+    expect(screen.getByRole("button", { name: "addv" })).toBeTruthy();
+    expect(window.location.search).toBe("?show=all");
+    fireEvent.click(
+      screen.getByRole("button", { name: "all 7 shown, show the 5 used in the course" }),
+    );
+    expect(screen.queryByRole("button", { name: "addv" })).toBeNull();
+  });
+
+  it("counts each group for the current search and filters on one click", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    const groups = screen.getByRole("group", { name: "instruction groups" });
+    expect(within(groups).getByRole("button", { name: "arithmetic 2" })).toBeTruthy();
+    expect(within(groups).getByRole("button", { name: "compare and branch 2" })).toBeTruthy();
+    fireEvent.change(filterBox(), { target: { value: "add" } });
+    expect(within(groups).getByRole("button", { name: "arithmetic 1" })).toBeTruthy();
+    expect(within(groups).getByRole("button", { name: "compare and branch 0" })).toBeTruthy();
+    fireEvent.change(filterBox(), { target: { value: "" } });
+    const compare = within(groups).getByRole("button", { name: "compare and branch 2" });
+    fireEvent.click(compare);
+    expect(compare.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "cmp" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "mov" })).toBeNull();
+    fireEvent.click(compare);
+    expect(compare.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "mov" })).toBeTruthy();
+  });
+
+  it("keeps the search in the URL without a history entry per letter", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    const before = window.history.length;
+    fireEvent.change(filterBox(), { target: { value: "l" } });
+    fireEvent.change(filterBox(), { target: { value: "ld" } });
+    expect(window.location.search).toBe("?q=ld");
+    expect(window.history.length).toBe(before);
+    fireEvent.click(screen.getByRole("button", { name: /^load and store/ }));
+    expect(window.location.search).toBe("?q=ld&group=memory");
+    expect(window.history.length).toBe(before + 1);
+  });
+
+  it("opens the list a shared link describes, and follows back and forward", () => {
+    window.history.replaceState(null, "", "?q=adc&show=all");
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    expect(filterBox().value).toBe("adc");
+    expect(screen.getByRole("button", { name: "adcs" })).toBeTruthy();
+    act(() => {
+      window.history.replaceState(null, "", "?q=cmp");
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    expect(filterBox().value).toBe("cmp");
+    expect(screen.queryByRole("button", { name: "adcs" })).toBeNull();
+  });
+
+  it("offers the closest instructions when nothing matches", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    fireEvent.change(filterBox(), { target: { value: "zzz" } });
+    const nav = screen.getByRole("navigation", { name: /instruction index/i });
+    expect(nav.textContent).toContain("Nothing in this list matches \u201czzz\u201d");
+    expect(within(nav).getAllByRole("button").length).toBeGreaterThan(0);
+    expect(screen.getByText(/^no match, \d+ closest shown$/).getAttribute("aria-live")).toBe(
+      "polite",
+    );
+  });
+
+  it("offers a row from outside the course when only that row matches", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    fireEvent.change(filterBox(), { target: { value: "addv" } });
+    expect(screen.getByRole("button", { name: "addv" })).toBeTruthy();
+    expect(screen.getByText("none here, 1 from the whole reference")).toBeTruthy();
+  });
+
+  it("always shows the result count", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    expect(screen.getByText("5 instructions")).toBeTruthy();
+    fireEvent.change(filterBox(), { target: { value: "ldr" } });
+    expect(screen.getByText("1 match")).toBeTruthy();
+  });
+
+  it("returns focus to the box when the clear button removes itself", () => {
+    render(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+    fireEvent.change(filterBox(), { target: { value: "ld" } });
+    const clear = screen.getByRole("button", { name: "clear" });
+    clear.focus();
+    fireEvent.click(clear);
+    expect(screen.queryByRole("button", { name: "clear" })).toBeNull();
+    expect(document.activeElement).toBe(filterBox());
+    expect(filterBox().value).toBe("");
   });
 });

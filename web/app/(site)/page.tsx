@@ -7,11 +7,13 @@ import { DocRule } from "@/components/ui/DocRule";
 import { HOME_DESCRIPTION, HOME_TITLE } from "@/lib/content/site";
 import { jsonLdGraph, pageMetadata, toJsonLd, websiteNode } from "@/lib/content/seo";
 
-export const metadata: Metadata = pageMetadata({
-  title: HOME_TITLE,
-  description: HOME_DESCRIPTION,
-  path: "/",
-});
+export const metadata: Metadata = {
+  ...pageMetadata({ title: HOME_TITLE, description: HOME_DESCRIPTION, path: "/" }),
+  // Search Console URL-prefix verification, which reads only the home page;
+  // the domain property is verified via DNS separately, so this tag is a
+  // second anchor, not the primary.
+  verification: { google: "RJmIR859S00gRMvoEXI-3lhiav4ygzIp6oUW6lP54j4" },
+};
 
 // Each section sets its own width and spacing, so the page only orders them.
 // It ends at the catalog because the footer already carries the project facts.

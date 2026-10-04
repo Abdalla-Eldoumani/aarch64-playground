@@ -1,4 +1,4 @@
-// Pins the theme chooser: one radiogroup of six swatches (keys, names, the
+// Pins the theme chooser: one radiogroup of ten swatches (keys, names, the
 // server markup and hydration), and the site bar's button that opens it
 // sideways and closes on Escape, a press outside, or tabbing away.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,7 +18,7 @@ beforeEach(() => {
   document.documentElement.removeAttribute("data-theme");
 });
 
-const NAMES = ["dark", "light", "high contrast", "ember", "forest", "paper"];
+const NAMES = ["dark", "light", "high contrast", "midnight", "ember", "forest", "dusk", "paper", "glacier", "rose"];
 
 function checkedName(): string | null {
   return screen.getAllByRole("radio").find((r) => r.getAttribute("aria-checked") === "true")?.getAttribute("aria-label") ?? null;
@@ -41,7 +41,7 @@ describe("ThemeControl in the phone menus", () => {
   it("checks no swatch in the server HTML, since the server cannot know the theme", () => {
     const html = renderToStaticMarkup(<ThemeControl size="comfortable" />);
     expect(html).not.toContain('aria-checked="true"');
-    expect(html.match(/aria-checked="false"/g)).toHaveLength(6);
+    expect(html.match(/aria-checked="false"/g)).toHaveLength(10);
     // The sliding frame says which one is current, so it waits for hydration.
     expect(html).not.toContain("theme-marker");
   });
@@ -65,12 +65,16 @@ describe("ThemeControl in the phone menus", () => {
     container.remove();
   });
 
-  it("applies a clicked swatch and slides the frame to it", () => {
+  it("applies a clicked swatch and slides the frame to it, across its two rows of five", () => {
     const { container } = render(<ThemeControl size="comfortable" />);
+    const frame = () => (container.querySelector(".theme-marker") as HTMLElement).style.transform;
+    expect((container.querySelector('[role="radiogroup"]') as HTMLElement).style.gridTemplateColumns).toBe("repeat(5, auto)");
     fireEvent.click(screen.getByRole("radio", { name: "light" }));
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");
     expect(checkedName()).toBe("light");
-    expect((container.querySelector(".theme-marker") as HTMLElement).style.transform).toBe("translateX(100%)");
+    expect(frame()).toBe("translate(100%, 0%)");
+    fireEvent.click(screen.getByRole("radio", { name: "dusk" }));
+    expect(frame()).toBe("translate(100%, 100%)");
   });
 
   it("moves and chooses with the arrows, wrapping, and jumps with Home and End", () => {
@@ -79,15 +83,20 @@ describe("ThemeControl in the phone menus", () => {
     const press = (key: string) => fireEvent.keyDown(document.activeElement ?? group, { key });
     screen.getByRole("radio", { name: "dark" }).focus();
     press("ArrowLeft");
-    expect(checkedName()).toBe("paper");
-    expect(document.activeElement?.getAttribute("aria-label")).toBe("paper");
+    expect(checkedName()).toBe("rose");
+    expect(document.activeElement?.getAttribute("aria-label")).toBe("rose");
     press("ArrowRight");
     press("ArrowDown");
     expect(checkedName()).toBe("light");
     press("ArrowUp");
     expect(checkedName()).toBe("dark");
     press("End");
-    expect(checkedName()).toBe("paper");
+    expect(checkedName()).toBe("rose");
+    // The end of the first row steps on to the start of the second.
+    fireEvent.click(screen.getByRole("radio", { name: "ember" }));
+    screen.getByRole("radio", { name: "ember" }).focus();
+    press("ArrowRight");
+    expect(checkedName()).toBe("forest");
     press("Home");
     expect(checkedName()).toBe("dark");
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
@@ -129,6 +138,8 @@ describe("ThemeControl in the site bar", () => {
     fireEvent.click(button);
     expect(button.getAttribute("aria-expanded")).toBe("true");
     expect(strip.hasAttribute("inert")).toBe(false);
+    // Ten fit in one row beside the button at every width the bar shows it.
+    expect(strip.style.gridTemplateColumns).toBe("repeat(10, auto)");
     expect(document.activeElement?.getAttribute("aria-label")).toBe("dark");
     fireEvent.keyDown(document.activeElement!, { key: "ArrowRight" });
     expect(document.documentElement.getAttribute("data-theme")).toBe("light");

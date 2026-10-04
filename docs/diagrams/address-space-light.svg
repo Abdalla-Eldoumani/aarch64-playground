@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="712" viewBox="0 0 800 712" role="img" aria-labelledby="title" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">
+<title id="title">Address space, highest address at the top: host stubs at 0xFFFF_0000, an 8 MiB stack below 0x8000_0000, a 16 MiB heap at 0x0090_0000, libc globals at 0x0080_1000, argv at 0x0080_0000, then .bss, .data, .rodata and .text in 1 MiB windows down to 0x0040_0000, and the null page at 0</title>
+<rect width="800" height="712" fill="#FCFCFD"/>
+
+<rect x="192" y="24" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="208" y="49" font-size="14" font-weight="600" fill="#14161A">host stubs</text>
+<text x="456" y="49" text-anchor="end" fill="#565E68">4 KiB</text>
+<text x="496" y="49" fill="#565E68">a <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">bl printf</tspan> lands here, Rust answers</text>
+<text x="176" y="28" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0xFFFF_1000</text>
+<text x="176" y="68" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0xFFFF_0000</text>
+
+<text x="332" y="93" text-anchor="middle" fill="#565E68">unused</text>
+
+<rect x="192" y="112" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="208" y="137" font-size="14" font-weight="600" fill="#14161A">stack</text>
+<text x="456" y="137" text-anchor="end" fill="#565E68">8 MiB</text>
+<text x="496" y="137" fill="#565E68"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">sp</tspan> starts at the top, grows down</text>
+<text x="176" y="116" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x8000_0000</text>
+<text x="176" y="156" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x7F80_0000</text>
+
+<text x="332" y="181" text-anchor="middle" fill="#565E68">unused</text>
+
+<rect x="192" y="200" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="208" y="225" font-size="14" font-weight="600" fill="#14161A">heap</text>
+<text x="456" y="225" text-anchor="end" fill="#565E68">16 MiB</text>
+<text x="496" y="225" fill="#565E68"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">malloc</tspan>; its records stay in Rust</text>
+<text x="176" y="204" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0190_0000</text>
+<text x="176" y="244" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0090_0000</text>
+
+<text x="332" y="269" text-anchor="middle" fill="#565E68">unused</text>
+
+<rect x="192" y="288" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="208" y="313" font-size="14" font-weight="600" fill="#14161A">libc globals</text>
+<text x="456" y="313" text-anchor="end" fill="#565E68">8 KiB</text>
+<text x="496" y="313" fill="#565E68"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">stdin</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">stdout</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">stderr</tspan>, ctype tables</text>
+<text x="176" y="292" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0080_3000</text>
+<text x="176" y="336" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0080_1000</text>
+
+<rect x="192" y="336" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="208" y="361" font-size="14" font-weight="600" fill="#14161A">argv</text>
+<text x="456" y="361" text-anchor="end" fill="#565E68">4 KiB</text>
+<text x="496" y="361" fill="#565E68">argc in <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">w0</tspan>, the argv address in <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">x1</tspan></text>
+<text x="176" y="384" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0080_0000</text>
+
+<rect x="192" y="384" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="208" y="409" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">.bss</text>
+<text x="456" y="409" text-anchor="end" fill="#565E68">1 MiB</text>
+<text x="496" y="409" fill="#565E68">starts as zeros</text>
+<text x="176" y="432" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0070_0000</text>
+
+<rect x="192" y="432" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="208" y="457" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">.data</text>
+<text x="456" y="457" text-anchor="end" fill="#565E68">1 MiB</text>
+<text x="176" y="480" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0060_0000</text>
+
+<rect x="192" y="480" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="208" y="505" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">.rodata</text>
+<text x="456" y="505" text-anchor="end" fill="#565E68">1 MiB</text>
+<text x="176" y="528" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0050_0000</text>
+
+<rect x="192" y="528" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="208" y="553" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">.text</text>
+<text x="456" y="553" text-anchor="end" fill="#565E68">1 MiB</text>
+<text x="496" y="553" fill="#565E68">your code, then libc jumps and pool</text>
+<text x="176" y="572" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0040_0000</text>
+
+<text x="332" y="597" text-anchor="middle" fill="#565E68">unused</text>
+
+<rect x="192" y="616" width="280" height="40" rx="4" fill="#FFFFFF" stroke="#7A818C" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="208" y="641" font-size="14" font-weight="600" fill="#14161A">null page</text>
+<text x="456" y="641" text-anchor="end" fill="#565E68">4 KiB</text>
+<text x="496" y="641" fill="#565E68">null pointer: segmentation fault</text>
+<text x="176" y="620" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0000_1000</text>
+<text x="176" y="660" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#14161A">0x0000_0000</text>
+
+<rect x="32" y="682" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="56" y="693" fill="#565E68">you and your code</text>
+<rect x="200" y="682" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="224" y="693" fill="#565E68">Rust interpreter</text>
+<rect x="352" y="682" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#7A818C" stroke-width="2" stroke-dasharray="4 2"/>
+<text x="376" y="693" fill="#565E68">faults</text>
+<text x="768" y="693" text-anchor="end" fill="#565E68">not to scale</text>
+</svg>

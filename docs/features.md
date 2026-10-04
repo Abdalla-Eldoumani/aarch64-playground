@@ -22,10 +22,12 @@ repository root.
 | Exercise checker (runs the program on the visible and hidden cases; no stored answer) | `web/lib/content/exercise-checker.ts` |
 | Saved answers, solved marks, and the progress file | `web/lib/playground/exercise-answers.ts`, `solved-state.ts` |
 | Reference (`/reference`) | `web/app/(site)/reference/`, `web/components/reference/`, `web/lib/content/reference-data.ts`, `pitfall-data.ts`, `pitfalls/` (one file of pitfall cards per group) |
+| Instruction finder on the reference: the course's instructions first, a search that matches the mnemonic, the description, and the C and forgives small typos, group buttons, the closest rows when nothing matches, and the search kept in the address (`?q=`, `group=`, `show=all`) | `web/components/reference/InstructionReference.tsx`, `web/lib/content/instruction-finder.ts` |
+| Which instructions the course uses, read at build time from the lessons, examples, exercise solutions, and pitfalls | `web/lib/content/course-instructions.ts` |
 | The C equivalent of each instruction | `web/lib/asm/c-equivalents.ts` |
 | Teaching diagrams (flag panel, condition codes, encodings, frame walk, stack alignment, register files) | `web/components/diagrams/` |
 | Flag math behind the diagrams | `web/lib/emulator/flag-math.ts` |
-| Search on the lesson, practice, and reference pages (every word typed must start a word in the text) | `web/lib/content/search-words.ts` |
+| Search on the lesson and practice pages and the pitfalls tab, and the word match under the instruction finder (every word typed must start a word in the text) | `web/lib/content/search-words.ts` |
 | Code listing with a copy button, and the "open in playground" button | `web/components/ui/CodeBlock.tsx`, `OpenInPlayground.tsx` |
 | Page titles, snippets, structured data, and the sitemap | `web/lib/content/seo.ts`, `web/app/sitemap.ts`, `web/app/robots.ts` |
 | Share card image | `web/public/og.png`, `SHARE_CARD_IMAGE` in `web/lib/content/site.ts` |
@@ -91,7 +93,7 @@ repository root.
 | --- | --- |
 | Resizable panels on a wide screen | `web/components/playground/ResizableLayout.tsx`, `web/lib/hooks/use-layout-persistence.ts` |
 | Phone layout, the menu sheet, and the run status line | `web/components/playground/PhoneLayout.tsx`, `MoreSheet.tsx`, `RunStatus.tsx` |
-| Six themes (dark, light, high contrast, ember, forest, paper) and the theme picker | `web/lib/theme/themes.ts`, `web/lib/theme/tokens.ts`, `web/lib/hooks/use-theme.ts`, `web/components/chrome/ThemeControl.tsx` |
+| Ten themes (dark, light, high contrast, midnight, ember, forest, dusk, paper, glacier, rose) and the theme picker | `web/lib/theme/themes.ts`, `web/lib/theme/tokens.ts`, `web/lib/hooks/use-theme.ts`, `web/components/chrome/ThemeControl.tsx` |
 | Zoom a panel (`Ctrl+Wheel`) | `web/lib/hooks/use-zoom.ts`, `web/components/ui/ZoomControl.tsx` |
 
 ## Offline and install

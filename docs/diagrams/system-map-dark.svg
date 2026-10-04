@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="576" viewBox="0 0 800 576" role="img" aria-labelledby="title" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">
+<title id="title">System map: the page's useEmulator hub takes the source from the editor and the args from the args box, sends requests through WorkerClient to the emulator worker, which calls the Rust emulator, and each reply carries a StateSnapshot back to the panels</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#A5ACB6"/></marker>
+</defs>
+<rect width="800" height="576" fill="#0B0C10"/>
+
+<rect x="16" y="16" width="768" height="344" rx="4" fill="none" stroke="#3A414C" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="32" y="40" font-weight="600" fill="#A5ACB6">Main thread (the page)</text>
+<rect x="16" y="400" width="768" height="120" rx="4" fill="none" stroke="#3A414C" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="32" y="424" font-weight="600" fill="#A5ACB6">Web Worker</text>
+
+<rect x="316" y="56" width="168" height="64" rx="4" fill="#14171D" stroke="#3EC5E8" stroke-width="2"/>
+<text x="400" y="83" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Args box</text>
+<text x="400" y="103" text-anchor="middle" fill="#A5ACB6">program arguments</text>
+
+<rect x="32" y="168" width="168" height="64" rx="4" fill="#14171D" stroke="#3EC5E8" stroke-width="2"/>
+<text x="116" y="195" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Editor</text>
+<text x="116" y="215" text-anchor="middle" fill="#A5ACB6">your .asm files</text>
+
+<rect x="316" y="168" width="168" height="64" rx="4" fill="#14171D" stroke="#6E7582" stroke-width="2"/>
+<text x="400" y="195" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#EDEEF1">useEmulator()</text>
+<text x="400" y="215" text-anchor="middle" fill="#A5ACB6">one per playground</text>
+
+<rect x="600" y="168" width="168" height="64" rx="4" fill="#14171D" stroke="#6E7582" stroke-width="2"/>
+<text x="684" y="195" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Panels</text>
+<text x="684" y="215" text-anchor="middle" fill="#A5ACB6">registers, memory</text>
+
+<rect x="32" y="280" width="168" height="64" rx="4" fill="#14171D" stroke="#6E7582" stroke-width="2" stroke-dasharray="6 4"/>
+<text x="116" y="307" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#EDEEF1">MainThreadBackend</text>
+<text x="116" y="327" text-anchor="middle" fill="#A5ACB6">wasm in the page</text>
+
+<rect x="316" y="280" width="168" height="64" rx="4" fill="#14171D" stroke="#6E7582" stroke-width="2"/>
+<text x="400" y="307" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#EDEEF1">WorkerClient</text>
+<text x="400" y="327" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">worker/client.ts</text>
+
+<rect x="316" y="440" width="168" height="64" rx="4" fill="#14171D" stroke="#B49BFF" stroke-width="2"/>
+<text x="400" y="467" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Worker</text>
+<text x="400" y="487" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">emulator.worker.ts</text>
+
+<rect x="616" y="440" width="152" height="64" rx="4" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="692" y="467" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Emulator</text>
+<text x="692" y="487" text-anchor="middle" fill="#A5ACB6">Rust, as wasm</text>
+
+<path d="M400 120V168" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="408" y="149" fill="#A5ACB6">args</text>
+
+<path d="M200 200H316" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="258" y="192" text-anchor="middle" fill="#A5ACB6">source</text>
+
+<path d="M484 200H600" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="542" y="192" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">StateSnapshot</text>
+
+<path d="M432 232V280" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="440" y="261" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">assemble, step, runUntilBreak</text>
+
+<path d="M344 232V256H116V280" fill="none" stroke="#A5ACB6" stroke-width="1.5" stroke-dasharray="6 4" marker-end="url(#arrow)"/>
+<text x="230" y="249" text-anchor="middle" fill="#A5ACB6">or, with no Worker</text>
+
+<path d="M372 344V440" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="364" y="385" text-anchor="end" fill="#A5ACB6">Request</text>
+
+<path d="M428 440V344" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="436" y="385" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">StateSnapshot</text>
+
+<path d="M484 472H616" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="550" y="446" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">step,</text>
+<text x="550" y="464" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">run_until_break</text>
+
+<rect x="32" y="542" width="16" height="12" rx="2" fill="#14171D" stroke="#3EC5E8" stroke-width="2"/>
+<text x="56" y="553" fill="#A5ACB6">you and your code</text>
+<rect x="200" y="542" width="16" height="12" rx="2" fill="#14171D" stroke="#6E7582" stroke-width="2"/>
+<text x="224" y="553" fill="#A5ACB6">page code</text>
+<rect x="320" y="542" width="16" height="12" rx="2" fill="#14171D" stroke="#B49BFF" stroke-width="2"/>
+<text x="344" y="553" fill="#A5ACB6">worker</text>
+<rect x="424" y="542" width="16" height="12" rx="2" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="448" y="553" fill="#A5ACB6">Rust interpreter</text>
+</svg>

@@ -28,6 +28,7 @@ Two docs are checked by tests, so an edit to them can fail the build:
   exercise validators and the course-style check, and the lesson's program
   must print the output the example says it does.
 
-`diagrams/` holds the four SVG diagrams in `ARCHITECTURE.md`. Their addresses
-and limits come from constants in `emulator/src`, so a change to one of those
-needs the same change in the diagram.
+`diagrams/` holds the SVG diagrams in `ARCHITECTURE.md`, each in a light and a
+dark version. Their addresses and limits come from constants in
+`emulator/src`, so a change to one of those needs the same change in both
+versions of the diagram.

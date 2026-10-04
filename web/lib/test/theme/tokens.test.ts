@@ -28,16 +28,20 @@ describe("the token source", () => {
       ':root, [data-theme="dark"]',
       '[data-theme="light"]',
       '[data-theme="high-contrast"]',
+      '[data-theme="midnight"]',
       '[data-theme="ember"]',
       '[data-theme="forest"]',
+      '[data-theme="dusk"]',
       '[data-theme="paper"]',
+      '[data-theme="glacier"]',
+      '[data-theme="rose"]',
     ]);
     expect(blocks[":root"]).toEqual({
       "--shadow-overlay": SHARED_TOKENS["shadow-overlay"],
       "--shadow-frame": SHARED_TOKENS["shadow-frame"],
     });
     expect(blocks['[data-theme="ember"]']["--bg-base"]).toBe("#14100D");
-    expect(Object.keys(blocks['[data-theme="paper"]'])).toHaveLength(Object.keys(THEME_TOKENS.paper).length);
+    expect(Object.keys(blocks['[data-theme="rose"]'])).toHaveLength(Object.keys(THEME_TOKENS.rose).length);
   });
 
   it("reaches the stylesheet through the Tailwind config's base layer", () => {
