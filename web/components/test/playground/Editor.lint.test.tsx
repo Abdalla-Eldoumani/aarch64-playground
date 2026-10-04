@@ -189,14 +189,18 @@ describe("Editor theme", () => {
   it("registers one editor theme per site theme", async () => {
     Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
     render(<Editor {...base} />);
-    await waitFor(() => expect(fake.state.definedThemes).toHaveLength(6));
+    await waitFor(() => expect(fake.state.definedThemes).toHaveLength(10));
     expect(fake.state.definedThemes).toEqual([
       "arm64-dark",
       "arm64-light",
       "arm64-high-contrast",
+      "arm64-midnight",
       "arm64-ember",
       "arm64-forest",
+      "arm64-dusk",
       "arm64-paper",
+      "arm64-glacier",
+      "arm64-rose",
     ]);
   });
 
