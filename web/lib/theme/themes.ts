@@ -7,9 +7,13 @@ export const THEMES = [
   { id: "dark", name: "dark", kind: "dark", description: "near black, amber for the running program, sky blue for buttons and links" },
   { id: "light", name: "light", kind: "light", description: "white with black text, dark gold for the running program, blue for buttons and links" },
   { id: "high-contrast", name: "high contrast", kind: "dark", description: "pure black with white text, gold for the running program, light blue for buttons and links" },
+  { id: "midnight", name: "midnight", kind: "dark", description: "deep navy, gold for the running program, bright blue for buttons and links" },
   { id: "ember", name: "ember", kind: "dark", description: "warm charcoal, orange for the running program, teal for buttons and links" },
   { id: "forest", name: "forest", kind: "dark", description: "green-black, warm yellow for the running program, mint green for buttons and links" },
+  { id: "dusk", name: "dusk", kind: "dark", description: "dark plum, pink for the running program, lilac for buttons and links" },
   { id: "paper", name: "paper", kind: "light", description: "warm cream with brown text, dark gold for the running program, teal for buttons and links" },
+  { id: "glacier", name: "glacier", kind: "light", description: "pale blue-green with navy text, orange for the running program, blue for buttons and links" },
+  { id: "rose", name: "rose", kind: "light", description: "soft pink with deep berry text, teal for the running program, berry for buttons and links" },
 ] as const satisfies readonly {
   id: string;
   name: string;
