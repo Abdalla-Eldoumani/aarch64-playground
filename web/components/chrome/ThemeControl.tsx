@@ -43,17 +43,18 @@ function Swatch({ themeId }: { themeId?: string }) {
 const STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
 
 /**
- * The six themes as one radiogroup (WAI-ARIA radio pattern: one tab stop,
- * arrows move and choose, wrapping; Home and End jump to the ends). The frame
- * on the checked swatch is a shape, not only a colour, and slides to the new
- * one. The cells sit flush so the frame moves in whole cell widths at any
- * cell size, the 44px touch minimum included.
+ * The themes as one radiogroup (WAI-ARIA radio pattern: one tab stop, every
+ * arrow steps through the themes in order, wrapping, across rows too; Home
+ * and End jump to the ends). The frame on the checked swatch is a shape, not
+ * only a colour, and slides to the new one. The cells sit flush so the frame
+ * moves in whole cells at any cell size, the 44px touch minimum included.
  */
 function ThemeRadios({
   theme,
   setTheme,
   hydrated,
   cell,
+  columns = THEMES.length,
   className,
   id,
   open,
@@ -62,6 +63,8 @@ function ThemeRadios({
   setTheme: (next: Theme) => void;
   hydrated: boolean;
   cell: string;
+  /** Swatches per row; the phone menus split the themes over two rows. */
+  columns?: number;
   className: string;
   id?: string;
   /** Set only for the site bar's row, which opens and closes. */
@@ -96,7 +99,8 @@ function ThemeRadios({
       // while its fade finishes.
       inert={open === false}
       onKeyDown={onKeyDown}
-      className={`relative flex p-1 ${className}`}
+      style={{ gridTemplateColumns: `repeat(${columns}, auto)` }}
+      className={`relative grid p-1 ${className}`}
     >
       {THEMES.map(({ id: themeId, name }, index) => {
         const checked = hydrated && themeId === theme;
@@ -124,7 +128,7 @@ function ThemeRadios({
         <span
           aria-hidden="true"
           className={`theme-marker ${cell} pointer-events-none absolute left-1 top-1 border-2 border-[var(--cyan)]`}
-          style={{ transform: `translateX(${at * 100}%)` }}
+          style={{ transform: `translate(${(at % columns) * 100}%, ${Math.floor(at / columns) * 100}%)` }}
         />
       ) : null}
     </div>
@@ -133,7 +137,8 @@ function ThemeRadios({
 
 /**
  * Drives the shared useTheme hook, so there is no second theme store.
- * `comfortable` (the phone menus) shows the six 44px swatches in a row.
+ * `comfortable` (the phone menus) shows the 44px swatches in two rows, ten
+ * in one being wider than a phone.
  * `compact` (the site bar) is one button showing the page's theme that opens
  * the same row sideways, over the nav links, so nothing in the bar moves.
  * Choosing keeps the row open, so a reader can try several.
@@ -171,6 +176,7 @@ export function ThemeControl({
         setTheme={setTheme}
         hydrated={hydrated}
         cell="h-11 w-11"
+        columns={Math.ceil(THEMES.length / 2)}
         className={`w-fit border border-[var(--border)] ${className}`}
       />
     );
