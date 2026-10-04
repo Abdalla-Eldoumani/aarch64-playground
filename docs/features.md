@@ -91,7 +91,7 @@ repository root.
 | --- | --- |
 | Resizable panels on a wide screen | `web/components/playground/ResizableLayout.tsx`, `web/lib/hooks/use-layout-persistence.ts` |
 | Phone layout, the menu sheet, and the run status line | `web/components/playground/PhoneLayout.tsx`, `MoreSheet.tsx`, `RunStatus.tsx` |
-| Themes (dark, light, high contrast) | `web/lib/hooks/use-theme.ts`, `web/components/chrome/ThemeControl.tsx`, `web/app/globals.css` |
+| Six themes (dark, light, high contrast, ember, forest, paper) and the theme picker | `web/lib/theme/themes.ts`, `web/lib/theme/tokens.ts`, `web/lib/hooks/use-theme.ts`, `web/components/chrome/ThemeControl.tsx` |
 | Zoom a panel (`Ctrl+Wheel`) | `web/lib/hooks/use-zoom.ts`, `web/components/ui/ZoomControl.tsx` |
 
 ## Offline and install
