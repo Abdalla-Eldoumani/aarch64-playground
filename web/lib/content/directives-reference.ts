@@ -62,5 +62,9 @@ export const WATCH_FORMS: readonly WatchForm[] = [
   { form: "[fp, 16]", shows: "8 bytes of memory at `fp + 16`" },
   { form: "[fp, sum_s]", shows: "the same, with the offset named by a `sum_s = 16` line" },
   { form: "sum_s[1]", shows: "8 bytes at `fp + sum_s + 8`, the 8-byte slot after `sum_s`" },
+  {
+    form: "nums[2]",
+    shows: "element 2 of the `.data` label `nums`; its size comes from the `.byte`, `.hword`, `.word` or `.dword` line after the label, so a label without one is refused",
+  },
   { form: "*x21", shows: "8 bytes of memory at the address held in `x21`" },
 ];
