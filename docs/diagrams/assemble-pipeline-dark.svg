@@ -61,8 +61,9 @@
 <path d="M516 156H688V544" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
 <text x="602" y="148" text-anchor="middle" fill="#A5ACB6">no: bare metal</text>
 
-<path d="M516 572H600" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
-<text x="570" y="564" text-anchor="middle" fill="#A5ACB6">calls</text>
+<path d="M516 572H600" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-start="url(#arrow)" marker-end="url(#arrow)"/>
+<text x="570" y="564" text-anchor="middle" fill="#A5ACB6">a line</text>
+<text x="570" y="591" text-anchor="middle" fill="#A5ACB6">its word</text>
 
 <path d="M688 600V692H516" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
 <text x="600" y="684" text-anchor="middle" fill="#A5ACB6">instruction words</text>
