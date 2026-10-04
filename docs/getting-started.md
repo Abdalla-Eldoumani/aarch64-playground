@@ -107,7 +107,7 @@ and memory, and copies it or a link that reopens the program.
   `[fp, score1_s]` each time the program stops. A stack offset also takes an
   index: `score1_s[1]` reads the 8 bytes at `fp + score1_s + 8`. A `.data`
   label takes one too, when a `.byte`, `.hword`, `.word`, or `.dword` line
-  follows it: `nums[2]` reads the third element, 1, 2, 4, or 8 bytes wide to
+  (or another spelling of one of those sizes, such as `.quad`) follows it: `nums[2]` reads the third element, 1, 2, 4, or 8 bytes wide to
   match. A label with no such line, or with mixed sizes, is refused rather
   than guessed. Name registers directly (`w19`); an m4 alias such as
   `score1_r` is not understood there. **memwatch** pins address ranges you
