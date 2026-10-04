@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="736" viewBox="0 0 800 736" role="img" aria-labelledby="title" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">
+<title id="title">Run sequence: run asks the worker for up to 1,000,000 steps; the worker loops in 10,000-step chunks, yields between them, and sends a StateSnapshot at most every 50 ms; the final reply redraws the panels, and a run that stopped to wait for input starts again when you send a line</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#565E68"/></marker>
+</defs>
+<rect width="800" height="736" fill="#FCFCFD"/>
+
+<rect x="16" y="24" width="160" height="56" rx="4" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="96" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="#14161A">You</text>
+<text x="96" y="68" text-anchor="middle" fill="#565E68">at the controls</text>
+
+<rect x="208" y="24" width="176" height="56" rx="4" fill="#FFFFFF" stroke="#7A818C" stroke-width="2"/>
+<text x="296" y="48" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">use-emulator.ts</text>
+<text x="296" y="68" text-anchor="middle" fill="#565E68">main thread</text>
+
+<rect x="416" y="24" width="176" height="56" rx="4" fill="#FFFFFF" stroke="#6D28D9" stroke-width="2"/>
+<text x="504" y="48" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#14161A">emulator.worker.ts</text>
+<text x="504" y="68" text-anchor="middle" fill="#565E68">Web Worker</text>
+
+<rect x="624" y="24" width="160" height="56" rx="4" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="704" y="48" text-anchor="middle" font-size="14" font-weight="600" fill="#14161A">Emulator</text>
+<text x="704" y="68" text-anchor="middle" fill="#565E68">Rust, as wasm</text>
+
+<path d="M96 80V600" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 4"/>
+<path d="M296 80V688" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 4"/>
+<path d="M504 80V688" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 4"/>
+<path d="M704 80V336" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 4"/>
+
+<path d="M96 112H296" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="196" y="104" text-anchor="middle" fill="#565E68">press run</text>
+
+<path d="M296 160H504" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="400" y="152" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">runUntilBreak</text>
+<text x="400" y="180" text-anchor="middle" fill="#565E68">1,000,000 steps at most</text>
+
+<rect x="320" y="200" width="464" height="224" rx="4" fill="none" stroke="#7A818C" stroke-width="1"/>
+<text x="332" y="222" font-weight="600" fill="#565E68">loop in run-loop.ts</text>
+<text x="332" y="262" fill="#565E68">ends on: halt, error,</text>
+<text x="332" y="280" fill="#565E68">breakpoint, a read</text>
+<text x="332" y="298" fill="#565E68">with no input, sleep,</text>
+<text x="332" y="316" fill="#565E68">or 1,000,000 steps</text>
+
+<path d="M504 256H704" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="604" y="248" text-anchor="middle" fill="#565E68">run 10,000 steps</text>
+
+<path d="M704 296H504" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="604" y="288" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">RunResult</text>
+
+<path d="M504 328H544V352H504" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="552" y="338" fill="#565E68">yield, then stop if</text>
+<text x="552" y="356" fill="#565E68">paused or reset</text>
+
+<path d="M504 392H296" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="400" y="384" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">StateSnapshot</text>
+<text x="400" y="410" text-anchor="middle" fill="#565E68">at most every 50 ms</text>
+
+<path d="M504 464H296" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="400" y="456" text-anchor="middle" fill="#565E68">final reply</text>
+<text x="400" y="482" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">StateSnapshot</text>
+
+<path d="M296 512H96" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="196" y="504" text-anchor="middle" fill="#565E68">panels redraw</text>
+
+<rect x="24" y="536" width="760" height="136" rx="4" fill="none" stroke="#7A818C" stroke-width="1"/>
+<text x="772" y="558" text-anchor="end" font-weight="600" fill="#565E68">if the run stopped to wait for input</text>
+
+<path d="M96 576H296" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="196" y="568" text-anchor="middle" fill="#565E68">send a line</text>
+
+<path d="M296 616H504" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="400" y="608" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">pushStdin</text>
+
+<path d="M296 656H504" fill="none" stroke="#565E68" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="400" y="648" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#565E68">runUntilBreak</text>
+
+<rect x="32" y="706" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#0C6882" stroke-width="2"/>
+<text x="56" y="717" fill="#565E68">you and your code</text>
+<rect x="200" y="706" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#7A818C" stroke-width="2"/>
+<text x="224" y="717" fill="#565E68">page code</text>
+<rect x="320" y="706" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#6D28D9" stroke-width="2"/>
+<text x="344" y="717" fill="#565E68">worker</text>
+<rect x="424" y="706" width="16" height="12" rx="2" fill="#FFFFFF" stroke="#81520C" stroke-width="2"/>
+<text x="448" y="717" fill="#565E68">Rust interpreter</text>
+</svg>
