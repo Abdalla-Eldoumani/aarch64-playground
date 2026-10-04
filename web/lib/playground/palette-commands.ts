@@ -183,7 +183,7 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
     {
       id: "toggle-theme",
       label: "Toggle theme",
-      description: "cycle through the six colour themes",
+      description: "cycle through the ten colour themes",
       run: () => deps.toggleTheme(),
     },
     {
