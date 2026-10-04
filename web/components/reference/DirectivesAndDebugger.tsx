@@ -59,7 +59,7 @@ const watchMarkdown = [
   "|---|---|",
   ...WATCH_FORMS.map((w) => `| \`${w.form}\` | ${w.shows} |`),
   "",
-  "Watches know register names and the names from `=` lines. They do not know m4 names from `define` or the labels in `.data`, so watch `w19`, not `count_r`.",
+  "Watches know register names, the names from `=` lines, and a `.data` label with an index after it. They do not know m4 names from `define`, so watch `w19`, not `count_r`.",
   "",
   "The diagnostic bundle button packs the program, its output, the registers, the flags, the stack, and the `.data` and `.bss` sections into one report to paste into a question. It shows the report first, and nothing is sent anywhere.",
 ].join("\n");
