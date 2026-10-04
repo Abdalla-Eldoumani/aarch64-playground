@@ -217,7 +217,10 @@ export function WatchPanel({
             </p>
             <p className="font-sans text-[12px] text-[var(--text-secondary)]">
               Type an expression like <code className="font-mono">x0</code> or{" "}
-              <code className="font-mono">[fp, score1_s]</code> above and press add.
+              <code className="font-mono">[fp, score1_s]</code> above and press add.{" "}
+              <code className="font-mono">arr[2]</code> needs a label followed by{" "}
+              <code className="font-mono">.byte</code>, <code className="font-mono">.hword</code>,{" "}
+              <code className="font-mono">.word</code> or <code className="font-mono">.dword</code>.
             </p>
           </div>
         )}
