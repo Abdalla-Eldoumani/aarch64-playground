@@ -65,8 +65,9 @@ All paths below are under `web/`.
 
 | To change | Edit |
 | --- | --- |
-| A theme's colours | its `[data-theme]` block of tokens in `app/globals.css`; the editor's copy in `components/playground/monaco-setup.ts` and the terminal's in `currentXtermTheme` (`components/panels/TerminalPane.tsx`) repeat them and change with them |
-| How the theme is picked and stored | `lib/hooks/use-theme.ts`, `components/chrome/ThemeControl.tsx`, and the script in `app/layout.tsx` that sets the theme before the page paints |
+| A theme's colours | its block in `lib/theme/tokens.ts`, the one place a colour is written; `tailwind.config.ts` turns each block into `[data-theme]` custom properties, and the editor and terminal colours come from the same blocks through `lib/theme/editor-themes.ts` |
+| The list of themes, their names and order | `lib/theme/themes.ts` |
+| How the theme is picked and stored | `lib/hooks/use-theme.ts`, `components/chrome/ThemeControl.tsx`, and `lib/theme/pre-paint.ts`, the script `app/layout.tsx` runs to set the theme before the page paints |
 | What a watch expression accepts | `lib/emulator/watch-expr.ts` (its header lists the grammar); the panel is `components/panels/WatchPanel.tsx` |
 | A panel | `components/panels/`, one file per panel; the register panel's view and stored settings are in `register-view-state.ts` and `register-panel-settings.ts` |
 | The playground's layout | `components/playground/FullLayout.tsx` picks `ResizableLayout.tsx` on a wide screen or `PhoneLayout.tsx` on a phone; `EmbedLayout.tsx` lays out the editors in lessons and exercises |
