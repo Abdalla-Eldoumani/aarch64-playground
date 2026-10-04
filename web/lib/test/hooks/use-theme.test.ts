@@ -38,11 +38,23 @@ describe("useTheme", () => {
     const { useTheme } = await freshStore();
     const { result } = renderHook(() => useTheme());
     const seen: string[] = [result.current[0]];
-    for (let i = 0; i < 6; i++) {
+    for (let i = 0; i < 10; i++) {
       act(() => result.current[1]());
       seen.push(document.documentElement.getAttribute("data-theme") ?? "");
     }
-    expect(seen).toEqual(["dark", "light", "high-contrast", "ember", "forest", "paper", "dark"]);
+    expect(seen).toEqual([
+      "dark",
+      "light",
+      "high-contrast",
+      "midnight",
+      "ember",
+      "forest",
+      "dusk",
+      "paper",
+      "glacier",
+      "rose",
+      "dark",
+    ]);
   });
 
   test("persists a choice to localStorage", async () => {
@@ -55,7 +67,7 @@ describe("useTheme", () => {
   });
 
   test("a saved id that is no longer a theme falls back instead of sticking", async () => {
-    window.localStorage.setItem(KEY, "midnight");
+    window.localStorage.setItem(KEY, "neon");
     stubMedia(["(prefers-color-scheme: light)"]);
     const { useTheme } = await freshStore();
     const { result } = renderHook(() => useTheme());
@@ -71,8 +83,8 @@ describe("useTheme", () => {
     window.localStorage.setItem(KEY, "dark");
     const { useTheme } = await freshStore();
     const { result } = renderHook(() => useTheme());
-    act(() => result.current[2]("paper"));
-    expect(document.documentElement.getAttribute("data-theme")).toBe("paper");
+    act(() => result.current[2]("rose"));
+    expect(document.documentElement.getAttribute("data-theme")).toBe("rose");
     act(() => result.current[1]());
     expect(document.documentElement.getAttribute("data-theme")).toBe("dark");
     expect(start).not.toHaveBeenCalled();
