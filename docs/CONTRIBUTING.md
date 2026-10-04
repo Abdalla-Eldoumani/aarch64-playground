@@ -137,8 +137,9 @@ validator in the same pull request. See [security.md](security.md).
   can fail, and no `unwrap()` outside tests. Match the surrounding formatting
   by hand; do not run `cargo fmt`, which rewrites nearly every file.
 - TypeScript: strict mode, no `any`, function components, Tailwind for layout.
-  Colors come from the theme variables in `web/app/globals.css`
-  (`var(--bg-base)` and the rest), never from a hex value in a component.
+  Colors come from the theme variables (`var(--bg-base)` and the rest), which
+  are written from `web/lib/theme/tokens.ts`, never from a hex value in a
+  component.
 - Writing: plain words, no emoji. A comment says why, not what.
 
 ## Known traps
