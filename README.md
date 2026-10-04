@@ -25,8 +25,10 @@ steps in [Run it locally](#run-it-locally).
   inputs, and 68 sets of quizzes, fill-in-the-blank questions, and output
   predictions.
 - Look up every instruction the emulator accepts, with its syntax, an example,
-  the C it matches, and the flags it sets. The reference also walks through the
-  calling convention and lists 36 common mistakes, each a program you can run.
+  the C it matches, and the flags it sets. The list starts with the ones the
+  course uses, and you can search it in plain words, such as `multiply` or
+  `load a byte`. The reference also walks through the calling convention and
+  lists 36 common mistakes, each a program you can run.
 - Send a program as a link. The whole program is inside the link, so no server
   stores it.
 - Install the site as an app. After one visit the playground works offline,
