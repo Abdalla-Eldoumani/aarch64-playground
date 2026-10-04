@@ -1,6 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 
 export interface SelectOption {
   value: string;
@@ -8,7 +17,7 @@ export interface SelectOption {
 }
 
 export interface SelectGroup {
-  /** Optional group header, rendered in the datasheet label voice. */
+  /** Optional group header. */
   label?: string;
   options: SelectOption[];
 }
@@ -33,14 +42,29 @@ export interface SelectProps {
   className?: string;
 }
 
+interface Placement {
+  top?: number;
+  bottom?: number;
+  left: number;
+  minWidth: number;
+  maxHeight: number;
+}
+
+// Viewport margin the list keeps, and the least room worth opening into
+// before it flips above the trigger.
+const EDGE = 8;
+const MIN_ROOM = 200;
+
+// On a touch screen the fixed coordinates give way to a full-width sheet at
+// the bottom; `!` so the sheet wins over the inline placement.
+const SHEET =
+  "[@media(pointer:coarse)]:!inset-x-0 [@media(pointer:coarse)]:!top-auto [@media(pointer:coarse)]:!bottom-0 [@media(pointer:coarse)]:!max-h-[70dvh] [@media(pointer:coarse)]:rounded-b-none [@media(pointer:coarse)]:border-x-0 [@media(pointer:coarse)]:border-b-0 [@media(pointer:coarse)]:pb-[calc(0.5rem+var(--safe-bottom))]";
+
 /**
- * Custom select: a collapsed-listbox replacement for the native `<select>`,
- * so the popover chrome, group headers, and option rows draw from the design
- * tokens in every theme instead of the platform default. Keyboard behavior
- * follows the WAI-ARIA collapsed listbox pattern: focus stays on the trigger,
- * ArrowUp/Down move the active option (aria-activedescendant), Home/End jump,
- * Enter or Space selects, Escape closes, and printable characters type-ahead
- * to the next matching option. Outside pointer-down closes without selecting.
+ * Replaces the native `<select>` so the open list follows the site's theme,
+ * with the WAI-ARIA collapsed listbox keyboard model. The list is portaled to
+ * the body at fixed coordinates so no clipping parent (the playground header,
+ * a short panel) can cut it off; on a touch screen it is a bottom sheet.
  */
 export function Select({
   placeholder,
@@ -56,9 +80,12 @@ export function Select({
   const baseId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const typeahead = useRef<{ buffer: string; at: number }>({ buffer: "", at: 0 });
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [placement, setPlacement] = useState<Placement | null>(null);
 
   const flat = useMemo(() => groups.flatMap((group) => group.options), [groups]);
   const selected = flat.find((option) => option.value === value);
@@ -93,11 +120,46 @@ export function Select({
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) close();
+      const target = event.target as Node;
+      // The backdrop closes on its own click instead: gone at pointer-down,
+      // it would hand the tap's click to whatever it was covering.
+      if (backdropRef.current?.contains(target)) return;
+      if (!rootRef.current?.contains(target) && !listRef.current?.contains(target)) close();
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [open, close]);
+
+  // Fixed coordinates do not follow the trigger on their own, so the list is
+  // re-placed on every scroll or resize while open.
+  const place = useCallback(() => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const below = window.innerHeight - rect.bottom - EDGE;
+    const above = rect.top - EDGE;
+    const up = below < MIN_ROOM && above > below;
+    const width = Math.max(rect.width, listRef.current?.offsetWidth ?? 0);
+    setPlacement({
+      top: up ? undefined : rect.bottom + 4,
+      bottom: up ? window.innerHeight - rect.top + 4 : undefined,
+      left: Math.max(EDGE, Math.min(rect.left, window.innerWidth - EDGE - width)),
+      minWidth: rect.width,
+      maxHeight: Math.max(120, Math.min(up ? above : below, 512, window.innerHeight * 0.7)),
+    });
+  }, []);
+  useLayoutEffect(() => {
+    if (open) place();
+  }, [open, place]);
+  useEffect(() => {
+    if (!open) return;
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, place]);
 
   // Keep the active option scrolled into view while navigating.
   useEffect(() => {
@@ -163,7 +225,7 @@ export function Select({
 
   const sizing =
     size === "xs"
-      ? "px-2 py-0.5 text-[10px] min-h-[24px]"
+      ? "px-2 py-0.5 text-[12px] min-h-[24px] [@media(pointer:coarse)]:text-xs"
       : "px-2 py-1 text-xs min-h-[28px]";
 
   // Each group's starting flat index, so option ids stay continuous across
@@ -181,6 +243,7 @@ export function Select({
   return (
     <div ref={rootRef} className={`relative inline-block ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         role="combobox"
         aria-haspopup="listbox"
@@ -191,7 +254,7 @@ export function Select({
         disabled={disabled}
         onClick={() => (open ? close() : openList())}
         onKeyDown={handleKeyDown}
-        className={`inline-flex w-full max-w-[14rem] items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] font-mono text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:outline-none focus-visible:[box-shadow:var(--ring)] disabled:pointer-events-none disabled:opacity-50 ${sizing}`}
+        className={`inline-flex w-full max-w-[14rem] items-center justify-between gap-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] font-mono text-[var(--text-primary)] transition-colors hover:border-[var(--border-strong)] focus:outline-none focus-visible:[box-shadow:var(--ring)] disabled:pointer-events-none disabled:text-[var(--text-tertiary)] [@media(pointer:coarse)]:min-h-[44px] ${sizing}`}
       >
         <span className="truncate">
           {triggerLabel ?? (selected ? selected.label : placeholder)}
@@ -208,51 +271,81 @@ export function Select({
           }}
         />
       </button>
-      {open ? (
-        <div
-          ref={listRef}
-          id={`${baseId}-listbox`}
-          role="listbox"
-          aria-label={ariaLabel}
-          className="anim-modal-rise absolute left-0 top-full z-50 mt-1 max-h-[min(70vh,32rem)] min-w-full overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-1 [box-shadow:var(--shadow-overlay)]"
-        >
-          {groups.map((group, groupIndex) => (
-            <div key={group.label ?? groupIndex}>
-              {group.label ? (
-                <div className="px-3 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
-                  {group.label}
-                </div>
-              ) : null}
-              {group.options.map((option, optionIndex) => {
-                const index = groupOffsets[groupIndex] + optionIndex;
-                const active = index === activeIndex;
-                return (
-                  <div
-                    key={option.value || `${index}`}
-                    id={optionId(index)}
-                    role="option"
-                    aria-selected={option.value === value}
-                    onPointerDown={(event) => {
-                      // Select on pointer-down so the outside-close handler
-                      // never races the click.
-                      event.preventDefault();
-                      commit(index);
-                    }}
-                    onMouseMove={() => setActiveIndex(index)}
-                    className={`flex min-h-[36px] cursor-pointer items-center whitespace-nowrap px-3 font-mono text-xs ${
-                      active
-                        ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
-                        : "text-[var(--text-primary)]"
-                    }`}
-                  >
-                    {option.label}
+      {open
+        ? createPortal(
+            <>
+              {/* On a touch screen the sheet sits over a backdrop, so a tap
+                  anywhere else closes it the way an outside click does. */}
+              <div
+                ref={backdropRef}
+                aria-hidden="true"
+                onClick={close}
+                className="fixed inset-0 z-[75] hidden bg-black/50 [@media(pointer:coarse)]:block"
+              />
+              <div
+                ref={listRef}
+                id={`${baseId}-listbox`}
+                role="listbox"
+                aria-label={ariaLabel}
+                className={`anim-modal-rise fixed z-[75] overflow-y-auto rounded-[var(--radius-card)] border border-[var(--border-strong)] bg-[var(--bg-elevated)] py-1 [box-shadow:var(--shadow-overlay)] ${SHEET}`}
+                style={
+                  placement
+                    ? {
+                        top: placement.top,
+                        bottom: placement.bottom,
+                        left: placement.left,
+                        minWidth: placement.minWidth,
+                        maxHeight: placement.maxHeight,
+                      }
+                    : // Measured before it is shown, so it never flashes at 0,0.
+                      { top: 0, left: 0, visibility: "hidden" }
+                }
+              >
+                {groups.map((group, groupIndex) => (
+                  <div key={group.label ?? groupIndex}>
+                    {group.label ? (
+                      <div className="px-3 pb-1 pt-2 font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]">
+                        {group.label}
+                      </div>
+                    ) : null}
+                    {group.options.map((option, optionIndex) => {
+                      const index = groupOffsets[groupIndex] + optionIndex;
+                      const active = index === activeIndex;
+                      return (
+                        <div
+                          key={option.value || `${index}`}
+                          id={optionId(index)}
+                          role="option"
+                          aria-selected={option.value === value}
+                          onPointerDown={(event) => {
+                            // Focus stays on the trigger. A mouse selects here, so
+                            // the outside-close handler never races the click; a
+                            // finger waits for the click below, because a touch
+                            // that starts a scroll of the sheet must not pick the
+                            // row it started on.
+                            event.preventDefault();
+                            if (event.pointerType === "touch" || event.pointerType === "pen") return;
+                            commit(index);
+                          }}
+                          onClick={() => commit(index)}
+                          onMouseMove={() => setActiveIndex(index)}
+                          className={`flex min-h-[36px] [@media(pointer:coarse)]:min-h-[44px] cursor-pointer items-center whitespace-nowrap px-3 font-mono text-xs ${
+                            active
+                              ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
+                              : "text-[var(--text-primary)]"
+                          }`}
+                        >
+                          {option.label}
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
-      ) : null}
+                ))}
+              </div>
+            </>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

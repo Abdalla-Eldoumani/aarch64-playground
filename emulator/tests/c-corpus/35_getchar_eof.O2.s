@@ -8,7 +8,7 @@
 	.string	"after eof=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -48]!
@@ -19,7 +19,7 @@ main:
 	str	x21, [sp, 32]
 	mov	w21, -1
 	b	.L2
-	.align 2
+	.p2align 2,,3
 .L4:
 	cmp	w0, 10
 	add	w19, w19, 1

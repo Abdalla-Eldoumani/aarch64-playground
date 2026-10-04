@@ -66,26 +66,26 @@ export function ArgsInput({ source, value, onChange }: ArgsInputProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
-  // Persist as the user types, but debounced so a keystroke does not reach
-  // localStorage.
+  // Debounced so storage is written once typing pauses, not on every keystroke.
   useEffect(() => {
     const id = setTimeout(() => saveFor(source, value), 250);
     return () => clearTimeout(id);
   }, [source, value]);
 
   return (
-    <label className="inline-flex items-center gap-1 text-[11px] text-[var(--text-secondary)]">
-      <span className="hidden sm:inline">args</span>
+    // The word shows at every width, and the empty box shows nothing: a sample
+    // value there read as arguments the program would get.
+    <label className="inline-flex items-center gap-1 text-[12px] text-[var(--text-secondary)]">
+      <span>args</span>
       <input
         type="text"
         value={value}
         onChange={(e) => handleChange(e.target.value)}
-        placeholder="12 25"
         spellCheck={false}
         autoCapitalize="off"
         autoCorrect="off"
-        aria-label="command-line arguments"
-        className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[11px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+        aria-label="args (command-line arguments)"
+        className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-2 sm:py-0.5 min-h-[36px] sm:min-h-0 font-mono text-[12px] text-[var(--text-primary)] w-24 sm:w-40 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
       />
     </label>
   );

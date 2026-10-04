@@ -1,11 +1,7 @@
-// The security headers docs/security.md promises. Declared here, the
-// framework applies them under `next dev` and `next start`, and on Vercel
-// they compile into the routes manifest and are attached by the platform with
-// no function in the path. A proxy.ts used to set the same headers, but on
-// Vercel a proxy runs as a Node function in front of every page request, which
-// put a function invocation on every visit to a fully static site.
-// vercel.json carries the identical set as the deploy-time copy;
-// next.config.test.ts fails the suite if the two drift.
+// The security headers docs/security.md promises. Set here, they apply under
+// `next dev` and `next start` and on Vercel with no function in the path (a
+// proxy.ts would run a function on every page request). vercel.json holds the
+// same set; next.config.test.ts fails if the two drift.
 export const SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
   "X-Frame-Options": "DENY",
@@ -39,6 +35,12 @@ export const SECURITY_HEADERS = {
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // Stops `next dev` from writing agent instruction files into the tree,
+  // which otherwise dirties every checkout it runs in.
+  agentRules: false,
+  // scripts/vercel-build.sh builds twice so the service worker written after
+  // the first build ships with the second; both must share one build id.
+  generateBuildId: async () => process.env.PLAYGROUND_BUILD_ID || null,
   headers() {
     return [
       {
@@ -60,8 +62,8 @@ const nextConfig = {
   webpack: (config) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
     // `?raw` imports load a file's contents as a string at build time, so
-    // the cold-load default program can be sourced from the single
-    // basics.s fixture instead of a duplicated literal.
+    // the cold-load default program can be sourced from its single
+    // example file instead of a duplicated literal.
     config.module.rules.push({ resourceQuery: /raw/, type: "asset/source" });
     // xterm's runtime is one 330 kB module, so Next's own splitting names its
     // chunk after a hash of its path, which moves with the package layout and

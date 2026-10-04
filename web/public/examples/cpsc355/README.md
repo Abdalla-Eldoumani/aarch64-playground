@@ -5,11 +5,15 @@ Calgary and programs written fresh for this project by Abdalla Eldoumani,
 all in the course's house style. They are served here so the playground's
 example loader can fetch them over HTTP.
 
-These files exercise m4 macros (`define()`, `name = expr`), frame-pointer
-prologues, `ldr xN, =label` literal loads, extended-register addressing,
-the AAPCS64 varargs path through `printf`/`scanf`, and the Linux syscall
-surface for `write`/`read`/`exit`/`openat`/`close`.
+Between them they use m4 macros (`define()`, `name = expr`), the
+prologue that saves the frame pointer, `ldr xN, =label` to load an
+address, array indexing with an index register (`[x12, w9, SXTW 2]`),
+calls to `printf` and `scanf` with any number of arguments, and the Linux
+system calls `write`, `read`, `exit`, `openat`, and `close`.
 
+- `distance.s`: how far each number in an array is from zero, through
+  a loop, a call to a small subroutine, and printf; the playground
+  opens with it
 - `basics.s`: arithmetic operations
 - `globals.s`: a global variable in `.data` (load and store)
 - `locals.s`: locals on the stack (sum and product)
@@ -35,11 +39,11 @@ Six extra programs are served beyond the tutorial set:
 - `dsav.s` + `dsav/`: the data structures and algorithms visualizer
   from https://github.com/Abdalla-Eldoumani/dsav, the first multi-file
   example: `dsav.s` holds `main`, the seventeen files under `dsav/` load
-  into the files strip and link with it. Twelve modules over a shared
-  screen kernel (`theme.s` for colour, `ui.s` for the frame and panels).
+  into the files strip and link with it. Twelve modules share one set of
+  screen helpers (`theme.s` for colour, `ui.s` for the frame and panels).
   Menu-driven; run hands it the terminal pane (typed input echoes,
-  animations pace themselves), and `./program` from the term tab works
-  too
+  animations set their own speed), and `./program` from the term tab
+  works too
 - `calc.s`: a pocket scientific calculator drawn as a handheld device,
   from https://github.com/Abdalla-Eldoumani/calc; type straight at it or
   walk the key grid with the arrows, and tab switches between chained
@@ -59,14 +63,14 @@ Six extra programs are served beyond the tutorial set:
   https://github.com/Abdalla-Eldoumani/deadzone, the second multi-file
   example: `deadzone.s` holds `main`, the eleven files under `deadzone/`
   load into the files strip and link with it, in the order the repo's m4
-  includes paste them (`constants.s` first, because an equate only
-  resolves for the modules below it). Waves of enemies, upgrades on
-  level-up, a bomb and a freeze, and a boss at wave 10; run hands it the
-  terminal pane and it grabs the keyboard
+  includes paste them (`constants.s` first, because a `NAME = value`
+  constant only resolves for the modules below it). Waves of enemies,
+  upgrades on level-up, a bomb and a freeze, and a boss at wave 10; run
+  hands it the terminal pane and it grabs the keyboard
 
-Six more programs demonstrate the vector (`v`) registers, a register file
-the course does not teach, so the rules for the playable extras do not
-apply to them:
+Six more programs demonstrate the vector (`v`) registers, a set of
+registers the course does not teach, so the rules for the playable
+extras do not apply to them:
 
 - `vector-upper.s`: uppercase a typed line, sixteen characters per pass
 - `vector-strlen.s`: count the characters in a typed line, sixteen bytes

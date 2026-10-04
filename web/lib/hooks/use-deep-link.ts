@@ -1,11 +1,12 @@
-"use client";
-
+// Pure functions, so no "use client": the landing builds its playground link
+// on the server through share.ts, and the directive would ship this file there.
 import type {
   BundleReadResult,
   DiagnosticBundle,
 } from "@/lib/playground/diagnostic-bundle";
 import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import type { Theme } from "@/lib/hooks/use-theme";
+import { isThemeId } from "@/lib/theme/themes";
 
 export interface DeepLink {
   example?: string;
@@ -23,10 +24,9 @@ export interface DeepLink {
 }
 
 /**
- * The bundle codec's read, taken as an argument rather than imported.
- * Decoding is what pulls lz-string in, and the landing hero reaches this
- * module through EmbeddablePlayground -> useLaunchMode -> playground-handoff
- * without ever decoding a bundle; only the playground route supplies one.
+ * The bundle codec's read, taken as an argument rather than imported: share.ts
+ * and playground-handoff import this module, and neither should carry the
+ * codec (diagnostic-bundle.ts), which loads only for a `?bundle=` URL.
  */
 export type BundleDecoder = (value: string | null) => BundleReadResult;
 
@@ -46,9 +46,7 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
   if (example && /^[\w.-]+$/.test(example)) result.example = example;
 
   const theme = params.get("theme");
-  if (theme === "dark" || theme === "light" || theme === "high-contrast") {
-    result.theme = theme;
-  }
+  if (isThemeId(theme)) result.theme = theme;
 
   // Drop unknown values the way theme does: a typo falls back to the
   // example's own default instead of guessing at a surface.
@@ -68,11 +66,8 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
 }
 
 /**
- * Legacy example stems (the old course-labeled file names) mapped to the
- * renamed clean stems. A `?example=` link shared before the corpus was
- * renamed still resolves: the resolver translates the old stem to the new
- * one before fetching. This is a fixed allow-list: only these stems are
- * translated.
+ * Old example names mapped to their current ones, so a `?example=` link
+ * shared before the examples were renamed still opens the right file.
  */
 export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
   week03_exercise: "basics",

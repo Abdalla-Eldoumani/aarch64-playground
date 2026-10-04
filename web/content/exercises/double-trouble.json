@@ -1,12 +1,14 @@
 {
   "title": "Double, double, double",
   "slug": "double-trouble",
-  "order": 15,
+  "order": 26,
+  "lastUpdated": "2026-09-30",
   "topic": "bitwise",
   "difficulty": "intro",
-  "prompt": "Multiplying by a power of two never needs a multiply: shifting left by one bit doubles a value, and doing it three times multiplies by eight.\n\nCompute `8 * (a + b)` using shifts instead of `mul`. The starter leaves the total at zero; put the sum in the total register and scale it with `lsl`.\n\n## what is checked\n\n- the scaled sum is printed on its own line\n- the program exits cleanly\n- the scaling is done with a left shift, and `mul` stays out of the program",
-  "starter": "// scale a sum by eight using shifts alone\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(total_r, x21)\n\n        .data\nfmt:    .string \"8 * (a + b) = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     a_r, 5                      // first addend\n        mov     b_r, 7                      // second addend\n        mov     total_r, 0                  // replace this placeholder\n\n        // TODO: put 8 * (a_r + b_r) into total_r without a multiply\n\n        ldr     x0, =fmt\n        mov     x1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Multiplying by a power of two never needs a multiply: shifting left by one bit doubles a value, and doing it three times multiplies by eight.\n\nThe starter reads `a` and `b`. Compute `8 * (a + b)` using shifts instead of a multiply instruction: put the sum in the total register and scale it with `lsl`.\n\n## What is checked\n\n- the scaled sum is printed on its own line\n- the program exits cleanly\n- the scaling is done with a left shift, and no multiply instruction appears (`mul`, `madd` and their relatives)\n- the same holds for other pairs you do not see, zero and negative sums among them",
+  "starter": "// scale a sum by eight using shifts alone\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(total_r, x21)\n\n        .data\nfmt_in:     .string \"%lld %lld\"\nfmt_out:    .string \"8 * (a + b) = %lld\\n\"\n\n        .bss\n        .balign 8\na_m:        .skip 8\nb_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the two addends\n        ldr     x1, =a_m\n        ldr     x2, =b_m\n        bl      scanf\n        ldr     x9, =a_m\n        ldr     a_r, [x9]\n        ldr     x9, =b_m\n        ldr     b_r, [x9]\n        mov     total_r, 0                  // replace this placeholder\n\n        // TODO: put 8 * (a_r + b_r) into total_r without a multiply\n\n        ldr     x0, =fmt_out\n        mov     x1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "5 7\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -29,9 +31,46 @@
         "value": 96
       },
       {
-        "kind": "forbids-literal",
-        "value": "mul"
+        "kind": "forbids-instruction",
+        "mnemonics": [
+          "mul",
+          "madd",
+          "msub",
+          "mneg",
+          "smull",
+          "umull",
+          "smaddl",
+          "umaddl",
+          "smsubl",
+          "umsubl",
+          "smnegl",
+          "umnegl"
+        ]
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0 0\n",
+      "stdout": "8 * (a + b) = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-5 2\n",
+      "stdout": "8 * (a + b) = -24\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1000 24\n",
+      "stdout": "8 * (a + b) = 8192\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1 1\n",
+      "stdout": "8 * (a + b) = 16\n",
+      "exitCode": 0
+    }
+  ]
 }

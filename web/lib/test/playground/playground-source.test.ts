@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { playgroundSource, wrapInMain } from "@/lib/playground/playground-source";
 import type { ReferenceInstruction } from "@/lib/content/reference-data";
 
-// The try-in-playground deep link carries playgroundSource(inst). The
-// reference-data playground test proves every real payload assembles; this
-// suite pins the text normalization itself: the exact wrapper program, the
-// eight-space body indent, and runnable taking precedence over the example.
+// The reference's try-in-playground link opens playgroundSource(inst). The
+// reference-data playground test proves every real entry assembles; this
+// suite pins the exact text: the wrapper program, the eight-space indent, and
+// `runnable` winning over `example`.
 
 const WRAPPED_ADD = `        .global main
 main:
@@ -24,12 +24,15 @@ function inst(over: Partial<ReferenceInstruction>): ReferenceInstruction {
     syntax: "add xd, xn, op2",
     summary: "add",
     example: "add x0, x0, 1",
+    cExample: "Rd = Rn + op2;",
+    setsFlags: false,
+    registerView: "x",
     ...over,
   };
 }
 
 describe("wrapInMain", () => {
-  it("wraps a one-line example in the exact aapcs64 main scaffold", () => {
+  it("wraps a one-line example in main with the exact frame setup and return", () => {
     expect(wrapInMain("add x0, x0, 1")).toBe(WRAPPED_ADD);
   });
 

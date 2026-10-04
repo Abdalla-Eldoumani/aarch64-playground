@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseAddress } from "@/lib/emulator/parse-address";
 import { formatByte, formatWord32 } from "@/lib/emulator/format-hex";
 import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { Select } from "@/components/ui/Select";
-import { isAtLeast, useBreakpoint } from "@/lib/hooks/use-breakpoint";
 
 interface MemoryPanelProps {
   getMemory: (addr: number, len: number) => Uint8Array;
@@ -33,6 +32,13 @@ function isDirty(byteAddr: number, ranges: Array<[number, number]>): boolean {
 }
 
 const DEFAULT_ROWS = 16;
+
+/** Characters a 16-byte row needs at its tightest: the address, 16 bytes
+ *  of two digits with a little air between them, and 16 ascii characters. */
+const WIDE_ROW_CHARS = 68;
+
+/** The monospace face's advance as a share of its size. */
+const MONO_ADVANCE = 0.6;
 
 /** Section bands the jump list offers, in the order it offers them. The
  *  heap, argv and host-stub bands stay out of the list on purpose: they are
@@ -93,13 +99,36 @@ export function MemoryPanel({
   // here instead of silently truncating to a low address whose zeros read
   // as "my .data is empty".
   const [lastGoodAddr, setLastGoodAddr] = useState(0x00400000);
-  const [rows] = useState(DEFAULT_ROWS);
+  const [rows, setRows] = useState(DEFAULT_ROWS);
+  const [bytesPerRow, setBytesPerRow] = useState(16);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // A tall pane shows more memory instead of a blank band under the dump; a
+  // short one keeps the 16 rows and scrolls. Watching the panel too catches a
+  // zoom, which changes the row height without resizing the pane.
+  // A pane too narrow for a 16-byte row gets 8 per row. The pane decides,
+  // not the screen: a phone on its side or a 1024px laptop gives the panel
+  // well under half the screen, and the ascii column ran off its edge.
+  useEffect(() => {
+    const root = rootRef.current;
+    const pane = root?.parentElement;
+    if (!root || !pane || typeof ResizeObserver === "undefined") return;
+    const fit = () => {
+      const style = getComputedStyle(root);
+      const px = (value: string, fallback = 0) => parseFloat(value) || fallback;
+      const width = root.clientWidth - px(style.paddingLeft) - px(style.paddingRight);
+      const ch = px(style.fontSize, 12) * MONO_ADVANCE;
+      setBytesPerRow(width >= WIDE_ROW_CHARS * ch ? 16 : 8);
+      const rowHeight = root.querySelector("tbody tr")?.getBoundingClientRect().height ?? 0;
+      if (rowHeight <= 0) return;
+      const spare = pane.clientHeight - root.offsetHeight;
+      setRows((n) => Math.max(DEFAULT_ROWS, n + Math.floor(spare / rowHeight)));
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(pane);
+    observer.observe(root);
+    return () => observer.disconnect();
+  }, []);
   const zoom = useZoom("memory");
-  // 16 bytes/row reads naturally on a desktop monospace grid; below sm
-  // the row overflows the viewport, so collapse to 8/row, still
-  // 16-byte aligned so addresses stay in even multiples.
-  const bp = useBreakpoint();
-  const bytesPerRow = isAtLeast(bp, "sm") ? 16 : 8;
 
   const parsed = parseAddress(baseAddr);
   const addr = parsed ?? lastGoodAddr;
@@ -128,6 +157,7 @@ export function MemoryPanel({
 
   return (
     <div
+      ref={rootRef}
       className="p-3"
       style={{ ...zoom.style, fontSize: `calc(0.75rem * var(--font-scale, 1))` }}
       onWheel={(e) => {
@@ -138,7 +168,7 @@ export function MemoryPanel({
       }}
     >
       <div className="flex items-center flex-wrap gap-2 mb-2">
-        <label htmlFor="memory-base-addr" className="text-[var(--text-secondary)] text-[10px] uppercase tracking-wider">
+        <label htmlFor="memory-base-addr" className="text-[var(--text-secondary)] text-[12px] uppercase tracking-wider">
           address
         </label>
         <input
@@ -146,8 +176,11 @@ export function MemoryPanel({
           type="text"
           value={baseAddr}
           onChange={handleAddrChange}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           aria-label="memory base address"
-          className="bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
+          className="touch-target bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-0.5 text-xs font-mono w-32 text-[var(--text-primary)]"
         />
         <Select
           size="xs"
@@ -172,7 +205,7 @@ export function MemoryPanel({
         />
       </div>
       {parsed == null && (
-        <div role="alert" className="text-[var(--danger)] text-[10px] mb-2">
+        <div role="alert" className="text-[var(--danger)] text-[12px] mb-2">
           address must be hex (0x...) or decimal. showing{" "}
           {formatWord32(lastGoodAddr)}
         </div>
@@ -183,7 +216,10 @@ export function MemoryPanel({
           <tr className="text-[var(--text-secondary)]">
             <th className="text-left pr-2 sm:pr-4">addr</th>
             {Array.from({ length: bytesPerRow }, (_, i) => (
-              <th key={i} className="w-5 sm:w-6 text-center">
+              // A byte column takes its text's width and the full-width table
+              // spreads the columns; a fixed width cut the ascii column off a
+              // 320px screen.
+              <th key={i} className="text-center">
                 {i.toString(16).toUpperCase()}
               </th>
             ))}
@@ -219,7 +255,7 @@ export function MemoryPanel({
                     </td>
                   );
                 })}
-                {/* pad if data is short */}
+                {/* bytes still on their way from the emulator show as ".." */}
                 {Array.from(
                   { length: bytesPerRow - rowBytes.length },
                   (_, i) => (

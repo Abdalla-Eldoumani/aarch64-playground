@@ -1,9 +1,7 @@
 import { NAV_ROUTES } from "@/lib/content/site";
 
-// The single data source for the landing sections: the feature catalog, the
-// routes-as-register-file block, and the live hero's program. The later landing
-// waves render this, so adding a capability or a route is one array entry and
-// the hero's program stays out of inline magic.
+// The landing page's data (features, route links, the hero's program), so a
+// new feature or route is one array entry.
 
 export interface Feature {
   /** Short headline for the capability. */
@@ -38,9 +36,9 @@ export const FEATURES: Feature[] = [
     glyph: "pc",
   },
   {
-    title: "Hosted runtime",
+    title: "C library and system calls",
     description:
-      "printf, scanf, malloc, argv, and Linux syscalls answer the way the course servers do, so tutorial programs run unmodified.",
+      "printf, scanf, malloc, argv, and Linux system calls answer the way the course servers do, so tutorial programs run unmodified.",
     glyph: "io",
   },
   {
@@ -50,7 +48,7 @@ export const FEATURES: Feature[] = [
     glyph: "m4",
   },
   {
-    title: "Bounded sandbox",
+    title: "Runaway programs stop",
     description:
       "A runaway loop or a program that allocates without limit halts cleanly with a plain explanation instead of freezing the tab.",
     glyph: "[]",
@@ -68,11 +66,7 @@ export interface RouteRegister {
   primary?: boolean;
 }
 
-// The playground is the primary call to action; it and Learn / Practice /
-// Reference all take their href from NAV_ROUTES so every route address has one
-// source and cannot drift. The playground row finds its entry by label, so the
-// filter and the primary row read the same canonical href. Each row carries an
-// x-register-style label, rendered later as a register file.
+// Every href comes from NAV_ROUTES so a route address has one source.
 const PLAYGROUND_HREF =
   NAV_ROUTES.find((route) => route.label === "Playground")?.href ?? "/playground";
 
@@ -89,13 +83,10 @@ export const ROUTE_REGISTERS: RouteRegister[] = [
   })),
 ];
 
-// A tiny original CPSC 355-style snippet for the live hero: a short register
-// walk with decimal immediates, then one line printed through the bare write
-// system call. No libc, so it assembles and steps fast, while the autoplay
-// walk reaches the svc and real stdout appears in the embed console with no
-// user action. It follows the in-repo convention (m4 define
-// aliases, .text/.global main, the stp/ldp frame prologue and epilogue);
-// it is not copied from any course file.
+// An original course-style snippet for the live hero, not copied from any
+// course file. It prints through the write system call instead of printf so it
+// assembles and steps fast, and the autoplay reaches the svc so output appears
+// with no click.
 export const HERO_PROGRAM = `// build a small value, print a line with the write syscall, return the value
 define(base, x19)
 define(total, x20)

@@ -1,34 +1,18 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import { loadExerciseIndex } from "@/lib/content/exercises";
 import { ExerciseIndex } from "@/components/practice/ExerciseIndex";
+import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { DocRule } from "@/components/ui/DocRule";
 import { Kicker } from "@/components/ui/Kicker";
-import { SHARE_CARD_IMAGE } from "@/lib/content/site";
+import { pageMetadata } from "@/lib/content/seo";
 
-const DESCRIPTION =
-  "AArch64 coding exercises checked by running your program, beside theory sets graded on the page.";
-
-export const metadata: Metadata = {
-  title: "practice",
-  description: DESCRIPTION,
-  alternates: { canonical: "/practice" },
-  // Open Graph and Twitter are not deep-merged across segments, so each route
-  // restates the full composed title and its own url instead of inheriting.
-  openGraph: {
-    type: "website",
-    siteName: "cpsc 355 playground",
-    title: "practice · cpsc 355 playground",
-    description: DESCRIPTION,
-    url: "/practice",
-    images: [SHARE_CARD_IMAGE],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "practice · cpsc 355 playground",
-    description: DESCRIPTION,
-    images: [SHARE_CARD_IMAGE],
-  },
-};
+export const metadata: Metadata = pageMetadata({
+  title: "AArch64 exercises and quizzes",
+  description:
+    "Write AArch64 assembly that is checked by running it on hidden inputs, or test yourself with quizzes, fill-in-the-blank sets, and output predictions.",
+  path: "/practice",
+});
 
 // Server page: the server-only loader validates every exercise at build time and
 // the already-validated, order-sorted exercises are handed to the client index as
@@ -38,18 +22,25 @@ export default function PracticePage() {
   // and a full exercise also carries the prompt, starter, acceptance, and
   // question sets that only the detail route reads.
   const exercises = loadExerciseIndex();
+  // Rendered here, at build time, so the markdown renderer stays out of the
+  // page's script: only the finished code spans cross to the client index.
+  // A plain object, not a list, so no key rides each blurb in the payload.
+  const blurbs: Record<string, ReactNode> = {};
+  for (const { slug, blurb } of exercises) {
+    blurbs[slug] = <LessonMarkdown inline markdown={blurb} />;
+  }
   return (
     <section className="mx-auto w-full max-w-5xl px-6 py-10 sm:py-14">
-      <DocRule section="sheet 05 · practice" context="cpsc 355 study aid" className="mb-8" />
+      <DocRule section="practice" context="cpsc 355 study aid" className="mb-8" />
       <Kicker number="05" title="practice" className="mb-5" />
       <h1 className="font-serif text-4xl font-semibold leading-[1.15] text-[var(--text-primary)]">
         Exercises
       </h1>
       <p className="mt-4 max-w-2xl text-[var(--text-secondary)] [font:var(--type-lead)]">
-        Coding exercises on the left, checked by running your program against expected behavior rather than a stored solution. Theory sets on the right, graded on the page. Both follow the course from the first week to the last.
+        In a coding exercise, Check runs your program and compares its result with what the exercise asks for. Theory sets are quizzes and short questions, graded on the page. Both follow the course from the first week to the last.
       </p>
       <div className="mt-10">
-        <ExerciseIndex exercises={exercises} />
+        <ExerciseIndex exercises={exercises} blurbs={blurbs} />
       </div>
     </section>
   );

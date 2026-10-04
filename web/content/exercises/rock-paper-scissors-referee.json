@@ -1,0 +1,71 @@
+{
+  "title": "Rock, paper, scissors referee",
+  "slug": "rock-paper-scissors-referee",
+  "order": 10,
+  "lastUpdated": "2026-09-30",
+  "topic": "branching",
+  "difficulty": "core",
+  "prompt": "Referee one round of rock, paper, scissors. The input holds two moves, player 1's and then player 2's, each written as a number: `0` for rock, `1` for paper, `2` for scissors. Paper covers rock, scissors cut paper, and rock breaks scissors.\n\nPrint exactly one line:\n\n- `player 1 wins` or `player 2 wins`\n- `draw` when both players pick the same move\n- `invalid move` when either number is outside 0 to 2; then `main` returns 1 instead of 0, so whoever ran the program can tell it failed\n\nThe starter reads both moves into `p1_r` and `p2_r` and holds every message you need. Hint: write out player 1's move minus player 2's for all nine rounds. Only five different gaps turn up, and each one always means the same result.\n\n## What is checked\n\n- with the input `1 0` the program prints `player 1 wins` and returns 0\n- the decisions are made with `cmp`\n- the checker also referees rounds you do not see: every winner, a draw, and moves just outside the range",
+  "starter": "// referee one round of rock, paper, scissors\n// moves: 0 = rock, 1 = paper, 2 = scissors\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(p1_r, x19)\ndefine(p2_r, x20)\n\n.data\nfmt_in:     .string \"%ld %ld\"\nmsg_p1:     .string \"player 1 wins\\n\"\nmsg_p2:     .string \"player 2 wins\\n\"\nmsg_draw:   .string \"draw\\n\"\nmsg_bad:    .string \"invalid move\\n\"\n\n.bss\n.balign 8\np1_m:       .skip 8\np2_m:       .skip 8\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read both moves\n        ldr     x1, =p1_m\n        ldr     x2, =p2_m\n        bl      scanf\n\n        ldr     x9, =p1_m\n        ldr     p1_r, [x9]\n        ldr     x9, =p2_m\n        ldr     p2_r, [x9]\n\n        // TODO: if either move is outside 0 to 2, print msg_bad and\n        // return 1. Otherwise print exactly one of msg_p1, msg_p2 or\n        // msg_draw, and return 0.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "1 0\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "player 1 wins\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "cmp"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0 2\n",
+      "stdout": "player 1 wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "2 0\n",
+      "stdout": "player 2 wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0 1\n",
+      "stdout": "player 2 wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "2 1\n",
+      "stdout": "player 1 wins\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1 1\n",
+      "stdout": "draw\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "3 0\n",
+      "stdout": "invalid move\n",
+      "exitCode": 1,
+      "edge": true
+    },
+    {
+      "stdin": "2 -1\n",
+      "stdout": "invalid move\n",
+      "exitCode": 1,
+      "edge": true
+    }
+  ]
+}

@@ -11,7 +11,7 @@
 
 // game_state stays in w19 for the whole run. player_died skips the x19
 // restore so the game-over state survives the return, and both collision
-// checks spill their death flag to the stack instead of using w19.
+// checks keep their death flag on the stack instead of in w19.
 define(game_state, w19)
 define(frame_count, w22)
 define(key_pressed, w23)
@@ -512,7 +512,8 @@ game_resume:
 
 // Exit
 main_exit:
-                // The frame buffer is done with; these go straight out
+                // No more frames, so these skip the frame buffer (the copy
+                // of the screen kept in memory) and go straight out
                 bl      screen_end              // Park the cursor, drop colour
 
                 adrp    x0, msg_exit
@@ -835,8 +836,8 @@ draw_chrome_bottom:
                 mov     w2, COLOR_RESET
                 bl      fb_fill_row
 
-                // The status band: a rule, two blank rows to write into,
-                // and a rule to close it
+                // The status band: a border line, two blank rows to write
+                // into, and a border line to close it
                 mov     w0, ROW_BAR_TOP
                 bl      draw_border_row
 
@@ -857,7 +858,7 @@ draw_chrome_bottom:
                 ldp     fp, lr, [sp], 32
                 ret
 
-// draw_border_row - One horizontal rule across the whole screen
+// draw_border_row - One horizontal line across the whole screen
 // Parameters: w0 = row
 draw_border_row:
                 stp     fp, lr, [sp, -16]!
@@ -872,7 +873,7 @@ draw_border_row:
 
 // draw_status_bar - The bottom band: health gauge and the three counters
 // Row ROW_BAR_ABILITIES belongs to abilities.s, which draws the two
-// charge gauges in the same idiom.
+// charge gauges in the same style.
 draw_status_bar:
                 stp     fp, lr, [sp, -32]!
                 mov     fp, sp
@@ -963,7 +964,7 @@ draw_hp_meter:
                 ret
 
 // draw_bar_counter - A status bar field: dim name, space, bright number
-// Parameters: x0 = name, w1 = value. Stages at the current position.
+// Parameters: x0 = name, w1 = value. Draws at the current position.
 draw_bar_counter:
                 stp     fp, lr, [sp, -32]!
                 mov     fp, sp
@@ -1032,8 +1033,8 @@ wave_splash_update_done:
                 ret
 
 // draw_wave_splash - Announce the wave across the middle of the field
-// The panel blanks what it covers, and the next frame stages the floor back,
-// so nothing has to be invalidated when it goes away.
+// The panel blanks what it covers, and the next frame draws the floor back,
+// so it needs no screen_invalidate when it goes away.
 draw_wave_splash:
                 stp     fp, lr, [sp, -16]!
                 mov     fp, sp
@@ -1078,7 +1079,7 @@ frame_delay:
                 mov     fp, sp
 
                 // Every render path reaches the loop through here, so this is
-                // the one place the staged frame goes out to the terminal.
+                // the one place the finished frame goes out to the terminal.
                 bl      screen_flush
 
                 // A fixed sleep, so a slow frame pushes the whole loop late
@@ -1355,7 +1356,7 @@ draw_intro_screen:
                 add     x19, x19, :lo12:intro_frame
                 ldr     w19, [x19]              // w19 = frame counter
 
-                // Three glyphs a frame across the four 66-column lines
+                // Three characters a frame across the four 66-column lines
                 mov     w20, w19
                 mov     w21, 3
                 mul     w20, w20, w21           // chars_to_show = frame * 3
@@ -1521,7 +1522,7 @@ draw_menu:
                 bl      screen_clear
                 bl      cursor_home
 
-                // Rules top and bottom, the same idiom as the arena
+                // Border lines top and bottom, drawn like the arena's
                 mov     w0, ROW_TOP_BORDER
                 bl      draw_border_row
                 mov     w0, ROW_BAR_BOTTOM - 1
@@ -1703,7 +1704,7 @@ draw_menu_hs_loop:
                 ldr     w0, [x22, HS_SCORE]
                 cbz     w0, draw_menu_hs_next
 
-                // write_num and set_color clobber the low registers
+                // write_num and set_color overwrite the low registers
                 ldr     w21, [x22, HS_SCORE]    // w21 = score
                 ldrh    w19, [x22, HS_WAVE]     // w19 = wave (temp save)
                 str     w19, [sp, 48]           // Save wave to stack

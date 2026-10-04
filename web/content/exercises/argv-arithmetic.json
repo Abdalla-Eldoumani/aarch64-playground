@@ -1,18 +1,19 @@
 {
   "title": "argv arithmetic",
   "slug": "argv-arithmetic",
-  "order": 27,
+  "order": 61,
+  "lastUpdated": "2026-09-30",
   "topic": "argv",
   "difficulty": "challenge",
-  "prompt": "Every number on the command line gets added into one total. The args box already holds four of them.\n\n`main` receives `argc` in `x0` and `argv`, an array of string pointers, in `x1`. Entry zero is the program's own name, so start at one. Each entry is eight bytes, which is what the scaled form `ldr x0, [argv_r, i_r, lsl 3]` is for; `bl atoi` turns the string into a number.\n\nChange the args box and run again: the total should follow.\n\n## what is checked\n\n- the total of the arguments is printed on its own line\n- the program exits cleanly\n- the numbers come from argv (`atoi` called, total not written in)",
-  "starter": "// add up every number handed to the program on its command line\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(argc_r, x19)\ndefine(argv_r, x20)\ndefine(i_r, x21)\ndefine(total_r, x22)\n\n        .data\nfmt:    .string \"total = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     argc_r, x0\n        mov     argv_r, x1\n        mov     total_r, 0\n        mov     i_r, 1                      // argv[0] is the program name\n\n        // TODO: loop from 1 to argc - 1. Each argv entry is a POINTER\n        // to a string, eight bytes apart, so fetch it with\n        // ldr x0, [argv_r, i_r, lsl 3], turn it into a number with\n        // bl atoi, and add the result into the total.\n\n        ldr     x0, =fmt\n        mov     x1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Every number on the command line gets added into one total. The args box under the editor holds four of them; change it and run again, and the output follows. Check always uses the four in the specification, whatever the box holds.\n\n`main` receives `argc` in `x0` and `argv`, an array of string pointers, in `x1`. Entry zero is the program's own name, so start at one. Each entry is eight bytes, which is what the scaled form `ldr x0, [argv_r, i_r, lsl 3]` is for; `bl atoi` turns the string into a number.\n\nPrint the running total after each number is added, one per line, then the final total.\n\n## What is checked\n\n- the running totals and the final total for `12 7 30 4`, the args in the specification\n- the program exits cleanly\n- the numbers come from argv (`atoi` called, total not written in)\n- the same holds for other command lines you do not see, including one with no numbers at all",
+  "starter": "// add up every number handed to the program on its command line\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(argc_r, x19)\ndefine(argv_r, x20)\ndefine(i_r, x21)\ndefine(total_r, x22)\n\n        .data\nfmt_step:   .string \"%lld\\n\"\nfmt_total:  .string \"total = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     argc_r, x0\n        mov     argv_r, x1\n        mov     total_r, 0\n        mov     i_r, 1                      // argv[0] is the program name\n\n        // TODO: loop from 1 to argc - 1. Each argv entry is a POINTER\n        // to a string, eight bytes apart, so fetch it with\n        // ldr x0, [argv_r, i_r, lsl 3], turn it into a number with\n        // bl atoi, add the result into the total, and print the\n        // running total with fmt_step.\n\n        ldr     x0, =fmt_total\n        mov     x1, total_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "12 7 30 4",
   "variant": "write",
   "acceptance": {
     "results": [
       {
         "kind": "stdout",
-        "equals": "total = 53\n"
+        "equals": "12\n19\n49\n53\ntotal = 53\n"
       },
       {
         "kind": "exit",
@@ -29,5 +30,34 @@
         "value": 53
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "args": "",
+      "stdout": "total = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "args": "5",
+      "stdout": "5\ntotal = 5\n",
+      "exitCode": 0
+    },
+    {
+      "args": "-3 3",
+      "stdout": "-3\n0\ntotal = 0\n",
+      "exitCode": 0
+    },
+    {
+      "args": "007 -0",
+      "stdout": "7\n7\ntotal = 7\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "args": "100 200 300 400 500 600",
+      "stdout": "100\n300\n600\n1000\n1500\n2100\ntotal = 2100\n",
+      "exitCode": 0
+    }
+  ]
 }

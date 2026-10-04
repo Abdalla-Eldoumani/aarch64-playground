@@ -1,14 +1,10 @@
 "use client";
 
 /**
- * One multiple-choice question, graded locally against the validated
- * correct index. Before a wrong answer is corrected the block shows only
- * the author's hint, never the explanation or the right option, so a
- * student cannot read their way to the answer. `onAttempt` reports each
- * submission upward for the exercise-level solved state.
- *
- * The selection is controlled when the sheet passes `value`, so the pick
- * can be saved and restored across reloads, and self-owned otherwise.
+ * One multiple-choice question. A wrong answer shows only the hint, never the
+ * explanation or the right option, so a student cannot read their way to the
+ * answer. The pick is controlled when the sheet passes `value`, so it can
+ * survive a reload.
  */
 
 import { useState, type JSX } from "react";
@@ -23,6 +19,7 @@ export function QuizBlock({
   hint,
   value,
   onValueChange,
+  locked,
   onAttempt,
 }: {
   question: string;
@@ -38,6 +35,9 @@ export function QuizBlock({
   value?: number | null;
   /** Fires on every pick so the sheet can persist it. */
   onValueChange?: (value: number | null) => void;
+  /** Opens answered when the sheet restored this question as already
+   *  checked and right; honoured only while the restored answer still is. */
+  locked?: boolean;
   /** Fires on submission so the parent can track exercise-level progress. */
   onAttempt?: (isCorrect: boolean) => void;
 }): JSX.Element {
@@ -53,11 +53,12 @@ export function QuizBlock({
   };
 
   const isCorrect = selected === correctAnswer;
+  const answered = submitted || (locked === true && isCorrect);
 
   return (
     <div className="my-8 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-6">
       <h3 className="mb-4 font-serif text-lg font-semibold text-[var(--text-primary)]">
-        Knowledge Check
+        Multiple choice
       </h3>
       <p className="mb-6 text-[15px] leading-relaxed text-[var(--text-primary)]">{question}</p>
 
@@ -65,16 +66,19 @@ export function QuizBlock({
         {options.map((opt, i) => {
           const isSelected = selected === i;
           let tone: string;
-          if (submitted) {
+          // Once answered, the options not picked lose their fill and keep
+          // readable ink: fading the text would make them hard to re-read.
+          const settled = "border-[var(--border)] text-[var(--text-secondary)]";
+          if (answered) {
             if (isCorrect) {
               tone =
                 i === correctAnswer
                   ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] font-medium text-[var(--success)]"
-                  : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-tertiary)] opacity-40";
+                  : settled;
             } else {
               tone = isSelected
                 ? "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_12%,transparent)] font-medium text-[var(--danger)]"
-                : "border-[var(--border)] bg-[var(--bg-elevated)] text-[var(--text-secondary)] opacity-70";
+                : settled;
             }
           } else {
             tone = isSelected
@@ -86,7 +90,7 @@ export function QuizBlock({
             <button
               key={i}
               type="button"
-              disabled={submitted}
+              disabled={answered}
               onClick={() => select(i)}
               aria-pressed={isSelected}
               className={`rounded-[var(--radius-control)] border px-4 py-3 text-left text-[14px] transition-colors focus:outline-none focus-visible:[box-shadow:var(--ring)] ${tone}`}
@@ -97,7 +101,7 @@ export function QuizBlock({
         })}
       </div>
 
-      {!submitted ? (
+      {!answered ? (
         <Button
           disabled={selected === null}
           onClick={() => {

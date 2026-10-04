@@ -1,106 +1,127 @@
-# CPSC 355 playground
+# AArch64 Playground
 
-A browser-based AArch64 (ARMv8) assembly emulator and visual debugger for
-CPSC 355 at the University of Calgary. Paste an unmodified course tutorial,
-assemble it, and watch it run with real stdout, stdin, registers, stack, and
-memory in the browser tab. The emulator is a hand-written Rust interpreter
-compiled to WebAssembly, so there is no server, no QEMU, and no install.
+An AArch64 (ARMv8) assembly emulator and visual debugger that runs in your
+browser, built for students learning ARM assembly in CPSC 355 at the
+University of Calgary (not an official university project). Paste a course
+program, assemble it, and step through it while the registers, stack, memory,
+and output change. There is nothing to install, and your code stays in the
+browser tab.
 
-Live at <https://aarch64-playground.com>.
+Use it at <https://aarch64-playground.com>, or run your own copy with the
+steps in [Run it locally](#run-it-locally).
 
-## Features
+## What you can do
 
-- **Playground** (`/playground`): a Monaco editor with assemble, run, step,
-  and step-back; breakpoints; a live decode strip that renders the
-  instruction under the pc as its actual encoding fields; three register
-  views (the integer `x0`–`x30`, the floating-point `d0`–`d31`, and the
-  128-bit vector `v0`–`v31` sliced into 8-, 16-, 32- or 64-bit lanes), each
-  with its own decimal and raw-bit readings and the view following the
-  write; memory and stack views; a console with interactive stdin and a
-  persistent virtual filesystem; a terminal pane with the course toolchain
-  (`m4`, `gcc`, `./prog`) and a gdb-style command subset; a
-  hex/binary/decimal/two's-complement converter; share links; and dark,
-  light, and high-contrast themes.
-- **Learn** (`/learn`): short lessons with runnable inline editors.
-- **Practice** (`/practice`): coding exercises checked by running your
-  program against expected behavior (registers, exit code, stdout), never
-  against a stored answer, so any correct approach passes; plus quizzes,
-  fill-in-the-blank drills, and mental-trace prediction sets graded right
-  on the page.
-- **Reference** (`/reference`): a searchable reference for all 398
-  mnemonics the assembler accepts, with worked encodings and interactive
-  flag panels, a calling-convention guide with a step-through frame walk,
-  and a pitfalls catalog with runnable examples, kept in sync with what the
-  emulator supports.
-- **Realistic hosted runtime**: m4 register-alias macros, GAS directives and
-  sections, frame-pointer prologues, the `ldr xN, =label` literal pool, the
-  AAPCS64 `printf`/`scanf` path and the wider libc surface that student and
-  gcc-compiled code reach for, Linux syscalls via `svc 0`, argc/argv on
-  entry, and single- and double-precision floating point (the `s`/`d`
-  register views with `fcvt` between them). Beyond the course's own
-  instructions it assembles what gcc reaches for: conditional compares, the
-  conditional-select aliases, bit counting and reversal, the bitfield insert
-  and extract forms, widening multiply-accumulate, the inverted logical
-  operations, and in floating point fused multiply-add, min and max,
-  `fcsel`, and every float-to-integer rounding mode. The whole Advanced SIMD
-  base set assembles and runs too: the 128-bit `v0`–`v31` file, the lane
-  arrangements over it, the by-element and permute forms, and the
-  `LD1`-`LD4` structure loads and stores, with six vector example programs
-  to read. Every form is held to a capture taken on the course server, both
-  the word GNU `as` produces and the bytes the instruction moves; the
-  extension families that server refuses without an architecture directive
-  stay out, listed by ARM feature name in the instruction reference. A
-  tracked corpus of fifty gcc-compiled C programs is replayed against real
-  AArch64 server outputs byte for byte: at `-O0` as a gate on every change,
-  and at `-O2` as a coverage map of the forms the optimizer emits.
-- **Fully client-side and installable**: runs offline as a PWA. The emulator
-  runs in a Web Worker with a main-thread fallback, and is bounded so a
-  runaway program halts cleanly instead of freezing the tab. The landing
-  page ships no editor code at all: it draws its program as static text, and
-  the editor arrives only when you open the playground or an embed you can
-  type into.
+- Write or paste a program, assemble it, and run it. `printf`, `scanf`,
+  command-line arguments, and files work the way they do on the course server.
+- Step one instruction at a time, step back, and set breakpoints while the
+  registers, the stack, and memory update.
+- Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
+  on files kept in the browser.
+- Read 32 lessons, each with programs you can run in place. Every lesson ends
+  with buttons to the previous and next lessons, and first links the
+  exercises that practice it.
+- Practice with 68 coding exercises, checked by running your program on hidden
+  inputs, and 68 sets of quizzes, fill-in-the-blank questions, and output
+  predictions.
+- Look up every instruction the emulator accepts, with its syntax, an example,
+  the C it matches, and the flags it sets. The reference also walks through the
+  calling convention and lists 36 common mistakes, each a program you can run.
+- Send a program as a link. The whole program is inside the link, so no server
+  stores it.
+- Install the site as an app. After one visit the playground works offline,
+  and **Save every page for offline** keeps the lessons, practice, and
+  reference too.
 
-## Quickstart
+## What it does not do
 
-Requires [Rust](https://rustup.rs/) with the `wasm32-unknown-unknown` target,
-[wasm-pack](https://wasm-bindgen.github.io/wasm-pack/installer/), and Node.js
-24 or newer.
+- It copies one course server's toolchain (GNU `as`, glibc, and GNU m4 on
+  AArch64 Linux), not every system. Where the playground and that server
+  disagree, the server is right and the difference is a bug.
+- It runs user programs only, with no operating system underneath. System
+  registers (`MRS`, `MSR`), atomics and exclusive loads and stores (`LDXR`,
+  `STXR`, `LDAR`, `STLR`, `SWP`, `CAS`), SVE, and SME are not supported. The
+  base Advanced SIMD (vector) set works; its optional extensions (AES, SHA,
+  dot product, half-precision arithmetic, and the rest) do not.
+- Library calls such as `printf`, `malloc`, and `fopen` do not run glibc's
+  code. The emulator answers them and returns what glibc would. `time` returns
+  a fixed value and the clock moves only when a program sleeps, so the same
+  input always gives the same run.
+- Only some system calls exist (`read`, `write`, `openat`, `close`, `lseek`,
+  `exit`, and a few that terminal programs use). Files live in a small virtual
+  filesystem in the browser: at most 16 files and 4 MiB.
+- The m4 pass handles `define`, macros with arguments, and `undefine`. It
+  refuses `ifdef`, `ifelse`, `forloop`, and `dnl`, and a macro's arguments
+  must close on the line that uses it.
+- Output from `gcc -S` needs a few edits before it assembles, such as deleting
+  the `.cfi_` lines. The [instruction reference](docs/instruction-reference.md#gcc-output-compatibility)
+  lists them.
+- The terminal's `gcc` only assembles. There is no C compiler in the browser.
+- It counts instructions, not clock cycles, so it cannot tell you how fast code
+  runs on a real chip.
+- Limits stop a runaway program instead of freezing the tab: 10 million
+  instructions per run, 32 MiB of memory in use (an 8 MiB stack and a 16 MiB
+  heap), and 4 MiB of output. Step back reaches the last 128 instructions.
+- Your programs, files, and exercise progress are saved in this browser only.
+  There are no accounts, and clearing the site's data deletes them. The
+  practice page can export your progress to a file and import it elsewhere.
+- A share link holds up to 16 KiB of compressed text. Send a longer program as
+  a file: pick **workspace .json** from the playground's **export** menu.
+
+## Run it locally
+
+You need:
+
+- Rust 1.96 or newer, installed through [rustup](https://rustup.rs/)
+- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/) 0.14
+- [Node.js](https://nodejs.org/) 24 or newer
+
+From the repository root:
 
 ```bash
-# build the wasm module
-cd emulator
-wasm-pack build --target web --out-dir ../web/lib/wasm
-
-# install and run the web app
-cd ../web
-npm install
+rustup target add wasm32-unknown-unknown
+cargo install --locked --version 0.14.0 wasm-pack
+wasm-pack build emulator --target web --out-dir ../web/lib/wasm
+wasm-pack build emulator --target nodejs --out-dir ../web/lib/wasm-node
+cd web
+npm ci
 npm run dev
 ```
 
-Open <http://localhost:3000>. For one terminal that rebuilds the WASM and
-serves the app together, run `npm run dev:all` from `web/` (it serves the app
-either way; `cargo install cargo-watch` enables the WASM auto-rebuild).
+Open <http://localhost:3000>. To use another port, pass it after `--`, as in
+`npm run dev -- -p 3151`.
 
-## Stack
+The first `wasm-pack` build is the emulator the site loads. The second is a
+Node.js copy that the tests and `npm run build` need. `--out-dir` is relative
+to `emulator/`. Rebuild both after you change anything under `emulator/`.
 
-Rust and wasm-pack for the emulator; Next.js 16 (App Router), React 19,
-TypeScript, and Tailwind CSS for the web app; deployed on Vercel.
+For a production build, run these in `web/`:
 
-## Docs
+```bash
+npm run build
+npm run start
+```
 
-Start at [`docs/README.md`](docs/README.md): it routes by task to the
-architecture, the getting-started tour, the contributing and testing guides,
-deployment, the instruction reference, the assembly style guide, the
-content-authoring format, the terminal reference, and the security posture.
+A local production server logs browser console errors for Vercel's two
+analytics scripts, which exist only on Vercel. In Chrome, each script logs a
+404 error and a refused-script error. The errors do not affect the site.
+
+To run the tests, see [docs/TESTING.md](docs/TESTING.md). To change the code,
+start with [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md). Every doc is listed in
+[docs/README.md](docs/README.md).
 
 ## Privacy
 
-The site keeps no accounts and asks for no personal data. Vercel Web
-Analytics and Speed Insights measure traffic as aggregate page views only;
-they set no cookies and record nothing that identifies you. The programs you
-write, the files you upload, and the arguments you type stay in your browser.
-The only copies live in that browser's localStorage and IndexedDB, and
-clearing site data deletes all of it.
+The site has no accounts and asks for no personal data. Vercel Web Analytics
+and Speed Insights count page views in aggregate; they set no cookies. Your
+programs, uploaded files, and arguments stay in your browser's localStorage and
+IndexedDB, and clearing the site's data deletes them.
+
+## Reporting a problem
+
+Open an issue with the program and what you expected. Report a security
+problem privately through
+[GitHub's advisory form](https://github.com/Abdalla-Eldoumani/aarch64-playground/security/advisories/new).
 
 ## License
 

@@ -1,3 +1,5 @@
+use std::cell::Cell;
+
 use crate::errors::EmuError;
 
 /// ARM64 condition codes used by B.cond and conditional select.
@@ -20,12 +22,10 @@ pub enum Condition {
     AL = 0b1110,
 }
 
-/// The condition-code table: primary spelling, alias spellings, and the 4-bit
-/// encoding. This is the one place the set is written down; the assembler's
-/// `parse_condition` and conditional-branch dispatch, the hosted pipeline's
-/// branch recognizer, and the drift tests all walk it. NV (0b1111) is left
-/// out on purpose: GAS accepts it nowhere the course reaches, and `from_u8`
-/// folds it onto AL the way the hardware executes it.
+/// Condition codes: primary spelling, aliases, and the 4-bit encoding. The
+/// one list the assembler, the hosted pipeline, and the drift tests all
+/// read. NV (0b1111) is left out: GAS rejects it in every form the course
+/// uses, and `from_u8` runs it as AL, as the hardware does.
 pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
     ("EQ", &[], 0b0000),
     ("NE", &[], 0b0001),
@@ -44,15 +44,11 @@ pub const CONDITIONS: &[(&str, &[&str], u8)] = &[
     ("AL", &[], 0b1110),
 ];
 
-/// The register spellings that name an index without an `x`/`w` prefix and
-/// digits: the alias, the register number it resolves to, and whether it
-/// reads as the 64-bit view. GNU as predefines all five, so course
-/// prologues written with bare `fp`/`lr` assemble without a
-/// `define(fp, x29)` line. This is the one place the set is written down:
-/// the assembler's `parse_register` and `looks_like_register`, the hosted
-/// pipeline's `is_register_or_shift_keyword`, and the linter's
-/// `is_reserved_name` all read it. Spellings are uppercase; every consumer
-/// compares case-insensitively.
+/// Register names without an `x`/`w` and a number: the alias, the register
+/// it names, and whether it is the 64-bit view. GNU as predefines all five,
+/// so a prologue using bare `fp`/`lr` assembles without `define(fp, x29)`.
+/// The one list the assembler, the hosted pipeline, and the linter read.
+/// Spellings are uppercase; every reader compares case-insensitively.
 pub const REG_ALIASES: &[(&str, u8, bool)] = &[
     ("SP", 31, true),
     ("XZR", 31, true),
@@ -208,12 +204,53 @@ impl NzcvFlags {
     }
 }
 
+/// What a library call leaves in every register AAPCS64 lets it change,
+/// so a program that trusted one to survive the call reads an obviously
+/// wrong value, as it would on the servers.
+pub const CLOBBER_PATTERN: u64 = 0xDEAD_BEEF_DEAD_BEEF;
+
+/// The flags a library call leaves: the pattern's top nibble. N and Z are
+/// never both set by an arithmetic result, so the panel shows it as junk.
+pub const CLOBBER_NZCV: u8 = 0b1101;
+
+/// A set of registers by bit: x0-x30 in `x`, and d0-d31 (the low 64 bits
+/// of v0-v31) in `d`. Bit 31 of `x`, which no x register uses, is the
+/// NZCV flags.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct RegMask {
+    pub x: u32,
+    pub d: u32,
+}
+
+impl RegMask {
+    pub fn is_empty(&self) -> bool {
+        self.x == 0 && self.d == 0
+    }
+}
+
+/// The flags' number in the clobber bookkeeping, where `xN` is N and `dN`
+/// is 32 + N.
+pub const FLAGS_CODE: u8 = 31;
+const FLAGS_BIT: u32 = 1 << FLAGS_CODE;
+
+/// Where a register's leftovers came from, for the note that names them.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct ClobberOrigin {
+    /// The register the call overwrote (`FLAGS_CODE` numbering). A copy
+    /// carries its source's.
+    pub register: u8,
+    /// The `bl` of that call.
+    pub call_pc: u32,
+    /// The copy that first read the leftovers, 0 until one did.
+    pub copied_at: u32,
+}
+
 /// The 64-bit ARM register file.
 ///
 /// Contains X0-X30, SP, PC, and the NZCV condition flags.
 /// W-register access (32-bit) is handled by the `sf` parameter on
 /// read/write methods: internally everything is stored as 64-bit.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RegisterFile {
     gpr: [u64; 31],
     sp: u64,
@@ -223,6 +260,61 @@ pub struct RegisterFile {
     /// the low 8/16/32/64/128 bits of the same entry, so the scalar helpers
     /// below extract from and deposit into `u128` storage.
     fpr: [u128; 32],
+    /// Registers still holding what the last library call left, until
+    /// the program writes them again.
+    clobbered: RegMask,
+    /// Which clobbered registers were read since the last take. A Cell
+    /// because every read path borrows the file shared.
+    clobbered_reads: Cell<RegMask>,
+    /// Per register (`FLAGS_CODE` numbering), where the leftovers in it
+    /// came from; meaningful while its `clobbered` bit is set.
+    clobber_origins: [ClobberOrigin; 64],
+    /// While `recording`, what the running step overwrote, so its
+    /// step-back frame can put it back; between steps a spare buffer (see
+    /// `record_undo`).
+    undo: RegUndo,
+    recording: bool,
+}
+
+/// One array entry a step overwrote, with the value it held.
+#[derive(Debug, Clone, Copy)]
+enum RegEdit {
+    Gpr(u8, u64),
+    Fpr(u8, u128),
+    Origin(u8, ClobberOrigin),
+}
+
+/// What a step changed in the register file: the small fields as they
+/// were before it, and each array entry it overwrote. Copying the whole
+/// file (1.5 KB, mostly FP registers and clobber origins a step seldom
+/// touches) into every step-back frame cost more than a simple step.
+#[derive(Debug, Default)]
+pub struct RegUndo {
+    sp: u64,
+    pc: u64,
+    nzcv: NzcvFlags,
+    clobbered: RegMask,
+    clobbered_reads: RegMask,
+    edits: Vec<RegEdit>,
+}
+
+impl Clone for RegisterFile {
+    /// A copy (a named save) is the registers alone: the undo log belongs
+    /// to the running step, and between steps it is an empty spare.
+    fn clone(&self) -> Self {
+        Self {
+            gpr: self.gpr,
+            sp: self.sp,
+            pc: self.pc,
+            nzcv: self.nzcv,
+            fpr: self.fpr,
+            clobbered: self.clobbered,
+            clobbered_reads: self.clobbered_reads.clone(),
+            clobber_origins: self.clobber_origins,
+            undo: RegUndo::default(),
+            recording: false,
+        }
+    }
 }
 
 impl RegisterFile {
@@ -234,22 +326,215 @@ impl RegisterFile {
             pc: 0,
             nzcv: NzcvFlags::default(),
             fpr: [0u128; 32],
+            clobbered: RegMask::default(),
+            clobbered_reads: Cell::new(RegMask::default()),
+            clobber_origins: [ClobberOrigin::default(); 64],
+            undo: RegUndo::default(),
+            recording: false,
+        }
+    }
+
+    /// Take the small fields into `slot`'s buffer (a recycled frame's) and
+    /// start logging every array entry a write replaces. The buffer trades
+    /// places with this file's spare until `finish_undo` trades it back.
+    pub fn record_undo(&mut self, slot: &mut RegUndo) {
+        std::mem::swap(&mut self.undo, slot);
+        let log = &mut self.undo;
+        log.sp = self.sp;
+        log.pc = self.pc;
+        log.nzcv = self.nzcv;
+        log.clobbered = self.clobbered;
+        log.clobbered_reads = self.clobbered_reads.get();
+        log.edits.clear();
+        self.recording = true;
+    }
+
+    /// Stop logging and trade the filled log back into `slot`.
+    pub fn finish_undo(&mut self, slot: &mut RegUndo) {
+        if std::mem::take(&mut self.recording) {
+            std::mem::swap(&mut self.undo, slot);
+        }
+    }
+
+    /// Put back every logged entry, newest first, and the small fields.
+    pub fn undo(&mut self, log: RegUndo) {
+        for edit in log.edits.into_iter().rev() {
+            // Each index came from a write that succeeded, so it is in
+            // range; the checks keep a bounds-check panic out of the wasm
+            // all the same.
+            match edit {
+                RegEdit::Gpr(i, old) => {
+                    if let Some(reg) = self.gpr.get_mut(usize::from(i)) {
+                        *reg = old;
+                    }
+                }
+                RegEdit::Fpr(i, old) => self.fpr[usize::from(i & 31)] = old,
+                RegEdit::Origin(i, old) => self.clobber_origins[usize::from(i & 63)] = old,
+            }
+        }
+        self.sp = log.sp;
+        self.pc = log.pc;
+        self.nzcv = log.nzcv;
+        self.clobbered = log.clobbered;
+        self.clobbered_reads.set(log.clobbered_reads);
+    }
+
+    fn log(&mut self, edit: RegEdit) {
+        if self.recording {
+            self.undo.edits.push(edit);
+        }
+    }
+
+    /// Log `fpr[index]` before a write replaces it.
+    fn log_fpr(&mut self, index: u8) {
+        self.log(RegEdit::Fpr(index, self.fpr[usize::from(index & 31)]));
+    }
+
+    /// Overwrite everything AAPCS64 lets a called function change: x0-x18,
+    /// v0-v7 and v16-v31, bits 127:64 of v8-v15, and NZCV. `keep_x0` and
+    /// `keep_v0` spare the register the return value came back in.
+    pub fn clobber_caller_saved(&mut self, keep_x0: bool, keep_v0: bool, call_pc: u64) {
+        if self.recording {
+            // Everything below may change, so all of it goes in the log:
+            // a library call is one step among thousands.
+            for i in 0..31 {
+                self.log(RegEdit::Gpr(i, self.gpr[usize::from(i)]));
+            }
+            for i in 0..32 {
+                self.log_fpr(i);
+            }
+            for i in 0..64 {
+                self.log(RegEdit::Origin(i, self.clobber_origins[usize::from(i)]));
+            }
+        }
+        let first = usize::from(keep_x0);
+        for reg in &mut self.gpr[first..=18] {
+            *reg = CLOBBER_PATTERN;
+        }
+        let pattern = u128::from(CLOBBER_PATTERN);
+        let mut d = 0u32;
+        for (i, reg) in self.fpr.iter_mut().enumerate() {
+            if i == 0 && keep_v0 {
+                continue;
+            }
+            if (8..16).contains(&i) {
+                *reg = (*reg & u128::from(u64::MAX)) | (pattern << 64);
+            } else {
+                *reg = (pattern << 64) | pattern;
+                d |= 1 << i;
+            }
+        }
+        self.nzcv = NzcvFlags::unpack(CLOBBER_NZCV);
+        let x = (0x7_FFFF & !u32::from(keep_x0)) | FLAGS_BIT; // x0-x18, flags
+        self.clobbered.x |= x;
+        self.clobbered.d |= d;
+        let fresh = u64::from(x) | (u64::from(d) << 32);
+        for (code, origin) in self.clobber_origins.iter_mut().enumerate() {
+            if (fresh >> code) & 1 != 0 {
+                // Every address the loader hands out fits in 32 bits.
+                *origin = ClobberOrigin { register: code as u8, call_pc: call_pc as u32, copied_at: 0 };
+            }
+        }
+    }
+
+    /// The clobbered registers read since the last take, emptied.
+    pub fn take_clobbered_reads(&self) -> RegMask {
+        self.clobbered_reads.take()
+    }
+
+    /// Where the leftovers in register `code` (`FLAGS_CODE` numbering)
+    /// came from. The `& 63` here and below keeps a bounds-check panic out
+    /// of the wasm.
+    pub fn clobber_origin(&self, code: u8) -> ClobberOrigin {
+        self.clobber_origins[usize::from(code & 63)]
+    }
+
+    /// A copy (`mov`, `fmov`) moves leftovers without using them: the
+    /// destination takes over the source's origin, so a note waits for the
+    /// read that uses the value and then names the copy.
+    pub fn carry_clobber(&mut self, from: u8, to: u8, pc: u32) {
+        let mut origin = self.clobber_origins[usize::from(from & 63)];
+        if origin.copied_at == 0 {
+            origin.copied_at = pc;
+        }
+        self.log(RegEdit::Origin(to, self.clobber_origins[usize::from(to & 63)]));
+        self.clobber_origins[usize::from(to & 63)] = origin;
+        if to < 32 {
+            self.clobbered.x |= 1 << to;
+        } else {
+            self.clobbered.d |= 1 << (to - 32);
+        }
+    }
+
+    /// Evaluate a condition, as a read of the flags.
+    #[inline(never)]
+    pub fn condition_holds(&self, cond: Condition) -> bool {
+        if cond != Condition::AL {
+            self.mark_flags_read();
+        }
+        self.nzcv.check(cond)
+    }
+
+    /// The carry flag, as `adc` and `sbc` read it.
+    #[inline(never)]
+    pub fn carry_flag(&self) -> bool {
+        self.mark_flags_read();
+        self.nzcv.c
+    }
+
+    /// Set the flags a conditional compare chose. Its literal is the one
+    /// flags write that can spell the call's pattern, so the write also
+    /// ends the flags' life as that call's leftovers.
+    pub fn set_nzcv(&mut self, flags: NzcvFlags) {
+        self.clobbered.x &= !FLAGS_BIT;
+        self.nzcv = flags;
+    }
+
+    /// The executor sets the flags by assigning `nzcv` wherever an
+    /// instruction writes them, so there is no one write to clear the mark
+    /// on. The flags count as a call's leftovers while they still read as
+    /// its pattern instead, which no compare produces; a conditional
+    /// compare's literal can, so it writes through `set_nzcv`.
+    fn mark_flags_read(&self) {
+        if self.nzcv.pack() == CLOBBER_NZCV {
+            self.mark_read(FLAGS_BIT, 0);
+        }
+    }
+
+    /// Note which of these registers a read found still holding a call's
+    /// leftovers.
+    fn mark_read(&self, x: u32, d: u32) {
+        let (x, d) = (x & self.clobbered.x, d & self.clobbered.d);
+        if x | d != 0 {
+            let seen = self.clobbered_reads.get();
+            self.clobbered_reads.set(RegMask { x: seen.x | x, d: seen.d | d });
         }
     }
 
     /// Read a general-purpose register. Index 31 returns zero (XZR/WZR).
     /// When `sf` is false the upper 32 bits are masked off.
+    // The register accessors stay out of line: inlined into every executor
+    // call site, the clobber bookkeeping pushed the wasm over its budget.
+    #[inline(never)]
     pub fn read_gpr(&self, index: u8, sf: bool) -> u64 {
-        let val = if index >= 31 { 0 } else { self.gpr[index as usize] };
+        let val = if index >= 31 {
+            0
+        } else {
+            self.mark_read(1 << index, 0);
+            self.gpr[index as usize]
+        };
         if sf { val } else { val & 0xFFFF_FFFF }
     }
 
     /// Write a general-purpose register. Index 31 is a no-op (write to XZR).
     /// When `sf` is false the value is zero-extended from 32 bits.
+    #[inline(never)]
     pub fn write_gpr(&mut self, index: u8, sf: bool, value: u64) {
         if index >= 31 {
             return;
         }
+        self.clobbered.x &= !(1 << index);
+        self.log(RegEdit::Gpr(index, self.gpr[index as usize]));
         self.gpr[index as usize] = if sf { value } else { value & 0xFFFF_FFFF };
     }
 
@@ -265,17 +550,18 @@ impl RegisterFile {
 
     /// Read a register where index 31 means SP instead of XZR.
     pub fn read_gpr_or_sp(&self, index: u8, sf: bool) -> u64 {
-        let val = if index >= 31 { self.sp } else { self.gpr[index as usize] };
-        if sf { val } else { val & 0xFFFF_FFFF }
+        if index >= 31 {
+            return if sf { self.sp } else { self.sp & 0xFFFF_FFFF };
+        }
+        self.read_gpr(index, sf)
     }
 
     /// Write a register where index 31 means SP instead of XZR.
     pub fn write_gpr_or_sp(&mut self, index: u8, sf: bool, value: u64) {
-        let value = if sf { value } else { value & 0xFFFF_FFFF };
         if index >= 31 {
-            self.sp = value;
+            self.sp = if sf { value } else { value & 0xFFFF_FFFF };
         } else {
-            self.gpr[index as usize] = value;
+            self.write_gpr(index, sf, value);
         }
     }
 
@@ -298,23 +584,32 @@ impl RegisterFile {
     }
 
     /// Read the low 64 bits of an FP register: the D view.
+    #[inline(never)]
     pub fn read_fpr_bits(&self, index: u8) -> u64 {
         if index >= 32 {
             return 0;
         }
+        self.mark_read(0, 1 << index);
         self.fpr[index as usize] as u64
     }
 
     /// Write the D view of an FP register. Like the hardware, a D write
     /// zeroes bits 127:64.
+    #[inline(never)]
     pub fn write_fpr_bits(&mut self, index: u8, value: u64) {
         if index >= 32 {
             return;
         }
+        self.unclobber_fpr(index);
+        self.log_fpr(index);
         self.fpr[index as usize] = u128::from(value);
     }
 
-    /// Read the whole 128-bit register: the Q (and V) view.
+    /// Read the whole 128-bit register: the Q (and V) view. Vector reads
+    /// are not tracked: the lane engine reads whole registers, destinations
+    /// included, for lanes an instruction never uses, so a note from here
+    /// would be wrong as often as right.
+    #[inline(never)]
     pub fn read_fpr_q(&self, index: u8) -> u128 {
         if index >= 32 {
             return 0;
@@ -323,20 +618,31 @@ impl RegisterFile {
     }
 
     /// Write the whole 128-bit register: the Q (and V) view.
+    #[inline(never)]
     pub fn write_fpr_q(&mut self, index: u8, value: u128) {
         if index >= 32 {
             return;
         }
+        self.unclobber_fpr(index);
+        self.log_fpr(index);
         self.fpr[index as usize] = value;
+    }
+
+    /// A write of the low 64 bits replaces whatever a call left there.
+    fn unclobber_fpr(&mut self, index: u8) {
+        self.clobbered.d &= !(1 << index);
     }
 
     /// Write a B/H/S/D scalar view (1, 2, 4 or 8 bytes). Everything above
     /// the written width is zeroed, which is what a SIMD&FP scalar
     /// destination does on AArch64.
+    #[inline(never)]
     pub fn write_fpr_scalar(&mut self, index: u8, bytes: u8, value: u64) {
         if index >= 32 {
             return;
         }
+        self.unclobber_fpr(index);
+        self.log_fpr(index);
         self.fpr[index as usize] = match bytes {
             1 => u128::from(value as u8),
             2 => u128::from(value as u16),
@@ -347,6 +653,7 @@ impl RegisterFile {
 
     /// Read one lane of `esize_bytes` (1, 2, 4 or 8) as a zero-extended
     /// u64. An out-of-range lane or element size reads zero.
+    #[inline(never)]
     pub fn read_fpr_lane(&self, index: u8, esize_bytes: u8, lane: u8) -> u64 {
         let (bits, shift) = match Self::lane_position(index, esize_bytes, lane) {
             Some(pos) => pos,
@@ -358,12 +665,19 @@ impl RegisterFile {
 
     /// Write one lane of `esize_bytes` (1, 2, 4 or 8). Unlike a scalar
     /// write this leaves every other bit of the register alone.
+    #[inline(never)]
     pub fn write_fpr_lane(&mut self, index: u8, esize_bytes: u8, lane: u8, value: u64) {
         let (bits, shift) = match Self::lane_position(index, esize_bytes, lane) {
             Some(pos) => pos,
             None => return,
         };
+        // A lane in the low half counts as writing all of it: a narrow lane
+        // leaves junk beside it, but a missed note beats a false one.
+        if shift < 64 {
+            self.unclobber_fpr(index);
+        }
         let mask = Self::lane_mask(bits);
+        self.log_fpr(index);
         let slot = &mut self.fpr[index as usize];
         *slot = (*slot & !(mask << shift)) | ((u128::from(value) & mask) << shift);
     }
@@ -670,7 +984,7 @@ mod tests {
         rf.write_fpr_q(3, u128::MAX);
         rf.write_fpr_scalar(3, 1, 0xABCD);
         assert_eq!(rf.read_fpr_q(3), 0xCD);
-        rf.write_fpr_scalar(3, 2, 0xABCD_EF);
+        rf.write_fpr_scalar(3, 2, 0x00AB_CDEF);
         assert_eq!(rf.read_fpr_q(3), 0xCDEF);
     }
 
@@ -688,5 +1002,35 @@ mod tests {
         assert_eq!(rf.read_fpr_lane(7, 1, 16), 0);
         rf.write_fpr_lane(7, 8, 2, 0x1234);
         assert_eq!(rf.read_fpr_q(7), 0xee0e_0d0c_0b0a_0908_aaaa_bbbb_0302_0100);
+    }
+
+    #[test]
+    fn undo_puts_back_registers_flags_and_clobber_state() {
+        let mut rf = RegisterFile::new();
+        rf.write_gpr(3, true, 33);
+        rf.write_fpr_q(4, 44);
+        rf.write_sp(0x8000);
+        rf.write_pc(0x40_0000);
+        let mut log = RegUndo::default();
+        rf.record_undo(&mut log);
+        rf.write_gpr(3, true, 1);
+        rf.write_gpr(3, false, 2);
+        rf.write_fpr_lane(4, 1, 15, 0xFF);
+        rf.write_fpr_scalar(5, 4, 7);
+        rf.write_sp(0x7FF0);
+        rf.write_pc(0x40_0004);
+        rf.set_nzcv(NzcvFlags::unpack(0b0110));
+        rf.clobber_caller_saved(false, false, 0x40_0010);
+        rf.carry_clobber(0, 20, 0x40_0014);
+        rf.finish_undo(&mut log);
+        rf.undo(log);
+        assert_eq!(rf.read_gpr(3, true), 33);
+        assert_eq!(rf.read_fpr_q(4), 44);
+        assert_eq!(rf.read_fpr_q(5), 0);
+        assert_eq!(rf.read_sp(), 0x8000);
+        assert_eq!(rf.read_pc(), 0x40_0000);
+        assert_eq!(rf.nzcv, NzcvFlags::default());
+        assert!(rf.clobbered.is_empty(), "no register holds a call's leftovers again");
+        assert_eq!(rf.clobber_origin(20).call_pc, 0);
     }
 }

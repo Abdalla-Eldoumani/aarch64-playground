@@ -1,27 +1,10 @@
-//! Drift guard: the public instruction reference and the emulator's
-//! supported set must stay in sync.
-//!
-//! `docs/instruction-reference.md` is the canonical public list of every
-//! mnemonic the playground assembles. This test parses that document's
-//! instruction tables and compares the documented mnemonics against
-//! `assembler::SUPPORTED_MNEMONICS`. If the two diverge (a
-//! decoder/assembler change adds or drops a mnemonic without a matching doc
-//! edit, or the reference lists something the assembler rejects) the test
-//! fails and prints the symmetric difference so the reconciliation is
-//! obvious.
-//!
-//! The supported list is not transcribed here. It is the assembler's
-//! own const, declared directly above the `encode_line` dispatch it
-//! describes, and an assembler unit test probes every entry through that
-//! dispatch. So the document and the dispatch cannot drift silently: a new
-//! arm that never reaches the const fails nothing here, but a const entry
-//! with no arm fails in `assembler.rs` and a const entry with no table row
-//! fails here.
-//!
-//! Scope: this guards the canonical reference (`docs/instruction-reference.md`,
-//! which feeds the `/reference` pages). The Monaco hover-card list
-//! (`web/lib/asm/instruction-docs.ts`) is a separate surface and is not parsed
-//! here.
+//! Keeps `docs/instruction-reference.md`, the public list of what the
+//! playground assembles and the source of the `/reference` pages, in step
+//! with the assembler's `SUPPORTED_MNEMONICS`, and prints what each side
+//! lacks when they differ. An assembler unit test checks that every name on
+//! that list really assembles; a mnemonic the assembler takes but leaves
+//! off that list is not caught here. The editor's hover cards
+//! (`web/lib/asm/instruction-docs.ts`) are a separate list, not checked here.
 
 use std::collections::BTreeSet;
 use std::path::PathBuf;
@@ -47,10 +30,9 @@ fn is_condition(s: &str) -> bool {
     )
 }
 
-/// Canonicalize a mnemonic for comparison: upper-case, and fold the
-/// conditional-branch family down to two placeholders so the concrete `B.EQ`
-/// arm and the documented generic `B.cond` row compare equal. Leaves the
-/// unconditional branches (`B`, `BL`, `BR`, `BLR`) untouched.
+/// Upper-case a mnemonic and fold every conditional branch to one of two
+/// placeholders, so `B.EQ` on the assembler's list matches the reference's
+/// single `B.cond` row. `B`, `BL`, `BR` and `BLR` stay as they are.
 fn canon(mnemonic: &str) -> String {
     let u = mnemonic.to_ascii_uppercase();
     if u == "B.COND" {
@@ -81,13 +63,11 @@ fn first_backtick_token(cell: &str) -> Option<String> {
     Some(rest[..end].trim().to_string())
 }
 
-/// Parse the documented mnemonic set from the reference's instruction tables.
-/// An "instruction table" is any Markdown table whose first header cell is
-/// exactly `Mnemonic`; that selects the eight instruction tables and skips the
-/// directive, pseudo-instruction, m4, host-stub, and syscall tables (which use
-/// different first headers) plus all prose. Only the first column of each row
-/// is read, so back-ticked mnemonics in the `Notes`/`Form` columns (aliases
-/// like `SBFM`, `ADD`) never leak into the set.
+/// The mnemonics in the reference's instruction tables, the ones whose
+/// first header cell is `Mnemonic`; the directive, pseudo-instruction, m4,
+/// libc and syscall tables use other headers. Only the first column is
+/// read, so aliases named in the `Notes`/`Form` columns (`SBFM`, `ADD`)
+/// stay out.
 fn documented_mnemonics(markdown: &str) -> BTreeSet<String> {
     let mut set = BTreeSet::new();
     let mut in_instruction_table = false;

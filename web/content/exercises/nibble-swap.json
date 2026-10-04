@@ -1,0 +1,70 @@
+{
+  "title": "Nibbles trade places",
+  "slug": "nibble-swap",
+  "order": 25,
+  "lastUpdated": "2026-09-30",
+  "topic": "bitwise",
+  "difficulty": "intro",
+  "prompt": "A nibble is four bits: half a byte, and exactly one hex digit. Swapping the two nibbles of `0xa7` gives `0x7a`.\n\nThe starter reads a value typed in hex into `value_r`. Keep only its low byte in `byte_r`, then build `swap_r` from `byte_r` with the two nibbles traded. `lsr` by 4 brings the high nibble down, `lsl` by 4 moves the low nibble up, and `orr` joins the halves. After the left shift the old high nibble sits above bit 7, so mask it away with `and` to keep the answer inside one byte.\n\nWith the sample input `a7` the program prints `0xa7 -> 0x7a`.\n\n## What is checked\n\n- `0xa7 -> 0x7a` for the sample input\n- the program exits cleanly\n- the nibbles move with `lsl` and `lsr`\n- the right answer for other values, including 0, `ff`, and values wider than one byte",
+  "starter": "// trade the two nibbles (4-bit halves) of a byte\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(value_r, w19)\ndefine(byte_r, w20)\ndefine(swap_r, w21)\n\n.data\nfmt_hex:    .string \"%x\"\nfmt_out:    .string \"0x%02x -> 0x%02x\\n\"\n\n.bss\n.balign 4\nvalue_m:    .skip 4\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_hex                // read a value typed in hex\n        ldr     x1, =value_m\n        bl      scanf\n        ldr     x9, =value_m\n        ldr     value_r, [x9]\n\n        mov     byte_r, 0                   // replace these placeholders\n        mov     swap_r, 0\n\n        // TODO: put the low byte of value_r in byte_r, then build swap_r\n        // from byte_r with its high and low nibbles traded.\n\n        ldr     x0, =fmt_out\n        mov     w1, byte_r\n        mov     w2, swap_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "a7\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "0xa7 -> 0x7a\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "lsl"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "lsr"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "0x00 -> 0x00\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "ff\n",
+      "stdout": "0xff -> 0xff\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "f\n",
+      "stdout": "0x0f -> 0xf0\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "10\n",
+      "stdout": "0x10 -> 0x01\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1a7\n",
+      "stdout": "0xa7 -> 0x7a\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "ffffff3c\n",
+      "stdout": "0x3c -> 0xc3\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

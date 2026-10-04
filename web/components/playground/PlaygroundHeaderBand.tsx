@@ -1,11 +1,17 @@
 "use client";
 
+import { useState } from "react";
 import { ExampleLoader } from "@/components/playground/ExampleLoader";
 import { ImportExport } from "@/components/playground/ImportExport";
 import { RecentPrograms } from "@/components/playground/RecentPrograms";
 import { ArgsInput } from "@/components/playground/ArgsInput";
 import { RunModeControl } from "@/components/playground/RunModeControl";
 import { Toolbar } from "@/components/playground/Toolbar";
+import { MoreSheet } from "@/components/playground/MoreSheet";
+import { Wordmark } from "@/components/ui/Wordmark";
+import { MenuIcon } from "@/components/chrome/SiteIcons";
+import { MobileNavDrawer } from "@/components/chrome/MobileNavDrawer";
+import { useStarCount } from "@/components/chrome/StarCount";
 import type { RecentEntry } from "@/lib/playground/auto-save";
 import type { DiagnosticBundle } from "@/lib/playground/diagnostic-bundle";
 import type { SourceFile } from "@/lib/playground/file-map";
@@ -37,19 +43,23 @@ export interface PlaygroundHeaderBandProps {
     disabled: boolean;
   } | null;
   onShare: () => void;
-  onTour: () => void;
-  onToggleTheme: () => void;
-  /** Built on click by the shell, which owns the hub the snapshot reads. */
-  buildDiagnostic: () => DiagnosticBundle;
+  onTutorials: () => void;
+  /** Gathered by the shell, which owns the hub the snapshot reads. */
+  buildDiagnostic: () => Promise<DiagnosticBundle>;
   onOpenCommandPalette: () => void;
   onOpenShortcuts: () => void;
+  /** Starts the interface walkthrough; the phone's menu offers it directly. */
+  onWalkthrough: () => void;
+  /** The phone bar: home, examples, and a menu sheet with everything else. */
+  compact?: boolean;
+  /** A short laptop window: the band stands in for the site bar (home link
+   *  and site menu) and leaves its tools to the run row. */
+  short?: boolean;
 }
 
 /**
- * The full playground's top row: program in (examples, import, recents),
- * program arguments, the run-mode switch, and the tools group. It holds no
- * state of its own: every control reports to the shell, which owns the
- * workspace and the machine.
+ * The playground's top row. It holds no state of its own: every control
+ * reports to the shell, which owns the workspace and the machine.
  */
 export function PlaygroundHeaderBand({
   onLoadProgram,
@@ -63,23 +73,25 @@ export function PlaygroundHeaderBand({
   onArgsChange,
   runMode,
   onShare,
-  onTour,
-  onToggleTheme,
+  onTutorials,
   buildDiagnostic,
   onOpenCommandPalette,
   onOpenShortcuts,
+  onWalkthrough,
+  compact = false,
+  short = false,
 }: PlaygroundHeaderBandProps) {
-  return (
-    // header-band: under sm this row stops wrapping and scrolls within
-    // itself, so the editor stays near the top of a phone screen instead
-    // of sitting under seven rows of chrome.
-    <div className="header-band safe-area-top flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 py-2 border-b border-[var(--border)] bg-[var(--bg-sunken)]">
-      <span className="hidden sm:inline font-mono text-[11px] font-semibold uppercase tracking-[0.14em] text-[var(--text-tertiary)] whitespace-nowrap shrink-0">
-        aarch64-pg
-      </span>
-      <div className="min-w-0 shrink-0">
-        <ExampleLoader onLoad={onLoadProgram} />
-      </div>
+  const stars = useStarCount();
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // An action that opens a dialog of its own, or replaces the program, first
+  // puts the sheet away.
+  const fromSheet = (action: () => void) => () => {
+    setSheetOpen(false);
+    action();
+  };
+
+  const program = (
+    <>
       <ImportExport
         source={source}
         files={files}
@@ -91,9 +103,12 @@ export function PlaygroundHeaderBand({
         entries={recent.entries}
         // A recent is a program delivery, not a text swap: the machine
         // resets and the seeds clear, so the previous program's
-        // registers, console, stdin, and VFS cannot show under the
+        // registers, console, stdin, and files cannot show under the
         // recalled source. The displaced buffer lands in recents.
-        onLoad={(body) => onLoadProgram({ source: body })}
+        onLoad={(body) => {
+          setSheetOpen(false);
+          onLoadProgram({ source: body });
+        }}
         onClear={recent.clear}
       />
       <ArgsInput source={source} value={args} onChange={onArgsChange} />
@@ -106,33 +121,82 @@ export function PlaygroundHeaderBand({
           disabled={runMode.disabled}
         />
       )}
-      <Toolbar
-        className="ml-auto"
-        onShare={onShare}
-        onTour={onTour}
-        onToggleTheme={onToggleTheme}
-        buildDiagnostic={buildDiagnostic}
-        onOpenCommandPalette={onOpenCommandPalette}
-        sourceLink={
-          <a
-            href="https://github.com/Abdalla-Eldoumani/aarch64-playground"
-            target="_blank"
-            rel="noreferrer noopener"
-            className="inline-flex items-center min-h-[36px] rounded-[var(--radius-control)] px-2.5 text-[12px] font-sans text-[var(--text-secondary)] hover:text-[var(--cyan)] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-            aria-label="source on github"
-          >
-            source
-          </a>
-        }
-      />
-      <button
-        type="button"
-        onClick={onOpenShortcuts}
-        className="shrink-0 inline-flex items-center min-h-[36px] text-xs text-[var(--text-secondary)] hover:text-[var(--cyan)] rounded px-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-        aria-label="keyboard shortcuts"
-      >
-        ?
-      </button>
+    </>
+  );
+  if (compact) {
+    return (
+      // The phone bar replaces both the site bar and the band, so it carries
+      // the top safe area and the home link itself.
+      <div className="pt-[var(--safe-top)] flex items-center gap-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] pl-[max(0.75rem,var(--safe-left))] pr-[max(0.25rem,var(--safe-right))]">
+        <Wordmark className="shrink-0 min-h-[44px]" />
+        <ExampleLoader onLoad={onLoadProgram} fill />
+        <button
+          type="button"
+          onClick={() => setSheetOpen(true)}
+          aria-label="menu"
+          aria-haspopup="dialog"
+          data-walkthrough="menu"
+          aria-expanded={sheetOpen}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--radius-control)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        >
+          <MenuIcon />
+        </button>
+        <MoreSheet
+          open={sheetOpen}
+          onClose={() => setSheetOpen(false)}
+          sections={[
+            { key: "program", label: "program", content: program },
+            {
+              key: "tools",
+              content: (
+                <>
+                  <Toolbar
+                    onShare={fromSheet(onShare)}
+                    onTutorials={fromSheet(onTutorials)}
+                    buildDiagnostic={buildDiagnostic}
+                    onOpenCommandPalette={fromSheet(onOpenCommandPalette)}
+                    onOpenShortcuts={fromSheet(onOpenShortcuts)}
+                    onWalkthrough={fromSheet(onWalkthrough)}
+                  />
+                </>
+              ),
+            },
+          ]}
+        />
+      </div>
+    );
+  }
+
+  // No top padding under the site bar, which carries the top safe area and
+  // the name, so the band opens on the examples: a label here repeated the
+  // bar's mark and, at 12px, pushed the 1440px band to a second row. A short
+  // window drops that bar, so the band takes the safe area, the home link and
+  // the site menu, and its tools move to the run row.
+  return (
+    <div
+      className={`flex flex-wrap items-center gap-x-3 gap-y-2 px-3 sm:px-4 pb-2 border-b border-[var(--border)] bg-[var(--bg-sunken)] ${
+        short ? "pt-[max(0.5rem,var(--safe-top))]" : ""
+      }`}
+    >
+      {short && <Wordmark className="shrink-0" />}
+      <div className="min-w-0 shrink-0">
+        <ExampleLoader onLoad={onLoadProgram} />
+      </div>
+      {program}
+      {short ? (
+        <div className="ml-auto">
+          <MobileNavDrawer stars={stars} everywhere />
+        </div>
+      ) : (
+        <Toolbar
+          className="ml-auto"
+          onShare={onShare}
+          onTutorials={onTutorials}
+          buildDiagnostic={buildDiagnostic}
+          onOpenCommandPalette={onOpenCommandPalette}
+          onOpenShortcuts={onOpenShortcuts}
+        />
+      )}
     </div>
   );
 }

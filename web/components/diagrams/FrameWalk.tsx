@@ -1,23 +1,15 @@
 "use client";
 
 /**
- * Step-through frame walk for the calling-convention guide: the course
- * prologue and epilogue in seven steps. Each step highlights the line that
- * just executed (the debugger's amber current-line treatment via CodeBlock's
- * highlightLine), updates an sp/fp/lr strip, and redraws the frame bands the
- * way the course lays them out: the saved fp/lr pair at the lowest address
- * where fp points, locals above it at positive offsets like [fp, 16], the
- * caller's frame above that (verified against the Week 8 examples and the
- * assignment files, which address locals as [fp, 16] / [fp, 20]).
- *
- * Every state is authored data, not a simulation; the values match what the
- * emulator would do. Amber marks what the machine changed on this step; the
- * step buttons are the user acting (cyan). Bands render as dashed
- * placeholders before the frame opens so the layout never shifts. No
- * animation anywhere: the changed tint is a discrete state.
+ * A stepper over a short program: each step highlights a line, says what it
+ * did, and shows the registers and stack bands after it. With no steps given
+ * it walks the course prologue and epilogue in seven steps. Each state is
+ * written by hand to match the emulator; dashed bands hold the layout before
+ * a frame opens, so nothing shifts.
  */
 
-import { useState, type JSX, type KeyboardEvent } from "react";
+import { useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { Button } from "@/components/ui/Button";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 
@@ -36,12 +28,23 @@ func:
 
 type Changed = "sp" | "fp" | "lr" | "pair" | "local";
 
-interface WalkStep {
+/** One step of any walk: the state after the highlighted line ran. */
+export interface WalkStep {
   /** The instruction this step just executed, shown in the header. */
   spell: string;
   /** Course-voice caption: what moved and why it matters. */
   effect: string;
-  /** Zero-based line of WALK_PROGRAM to highlight. */
+  /** Zero-based line of the walked program to highlight. */
+  codeLine: number;
+  registers: { name: string; value: string; changed: boolean }[];
+  /** The stack, high addresses first. */
+  bands: BandProps[];
+}
+
+/** The prologue walk's own record, from which its bands are drawn. */
+interface PrologueState {
+  spell: string;
+  effect: string;
   codeLine: number;
   sp: string;
   fp: string;
@@ -53,7 +56,7 @@ interface WalkStep {
   localValue?: string;
 }
 
-const STEPS: WalkStep[] = [
+const STEPS: PrologueState[] = [
   {
     spell: "func: (entry)",
     effect:
@@ -154,18 +157,41 @@ const POINTER_STYLE = {
   backgroundColor: "color-mix(in srgb, var(--cyan) 12%, transparent)",
 } as const;
 
+// Below sm the chips wrap under the text when both do not fit on one line:
+// beside it they squeezed a 320px band's detail into a 74px column.
 const BAND_BASE =
-  "flex min-h-[44px] items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-2";
+  "flex min-h-[44px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-[var(--radius-control)] border px-3 py-2 sm:flex-nowrap";
 
-interface BandProps {
+/** Static role tints for diagrams that never step: cyan for a passed value,
+ *  amber for a saved one, the AapcsRail's colours. */
+const TINT_STYLE = {
+  cyan: POINTER_STYLE,
+  amber: CHANGED_STYLE,
+} as const;
+
+/** Non-breaking spaces inside each [fp, 16]: a phone broke it after the comma. */
+const keepOperandsWhole = (text: string) =>
+  text.replace(/\[[^\]]*\]/g, (operand) => operand.replace(/ /g, "\u00a0"));
+
+/** One stack band. Unique by label within a stack. */
+export interface BandProps {
   label: string;
   detail: string;
-  ghost: boolean;
-  changed: boolean;
-  markers: string[];
+  /** A slot that holds nothing yet (or nothing any more): dashed, quiet. */
+  ghost?: boolean;
+  changed?: boolean;
+  tint?: keyof typeof TINT_STYLE;
+  markers?: string[];
 }
 
-function Band({ label, detail, ghost, changed, markers }: BandProps): JSX.Element {
+export function Band({
+  label,
+  detail,
+  ghost = false,
+  changed = false,
+  tint,
+  markers = [],
+}: BandProps): JSX.Element {
   return (
     <li
       className={`${BAND_BASE} ${
@@ -173,7 +199,7 @@ function Band({ label, detail, ghost, changed, markers }: BandProps): JSX.Elemen
           ? "border-dashed border-[var(--border)]"
           : "border-[var(--border)] bg-[var(--bg-raised)]"
       }`}
-      style={changed ? CHANGED_STYLE : undefined}
+      style={changed ? CHANGED_STYLE : tint ? TINT_STYLE[tint] : undefined}
     >
       <span className="flex min-w-0 flex-col gap-0.5">
         <span
@@ -184,19 +210,19 @@ function Band({ label, detail, ghost, changed, markers }: BandProps): JSX.Elemen
           {label}
         </span>
         <span
-          className={`font-mono text-[11px] ${
+          className={`font-mono text-[12px] ${
             ghost ? "text-[var(--text-tertiary)]" : "text-[var(--text-secondary)]"
           }`}
         >
-          {detail}
+          {keepOperandsWhole(detail)}
         </span>
       </span>
       {markers.length > 0 && (
-        <span className="flex shrink-0 flex-col items-end gap-1">
+        <span className="ml-auto flex shrink-0 flex-wrap justify-end gap-1 sm:flex-col sm:items-end">
           {markers.map((marker) => (
             <span
               key={marker}
-              className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+              className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
               style={POINTER_STYLE}
             >
               {marker}
@@ -208,18 +234,86 @@ function Band({ label, detail, ghost, changed, markers }: BandProps): JSX.Elemen
   );
 }
 
+/** The prologue walk's four bands for one state: dashed until the frame opens. */
+function prologueBands(state: PrologueState): BandProps[] {
+  return [
+    {
+      label: "caller's frame",
+      detail: state.frameOpen
+        ? "unchanged above the new frame"
+        : "sp rests at its bottom edge, 0xffd0",
+      markers: [
+        ...(state.frameOpen ? [] : ["<- sp"]),
+        ...(state.fpAnchored ? [] : ["fp points here"]),
+      ],
+    },
+    {
+      label: "locals",
+      detail: !state.frameOpen
+        ? "will hold the locals, [fp, 16] up to [fp, 31]"
+        : (state.localValue ?? "16 bytes, nothing written yet"),
+      ghost: !state.frameOpen,
+      changed: state.changed.includes("local"),
+    },
+    {
+      label: "saved lr",
+      detail: state.frameOpen ? "caller's lr, at [fp, 8]" : "will hold the caller's lr",
+      ghost: !state.frameOpen,
+      changed: state.changed.includes("pair"),
+    },
+    {
+      label: "saved fp",
+      detail: state.frameOpen ? "caller's fp, at [fp, 0]" : "will hold the caller's fp",
+      ghost: !state.frameOpen,
+      changed: state.changed.includes("pair"),
+      markers: [
+        ...(state.frameOpen ? ["<- sp"] : []),
+        ...(state.fpAnchored ? ["<- fp"] : []),
+      ],
+    },
+  ];
+}
+
+const PROLOGUE_STEPS: WalkStep[] = STEPS.map((state) => ({
+  spell: state.spell,
+  effect: state.effect,
+  codeLine: state.codeLine,
+  registers: (["sp", "fp", "lr"] as const).map((name) => ({
+    name,
+    value: state[name],
+    changed: state.changed.includes(name),
+  })),
+  bands: prologueBands(state),
+}));
+
 export function FrameWalk({
   className = "",
+  label = "frame walk",
+  heading = "walk the frame",
+  program = WALK_PROGRAM,
+  steps = PROLOGUE_STEPS,
 }: {
   className?: string;
+  /** The walk's accessible name; its step controls are "<label> steps". */
+  label?: string;
+  /** The small label over the current instruction. */
+  heading?: string;
+  program?: string;
+  steps?: WalkStep[];
 }): JSX.Element {
   const [index, setIndex] = useState(0);
-  const step = STEPS[index];
+  const step = steps[index];
+  const controls = useRef<HTMLDivElement>(null);
 
   function move(delta: 1 | -1) {
-    setIndex((current) =>
-      Math.min(Math.max(current + delta, 0), STEPS.length - 1),
-    );
+    const target = Math.min(Math.max(index + delta, 0), steps.length - 1);
+    const [back, next] = Array.from(controls.current?.querySelectorAll("button") ?? []);
+    const focused = document.activeElement;
+    flushSync(() => setIndex(target));
+    // A browser drops focus to the page when the focused button turns
+    // disabled, so at either end the other button takes it.
+    if (target === steps.length - 1 && focused === next) back?.focus();
+    else if (target === 0 && focused === back) next?.focus();
   }
 
   function onKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -232,20 +326,14 @@ export function FrameWalk({
     }
   }
 
-  const registers: Array<{ name: "sp" | "fp" | "lr"; value: string }> = [
-    { name: "sp", value: step.sp },
-    { name: "fp", value: step.fp },
-    { name: "lr", value: step.lr },
-  ];
-
   return (
     <section
-      aria-label="frame walk"
+      aria-label={label}
       className={`flex flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] p-4 ${className}`}
     >
       <header className="flex flex-col gap-1">
         <p className="[font:var(--type-label)] uppercase tracking-wide text-[var(--text-tertiary)]">
-          walk the frame
+          {heading}
         </p>
         <p className="font-mono text-[15px] text-[var(--text-primary)]">
           {step.spell}
@@ -253,10 +341,11 @@ export function FrameWalk({
       </header>
 
       <div
+        ref={controls}
         className="flex flex-wrap items-center gap-3"
         onKeyDown={onKeyDown}
         role="group"
-        aria-label="frame walk steps"
+        aria-label={`${label} steps`}
       >
         <Button
           variant="secondary"
@@ -265,15 +354,15 @@ export function FrameWalk({
         >
           back
         </Button>
-        <Button onClick={() => move(1)} disabled={index === STEPS.length - 1}>
+        <Button onClick={() => move(1)} disabled={index === steps.length - 1}>
           next
         </Button>
         <span className="font-mono text-[13px] text-[var(--text-secondary)]">
-          step {index + 1} of {STEPS.length}
+          step {index + 1} of {steps.length}
         </span>
       </div>
 
-      <CodeBlock code={WALK_PROGRAM} highlightLine={step.codeLine} />
+      <CodeBlock code={program} highlightLine={step.codeLine} />
 
       <p
         aria-live="polite"
@@ -283,86 +372,49 @@ export function FrameWalk({
       </p>
 
       <ul aria-label="registers" className="flex flex-wrap gap-2">
-        {registers.map((register) => {
-          const changed = step.changed.includes(register.name);
-          return (
-            <li
-              key={register.name}
-              aria-label={`${register.name}: ${register.value}${changed ? ", changed this step" : ""}`}
-              className="flex min-w-[6rem] flex-col items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-2"
-              style={changed ? CHANGED_STYLE : undefined}
-            >
-              <span className="font-mono text-[13px] font-semibold text-[var(--text-primary)]">
-                {register.name}
-              </span>
-              <span className="font-mono text-[12px] text-[var(--text-secondary)]">
-                {register.value}
-              </span>
-            </li>
-          );
-        })}
+        {step.registers.map((register) => (
+          <li
+            key={register.name}
+            aria-label={`${register.name}: ${register.value}${register.changed ? ", changed this step" : ""}`}
+            className="flex min-w-[6rem] flex-col items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--border)] px-3 py-2"
+            style={register.changed ? CHANGED_STYLE : undefined}
+          >
+            <span className="font-mono text-[13px] font-semibold text-[var(--text-primary)]">
+              {register.name}
+            </span>
+            <span className="font-mono text-[12px] text-[var(--text-secondary)]">
+              {register.value}
+            </span>
+          </li>
+        ))}
       </ul>
 
-      <div className="flex flex-col gap-2">
-        <div className="flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
-          <span>high addresses</span>
-          <span className="flex items-center gap-1">
-            <span aria-hidden="true">{"↓"}</span>
-            the stack grows downward
-          </span>
-        </div>
+      <StackColumn>
         <ul aria-label="stack bands" className="flex flex-col gap-2">
-          <Band
-            label="caller's frame"
-            detail={
-              step.frameOpen
-                ? "unchanged above the new frame"
-                : "sp rests at its bottom edge, 0xffd0"
-            }
-            ghost={false}
-            changed={false}
-            markers={[
-              ...(step.frameOpen ? [] : ["<- sp"]),
-              ...(step.fpAnchored ? [] : ["fp points here"]),
-            ]}
-          />
-          <Band
-            label="locals"
-            detail={
-              !step.frameOpen
-                ? "will hold the locals, [fp, 16] up to [fp, 31]"
-                : (step.localValue ?? "16 bytes, nothing written yet")
-            }
-            ghost={!step.frameOpen}
-            changed={step.changed.includes("local")}
-            markers={[]}
-          />
-          <Band
-            label="saved lr"
-            detail={
-              step.frameOpen ? "caller's lr, at [fp, 8]" : "will hold the caller's lr"
-            }
-            ghost={!step.frameOpen}
-            changed={step.changed.includes("pair")}
-            markers={[]}
-          />
-          <Band
-            label="saved fp"
-            detail={
-              step.frameOpen ? "caller's fp, at [fp, 0]" : "will hold the caller's fp"
-            }
-            ghost={!step.frameOpen}
-            changed={step.changed.includes("pair")}
-            markers={[
-              ...(step.frameOpen ? ["<- sp"] : []),
-              ...(step.fpAnchored ? ["<- fp"] : []),
-            ]}
-          />
+          {step.bands.map((band) => (
+            <Band key={band.label} {...band} />
+          ))}
         </ul>
-        <span className="text-[12px] text-[var(--text-secondary)]">
-          low addresses
+      </StackColumn>
+    </section>
+  );
+}
+
+/** A stack drawn top to bottom between its high- and low-address edges. */
+export function StackColumn({ children }: { children: ReactNode }): JSX.Element {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between text-[12px] text-[var(--text-secondary)]">
+        <span>high addresses</span>
+        <span className="flex items-center gap-1">
+          <span aria-hidden="true">{"↓"}</span>
+          the stack grows downward
         </span>
       </div>
-    </section>
+      {children}
+      <span className="text-[12px] text-[var(--text-secondary)]">
+        low addresses
+      </span>
+    </div>
   );
 }

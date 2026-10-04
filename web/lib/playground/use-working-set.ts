@@ -30,26 +30,16 @@ export type WorkingSet = {
 };
 
 /**
- * The input seeds and the working file set: everything a program needs on the
- * machine that is not the program text.
+ * Everything a program needs on the machine besides its text. Assembling
+ * resets the machine, files and stdin included, so every write goes through
+ * stageVfsFile / removeVfsFile to keep the record assemble puts back.
  *
- * Assembling resets the whole machine, stdin queue and VFS included, so the
- * seeds are the record of what has to go back afterwards. Routing every user
- * write through `stageVfsFile` / `removeVfsFile` keeps that record
- * authoritative, which buys two behaviors at once: assemble's reset re-seeds
- * the files instead of losing them, and a home surface mirrors the map into
- * IndexedDB so it survives reloads and route changes.
- *
- * `isHome` is the full playground: the VFS there is the student's home
- * directory, so a program's fixtures land BESIDE (and on name collisions, over)
- * the files already present, the map is persisted, and stdin seeds are dropped
- * on purpose: a program that reads input should block at the read and pull the
- * student to the console, and seeding here re-fed the boot's stdin after every
- * assemble, so a hard-loaded share or bundle link answered its own scanf
- * forever while the same link opened by in-app navigation did not. Embed and
- * checker surfaces are session-only sandboxes that keep their authored seeds
- * and replace the VFS strictly: a lesson figure must see exactly its own
- * fixtures.
+ * On the full playground (`isHome`) the files are the student's home
+ * directory, saved in IndexedDB; a program's fixtures land beside them (over
+ * any with the same name), and stdin seeds are dropped so a program that reads
+ * input waits for the student instead of answering its own scanf after every
+ * assemble. Embeds and checkers keep their seeds and replace the files
+ * outright: a lesson figure must see exactly its own fixtures.
  */
 export function useWorkingSet(opts: {
   isHome: boolean;

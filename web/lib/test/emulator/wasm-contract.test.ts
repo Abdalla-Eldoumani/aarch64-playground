@@ -3,13 +3,9 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// The wrapper contract the web layer leans on, pinned against the real
-// node-target emulator: step_back restores registers and memory, breakpoints
-// stop at the exact pc the line map can name, save/load round-trips machine
-// state including the VFS, scanf blocks until stdin arrives, argv lands where
-// main reads it, fmov shows in the FP surface, and str reports its dirty
-// range. Every expected value is derived by hand in the comments, never by
-// running the code path under test.
+// Pins the emulator calls the web layer relies on, against the real node
+// build. Every expected value is worked out by hand in the comments, never by
+// running the code under test.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator, memoryMap } = nodeRequire(
@@ -795,6 +791,43 @@ describe("m4 expansion", () => {
       expect(result.success).toBe(false);
       expect(result.error).toContain("recursion");
       expect(result.error_line).toBe(3);
+    });
+  });
+});
+
+describe("clobber notes", () => {
+  // The printf on line 10 overwrites x9 and line 12 reads it: one row of
+  // [register 9, read by an instruction (0), call line 10, read line 12],
+  // drained by the first take. The second printf prints what the call
+  // left, 0xdeadbeefdeadbeef, as a signed long.
+  it("drains one row naming the register, the reader, and both lines", () => {
+    withEmulator((emu) => {
+      assemble(
+        emu,
+        [
+          "        .data",
+          'fmt:    .string "%ld\\n"',
+          "        .text",
+          "        .global main",
+          "main:",
+          "        stp     x29, x30, [sp, -16]!",
+          "        mov     x9, 42",
+          "        ldr     x0, =fmt",
+          "        mov     x1, x9",
+          "        bl      printf",
+          "        ldr     x0, =fmt",
+          "        mov     x1, x9",
+          "        bl      printf",
+          "        ldp     x29, x30, [sp], 16",
+          "        mov     w0, 0",
+          "        ret",
+        ].join("\n"),
+      );
+      emu.run_until_break(10_000);
+      expect(emu.is_halted()).toBe(true);
+      expect(emu.take_stdout()).toBe("42\n-2401053088876216593\n");
+      expect(Array.from(emu.take_clobber_notes())).toEqual([9, 0, 10, 12]);
+      expect(Array.from(emu.take_clobber_notes())).toEqual([]);
     });
   });
 });

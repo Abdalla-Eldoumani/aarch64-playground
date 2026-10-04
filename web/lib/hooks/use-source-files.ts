@@ -44,8 +44,8 @@ function writeStore(key: string, files: SourceFile[]): void {
 /**
  * A file the write is about to lose: neither its name nor its body survives
  * into the new strip. Matching on either side keeps a rename (same body) and
- * an edit (same name) out of the backup, so the restore affordance appears
- * only when work was lost.
+ * an edit (same name) out of the backup, so a restore is offered only when
+ * work was lost.
  */
 function displacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
   return stored.filter(

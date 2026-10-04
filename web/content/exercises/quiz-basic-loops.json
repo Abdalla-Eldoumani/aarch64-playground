@@ -1,0 +1,84 @@
+{
+  "title": "Basic quiz: loops",
+  "slug": "quiz-basic-loops",
+  "order": 115,
+  "lastUpdated": "2026-10-01",
+  "topic": "loops",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Pre-test and post-test loops: when the test runs, where the step goes, how a branch condition sets the last pass, and which register keeps a counter safe across a call.",
+  "questions": [
+    {
+      "question": "A while loop and a do-while loop both repeat while i < n. If i and n both start at 0, how many times does each body run?",
+      "options": [
+        "The while body runs once and the do-while body runs zero times.",
+        "Both bodies run zero times, since the test fails right away.",
+        "Both bodies run once, since i is set before either test runs.",
+        "The while body runs zero times and the do-while body runs once."
+      ],
+      "correctAnswer": 3,
+      "explanation": "A while loop is a pre-test loop: 0 < 0 is false at the first check, so its body never runs. A do-while loop is a post-test loop: its body runs once before the first check, and only then does the false test end it.",
+      "hint": "Which of the two checks its test before the first pass?"
+    },
+    {
+      "question": "In the pre-test layout these lessons use, the test sits below the body. What makes the test run before the first pass?",
+      "options": [
+        "A b to the test label, placed just above the body",
+        "A b.cond at the bottom that jumps back to the body",
+        "A cmp above the body that sets the flags ahead of time",
+        "The assembler, which moves the test to the top for you"
+      ],
+      "correctAnswer": 0,
+      "explanation": "The unconditional b skips over the body on the way in, so the first thing the loop does is its test. Each later pass runs on from the body into the test with no extra branch. Leave the b out and the loop becomes a post-test loop.",
+      "hint": "Something has to carry execution past the body on the way in."
+    },
+    {
+      "question": "A loop calls printf on every pass. Which register should hold its counter?",
+      "options": [
+        "x0, since printf hands its result back in it",
+        "x9, since printf only changes the registers x0 to x7",
+        "x19, since printf must give it back unchanged",
+        "x30, since the frame record saves it before each call"
+      ],
+      "correctAnswer": 2,
+      "explanation": "printf, like any function, may change x0 to x18 and leave them changed. x19 to x28 are callee-saved: a function that uses one must put the old value back before it returns, so a counter in x19 is still there after every call. x30 changes on every bl.",
+      "hint": "Which registers must a called function put back?"
+    },
+    {
+      "question": "for (i = 0; i < 4; i++) is rewritten as a while loop before it becomes assembly. Where does i++ go?",
+      "options": [
+        "Above the loop, beside the line that sets i to 0",
+        "At the end of the body, just before the test runs",
+        "Between the cmp and the conditional branch after it",
+        "After the loop, once the test has failed for good"
+      ],
+      "correctAnswer": 1,
+      "explanation": "A for loop runs its step after each pass of the body and before the next test. As a while loop that is i = 0; while (i < 4) { body; i++; }, so the add goes at the bottom of the body, where execution runs on into the test.",
+      "hint": "The step runs once per pass, after the body."
+    },
+    {
+      "question": "A loop should print 1 to 5. i starts at 1, and the test at the bottom is cmp i_r, 5 followed by b.lt loop_body. What does it print?",
+      "options": [
+        "1 to 5, since b.lt and b.le agree on whole numbers",
+        "1 to 4, since the pass with i equal to 5 never runs",
+        "1 to 6, since the test only runs after i has grown",
+        "Nothing at all, since b.lt fails while i is below 5"
+      ],
+      "correctAnswer": 1,
+      "explanation": "When i reaches 5, cmp i_r, 5 finds the two equal, and lt does not hold for equal values, so the loop ends before the pass that would print 5. Counting up to and including 5 needs b.le.",
+      "hint": "Trace the test when i is 5."
+    },
+    {
+      "question": "A countdown starts i at 10. Each pass ends with sub i_r, i_r, 1 and then cmp i_r, 0. Which branch back to the body makes the passes run for i = 10 down to 1, and no further?",
+      "options": [
+        "b.ge body",
+        "b.lt body",
+        "b.eq body",
+        "b.gt body"
+      ],
+      "correctAnswer": 3,
+      "explanation": "After the pass with i = 1, the sub leaves 0, and the loop must stop there. b.gt goes back only while i is still above 0. b.ge would also go back at 0 and run one pass too many.",
+      "hint": "Work out what i holds when the test runs after the last pass."
+    }
+  ]
+}

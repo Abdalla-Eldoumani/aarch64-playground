@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { SideScroll } from "@/components/ui/SideScroll";
 import type { BitField } from "@/lib/content/reference-data";
 
 export interface BitFieldDiagramProps {
@@ -12,11 +13,8 @@ export interface BitFieldDiagramProps {
   label?: string;
   /** The concrete instruction the worked bits encode, shown as the caption. */
   asm?: string;
-  /** Reference-size chrome, off by default so existing callers are untouched:
-   *  each field gains a top line with its bit range ("30 : 21"), computed
-   *  right-to-left from bit 31, and the destination field (the datasheet's
-   *  "the machine is about to write here" convention: label `Rd`) takes the
-   *  amber treatment (1px amber border, 8% amber fill, amber ink). */
+  /** Adds each field's bit range ("30 : 21") and marks the `Rd` field amber,
+   *  since that is where the result is written. Off by default. */
   bitHeaders?: boolean;
   className?: string;
 }
@@ -85,24 +83,19 @@ const TRACE_STYLE = {
   backgroundColor: "color-mix(in srgb, var(--amber) 22%, transparent)",
 } as const;
 
+// A field never shrinks below its own text, and on a touch screen its button
+// never below 44px, the least a finger hits; the row scrolls sideways instead.
 const FIELD_LI =
-  "flex min-w-0 flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
+  "flex flex-col border-l border-l-[var(--border)] border-t-[3px] border-t-[var(--border-strong)] text-center first:border-l-0";
 // The amber destination cell: the 1px border rides an inset shadow so the
 // shared cell edges and the proportional widths stay untouched.
 const FIELD_LI_DEST =
   " [box-shadow:inset_0_0_0_1px_var(--amber)] bg-[color-mix(in_srgb,var(--amber)_8%,transparent)]";
 
 /**
- * Bit-field encoding diagram: a horizontal row of labeled boxes whose widths
- * are proportional to their bit counts (`flex-grow: bits` over a zero basis, so
- * width tracks bits regardless of label length). A field's top cap takes its
- * `color` when given, else a token-driven neutral, so colors stay theme-aware.
- *
- * With worked values it becomes the course's by-hand encoding exercise in
- * reverse: hover or focus a field and its bits light up inside the full 32-bit
- * word, which is regrouped into nibbles with the hex digit under each, the
- * exact pack-then-read-hex procedure exams ask for. The trace highlight is a
- * discrete state (no animation), so reduced motion needs no fallback.
+ * Box widths follow bit counts, not label lengths. With worked values, a
+ * hovered field lights its bits in the 32-bit word above their hex digits:
+ * the by-hand encoding exercise in reverse.
  */
 export function BitFieldDiagram({
   fields = SAMPLE_FIELDS,
@@ -141,12 +134,16 @@ export function BitFieldDiagram({
         </p>
       )}
 
-      <ul className="flex w-full overflow-x-auto rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)]">
+      <SideScroll
+        as="ul"
+        scrollerClassName="flex w-full rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)]"
+        fadeClassName="rounded-r-[var(--radius-control)] from-[var(--bg-sunken)]"
+      >
         {fields.map((field, index) => {
           const dest = bitHeaders && isDestination(field);
           const rangeLine = ranges && (
             <span
-              className={`w-full truncate font-mono text-[9px] ${
+              className={`w-full whitespace-nowrap font-mono text-[12px] ${
                 dest ? "text-[var(--amber)]" : "text-[var(--text-tertiary)]"
               }`}
             >
@@ -186,27 +183,27 @@ export function BitFieldDiagram({
                   aria-label={`${field.label}, ${field.bits} bits, ${field.value}${
                     field.meaning ? `, ${field.meaning}` : ""
                   }`}
-                  className={`flex min-h-[44px] w-full min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2 outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
+                  className={`flex min-h-[44px] w-full flex-col [@media(pointer:coarse)]:min-w-[44px] items-center justify-center gap-0.5 px-1 py-2 outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
                     active === index
                       ? "bg-[color-mix(in_srgb,var(--amber)_10%,transparent)]"
                       : ""
                   }`}
                 >
                   {rangeLine}
-                  <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
+                  <span className={`w-full whitespace-nowrap font-mono text-[12px] ${labelInk}`}>
                     {field.label}
                   </span>
-                  <span className={`w-full truncate font-mono text-[11px] ${valueInk}`}>
+                  <span className={`w-full whitespace-nowrap font-mono text-[12px] ${valueInk}`}>
                     {field.value}
                   </span>
                 </button>
               ) : (
-                <span className="flex min-w-0 flex-col items-center justify-center gap-0.5 px-1 py-2">
+                <span className="flex flex-col items-center justify-center gap-0.5 px-1 py-2">
                   {rangeLine}
-                  <span className={`w-full truncate font-mono text-[12px] ${labelInk}`}>
+                  <span className={`w-full whitespace-nowrap font-mono text-[12px] ${labelInk}`}>
                     {field.label}
                   </span>
-                  <span className={`font-mono text-[11px] ${valueInk}`}>
+                  <span className={`font-mono text-[12px] ${valueInk}`}>
                     {field.bits}
                   </span>
                 </span>
@@ -214,7 +211,7 @@ export function BitFieldDiagram({
             </li>
           );
         })}
-      </ul>
+      </SideScroll>
 
       {worked && (
         <>
@@ -239,7 +236,7 @@ export function BitFieldDiagram({
                     );
                   })}
                 </span>
-                <span className="text-[11px] text-[var(--text-tertiary)]">
+                <span className="text-[12px] text-[var(--text-tertiary)]">
                   {nibble.hexDigit}
                 </span>
               </span>
@@ -256,7 +253,7 @@ export function BitFieldDiagram({
               ? `${fields[active].label} = ${fields[active].value}${
                   fields[active].meaning ? ` -> ${fields[active].meaning}` : ""
                 }`
-              : "hover or focus a field to trace its bits into the word; the hex digit under each nibble is how the exam wants it read."}
+              : "hover or focus a field to see its bits in the word; each hex digit sits under the four bits it stands for."}
           </p>
         </>
       )}

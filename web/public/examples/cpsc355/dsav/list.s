@@ -14,7 +14,7 @@ define(lr, x30)
     LIST_NODE_SIZE = 16
 
 // Role numbers mirror the UI_ROLE_* set in ui.s. They are repeated here
-// so this file also assembles on its own, the way the web build feeds it.
+// so this file also assembles on its own, without ui.s.
     LIST_ROLE_TEXT  = 0
     LIST_ROLE_DIM   = 1
     LIST_ROLE_FAINT = 2
@@ -38,8 +38,8 @@ list_hl_node:       .dword 0, 0             // nodes wearing a state colour
 list_count:         .word 0
 list_hl_role:       .word 0, 0
 
-// Cell columns. A cell is five wide and the arrow after it takes three,
-// which leaves two columns of air between neighbours.
+// Cell columns. A cell is up to five wide and the arrow after it takes
+// four, which leaves one column of air before the next cell.
 list_col_tab:       .word 4, 14, 24, 34, 44, 54, 64
 list_row_tab:       .word 7, 9, 11, 13
 
@@ -504,7 +504,7 @@ list_chip:
 
     ldr     x0, =list_cell
     mov     w1, w3
-    mov     w2, 2                           // the cell is two columns wide
+    mov     w2, 2                           // pad the number to at least two columns
     bl      ui_num
 
     mov     w0, w19

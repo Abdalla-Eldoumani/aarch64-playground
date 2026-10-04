@@ -1,14 +1,8 @@
 /**
- * VS Code-style line-comment toggling for the playground's phone-fallback
- * editor. The desktop Monaco editor handles Ctrl+/ itself through its
- * built-in `editor.action.commentLine` (driven by the language config's
- * `comments.lineComment`); this backs the plain-textarea fallback so both
- * surfaces behave the same.
- *
- * The toggle spans every line the selection touches, from the line holding
- * `selStart` through the line holding `selEnd`, inclusive, even for a
- * zero-width caret. The returned selection spans the same lines so a second
- * toggle is immediate.
+ * Ctrl+/ comment toggling for the phone editor's plain textarea, so it acts
+ * like Monaco does on desktop. It covers every line the selection touches,
+ * even a bare caret, and returns a selection over the same lines so a second
+ * toggle undoes it straight away.
  */
 
 /** The canonical CPSC 355 line-comment marker (docs/cpsc355-style-guide.md). */

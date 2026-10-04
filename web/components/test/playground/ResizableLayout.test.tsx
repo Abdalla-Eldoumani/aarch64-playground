@@ -1,13 +1,6 @@
-// pins what the laptop layout itself owns, with the panel library mocked
-// away: the four-pane arrangement (an outer horizontal split, a vertical
-// split inside each column), which slot each child lands in, the three
-// localStorage keys the breakpoint prop derives, the size mapping in both
-// directions (a persisted array becomes the panes' default sizes, and a
-// finished drag is written back by panel id, with a missing id keeping the
-// size it already had rather than collapsing the pane to zero), and the grip
-// on every seam: its name, the band it draws, and the double-click that puts
-// its group back to the authored split. Keyboard resizing belongs to the
-// library and is pinned against the real one in ResizableLayout.keyboard.test.tsx.
+// Covers what the laptop layout owns, with the panel library mocked away.
+// Keyboard resizing belongs to the library, so it is tested against the real
+// one in ResizableLayout.keyboard.test.tsx.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { ReactNode } from "react";
@@ -47,8 +40,8 @@ vi.mock("react-resizable-panels", async () => {
     }) => {
       // The real group reports its layout the moment it can measure itself,
       // and on a column that gets its height a beat after first render that
-      // lands BEFORE the parent's storage read. A layout effect is the same
-      // seam: it runs ahead of every passive effect above it.
+      // lands BEFORE the parent's storage read. A layout effect keeps that
+      // order: it runs ahead of every passive effect above it.
       const reported = useRef(false);
       useLayoutEffect(() => {
         if (reported.current) return;
@@ -91,7 +84,7 @@ vi.mock("react-resizable-panels", async () => {
       children,
     }: {
       id: string;
-      minSize: string;
+      minSize: number | string;
       defaultSize: string;
       children?: ReactNode;
     }) => (
@@ -225,18 +218,81 @@ describe("ResizableLayout", () => {
     expect(panel("panel-right").getAttribute("data-size")).toBe("45%");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
     expect(panel("panel-disasm").getAttribute("data-size")).toBe("30%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
-    expect(panel("panel-tabs").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("60%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("40%");
   });
 
-  it("keeps a pane from being dragged shut", () => {
+  // Plain numbers are pixels to the panel library, so each floor holds on
+  // any screen height.
+  it("keeps a pane from being dragged shut, in pixels", () => {
     renderLayout();
-    expect(panel("panel-left").getAttribute("data-min")).toBe("25%");
-    expect(panel("panel-right").getAttribute("data-min")).toBe("25%");
-    expect(panel("panel-editor").getAttribute("data-min")).toBe("20%");
-    expect(panel("panel-disasm").getAttribute("data-min")).toBe("15%");
-    expect(panel("panel-regs").getAttribute("data-min")).toBe("20%");
-    expect(panel("panel-tabs").getAttribute("data-min")).toBe("20%");
+    expect(panel("panel-left").getAttribute("data-min")).toBe("360");
+    expect(panel("panel-right").getAttribute("data-min")).toBe("320");
+    expect(panel("panel-editor").getAttribute("data-min")).toBe("160");
+    expect(panel("panel-disasm").getAttribute("data-min")).toBe("80");
+    expect(panel("panel-regs").getAttribute("data-min")).toBe("160");
+    expect(panel("panel-tabs").getAttribute("data-min")).toBe("140");
+  });
+
+  // A finger's tabs and console rows are 44px tall, so the tabs pane needs
+  // more height before the console shows any lines; the other floors stay.
+  it("raises the tabs pane's floor under a coarse pointer", () => {
+    const fine = window.matchMedia;
+    window.matchMedia = ((query: string) => ({
+      ...fine(query),
+      matches: query === "(pointer: coarse)",
+    })) as typeof window.matchMedia;
+    try {
+      renderLayout();
+      expect(panel("panel-tabs").getAttribute("data-min")).toBe("300");
+      expect(panel("panel-regs").getAttribute("data-min")).toBe("160");
+      expect(panel("panel-editor").getAttribute("data-min")).toBe("160");
+      expect(panel("panel-left").getAttribute("data-min")).toBe("360");
+    } finally {
+      window.matchMedia = fine;
+    }
+  });
+
+  it("opens a short window on its own splits, saved under their own keys", () => {
+    window.localStorage.setItem(`${KEY}lg-left`, "[60,40]");
+    render(
+      <ResizableLayout
+        breakpoint="lg"
+        height="short"
+        editor={<span>EDITOR</span>}
+        disassembly={<span>DISASM</span>}
+        registers={<span>REGS</span>}
+        rightTabs={<span>TABS</span>}
+      />,
+    );
+    expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("76%");
+    expect(panel("panel-disasm").getAttribute("data-size")).toBe("24%");
+    // Mid-run the decode strip and replay bar sit above the list, so the
+    // registers take nearly three quarters of a short column.
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("73%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("27%");
+    // The tall window's saved split is not the short window's.
+    expect(setLayoutCalls).toHaveLength(0);
+    drag("panel-editor", { "panel-editor": 80, "panel-disasm": 20 });
+    expect(window.localStorage.getItem(`${KEY}lg-left-short`)).toBe("[80,20]");
+    expect(window.localStorage.getItem(`${KEY}lg-left`)).toBe("[60,40]");
+  });
+
+  it("gives a tall window's tabs the larger share", () => {
+    render(
+      <ResizableLayout
+        breakpoint="2xl"
+        height="tall"
+        editor={<span>EDITOR</span>}
+        disassembly={<span>DISASM</span>}
+        registers={<span>REGS</span>}
+        rightTabs={<span>TABS</span>}
+      />,
+    );
+    expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("44%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("56%");
   });
 
   it("restores the three stored splits, one key per group", () => {
@@ -250,7 +306,7 @@ describe("ResizableLayout", () => {
     // re-registration mid-drag restarts the drag under the pointer.
     expect(panel("panel-left").getAttribute("data-size")).toBe("55%");
     expect(panel("panel-editor").getAttribute("data-size")).toBe("70%");
-    expect(panel("panel-regs").getAttribute("data-size")).toBe("45%");
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("60%");
     expect(setLayoutCalls).toHaveLength(3);
     expect(setLayoutCalls).toEqual(
       expect.arrayContaining([
@@ -272,8 +328,8 @@ describe("ResizableLayout", () => {
       "panel-disasm": 30,
     });
     expect(JSON.parse(group("panel-regs").getAttribute("data-layout") ?? "{}")).toEqual({
-      "panel-regs": 45,
-      "panel-tabs": 55,
+      "panel-regs": 60,
+      "panel-tabs": 40,
     });
   });
 
@@ -363,12 +419,12 @@ describe("ResizableLayout", () => {
     drag("panel-regs", { "panel-regs": 80, "panel-tabs": 20 });
 
     fireEvent.doubleClick(grip("resize registers and tabs"));
-    expect(setLayoutCalls).toEqual([{ "panel-regs": 45, "panel-tabs": 55 }]);
-    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[45,55]");
+    expect(setLayoutCalls).toEqual([{ "panel-regs": 60, "panel-tabs": 40 }]);
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[60,40]");
     expect(window.localStorage.getItem(`${KEY}lg`)).toBe("[30,70]");
   });
 
-  it("stands the library's own double-click down so the two cannot fight", () => {
+  it("turns off the library's own double-click so the two resets cannot conflict", () => {
     // The library's reset takes a panel back to its `defaultSize`, which here
     // is the PERSISTED size; the authored split is ours to restore.
     renderLayout();
@@ -377,7 +433,7 @@ describe("ResizableLayout", () => {
     );
     expect(flags).toEqual(["off", "off", "off"]);
   });
-  it("pushes a stored split onto the group the first render could not carry", () => {
+  it("applies a stored split to the group after it mounts", () => {
     // useLayoutPersistence reads localStorage in an effect, and the library
     // reads defaultLayout only at mount, so the stored sizes have to be put
     // on the mounted group by hand or a reload loses them.
@@ -389,7 +445,7 @@ describe("ResizableLayout", () => {
   it("leaves a group alone when the stored split is the one it mounted with", () => {
     window.localStorage.setItem(`${KEY}lg`, "[55,45]");
     window.localStorage.setItem(`${KEY}lg-left`, "[70,30]");
-    window.localStorage.setItem(`${KEY}lg-right`, "[45,55]");
+    window.localStorage.setItem(`${KEY}lg-right`, "[60,40]");
     renderLayout();
     expect(setLayoutCalls).toEqual([]);
   });

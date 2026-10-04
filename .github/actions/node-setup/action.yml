@@ -1,8 +1,10 @@
 name: node setup
 description: >-
-  Checks out nothing and installs nothing new: it puts node on PATH and
-  restores web/node_modules from a cache keyed on the dependency graph
-  alone. Every web job calls this, so the install policy lives in one place.
+  Puts node on PATH and restores web/node_modules from a cache keyed on the
+  dependency graph, running npm ci only on a miss. Every web job calls this,
+  so the install policy lives in one place.
+  Like every cache in check.yml, it restores on any run and saves only
+  outside pull requests.
 
 inputs:
   node-version:
@@ -12,24 +14,16 @@ inputs:
 runs:
   using: composite
   steps:
-    # The ~/.npm tarball cache only matters on a node_modules miss, where it
-    # turns the install from a download into a link.
+    # setup-node's own npm cache would restore ~/.npm in every job and save
+    # it in a post step; the steps below restore it only on a miss.
     - uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
-        cache: npm
-        cache-dependency-path: web/package-lock.json
+        package-manager-cache: false
 
-    # The cache key hashes the manifest and the lockfile with the project's
-    # own version fields removed. node_modules is a function of the
-    # dependency graph, and a release bump edits `version` in both files
-    # without touching that graph; hashing the raw files made every release
-    # PR run a cold `npm ci` in every web job. package.json stays in the
-    # hash because npm ci is also the manifest/lockfile sync gate: a
-    # dependency edit that skipped `npm install` must still reach a real
-    # install and fail there. `npm ci` deletes node_modules before it
-    # installs, so a near-miss restore-keys fallback buys nothing here: the
-    # key hits exactly or the install runs in full.
+    # The project's own `version` fields are stripped so a release bump still
+    # hits the cache. No restore-keys: npm ci deletes node_modules first, so
+    # only an exact hit saves anything.
     - name: dependency hash
       id: lock
       shell: bash
@@ -50,18 +44,42 @@ runs:
           fs.appendFileSync(process.env.GITHUB_OUTPUT, `hash=${hash}\n`);
         '
 
-    - name: cache node_modules
+    - name: restore node_modules
       id: nm
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: web/node_modules
         key: ${{ runner.os }}-node${{ inputs.node-version }}-nm-${{ steps.lock.outputs.hash }}
 
-    # npm ci is also the manifest/lockfile sync gate: a package.json edit
-    # with no lockfile refresh fails here on the first run after the edit,
-    # because that edit changes the packages[""] entry and so the key.
+    # The ~/.npm tarball cache only matters on a node_modules miss, where it
+    # turns the install from a download into a link.
+    - name: restore npm tarballs
+      id: npm
+      if: steps.nm.outputs.cache-hit != 'true'
+      uses: actions/cache/restore@v6
+      with:
+        path: ~/.npm
+        key: ${{ runner.os }}-npm-${{ hashFiles('web/package-lock.json') }}
+        restore-keys: ${{ runner.os }}-npm-
+
+    # package.json is in the key so an edit to it without a lockfile refresh
+    # misses the cache and fails here, where npm ci checks the two agree.
     - name: install
       if: steps.nm.outputs.cache-hit != 'true'
       shell: bash
       working-directory: web
       run: npm ci --no-audit --no-fund
+
+    - name: save node_modules
+      if: steps.nm.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+      uses: actions/cache/save@v6
+      with:
+        path: web/node_modules
+        key: ${{ steps.nm.outputs.cache-primary-key }}
+
+    - name: save npm tarballs
+      if: steps.nm.outputs.cache-hit != 'true' && steps.npm.outputs.cache-hit != 'true' && github.event_name != 'pull_request'
+      uses: actions/cache/save@v6
+      with:
+        path: ~/.npm
+        key: ${{ steps.npm.outputs.cache-primary-key }}

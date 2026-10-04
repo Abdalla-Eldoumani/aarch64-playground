@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	next_id
 next_id:
 	adrp	x1, .LANCHOR0
@@ -20,7 +20,7 @@ next_id:
 	.string	"%s %d %d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!
@@ -29,7 +29,7 @@ main:
 	mov	x29, sp
 	mov	x0, 0
 	stp	x19, x20, [sp, 16]
-	.align 5
+	.p2align 5,,15
 .L7:
 	tbnz	x0, 0, .L4
 .L11:
@@ -44,7 +44,7 @@ main:
 	ldr	x2, [x3, 64]
 	mov	x0, x3
 	add	x4, x3, 64
-	.align 5
+	.p2align 5,,15
 .L8:
 	ldrsw	x1, [x0], 4
 	add	x2, x2, x1
@@ -97,7 +97,7 @@ greeting:
 	.data
 	.align	3
 	.LANCHOR0:
-id__0:
+id.0:
 	.word	100
 counter:
 	.word	5

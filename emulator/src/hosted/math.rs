@@ -1,12 +1,8 @@
-//! The libm subset a numeric cpsc 355 program reaches for. Every stub
-//! takes its double argument in `d0` (`pow` and `fmod` take a second in
-//! `d1`) and returns its result in `d0`: the AAPCS64 floating-point
-//! convention `atof` already follows.
-//!
-//! The bodies are Rust's f64 intrinsics, which are the IEEE-754
-//! operations glibc's libm computes: `sqrt` of a negative is NaN, `log`
-//! of zero is negative infinity, `log` of a negative is NaN. Nothing
-//! here sets `errno`, because the emulator has none to set.
+//! The math library functions a CPSC 355 program calls. Each takes its
+//! double in `d0` (`pow` and `fmod` take a second in `d1`) and returns in
+//! `d0`. Rust's f64 functions give the same IEEE-754 answers glibc does
+//! (`sqrt(-1)` is NaN, `log(0)` is negative infinity), and nothing sets
+//! `errno`, because the emulator has none.
 
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
@@ -14,7 +10,7 @@ use crate::hosted::{HostContext, HostOutcome};
 /// Run a one-argument double function: read `d0`, write `d0`.
 fn unary(ctx: &mut HostContext<'_>, f: fn(f64) -> f64) -> Result<HostOutcome, EmuError> {
     let x = ctx.regs.read_fpr_f64(0);
-    ctx.regs.write_fpr_f64(0, f(x));
+    ctx.regs.write_fpr_f64(0, aarch64_nan(f(x), &[x]));
     Ok(HostOutcome::Continue)
 }
 
@@ -22,7 +18,34 @@ fn unary(ctx: &mut HostContext<'_>, f: fn(f64) -> f64) -> Result<HostOutcome, Em
 fn binary(ctx: &mut HostContext<'_>, f: fn(f64, f64) -> f64) -> Result<HostOutcome, EmuError> {
     let x = ctx.regs.read_fpr_f64(0);
     let y = ctx.regs.read_fpr_f64(1);
-    ctx.regs.write_fpr_f64(0, f(x, y));
+    ctx.regs.write_fpr_f64(0, aarch64_nan(f(x, y), &[x, y]));
+    Ok(HostOutcome::Continue)
+}
+
+/// The NaN glibc on AArch64 answers with: a domain error (the square root
+/// of -1) gives the positive default NaN, and a NaN argument comes back
+/// quieted, a signalling one first. Rust's f64 functions give whatever NaN
+/// the host makes, which on x86-64 has its sign bit set.
+fn aarch64_nan(result: f64, args: &[f64]) -> f64 {
+    const QUIET: u64 = 1 << 51;
+    if !result.is_nan() {
+        return result;
+    }
+    let signalling = |a: &&f64| a.is_nan() && a.to_bits() & QUIET == 0;
+    match args.iter().find(signalling).or_else(|| args.iter().find(|a| a.is_nan())) {
+        Some(nan) => f64::from_bits(nan.to_bits() | QUIET),
+        None => f64::from_bits(0x7FF8_0000_0000_0000),
+    }
+}
+
+/// sincos(x, &s, &c): gcc merges a sin and a cos of the same value into
+/// one call, which stores both results rather than returning either.
+pub fn sincos(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let x = ctx.regs.read_fpr_f64(0);
+    let sin_at = ctx.regs.read_gpr(0, true);
+    let cos_at = ctx.regs.read_gpr(1, true);
+    ctx.mem.write_u64(sin_at, aarch64_nan(x.sin(), &[x]).to_bits())?;
+    ctx.mem.write_u64(cos_at, aarch64_nan(x.cos(), &[x]).to_bits())?;
     Ok(HostOutcome::Continue)
 }
 
@@ -63,8 +86,12 @@ pub fn floor(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     unary(ctx, f64::floor)
 }
 
+/// Only the sign bit changes, as in glibc's `fabs d0, d0`: a NaN keeps its
+/// payload and is not quieted.
 pub fn fabs(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
-    unary(ctx, f64::abs)
+    let x = ctx.regs.read_fpr_f64(0);
+    ctx.regs.write_fpr_f64(0, x.abs());
+    Ok(HostOutcome::Continue)
 }
 
 /// C's `fmod` keeps the sign of the dividend and truncates the quotient,
@@ -114,6 +141,7 @@ mod tests {
             term: &mut term,
             heap: &mut heap,
             strtok_save: &mut strtok_save,
+            callbacks: &mut Default::default(),
         };
         f(&mut ctx).unwrap();
         ctx.regs.read_fpr_f64(0)

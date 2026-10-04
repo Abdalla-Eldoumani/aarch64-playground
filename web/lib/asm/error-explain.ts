@@ -1,22 +1,18 @@
 /**
- * Maps assembler / runtime error messages from the Rust side onto
- * teaching blocks ({what, why, fix, styleSection}). Used by the editor's
- * error marker to surface context the student can act on, plus a link to
- * the relevant section of `docs/cpsc355-style-guide.md`.
- *
- * The Rust side sends flat strings via wasm-bindgen. Assemble-stage
- * errors arrive as the BARE inner message (the wasm boundary strips the
- * "X error at line N:" Display prefix and ships the line separately), so
- * every predicate here matches on substrings of the inner text; the
- * prefix regex below only serves strings that arrive Display-formatted
- * (runtime aborts pass through Display unchanged).
+ * Turns an assembler or runtime error into a teaching block (what, why, fix,
+ * and a style-guide section). Assemble errors arrive without their
+ * "X error at line N:" prefix, so every check matches a substring of the inner
+ * message; the prefix regex below only serves a message that still has it.
  */
+import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
+import { REPO_URL } from "@/lib/content/site";
+
 export type StyleSection =
   | "m4 preprocessing"
   | "section directives"
   | "addressing modes"
   | "literal pool"
-  | "hosted runtime"
+  | "C library and system calls"
   | "virtual filesystem"
   | "naming conventions"
   | "general";
@@ -39,11 +35,14 @@ export interface ErrorExplanation {
  * the same teaching block fires whether the error came from
  * assembler/parser/lexer/linker or m4.
  */
-export function explainError(message: string): ErrorExplanation | null {
+export function explainError(located: string): ErrorExplanation | null {
+  // The run row leads with where the error is ("line 12: ", "cube.s line 3: "),
+  // which the checks below would read as part of the message.
+  const message = located.replace(/^(?:\S+ )?line \d+: /, "");
   const lower = message.toLowerCase();
 
-  // The five top-level prefix-matched variants come first; assembler /
-  // parser / preprocess / link errors then dispatch on the inner detail.
+  // Whole-message variants come first; assembler / parser / preprocess /
+  // link errors then dispatch on the inner detail.
   if (lower.includes("ran past the last instruction")) {
     return {
       what: "Execution walked off the end of the program: the last instruction ran and nothing said stop.",
@@ -55,7 +54,7 @@ export function explainError(message: string): ErrorExplanation | null {
   if (lower.startsWith("unknown instruction")) {
     return {
       what: "The emulator's decoder did not recognize this 32-bit word as any AArch64 instruction it implements.",
-      why: "Execution usually got here by branching somewhere that holds data, not code: a branch to a data label, a wrong jump-table entry, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
+      why: "Execution usually got here by branching somewhere that holds data, not code: a branch to a data label, a `br` through a register holding the wrong address, or a return address that was overwritten on the stack. (An instruction from an extension the playground does not implement reports this too.)",
       fix: "Check where the shown address falls: if it is in .data/.rodata, find the branch that took you there; if it is in .text, compare the mnemonic against the instruction reference.",
       styleSection: "general",
     };
@@ -64,8 +63,8 @@ export function explainError(message: string): ErrorExplanation | null {
     const isWrite = lower.includes("write");
     return {
       what: `The CPU tried to ${isWrite ? "write to" : "read from"} an address that is not mapped (no .text/.data/.rodata/.bss/.stack page covers it).`,
-      why: "Most often a base register holds an offset rather than an address, or `ldr xN, =label` was forgotten so the register stays at 0.",
-      fix: "Watch the base register in the watch panel. If it is a small number (0..255), you wrote `mov` where you meant `ldr =`; if it is near 0xFFFF_0000, you tried to call a host stub directly without the BL trampoline (the linker handles that automatically for `bl printf` and friends).",
+      why: "Most often a base register holds a value rather than an address: `ldr xN, label` written without its `=` loads what is stored at the label, and a `mov` where `ldr xN, =label` was meant leaves a small number.",
+      fix: "Watch the base register in the watch panel. If it holds a number from your data or a small number (0..255), add the missing `=` or replace the `mov` with `ldr xN, =label`; if it is near 0xFFFF_0000, it points at the playground's C library code, which a program reaches only by calling it (`bl printf` and friends).",
       styleSection: "addressing modes",
     };
   }
@@ -81,26 +80,31 @@ export function explainError(message: string): ErrorExplanation | null {
     };
   }
   if (lower.includes("not a multiple of 16")) {
+    // The message already carries the fix, so `fix` here only says where to
+    // look: Controls prints it under the message and a second copy of the
+    // rounding advice read as a repeat.
     return {
       what: "A load or store used sp as its base (or a libc call ran) while sp was off the 16-byte boundary.",
-      why: "Linux turns on the AArch64 stack-alignment check (SA0): every sp-based access faults with a bus error when sp is not a multiple of 16, and AAPCS64 requires the boundary at every bl. The playground stops exactly where the course servers do.",
-      fix: "Round the frame to a 16 multiple: `sub sp, sp, 32` instead of `sub sp, sp, 24`, or the course idiom `alloc = -(16 + locals) & -16`. The line that broke the boundary is the sp adjustment above the fault.",
+      why: "Linux turns on the AArch64 stack-alignment check: every sp-based access faults with a bus error when sp is not a multiple of 16, and the calling convention requires that boundary at every bl. The playground stops exactly where the course servers do.",
+      fix: "The line to change is the last one above this stop that moved sp: a `sub sp`, or an `stp` ending in `]!`.",
       styleSection: "general",
     };
   }
   if (lower.includes("not part of any program section")) {
     return {
       what: "A load or store landed in the first page of the address space, which no program owns.",
-      why: "The base register held a small number instead of an address. The course servers kill this with a segmentation fault. A `mov` where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
+      why: "The base register held a small number instead of an address. The course servers kill this with a segmentation fault. A `mov`, or an `ldr xN, label` missing its `=`, where `ldr xN, =label` was meant, or an m4 register alias that reuses a register a pointer already lives in, are the usual causes.",
       fix: "Check how the base register was loaded: addresses come from `ldr xN, =label`. If an m4 define names the same register a pointer occupies (`define(i_r, w19)` after `ldr x19, =arr`), rename the alias to a free register.",
       styleSection: "addressing modes",
     };
   }
-  if (lower.includes("no entry point")) {
+  if (lower.includes("undefined reference to `main'")) {
+    // The message names what is missing and the line that fixes it; `fix`
+    // adds the one thing it does not say.
     return {
-      what: "Nothing in the source is labelled `main:` or `_start:`, so there is no instruction to begin at.",
-      why: "The linker starts a program at one of those two names. A file of helper functions is meant to be assembled beside the file that has main, and `ld` on the course servers refuses the same file with `undefined reference to 'main'`.",
-      fix: "Name the entry `main:` and declare it `.global main`. Keep it called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own links here but fails on the servers with `multiple definition of '_start'`.",
+      what: "The program has no global `main`, so there is no instruction to begin at.",
+      why: "gcc links a startup file whose code calls `main`, and a label is only visible outside its own file when `.global` names it. A file of helper functions is meant to be assembled beside the file that has main.",
+      fix: "Keep the entry called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own fails on the servers with `multiple definition of '_start'`.",
       styleSection: "general",
     };
   }
@@ -114,15 +118,15 @@ export function explainError(message: string): ErrorExplanation | null {
   }
   if (lower.startsWith("stack overflow")) {
     return {
-      what: "sp moved more than 8 MiB below the stack base (0x80000000, growing down), far past any legitimate frame chain.",
+      what: "sp moved more than 8 MiB below the stack base (0x80000000, growing down), far deeper than any real chain of calls goes.",
       why: "Recursion with no reachable base case is the usual cause; a prologue that repeats without its epilogue, or sp loaded from a register that was never set up, gets here too.",
-      fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue with the same dealloc.",
+      fix: "Check the recursion's stopping condition first (does the base case compare the right register?). Then check that every prologue has a matching epilogue that frees the same amount.",
       styleSection: "general",
     };
   }
   if (lower.includes("no terminating zero byte")) {
     return {
-      what: "A string operation scanned 64 KiB from the shown address without finding the closing zero byte.",
+      what: "A string operation scanned 1 MiB from the shown address without finding the closing zero byte.",
       why: "C strings end at a NUL. `.ascii` emits the characters WITHOUT one; `.asciz`/`.string` add it. A store past the end of a buffer can also overwrite the terminator.",
       fix: "Declare the string with .asciz or .string, and check any loop that writes into the buffer stops before its last byte.",
       styleSection: "naming conventions",
@@ -133,13 +137,35 @@ export function explainError(message: string): ErrorExplanation | null {
       what: "The argv pointer table plus the string pool would exceed the single 4 KiB page reserved at 0x00800000.",
       why: "Either too many args (each one needs an 8-byte pointer slot plus the string body and a NUL), or one very large arg.",
       fix: "Trim the args field above the editor, or pass fewer arguments.",
-      styleSection: "hosted runtime",
+      styleSection: "C library and system calls",
+    };
+  }
+
+  // GAS's own line, which the emulator repeats: unknown mnemonic `mvo' -- `mvo w0,0'.
+  // The guesses live here rather than in the emulator because the name table
+  // would cost the wasm about 2 KB compressed.
+  const unknownMnemonic = message.match(/unknown mnemonic `([^'\s]+)'/);
+  if (unknownMnemonic) {
+    const guesses = nearestMnemonics(unknownMnemonic[1]).map((g) => `\`${g}\``);
+    // Nothing close: the message's own hint (spelling, or not implemented) stands.
+    if (guesses.length === 0) return null;
+    const last = guesses.pop();
+    return {
+      what: `\`${unknownMnemonic[1]}\` is not an instruction the assembler knows.`,
+      why: "It is a few letters away from a real mnemonic, which is what a typo looks like.",
+      fix: `did you mean ${guesses.length > 0 ? `${guesses.join(", ")} or ${last}` : last}?`,
+      styleSection: "general",
     };
   }
 
   // Wrapped variants: pull out the inner reason.
   const inner = message.match(/^(?:assembly|preprocess|parse|link) error at line \d+: (.*)$/i);
   const detail = inner ? inner[1].toLowerCase() : lower;
+
+  // GAS's own refusal of a movi or fcmp operand, with the emulator's advice
+  // on the line below it; the generic immediate and operand advice further
+  // down would contradict that line.
+  if (/^immediate (value out of range|zero expected)\b.* at operand \d+ -- `/.test(detail)) return null;
 
   if (detail.includes("unsupported m4 construct")) {
     return {
@@ -152,12 +178,15 @@ export function explainError(message: string): ErrorExplanation | null {
   if (detail.includes("m4 recursion exceeded")) {
     return {
       what: "m4 kept rewriting the same text round after round, so a macro expands into something that expands back into it.",
-      why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never reach a fixed point. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
+      why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never stop expanding. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
       fix: "Give each alias one definition, in one place: keep the `define(fp, x29)` / `define(lr, x30)` block at the top of the combined program and delete the repeats the other files brought with them.",
       styleSection: "m4 preprocessing",
     };
   }
+  // ld's own line leads when a branch, `ldr =`, or data slot names the
+  // label; the evaluator's wording covers immediates and equates.
   if (
+    detail.includes("undefined reference to") ||
     detail.includes("is not defined anywhere in this program") ||
     detail.includes("unknown symbol") ||
     detail.includes("undefined symbol")
@@ -165,14 +194,14 @@ export function explainError(message: string): ErrorExplanation | null {
     return {
       what: "A label or alias used in this expression is not defined anywhere in the source.",
       why: "Either a typo (the alias was defined as `score1_r` but used as `score_1_r`) or a section ordering issue where a forward reference points at code never reached by the assembler.",
-      fix: "Search the source for the exact identifier; m4 substitution is whole-token and case-sensitive. For numeric constants, prefer `name = expr` over `define()` so the linker can fold the value. The libc math names go the other way: `pow`, `sqrt`, `sin`, `cos`, `tan`, `log` and `exp` resolve here, but on the course servers `gcc` only links them with `-lm` on the command line.",
+      fix: "Search the source for the exact identifier; m4 substitution is whole-token and case-sensitive. For numeric constants, prefer `name = expr` over `define()` so the linker can work out the value. The libc math names go the other way: `pow`, `sqrt`, `sin`, `cos`, `tan`, `log` and `exp` resolve here, but on the course servers `gcc` only links them with `-lm` on the command line.",
       styleSection: "naming conventions",
     };
   }
   if (detail.includes("immediate") && detail.includes("range")) {
     return {
       what: "An immediate value did not fit in the bit field of the instruction encoding.",
-      why: "AArch64 movz/movk encode 16 bits at a time; mov-wide-immediate paths split the constant across hw shifts. Branch immediates are also bounded (BL is 26 bits, B.cond is 19, CBZ is 19).",
+      why: "AArch64 movz/movk encode 16 bits at a time, so a larger constant is built in 16-bit pieces with shifts. Branch offsets have limits too (BL has 26 bits, B.cond 19, CBZ 19).",
       fix: "Use `ldr xN, =value` for any immediate that doesn't fit, or split into a movz + movk pair. The linker's literal pool keeps the value in .text right after the program.",
       styleSection: "literal pool",
     };
@@ -180,15 +209,25 @@ export function explainError(message: string): ErrorExplanation | null {
   if (detail.includes("unbalanced") && detail.includes("bracket")) {
     return {
       what: "An addressing-mode bracket `[...]` did not close.",
-      why: "The lexer counts `[` and `]` to find the inner operand list. A missing `]` or an extra `[` inside an expression both throw off the count.",
+      why: "The assembler counts `[` and `]` to find the inner operand list. A missing `]` or an extra `[` inside an expression both throw off the count.",
       fix: "Count brackets across the offending line; pre-indexed forms end with `]!`, post-indexed forms close `]` then comma-separate the immediate.",
       styleSection: "addressing modes",
+    };
+  }
+  // A number where a register goes: the line above has nothing to do with it.
+  const numberForRegister = message.match(/expected a register here, got `(#?-?\d[^`]*)`/);
+  if (numberForRegister) {
+    return {
+      what: "This operand has to be a register, and the line puts a number there.",
+      why: "Not every instruction has a form that takes a constant: `add` and `sub` do, but `mul`, `sdiv` and `udiv` read registers only, and a store writes the value of a register.",
+      fix: `\`mul\`, \`sdiv\`, \`udiv\` and the stores take registers only here: put the number in a spare register first (\`mov x9, ${numberForRegister[1]}\`), then name that register.`,
+      styleSection: "general",
     };
   }
   if (detail.includes("expected") && (detail.includes("register") || detail.includes("operand"))) {
     return {
       what: "The assembler reached an operand slot expecting a register or constant and saw something else (often a directive name or a stray character).",
-      why: "The parser is line-oriented; if the previous line forgot a separator the next ident gets eaten as the operand.",
+      why: "The assembler reads line by line; if the previous line is missing a separator, the next name gets read as the operand.",
       fix: "Re-check the line above the reported one for a missing comma, label colon, or directive opener like `.word`.",
       styleSection: "general",
     };
@@ -252,13 +291,89 @@ export function explainError(message: string): ErrorExplanation | null {
     detail.includes("dangling backslash") ||
     (detail.includes("escape") && (detail.includes("invalid") || detail.includes("incomplete")))
   ) {
+    // m4 runs first and knows nothing about strings, so a one-letter define
+    // can rewrite the letter after a backslash.
     return {
-      what: "A string or character literal contains a backslash sequence the lexer does not recognize.",
-      why: "Only the standard escapes `\\n \\t \\r \\\\ \\' \\\" \\0 \\xNN` exist. A Windows path like \"C:\\dir\" reads `\\d` as an escape.",
-      fix: "Double every literal backslash (`C:\\\\dir`), or rewrite the data as raw bytes with `.byte 0xAB, 0xCD, ...`.",
+      what: "The assembler stopped at a backslash in a string or character literal.",
+      why: "A backslash escapes the character after it: `\\n` is a newline, `\\t` a tab, `\\\"` a double quote and `\\\\` one backslash. A backslash at the very end of a literal has nothing to escape.",
+      fix: "To print a backslash, write two (`\\\\`). m4 also replaces a define's name inside strings, so a one-letter name changes the letter after a backslash: with `define(n, w19)`, `\\n` reaches the assembler as `\\w19`. Give such a define a longer name (`n_r` for `n`).",
       styleSection: "naming conventions",
     };
   }
 
   return null;
+}
+
+const STYLE_GUIDE_URL = `${REPO_URL}/blob/main/docs/cpsc355-style-guide.md`;
+
+/**
+ * The editor's hover for an error line, as Monaco markdown: the raw message in
+ * bold, then the explainer's teaching block when one matches. The raw message
+ * is escaped, because GAS and ld quote names as `name' and markdown would pair
+ * those backticks into the wrong code spans; its line breaks are kept so the
+ * hover reads line for line like the alert under the editor.
+ */
+export function errorHoverMarkdown(message: string): string {
+  // The four ranges are every ASCII punctuation mark, the set markdown lets a
+  // backslash escape; a backslash before a line break keeps the break.
+  const raw = message.replace(/[!-/:-@[-`{-~]/g, "\\$&").replace(/\n/g, "\\\n");
+  const explanation = explainError(message);
+  if (!explanation) return raw;
+  return [
+    `**${raw}**`,
+    "",
+    `*what:* ${explanation.what}`,
+    "",
+    `*why:* ${explanation.why}`,
+    "",
+    `*fix:* ${explanation.fix}`,
+    // A student cannot open a repository path from the site, so the pointer is
+    // a link to the guide's section; "general" has no section of its own.
+    ...(explanation.styleSection === "general"
+      ? []
+      : ["", `*more:* [style guide, ${explanation.styleSection}](${STYLE_GUIDE_URL}#${explanation.styleSection.toLowerCase().replace(/ /g, "-")})`]),
+  ].join("\n");
+}
+
+/**
+ * The supported mnemonics nearest to a misspelled one: every name at the
+ * smallest edit distance found, at most three, in the reference's order. A
+ * swap of two neighbouring letters counts as one edit (`mvo` is one swap from
+ * `mov`). Words of three letters or fewer take one edit only, since two edits
+ * reach a dozen real mnemonics from almost any three letters.
+ */
+function nearestMnemonics(word: string): string[] {
+  const w = word.toLowerCase();
+  const limit = w.length <= 3 ? 1 : 2;
+  let best = limit + 1;
+  let found: string[] = [];
+  for (const name of ARM64_MNEMONIC_NAMES) {
+    // A length gap past the limit already rules a name out.
+    if (Math.abs(name.length - w.length) > limit) continue;
+    const d = editDistance(w, name);
+    if (d < best) {
+      best = d;
+      found = [name];
+    } else if (d === best) {
+      found.push(name);
+    }
+  }
+  return found.slice(0, 3);
+}
+
+/** Optimal string alignment distance: insert, delete, substitute, or swap two neighbours, one each. */
+function editDistance(a: string, b: string): number {
+  const d = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  );
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[a.length][b.length];
 }

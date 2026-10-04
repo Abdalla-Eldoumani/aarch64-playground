@@ -5,14 +5,9 @@ import { createRequire } from "node:module";
 import { REFERENCE_INSTRUCTIONS } from "@/lib/content/reference-data";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
-// The try-in-playground link carries playgroundSource(inst); if a payload fails
-// to assemble the link drops the student onto an immediate error. This drives
-// the real node-target emulator (the same assembler the playground runs) over
-// every reference entry so an un-assemblable payload can never ship.
-//
-// The node-target build loads synchronously via require (it reads its .wasm from
-// __dirname). createRequire cannot resolve the Vite `@/` alias, so require a
-// node-resolvable absolute path under cwd (web/).
+// The try-in-playground link opens playgroundSource(inst), so a program that
+// fails to assemble drops the student straight onto an error. createRequire
+// cannot resolve the `@/` alias, so the node build is loaded by its path.
 const nodeRequire = createRequire(import.meta.url);
 const wasmNodePath = path.join(process.cwd(), "lib/wasm-node/aarch64_emulator.js");
 const { Emulator } = nodeRequire(wasmNodePath) as typeof import("@/lib/wasm-node/aarch64_emulator");
@@ -42,7 +37,12 @@ describe("every try-in-playground payload assembles", () => {
       const result = emu.run_until_break(100_000) as {
         error?: string | null;
       };
-      if (result.error) {
+      // Stopping is what brk does, and its entry says so.
+      if (inst.mnemonic === "brk") {
+        if (!result.error?.startsWith("Trace/breakpoint trap")) {
+          failures.push(`brk: ${result.error ?? "ran past the trap"}`);
+        }
+      } else if (result.error) {
         failures.push(`${inst.mnemonic}: ${result.error}`);
       } else if (!emu.is_halted()) {
         failures.push(`${inst.mnemonic}: never halted`);

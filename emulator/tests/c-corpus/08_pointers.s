@@ -234,8 +234,8 @@ main:
 	.word	60
 	.align	3
 .LC1:
-	.quad	add
-	.quad	sub
-	.quad	mul
+	.xword	add
+	.xword	sub
+	.xword	mul
 	.text
 

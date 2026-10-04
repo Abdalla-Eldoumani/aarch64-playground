@@ -3,13 +3,13 @@ import { cleanup, render } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { BootFlashList } from "@/components/diagrams/BootFlashList";
 
-// The contract: the boot stagger is armed by a class this list adds after
-// mount, so the entrance answers hydration and never the landing's first paint.
+// The entrance animation class is added only after mount, so it never slows
+// the landing's first paint on a slow phone.
 
 afterEach(() => cleanup());
 
 describe("BootFlashList", () => {
-  it("keeps the arming class out of the server HTML", () => {
+  it("keeps the animation class out of the server HTML", () => {
     const html = renderToStaticMarkup(
       <BootFlashList className="rail">
         <li>x0</li>
@@ -19,7 +19,7 @@ describe("BootFlashList", () => {
     expect(html).not.toContain("boot-flash-armed");
   });
 
-  it("arms the stagger once mounted, keeping the caller's classes", () => {
+  it("adds the animation class once mounted, keeping the caller's classes", () => {
     const { container } = render(
       <BootFlashList className="rail">
         <li>x0</li>

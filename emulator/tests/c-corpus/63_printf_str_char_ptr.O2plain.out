@@ -1,0 +1,20 @@
+[abc][     abc][abc     ][ab][     abc][        ][][short]
+n=59
+[A][  B][C  ][xyB][   r][l   ]
+n=31
+[%][ 99.5%][%7%][p   %]
+n=24
+[    rt][lt    ][cu][whole][lef    ]
+n=37
+chars  len=12: 61 00 62 ff 63 80 20 20 64 e9 00 55
+bytes  len=27: 5b 63 61 66 e9 20 ff fe 5d 5b 20 c3 a9 74 c3 a9 5d 5b c3 5d 5b c3 a9 74 20 5d 00
+fmt    len= 6: ff 35 fe c3 80 00
+café ÿþ|Ã|   café ÿþ|Ã©tÃ©    |
+n=32
+[(nil)][0x1234][          0xdeadbeef][0x10                ][0xffffffffffffffff][(nil)   ][   (nil)]
+n=100
+[qqqqq][qqq    ][qqqq][qqqqqqqqqZ]
+n=35
+n=69999 buf=qqqqqqq strlen=69999
+qqqqqqqqqqqq
+n=13

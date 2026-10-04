@@ -1,7 +1,6 @@
-// The palette's action table: the row set never shrinks with the machine's
-// state, the blocked guards live in the table (so a palette row no-ops exactly
-// where the disabled button does), and a row that would do nothing says why in
-// its description instead of disappearing.
+// The palette's command list: no row disappears as the machine's state
+// changes, a row does nothing exactly where its disabled button would, and a
+// row that would do nothing says why in its description.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildPaletteCommands, type PaletteDeps } from "@/lib/playground/palette-commands";
 import type { Action } from "@/lib/playground/commands";
@@ -10,6 +9,7 @@ function makeDeps(overrides: Partial<PaletteDeps> = {}): PaletteDeps {
   return {
     blocked: false,
     programLoaded: true,
+    isRunning: false,
     canStepBack: true,
     launchable: false,
     source: "        mov x0, 1\n",
@@ -23,7 +23,8 @@ function makeDeps(overrides: Partial<PaletteDeps> = {}): PaletteDeps {
     formatSource: vi.fn(),
     openShare: vi.fn(),
     openShortcuts: vi.fn(),
-    openTour: vi.fn(),
+    openTutorials: vi.fn(),
+    openWalkthrough: vi.fn(),
     openConverter: vi.fn(),
     toggleTheme: vi.fn(),
     ...overrides,
@@ -42,12 +43,14 @@ const EVERY_ID = [
   "assemble",
   "step",
   "step-back",
+  "toggle-breakpoint",
   "run",
   "launch-terminal",
   "pause",
   "reset",
   "share",
-  "tutorial",
+  "tutorials",
+  "walkthrough",
   "base-converter",
   "toggle-theme",
   "format-source",
@@ -80,6 +83,7 @@ describe("the row set", () => {
     expect(row(actions, "step").shortcut).toBe("F10");
     expect(row(actions, "step-back").shortcut).toBe("Shift+F10");
     expect(row(actions, "reset").shortcut).toBe("Shift+F5");
+    expect(row(actions, "toggle-breakpoint").shortcut).toBe("F9");
     expect(row(actions, "format-source").shortcut).toBe("Ctrl+Shift+F");
     expect(row(actions, "help").shortcut).toBe("?");
     // Run and pause share F5: one key toggles the run loop.
@@ -89,7 +93,7 @@ describe("the row set", () => {
 });
 
 describe("the blocked guards", () => {
-  it("swallows step, step back, and run while a read is parked", () => {
+  it("ignores step, step back, and run while the program waits for input", () => {
     const deps = makeDeps({ blocked: true });
     const actions = buildPaletteCommands(deps);
     row(actions, "step").run();
@@ -124,7 +128,7 @@ describe("the blocked guards", () => {
 });
 
 describe("the descriptions that carry the reason", () => {
-  it("names the parked read ahead of every other reason", () => {
+  it("names the wait for input ahead of every other reason", () => {
     const actions = buildPaletteCommands(
       makeDeps({ blocked: true, programLoaded: false, canStepBack: false, launchable: true }),
     );
@@ -134,13 +138,17 @@ describe("the descriptions that carry the reason", () => {
     expect(row(actions, "run").description).toBe(waiting);
   });
 
-  it("sends a student with no program to the assemble button", () => {
+  it("sends a student with no program to assemble, except run, which assembles first", () => {
     const actions = buildPaletteCommands(
       makeDeps({ programLoaded: false, canStepBack: false }),
     );
     expect(row(actions, "step").description).toBe("(no program; assemble first)");
     expect(row(actions, "step-back").description).toBe("(nothing to undo; take a step first)");
-    expect(row(actions, "run").description).toBe("(no program; assemble first)");
+    expect(row(actions, "run").description).toBe("assemble, then run until halt or breakpoint");
+    // Assemble alone loads the program and leaves it there.
+    expect(row(actions, "assemble").description).toBe(
+      "turn the source into machine code and load it, without running it",
+    );
   });
 
   it("describes an ordinary console run", () => {
@@ -149,7 +157,9 @@ describe("the descriptions that carry the reason", () => {
     expect(row(actions, "step-back").description).toBe(
       "undo the last instruction",
     );
-    expect(row(actions, "run").description).toBe("run until halt or breakpoint");
+    expect(row(actions, "run").description).toBe(
+      "run until halt or breakpoint, assembling first if the code changed or the program ended",
+    );
   });
 
   it("names the terminal tab when run lands there", () => {
@@ -159,6 +169,49 @@ describe("the descriptions that carry the reason", () => {
     // rather than sending the student to assemble first.
     const cold = buildPaletteCommands(makeDeps({ launchable: true, programLoaded: false }));
     expect(row(cold, "run").description).toBe("assemble, then run it in the terminal tab");
+  });
+
+  it("says pause has nothing to stop unless a run is in progress", () => {
+    expect(row(buildPaletteCommands(makeDeps()), "pause").description).toBe(
+      "(nothing is running)",
+    );
+    expect(
+      row(buildPaletteCommands(makeDeps({ isRunning: true })), "pause").description,
+    ).toBe("stop the run in progress");
+  });
+
+  it("describes what the theme, share, and reset rows really do", () => {
+    const actions = buildPaletteCommands(makeDeps());
+    // Every theme in the lineup, not just two.
+    expect(row(actions, "toggle-theme").description).toBe(
+      "cycle through the six colour themes",
+    );
+    // The row opens the dialog; it copies nothing by itself.
+    expect(row(actions, "share").description).toBe(
+      "open a link to this program that you can copy or send",
+    );
+    expect(row(actions, "reset").description).toBe(
+      "start the program over, keeping breakpoints",
+    );
+  });
+});
+
+describe("the breakpoint row", () => {
+  // Without it a keyboard user had no way to stop a run at a line.
+  it("toggles the caret's line and names it", () => {
+    const deps = makeDeps({ caretLine: 21, toggleBreakpoint: vi.fn() });
+    const action = row(buildPaletteCommands(deps), "toggle-breakpoint");
+    expect(action.description).toBe("line 21, where the caret is: set or clear a breakpoint");
+    action.run();
+    expect(deps.toggleBreakpoint).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays, does nothing and says how, when the caret is in another file's tab", () => {
+    const deps = makeDeps({ caretLine: null, toggleBreakpoint: vi.fn() });
+    const action = row(buildPaletteCommands(deps), "toggle-breakpoint");
+    expect(action.description).toBe("press F9 in the editor to set or clear a breakpoint");
+    action.run();
+    expect(deps.toggleBreakpoint).not.toHaveBeenCalled();
   });
 });
 
@@ -173,7 +226,7 @@ describe("start in the terminal", () => {
     expect(deps.launchInteractive).toHaveBeenCalledTimes(1);
   });
 
-  it("stays in the list but no-ops for a console program", () => {
+  it("stays in the list but does nothing for a console program", () => {
     const deps = makeDeps({ launchable: false });
     const actions = buildPaletteCommands(deps);
     expect(row(actions, "launch-terminal").description).toBe(
@@ -263,16 +316,27 @@ describe("the plain pass-through rows", () => {
     const deps = makeDeps();
     const actions = buildPaletteCommands(deps);
     row(actions, "share").run();
-    row(actions, "tutorial").run();
+    row(actions, "tutorials").run();
+    row(actions, "walkthrough").run();
     row(actions, "base-converter").run();
     row(actions, "toggle-theme").run();
     row(actions, "format-source").run();
     row(actions, "help").run();
     expect(deps.openShare).toHaveBeenCalledTimes(1);
-    expect(deps.openTour).toHaveBeenCalledTimes(1);
+    expect(deps.openTutorials).toHaveBeenCalledTimes(1);
+    expect(deps.openWalkthrough).toHaveBeenCalledTimes(1);
     expect(deps.openConverter).toHaveBeenCalledTimes(1);
     expect(deps.toggleTheme).toHaveBeenCalledTimes(1);
     expect(deps.formatSource).toHaveBeenCalledTimes(1);
     expect(deps.openShortcuts).toHaveBeenCalledTimes(1);
+  });
+
+  // The palette searches the description too, so a student typing "octal" or
+  // "ieee" finds the converter that shows both.
+  it("names every view the base converter has", () => {
+    const { description } = row(buildPaletteCommands(makeDeps()), "base-converter");
+    for (const view of ["hex", "octal", "binary", "decimal", "two's complement", "IEEE-754"]) {
+      expect(description).toContain(view);
+    }
   });
 });

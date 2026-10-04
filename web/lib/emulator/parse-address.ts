@@ -1,9 +1,6 @@
 /**
- * Strict address parse shared by the memory panels: `0x`-prefixed hex or
- * bare decimal, nothing else. `parseInt(str, 16)` stops at the first bad
- * character, so a single slip inside a hex address ("0x0060O000" with a
- * capital O) silently truncated to 0x60 and relocated the window to an
- * address full of zeros.
+ * `0x` hex or plain decimal only. `parseInt(str, 16)` stops at the first bad
+ * character, so "0x0060O000" (capital O) would quietly become 0x60.
  */
 export function parseAddress(raw: string): number | null {
   const t = raw.trim();

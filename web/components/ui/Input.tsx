@@ -10,12 +10,9 @@ export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   mono?: boolean;
 }
 
-// On `--bg-raised` with a hairline border; the focus ring is the `--ring` token
-// (resolves `--focus` -> cyan per theme) and the border lifts to the focus color
-// on keyboard focus. Placeholder uses the tertiary text token.
 const BASE =
   "block w-full rounded-[var(--radius-action)] px-3 min-h-[44px] text-[14px] " +
-  "bg-[var(--bg-raised)] border border-[var(--border)] text-[var(--text-primary)] " +
+  "bg-[var(--bg-raised)] border border-[var(--border-control)] text-[var(--text-primary)] " +
   "placeholder:text-[var(--text-tertiary)] " +
   "focus:outline-none focus-visible:[box-shadow:var(--ring)] focus-visible:border-[var(--focus)]";
 

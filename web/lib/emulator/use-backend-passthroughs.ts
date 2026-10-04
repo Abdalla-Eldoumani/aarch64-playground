@@ -11,6 +11,7 @@ export interface BackendPassthroughs {
   lint: (source: string) => Promise<AssemblyError[]>;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   readVfsFile: (path: string) => Promise<Uint8Array>;
+  readMemory: (addr: number, len: number) => Promise<Uint8Array>;
   deleteVfsFile: (path: string) => Promise<boolean>;
   resolveLabel: (name: string) => Promise<number | null>;
   m4Expand: (
@@ -21,13 +22,11 @@ export interface BackendPassthroughs {
 }
 
 /**
- * The parts of the hook's surface that are only the backend with a
- * null guard in front: stdin, the VFS, saved machine states, and the
- * tool queries. They keep no state of their own (every result reaches React
- * through the snapshot listener), so they are grouped rather than scattered
- * through the hub. Anything that has to touch hub state (loadState reopening
- * the program gate, clearConsole emptying the scrollback) belongs to its own
- * cluster instead.
+ * The hub methods that only forward to the backend behind a null check:
+ * stdin, the virtual files, saved states, and tool queries. They keep no
+ * state (results reach React through the snapshot listener); anything that
+ * touches hub state, such as loadState or clearConsole, lives with that
+ * state instead.
  */
 export function useBackendPassthroughs(
   backendRef: RefObject<EmulatorBackend | null>,
@@ -51,9 +50,8 @@ export function useBackendPassthroughs(
     void backend.closeStdin();
   }, [backendRef]);
 
-  // Live terminal sessions pause the step-back ring: the per-step clone
-  // costs more than the step, and stepping back mid-session has no
-  // meaning. The drive resumes it when it stands down.
+  // Live terminal sessions pause the step-back ring, since stepping back
+  // mid-session has no meaning. The drive resumes it when it stands down.
   const setSnapshotsPaused = useCallback(
     (paused: boolean) => {
       const backend = backendRef.current;
@@ -91,6 +89,15 @@ export function useBackendPassthroughs(
       const backend = backendRef.current;
       if (!backend) return new Uint8Array();
       return backend.readVfsFile(path);
+    },
+    [backendRef],
+  );
+
+  const readMemory = useCallback(
+    async (addr: number, len: number) => {
+      const backend = backendRef.current;
+      if (!backend) return new Uint8Array();
+      return backend.getMemory(addr, len);
     },
     [backendRef],
   );
@@ -148,6 +155,7 @@ export function useBackendPassthroughs(
     lint,
     uploadVfsFile,
     readVfsFile,
+    readMemory,
     deleteVfsFile,
     resolveLabel,
     m4Expand,

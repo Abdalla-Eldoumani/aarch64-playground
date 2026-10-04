@@ -218,6 +218,6 @@ double_it:
     let cpu = Cpu::new();
     let err = assemble_hosted(src, &cpu.host).expect_err("no entry point must not link");
     let msg = err.to_string();
-    assert!(msg.contains("no entry point"), "got: {msg}");
-    assert!(msg.contains("main"), "the message should point at main: {msg}");
+    assert!(msg.contains("undefined reference to `main'"), "got: {msg}");
+    assert!(msg.contains("`main:`"), "the message should point at main: {msg}");
 }

@@ -26,7 +26,7 @@ import { RoutesRegisterFile } from "@/components/diagrams/RoutesRegisterFile";
 afterEach(() => cleanup());
 
 describe("RoutesRegisterFile route prefetching", () => {
-  it("never prefetches the jump-table routes", () => {
+  it("never prefetches the landing's route links", () => {
     render(<RoutesRegisterFile />);
     const links = screen.getAllByRole("link");
     expect(links).toHaveLength(4);

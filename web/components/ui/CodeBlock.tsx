@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { ScrollingPre } from "@/components/ui/ScrollingPre";
 import { KIND_CLASS, tokenizeLine, type Token } from "@/lib/asm/highlight-arm64";
 
 export interface CodeBlockProps {
@@ -16,12 +17,9 @@ export interface CodeBlockProps {
 }
 
 /**
- * Read-only syntax-colored code block. Tokenizes assembly into React spans whose
- * colors read from the `--syntax-*` tokens (defined per theme in globals.css to
- * match the editor), so the block and the editor stay visually consistent. Code
- * is rendered as text spans only (no HTML-string injection path), so a
- * caller-supplied string cannot inject markup. A corner button copies the
- * source to the clipboard in a single click.
+ * Read-only code block colored by the `--syntax-*` tokens, set per theme to
+ * match the editor. Code renders as text spans only, so a caller's string
+ * cannot inject markup.
  */
 export function CodeBlock({
   code,
@@ -48,9 +46,11 @@ export function CodeBlock({
     }
   }, [code]);
 
+  // Under a coarse pointer the copy button is a 44px target, two code lines
+  // tall, so the code starts below it rather than hiding a line's end.
   return (
     <div className={`relative ${className}`}>
-      <pre className="overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)]">
+      <ScrollingPre preClassName="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-sunken)] px-4 py-3 font-mono text-[13px] leading-relaxed text-[var(--text-primary)] [@media(pointer:coarse)]:pt-14">
         <code>
           {tokenizedLines.map((tokens, lineIndex) => (
             <span
@@ -70,12 +70,12 @@ export function CodeBlock({
             </span>
           ))}
         </code>
-      </pre>
+      </ScrollingPre>
       <button
         type="button"
         onClick={copy}
         aria-label="copy code to clipboard"
-        className={`absolute right-2 top-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-2 py-1 font-mono text-[10px] leading-none outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
+        className={`touch-target absolute right-2 top-2 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-2 py-1 font-mono text-[12px] leading-none outline-none transition-colors focus-visible:[box-shadow:var(--ring)] ${
           copied
             ? "text-[var(--success)]"
             : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"

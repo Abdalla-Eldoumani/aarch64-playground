@@ -205,7 +205,7 @@ describe("the console watermark", () => {
     await halt(h.machine, session);
   });
 
-  it("goes with the bytes it describes: drop, reset, and clear", async () => {
+  it("is cleared with the output it marks: drop, reset, and clear", async () => {
     const h = setup({ stdout: "x" });
     await h.update({ wantsTerminal: true });
     expect(h.drive().terminalOwnedFrom).toBe(1);
@@ -378,7 +378,7 @@ describe("forwarding keystrokes", () => {
     await end();
   });
 
-  it("swallows an escape sequence, which a canonical read has no use for", async () => {
+  it("swallows an escape sequence, which a cooked-mode read has no use for", async () => {
     const machine = makeMachine();
     const { io, end } = await withSession(machine);
     const fg = foregroundOf(io);
@@ -401,7 +401,7 @@ describe("forwarding keystrokes", () => {
     await end();
   });
 
-  it("bounds a pasted megabyte where both tty modes converge", async () => {
+  it("refuses a pasted megabyte at the stdin cap both tty modes share", async () => {
     const machine = makeMachine();
     const { io, end } = await withSession(machine);
     foregroundOf(io).pushInput("x".repeat(MAX_STDIN_BYTES + 1));
@@ -458,7 +458,7 @@ describe("standing down", () => {
     let exit: number | null = 7;
     await act(async () => {
       machine.error =
-        "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register is holding a value that is not an address, usually because a `mov` was written where `ldr xN, =label` was meant";
+        "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register (the first one inside the brackets, or a pointer passed to a call) does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or a `mov` was written where `ldr xN, =label` was meant";
       exit = await session;
     });
     expect(exit).toBeNull();
@@ -477,7 +477,8 @@ describe("standing down", () => {
   });
 
   it("lets go when the pane it was driving goes away", async () => {
-    // A mobile pane switch unmounts the pane, which deregisters with null.
+    // A switch between the phone, tablet and laptop layouts unmounts the
+    // pane, which deregisters with null.
     // Without this the loop spun forever on a blocked program, holding the
     // console's stdin disabled and the snapshot ring paused.
     const machine = makeMachine();

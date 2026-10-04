@@ -1,0 +1,69 @@
+{
+  "title": "Fill in the blank: bit manipulation",
+  "slug": "blanks-bitwise",
+  "order": 133,
+  "lastUpdated": "2026-10-01",
+  "topic": "bitwise",
+  "difficulty": "core",
+  "variant": "blanks",
+  "prompt": "Fill in the missing mnemonic or number on each line so it sets, flips, tests, extracts or inserts the bits described.",
+  "blanks": [
+    {
+      "prompt": "Set bit 3 of w19 and leave every other bit as it was.",
+      "code": "___ w19, w19, 0x8",
+      "blanks": [
+        "orr"
+      ],
+      "explanation": "orr with a mask turns on every bit that is 1 in the mask. 0x8 is 1000 in binary, so only bit 3 is set, and the other bits of w19 are ORed with 0 and stay as they were.",
+      "hint": "The OR of a bit with 1 is always 1."
+    },
+    {
+      "prompt": "Flip bits 0 to 3 of w19, so each 1 becomes 0 and each 0 becomes 1, and leave the other bits alone.",
+      "code": "___ w19, w19, 0xF",
+      "blanks": [
+        "eor"
+      ],
+      "explanation": "eor (exclusive or) gives 1 where the two bits differ, so a 1 in the mask flips the bit and a 0 leaves it. Running the same eor twice puts w19 back where it started.",
+      "hint": "Exclusive OR."
+    },
+    {
+      "prompt": "Jump to even when bit 0 of x20 is 0, without setting the flags first.",
+      "code": "___ x20, 0, even",
+      "blanks": [
+        "tbz"
+      ],
+      "explanation": "tbz (test bit and branch if zero) reads the one bit it names and branches when that bit is 0. Every even number has bit 0 clear, so the branch is taken for every even value. tbnz branches when the bit is 1.",
+      "hint": "Test bit, and branch if zero."
+    },
+    {
+      "prompt": "Copy the 8-bit field at bits 16 to 23 of w0 into the low byte of w1, with zeros above it.",
+      "code": "ubfx w1, w0, ___, 8",
+      "blanks": [
+        "16",
+        "#16",
+        "0x10",
+        "#0x10"
+      ],
+      "explanation": "ubfx wd, wn, lsb, width takes width bits starting at bit lsb and puts them at the bottom of wd, with zeros above. The field starts at bit 16, so lsb is 16, and it is 8 bits wide.",
+      "hint": "The first number is the bit where the field starts, and the second is how wide it is."
+    },
+    {
+      "prompt": "Put the low 8 bits of w2 into bits 8 to 15 of w0, and keep the other bits of w0 as they were.",
+      "code": "___ w0, w2, 8, 8",
+      "blanks": [
+        "bfi"
+      ],
+      "explanation": "bfi (bitfield insert) copies the low width bits of the source into the destination, starting at bit lsb, and leaves the destination's other bits untouched. Here the low byte of w2 lands in bits 8 to 15 of w0.",
+      "hint": "Bitfield insert."
+    },
+    {
+      "prompt": "In one instruction, OR w9 with w10 moved up 4 places, so the low hex digit of w10 lands in bits 4 to 7 of the result.",
+      "code": "orr w0, w9, w10, ___ 4",
+      "blanks": [
+        "lsl"
+      ],
+      "explanation": "Most data processing instructions can shift their last register before they use it. lsl 4 moves w10 up by one hex digit, and the orr then combines it with w9 without a separate shift instruction.",
+      "hint": "The shift that moves bits toward the high end."
+    }
+  ]
+}

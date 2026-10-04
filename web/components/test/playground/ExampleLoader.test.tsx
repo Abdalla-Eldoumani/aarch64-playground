@@ -69,7 +69,7 @@ describe("ExampleLoader", () => {
     expect(optionLabels(listbox).length).toBeGreaterThanOrEqual(headers.length);
   });
 
-  it("seeds the two stages that carry only filler programs", () => {
+  it("lists the filler programs for the two stages that have nothing else", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
 
@@ -80,13 +80,15 @@ describe("ExampleLoader", () => {
   it("offers every example with a clean, week-free label", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
-    // 14 course programs, 2 stage fillers, the 6 vector demonstrations, and
-    // the 6 playable extras under Miscellaneous.
-    expect(labels.length).toBe(28);
+    // 14 course programs, 2 stage fillers, the program the playground opens
+    // with, the 6 vector demonstrations, and the 6 playable extras under
+    // Miscellaneous.
+    expect(labels.length).toBe(29);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
     expect(labels).toContain("arithmetic");
+    expect(labels).toContain("distance from zero");
     expect(labels).toContain("copy file");
     expect(labels).toContain("triangle area (single precision)");
     expect(labels).toContain("snake");
@@ -99,7 +101,7 @@ describe("ExampleLoader", () => {
     expect(labels).toContain("mean of floats");
   });
 
-  it("fetches the picked example and forwards the payload + label to onLoad", async () => {
+  it("fetches the picked example and passes its source and label to onLoad", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       ok: true,
       status: 200,
@@ -113,15 +115,15 @@ describe("ExampleLoader", () => {
     expect(fetchMock).toHaveBeenCalledWith("/examples/cpsc355/basics.s");
     expect(onLoad).toHaveBeenCalledWith({
       source: "// basics source\n",
-      // The loader replaces the fetch's stem-shaped label with the human
-      // name; the stem itself rides along so the launch tables can be
-      // consulted after the load.
+      // The loader swaps the file-name label for the readable name; the file
+      // name (stem) comes along so the launch tables can be checked after
+      // the load.
       label: "arithmetic",
       stem: "basics",
     });
   });
 
-  it("forwards a fixture-bearing example's inputs in the payload", async () => {
+  it("passes along the input files an example comes with", async () => {
     const routes: Record<string, string> = {
       "/examples/cpsc355/read-file.s": "// read file\n",
       "/examples/cpsc355/fixtures/read-file.vfs.json": '{"input.txt": "Hi\\n"}',

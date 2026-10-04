@@ -85,7 +85,6 @@ describe("WatchPanel", () => {
     renderPanel();
     addExpression("x99");
     const error = screen.getByText("unknown register x99");
-    expect(error.className).toContain("text-[var(--danger)]");
     expect(error.getAttribute("title")).toBe("unknown register x99");
   });
 
@@ -111,6 +110,49 @@ describe("WatchPanel", () => {
     renderPanel();
     expect(screen.getByText("x0")).toBeTruthy();
     expect(screen.getByText("0x000000000000002a")).toBeTruthy();
+  });
+
+  it("reads a .word array element at the label plus four bytes per index", async () => {
+    const getMemory = vi.fn((addr: number, len: number) => {
+      const out = new Uint8Array(len);
+      if (addr === 0x420004 && len === 4) out[0] = 0x14;
+      return out;
+    });
+    const resolveLabel = vi.fn(async (name: string) => (name === "arr" ? 0x420000 : null));
+    render(
+      <WatchPanel
+        registers={makeRegisters()}
+        sp="0x0000000080000000"
+        pc={0}
+        frameSlots={[]}
+        getMemory={getMemory}
+        source={".data\narr: .word 10, 20, 30\n"}
+        resolveLabel={resolveLabel}
+        program={[]}
+      />,
+    );
+    addExpression("arr[1]");
+    expect(await screen.findByText("0x00000014")).toBeTruthy();
+    expect(getMemory).toHaveBeenCalledWith(0x420004, 4);
+  });
+
+  it("refuses a label array whose element size the source does not settle", async () => {
+    render(
+      <WatchPanel
+        registers={makeRegisters()}
+        sp="0x0000000080000000"
+        pc={0}
+        frameSlots={[]}
+        getMemory={seededMemory()}
+        source={"arr: .word 1\n.byte 2\n"}
+        resolveLabel={async () => 0x420000}
+        program={[]}
+      />,
+    );
+    addExpression("arr[1]");
+    expect(
+      await screen.findByText("can't tell the element size of arr: its label mixes data sizes"),
+    ).toBeTruthy();
   });
 
   it("removes an expression and updates the store", () => {

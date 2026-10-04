@@ -3,16 +3,14 @@
 //! `simd-inventory.txt` is the spelling/word ground truth and
 //! `simd-behaviour.txt` the per-line state delta; `simd.rs` and
 //! `simd_behaviour.rs` both need the same view of which mnemonics this
-//! crate has landed, so the split lives here rather than twice.
+//! crate has landed, so the reading lives here once.
 
 #![allow(dead_code)] // each suite reads a different part of this module
 
-/// Mnemonics the inventory carries that the crate does NOT assemble yet.
-/// Every line whose mnemonic is on this list must be REJECTED, so the
-/// list flips red the moment a family lands and stops being a claim
-/// nobody checks. Removing a name is how a family is declared done; the
-/// list is empty now that every family has landed, and it stays so that a
-/// family taken back out has somewhere to be declared.
+/// Mnemonics in the inventory that the crate does not assemble yet. Their
+/// lines must be refused, so the list fails the moment one starts working.
+/// Every family has landed, so it is empty; it stays for any family that
+/// is taken back out.
 pub const NOT_YET: &[&str] = &[];
 
 /// One line of `simd-inventory.txt`.

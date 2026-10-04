@@ -1,0 +1,5 @@
+$ gcc misaligned-stack-call.s -o program
+[exit 0]
+$ ./program
+Bus error (core dumped)
+[exit 135]

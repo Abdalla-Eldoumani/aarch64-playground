@@ -42,6 +42,7 @@ fn err(message: String) -> EmuError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
     use crate::decoder::{decode, Instruction};
 
     #[test]
@@ -67,13 +68,13 @@ mod tests {
 
     #[test]
     fn encode_ldr_literal_rejects_unaligned_offset() {
-        assert!(encode_ldr_literal(true, 0, 2).is_err());
+        rejects(encode_ldr_literal(true, 0, 2), "not a multiple of 4");
     }
 
     #[test]
     fn encode_ldr_literal_rejects_out_of_range() {
         // imm19 signed range is +/-2^18 instruction units = +/-1 MiB bytes.
-        assert!(encode_ldr_literal(true, 0, 1 << 20).is_err());
+        rejects(encode_ldr_literal(true, 0, 1 << 20), "out of range for imm19");
     }
 
     #[test]

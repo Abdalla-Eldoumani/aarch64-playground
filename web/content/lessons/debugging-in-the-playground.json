@@ -1,0 +1,98 @@
+{
+  "title": "Debugging in the playground",
+  "slug": "debugging-in-the-playground",
+  "order": 18.5,
+  "lastUpdated": "2026-10-01",
+  "summary": "Stop a program at a breakpoint, step it one instruction at a time, and read its registers, watches, stack and memory to find out why it prints the wrong answer.",
+  "tags": [
+    "loops",
+    "memory and the stack"
+  ],
+  "body": [
+    {
+      "type": "callout",
+      "variant": "prereq",
+      "markdown": "Read these first:\n\n- [Pre-test loops](/learn/pretest-loop)\n- [Memory: loads, stores, and addressing modes](/learn/memory-and-addressing-modes)\n- [The stack and the frame pointer](/learn/stack-and-frame-pointer)"
+    },
+    {
+      "type": "prose",
+      "markdown": "A program that assembles and runs can still print the wrong answer, and reading the source again rarely shows why. A *debugger* lets you stop a program at any line and look at every register and every byte of its memory, so you can see the first place a value goes wrong. The playground has one built in. This lesson uses it to find the bug in one short program."
+    },
+    {
+      "type": "prose",
+      "markdown": "## A program with a bug\n\nThe program below should average five quiz scores: 72, 85, 90, 64 and 88. They add up to 399, and 399 / 5 is 79 once the fraction is dropped. It prints this instead:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "sum = 404, average = 80\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Average five quiz scores kept in the stack frame.\n// This version has a bug: it prints an average of 80, not 79.\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(i_r, w19)\ndefine(sum_r, w20)\ndefine(base_r, x21)\n\ndefine(COUNT, 5)\n\nscores_s = 16                                   // five words, bytes 16 to 35 of the frame\ncount_s = 36                                    // one word right after them\nalloc = -(16 + 24) & -16\ndealloc = -alloc\n\n.data\nfmt_out:    .string \"sum = %d, average = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w9, 72                      // fill in the five scores\n        str     w9, [fp, scores_s]\n        mov     w9, 85\n        str     w9, [fp, scores_s + 4]\n        mov     w9, 90\n        str     w9, [fp, scores_s + 8]\n        mov     w9, 64\n        str     w9, [fp, scores_s + 12]\n        mov     w9, 88\n        str     w9, [fp, scores_s + 16]\n        mov     w9, COUNT\n        str     w9, [fp, count_s]           // and how many there are\n\n        add     base_r, fp, scores_s        // base_r = address of the first score\n        mov     sum_r, 0\n        mov     i_r, 0\n        b       tally_test\ntally_loop:\n        ldr     w9, [base_r, i_r, SXTW 2]   // w9 = scores[i]\n        add     sum_r, sum_r, w9\n        add     i_r, i_r, 1\ntally_test:\n        cmp     i_r, COUNT\n        b.le    tally_loop\n\n        ldr     w10, [fp, count_s]\n        sdiv    w2, sum_r, w10              // average = sum / count\n        ldr     x0, =fmt_out\n        mov     w1, sum_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum = 404, average = 80\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "The sum is 5 too high. The rest of this lesson tracks down where the extra 5 comes from.\n\nThe editor above has run, step, back and reset. The watches, the stack and the memory view are in the full playground. Open the program there in a new tab, so this page stays open beside it: Ctrl+click the Open in playground link under the editor (Cmd+click on a Mac), or on a phone, press and hold the link and choose to open it in a new tab. A plain click opens the playground in place of this page. On a phone, the playground keeps those views under more."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Step, back, run, and reset\n\nThe editor above has four buttons:\n\n- run starts the program, or carries on from where it stopped, until it ends, waits for input, or reaches a breakpoint. On the first press, after the program finishes, and after you change the source, run first *assembles* the program: it turns the source into machine code and loads it. So a press always runs the code you see.\n- step runs one instruction, assembling first in the same cases. The highlighted line is the one that runs next, not the one that just ran.\n- back undoes the last step, registers and memory included, so you can step past a line and come back to it.\n- reset starts the program over and keeps your breakpoints.\n\nThe full playground has the same buttons, an assemble button, and a key for each one. The keys work only there; inside a lesson, use the buttons.\n\n- assemble (F6) assembles the program without running it, so you can step from the start.\n- run (F5) assembles first when nothing is loaded, the program has finished, or the source, files or arguments changed since the last assemble. While a run is going, the same button pauses it.\n- step (F10) runs one instruction. It never assembles, so press assemble first.\n- back (Shift+F10) and reset (Shift+F5) work as they do above.\n\nA run that goes 1,000,000 instructions without finishing pauses and says so. Press run to carry on, or look for a loop whose exit test never comes true.\n\nThe reference's [directives and debugger](/reference#directives-and-debugger) tab lists these keys, the views, and the watch forms on one page."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Breakpoints\n\nStepping through five passes of a loop one instruction at a time is slow. A *breakpoint* is a mark on a line that makes run stop just before that line runs. To set one, click in the narrow strip to the left of the line number, or tap it on a touch screen. Click again to clear it.\n\nSet a breakpoint on `add sum_r, sum_r, w9`, the line that adds a score to the sum, and press run. The program stops with that line highlighted, and the registers panel shows the score just loaded in `x9`: 72, which is `0x48` in hex. The panel marks the registers the last instruction changed, and its dec and hex buttons switch how the values are written. Press run again, and the program stops on the next pass with 85."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Watches\n\nOn every stop you can hunt for the same few values in the registers panel, or let the watches tab show them for you. Type an expression in its box and press add. These are the forms it understands:\n\n| expression | what it shows |\n|---|---|\n| `w19` | the register `w19`; any `x` or `w` register, `sp`, `fp` or `lr` works the same way |\n| `[fp, 16]` | 8 bytes of memory at the address `fp + 16` |\n| `[fp, scores_s]` | the same, with the offset named by a `scores_s = 16` line |\n| `scores_s[1]` | 8 bytes at `fp + scores_s + 8`, the 8-byte slot after `scores_s` |\n| `*x21` | 8 bytes of memory at the address held in `x21` |\n\nWatches show their values in hex. They know register names, the names from `=` lines, and a `.data` label with an index after it, but not the m4 names from `define`, so watch `w19`, not `i_r`.\n\nKeep the breakpoint on the `add` line, add the watches `w19` (the index `i`) and `w9` (the score just loaded), and press run until the program finishes. Read in decimal, the stops show `i` and the score as 0 and 72, 1 and 85, 2 and 90, 3 and 64, and 4 and 88. Then comes a sixth stop that should not happen: `i` is 5 and `w9` holds 5."
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Each memory form in the table reads 8 bytes, so a watch on one word of an array of words shows that word and the one after it. At the first stop, `[fp, scores_s]` shows `0x0000005500000048`: 85 (`0x55`) in the high half and 72 (`0x48`) in the low half. The machine is little-endian, so the word at the lower address, 72, fills the low half."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The stack and the memory view\n\nThe stack tab lists 16 rows of 8 bytes, starting at `sp`. It marks the row that `fp` points at and names each row above it by its offset from `fp`, or by the `=` line's name when one matches, such as `[fp, scores_s]`. On a narrow screen the column of names is hidden, and the `fp` mark with it. In this program `fp` equals `sp`, so count down from the top row, 8 bytes a row: `[fp, 32]` is the fifth row. At the sixth stop, the row `[fp, 32]` reads `0x0000000500000058`: 88, the fifth score, in its low half, and 5 in its high half. That 5 is the count the program stored at `count_s`, right after the scores. The sixth pass read the count as if it were a sixth score.\n\nThe memory tab shows the raw bytes, 16 to a row (8 on a narrow screen), with the matching characters on the right. Its section list jumps to `.text`, `.rodata`, `.data`, `.bss` or the stack, and its address box takes an address in hex, such as `0x7fffffe0`, or in decimal. The bytes the last step wrote are marked."
+    },
+    {
+      "type": "prose",
+      "markdown": "## The fix\n\nThe loop should run for `i` from 0 to 4, but `b.le` sends it round once more when `i` is 5. With `b.lt`, the test fails as soon as `i` reaches 5. The fixed program prints:"
+    },
+    {
+      "type": "code",
+      "language": "text",
+      "source": "sum = 399, average = 79\n"
+    },
+    {
+      "type": "editor",
+      "starter": "// Average five quiz scores kept in the stack frame.\n// The loop test now stops after the fifth score.\n\ndefine(fp, x29)\ndefine(lr, x30)\ndefine(i_r, w19)\ndefine(sum_r, w20)\ndefine(base_r, x21)\n\ndefine(COUNT, 5)\n\nscores_s = 16                                   // five words, bytes 16 to 35 of the frame\ncount_s = 36                                    // one word right after them\nalloc = -(16 + 24) & -16\ndealloc = -alloc\n\n.data\nfmt_out:    .string \"sum = %d, average = %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        mov     w9, 72                      // fill in the five scores\n        str     w9, [fp, scores_s]\n        mov     w9, 85\n        str     w9, [fp, scores_s + 4]\n        mov     w9, 90\n        str     w9, [fp, scores_s + 8]\n        mov     w9, 64\n        str     w9, [fp, scores_s + 12]\n        mov     w9, 88\n        str     w9, [fp, scores_s + 16]\n        mov     w9, COUNT\n        str     w9, [fp, count_s]           // and how many there are\n\n        add     base_r, fp, scores_s        // base_r = address of the first score\n        mov     sum_r, 0\n        mov     i_r, 0\n        b       tally_test\ntally_loop:\n        ldr     w9, [base_r, i_r, SXTW 2]   // w9 = scores[i]\n        add     sum_r, sum_r, w9\n        add     i_r, i_r, 1\ntally_test:\n        cmp     i_r, COUNT\n        b.lt    tally_loop                  // lt, not le: i runs 0 to 4\n\n        ldr     w10, [fp, count_s]\n        sdiv    w2, sum_r, w10              // average = sum / count\n        ldr     x0, =fmt_out\n        mov     w1, sum_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+      "expectedOutput": {
+        "stdout": "sum = 399, average = 79\n",
+        "exitCode": 0
+      }
+    },
+    {
+      "type": "prose",
+      "markdown": "## The diagnostic bundle\n\nSometimes a program does something you cannot explain and you want to ask someone about it. The diagnostic bundle button, in the full playground's tools (in the menu on a phone), packs the program, its output, the registers, the flags, the stack, and the `.data` and `.bss` sections into one report. It ends with two headings for you to fill in: what you expected, and what you got. The report is shown to you in full before anything else happens, and nothing is sent anywhere. Copy report puts it on your clipboard, ready to paste into a question, and copy link makes a link that opens the same program."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Check yourself\n\n1. The program has stopped, and the highlighted line is `add sum_r, sum_r, w9`. Has that add run yet?\n2. A watch on `[fp, scores_s]` reads `0x0000005500000048`. Which two scores does it show, and which of them sits at the lower address?\n3. Why does a watch on `i_r` not work, and what do you type instead?\n4. A run pauses with a message after 1,000,000 instructions. What is the most likely cause?\n5. You stepped one instruction too far. Which button takes you back without starting over?"
+    },
+    {
+      "type": "callout",
+      "variant": "note",
+      "markdown": "Answers:\n\n1. No. The highlighted line is the next one to run.\n2. 85 and 72. 72 sits at the lower address, `fp + 16`, because the low half comes first in memory.\n3. `i_r` is an m4 name, and m4 replaces it with `w19` before the program is assembled. Watches know register names, so type `w19`.\n4. A loop whose exit test never comes true.\n5. The back button. Reset would start the program over."
+    },
+    {
+      "type": "prose",
+      "markdown": "## Practice\n\nEach of these programs has a bug. Find it with a breakpoint and a watch or two before you change any code.\n\n- [The overeager counter](/practice/the-overeager-counter): a countdown that prints one line too many.\n- [Fix the loop bound](/practice/fix-the-loop-bound): a loop that stops one step too early.\n- [The vanishing value](/practice/the-vanishing-value): a swap of two registers that loses one of the values.\n- [The leaky frame](/practice/the-leaky-frame): a frame whose size breaks the 16-byte rule, so the program dies before it prints.\n\nTo check the tools themselves:\n\n- [Basic quiz: debugging in the playground](/practice/quiz-basic-debugging): where a breakpoint stops, what reset keeps, what a watch on memory shows, and what the stack rows and the diagnostic bundle hold."
+    }
+  ]
+}

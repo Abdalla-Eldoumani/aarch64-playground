@@ -1,6 +1,6 @@
-// Pins the third register view: the v cell only on a wasm that reports the
-// 128-bit file, the lane-width control, and the auto-switch rule that tells a
-// v write from a d write.
+// Pins the third register view: the v cell only when the emulator reports the
+// 128-bit registers, the lane-width control, and the auto-switch rule that
+// tells a v write from a d write.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
@@ -51,7 +51,7 @@ function panel(props: {
 }
 
 describe("RegisterPanel v-register view", () => {
-  it("offers three cells only when the wasm reports the vector file", () => {
+  it("offers the v view only when the emulator reports the vector registers", () => {
     const { rerender } = render(panel({ vectorRegisters: [] }));
     expect(screen.getByRole("button", { name: "x0–x30" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "d0–d31" })).toBeTruthy();
@@ -60,7 +60,7 @@ describe("RegisterPanel v-register view", () => {
     expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
   });
 
-  it("shows the whole file with both of each register's names", () => {
+  it("shows all 32 v registers, each under both of its names", () => {
     render(panel({}));
     fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
     expect(screen.getByText("v0 (q0)")).toBeTruthy();
@@ -69,7 +69,7 @@ describe("RegisterPanel v-register view", () => {
     expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("v");
   });
 
-  it("re-slices the same bits under the persisted lane width", () => {
+  it("splits the same bits by the chosen lane width and remembers it", () => {
     render(panel({ vectorRegisters: vecsWith("0x0123456789abcdeffedcba9876543210") }));
     fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
     // Two 64-bit lanes by default.
@@ -78,6 +78,29 @@ describe("RegisterPanel v-register view", () => {
     expect(screen.getByText("76543210")).toBeTruthy();
     expect(screen.queryByText("fedcba9876543210")).toBeNull();
     expect(window.localStorage.getItem("aarch64-playground:regfile-lane-width")).toBe("s");
+  });
+
+  it("reads a float arrangement as floats in decimal, and as hex in hex", () => {
+    // Lanes from the top: 3.1415927f, 1.0f, -1.0f, 0.0f.
+    render(panel({ vectorRegisters: vecsWith("0x40490fdb3f800000bf80000000000000") }));
+    fireEvent.click(screen.getByRole("button", { name: "v0–v31" }));
+    fireEvent.click(screen.getByRole("button", { name: "float, 32-bit float lanes" }));
+    expect(window.localStorage.getItem("aarch64-playground:regfile-lane-width")).toBe("sf");
+    expect(screen.getByText("3f800000")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "dec" }));
+    expect(screen.getByText("3.1415927")).toBeTruthy();
+    expect(screen.getByText("1.0")).toBeTruthy();
+    expect(screen.getByText("-1.0")).toBeTruthy();
+    expect(screen.queryByText("3f800000")).toBeNull();
+  });
+
+  it("lands a returning student on the lane width they stored", () => {
+    window.localStorage.setItem("aarch64-playground:regfile-lane-width", "b");
+    window.localStorage.setItem("aarch64-playground:regfile-view", "v");
+    render(panel({}));
+    expect(
+      screen.getByRole("button", { name: "b, 8-bit lanes" }).getAttribute("aria-pressed"),
+    ).toBe("true");
   });
 
   it("persists the vector format toggle under its own key", () => {
@@ -184,7 +207,7 @@ describe("RegisterPanel auto-switch across three views", () => {
     );
   });
 
-  it("keeps the view and dots the other cells when two classes write at once", () => {
+  it("keeps the view and dots the other cells when two kinds of register change at once", () => {
     const { rerender } = render(panel({}));
     rerender(
       panel({
@@ -192,13 +215,42 @@ describe("RegisterPanel auto-switch across three views", () => {
         vectorRegisters: vecsWith("0x00000000000000010000000000000000"),
       }),
     );
-    // The student was reading the x-file and stays there.
+    // The student was reading the x view and stays there.
     expect(screen.getByText("X0")).toBeTruthy();
     const vCell = screen.getByRole("button", { name: "v0–v31 changed" });
     expect(vCell.innerHTML).toContain("var(--changed)");
     // Opening the flagged view clears its dot.
     fireEvent.click(vCell);
     expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
+  });
+
+  // A call's leftovers: the pattern in both halves of v3, and in the top half
+  // of v9 above its unchanged low half.
+  const CLOBBERED = [...VECS];
+  CLOBBERED[3] = "0xdeadbeefdeadbeefdeadbeefdeadbeef";
+  CLOBBERED[9] = "0xdeadbeefdeadbeef0000000000000000";
+
+  it("does not follow what a library call leaves in the vector registers", () => {
+    // Only x0 (the result) is the program's write: the x view stays up and
+    // the vector cell carries no dot.
+    const { rerender } = render(panel({}));
+    rerender(
+      panel({
+        vectorRegisters: CLOBBERED,
+        changedRegs: new Set([0]),
+        changedFpRegs: new Set([3, 9]),
+      }),
+    );
+    expect(screen.getByText("X0")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "v0–v31" })).toBeTruthy();
+  });
+
+  it("stays on the x view after a run whose only vector change was a call's", () => {
+    // A run's last snapshot names no written register, but the vector
+    // registers differ from before the run.
+    const { rerender } = render(panel({}));
+    rerender(panel({ vectorRegisters: CLOBBERED }));
+    expect(screen.getByText("X0")).toBeTruthy();
   });
 
   it("follows an integer-only write back out of the v-view", () => {

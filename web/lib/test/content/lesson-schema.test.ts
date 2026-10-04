@@ -82,7 +82,7 @@ describe("validateLesson (malformed metadata)", () => {
     );
   });
 
-  test("rejects a non-kebab slug", () => {
+  test("rejects a slug with capitals or spaces", () => {
     expect(rejectError({ ...validLesson(), slug: "Not Kebab" })).toMatch(/slug/);
     expect(rejectError({ ...validLesson(), slug: "has spaces" })).toMatch(/slug/);
   });
@@ -91,6 +91,15 @@ describe("validateLesson (malformed metadata)", () => {
     expect(rejectError({ title: "Intro", slug: "intro", body: [{ type: "prose", markdown: "x" }] })).toMatch(
       /order/,
     );
+  });
+
+  test("keeps a real calendar date in lastUpdated and rejects anything else", () => {
+    const result = validateLesson({ ...validLesson(), lastUpdated: "2026-02-28" });
+    if (!result.ok) throw new Error(result.error);
+    expect(result.lesson.lastUpdated).toBe("2026-02-28");
+    for (const bad of ["2026-02-30", "2026-13-01", "2026-9-27", "27/09/2026", "2026-09-27T00:00:00Z", 20260927, ""]) {
+      expect(rejectError({ ...validLesson(), lastUpdated: bad }), String(bad)).toMatch(/lastUpdated/);
+    }
   });
 
   test("rejects tags that are not a string array", () => {
@@ -162,7 +171,7 @@ describe("validateLesson (message quality on malformed shapes)", () => {
     expect(rejectError({ ...validLesson(), summary: 42 })).toMatch(/summary/);
   });
 
-  test("rejects slugs with uppercase, doubled, leading, or trailing dashes", () => {
+  test("rejects slugs with capitals, or with doubled, leading, or trailing dashes", () => {
     for (const slug of ["UPPER", "a--b", "-lead", "trail-"]) {
       expect(rejectError({ ...validLesson(), slug })).toMatch(/slug/);
     }
@@ -224,5 +233,49 @@ describe("validateLesson (message quality on malformed shapes)", () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error);
     expect(result.lesson.body[0]).toEqual({ type: "editor", starter: "" });
+  });
+
+  test("keeps an editor's expectedOutput, with or without an exit status", () => {
+    const result = validateLesson({
+      ...validLesson(),
+      body: [
+        { type: "editor", starter: "", expectedOutput: { stdout: "42\n", exitCode: 3 } },
+        { type: "editor", starter: "", expectedOutput: { stdout: "" } },
+      ],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.lesson.body).toEqual([
+      { type: "editor", starter: "", expectedOutput: { stdout: "42\n", exitCode: 3 } },
+      { type: "editor", starter: "", expectedOutput: { stdout: "" } },
+    ]);
+  });
+
+  test("drops unknown keys inside expectedOutput", () => {
+    const result = validateLesson({
+      ...validLesson(),
+      body: [{ type: "editor", starter: "", expectedOutput: { stdout: "x", stderr: "y" } }],
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    expect(result.lesson.body[0]).toEqual({
+      type: "editor",
+      starter: "",
+      expectedOutput: { stdout: "x" },
+    });
+  });
+
+  test("rejects an expectedOutput without a stdout string or with an impossible exit status", () => {
+    const editor = (expectedOutput: unknown) => ({
+      ...validLesson(),
+      body: [{ type: "prose", markdown: "x" }, { type: "editor", starter: "", expectedOutput }],
+    });
+    expect(rejectError(editor("42\n"))).toMatch(/body\[1\] \(editor\): expectedOutput/);
+    expect(rejectError(editor(null))).toMatch(/expectedOutput/);
+    expect(rejectError(editor({ exitCode: 0 }))).toMatch(/stdout/);
+    expect(rejectError(editor({ stdout: 42 }))).toMatch(/stdout/);
+    for (const exitCode of [-1, 256, 1.5, "0"]) {
+      expect(rejectError(editor({ stdout: "", exitCode }))).toMatch(/exitCode/);
+    }
   });
 });

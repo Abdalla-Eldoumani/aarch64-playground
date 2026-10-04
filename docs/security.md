@@ -1,190 +1,158 @@
-# Security posture
+# Security
 
-This is a fully client-side application: every byte of the emulator runs in
-your tab. The gates below exist because the playground accepts URL-borne
-input (share hashes, diagnostic-bundle deep links, query params) and file
-uploads (source files, VFS payloads, bookmark JSON), all untrusted. There
-are no API routes and no server actions: nothing you type, upload, or run ever
-leaves the tab. Every route is a static file rendered at build time, and the
-one outbound call that render makes reads the repository's public star count
-from the GitHub REST API: it runs once per build, carries no visitor data, and
-no visitor request ever reaches it.
+The site runs entirely in the browser. It has no API routes, no server
+actions, and no database: every page is a static file built ahead of time,
+and nothing a visitor types, uploads, or runs leaves the tab. The one outbound
+call the build makes reads the repository's public star count from GitHub; it
+carries no visitor data.
 
-## Threat model in two claims
+What the site still has to defend is its input. The playground accepts
+programs and data from URLs (share links, diagnostic links, query
+parameters) and from files (source files, files for the virtual filesystem,
+bookmark JSON), and it runs programs written by anyone.
 
-1. An attacker cannot persist state. There is no server-side data store; the
-   only data kept is per-browser: localStorage under the
-   `aarch64-playground:*` key prefix, plus the playground's virtual-filesystem
-   working set in the `aarch64-playground` IndexedDB database.
-2. An attacker can craft a URL or file the user opens. The playground must not
-   crash, hang, or run unintended code in response to any deep-link payload or
-   file upload.
+## What an attacker can and cannot do
 
-## What's enforced
+1. An attacker cannot store anything on the site. The only saved data lives in
+   the visitor's own browser: localStorage keys starting with
+   `aarch64-playground:`, and the playground's files in the
+   `aarch64-playground` IndexedDB database.
+2. An attacker can send a link or a file. Opening it must not crash the tab,
+   hang it, or run anything but the emulated program.
 
-### HTTP response headers
+## Response headers
 
-The security headers are defined by the `headers()` function in
-`web/next.config.mjs`, which exports the set as `SECURITY_HEADERS` and applies
-it to every route except `/_next/static`, `/_next/image`, `/sw.js`,
-`/manifest.webmanifest`, and `/icons/`. Declared in the config they hold under
-`next dev` and `next start`, and on Vercel they compile into the routes
-manifest, where the platform attaches them with no function in the path.
-`vercel.json` carries the identical set as the deploy-time copy, kept in
-lockstep; its catch-all block also reaches the excluded asset paths, so on
-Vercel every response carries them.
+The `headers()` function in `web/next.config.mjs` sets these on every route
+except `/_next/static`, `/_next/image`, `/sw.js`, `/manifest.webmanifest`, and
+`/icons/`, so they apply under `npm run dev`, `npm run start`, and on Vercel.
+`vercel.json` repeats the same set for the deployed site, and
+`web/next.config.test.ts` fails if the two copies differ.
 
 | Header | Value | Why |
 | --- | --- | --- |
-| `Content-Security-Policy` | `default-src 'self'`, full policy in source | Restricts every resource type to `'self'` plus a small allowlist; `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`. Third-party origins: `va.vercel-scripts.com` (Analytics + Speed Insights script) and `vitals.vercel-insights.com` (its beacon) only |
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Forces HTTPS (two-year max-age, subdomains, preload) |
-| `X-Content-Type-Options` | `nosniff` | Prevents MIME-sniff-driven script execution |
-| `X-Frame-Options` | `DENY` | Blocks framing (clickjacking) |
-| `Cross-Origin-Opener-Policy` | `same-origin` | Windows we open cannot script us |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limits referer leakage |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Disables sensors we never request |
+| `Content-Security-Policy` | `default-src 'self'`, full policy in `web/next.config.mjs` | Every resource comes from the site itself, apart from Vercel's analytics script (`va.vercel-scripts.com`) and its beacon (`vitals.vercel-insights.com`). `object-src 'none'`, `frame-ancestors 'none'`, `base-uri 'self'`. |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | HTTPS only, for two years, subdomains included |
+| `X-Content-Type-Options` | `nosniff` | The browser never guesses a file's type and runs it as a script |
+| `X-Frame-Options` | `DENY` | No other site can frame the playground |
+| `Cross-Origin-Opener-Policy` | `same-origin` | A window the site opens cannot script it |
+| `Referrer-Policy` | `strict-origin-when-cross-origin` | Other sites see only the origin |
+| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Turns off sensors the site never uses |
 
-Static assets and the WASM module are served `immutable`; `/sw.js` is
-`must-revalidate` so updates land immediately. These cache headers are
-per-route in `vercel.json`.
+Three parts of the script policy need a reason:
 
-The script policy allows `'wasm-unsafe-eval'` so the emulator can instantiate
-its WebAssembly. It allows `'unsafe-eval'` only in development, where the
-Next.js dev runtime (React Refresh) evaluates modules with `eval`; without it
-the in-page editor renders blank. Production and `next start` never include
-`'unsafe-eval'`: `web/next.config.mjs` gates it on
-`process.env.NODE_ENV === "development"` at config evaluation, and
-`vercel.json` (production-only) omits it, so the deployed policy keeps the
-`eval`-based XSS surface closed. Exercise the editor under `npm run dev`,
-where the dev-only allowance applies, not against production.
+- `'wasm-unsafe-eval'` lets the page start the WebAssembly emulator.
+- `'unsafe-eval'` appears only under `npm run dev`, where Next.js's hot reload
+  evaluates modules with `eval`. `web/next.config.mjs` adds it only when
+  `NODE_ENV` is `development`, and `vercel.json` never has it.
+- `'unsafe-inline'` (scripts and styles) is there because Next.js writes
+  inline startup scripts and styles without a nonce, and the editor injects
+  style tags while it runs. Script injection is covered instead by the input
+  checks below and by never inserting unsanitized HTML.
 
-The script and style policies also carry `'unsafe-inline'`: Next.js emits
-inline bootstrap scripts and inline styles without a nonce pipeline, and
-Monaco injects inline style tags at runtime. Script injection remains
-covered by the input-validation gates below (no `dangerouslySetInnerHTML`
-with unsanitized content, and every URL-borne payload is validated before
-use).
+## Input checks
 
-### Input validation gates
+Every value from a URL or a file goes through a typed check before any of it
+reaches React, the editor, or the emulator.
 
-Every URL-borne or file-borne payload runs through a typed validator before any
-of its fields touch React state, the editor, or the WASM emulator.
-
-| Surface | Validator | What it rejects |
+| Input | Checked by | Refuses |
 | --- | --- | --- |
-| `?bundle=<lz>` deep link | `lib/playground/diagnostic-bundle.ts::decodeBundle` | non-version-1 payloads, malformed field types, > 1 MB inflated |
-| `#p2=<lz>` share hash | `lib/playground/share.ts::readShareHash` | non-string source, malformed cursor, > 1 MB inflated |
-| `?example=<id>` | regex `/^[\w.-]+$/` | path traversal, special chars |
-| `?theme=<name>` | enum check | unknown values |
-| `?run=<mode>` | enum check (`terminal` \| `console`) | unknown values; it selects a surface and carries no code, so the enum bounds the whole surface |
-| `?embed=1` | strict `=== "1"` check | every other value; a boolean flag that carries no code |
-| Bookmark JSON import | `lib/playground/named-saves.ts::isValidSave` | per-field type check, no-clobber on name collision |
-| `.s` / `.asm` / `.txt` upload | `lib/playground/upload-guard.ts` + `MAX_SOURCE_BYTES` | files > 1 MB |
-| VFS upload (console + terminal) | `lib/playground/upload-guard.ts` + `MAX_VFS_BYTES` | files > 4 MiB |
-| Bookmark JSON upload | `lib/playground/upload-guard.ts` + `MAX_BOOKMARK_JSON_BYTES` | files > 1 MB |
+| `?bundle=` diagnostic link | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
+| `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a field of the wrong type, more than 16 KiB compressed or 1 MiB decompressed |
+| `?example=` | `web/lib/hooks/use-deep-link.ts`, regex `/^[\w.-]+$/` | paths and special characters |
+| `?theme=` and `?run=` | the same file, a fixed list of values | any other value |
+| `?embed=` | the same file | anything but exactly `1` |
+| Bookmark JSON import | `web/lib/playground/named-saves.ts` (`isValidSave`) | a field of the wrong type; a name already in use is skipped, not overwritten |
+| `.s`, `.asm`, or `.txt` upload | `web/lib/playground/upload-guard.ts` | files over 1 MiB |
+| Virtual filesystem upload | `web/lib/playground/upload-guard.ts` | files over 4 MiB |
+| Bookmark JSON upload | `web/lib/playground/upload-guard.ts` | files over 1 MiB |
 
-### Emulator bounds
+## Limits in the emulator
 
-User assembly runs untrusted, so the emulator can never hang or exhaust the
-tab. The walls live in the Rust core and hold however the program arrived
-(typed, shared, or uploaded):
+A program can never hang the tab or use up its memory, however it arrived.
+The limits live in the Rust code, and each one stops the program, or refuses
+the call, with a plain message instead of a crash:
 
-- Step ceiling `cpu::MAX_TOTAL_STEPS` = 10,000,000, counted across every step
-  and the run loop. A runaway loop trips it and stops.
-- Mapped-page cap `memory::MAX_MAPPED_PAGES` = 8192 (32 MiB live), sized so
-  the 8 MiB stack and the 16 MiB heap window can be fully touched with
-  headroom. A store past the cap faults, and the step converts that fault
-  to a halt.
-- Host-runtime caps so one libc or syscall call cannot allocate without bound
-  from a guest-supplied size: `write` reads into a growable buffer instead of
-  pre-reserving its count, and `printf` clamps field width and precision
-  (`MAX_FIELD_WIDTH`).
-- Virtual-filesystem walls sized against the step-back snapshot ring, which
-  copies the VFS whole on every recorded step (the ring stops recording once
-  that side state passes `cpu::MAX_SNAPSHOT_SIDE_BYTES`, so the amplification
-  is bounded rather than unbounded): one file cannot grow past
-  `syscalls::MAX_VFS_FILE_BYTES`
-  (4 MiB) through `lseek` then `write`, the VFS as a whole is bounded by
-  `MAX_VFS_TOTAL_BYTES` (4 MiB), and `openat` refuses to create more than
-  `MAX_VFS_FILES` (16) files (fopen routes through the same caps). Over-cap
-  calls return -1, the same signal a full disk gives on Linux.
-- Fault parity with the course servers: a load or store into the first page
-  (a null or garbage base register) and any sp-based access or libc call
-  with sp off the 16-byte boundary stop with a plain-language halt, the
-  same programs Linux kills with SIGSEGV or a bus error.
+- At most 10,000,000 instructions (`cpu::MAX_TOTAL_STEPS`), counted until the
+  next assemble or reset.
+- At most 8192 mapped 4 KiB pages, 32 MiB (`memory::MAX_MAPPED_PAGES`): enough
+  to fill the 8 MiB stack and the 16 MiB heap together.
+- At most 4 MiB of output (`cpu::MAX_OUTPUT_BYTES`), and a cap on the field
+  width and precision `printf` will pad to.
+- In the virtual filesystem: 4 MiB per file, 4 MiB in total, and 16 files. A
+  call past a limit fails as on a full Linux disk: a system call returns a
+  negative error number, a library call -1 or NULL.
+- A load or store in the first page, or a memory access through `sp` or a
+  library call while `sp` is not a multiple of 16, stops the program, as a
+  segmentation fault or bus error would on the course server.
 
-Every limit halts or refuses the call with a plain-language result, never a
-panic. Proven by `emulator/tests/bounds.rs` and the hosted-runtime unit
-tests.
+`emulator/tests/bounds.rs` and the unit tests for the library calls test each
+limit.
 
-### Practices we follow
+## Other rules the code follows
 
-- Author-supplied Markdown (lessons, exercises) renders through
-  `react-markdown` + `remark-gfm` + `rehype-sanitize`. No
-  `dangerouslySetInnerHTML` with unsanitized content exists anywhere.
-- Everything Monaco shows goes through its typed APIs. The diagnostic-bundle
-  markdown is written to the clipboard, never injected into the DOM.
-- No dynamic JS evaluation. The watch-expression evaluator parses by hand into
-  a small AST and reads register and memory state through typed accessors.
-- No third-party script CDN at runtime. The Monaco editor is vendored from the
-  `monaco-editor` package and served same-origin (it previously loaded from
-  `cdn.jsdelivr.net`, which was the one third-party script-trust boundary; the
-  CSP no longer allows that host anywhere). Google Fonts are self-hosted via
-  `next/font/google`, so no font CDN connection happens at runtime either. The
-  parity between `vercel.json` and `web/next.config.mjs` is pinned by
-  `web/next.config.test.ts`.
-- No SharedArrayBuffer, so we need no COEP and the strict cross-origin
-  isolation it requires. The worker copies bytes through `postMessage`.
-- The site sits behind Vercel's firewall: the platform's automatic DDoS
-  mitigation, plus bot protection in challenge mode, so a client that is not a
-  browser answers a JavaScript challenge before it reaches the site. Verified
-  crawlers (search engines, social link previews) pass without one.
-- Vercel Analytics and Speed Insights are anonymized, set no cookies, and run
-  only on the production deploy. Their script and beacon endpoints are the only
-  third-party origins the page reaches.
+- Lesson and exercise Markdown renders through `react-markdown` with
+  `rehype-sanitize`. No component inserts unsanitized HTML.
+- The editor only receives text through its own APIs. The diagnostic report is
+  copied to the clipboard, never inserted into the page.
+- Nothing evaluates JavaScript built from input. The watch expressions are
+  parsed by hand and read the machine through typed functions.
+- The editor (Monaco) and the fonts are served from the site itself, so no
+  outside script host is trusted at run time.
+- The site does not use `SharedArrayBuffer`, so it needs no cross-origin
+  isolation headers. The worker copies bytes through `postMessage`.
+- Vercel's firewall sits in front of the site. Clients that are not browsers
+  get a JavaScript challenge; known search engines and link previews pass.
+- Vercel Analytics and Speed Insights set no cookies and run only on the
+  production site.
 
-## What you can do safely
+## What you can safely open
 
-- Open any `?bundle=<lz>` or `#p2=<lz>` URL a classmate sends. Worst case: the
-  playground refuses to load the payload.
-- Upload any `.s` / `.asm` / `.txt` file. Source over the cap is refused with a
-  toast and the editor keeps its previous contents.
-- Drop any bookmark JSON. Malformed entries are filtered out and reported in
-  the toast.
+- Any share link or diagnostic link a classmate sends. At worst the playground
+  refuses to load it.
+- Any `.s`, `.asm`, or `.txt` file. A file over the limit is refused and the
+  editor keeps what it had.
+- Any bookmark JSON. Broken entries are skipped, and the message says how many.
 
-## What you should still be careful about
+localStorage is stored unencrypted in your browser profile. A bookmark whose
+input holds a password can be read by anyone who can use that profile.
 
-- localStorage is per-browser-per-origin and unencrypted. A bookmark whose
-  stdin holds a password is readable by anyone with access to that profile.
+## Dependencies
 
-## Dependency posture
+`web/package.json` pins every direct dependency to an exact version. CI fails
+on any shipped dependency with an advisory of moderate severity or higher. Run
+the same check, or the stricter one that includes development tools, from the
+repository root:
 
-Direct dependencies in `web/package.json` are pinned to exact versions, with
-no caret or tilde ranges in the manifest. A clean audit of the shipped
-dependency set is enforced in CI (`node scripts/audit-deps.js --omit=dev`
-fails the build on any moderate-or-higher advisory), and the full audit runs
-before each release. `dompurify` (transitive, via monaco-editor) is held to a
-patched line through `overrides`, and `postcss` is pinned both directly and
-through `overrides`, to keep known XSS fixes in place.
+```bash
+node scripts/audit-deps.js --omit=dev
+node scripts/audit-deps.js
+```
 
-One accepted residue: monaco-editor also vendors a private DOMPurify copy
-inside its bundled source, which `overrides` cannot reach and which may trail
-the patched line. That copy sanitizes only monaco's own rendered widgets, and
-this app never feeds monaco untrusted HTML (everything goes through its typed
-APIs, above), so a hostile document cannot reach the vendored sanitizer.
-Re-checked on every monaco bump.
+`overrides` in `web/package.json` holds `dompurify`, which arrives through
+monaco-editor, and `postcss` at patched versions. monaco-editor also bundles
+its own copy of DOMPurify, which `overrides` cannot reach. That copy only
+cleans the editor's own widgets, and the site never passes the editor
+untrusted HTML, so a hostile document cannot reach it. It is checked again at
+every monaco-editor update.
 
-Run `node scripts/audit-deps.js` from the repo root any time; it exits non-zero
-on any moderate-or-higher advisory, stricter than CI needs but quieter than
-`npm audit`'s "any" threshold. `node scripts/check-headers.js` GETs the
-deployed origin and asserts every header above is present; run it after any
-deploy and after any header change in `web/next.config.mjs` or `vercel.json`.
+## Check the headers
 
-## Reporting
+`scripts/check-headers.js` requests a page and checks every header above. Run
+it against a local production server (`npm run build`, then `npm run start` in
+`web/`):
 
-Found something that looks wrong? Open an issue with the smallest reproducer
-you can. If it is a real exploit (anything that lets a URL execute code outside
-the WASM sandbox or read another origin's state), report it privately through
-GitHub security advisories instead of a public issue:
-<https://github.com/Abdalla-Eldoumani/aarch64-playground/security/advisories/new>.
-The same contact is published at `/.well-known/security.txt` on the site.
+```bash
+node scripts/check-headers.js http://localhost:3000
+```
+
+Run with no argument, it checks <https://aarch64-playground.com>. The firewall
+answers scripts there with a challenge, so that check needs the maintainer's
+bypass value in the `PROBE_TOKEN` environment variable.
+
+## Reporting a problem
+
+Open an issue with the smallest program or link that shows it. If it is a real
+exploit, such as a link that runs code outside the emulator or reads another
+site's data, report it privately through
+[GitHub's advisory form](https://github.com/Abdalla-Eldoumani/aarch64-playground/security/advisories/new)
+instead. The same contact is in `/.well-known/security.txt` on the site.

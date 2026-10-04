@@ -1,10 +1,6 @@
-// The drift guard for the name-only mnemonic list.
-//
-// lib/asm/mnemonics carries the names without the prose so the landing bundle
-// never pulls the hover-card table in behind the highlighter. That split is
-// only safe while the two agree, so this pins them in both directions, the way
-// reference-data and instruction-docs are pinned to each other and both are
-// pinned to the assembler's own SUPPORTED_MNEMONICS.
+// lib/asm/mnemonics keeps the names without the hover-card text so the landing
+// page never loads that table. The split is safe only while the two lists
+// agree, so this checks them in both directions.
 
 import { describe, expect, it } from "vitest";
 import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
@@ -33,7 +29,7 @@ describe("ARM64_MNEMONIC_NAMES", () => {
     expect(ARM64_MNEMONIC_NAMES).not.toContain("b.cond");
   });
 
-  it("is lowercase throughout, the way every surface compares", () => {
+  it("is all lowercase, the case the highlighter and typo suggestions compare in", () => {
     const shouted = ARM64_MNEMONIC_NAMES.filter((m) => m !== m.toLowerCase());
     expect(shouted).toEqual([]);
   });

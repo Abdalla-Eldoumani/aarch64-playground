@@ -1,13 +1,8 @@
-//! The Advanced SIMD encoding conformance gate.
-//!
-//! `tests/simd-inventory.txt` holds every SIMD form GNU as 2.46.1 accepts
-//! on csarm with the word it produced, captured from an objdump of the
-//! probe rather than derived from the manual. This suite replays it in
-//! both directions: a line whose mnemonic this crate implements must
-//! assemble to exactly that word, decode, and print back as GAS prints
-//! it; a line whose mnemonic is still queued (`common::NOT_YET`) must be
-//! REJECTED, so the queue cannot quietly rot into a list of things that
-//! half-work.
+//! Checks every SIMD form in `tests/simd-inventory.txt`, the word GNU as
+//! 2.46.1 on csarm produced for each. An implemented form must assemble to
+//! that word, decode, and print back as GAS prints it; a form still on
+//! `common::NOT_YET` must be refused, so that list never hides
+//! instructions that half work.
 
 mod common;
 
@@ -25,8 +20,8 @@ use common::{inventory, InventoryLine};
 const PC: u64 = 0x0040_0100;
 
 /// The three literal-load lines (`ldr s3, _probe`). GAS encodes them as
-/// one LDR (literal); the hosted linker cannot, because `.data` sits past
-/// imm19's reach, so it lowers each to two words. They are checked
+/// one LDR (literal); the linker here cannot, because `.data` is out of
+/// that instruction's reach, so it turns each into two words. They are checked
 /// through the pipeline by `literal_loads_lower_to_two_words` instead of
 /// against their inventory word.
 fn is_literal_load(line: &InventoryLine) -> bool {
@@ -107,11 +102,11 @@ fn every_implemented_form_assembles_decodes_and_prints_back() {
     );
 }
 
-/// `ldr s3, _probe` is a real GAS LDR (literal), but the hosted linker
-/// puts `.data` 2-3 MiB from `.text`, past imm19's reach, so it lowers
-/// the line to an address load from the literal pool plus an ordinary
-/// load through it. The SIMD&FP widths borrow x16, the same scratch the
-/// libc trampolines claim.
+/// `ldr s3, _probe` is a real GAS LDR (literal), but the linker here puts
+/// `.data` 2-3 MiB from `.text`, past the 1 MiB it can reach, so it turns
+/// the line into a load of the address from the literal pool and an
+/// ordinary load through it. The address goes through x16, the register
+/// the jumps into libc already use the same way.
 #[test]
 fn literal_loads_lower_to_two_words() {
     let labels: HashMap<String, u64> = HashMap::new();

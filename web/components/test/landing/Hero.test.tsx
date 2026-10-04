@@ -16,6 +16,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
 
 import { Hero } from "@/components/landing/Hero";
 import { HERO_PROGRAM } from "@/lib/content/landing-content";
+import { readShareHash } from "@/lib/playground/share";
 
 afterEach(() => {
   cleanup();
@@ -23,12 +24,18 @@ afterEach(() => {
 });
 
 describe("Hero", () => {
-  it("deep-links the primary CTA into the playground with an example preloaded", () => {
+  it("opens the program the demo walks, carried in the link itself", () => {
     render(<Hero />);
     const cta = screen.getByRole("link", {
       name: /open this example in the playground/i,
     });
-    expect(cta.getAttribute("href")).toBe("/playground?example=basics");
+    const href = cta.getAttribute("href") ?? "";
+    expect(href.startsWith("/playground#p2=")).toBe(true);
+    // Read back the way the playground reads a share link on boot.
+    expect(readShareHash(href.slice("/playground".length))).toEqual({
+      kind: "ok",
+      state: { source: HERO_PROGRAM },
+    });
   });
 
   it("composes the embeddable in embed chrome with autoplay, readOnly, and the hero program", () => {
@@ -41,7 +48,7 @@ describe("Hero", () => {
     // The hero is the one surface that draws its program without the editor,
     // so the landing never loads Monaco.
     expect(embed.props!.staticEditor).toBeTruthy();
-    // The walk keeps its two-button frame: no step, no back.
+    // The walk has its own control in the title bar, so no step and no back.
     expect(embed.props!.showStep).toBe(false);
     expect(embed.props!.showBack).toBe(false);
     // The start program is fed from the single landing-content source, not

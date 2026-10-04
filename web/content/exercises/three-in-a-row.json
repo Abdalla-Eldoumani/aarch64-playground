@@ -1,0 +1,70 @@
+{
+  "title": "Three in a row",
+  "slug": "three-in-a-row",
+  "order": 45,
+  "lastUpdated": "2026-09-30",
+  "topic": "memory",
+  "difficulty": "core",
+  "prompt": "Read three integers, keep each one in its own local variable in the stack frame, and print them smallest first on one line.\n\nThe starter sets up a frame with room for three 4-byte locals at the offsets `a_s`, `b_s` and `c_s`. `scanf` needs the address of the place where it should store a number; for a frame local that address is `fp` plus the local's offset, built with `add x1, fp, a_s`. Once the three values are loaded into `a_r`, `b_r` and `c_r`, compare pairs and swap any pair that is out of order until `a_r <= b_r <= c_r`. Try your steps on an input where the smallest number comes last.\n\n## What is checked\n\n- the three numbers in ascending order, separated by single spaces\n- the program exits cleanly\n- the numbers are read into the frame (`add` present) and compared (`cmp` present)\n- your program also runs on inputs you do not see: every order, negative numbers, repeated numbers, and the largest and smallest 32-bit values",
+  "starter": "// read three numbers into the frame and print them smallest first\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, w19)\ndefine(b_r, w20)\ndefine(c_r, w21)\n\na_s = 16                                    // frame offsets of the three locals\nb_s = 20\nc_s = 24\nalloc = -(16 + 12) & -16\ndealloc = -alloc\n\n.data\nfmt_in:     .string \"%d\"\nfmt_out:    .string \"%d %d %d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        // start at 0 so the unfinished program prints 0 0 0 here and on the server\n        mov     a_r, 0\n        mov     b_r, 0\n        mov     c_r, 0\n\n        // TODO: read the three numbers with scanf, each into its own\n        // frame local (scanf wants the local's address: fp plus its\n        // offset). Load them into a_r, b_r and c_r, then compare and\n        // swap until a_r <= b_r <= c_r.\n\n        ldr     x0, =fmt_out\n        mov     w1, a_r\n        mov     w2, b_r\n        mov     w3, c_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+  "args": "",
+  "stdin": "42 7 19\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "7 19 42\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "add"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "cmp"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "3 2 1\n",
+      "stdout": "1 2 3\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "-5 0 5\n",
+      "stdout": "-5 0 5\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "8 8 3\n",
+      "stdout": "3 8 8\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "0 0 0\n",
+      "stdout": "0 0 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "10 -1 4\n",
+      "stdout": "-1 4 10\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "2147483647 -2147483648 0\n",
+      "stdout": "-2147483648 0 2147483647\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

@@ -7,6 +7,7 @@ The corpus directory above this one holds, per program NAME:
     NAME.out          reference stdout from a real AArch64 run
     NAME.code         reference exit code, shell convention (128+N for signals)
     NAME.O2.s/.out/.code   the same at -O2 (a coverage tier, not a gate)
+    NAME.O2plain.s/.out/.code   plain -O2, without -fno-inline and -fno-builtin
     NAME.stdin/.args/.flags   optional inputs and per-program compile flags
 
 This script rebuilds all of that with a cross compiler and qemu-user and
@@ -18,7 +19,7 @@ and two gcc versions never emit identical text, so a text comparison
 only means something under --write, which re-records everything with
 the local toolchain:
 
-    python3 sanitize.py regen             # both tiers, compare, report drift
+    python3 sanitize.py regen             # all three tiers, compare, report drift
     python3 sanitize.py regen --tier O0   # one tier
     python3 sanitize.py regen --only 03_control_flow
     python3 sanitize.py regen --write     # accept drift: rewrite tracked files
@@ -48,6 +49,13 @@ CFLAGS_BASE = [
     "-U_FORTIFY_SOURCE",      # a distro -O2 default turns printf into __printf_chk
     "-Wall",
 ]
+# The flags each tier compiles with. O2plain is -O2 as an ordinary build
+# runs it: builtins on (printf("x\n") becomes puts) and inlining on.
+TIER_FLAGS = {
+    "O0": ["-O0", *CFLAGS_BASE],
+    "O2": ["-O2", *CFLAGS_BASE],
+    "O2plain": ["-O2", *(f for f in CFLAGS_BASE if f not in ("-fno-inline", "-fno-builtin"))],
+}
 LDFLAGS = ["-static", "-no-pie", "-lm"]
 LDFLAGS_FALLBACK = ["-no-pie", "-lm"]  # hosts with no static libc
 
@@ -77,8 +85,6 @@ RULES = [
     ("size",         re.compile(r"^\.size\b"),                                 "drop"),
     ("local",        re.compile(r"^\.local\b"),                                "drop"),
     ("comm",         re.compile(r"^\.comm\s+(?P<sym>[^,\s]+)\s*,\s*(?P<size>\d+)\s*(,\s*(?P<align>\d+))?"), "comm"),
-    ("xword",        re.compile(r"^\.xword\b(?P<rest>.*)$"),                   ("replace", ".quad{rest}")),
-    ("p2align",      re.compile(r"^\.p2align\s+(?P<n>\d+)"),                   ("replace", ".align {n}")),
     ("sect_rodata",  re.compile(r"^\.section\s+\.rodata"),                     ("section", ".section .rodata")),
     ("sect_text",    re.compile(r"^\.section\s+\.text"),                       ("section", ".text")),
     ("sect_data",    re.compile(r"^\.section\s+\.data"),                       ("section", ".data")),
@@ -92,10 +98,10 @@ RULES = [
     ("isoc",         re.compile(r"^(?P<mn>bl)\s+__isoc(99|23)_(?P<fn>scanf|fscanf|sscanf|strtol)\b"), ("replace", "{mn} {fn}")),
 ]
 
-# Identifier rewrites applied outside string literals on every surviving line.
+# Rewrites applied outside string literals on every surviving line. gcc's
+# dotted names (`twice.constprop.0`, a static local's `count.0`) stay as they
+# are: the playground reads them as GAS does.
 IDENT_RULES = [
-    # gcc names static locals `id.0`; the playground's lexer stops an identifier at a dot
-    ("static_local", re.compile(r"(?<![\w.])([A-Za-z_]\w*)\.(\d+)\b"), r"\1__\2"),
     # gcc writes `[x0, #:lo12:sym]` for FP literal loads; the playground takes `:lo12:` bare
     ("hash_lo12",    re.compile(r"#:lo12:"), ":lo12:"),
 ]
@@ -193,7 +199,7 @@ def regen_one(cc, qemu, name, tier, write, notes):
         td = Path(td)
         c = CORPUS / f"{name}.c"
         # 1. assembly
-        r = sh([cc, f"-{tier}", "-S", *CFLAGS_BASE, *flags_for(name),
+        r = sh([cc, "-S", *TIER_FLAGS[tier], *flags_for(name),
                 "-o", str(td / "a.s"), str(c)])
         if r.returncode != 0:
             return [f"{name} {tier}: compile failed\n{r.stderr[-1500:]}"]
@@ -209,10 +215,10 @@ def regen_one(cc, qemu, name, tier, write, notes):
         if name in QEMU_DIVERGES:
             print(f"[skip run] {name}: {QEMU_DIVERGES[name]}")
             return drift
-        r = sh([cc, f"-{tier}", *CFLAGS_BASE, *flags_for(name),
+        r = sh([cc, *TIER_FLAGS[tier], *flags_for(name),
                 "-o", str(td / "a.out"), str(c), *LDFLAGS])
         if r.returncode != 0:
-            r = sh([cc, f"-{tier}", *CFLAGS_BASE, *flags_for(name),
+            r = sh([cc, *TIER_FLAGS[tier], *flags_for(name),
                     "-o", str(td / "a.out"), str(c), *LDFLAGS_FALLBACK])
         if r.returncode != 0:
             return drift + [f"{name} {tier}: link failed\n{r.stderr[-1500:]}"]
@@ -244,8 +250,8 @@ def regen_one(cc, qemu, name, tier, write, notes):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd", choices=["regen"])
-    ap.add_argument("--tier", choices=["O0", "O2"], default=None,
-                    help="one tier only (default: both)")
+    ap.add_argument("--tier", choices=list(TIER_FLAGS), default=None,
+                    help="one tier only (default: all three)")
     ap.add_argument("--only", help="one program stem")
     ap.add_argument("--write", action="store_true",
                     help="rewrite tracked files instead of failing on drift")
@@ -258,7 +264,7 @@ def main():
         names = [n for n in names if n == opts.only]
         if not names:
             sys.exit(f"no program named {opts.only}")
-    tiers = [opts.tier] if opts.tier else ["O0", "O2"]
+    tiers = [opts.tier] if opts.tier else list(TIER_FLAGS)
 
     all_drift = []
     text_notes = []

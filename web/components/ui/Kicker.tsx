@@ -1,8 +1,6 @@
 /**
- * Numbered section kicker: `NN · TITLE` in the datasheet voice. The number
- * in amber (the sheet's machine coordinate), the title in tertiary mono,
- * then a hairline that runs out the measure. Heads every numbered section on
- * the landing and reading surfaces.
+ * Numbered section heading, `NN · TITLE`, then a thin rule to the end of the
+ * line. Heads every numbered section on the landing and reading pages.
  */
 export function Kicker({
   number,
@@ -16,7 +14,7 @@ export function Kicker({
 }) {
   return (
     <div className={`flex items-baseline gap-3 ${className}`}>
-      <span className="font-mono text-[11px] font-semibold uppercase leading-[1.4] tracking-[0.18em]">
+      <span className="font-mono text-[12px] font-semibold uppercase leading-[1.4] tracking-[0.18em]">
         <span className="text-[var(--amber)]">{number}</span>
         <span className="text-[var(--text-tertiary)]"> · {title}</span>
       </span>

@@ -2,8 +2,9 @@
 //! syscall number from `x8`, the arguments from `x0..x5`, and writes the
 //! result back into `x0`.
 //!
-//! Covers the set the corpus needs: `write` (64), `read` (63), `exit` (93),
-//! and the VFS-backed file syscalls (openat, close, lseek).
+//! Covers what course programs call: `read`, `write`, `exit`, the
+//! VFS-backed file calls (openat, close, lseek), and the terminal set
+//! (ioctl, fcntl, nanosleep, clock_gettime, getrandom).
 
 use crate::cpu::OpenFile;
 use crate::errors::EmuError;
@@ -28,8 +29,17 @@ pub const SYS_NANOSLEEP: u64 = 101;
 pub const SYS_CLOCK_GETTIME: u64 = 113;
 pub const SYS_GETRANDOM: u64 = 278;
 
-/// Linux -EAGAIN, returned by a non-blocking read on empty stdin.
+/// Linux error numbers, negated: a raw syscall that fails returns one of
+/// these in x0 (only the libc wrappers turn it into -1 and errno).
+const ENOENT: i64 = -2;
+const EBADF: i64 = -9;
+/// Returned by a non-blocking read on empty stdin.
 const EAGAIN: i64 = -11;
+const EINVAL: i64 = -22;
+const EMFILE: i64 = -24;
+const ENOTTY: i64 = -25;
+const EFBIG: i64 = -27;
+const ENOSPC: i64 = -28;
 
 /// termios request numbers (AArch64 Linux ABI). TCSETSW/TCSETSF drain
 /// or flush first on real hardware; here all three just apply.
@@ -42,7 +52,7 @@ const TCSETSF: u64 = 0x5404;
 const ICANON: u32 = 0o0002;
 const ECHO: u32 = 0o0010;
 /// A cooked terminal's typical c_lflag (ISIG|ICANON|ECHO|ECHOE|ECHOK|
-/// IEXTEN), what TCGETS reports before a program goes raw.
+/// IEXTEN), which TCGETS reports until a program switches to raw mode.
 const COOKED_LFLAG: u32 = 0o105073;
 
 /// fcntl commands and the flag bit the games use.
@@ -60,13 +70,11 @@ const TERMIOS_BYTES: u64 = 36;
 /// stalling the tab filling gigabytes.
 const MAX_GETRANDOM_BYTES: u64 = 1024;
 
-/// Upper bound on a virtual-filesystem file size. `lseek` lets a guest pick
-/// the offset a later `write` lands at, so without a cap a one-byte write at
-/// a huge offset would resize the backing `Vec` to gigabytes and abort the
-/// host allocator. Sized against the step-back snapshot ring, which clones
-/// the whole VFS every step (~129x amplification, the same budget math as
-/// `memory::MAX_MAPPED_PAGES`): 4 MiB keeps the worst-case ring cost near
-/// half a GiB while staying far above anything the corpus needs.
+/// Largest size a virtual file may reach. Without it, an `lseek` to a huge
+/// offset followed by a one-byte `write` would resize the file to gigabytes
+/// and abort the allocator. The step-back ring clones the whole VFS every
+/// step (about 129x), so 4 MiB keeps its worst case near half a GiB while
+/// staying far above what course programs write.
 pub const MAX_VFS_FILE_BYTES: usize = 4 * 1024 * 1024;
 
 /// Upper bound on the VFS as a whole. The per-file cap alone would let N
@@ -78,12 +86,10 @@ pub const MAX_VFS_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 /// create one or two.
 pub const MAX_VFS_FILES: usize = 16;
 
-/// Upper bound on how many descriptors may be open at once. The file
-/// count caps the VFS, not the fd table: re-opening one existing file in
-/// a loop grows `open_files` without limit, and each entry carries
-/// its own copy of the path (200 re-opens of a 60 KiB path held 11 MiB,
-/// cloned again into every snapshot frame). Linux answers EMFILE past
-/// its own limit; course programs open one or two files at a time.
+/// Most descriptors open at once. The file-count cap does not cover this:
+/// reopening one file in a loop grows `open_files`, and each entry copies
+/// its path (200 reopens of a 60 KiB path held 11 MiB, cloned into every
+/// snapshot). Linux answers EMFILE past its own limit.
 pub const MAX_OPEN_FILES: usize = 16;
 
 /// Linux `O_*` flag bits we care about. Matches the AArch64 Linux ABI.
@@ -117,16 +123,28 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
     }
 }
 
-/// ioctl(fd, request, argp). Supports the termios pair a raw-mode
-/// program needs: TCGETS reports a cooked terminal, and any TCSETS
-/// variant applies the caller's c_lflag: clearing ICANON is the
-/// raw-mode handshake that marks this program as a terminal program.
-/// Unknown requests return -1 without halting, like the kernel's
-/// EINVAL, so a stray ioctl stays a program-visible error.
+/// ioctl(fd, request, argp). On the console TCGETS reports a cooked
+/// terminal; any TCSETS variant applies the caller's c_lflag, and clearing
+/// ICANON or ECHO marks the program as a terminal program. Stdin fed from
+/// a file and every open file are not terminals, so like any other
+/// request they answer -ENOTTY rather than halting.
 pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let fd = ctx.regs.read_gpr(0, true) as u32;
     let request = ctx.regs.read_gpr(1, true);
     let argp = ctx.regs.read_gpr(2, true);
+    let terminal = match fd {
+        0 => !ctx.term.stdin_is_file,
+        1 | 2 => true,
+        _ if ctx.open_files.contains_key(&fd) => false,
+        _ => {
+            ctx.regs.write_gpr(0, true, EBADF as u64);
+            return Ok(HostOutcome::Continue);
+        }
+    };
     match request {
+        _ if !terminal => {
+            ctx.regs.write_gpr(0, true, ENOTTY as u64);
+        }
         TCGETS => {
             for off in 0..TERMIOS_BYTES {
                 ctx.mem.write_u8(argp.wrapping_add(off), 0)?;
@@ -146,7 +164,7 @@ pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             ctx.regs.write_gpr(0, true, 0);
         }
         _ => {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            ctx.regs.write_gpr(0, true, ENOTTY as u64);
         }
     }
     Ok(HostOutcome::Continue)
@@ -154,7 +172,7 @@ pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 /// fcntl(fd, cmd, arg). F_GETFL reports fd 0's flags; F_SETFL applies
 /// O_NONBLOCK to fd 0, after which an empty read returns -EAGAIN
-/// instead of pausing the machine. Other commands return -1.
+/// instead of pausing the machine. Other commands return -EINVAL.
 pub fn sys_fcntl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fd = ctx.regs.read_gpr(0, true);
     let cmd = ctx.regs.read_gpr(1, true);
@@ -171,7 +189,7 @@ pub fn sys_fcntl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             ctx.regs.write_gpr(0, true, 0);
         }
         _ => {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            ctx.regs.write_gpr(0, true, EINVAL as u64);
         }
     }
     Ok(HostOutcome::Continue)
@@ -255,29 +273,30 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 /// The fd half of write(2), shared with fprintf: bytes to fd 1/2 land on
 /// stdout/stderr; other fds write into the VFS at the current offset,
-/// under the per-file and whole-VFS caps. Returns bytes written, or -1
-/// where Linux answers EBADF or where a cap refuses the growth.
+/// under the per-file and whole-VFS caps. Returns bytes written, or the
+/// negated errno the raw syscall answers (EBADF, or a cap refusing the
+/// growth as a full disk would); libc callers report any negative as -1.
 pub(crate) fn write_to_fd(ctx: &mut HostContext<'_>, fd: u64, bytes: &[u8]) -> i64 {
     match fd {
         1 => ctx.stdout.extend_from_slice(bytes),
         2 => ctx.stderr.extend_from_slice(bytes),
         _ => {
-            // Unknown fd: Linux returns -1/EBADF and the program keeps
+            // Unknown fd: Linux answers EBADF and the program keeps
             // running, letting the student's own openat error check fire.
             // (The low-32-bit truncation matches the kernel, which reads
             // an int fd, so a stored -1 looks up as 4294967295 and misses.)
             let Some(file) = ctx.open_files.get_mut(&(fd as u32)) else {
-                return -1;
+                return EBADF;
             };
             if !file.writable {
-                return -1;
+                return EBADF;
             }
             let path = file.path.clone();
             let offset = file.offset as usize;
             // Reject a write that would grow the file past the cap rather than
             // resizing the backing Vec to a guest-chosen (possibly huge) size.
             if offset.saturating_add(bytes.len()) > MAX_VFS_FILE_BYTES {
-                return -1;
+                return EFBIG;
             }
             // The whole-VFS bound: growth in this file counts against the
             // total, so several files cannot multiply the per-file cap.
@@ -285,7 +304,7 @@ pub(crate) fn write_to_fd(ctx: &mut HostContext<'_>, fd: u64, bytes: &[u8]) -> i
             let growth = offset.saturating_add(bytes.len()).saturating_sub(current_len);
             let total: usize = ctx.vfs.values().map(Vec::len).sum();
             if total.saturating_add(growth) > MAX_VFS_TOTAL_BYTES {
-                return -1;
+                return ENOSPC;
             }
             let data = ctx
                 .vfs
@@ -335,10 +354,10 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         ctx.regs.write_gpr(0, true, n as u64);
         return Ok(HostOutcome::Continue);
     }
-    // VFS-backed fd. Unknown means -1/EBADF, same as write: the program
+    // VFS-backed fd. Unknown means EBADF, same as write: the program
     // keeps running and the student's own error check can fire.
     let Some(file) = ctx.open_files.get_mut(&(fd as u32)) else {
-        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        ctx.regs.write_gpr(0, true, EBADF as u64);
         return Ok(HostOutcome::Continue);
     };
     let path = file.path.clone();
@@ -360,7 +379,7 @@ pub fn sys_exit(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Exited(code))
 }
 
-/// openat(dirfd, pathname, flags, mode) -> fd or -1.
+/// openat(dirfd, pathname, flags, mode) -> fd or a negated errno.
 /// `dirfd` is ignored (AT_FDCWD or any value; VFS paths are absolute-ish
 /// keys). `flags` picks writable vs read-only and whether to create or
 /// truncate the file in the VFS. `mode` is ignored because the VFS
@@ -376,18 +395,19 @@ pub fn sys_openat(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let create = (flags & O_CREAT) != 0;
     let truncate = (flags & O_TRUNC) != 0;
 
-    match open_vfs(ctx, &path, writable, create, truncate, false) {
-        Some(fd) => ctx.regs.write_gpr(0, true, fd as u64),
-        None => ctx.regs.write_gpr(0, true, (-1i64) as u64),
-    }
+    let answer = match open_vfs(ctx, &path, writable, create, truncate, false) {
+        Ok(fd) => i64::from(fd),
+        Err(errno) => errno,
+    };
+    ctx.regs.write_gpr(0, true, answer as u64);
     Ok(HostOutcome::Continue)
 }
 
 /// The wall-checked open half of openat, shared with fopen: every cap
 /// (open descriptors, VFS file count, missing-without-create) refuses
-/// with None before anything is created, so an open loop cannot grow
-/// the fd table or the VFS. `append` starts the offset at the current
-/// end of file instead of 0.
+/// with the negated errno before anything is created, so an open loop
+/// cannot grow the fd table or the VFS. `append` starts the offset at
+/// the current end of file instead of 0.
 pub(crate) fn open_vfs(
     ctx: &mut HostContext<'_>,
     path: &str,
@@ -395,27 +415,27 @@ pub(crate) fn open_vfs(
     create: bool,
     truncate: bool,
     append: bool,
-) -> Option<u32> {
+) -> Result<u32, i64> {
     if path.is_empty() {
-        // Linux returns -1/ENOENT for an empty path. The usual cause here
+        // Linux answers ENOENT for an empty path. The usual cause here
         // is a filename buffer that was reserved (.skip) but never filled.
-        return None;
+        return Err(ENOENT);
     }
 
     // Descriptor wall: refuse before creating anything, so an open loop
     // that never closes cannot grow the fd table (or the VFS behind it).
     if ctx.open_files.len() >= MAX_OPEN_FILES {
-        return None;
+        return Err(EMFILE);
     }
 
     if !ctx.vfs.contains_key(path) {
         if !create {
-            return None;
+            return Err(ENOENT);
         }
         // File-count wall: a create loop could otherwise insert entries
         // without bound, each eligible for its own per-file growth.
         if ctx.vfs.len() >= MAX_VFS_FILES {
-            return None;
+            return Err(ENOSPC);
         }
         ctx.vfs.insert(path.to_string(), Vec::new());
     } else if truncate {
@@ -439,28 +459,29 @@ pub(crate) fn open_vfs(
             writable,
         },
     );
-    Some(fd)
+    Ok(fd)
 }
 
-/// close(fd) -> 0 on success, -1 on unknown fd.
+/// close(fd) -> 0 on success, -EBADF on unknown fd.
 pub fn sys_close(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fd = ctx.regs.read_gpr(0, true) as u32;
     if ctx.open_files.remove(&fd).is_some() {
         ctx.regs.write_gpr(0, true, 0);
     } else {
-        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        ctx.regs.write_gpr(0, true, EBADF as u64);
     }
     Ok(HostOutcome::Continue)
 }
 
-/// lseek(fd, offset, whence) -> new offset or -1. `whence` is 0 (SEEK_SET),
-/// 1 (SEEK_CUR), or 2 (SEEK_END).
+/// lseek(fd, offset, whence) -> new offset, -EBADF on an unknown fd, or
+/// -EINVAL for a bad whence or an offset below 0 or past the file cap.
+/// `whence` is 0 (SEEK_SET), 1 (SEEK_CUR), or 2 (SEEK_END).
 pub fn sys_lseek(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fd = ctx.regs.read_gpr(0, true) as u32;
     let offset = ctx.regs.read_gpr(1, true) as i64;
     let whence = ctx.regs.read_gpr(2, true) as u32;
     let Some(file) = ctx.open_files.get_mut(&fd) else {
-        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        ctx.regs.write_gpr(0, true, EBADF as u64);
         return Ok(HostOutcome::Continue);
     };
     let size = ctx
@@ -473,12 +494,12 @@ pub fn sys_lseek(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         1 => file.offset as i64 + offset,
         2 => size + offset,
         _ => {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            ctx.regs.write_gpr(0, true, EINVAL as u64);
             return Ok(HostOutcome::Continue);
         }
     };
     if new_offset < 0 || new_offset as u64 > MAX_VFS_FILE_BYTES as u64 {
-        ctx.regs.write_gpr(0, true, (-1i64) as u64);
+        ctx.regs.write_gpr(0, true, EINVAL as u64);
         return Ok(HostOutcome::Continue);
     }
     file.offset = new_offset as u64;
@@ -489,6 +510,7 @@ pub fn sys_lseek(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
     use crate::cpu::OpenFile;
     use crate::memory::Memory;
     use crate::registers::RegisterFile;
@@ -507,6 +529,7 @@ mod tests {
         term: crate::cpu::TermState,
         heap: crate::hosted::heap::HeapState,
         strtok_save: u64,
+        callbacks: crate::hosted::callback::CallbackState,
     }
 
     impl Host {
@@ -526,6 +549,7 @@ mod tests {
                 term: crate::cpu::TermState::default(),
                 heap: crate::hosted::heap::HeapState::default(),
                 strtok_save: 0,
+                callbacks: Default::default(),
             }
         }
         fn ctx(&mut self) -> HostContext<'_> {
@@ -543,6 +567,7 @@ mod tests {
                 term: &mut self.term,
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
+                callbacks: &mut self.callbacks,
             }
         }
     }
@@ -616,7 +641,7 @@ mod tests {
     #[test]
     fn unsupported_syscall_errors() {
         let mut h = Host::new();
-        assert!(dispatch(999, &mut h.ctx()).is_err());
+        rejects(dispatch(999, &mut h.ctx()), "syscall 999 (x8) is not supported");
     }
 
     // -- VFS syscalls --
@@ -639,7 +664,7 @@ mod tests {
     }
 
     #[test]
-    fn openat_empty_path_returns_minus_one_and_creates_nothing() {
+    fn openat_empty_path_answers_enoent_and_creates_nothing() {
         // Linux answers "" with ENOENT; accepting it minted a phantom ""
         // file every write then landed in. The usual cause is a filename
         // buffer that was reserved but never filled.
@@ -649,7 +674,7 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, (O_WRONLY | O_CREAT) as u64);
         dispatch(SYS_OPENAT, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, ENOENT);
         assert!(h.vfs.is_empty());
         assert!(h.open_files.is_empty());
     }
@@ -667,13 +692,13 @@ mod tests {
     }
 
     #[test]
-    fn openat_missing_file_without_o_creat_returns_minus_one() {
+    fn openat_missing_file_without_o_creat_answers_enoent() {
         let mut h = Host::new();
         place_path(&mut h, 0x0060_0000, "does_not_exist.txt");
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, 0);
         dispatch(SYS_OPENAT, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, ENOENT);
     }
 
     #[test]
@@ -712,11 +737,11 @@ mod tests {
     }
 
     #[test]
-    fn close_unknown_fd_returns_minus_one() {
+    fn close_unknown_fd_answers_ebadf() {
         let mut h = Host::new();
         h.regs.write_gpr(0, true, 42);
         dispatch(SYS_CLOSE, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, EBADF);
     }
 
     #[test]
@@ -796,11 +821,11 @@ mod tests {
         h.regs.write_gpr(0, true, 1); // stdout
         h.regs.write_gpr(1, true, 0x0060_0000); // one mapped page
         h.regs.write_gpr(2, true, u32::MAX as u64); // huge count
-        assert!(dispatch(SYS_WRITE, &mut h.ctx()).is_err());
+        rejects(dispatch(SYS_WRITE, &mut h.ctx()), "memory fault: the program tried to read");
     }
 
     #[test]
-    fn lseek_past_the_file_cap_returns_minus_one() {
+    fn lseek_past_the_file_cap_answers_einval() {
         let mut h = Host::new();
         h.vfs.insert("f".into(), Vec::new());
         h.open_files.insert(
@@ -811,7 +836,7 @@ mod tests {
         h.regs.write_gpr(1, true, MAX_VFS_FILE_BYTES as u64 + 1);
         h.regs.write_gpr(2, true, 0); // SEEK_SET
         dispatch(SYS_LSEEK, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, EINVAL);
     }
 
     #[test]
@@ -831,26 +856,26 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, 1);
         dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, EFBIG);
         assert!(h.vfs["f"].len() <= MAX_VFS_FILE_BYTES);
     }
 
     #[test]
-    fn unknown_fd_write_and_read_return_minus_one() {
-        // Storing openat's -1 and calling write is the universal beginner
-        // slip; Linux answers EBADF, never terminates the program.
+    fn unknown_fd_write_and_read_answer_ebadf() {
+        // Storing openat's error and calling write is the universal
+        // beginner slip; Linux answers EBADF, never terminates the program.
         let mut h = Host::new();
         h.mem.write_u8(0x0060_0000, b'x').unwrap();
-        h.regs.write_gpr(0, true, 0xFFFF_FFFF); // w-register -1
+        h.regs.write_gpr(0, true, 0xFFFF_FFFE); // w-register -2
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, 1);
         dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
-        h.regs.write_gpr(0, true, 0xFFFF_FFFF);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, EBADF);
+        h.regs.write_gpr(0, true, 0xFFFF_FFFE);
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, 1);
         dispatch(SYS_READ, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, EBADF);
     }
 
     #[test]
@@ -871,7 +896,7 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, 2);
         dispatch(SYS_WRITE, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, ENOSPC);
         assert!(h.vfs["b"].is_empty());
     }
 
@@ -904,7 +929,7 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0060_0000);
         h.regs.write_gpr(2, true, (0o1 | 0o100) as u64); // O_WRONLY|O_CREAT
         dispatch(SYS_OPENAT, &mut h.ctx()).unwrap();
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true) as i64, ENOSPC);
         assert_eq!(h.vfs.len(), MAX_VFS_FILES);
         // An EXISTING file still opens at the cap.
         place_path(&mut h, 0x0060_0000, "f0");

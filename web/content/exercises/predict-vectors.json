@@ -1,0 +1,54 @@
+{
+  "title": "Predict: vectors",
+  "slug": "predict-vectors",
+  "order": 137,
+  "lastUpdated": "2026-10-01",
+  "topic": "floating-point",
+  "difficulty": "challenge",
+  "variant": "prediction",
+  "prompt": "For each snippet, give the exact value left in the named general register. Every snippet works on lanes, then copies one lane or a total out to a `w` or `x` register.",
+  "predictions": [
+    {
+      "code": "mov w9, 5\ndup v0.4s, w9\nmov w10, 3\ndup v1.4s, w10\nmul v2.4s, v0.4s, v1.4s\naddv s3, v2.4s\nmov w19, v3.s[0]",
+      "question": "What value does w19 hold after the addv and the last mov? Answer in decimal.",
+      "answer": "60",
+      "explanation": "Both dup instructions fill all four lanes, so the mul gives 15 in each lane. addv adds the four lanes, 15 + 15 + 15 + 15 = 60, and leaves the total in lane 0 of v3, which the mov copies to w19.",
+      "hint": "Work out one lane, then remember there are four."
+    },
+    {
+      "code": "movi v0.16b, 180\nmovi v1.16b, 90\nadd v2.16b, v0.16b, v1.16b\numov w19, v2.b[7]",
+      "question": "What value does w19 hold after the add and the umov? Answer in decimal.",
+      "answer": "14",
+      "explanation": "Each byte lane gets 180 + 90 = 270, which does not fit in 8 bits. A plain add keeps the low 8 bits, 270 - 256 = 14, in every lane, and lane 7 is no different. The carry never reaches the lane beside it.",
+      "hint": "A byte holds 0 to 255. What is left when the carry out of the top bit is dropped?"
+    },
+    {
+      "code": "movi v0.8b, 30\nmovi v1.8b, 50\nuqsub v2.8b, v0.8b, v1.8b\numov w19, v2.b[3]",
+      "question": "What value does w19 hold after the uqsub and the umov? Answer in decimal.",
+      "answer": "0",
+      "explanation": "uqsub is the subtract that, like uqadd, stops at the edge of the range instead of wrapping. 30 - 50 is below 0, the smallest value an unsigned lane holds, so every lane stops at 0. A plain sub would wrap to 256 - 20 = 236.",
+      "hint": "The u means unsigned, and the q means the result is held inside the range."
+    },
+    {
+      "code": "// in .data:  primes: .word 7, 11, 13, 17\nldr x9, =primes\nld1 {v0.4s}, [x9]\nmov w19, v0.s[1]",
+      "question": "What value does w19 hold after the ld1 and the mov? Answer in decimal.",
+      "answer": "11",
+      "explanation": "ld1 fills the lanes in address order: the word at the lowest address, 7, goes to lane 0, then 11 to lane 1, 13 to lane 2 and 17 to lane 3. v0.s[1] is lane 1, so w19 gets 11.",
+      "hint": "Lanes count from 0, starting at the lowest address."
+    },
+    {
+      "code": "movi v0.16b, 20\naddv b1, v0.16b\numov w19, v1.b[0]",
+      "question": "What value does w19 hold after the addv of the 16 byte lanes? Answer in decimal.",
+      "answer": "64",
+      "explanation": "addv adds the 16 byte lanes, 16 * 20 = 320, but the total goes into b1, which is only 8 bits wide. 320 - 256 = 64 is the part that fits. uaddlv totals bytes into a wider result, so nothing is lost.",
+      "hint": "The total has the width of one lane."
+    },
+    {
+      "code": "movi v0.16b, 1\nmov x19, v0.d[0]",
+      "question": "Write x19 after the mov as 0x followed by sixteen hex digits.",
+      "answer": "0x0101010101010101",
+      "explanation": "movi puts 1 in each of the 16 byte lanes. v0.d[0] reads the low 8 of those bytes as one 64-bit lane, and each byte holds 0x01, so x19 holds 0x0101010101010101.",
+      "hint": "The same 128 bits, read through a different arrangement."
+    }
+  ]
+}

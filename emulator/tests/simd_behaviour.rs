@@ -1,16 +1,9 @@
-//! The Advanced SIMD behaviour replay.
-//!
-//! `tests/simd-behaviour.txt` is what each inventory line actually did on
-//! csarm: for three input sets, the registers it changed and the 16-byte
-//! memory chunks it wrote. This suite rebuilds that machine state here and
-//! replays every line whose family has landed, so a load or store that
-//! encodes correctly but moves the wrong bytes still fails.
-//!
-//! The harness mapped a buffer holding `k & 0xff` at offset `k`, 1 KiB
-//! before the base and 64 KiB after, and pointed the line's base register
-//! at it. The `[sp` forms ran against a copy of the buffer's first 256
-//! bytes that was written back afterwards, which is the same thing as
-//! pointing SP at the buffer: no such line reaches past offset 63.
+//! Runs each implemented SIMD inventory line on the state csarm ran it on
+//! and compares the registers and 16-byte memory chunks it changed with
+//! `tests/simd-behaviour.txt`, so an instruction that encodes right but
+//! moves the wrong bytes still fails. On csarm the `[sp` forms used a copy
+//! of the buffer's first 256 bytes, written back after; none reaches past
+//! offset 63, so pointing SP at the buffer here gives the same result.
 
 mod common;
 
@@ -76,13 +69,10 @@ const WIDEN_SHIFT: &[&str] = &[
 const PERMUTE: &[&str] =
     &["ext", "tbl", "tbx", "trn1", "trn2", "uzp1", "uzp2", "zip1", "zip2"];
 
-/// The floating-point lane families: three-same, two-register misc
-/// (compares against zero and every conversion included), across lanes,
-/// and the by-element multiplies, plus the SIMD-scalar class of each.
-/// Both spellings of the three width-changing conversions are here,
-/// because the `2` suffix is part of the mnemonic the fixture keys on;
-/// `fmov` is not, because the vector immediate rides MOVES with the rest
-/// of the register-to-register forms.
+/// The floating-point lane families, scalar forms included. Both spellings
+/// of the width-changing conversions are here, because the `2` suffix is
+/// part of the mnemonic the fixture keys on; `fmov` sits in MOVES with the
+/// other register-to-register forms.
 const FLOAT: &[&str] = &[
     "fabd", "fabs", "facge", "facgt", "fadd", "faddp",
     "fcmeq", "fcmge", "fcmgt", "fcmle", "fcmlt",
@@ -120,8 +110,8 @@ fn is_replayed(line: &InventoryLine) -> bool {
 }
 
 /// Where the mapped buffer's base sits: page-aligned (so SP-based forms
-/// clear the 16-byte SA0 rule), clear of the null-page guard, and with
-/// room for the 1 KiB that sits below it.
+/// pass the 16-byte stack alignment check), clear of the unmapped first
+/// page, and with room for the 1 KiB that sits below it.
 const BASE: u64 = aarch64_emulator::cpu::DATA_BASE + 0x1000;
 const BEFORE: u64 = 1024;
 const AFTER: u64 = 65536;
@@ -407,6 +397,9 @@ fn every_implemented_line_moves_the_bytes_csarm_moved() {
     }
 
     println!("simd behaviour: {replayed} rows replayed, {skipped} rows still queued");
+    // Every captured row replays today; a row that stops replaying would
+    // otherwise drop out of the check without a word.
+    assert_eq!(skipped, 0, "{skipped} captured rows are no longer replayed");
     assert!(
         failures.is_empty(),
         "{} of {replayed} replayed rows disagree with csarm:\n{}",

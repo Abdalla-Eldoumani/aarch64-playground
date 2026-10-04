@@ -14,9 +14,26 @@ const allHandlers = () => ({
 });
 
 describe("Controls", () => {
-  it("marks the action row as an instrument band and keeps the error out of it", () => {
+  it("counts one step in the singular and more in the plural", () => {
     const h = allHandlers();
-    const { container } = render(
+    const props = {
+      ...h,
+      canStepBack: true,
+      isRunning: false,
+      isHalted: false,
+      programLoaded: true,
+      error: null,
+    };
+    const { rerender } = render(<Controls {...props} stepCount={1} />);
+    expect(screen.getByText("1 step")).toBeTruthy();
+    expect(screen.getByLabelText("1 instruction executed")).toBeTruthy();
+    rerender(<Controls {...props} stepCount={2} />);
+    expect(screen.getByText("2 steps")).toBeTruthy();
+  });
+
+  it("keeps the error out of the button row", () => {
+    const h = allHandlers();
+    render(
       <Controls
         {...h}
         canStepBack={false}
@@ -26,18 +43,73 @@ describe("Controls", () => {
         error="undefined label: mian"
       />,
     );
-    const band = container.querySelector(".controls-band");
-    expect(band).not.toBeNull();
-    // Every button rides the strip; the spacer it suppresses under sm carries
-    // its own class, and the alert is a sibling row, not a scrolled-away child.
-    expect(band!.querySelectorAll("button")).toHaveLength(5);
-    expect(band!.querySelector(":scope > .controls-spacer")).not.toBeNull();
+    const row = screen.getByRole("button", { name: "assemble" }).parentElement!;
+    expect(row.querySelectorAll("button")).toHaveLength(5);
     const alert = screen.getByRole("alert");
-    expect(alert.closest(".controls-band")).toBeNull();
-    expect(alert.parentElement).toBe(band!.parentElement);
+    expect(row.contains(alert)).toBe(false);
+    expect(alert.parentElement).toBe(row.parentElement);
   });
 
-  it("renders the five control buttons in canonical order", () => {
+  it("gives a phone the five buttons and no step status or key hints", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        compact
+        canStepBack={false}
+        isRunning={false}
+        isHalted={true}
+        programLoaded={true}
+        stepCount={12}
+        error={null}
+      />,
+    );
+    const buttons = screen.getAllByRole("button");
+    expect(buttons).toHaveLength(5);
+    // The phone's status line reports steps and the finish instead.
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(document.querySelector("kbd")).toBeNull();
+  });
+
+  it("carries the tools at a short window's row end, without key chips", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        short
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        stepCount={3}
+        error={null}
+        trailing={<button type="button">share</button>}
+      />,
+    );
+    // The keys stay in each button's title and the shortcut list.
+    expect(document.querySelector("kbd")).toBeNull();
+    expect(screen.getByRole("button", { name: "assemble" }).getAttribute("title")).toBe("F6");
+    expect(screen.getByRole("status").textContent).toBe("3 steps");
+    const all = screen.getAllByRole("button").map((b) => b.textContent);
+    expect(all[all.length - 1]).toBe("share");
+  });
+
+  it("keeps the key chips outside a short window", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={true}
+        error={null}
+      />,
+    );
+    expect(document.querySelectorAll("kbd")).toHaveLength(5);
+  });
+
+  it("renders the five buttons as assemble, run, step, back, reset", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -53,46 +125,6 @@ describe("Controls", () => {
       .getAllByRole("button")
       .map((b) => b.getAttribute("aria-label"));
     expect(labels).toEqual(["assemble", "run", "step", "back", "reset"]);
-  });
-
-  it("sizes every control with the 44px Button base", () => {
-    const h = allHandlers();
-    render(
-      <Controls
-        {...h}
-        canStepBack={false}
-        isRunning={false}
-        isHalted={false}
-        programLoaded={true}
-        error={null}
-      />,
-    );
-    for (const b of screen.getAllByRole("button")) {
-      expect(b.className).toContain("min-h-[44px]");
-    }
-  });
-
-  it("leads with Assemble and Run as the cyan primary actions", () => {
-    const h = allHandlers();
-    render(
-      <Controls
-        {...h}
-        canStepBack={false}
-        isRunning={false}
-        isHalted={false}
-        programLoaded={true}
-        error={null}
-      />,
-    );
-    expect(
-      screen.getByRole("button", { name: /^assemble/ }).className,
-    ).toContain("bg-[var(--cyan)]");
-    expect(screen.getByRole("button", { name: /^run/ }).className).toContain(
-      "bg-[var(--cyan)]",
-    );
-    expect(screen.getByRole("button", { name: /^step/ }).className).not.toContain(
-      "bg-[var(--cyan)]",
-    );
   });
 
   it("disables back when canStepBack is false", () => {
@@ -169,25 +201,29 @@ describe("Controls", () => {
   });
 
   it("shakes once per new error, and only on a new one", () => {
-    // The ~200ms decaying shake is the motion spec's error cue; the message
-    // beside it is plain text plus a recovery hint. The class animates only
-    // outside prefers-reduced-motion, and the alert is keyed by the message,
-    // so a new error replays the one-shot shake while a re-render of the same
-    // error does not.
+    // The alert is keyed by its message, so a new error remounts it and plays
+    // the one-shot shake again, while the same error re-rendered does not.
     const h = allHandlers();
-    render(
+    const withError = (error: string) => (
       <Controls
         {...h}
         canStepBack={false}
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        error="boom"
-      />,
+        error={error}
+      />
     );
-    const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("boom");
-    expect(alert.className).toContain("anim-error-shake");
+    const { rerender } = render(withError("boom"));
+    const first = screen.getByRole("alert");
+    expect(first.textContent).toContain("boom");
+    expect(first.className).toContain("anim-error-shake");
+    rerender(withError("boom"));
+    expect(screen.getByRole("alert")).toBe(first);
+    rerender(withError("bang"));
+    const second = screen.getByRole("alert");
+    expect(second).not.toBe(first);
+    expect(second.className).toContain("anim-error-shake");
   });
 
   it("surfaces a plain-language recovery hint for a recognized error", () => {
@@ -208,7 +244,7 @@ describe("Controls", () => {
     expect(text).toContain("mnemonic");
   });
 
-  it("disables run, step, and back until a program is loaded", () => {
+  it("disables step and back until a program is loaded", () => {
     const h = allHandlers();
     render(
       <Controls
@@ -220,12 +256,11 @@ describe("Controls", () => {
         error={null}
       />,
     );
-    for (const name of [/^run/, /^step/, /^back/]) {
+    for (const name of [/^step/, /^back/]) {
       const btn = screen.getByRole("button", { name });
       expect(btn.hasAttribute("disabled")).toBe(true);
       fireEvent.click(btn);
     }
-    expect(h.onRun).not.toHaveBeenCalled();
     expect(h.onStep).not.toHaveBeenCalled();
     expect(h.onStepBack).not.toHaveBeenCalled();
     // Assemble and reset stay live: they are how a program gets loaded.
@@ -258,9 +293,9 @@ describe("Controls", () => {
     expect(h.onStep).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps run live with nothing loaded when run assembles first", () => {
-    // Terminal mode: the run press is itself the launch, so the button cannot be
-    // the one path that still demands a separate assemble press.
+  it("keeps run live with nothing loaded, since run assembles first", () => {
+    // A run press with nothing assembled assembles and runs, as in a lesson,
+    // so the button cannot demand a separate assemble press.
     const h = allHandlers();
     render(
       <Controls
@@ -269,7 +304,6 @@ describe("Controls", () => {
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        runAssemblesFirst={true}
         error={null}
       />,
     );
@@ -283,6 +317,26 @@ describe("Controls", () => {
     }
   });
 
+  it("keeps run live once the program finishes, since run starts it again", () => {
+    const h = allHandlers();
+    render(
+      <Controls
+        {...h}
+        canStepBack={true}
+        isRunning={false}
+        isHalted={true}
+        programLoaded={true}
+        error={null}
+      />,
+    );
+    const run = screen.getByRole("button", { name: /^run/ });
+    expect(run.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(run);
+    expect(h.onRun).toHaveBeenCalledTimes(1);
+    // Stepping a finished program has nothing left to execute.
+    expect(screen.getByRole("button", { name: /^step/ }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("still disables run while that assemble is in flight", () => {
     const h = allHandlers();
     render(
@@ -293,7 +347,6 @@ describe("Controls", () => {
         isAssembling={true}
         isHalted={false}
         programLoaded={false}
-        runAssemblesFirst={true}
         error={null}
       />,
     );
@@ -312,7 +365,6 @@ describe("Controls", () => {
         isRunning={false}
         isHalted={false}
         programLoaded={false}
-        runAssemblesFirst={true}
         blocked={true}
         error={null}
       />,
@@ -320,6 +372,28 @@ describe("Controls", () => {
     expect(
       screen.getByRole("button", { name: /^run/ }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("gives a short window's error a line of its own under the buttons and tools", () => {
+    // The tools at the row's end would otherwise wrap under an inline error.
+    const h = allHandlers();
+    const row = (short: boolean) => (
+      <Controls
+        {...h}
+        short={short}
+        canStepBack={false}
+        isRunning={false}
+        isHalted={false}
+        programLoaded={false}
+        error="unknown mnemonic `mvo'"
+        trailing={<button type="button">share</button>}
+      />
+    );
+    const { rerender } = render(row(true));
+    expect(screen.getByRole("alert").className).toContain("sm:basis-full");
+    expect(screen.getByRole("alert").className).toContain("sm:order-last");
+    rerender(row(false));
+    expect(screen.getByRole("alert").className).not.toContain("sm:basis-full");
   });
 
   it("does not bind keyboard shortcuts (the page is the single owner)", () => {

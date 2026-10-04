@@ -176,9 +176,13 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             }
             return Err(lex_err(line, "unexpected '>' (did you mean '>>'?)"));
         }
-        // Dot: standalone or directive identifier.
+        // Dot: standalone or directive identifier. GAS's sized data
+        // directives are the only names that start with a digit; split at
+        // the digit, `.2byte` read as a `.` and the integer `2b`.
         if b == b'.' {
-            if i + 1 < bytes.len() && is_id_start(bytes[i + 1]) {
+            let after = &bytes[i + 1..];
+            let sized = [b"2byte", b"4byte", b"8byte"].iter().any(|d| after.starts_with(*d));
+            if after.first().is_some_and(|&c| is_id_start(c)) || sized {
                 let start = i;
                 i += 1;
                 while i < bytes.len() && is_id_continue(bytes[i]) {
@@ -346,6 +350,16 @@ pub fn lex(source: &str, starting_line: usize) -> Result<Vec<Token>, EmuError> {
             // `v0.16b` never reached the encoder at all.
             if let Some(end) = vector_suffix_end(bytes, &source[start..i], i) {
                 i = end;
+            } else if !is_vector_register(&source[start..i]) {
+                // GAS lets a symbol carry dots after its first character,
+                // and gcc names its function clones and static locals that
+                // way (`twice.constprop.0`, `count.0`).
+                while bytes.get(i) == Some(&b'.') && bytes.get(i + 1).is_some_and(|&c| is_id_continue(c)) {
+                    i += 2;
+                    while i < bytes.len() && is_id_continue(bytes[i]) {
+                        i += 1;
+                    }
+                }
             }
             let text = &source[start..i];
             tokens.push(Token {
@@ -428,11 +442,7 @@ const VECTOR_SUFFIXES: &[&str] = &[
 /// anything else, so an ordinary identifier followed by a directive
 /// (`v1` then `.byte`) lexes exactly as it always did.
 fn vector_suffix_end(bytes: &[u8], name: &str, from: usize) -> Option<usize> {
-    let index = name.strip_prefix('v').or_else(|| name.strip_prefix('V'))?;
-    if index.is_empty() || !index.bytes().all(|c| c.is_ascii_digit()) {
-        return None;
-    }
-    if bytes.get(from) != Some(&b'.') {
+    if !is_vector_register(name) || bytes.get(from) != Some(&b'.') {
         return None;
     }
     let rest = &bytes[from + 1..];
@@ -459,6 +469,13 @@ fn vector_suffix_end(bytes: &[u8], name: &str, from: usize) -> Option<usize> {
     Some(end + 1)
 }
 
+/// `v<n>` in either case: the one name a dot after it gives an arrangement
+/// or a lane rather than a longer symbol.
+fn is_vector_register(name: &str) -> bool {
+    name.strip_prefix(['v', 'V'])
+        .is_some_and(|index| !index.is_empty() && index.bytes().all(|c| c.is_ascii_digit()))
+}
+
 fn is_id_start(b: u8) -> bool {
     matches!(b, b'A'..=b'Z' | b'a'..=b'z' | b'_')
 }
@@ -481,7 +498,7 @@ fn is_float_body(b: u8) -> bool {
     matches!(b, b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-')
 }
 
-fn parse_int(text: &str) -> Option<i64> {
+pub(crate) fn parse_int(text: &str) -> Option<i64> {
     // Strip internal underscores: `0x0040_0000` is the course spelling.
     let clean: String = text.chars().filter(|c| *c != '_').collect();
     let s = clean.as_str();
@@ -494,25 +511,24 @@ fn parse_int(text: &str) -> Option<i64> {
     if let Some(rest) = s.strip_prefix("0b").or_else(|| s.strip_prefix("0B")) {
         return u64::from_str_radix(rest, 2).ok().map(|v| v as i64);
     }
-    // Leading-zero octal a la GAS. "0" alone is decimal zero. A digit
-    // outside 0-7 makes the whole literal invalid rather than decimal:
-    // GAS reads `018` as the octal `01` and then rejects the stray `8`,
-    // so falling through to decimal would answer 18 for a literal GAS
-    // refuses, while `017` already means 15 here: the radix would change
-    // between two adjacent-looking numbers.
+    // A leading zero means octal, as in GAS; "0" alone is decimal zero. A
+    // digit outside 0-7 fails the literal instead of falling back to
+    // decimal: GAS rejects `018`, and `017` already means 15 here.
     if s.len() > 1 && s.starts_with('0') {
         if !s.bytes().all(|b| (b'0'..=b'7').contains(&b)) {
             return None;
         }
         return u64::from_str_radix(&s[1..], 8).ok().map(|v| v as i64);
     }
-    s.parse::<i64>().ok()
+    // Decimal takes the whole 64-bit range too: gcc writes LONG_MIN as
+    // `-9223372036854775808`, whose magnitude is one past i64::MAX.
+    s.parse::<u64>().ok().map(|v| v as i64)
 }
 
 /// Message for an integer literal the lexer cannot read. A leading zero
 /// means octal, so `018` is not decimal 18: naming the rule saves the
 /// student from reading it as a typo in the emulator.
-fn integer_error(text: &str) -> String {
+pub(crate) fn integer_error(text: &str) -> String {
     let clean: String = text.chars().filter(|c| *c != '_').collect();
     let radix_prefixed = ["0x", "0X", "0b", "0B"]
         .iter()
@@ -532,29 +548,46 @@ fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
     if bytes.len() < 3 {
         return Err(lex_err(line, "unterminated char literal"));
     }
-    let i = 1;
-    let (value, end) = if bytes[i] == b'\\' {
-        if i + 1 >= bytes.len() {
-            return Err(lex_err(line, "unterminated char literal"));
-        }
-        let (v, used) = decode_escape(&bytes[i..], line)?;
-        (v, i + used)
+    // GAS reads one byte here, or a backslash and one byte, so `'\0'` is
+    // the digit 0 (48) on the servers, and `'\x41'` is an x plus junk.
+    let escaped = bytes[1] == b'\\';
+    let (value, end) = if escaped {
+        (u32::from(control_escape(bytes[2])), 3)
     } else {
-        (bytes[i] as u32, i + 1)
+        (u32::from(bytes[1]), 2)
     };
     if end >= bytes.len() || bytes[end] != b'\'' {
-        return Err(lex_err(line, "expected closing single-quote in char literal"));
+        let message = if escaped {
+            CHAR_ESCAPE_TOO_LONG
+        } else {
+            "expected closing single-quote in char literal"
+        };
+        return Err(lex_err(line, message));
     }
     Ok((value, end + 1))
 }
 
+/// Shared with the instruction encoder, which reads char operands itself.
+pub(crate) const CHAR_ESCAPE_TOO_LONG: &str = "expected closing single-quote in char literal: \
+     an escape here is one letter, like '\\n'; write any other code as a number (0x41)";
+
+/// The escapes a string and a char literal share; any other letter stands
+/// for itself, as on the servers (`\w` is `w`, `\e` is `e`).
+pub(crate) fn control_escape(letter: u8) -> u8 {
+    match letter {
+        b'b' => 0x08,
+        b'f' => 0x0C,
+        b'n' => b'\n',
+        b'r' => b'\r',
+        b't' => b'\t',
+        other => other,
+    }
+}
+
 fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuError> {
-    // s starts with the opening quote. Like the real assembler, a string
-    // may not span lines: a raw newline before the closing quote is an
-    // unterminated literal, reported at the line where the quote opened
-    // (write \n for a newline byte). Without this stop, a stray quote
-    // later in the file would silently swallow the lines in between and
-    // the student would get a baffling error far from the real mistake.
+    // s starts with the opening quote. As in GAS, a string may not span
+    // lines. Otherwise a stray quote later in the file would swallow the
+    // lines in between and the error would land far from the real mistake.
     let bytes = s.as_bytes();
     let mut out = Vec::new();
     let mut i = 1;
@@ -564,61 +597,50 @@ fn parse_string_literal(s: &str, line: usize) -> Result<(Vec<u8>, usize), EmuErr
             return Ok((out, i + 1));
         }
         if b == b'\n' || b == b'\r' {
-            return Err(lex_err(
-                line,
-                "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)",
-            ));
+            return Err(lex_err(line, UNTERMINATED_STRING));
         }
         if b == b'\\' {
-            let (v, used) = decode_escape(&bytes[i..], line)?;
-            out.push(v as u8);
+            let (v, used) = decode_string_escape(&bytes[i..], line)?;
+            out.push(v);
             i += used;
             continue;
         }
         out.push(b);
         i += 1;
     }
-    Err(lex_err(
-        line,
-        "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)",
-    ))
+    Err(lex_err(line, UNTERMINATED_STRING))
 }
 
-fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
-    // bytes[0] is the backslash.
+const UNTERMINATED_STRING: &str =
+    "unterminated string literal: no closing \" before the end of the line (write \\n for a newline)";
+
+/// One string escape; `bytes[0]` is the backslash. Returns the byte and
+/// how many source bytes it used.
+fn decode_string_escape(bytes: &[u8], line: usize) -> Result<(u8, usize), EmuError> {
     if bytes.len() < 2 {
         return Err(lex_err(line, "dangling backslash in literal"));
     }
-    let next = bytes[1];
-    match next {
-        b'n' => Ok((b'\n' as u32, 2)),
-        b't' => Ok((b'\t' as u32, 2)),
-        b'r' => Ok((b'\r' as u32, 2)),
-        d @ b'0'..=b'7' => {
-            // GAS octal escape: backslash + 1 to 3 octal digits, value mod
-            // 256. `\0` alone is still NUL; `\012` is a newline; `\101`
-            // is 'A'.
-            let mut val = u32::from(d - b'0');
-            let mut consumed = 2; // backslash + first digit
-            while consumed < 4
-                && consumed < bytes.len()
-                && (b'0'..=b'7').contains(&bytes[consumed])
-            {
-                val = val * 8 + u32::from(bytes[consumed] - b'0');
+    match bytes[1] {
+        b'0'..=b'9' => {
+            // GAS reads up to three digits in base 8 and lets 8 and 9 in
+            // (`\18` is 16), keeping the low byte: `\101` is 'A'.
+            let mut value: u32 = 0;
+            let mut consumed = 1;
+            while consumed < 4 && bytes.get(consumed).is_some_and(u8::is_ascii_digit) {
+                value = value * 8 + u32::from(bytes[consumed] - b'0');
                 consumed += 1;
             }
-            Ok((val & 0xFF, consumed))
+            Ok(((value & 0xFF) as u8, consumed))
         }
-        b'\\' => Ok((b'\\' as u32, 2)),
-        b'"' => Ok((b'"' as u32, 2)),
-        b'\'' => Ok((b'\'' as u32, 2)),
+        b'v' => Ok((0x0B, 2)),
+        // GAS joins the next line onto the string here; the playground
+        // keeps strings on one line so the error stays where the slip is.
+        b'\n' | b'\r' => Err(lex_err(line, UNTERMINATED_STRING)),
         b'x' | b'X' => {
-            // GAS consumes as many hex digits as follow the `x` and keeps
-            // the low byte: `"\xA"` is one newline and `"\x123"` is 0x23.
-            // A fixed two-digit window would reject the first and split the
-            // second into 0x12 plus a literal '3'. Masking each round is the
-            // same as masking at the end, since the low byte of a base-16
-            // accumulation only ever depends on itself.
+            // GAS takes every hex digit after the `x` and keeps the low
+            // byte: `"\xA"` is a newline and `"\x123"` is 0x23. Masking each
+            // round equals masking at the end, since the low byte of a
+            // base-16 accumulation depends only on itself.
             let mut value: u32 = 0;
             let mut consumed = 2;
             while consumed < bytes.len() && bytes[consumed].is_ascii_hexdigit() {
@@ -630,18 +652,16 @@ fn decode_escape(bytes: &[u8], line: usize) -> Result<(u32, usize), EmuError> {
                 value = ((value << 4) | digit) & 0xFF;
                 consumed += 1;
             }
-            Ok((value, consumed))
+            Ok((value as u8, consumed))
         }
-        other => Err(lex_err(
-            line,
-            &format!("unknown escape \\{}", other as char),
-        )),
+        other => Ok((control_escape(other), 2)),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
 
     fn kinds(tokens: &[Token]) -> Vec<TokenKind> {
         tokens.iter().map(|t| t.kind.clone()).collect()
@@ -757,14 +777,66 @@ mod tests {
             ("'\\n'", 10),
             ("'\\t'", 9),
             ("'\\r'", 13),
-            ("'\\0'", 0),
+            ("'\\b'", 8),
+            ("'\\f'", 12),
             ("'\\\\'", b'\\' as u32),
             ("'\\''", b'\'' as u32),
-            ("'\\x41'", 0x41),
+            // csarm: `mov w0, '\0'` is `mov w0, #0x30`, and `\v` is a v.
+            ("'\\0'", 48),
+            ("'\\v'", b'v' as u32),
+            ("'\\w'", b'w' as u32),
         ];
         for (src, expected) in cases {
             let t = lex(src, 1).unwrap();
             assert_eq!(kinds(&t), vec![TokenKind::CharLit(expected)], "src: {src}");
+        }
+    }
+
+    // Captured on csarm (GNU as 2.46.1): the bytes of `.ascii "\c"` and
+    // `.byte '\c'` for each printable c from space to `~`, in order.
+    const SERVER_STRING_ESCAPES: &str = "202122232425262728292a2b2c2d2e2f000102030405060708093a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565700595a5b5c5d5e5f6061086364650c6768696a6b6c6d0a6f70710d7309750b7700797a7b7c7d7e";
+    const SERVER_CHAR_ESCAPES: &str = "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f404142434445464748494a4b4c4d4e4f505152535455565758595a5b5c5d5e5f6061086364650c6768696a6b6c6d0a6f70710d730975767778797a7b7c7d7e";
+
+    #[test]
+    fn every_printable_escape_decodes_as_the_servers_do() {
+        for (n, c) in (0x20u8..=0x7E).enumerate() {
+            let want = |table: &str| u8::from_str_radix(&table[2 * n..2 * n + 2], 16).unwrap();
+            let string = format!("\"\\{}\"", c as char);
+            assert_eq!(
+                kinds(&lex(&string, 1).unwrap()),
+                vec![TokenKind::StringLit(vec![want(SERVER_STRING_ESCAPES)])],
+                "src: {string}"
+            );
+            let chr = format!("'\\{}'", c as char);
+            assert_eq!(
+                kinds(&lex(&chr, 1).unwrap()),
+                vec![TokenKind::CharLit(u32::from(want(SERVER_CHAR_ESCAPES)))],
+                "src: {chr}"
+            );
+        }
+    }
+
+    #[test]
+    fn digit_and_hex_escapes_stop_where_the_servers_stop() {
+        // csarm: digits are read in base 8 with 8 and 9 allowed, three at
+        // most, low byte kept; hex stops at the first non-hex byte.
+        let cases: [(&str, &[u8]); 9] = [
+            (r#""\18""#, &[0x10]),
+            (r#""\19""#, &[0x11]),
+            (r#""\998""#, &[0x90]),
+            (r#""\777""#, &[0xFF]),
+            (r#""\400""#, &[0x00]),
+            (r#""\0101""#, &[0x08, b'1']),
+            (r#""\x4g""#, &[0x04, b'g']),
+            ("\"\\\t\"", &[0x09]),
+            ("\"\\\u{e9}\"", &[0xC3, 0xA9]),
+        ];
+        for (src, expected) in cases {
+            assert_eq!(
+                kinds(&lex(src, 1).unwrap()),
+                vec![TokenKind::StringLit(expected.to_vec())],
+                "src: {src}"
+            );
         }
     }
 
@@ -853,8 +925,16 @@ mod tests {
     }
 
     #[test]
-    fn unknown_escape_errors() {
-        assert!(lex("'\\q'", 1).is_err());
+    fn a_char_literal_escape_is_one_letter() {
+        // GAS turns `'\x41'` into an x plus junk (0x8e after a truncation
+        // warning); refusing it here names the fix instead.
+        rejects(lex("'\\x41'", 1), "write any other code as a number");
+        rejects(lex("'\\101'", 1), "an escape here is one letter");
+    }
+
+    #[test]
+    fn a_backslash_before_a_line_break_still_ends_the_string() {
+        rejects(lex("\"abc\\\n\"", 1), "unterminated string literal");
     }
 
     #[test]
@@ -966,7 +1046,7 @@ mod tests {
 
     #[test]
     fn unknown_char_errors() {
-        assert!(lex("$", 1).is_err());
+        rejects(lex("$", 1), "unexpected character `$`");
     }
 
     #[test]
@@ -990,7 +1070,7 @@ mod tests {
 
     #[test]
     fn single_lt_without_match_errors() {
-        assert!(lex("<", 1).is_err());
+        rejects(lex("<", 1), "did you mean '<<'?");
     }
 
     #[test]
@@ -1065,5 +1145,49 @@ mod tests {
                 TokenKind::DirectiveIdent(".byte".into()),
             ]
         );
+    }
+
+    #[test]
+    fn a_symbol_keeps_the_dots_gcc_puts_in_it() {
+        let t = lex("bl f.constprop.0.isra.0", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![TokenKind::Ident("bl".into()), TokenKind::Ident("f.constprop.0.isra.0".into())]
+        );
+        let t = lex("count.0: .word 5", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("count.0".into()),
+                TokenKind::Colon,
+                TokenKind::DirectiveIdent(".word".into()),
+                TokenKind::IntLit(5),
+            ]
+        );
+        // A trailing dot is the current-address symbol, not part of the name.
+        let t = lex("end.-start", 1).unwrap();
+        assert_eq!(
+            kinds(&t),
+            vec![
+                TokenKind::Ident("end".into()),
+                TokenKind::Dot,
+                TokenKind::Minus,
+                TokenKind::Ident("start".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_sized_data_directive_is_one_token() {
+        for name in [".2byte", ".4byte", ".8byte"] {
+            let t = lex(&format!("{name} (.L3 - .L1) / 4"), 1).unwrap();
+            assert_eq!(t[0].kind, TokenKind::DirectiveIdent(name.into()));
+            assert_eq!(t[2].kind, TokenKind::DirectiveIdent(".L3".into()));
+        }
+        // Any other digit after a dot still leaves the dot on its own.
+        let t = lex(".+2", 1).unwrap();
+        assert_eq!(kinds(&t), vec![TokenKind::Dot, TokenKind::Plus, TokenKind::IntLit(2)]);
+        let t = lex(". 2", 1).unwrap();
+        assert_eq!(kinds(&t), vec![TokenKind::Dot, TokenKind::IntLit(2)]);
     }
 }

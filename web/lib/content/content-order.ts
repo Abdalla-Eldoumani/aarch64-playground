@@ -1,9 +1,7 @@
 /**
- * The shared order comparator for content cards (lessons and exercises). Pure
- * and isomorphic (no node:fs, no React) so the server-only loaders and the
- * client indexes share one rule rather than each re-implementing it: two
- * numbers compare numerically, two strings via `localeCompare`, and a mixed
- * pair falls back to a string comparison so the sort is always total.
+ * The sort rule for lessons and exercises. It imports nothing, so the
+ * server-only loaders and the client indexes share it. A mixed number and
+ * string pair compares as strings so the sort is always total.
  */
 export function compareByOrder(
   a: { order: number | string },

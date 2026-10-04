@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	depth
 depth:
 	ret
@@ -10,7 +10,7 @@ depth:
 	.string	"%ld %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	sub	sp, sp, #2192
@@ -21,7 +21,7 @@ main:
 	mov	x1, x2
 	stp	x29, x30, [sp]
 	mov	x29, sp
-	.align 5
+	.p2align 5,,15
 .L4:
 	str	w0, [x1], 4
 	add	w0, w0, 1
@@ -30,21 +30,21 @@ main:
 	add	x3, x2, 77824
 	mov	x1, 0
 	add	x3, x3, 2176
-	.align 5
+	.p2align 5,,15
 .L5:
 	ldrsw	x0, [x2], 4
 	add	x1, x1, x0
 	cmp	x2, x3
 	bne	.L5
 	adrp	x0, .LC0+8
-	adrp	x6, g__0
-	add	x6, x6, :lo12:g__0
+	adrp	x6, g.0
+	add	x6, x6, :lo12:g.0
 	mov	x2, 4294967296
 	add	x7, x6, 397312
 	mov	x3, x6
 	ldr	x0, [x0, :lo12:.LC0+8]
 	add	x7, x7, 2688
-	.align 5
+	.p2align 5,,15
 .L6:
 	and	x5, x0, 30064771079
 	add	w8, w2, 4
@@ -65,7 +65,7 @@ main:
 	mov	x0, x4
 	cmp	x3, x7
 	bne	.L6
-	.align 5
+	.p2align 5,,15
 .L7:
 	ldrsw	x0, [x6], 4
 	add	x1, x1, x0
@@ -85,10 +85,10 @@ main:
 	.section .rodata
 	.align	4
 .LC0:
-	.quad	4294967296
-	.quad	12884901890
+	.xword	4294967296
+	.xword	12884901890
 	.bss
 	.align	4
-g__0:
+g.0:
 	.zero	400000
 

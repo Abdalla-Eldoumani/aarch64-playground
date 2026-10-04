@@ -367,8 +367,8 @@ main:
 	.string	"gamma"
 	.align	3
 .LC8:
-	.quad	.LC1
-	.quad	.LC2
-	.quad	.LC3
+	.xword	.LC1
+	.xword	.LC2
+	.xword	.LC3
 	.text
 

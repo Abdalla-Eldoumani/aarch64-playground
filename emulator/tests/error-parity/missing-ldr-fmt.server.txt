@@ -1,0 +1,5 @@
+$ gcc missing-ldr-fmt.s -o program
+[exit 0]
+$ ./program
+Segmentation fault (core dumped)
+[exit 139]

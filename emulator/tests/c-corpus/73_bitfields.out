@@ -1,0 +1,14 @@
+flags 1 5 -7 100 30000 raw 7530c99b neg
+flags 0 6 -10 17 14000 raw 36b0236c neg
+flags 1 7 -13 62 6000 raw 17707d3f neg
+flags 0 0 -16 107 2000 raw 07d0d700 neg
+flags 1 1 15 24 0 raw 000030f3 pos
+flags 0 2 12 69 -1000 raw fc188ac4 pos
+wide b9f9b 0000001345 f raw f0000001345b9f9b
+wide 12345 0000235845 e raw e000023584512345
+wide b9f9b 0023685845 d raw d0023685845b9f9b
+split fffff 12345 5 1 -1 raw 000fffff 00012345 0000001d size 12
+split ffff 0 0 raw 0000ffff 00000000 0000000d
+pixels 1101 f576 11cb sum 3938312986 size 2
+1 4 3 1 2 2 2 1
+sizes 4 8 12

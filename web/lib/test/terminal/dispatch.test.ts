@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchCommand, parseCommandLine, type DispatchContext } from "@/lib/terminal/dispatch";
+import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext } from "@/lib/terminal/dispatch";
 
 describe("parseCommandLine", () => {
   it("splits cmd and args on whitespace", () => {
@@ -202,6 +202,27 @@ describe("dispatchCommand", () => {
     expect(text).toContain("ls");
     expect(text).toContain("cat");
     expect(text).toContain("./program");
+    expect(r.table).toBe(true);
+  });
+
+  // A phone's terminal is about 30 columns; the help rows wrapped mid-word.
+  it("fits a help table to a narrow terminal at word breaks", () => {
+    const rows = [
+      "available commands:",
+      "  ls -l                             list files with their sizes in bytes",
+      "  ls                                list files",
+    ];
+    expect(fitTable(rows, 30)).toEqual([
+      "available commands:",
+      "  ls -l",
+      "      list files with their",
+      "      sizes in bytes",
+      "  ls",
+      "      list files",
+    ]);
+    // A terminal wide enough for a row leaves it alone.
+    expect(fitTable(rows, 80)).toEqual(rows);
+    for (const line of fitTable(rows, 30)) expect(line.length).toBeLessThanOrEqual(30);
   });
 
   it("unknown commands report 'command not found'", async () => {
@@ -236,7 +257,7 @@ describe("dispatchCommand", () => {
     expect(r.lines.join("\n")).toContain("0x000000000000002a");
   });
 
-  it("gdb info registers prints all gpr/sp/pc", async () => {
+  it("gdb info registers prints the x registers, sp, and pc", async () => {
     const ctx = makeCtx({
       readRegisters: () => ({
         x0: 0x1n,
@@ -294,7 +315,7 @@ describe("the course toolchain", () => {
     expect(writes).toEqual([["calc.s", "\nmov x19, 4\n"]]);
   });
 
-  it("m4 explains itself when the emulator build predates the export", async () => {
+  it("m4 asks for a WASM rebuild when the emulator build has no m4", async () => {
     const ctx = makeCtx({
       readVfs: () => "define(a, x19)\n",
       m4Expand: async () => null,

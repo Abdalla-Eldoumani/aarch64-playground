@@ -65,6 +65,40 @@ describe("Select", () => {
     expect(screen.queryByRole("listbox")).toBeNull();
   });
 
+  it("waits for a finger's tap to select, since a touch may start a scroll", () => {
+    const onSelect = renderSelect();
+    fireEvent.click(trigger());
+    fireEvent.pointerDown(screen.getByText("bravo row"), { pointerType: "touch" });
+    expect(onSelect).not.toHaveBeenCalled();
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.click(screen.getByText("bravo row"));
+    expect(onSelect).toHaveBeenCalledWith("bravo");
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
+
+  it("closes from its backdrop on the click, so the tap cannot land on what it covered", () => {
+    const onSelect = renderSelect();
+    fireEvent.click(trigger());
+    const backdrop = document.querySelector('[role="listbox"]')!.previousElementSibling as HTMLElement;
+    fireEvent.pointerDown(backdrop, { pointerType: "touch" });
+    // Still open at pointer-down: the click that follows must hit the
+    // backdrop, not the page underneath it.
+    expect(screen.getByRole("listbox")).toBeTruthy();
+    fireEvent.click(backdrop);
+    expect(screen.queryByRole("listbox")).toBeNull();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("keeps the open list outside any clipping ancestor of the trigger", () => {
+    render(
+      <div data-testid="band" style={{ overflow: "hidden" }}>
+        <Select placeholder="pick..." ariaLabel="test select" groups={GROUPS} onSelect={vi.fn()} />
+      </div>,
+    );
+    fireEvent.click(trigger());
+    expect(screen.getByTestId("band").contains(screen.getByRole("listbox"))).toBe(false);
+  });
+
   it("navigates with arrows and selects with Enter, all focus staying on the trigger", () => {
     const onSelect = renderSelect();
     const combo = trigger();

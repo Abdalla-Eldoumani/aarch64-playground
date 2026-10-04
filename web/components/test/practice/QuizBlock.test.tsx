@@ -60,7 +60,7 @@ describe("QuizBlock controlled selection", () => {
     expect(screen.getByRole("button", { name: "x29" }).getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("reports every pick, and the clear that try again performs", () => {
+  it("reports every pick, and the cleared pick after try again", () => {
     const onValueChange = vi.fn();
     render(<QuizBlock {...PROPS} value={null} onValueChange={onValueChange} />);
 

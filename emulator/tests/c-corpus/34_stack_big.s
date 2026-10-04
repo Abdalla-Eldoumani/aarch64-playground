@@ -110,8 +110,8 @@ main:
 	add	x0, x0, 2220
 	ldr	w0, [x0]
 	and	w2, w0, 7
-	adrp	x0, g__0
-	add	x0, x0, :lo12:g__0
+	adrp	x0, g.0
+	add	x0, x0, :lo12:g.0
 	add	x1, sp, 77824
 	add	x1, x1, 2220
 	ldrsw	x1, [x1]
@@ -136,8 +136,8 @@ main:
 	str	wzr, [x0]
 	b	.L12
 .L13:
-	adrp	x0, g__0
-	add	x0, x0, :lo12:g__0
+	adrp	x0, g.0
+	add	x0, x0, :lo12:g.0
 	add	x1, sp, 77824
 	add	x1, x1, 2216
 	ldrsw	x1, [x1]
@@ -183,5 +183,5 @@ main:
 
 	.bss
 	.balign 8
-g__0:
+g.0:
 	.skip 400000

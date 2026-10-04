@@ -39,7 +39,7 @@ main:   stp     fp, lr, [sp, alloc]!
         b.lt    err_src
         mov     src_fd, w0
 
-        // open dest for writing (create/truncate)
+        // open dest for writing (create it, or empty it if it exists)
         mov     w0, -100
         ldr     x1, =dst_name
         mov     w2, 01101               // O_WRONLY | O_CREAT | O_TRUNC

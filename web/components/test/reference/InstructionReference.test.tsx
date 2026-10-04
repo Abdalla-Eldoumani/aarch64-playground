@@ -16,11 +16,18 @@ vi.mock("@/components/learn/LessonMarkdown", () => ({
 // reference feeds it, so the run-in-place tests never instantiate Monaco or
 // the WASM worker.
 vi.mock("@/components/playground/EmbeddablePlayground", () => ({
-  EmbeddablePlayground: (props: { chrome?: string; startSource?: string }) => (
+  EmbeddablePlayground: (props: {
+    chrome?: string;
+    startSource?: string;
+    registerView?: string;
+    registerHeadingLevel?: number;
+  }) => (
     <div
       data-testid="embed"
       data-chrome={props.chrome}
       data-startsource={props.startSource}
+      data-registerview={props.registerView}
+      data-headinglevel={props.registerHeadingLevel}
     />
   ),
 }));
@@ -28,11 +35,10 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
 import { InstructionReference } from "@/components/reference/InstructionReference";
 import { playgroundSource } from "@/lib/playground/playground-source";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
-// Two categories, four entries: one carries a worked encoding (add), one sets
-// flags (cmp), the others are plain. Distinct syntax/example strings make the
-// detail unambiguous.
+// Five categories, seven entries: one carries a worked encoding and an
+// intrinsic (add), two set flags (cmp, which has the flag panel, and adcs,
+// which does not), one writes a vector register (addv), the others are plain.
+// Distinct syntax/example strings make the detail unambiguous.
 const FIXTURE: ReferenceInstruction[] = [
   {
     mnemonic: "mov",
@@ -40,6 +46,9 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "mov xd, xn",
     summary: "mov summary prose",
     example: "mov x0, x1",
+    cExample: "Rd = Rm;",
+    setsFlags: false,
+    registerView: "x",
     gotchas: ["mov gotcha note"],
   },
   {
@@ -49,6 +58,9 @@ const FIXTURE: ReferenceInstruction[] = [
     summary: "add summary prose",
     example: "add x0, x1, x2",
     cExample: "x0 = x1 + x2;",
+    intrinsic: "vaddq_u8",
+    setsFlags: false,
+    registerView: "x",
     encoding: [
       { bits: 1, label: "sf", value: "1", meaning: "x width" },
       { bits: 31, label: "rest", value: "0".repeat(31) },
@@ -56,11 +68,24 @@ const FIXTURE: ReferenceInstruction[] = [
     encodedAsm: "add x19, x0, 8",
   },
   {
+    mnemonic: "adcs",
+    category: "Data processing",
+    syntax: "adcs xd, xn, xm",
+    summary: "adcs summary prose",
+    example: "adcs x0, x1, x2",
+    cExample: "Rd = Rn + Rm + C;",
+    setsFlags: true,
+    registerView: "x",
+  },
+  {
     mnemonic: "cmp",
     category: "Compare and test",
     syntax: "cmp xn, xm",
     summary: "cmp summary prose",
     example: "cmp x0, x1",
+    cExample: "uint64_t r = Rn - op2;",
+    setsFlags: true,
+    registerView: "x",
   },
   {
     mnemonic: "ldr",
@@ -68,6 +93,9 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "ldr xt, [xn]",
     summary: "ldr summary prose",
     example: "ldr x0, [x1]",
+    cExample: "Xt = *(uint64_t *)Xn;",
+    setsFlags: false,
+    registerView: "x",
     gotchas: ["ldr gotcha note"],
   },
   {
@@ -76,6 +104,19 @@ const FIXTURE: ReferenceInstruction[] = [
     syntax: "b.eq label / b.ne label / ...",
     summary: "b.cond summary prose",
     example: "cmp w0, #0\nb.eq done",
+    cExample: "if (cond) goto label;",
+    setsFlags: false,
+    registerView: "x",
+  },
+  {
+    mnemonic: "addv",
+    category: "Vector",
+    syntax: "addv bd, vn.8b",
+    summary: "addv summary prose",
+    example: "addv b3, v7.8b",
+    cExample: "Bd = 0;\nfor (int i = 0; i < 8; i++) Bd += Vn[i];",
+    setsFlags: false,
+    registerView: "v",
   },
 ];
 
@@ -88,7 +129,6 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 describe("InstructionReference", () => {
@@ -109,6 +149,28 @@ describe("InstructionReference", () => {
     expect(screen.queryByRole("button", { name: "mov" })).toBeNull();
     expect(screen.queryByRole("button", { name: "add" })).toBeNull();
     expect(screen.getByRole("button", { name: "ldr" })).toBeTruthy();
+  });
+
+  // A student who does not know the mnemonic yet types what it does.
+  it("finds an instruction by a word its summary uses", () => {
+    render(<InstructionReference instructions={REFERENCE_INSTRUCTIONS} />);
+    fireEvent.change(screen.getByLabelText(/filter/i), { target: { value: "load" } });
+    expect(screen.getByRole("button", { name: "ldr" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "mov" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "str" })).toBeNull();
+    fireEvent.keyDown(screen.getByLabelText(/filter/i), { key: "Enter" });
+    expect(screen.getByLabelText("instruction detail").querySelector("h2")?.textContent).toBe("ldr");
+  });
+
+  it("finds an instruction by its category and by words in any order", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    fireEvent.change(input, { target: { value: "memory" } });
+    expect(screen.getByRole("button", { name: "ldr" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "mov" })).toBeNull();
+    fireEvent.change(input, { target: { value: "prose cmp" } });
+    expect(screen.getByRole("button", { name: "cmp" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ldr" })).toBeNull();
   });
 
   it("moves the active item with ArrowDown and opens it with Enter", () => {
@@ -169,6 +231,45 @@ describe("InstructionReference", () => {
     expect(screen.getByRole("button", { name: "mov" })).toBeTruthy();
   });
 
+  it("opens the first mnemonic that contains the filter when Enter is pressed", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    // "d" lists mov first, for its category "Data processing", then add,
+    // adcs, ldr and addv, whose mnemonics hold the letter.
+    fireEvent.change(input, { target: { value: "d" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByLabelText("instruction detail").textContent).toContain("add xd, xn, xm");
+    expect(screen.getByRole("button", { name: "add" }).getAttribute("aria-current")).toBe("true");
+    expect(window.location.hash).toBe("#add");
+  });
+
+  it("opens the mnemonic typed in full before an earlier row that contains it", () => {
+    render(<InstructionReference instructions={REFERENCE_INSTRUCTIONS} />);
+    const input = screen.getByLabelText(/filter/i);
+    // sub and many others come before b in the index and contain the letter.
+    fireEvent.change(input, { target: { value: "b" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    const detail = screen.getByLabelText("instruction detail");
+    expect(detail.querySelector("h2")?.textContent).toBe("b");
+  });
+
+  it("leaves the selection alone on Enter when nothing matches", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    fireEvent.change(input, { target: { value: "zzz" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    expect(screen.getByLabelText("instruction detail").textContent).toContain("mov xd, xn");
+    expect(window.location.hash).toBe("");
+  });
+
+  it("keeps the phone keyboard from correcting or capitalising a typed mnemonic", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    const input = screen.getByLabelText(/filter/i);
+    expect(input.getAttribute("spellcheck")).toBe("false");
+    expect(input.getAttribute("autocorrect")).toBe("off");
+    expect(input.getAttribute("autocapitalize")).toBe("off");
+  });
+
   it("shows the selected instruction's syntax, example, and gotchas", () => {
     render(<InstructionReference instructions={FIXTURE} />);
     const detail = screen.getByLabelText("instruction detail");
@@ -197,7 +298,7 @@ describe("InstructionReference", () => {
     expect((link.getAttribute("href") ?? "").startsWith("/playground#p2=")).toBe(true);
   });
 
-  it("runs the example in place with the same payload the deep link carries", async () => {
+  it("runs the example in place with the same program the playground link opens", async () => {
     render(<InstructionReference instructions={FIXTURE} />);
     fireEvent.click(
       screen.getByRole("button", { name: "run this example: mov" }),
@@ -207,7 +308,7 @@ describe("InstructionReference", () => {
     expect(embed.getAttribute("data-startsource")).toBe(
       playgroundSource(FIXTURE[0]),
     );
-    // The live bench replaces the static example block until closed.
+    // The running example replaces the static code block until it is closed.
     fireEvent.click(
       screen.getByRole("button", { name: "close the live example for mov" }),
     );
@@ -216,7 +317,7 @@ describe("InstructionReference", () => {
     expect(detail.textContent).toContain("mov x0, x1");
   });
 
-  it("selecting another instruction retires the live example", async () => {
+  it("selecting another instruction closes the live example", async () => {
     render(<InstructionReference instructions={FIXTURE} />);
     fireEvent.click(
       screen.getByRole("button", { name: "run this example: mov" }),
@@ -264,13 +365,45 @@ describe("InstructionReference", () => {
     expect(screen.getByLabelText("assembled word")).toBeTruthy();
   });
 
-  it("shows the C-equivalent chip only when the data carries one", () => {
+  it("shows the C equivalent for every entry, and the intrinsic when there is one", () => {
     render(<InstructionReference instructions={FIXTURE} />);
-    // mov (default selection) has no cExample -> no section
-    expect(screen.queryByText("c equivalent")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "add" }));
+    // mov (default selection): its C, and no intrinsic line
     expect(screen.getByText("c equivalent")).toBeTruthy();
+    expect(screen.getByText("Rd = Rm;")).toBeTruthy();
+    expect(screen.queryByText(/is a function the compiler turns/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "add" }));
     expect(screen.getByText("x0 = x1 + x2;")).toBeTruthy();
+    expect(screen.getByText("vaddq_u8")).toBeTruthy();
+    expect(screen.getByText(/arm_neon\.h/)).toBeTruthy();
+  });
+
+  it("keeps a multi-line C equivalent on its own lines", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "addv" }));
+    expect(screen.getByText("Bd = 0;")).toBeTruthy();
+    expect(
+      screen.getByText("for (int i = 0; i < 8; i++) Bd += Vn[i];"),
+    ).toBeTruthy();
+  });
+
+  it("opens the live example on the register file the example writes", async () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "addv" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "run this example: addv" }),
+    );
+    const embed = await screen.findByTestId("embed");
+    expect(embed.getAttribute("data-registerview")).toBe("v");
+    // The entry is an h2, so the panel label inside it is an h3.
+    expect(embed.getAttribute("data-headinglevel")).toBe("3");
+  });
+
+  it("badges every flag setter, not only the ones with a flag panel", () => {
+    render(<InstructionReference instructions={FIXTURE} />);
+    fireEvent.click(screen.getByRole("button", { name: "adcs" }));
+    const flags = screen.getByRole("group", { name: "adcs flags" });
+    expect(within(flags).getByText("sets nzcv")).toBeTruthy();
+    expect(screen.queryByLabelText("adcs flag effect")).toBeNull();
   });
 
   it("dims the flags row for non-setters and notes nzcv for setters", () => {
@@ -283,7 +416,7 @@ describe("InstructionReference", () => {
       );
     }
     expect(within(movFlags).getByText("does not set flags")).toBeTruthy();
-    // cmp sets nzcv: the chips take ink and the note flips
+    // cmp sets nzcv: the chips brighten and the note changes
     fireEvent.click(screen.getByRole("button", { name: "cmp" }));
     const cmpFlags = screen.getByRole("group", { name: "cmp flags" });
     expect(within(cmpFlags).getByText("N").className).toContain(
@@ -334,14 +467,35 @@ describe("InstructionReference", () => {
     ).toBeNull();
   });
 
-  it("renders under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<InstructionReference instructions={FIXTURE} />);
-      expect(
-        screen.getByRole("navigation", { name: /instruction index/i }),
-      ).toBeTruthy();
-      unmount();
+  it("brings a stacked detail back on screen after one of its own fragment links", () => {
+    // Below lg the browser's jump to #b-cond lands on the index row carrying
+    // that id, thousands of pixels above the detail.
+    const media = window.matchMedia;
+    const frame = window.requestAnimationFrame;
+    const scroll = window.HTMLElement.prototype.scrollIntoView as ReturnType<typeof vi.fn>;
+    const followLink = (stacked: boolean) => {
+      window.matchMedia = ((query: string) => ({
+        ...media(query),
+        matches: stacked && query.includes("max-width: 1023.98px"),
+      })) as typeof window.matchMedia;
+      fireEvent.click(screen.getByRole("button", { name: "cmp" }));
+      scroll.mockClear();
+      fireEvent.click(screen.getByRole("link", { name: /see b\.cond/ }));
+      return scroll.mock.contexts;
+    };
+    window.requestAnimationFrame = (step: FrameRequestCallback) => {
+      step(0);
+      return 0;
+    };
+    try {
+      render(<InstructionReference instructions={FIXTURE} />);
+      const detail = screen.getByRole("region", { name: "instruction detail" });
+      expect(followLink(true)).toContain(detail);
+      // Beside the index the detail never left the screen.
+      expect(followLink(false)).not.toContain(detail);
+    } finally {
+      window.matchMedia = media;
+      window.requestAnimationFrame = frame;
     }
   });
 

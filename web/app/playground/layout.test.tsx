@@ -1,6 +1,6 @@
-// Pins the playground route's chrome data: the layout runs the same star
-// lookup the content layout runs and puts the count where the page reads it,
-// so the slim bar wears it, and a failed lookup still reaches the nav as null.
+// Pins the star count on the playground route: the layout runs the same
+// GitHub star lookup as the site layout and hands the count to the page's
+// slim nav bar, and a failed lookup still reaches the nav as null.
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";

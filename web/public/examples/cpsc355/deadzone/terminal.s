@@ -1,10 +1,11 @@
-// Terminal control and rendering. Puts the terminal in raw mode, then stages
-// each frame in a cell buffer and sends only the cells that changed, so a
-// frame costs one write instead of one per glyph.
+// Terminal control and rendering. Puts the terminal in raw mode (each key
+// arrives as soon as it is pressed, with no echo), then stages each frame in
+// a cell buffer and sends only the cells that changed, so a frame costs one
+// write instead of one per glyph (the character shown in one cell).
 
                 .data
 
-// Original termios storage (60 bytes aligned to 8)
+// termios is the struct that holds the terminal's settings (60 bytes)
                 .balign 8
 old_termios:    .skip   TERMIOS_SIZE            // Original terminal settings
 
@@ -38,7 +39,7 @@ fill_pattern:   .skip   8                       // Scratch: eight copies of a by
 
                 .text
 
-// ANSI escape sequences
+// ANSI escape sequences: byte strings the terminal reads as commands
 ansi_clear:     .string "\x1b[2J"               // Clear entire screen
 ansi_clear_len = . - ansi_clear - 1
 
@@ -83,7 +84,8 @@ terminal_init:
                 mov     x2, TERMIOS_SIZE
                 bl      memcpy_simple
 
-                // Modify local flags: disable ICANON, ECHO, ISIG, IEXTEN
+                // Local flags: turn off line-at-a-time input (ICANON), echo
+                // (ECHO), Ctrl-C and Ctrl-Z signals (ISIG) and Ctrl-V (IEXTEN)
                 adrp    x0, new_termios
                 add     x0, x0, :lo12:new_termios
                 ldr     w1, [x0, TERMIOS_LFLAG]
@@ -94,14 +96,16 @@ terminal_init:
                 bic     w1, w1, w2
                 str     w1, [x0, TERMIOS_LFLAG]
 
-                // Modify input flags: disable ICRNL, IXON
+                // Input flags: keep Enter as \r rather than \n (ICRNL), and
+                // stop Ctrl-S and Ctrl-Q from pausing and resuming output (IXON)
                 ldr     w1, [x0, TERMIOS_IFLAG]
                 mov     w2, ICRNL
                 orr     w2, w2, IXON
                 bic     w1, w1, w2
                 str     w1, [x0, TERMIOS_IFLAG]
 
-                // Set VMIN = 0, VTIME = 0 for non-blocking reads
+                // Set VMIN = 0, VTIME = 0 for non-blocking reads: read()
+                // returns at once, even when no key is waiting
                 add     x1, x0, TERMIOS_CC
                 mov     w2, 0
                 strb    w2, [x1, TERMIOS_CC_VMIN]  // VMIN = 0
@@ -117,9 +121,9 @@ terminal_init:
                 cmp     x0, 0
                 b.lt    terminal_init_fail
 
-                // VMIN/VTIME above is a tty setting, so a host that honours
-                // only the descriptor's own flags would still block in read().
-                // Ask for non-blocking stdin both ways.
+                // VMIN/VTIME above is a terminal setting, so a host that
+                // checks only stdin's own file flags would still wait in
+                // read(). Ask for non-blocking stdin both ways.
                 mov     x0, STDIN
                 mov     x1, F_GETFL
                 mov     x8, SYS_FCNTL
@@ -299,12 +303,10 @@ screen_clear_done:
                 ret
 
 // screen_invalidate - Force the next flush to repaint every cell
-// The diff alone keeps the screen right; this exists so a state change can
-// ask for a clean full repaint (first frame, menu <-> play, pause on/off,
-// level-up, boss arrival).
-// Both planes are written, not just the glyphs: a host that maps pages on
-// first write leaves an untouched buffer unreadable, and the flush reads
-// both planes before it ever writes them.
+// The diff alone keeps the screen right; this is for a state change that
+// wants a clean repaint (first frame, menu <-> play, pause, level-up, boss).
+// Both pv_ buffers are written because the flush reads both before writing
+// either, and some hosts leave memory unreadable until it is first written.
                 .global screen_invalidate
 screen_invalidate:
                 adrp    x0, pv_char
@@ -332,7 +334,7 @@ fb_fill_row:
                 mov     w3, SCREEN_WIDTH
                 mul     w3, w0, w3
 
-                // Replicate the glyph and the colour across eight lanes
+                // Copy the glyph, then the colour, into all eight bytes
                 adrp    x6, fill_pattern
                 add     x6, x6, :lo12:fill_pattern
                 strb    w1, [x6, 0]
@@ -505,7 +507,7 @@ fb_panel_done:
 // fb_meter - A bracketed bar of filled and empty segments
 // Parameters: w0 = x, w1 = y, w2 = segments, w3 = segments filled,
 //             w4 = colour of the filled part
-// One idiom for every gauge on screen: health, the two ability charges.
+// One bar style for every gauge on screen: health, the two ability charges.
 METER_FULL = '#'                                // A charged segment
 METER_EMPTY = '-'                               // A spent one
 
@@ -754,7 +756,7 @@ write_num_done:
 
 // fb_emit_num - Append a small decimal to the outgoing byte buffer
 // Parameters: w0 = value (0..999), x23 = write pointer
-// Returns: x23 advanced. Clobbers w0, w1, w2 and nothing else, so the flush
+// Returns: x23 advanced. Changes only w0, w1 and w2, so the flush
 // loop can keep its row and column in higher registers across the call.
 fb_emit_num:
                 cmp     w0, 10
@@ -796,12 +798,10 @@ flush_buf_write_done:
                 ret
 
 // screen_flush - Send the cells that changed since the last frame
-// Walks the staged frame eight cells at a time and only looks at a cell when
-// its eight-cell group differs, then emits each changed run as one cursor
-// address, one colour change and the glyphs. One write syscall per frame in
-// the normal case, a handful on a full repaint.
-// The output never depends on how wide the terminal is: a run only skips its
-// cursor address while it stays inside one row.
+// Compares eight cells at a time so an unchanged group costs one check, and
+// batches the bytes so a normal frame is a single write call.
+// A run skips its cursor move only while it stays in one row, so the output
+// looks the same at any terminal width.
                 .global screen_flush
 screen_flush:
                 stp     fp, lr, [sp, -112]!
@@ -910,14 +910,10 @@ flush_cell_glyph:
                 add     w9, w26, w7
                 add     w28, w9, 1              // Cursor advanced one cell
 
-                // Carrying that position across a row boundary would assume
-                // the terminal wrapped at column SCREEN_WIDTH. Only an
-                // exactly-80-column terminal does: a wider pane leaves the
-                // cursor on the same line and the rest of the run prints
-                // shifted right, which scatters the frame. Every new row
-                // starts with an address of its own.
-                // Groups are eight cells and SCREEN_WIDTH is a multiple of
-                // eight, so a row can only end on the last cell of a group.
+                // At the end of a row, forget the cursor position: only an
+                // exactly-80-column terminal wraps there, and a wider one
+                // would print the next row shifted right. A row can only end
+                // on a group's last cell, as SCREEN_WIDTH is a multiple of 8.
                 cmp     w7, 7
                 b.ne    flush_cell_next
                 mov     w10, SCREEN_WIDTH

@@ -1,11 +1,12 @@
 {
   "title": "Fill in the blank: external data",
   "slug": "blanks-external-data",
-  "order": 65,
+  "order": 105,
+  "lastUpdated": "2026-09-28",
   "topic": "external-data",
   "difficulty": "core",
   "variant": "blanks",
-  "prompt": "Fill in the missing pieces of data declared outside a function: a `.bss` reservation, `.data` values and string literals, cross-file symbol visibility, and one gdb print format.",
+  "prompt": "Fill in the missing pieces of data declared outside a function: a `.bss` reservation, `.data` values and string literals, a label shared with other files, and one gdb print format.",
   "blanks": [
     {
       "prompt": "Reserve 40 bytes of uninitialized space in the .bss section for a 10-element array of 4-byte integers.",
@@ -13,7 +14,7 @@
       "blanks": [
         "skip"
       ],
-      "explanation": ".bss holds data that starts out zeroed and needs no initializer in the file, so the array is declared by reserving a byte count with .skip. The assembler folds 10 * 4 to 40 while assembling.",
+      "explanation": ".bss holds data that starts out zeroed and needs no initializer in the file, so the array is declared by reserving a byte count with .skip. The assembler works out 10 * 4 as 40 while assembling.",
       "hint": "The directive steps over a run of bytes rather than emitting values."
     },
     {

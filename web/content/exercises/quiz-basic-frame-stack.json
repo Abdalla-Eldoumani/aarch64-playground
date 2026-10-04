@@ -1,7 +1,8 @@
 {
-  "title": "Quiz: memory and the stack",
+  "title": "Basic quiz: memory and the stack",
   "slug": "quiz-basic-frame-stack",
-  "order": 52,
+  "order": 92,
+  "lastUpdated": "2026-09-30",
   "topic": "memory",
   "difficulty": "intro",
   "variant": "quiz",
@@ -11,11 +12,11 @@
       "question": "In AArch64, how large are memory addresses, and what type of address space is used?",
       "options": [
         "32-bit addresses, physical memory space",
-        "64-bit addresses, virtual memory address space",
         "64-bit addresses, physical memory space",
+        "64-bit addresses, virtual memory address space",
         "32-bit addresses, virtual memory address space"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 2,
       "explanation": "AArch64 uses 64-bit addresses, and those addresses form a virtual address space. The OS and the hardware map each virtual address onto physical memory, so a user program never handles a physical address directly.",
       "hint": "The register width tells you the address width, and a user program never sees physical memory."
     },
@@ -24,10 +25,10 @@
       "options": [
         "Upward, toward higher memory addresses",
         "It does not grow; it is a fixed block in the middle of RAM",
-        "Backward, toward lower memory addresses (toward 0)",
-        "Outward from the heap"
+        "Outward from the heap",
+        "Backward, toward lower memory addresses (toward 0)"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 3,
       "explanation": "The stack sits at the high end of the address space and grows backward, toward 0. Every allocation subtracts from sp, so a called function's frame sits at a lower address than its caller's.",
       "hint": "Programs are loaded into low memory, while the stack starts high and moves down."
     },
@@ -35,23 +36,23 @@
       "question": "What is the alignment requirement for the stack pointer (sp) in AArch64?",
       "options": [
         "Word aligned (4 bytes)",
-        "Doubleword aligned (8 bytes)",
         "Quadword aligned (16 bytes)",
+        "Doubleword aligned (8 bytes)",
         "Page aligned (4096 bytes)"
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 1,
       "explanation": "The address in sp must be quadword aligned, meaning evenly divisible by 16. A memory access made through a misaligned sp aborts the program with a bus error.",
       "hint": "Think about the size required to store a pair of 64-bit registers."
     },
     {
       "question": "Which register acts as a stable anchor to point to local variables within a stack frame?",
       "options": [
-        "The Stack Pointer (SP)",
         "The Frame Pointer (FP / x29)",
+        "The Stack Pointer (SP)",
         "The Link Register (LR / x30)",
         "x0"
       ],
-      "correctAnswer": 1,
+      "correctAnswer": 0,
       "explanation": "The frame pointer is x29. Once it is set at function entry it gives a fixed base for the locals in the frame, while sp can move as temporary stack space is allocated and released.",
       "hint": "sp can move during execution, so another register is used as a stable reference."
     },
@@ -60,11 +61,11 @@
       "options": [
         "They remain unchanged.",
         "They are sign-extended based on the loaded byte.",
-        "They are zero-extended.",
-        "They trigger an alignment fault."
+        "They trigger an alignment fault.",
+        "They are zero-extended."
       ],
-      "correctAnswer": 2,
-      "explanation": "ldrb loads 1 byte from RAM into the low-order 8 bits of Wt and zero-extends the rest, so the upper 24 bits become 0. The signed form ldrsb is the one that copies the byte's sign bit upward instead.",
+      "correctAnswer": 3,
+      "explanation": "ldrb loads 1 byte from RAM into the low-order 8 bits of the W register and zero-extends the rest, so the upper 24 bits become 0. The signed form ldrsb is the one that copies the byte's sign bit upward instead.",
       "hint": "Notice that it is ldrb, not ldrsb."
     }
   ]

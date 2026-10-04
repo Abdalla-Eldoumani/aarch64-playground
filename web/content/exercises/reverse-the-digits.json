@@ -1,12 +1,14 @@
 {
   "title": "Reverse the digits",
   "slug": "reverse-the-digits",
-  "order": 11,
+  "order": 21,
+  "lastUpdated": "2026-09-30",
   "topic": "loops",
   "difficulty": "core",
-  "prompt": "Take `9317` and print `7139`: the same digits, reversed, as a number.\n\nEach trip around the loop, peel off the last digit (the remainder mod 10), append it to the running result with `result = result * 10 + digit`, and cut the source number down by a factor of ten. `msub` gives you the remainder; `madd` does the multiply-and-add in one instruction.\n\n## what is checked\n\n- the reversed number is printed on its own line\n- the program exits cleanly\n- the digits are peeled in a loop (`msub` present, answer not written in)",
-  "starter": "// reverse the decimal digits of a number\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\ndefine(rev_r, x20)\ndefine(q_r, x21)\ndefine(digit_r, x22)\ndefine(ten_r, x23)\n\n        .data\nfmt:    .string \"reversed = %lld\\n\"\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     n_r, 9317                   // the number to reverse\n        mov     rev_r, 0\n        mov     ten_r, 10\n\n        // TODO: peel the last digit off n_r each time around (n mod\n        // 10, via udiv and msub), append it to rev_r with\n        // rev = rev * 10 + digit, and shrink n_r by a factor of ten.\n        // Stop when n_r hits zero.\n\n        ldr     x0, =fmt\n        mov     x1, rev_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "prompt": "Read a number and print it with its digits reversed: `9317` prints as `7139`.\n\nEach trip around the loop, peel off the last digit (the remainder mod 10), append it to the running result with `result = result * 10 + digit`, and cut the source number down by a factor of ten. `msub` gives you the remainder; `madd` does the multiply-and-add in one instruction.\n\n## What is checked\n\n- the reversed number is printed on its own line\n- the program exits cleanly\n- the digits are peeled in a loop (`msub` present, answer not written in)\n- the same holds for other numbers you do not see: 0, one digit, and trailing zeros (`1200` reverses to `21`)",
+  "starter": "// reverse the decimal digits of a number\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, x19)\ndefine(rev_r, x20)\ndefine(q_r, x21)\ndefine(digit_r, x22)\ndefine(ten_r, x23)\n\n        .data\nfmt_in:     .string \"%lld\"\nfmt_out:    .string \"reversed = %lld\\n\"\n\n        .bss\n        .balign 8\nn_m:        .skip 8\n\n        .text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // read the number to reverse\n        ldr     x1, =n_m\n        bl      scanf\n        ldr     x9, =n_m\n        ldr     n_r, [x9]\n        mov     rev_r, 0\n        mov     ten_r, 10\n\n        // TODO: peel the last digit off n_r each time around (n mod\n        // 10, via udiv and msub), append it to rev_r with\n        // rev = rev * 10 + digit, and shrink n_r by a factor of ten.\n        // Stop when n_r hits zero.\n\n        ldr     x0, =fmt_out\n        mov     x1, rev_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
   "args": "",
+  "stdin": "9317\n",
   "variant": "write",
   "acceptance": {
     "results": [
@@ -29,5 +31,29 @@
         "value": 7139
       }
     ]
-  }
+  },
+  "hiddenCases": [
+    {
+      "stdin": "0\n",
+      "stdout": "reversed = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "7\n",
+      "stdout": "reversed = 7\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1200\n",
+      "stdout": "reversed = 21\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1000000007\n",
+      "stdout": "reversed = 7000000001\n",
+      "exitCode": 0
+    }
+  ]
 }

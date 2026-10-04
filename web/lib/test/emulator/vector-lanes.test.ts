@@ -1,7 +1,7 @@
-// Pins the vector lane slicer: lane 0 is the LEAST significant end, the hex
-// is unsigned, and the decimal is two's complement at the lane's own width.
-// Every expected value below is written out by hand from the one pattern,
-// never produced by sliceLanes itself.
+// Pins the vector lane slicer: lane 0 is the LEAST significant end and each
+// lane is its own unsigned hex digits (register-format.test reads them as
+// numbers). Every expected value below is written out by hand from the one
+// pattern, never produced by sliceLanes itself.
 import { describe, expect, it } from "vitest";
 import {
   LANE_BYTES,
@@ -28,11 +28,6 @@ describe("sliceLanes", () => {
       "fedcba9876543210",
       "0123456789abcdef",
     ]);
-    // 0xfedcba9876543210 is 2^64 - 81985529216486896.
-    expect(lanes.map((l) => l.signed)).toEqual([
-      "-81985529216486896",
-      "81985529216486895",
-    ]);
     expect(lanes.map((l) => l.index)).toEqual([0, 1]);
   });
 
@@ -43,12 +38,6 @@ describe("sliceLanes", () => {
       "fedcba98",
       "89abcdef",
       "01234567",
-    ]);
-    expect(lanes.map((l) => l.signed)).toEqual([
-      "1985229328",
-      "-19088744",
-      "-1985229329",
-      "19088743",
     ]);
   });
 
@@ -64,16 +53,6 @@ describe("sliceLanes", () => {
       "4567",
       "0123",
     ]);
-    expect(lanes.map((l) => l.signed)).toEqual([
-      "12816",
-      "30292",
-      "-17768",
-      "-292",
-      "-12817",
-      "-30293",
-      "17767",
-      "291",
-    ]);
   });
 
   it("slices b lanes", () => {
@@ -81,10 +60,6 @@ describe("sliceLanes", () => {
     expect(lanes.map((l) => l.hex)).toEqual([
       "10", "32", "54", "76", "98", "ba", "dc", "fe",
       "ef", "cd", "ab", "89", "67", "45", "23", "01",
-    ]);
-    expect(lanes.map((l) => l.signed)).toEqual([
-      "16", "50", "84", "118", "-104", "-70", "-36", "-2",
-      "-17", "-51", "-85", "-119", "103", "69", "35", "1",
     ]);
   });
 
@@ -104,7 +79,10 @@ describe("sliceLanes", () => {
       "000000000000002a",
       "0000000000000000",
     ]);
-    expect(sliceLanes("", "d").map((l) => l.signed)).toEqual(["0", "0"]);
+    expect(sliceLanes("", "d").map((l) => l.hex)).toEqual([
+      "0000000000000000",
+      "0000000000000000",
+    ]);
     expect(sliceLanes("not hex", "s").map((l) => l.hex)).toEqual([
       "00000000",
       "00000000",

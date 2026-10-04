@@ -1,28 +1,7 @@
-//! Example-picker regression: the authored programs served by the web
-//! example loader: the "Data and memory" and "Stack and locals" stage
-//! fillers against their fixtures, plus the interactive extras through
-//! scripted sessions: the real-time programs (the snake game, the pocket
-//! calculator, the multi-file deadzone survivor) keyed one press per
-//! pacing boundary, and the cooked-mode menu programs (the two-sum
-//! visualizer, the temperature instrument, the multi-file data structures
-//! visualizer) driven from one stdin push.
-//!
-//! The calculator, the instrument and the two-sum visualizer each carry a
-//! second face: `console` in argv[1] answers in plain text instead of
-//! drawing. Each has its own case here, and each of those asserts the
-//! output holds no escape byte at all: one stray `\x1b` reaches the
-//! student who picked console over the terminal pane as a control code.
-//!
-//! These are the same `.s` files the web example loader serves over HTTP,
-//! read straight from `web/public/examples/cpsc355/` (not a copy) so the
-//! served asset and the asserted behavior cannot drift. Each program is
-//! assembled through the hosted pipeline, run to halt (pushing the stdin
-//! fixture where the program reads input), and its stdout + exit code are
-//! checked against the fixture files next to it.
-//!
-//! Line endings are normalized to LF on both sides: the WASM runtime emits
-//! LF, but a Windows checkout can hand these tracked text files back as
-//! CRLF, so the comparison is on logical content.
+//! Runs the example programs from the same files the web loader serves
+//! (web/public/examples/cpsc355/, not a copy), so what students get and
+//! what is tested cannot drift. Line endings are normalized to LF because
+//! a Windows checkout can hand these files back as CRLF.
 
 use std::path::PathBuf;
 
@@ -68,15 +47,11 @@ fn run_example(src_rel: &str, stdin: Option<&str>) -> (String, Option<i64>) {
     (stdout, cpu.exit_code())
 }
 
-/// Drive a cooked-mode program from one scripted stdin push: load it with
-/// `args` as its argv, run to halt, and step over the pauses a paced
-/// program takes. Returns stdout, the exit code, and how many times the
-/// program slept; the sleep count is what proves an animation paced
-/// itself rather than dumping every frame at once.
-///
-/// The source is passed in rather than read here because the multi-file
-/// programs arrive already concatenated, the way the web's files strip
-/// joins them.
+/// Drive a line-at-a-time (cooked mode) program from one stdin push,
+/// stepping over its sleeps. The sleep count proves an animation paced
+/// itself instead of printing every frame at once. The source is passed in
+/// because the multi-file programs arrive already joined, as the web joins
+/// them.
 fn run_cooked_session(
     label: &str,
     source: &str,
@@ -108,9 +83,8 @@ fn run_cooked_session(
     (stdout, cpu.exit_code(), sleeps)
 }
 
-/// The console face writes plain text. One escape byte in the stream and
-/// the student who chose the console instead of the terminal pane reads
-/// control codes.
+/// In console mode one escape byte shows up as a control code to the
+/// student who picked the console over the terminal pane.
 fn assert_plain_text(label: &str, stdout: &str) {
     let escapes = stdout.bytes().filter(|b| *b == 0x1b).count();
     assert_eq!(
@@ -134,12 +108,10 @@ fn locals_filler_reads_two_ints_and_prints_sum_and_product() {
     assert_eq!(exit, Some(0));
 }
 
-/// The arcade snake drains stale stdin every frame (real-time design),
-/// so a pre-pushed fixture never survives its menu. Drive it the way a
-/// player does instead: one key at each pacing boundary (a nanosleep
-/// pause or a spent run chunk). The script starts classic mode, turns
-/// once, quits to the game over screen, then quits out through the
-/// menu; the padding tokens are the "human" gaps between presses.
+/// The snake game throws away unread input every frame, so input pushed up
+/// front never reaches its menu. Press keys like a player instead, one each
+/// time the run stops: start, turn once, quit to game over, quit the menu.
+/// The empty strings are the gaps between presses.
 #[test]
 fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
     let source = read("snake.s");
@@ -182,12 +154,10 @@ fn snake_arcade_plays_a_timed_session_and_exits_cleanly() {
     assert!(!cpu.term.raw_mode, "exit must restore the terminal");
 }
 
-/// The pocket calculator, driven the way the snake game is: it polls the
-/// keyboard every frame in raw mode, so a pre-pushed fixture never
-/// survives its own drain. One key at each pacing boundary instead. The
-/// script proves the two entry modes (expression entry honours
-/// precedence, immediate entry applies a unary to the display), the
-/// error state, and that C clears it.
+/// The calculator reads each key as it is pressed and throws away unread
+/// input every frame, so it is driven like the snake game. The script
+/// checks both entry modes (typed expressions follow precedence; a unary
+/// key acts on the display), the divide-by-zero error, and that C clears it.
 #[test]
 fn calc_device_plays_a_timed_session_and_exits_cleanly() {
     let source = read("calc.s");
@@ -285,20 +255,11 @@ fn calc_console_face_answers_typed_lines_in_plain_text() {
     assert_plain_text("calc.s console", &stdout);
 }
 
-/// The two-sum visualizer, cooked mode and menu-driven, so the whole
-/// session is one scripted stdin push. The drive walks the screens a first
-/// run touches: enter past the welcome splash, [4] speed down to 100 ms,
-/// [1] preset [1] classic, [5] brute force frame by frame, then [0] out.
-///
-/// The blank lines are the "press enter to continue" waits that follow a
-/// saved answer and a finished run.
-///
-/// Every asserted string is a run the program writes without a colour
-/// escape in the middle of it. The screens are painted cell by cell with
-/// cursor moves and role colours, so a line that reads as one row on
-/// screen is often several writes in the stream; the assertions below
-/// pick the contiguous runs, so they check behavior rather than paint
-/// order.
+/// Menu-driven and line-at-a-time, so one scripted input covers the
+/// session: past the splash, [4] speed down to 100 ms, [1] [1] the classic
+/// preset, [5] brute force, then [0] out; blank lines answer the "press
+/// enter" waits. Colour codes split each painted row into pieces, so every
+/// check looks for text the program writes in one piece.
 #[test]
 fn two_sum_visualizer_walks_the_menus_and_traces_a_preset() {
     let (stdout, exit, sleeps) = run_cooked_session(
@@ -351,8 +312,8 @@ fn two_sum_visualizer_walks_the_menus_and_traces_a_preset() {
 /// the two solvers over one typed array. The drive is the classic input.
 #[test]
 fn two_sum_console_face_solves_a_typed_array_in_plain_text() {
-    // The 1000 is out of range: the same hardened reader as the
-    // visualizer's should name the bounds and re-ask before accepting 7.
+    // The 1000 is out of range: the input check should name it and ask
+    // again before taking 7.
     let (stdout, exit, _) = run_cooked_session(
         "two-sum.s console",
         &read("two-sum.s"),
@@ -375,15 +336,10 @@ fn two_sum_console_face_solves_a_typed_array_in_plain_text() {
     assert_plain_text("two-sum.s console", &stdout);
 }
 
-/// The temperature instrument in its interactive mode (no argv, so the
-/// argc branch takes it there). Cooked mode, one reading per line: a good
-/// one, junk, something below absolute zero, then the quit word.
-///
-/// The prompt is a labelled rule with a `> ` caret under it, and the
-/// instrument under that is a bulb `(*)` on three scales filled to where
-/// the reading landed; the fill is what changes per reading, so it is
-/// asserted as a run rather than as a whole row (the row carries colour
-/// escapes between its segments).
+/// With no argv the temperature program runs its interactive loop, one
+/// reading per line: a good one, junk, one below absolute zero, then quit.
+/// Colour codes split the scale row, so its fill is checked on its own
+/// rather than as the whole row.
 #[test]
 fn temp_convert_answers_readings_and_refuses_impossible_ones() {
     let drive = "36.6C\nhello\n-300C\nq\n";
@@ -418,10 +374,9 @@ fn temp_convert_answers_readings_and_refuses_impossible_ones() {
     assert!(stdout.contains("bye."), "the quit word ends the loop cleanly");
 }
 
-/// The same instrument with `console` in its argv: the same reading loop
-/// with the palette slots emptied, so the layout survives and the escapes
-/// do not. Same script as the interactive case, so the two faces are read
-/// against the same milestones.
+/// The same program with `console` in its argv: the same loop with the
+/// colours left out, so the layout stays and the escape codes go. Same
+/// script as above, so both modes are checked at the same points.
 #[test]
 fn temp_convert_console_face_draws_the_same_readings_in_plain_text() {
     let drive = "36.6C\nhello\n-300C\nq\n";
@@ -452,11 +407,10 @@ fn temp_convert_console_face_draws_the_same_readings_in_plain_text() {
     assert_plain_text("temp-convert.s console", &stdout);
 }
 
-/// The multi-file visualizer, combined exactly the way the web's files
-/// strip does it (main first, each extra behind a `// ---- name ----`
-/// boundary, in the loader manifest's order). Drives one operation per
-/// data structure at the fastest pace and leaves through every menu, so
-/// the whole surface assembles, links, and runs behind one gate.
+/// The multi-file visualizer, joined the way the web's files strip joins it
+/// (main first, then each helper behind a `// ---- name ----` line, in the
+/// loader's order). One operation per data structure, then out through
+/// every menu, so every file assembles, links, and runs.
 #[test]
 fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
     const EXTRAS: [&str; 17] = [
@@ -469,18 +423,11 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
         source.push_str(&format!("\n// ---- {name} ----\n"));
         source.push_str(&read(&format!("dsav/{name}")));
     }
-    // One operation per module, then out. EVERY module is visited: a drive
-    // that stopped at the six original ones let a printf conversion the
-    // hosted runtime rejects (`%*s`) ship inside the sorting module, because
-    // nothing here ever reached it. One blank line per operation feeds
-    // wait_for_enter.
-    //
-    // array: user init 3 values, display, back; stack: push, pop, back;
-    // queue: enqueue, dequeue, back; list: insert, display, back; bst:
-    // insert, search hit, back; rbt: insert, search hit, back; heap: insert,
-    // show, back; hash: insert, show, back; graph: breadth first, back;
-    // sorting: new array then bubble, back; searching: linear on the seeded
-    // array, back; recursion: solve, back; then exit.
+    // Every module is visited: a drive that skipped some once let a printf
+    // conversion the runtime rejected (`%*s`) ship in the sorting module.
+    // Each line below is one module in menu order (array, stack, queue,
+    // list, bst, rbt, heap, hash, graph, sorting, searching, recursion),
+    // then exit; blank lines answer the "press enter" waits.
     let drive = "1\n2\n3\n10\n20\n30\n\n3\n\n0\n\n\
                  2\n1\n5\n\n2\n\n0\n\n\
                  3\n1\n5\n\n2\n\n0\n\n\
@@ -509,14 +456,11 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
     assert!(sleeps > 0, "the animations pace themselves through usleep");
 }
 
-/// The multi-file survivor game, combined exactly the way the files strip
-/// joins it (main first, each helper behind a `// ---- name ----` boundary,
-/// in the loader manifest's order, constants first, because a module's
-/// equates only resolve below their definition). Raw mode and real time
-/// like the snake game, so a pre-pushed fixture never survives the
-/// per-frame drain: the presses are scheduled against the frame clock
-/// instead. The drive sits through the title animation, starts a run from
-/// the menu, moves, pauses, resumes, and quits.
+/// The multi-file survivor game, joined the way the files strip joins it
+/// (constants.s first among the helpers, since an equate only works below
+/// its definition). Like the snake game it throws away unread input every
+/// frame, so the presses are timed by frame: past the title, start a run,
+/// move, pause, resume, quit.
 #[test]
 fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
     const EXTRAS: [&str; 11] = [
@@ -621,12 +565,10 @@ fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
     assert!(!cpu.term.raw_mode, "exit must restore the terminal");
 }
 
-/// Every printf conversion the shipped examples use must be one the hosted
-/// runtime implements. Driving the menus cannot prove this on its own: a
-/// conversion sitting in a branch the scripted session never reaches still
-/// aborts the program for the student who does reach it, which is how a
-/// then-unsupported `%*s` shipped inside the sorting module. Reading the
-/// format strings costs nothing and covers every branch at once.
+/// Driving the menus cannot catch an unsupported printf conversion in a
+/// branch the script never reaches, yet it still stops the program for the
+/// student who does (how `%*s` once shipped). Scanning the format strings
+/// covers every branch at once.
 #[test]
 fn shipped_examples_only_use_conversions_the_runtime_implements() {
     // What hosted/printf.rs accepts: flags, a width (digits or a `*`
@@ -658,13 +600,10 @@ fn shipped_examples_only_use_conversions_the_runtime_implements() {
     for rel in &names {
         let text = read(rel);
         for (n, line) in text.lines().enumerate() {
-            // Only a NUL-terminated string literal can be a format: the
-            // hosted printf takes a pointer and reads to the terminator.
-            // A `%` in a comment ("rand() % max"), in a `msub`, or inside
-            // a bare `.ascii` byte run is not one (calc paints its key
-            // grid out of one such run, five columns per cap, written by
-            // length and never handed to a formatter), and flagging any
-            // of them would make this gate cry wolf.
+            // Only a NUL-terminated string (.string or .asciz) can be a
+            // printf format. A `%` in a comment, a `msub`, or a plain
+            // `.ascii` run (calc draws its keypad from one) is not, and
+            // flagging those would raise false alarms.
             let Some(open) = line.find('"') else { continue };
             let trimmed = line.trim_start();
             if !(trimmed.starts_with(".string")

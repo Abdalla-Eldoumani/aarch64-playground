@@ -1,15 +1,7 @@
 /**
- * Register the playground's service worker. Called once from a client
- * component after window load so the registration competes with
- * neither the first paint nor the hydration pass.
- *
- * No-ops when:
- *   - running on the server (no `window`)
- *   - the browser doesn't expose `navigator.serviceWorker`
- *     (older Safari, some embedded webviews, or `file://` previews)
- *   - the page is being served over `http:` from anything other than
- *     localhost (browsers reject SW registration outside secure
- *     contexts)
+ * Register the service worker after window load, so it does not slow the
+ * first paint or hydration. Skipped where the browser has no service worker
+ * support, or on plain http anywhere but localhost, where browsers refuse one.
  */
 export function registerServiceWorker(): void {
   if (typeof window === "undefined") return;
@@ -21,7 +13,9 @@ export function registerServiceWorker(): void {
   if (!isSecure) return;
   const run = () => {
     navigator.serviceWorker
-      .register("/sw.js", { scope: "/" })
+      // Each build's worker carries that build's file list, so the update
+      // check must never read a cached copy of an older one.
+      .register("/sw.js", { scope: "/", updateViaCache: "none" })
       .catch(() => {
         // Registration failures are non-fatal: the app still works online
         // without the cache layer.

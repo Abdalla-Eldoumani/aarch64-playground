@@ -1,0 +1,4 @@
+$ gcc local-label-no-backward.s -o program
+local-label-no-backward.s: Assembler messages:
+local-label-no-backward.s:11: Error: backward ref to unknown label "2:"
+[exit 1]

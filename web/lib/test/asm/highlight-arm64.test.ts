@@ -1,6 +1,5 @@
-// Pins the shared read-only highlighter: the scanner's token kinds, the
-// round-trip that guards the regex against a one-character transcription slip,
-// and the class map's dependence on the per-theme --syntax-* tokens.
+// Code blocks, the landing page and the phone editor color code with this
+// highlighter, and Monaco reuses its patterns, so all of them color alike.
 
 import { describe, expect, it } from "vitest";
 import {
@@ -99,6 +98,7 @@ describe("tokenizeLine", () => {
   });
 
   it("round-trips every line: the token texts concatenate back to the input", () => {
+    // A one-character slip in a pattern would lose or repeat text here.
     for (const line of HERO_PROGRAM.split("\n")) {
       expect(tokenizeLine(line).map((t) => t.text).join("")).toBe(line);
     }

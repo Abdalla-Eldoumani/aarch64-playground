@@ -1,7 +1,3 @@
-// Pins the b.cond condition-code explorer: the ten-course-code set, the
-// taken() truth of each formula against literal flag states, the pick ->
-// detail -> live-compare flow, the read-vs-ignored flag dimming, and the
-// per-code operand defaults that reset when the pick changes.
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import {
@@ -47,14 +43,14 @@ describe("COND_CODES", () => {
     expect(by.ne.taken(SPLIT)).toBe(true);
   });
 
-  it("takes exactly the at-most family on equality", () => {
+  it("takes exactly eq and the or-equal codes when the values are equal", () => {
     const takenCodes = COND_CODES.filter((c) => c.taken(EQUAL)).map(
       (c) => c.code,
     );
     expect(takenCodes.sort()).toEqual(["eq", "ge", "hs", "le", "ls"].sort());
   });
 
-  it("agrees across readings when the compare borrows", () => {
+  it("signed and unsigned codes agree when the compare borrows", () => {
     const by = Object.fromEntries(COND_CODES.map((c) => [c.code, c]));
     expect(by.lt.taken(BELOW)).toBe(true);
     expect(by.lo.taken(BELOW)).toBe(true);
@@ -64,7 +60,7 @@ describe("COND_CODES", () => {
 });
 
 describe("CondCodeExplorer", () => {
-  it("starts on eq with its defaults answering taken", () => {
+  it("starts on eq, whose default operands give taken", () => {
     render(<CondCodeExplorer />);
     const eqChip = screen.getByRole("button", { name: "b.eq" });
     expect(eqChip.getAttribute("aria-pressed")).toBe("true");

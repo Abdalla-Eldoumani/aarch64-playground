@@ -19,7 +19,7 @@ fmt:    .string "%s\n"
 main:   stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        // Save argc and argv immediately (w0 and x1 are caller-saved)
+        // Save argc and argv first: x0 and x1 are reused for printf's arguments below
         mov     argc_r, w0
         mov     argv_r, x1
 
@@ -35,5 +35,6 @@ top:
 test:   cmp     i_r, argc_r
         b.lt    top
 
+        mov     w0, 0                  // exit status 0
         ldp     fp, lr, [sp], 16
         ret

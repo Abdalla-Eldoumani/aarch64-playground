@@ -2,7 +2,7 @@
 // https://github.com/Abdalla-Eldoumani/temp-convert
 //
 //   ./temp-convert            the instrument in colour, reads until q
-//   ./temp-convert console    the same loop with no escape bytes at all
+//   ./temp-convert console    the same loop in plain text, no colour
 //   ./temp-convert 32 F       one conversion, then exit
 //
 // A reading is a number with a unit stuck to it: 36.6C, 98.6f, 310K.
@@ -22,10 +22,9 @@ define(tint_r, x25)             // draw_face: the colour that band fills in
 
 // A scale row is " C -273.15 " + "(*)" + 37 columns of bar + " 100.00",
 // which is 59 wide. Past 60 the rows wrap in a narrow pane and the three
-// scales stop lining up, so the lead, the bulb, the bar and the
-// hand-spaced label row in face_m are one layout: move one and the
-// pointer leaves its tick. With this width the ticks land on columns
-// 0, 26, 30 and 36, which is what face_m is spaced to.
+// scales stop lining up. This width puts the ticks on bar columns 0, 26,
+// 30 and 36, and the label row in face_m is spaced by hand to match, so
+// changing any of these numbers moves the pointer off its tick.
 BAR_WIDTH = 37
 BAR_LAST = 36
 BAR_LEAD = 11
@@ -33,9 +32,10 @@ BULB_WIDTH = 3
 MARK_LEAD = BAR_LEAD + BULB_WIDTH
 ANCHORS = 4
 
-// Colour is one indirection: every escape a row prints comes out of
-// pal_m, and console mode fills pal_m with the empty string instead. so there
-// is no second set of strings to drift.
+// Colour comes from escape sequences: bytes the terminal reads as "switch
+// colour" instead of printing. Every one a row prints is loaded from
+// pal_m, and console mode fills pal_m with empty strings instead, so there
+// is no second set of strings to keep in step.
 P_CYAN = 0
 P_GREY = 8
 P_AMBER = 16
@@ -43,8 +43,9 @@ P_RED = 24
 P_OFF = 32
 PALETTE = 5
 
-// The six bands a reading can land in, coldest first. One chain names
-// them, and both the note line and the fill colour read off the answer.
+// The six bands a reading can land in, coldest first. One chain of
+// compares in band_of picks the band, and both the note line and the fill
+// colour use its answer.
 BAND_ICE = 0
 BAND_FROST = 1
 BAND_COOL = 2
@@ -77,9 +78,9 @@ ice_k_m:        .double 273.15
 // fcvtzs truncates, so a column index is rounded by adding a half first.
 half_m:         .double 0.5
 
-// Absolute zero doubles as the bar's column 0, and boiling water as its
-// last column: Indexed by unit code, so a floor can be quoted back in the
-// unit it was typed in.
+// Absolute zero is the bar's column 0 and boiling water its last column.
+// Both tables are indexed by unit code, so the absolute-zero floor can be
+// quoted back in the unit it was typed in.
 abszero_m:      .double -273.15
                 .double -459.67
                 .double 0.0
@@ -237,7 +238,8 @@ usage:
 
 // one shot
 
-// No escapes, so the line pipes; the instrument is drawn all the same.
+// No colour, so the output can be piped to another program; the
+// thermometer is still drawn.
 oneshot:
         mov     w0, 1
         bl      set_palette
@@ -310,7 +312,7 @@ read_loop:
         add     x1, fp, tok_s
         bl      scanf
         cmp     w0, 1
-        b.ne    read_eof                // -1 at end of input, 0 on nothing
+        b.ne    read_eof                // -1 at end of input, 0 on no match
 
         add     x0, fp, tok_s
         bl      is_quit
@@ -354,7 +356,7 @@ main_done:
 
 // set_palette(w0 = 1 for a face with no escapes in it) : point the five
 // slots at the escapes, or all five at the empty string. Every colour a
-// row prints is one load from here, so this is the whole of the gate.
+// row prints is one load from here, so this is the only colour switch.
 set_palette:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -464,7 +466,7 @@ fold_unit:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
 
-        orr     w0, w0, 32              // one bit is the whole of ASCII case
+        orr     w0, w0, 32              // setting bit 5 lowercases an ASCII letter
         cmp     w0, 'c'
         b.eq    fold_c
         cmp     w0, 'f'

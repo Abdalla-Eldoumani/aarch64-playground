@@ -1,9 +1,9 @@
 name: bounds
 
-# The two end-to-end runaway-wall tests in emulator/tests/bounds.rs spend the
-# real ~10M-step ceiling, which is too slow for the per-PR gate; they are
-# #[ignore]d there and exercised here on a weekly schedule instead, in release
-# mode where the walls run in seconds.
+# The two tests in emulator/tests/bounds.rs that run a program until it hits
+# the real step limit (a "runaway wall", about 10 million steps) are too slow
+# for every pull request, so they are #[ignore]d there and run here weekly,
+# in release mode, where they take seconds.
 on:
   schedule:
     - cron: "0 6 * * 1"

@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import ErrorPage from "./error";
 
-// Pins the route error boundary: the fault-card register, the retry prop, and
+// Pins the route error page: the fault card's wording, the retry prop, and
 // the copied markdown report.
 
 afterEach(() => {
@@ -17,8 +17,14 @@ function faulted(message: string, digest?: string): Error & { digest?: string } 
   return error;
 }
 
-// The report is built when the markdown builder's chunk lands, so the copy
-// button is inert for a beat after mount. Every copy case waits for it.
+// The report is built once the markdown builder's code loads, so the copy
+// button stays disabled briefly after mount. Every copy case waits for it.
+// Loading the builder once up front keeps its first load, which took most
+// of a second on a busy machine, out of that one-second wait.
+beforeAll(async () => {
+  await import("@/lib/playground/bundle-markdown");
+});
+
 async function reportReady() {
   await waitFor(() => {
     expect(
@@ -30,11 +36,11 @@ async function reportReady() {
 }
 
 describe("route error page", () => {
-  it("announces the fault in the 404's register", () => {
+  it("announces the fault in the same style as the 404", () => {
     render(<ErrorPage error={faulted("boom")} reset={() => {}} />);
     expect(screen.getByText("runtime fault")).toBeTruthy();
     expect(screen.getByText("0x00000500")).toBeTruthy();
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("something broke");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Something broke");
     expect(screen.getByText(/hit an error while rendering this page/)).toBeTruthy();
     expect(
       screen.getByText("brk #0 · execution stopped before this page finished"),
@@ -78,11 +84,11 @@ describe("route error page", () => {
     });
     expect(writeText).toHaveBeenCalledTimes(1);
     const report = writeText.mock.calls[0][0] as string;
-    expect(report).toContain("# diagnostic bundle");
+    expect(report).toContain("# Diagnostic bundle");
     expect(report).toContain("cannot read x of undefined");
     expect(report).toContain("digest abc123");
     expect(report).toContain("mov x0, 7");
-    expect(report).toContain("**route:**");
+    expect(report).toContain("## Status\n\nthe page / stopped with the error below");
     expect(screen.getByRole("button", { name: "copied" })).toBeTruthy();
   });
 
@@ -99,7 +105,7 @@ describe("route error page", () => {
       await Promise.resolve();
     });
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText.mock.calls[0][0]).toContain("**last error:** boom");
+    expect(writeText.mock.calls[0][0]).toContain("## Error\n\n```text\nboom\n```");
   });
 
   it("says so when the clipboard write is refused", async () => {

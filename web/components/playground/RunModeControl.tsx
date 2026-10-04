@@ -19,17 +19,9 @@ interface RunModeControlProps {
 }
 
 /**
- * Which surface owns the pane when this program runs: the console's cooked
- * stdin box, or a live terminal session. Rendered only for the examples where
- * both answers are real (EXAMPLE_INTERACTIVE), so every other program keeps the
- * header band it has today and the examples that have a choice show it.
- *
- * Built on ThemeControl's pattern: one bordered strip with hairline separators
- * rather than two loose pills, `role="group"` with `aria-pressed` per cell,
- * token focus ring. The chosen cell reads cyan because the choice is the
- * student's; nothing here is amber, since nothing is executing yet. Cells are
- * 36px like the band's other controls, widened horizontally instead: the band
- * must not change height as programs load and unload under a student's thumb.
+ * Shown only for examples that work both ways (EXAMPLE_INTERACTIVE). The chosen
+ * cell is cyan, not amber, since nothing is running yet; cells stay 36px so the
+ * band keeps its height as programs load and unload.
  */
 export function RunModeControl({ mode, onChange, disabled = false }: RunModeControlProps) {
   return (
@@ -37,7 +29,7 @@ export function RunModeControl({ mode, onChange, disabled = false }: RunModeCont
       className="flex shrink-0 items-center gap-2"
       title={disabled ? "a terminal session is running" : undefined}
     >
-      <span className="hidden font-mono text-[11px] font-semibold uppercase tracking-[0.14em] whitespace-nowrap text-[var(--text-tertiary)] sm:inline">
+      <span className="hidden font-mono text-[12px] font-semibold uppercase tracking-[0.14em] whitespace-nowrap text-[var(--text-tertiary)] sm:inline">
         run in
       </span>
       <div
@@ -55,11 +47,11 @@ export function RunModeControl({ mode, onChange, disabled = false }: RunModeCont
               aria-pressed={active}
               disabled={disabled}
               onClick={() => onChange(value)}
-              className={`inline-flex min-h-[36px] items-center justify-center px-3.5 font-sans text-[12px] font-medium transition-colors focus:outline-none focus-visible:z-10 focus-visible:[box-shadow:var(--ring)] disabled:opacity-50 disabled:pointer-events-none ${
+              className={`touch-target inline-flex min-h-[36px] items-center justify-center px-3.5 font-sans text-[12px] font-medium transition-colors focus:outline-none focus-visible:z-10 focus-visible:[box-shadow:var(--ring)] disabled:text-[var(--text-tertiary)] disabled:pointer-events-none ${
                 index > 0 ? "border-l border-[var(--border)]" : ""
               } ${
                 active
-                  ? "bg-[var(--cyan)] text-[var(--on-cyan)]"
+                  ? "bg-[var(--cyan)] text-[var(--on-cyan)] disabled:bg-[var(--bg-sunken)]"
                   : "text-[var(--text-secondary)] hover:bg-[var(--bg-elevated)] hover:text-[var(--text-primary)]"
               }`}
             >

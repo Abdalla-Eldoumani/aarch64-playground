@@ -2,7 +2,8 @@
 
 import { useRef, useState } from "react";
 import { buildShareUrl, shareHashSize, type ShareState } from "@/lib/playground/share";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { SITE_NAME } from "@/lib/content/site";
 
 export interface ShareDialogProps {
   open: boolean;
@@ -11,11 +12,8 @@ export interface ShareDialogProps {
 }
 
 /**
- * Modal that builds a compressed `#p2=...` URL and offers copy/share.
- * Uses `navigator.share` when the platform supports it (iOS/Android),
- * falls back to a textarea with a copy button otherwise. The hash
- * carries the full editor state (source, args, stdin, view, cursor)
- * so the recipient lands in the same scenario the sender saw.
+ * The `#p2=` hash carries the whole editor state (files, args, stdin, cursor),
+ * so the recipient opens the program exactly as the sender saw it.
  */
 export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
@@ -33,6 +31,10 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
 
   if (!open) return null;
 
+  // Without the platform's share sheet a share button could only copy, so
+  // it would be a second copy button under another name.
+  const canShare = typeof navigator !== "undefined" && "share" in navigator;
+
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -44,12 +46,8 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   };
 
   const share = async () => {
-    if (typeof navigator === "undefined" || !("share" in navigator)) {
-      copy();
-      return;
-    }
     try {
-      await navigator.share({ title: "cpsc 355 playground", url });
+      await navigator.share({ title: SITE_NAME, url });
     } catch {
       // user cancelled or not supported; no-op
     }
@@ -61,7 +59,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
       role="dialog"
       aria-modal="true"
       aria-label="share program"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={ref}
@@ -69,18 +67,18 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
-          share this program
+          Share this program
         </h2>
         {oversize ? (
-          <p role="alert" className="text-[11px] text-[var(--danger)] mb-2">
+          <p role="alert" className="text-[12px] text-[var(--danger)] mb-2">
             this workspace is too large to share as a link (
             {size.chars.toLocaleString()} characters compressed, limit{" "}
-            {size.max.toLocaleString()}). export the files with the .json
-            button in the header and send those instead.
+            {size.max.toLocaleString()}). pick workspace .json from the
+            export menu in the header and send that file instead.
           </p>
         ) : (
-          <p className="text-[11px] text-[var(--text-secondary)] mb-2">
-            the source is compressed into the URL hash; nothing is sent to a server.
+          <p className="text-[12px] text-[var(--text-secondary)] mb-2">
+            the program is packed into the link itself; nothing is sent to a server.
           </p>
         )}
         {!oversize && (
@@ -88,7 +86,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
             readOnly
             value={url}
             rows={4}
-            className="w-full text-[11px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
+            className="w-full text-[12px] font-mono bg-[var(--bg-base)] border border-[var(--border)] rounded p-2 text-[var(--text-primary)]"
             onFocus={(e) => e.currentTarget.select()}
             aria-label="shareable url"
           />
@@ -97,23 +95,25 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            className="touch-target text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
           >
             close
           </button>
-          <button
-            type="button"
-            onClick={share}
-            disabled={oversize}
-            className="text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
-          >
-            share
-          </button>
+          {canShare && (
+            <button
+              type="button"
+              onClick={share}
+              disabled={oversize}
+              className="touch-target text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+            >
+              share
+            </button>
+          )}
           <button
             type="button"
             onClick={copy}
             disabled={oversize}
-            className={`text-xs rounded px-2 py-1 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+            className={`touch-target text-xs rounded px-2 py-1 disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
               copied
                 ? "text-[var(--success)]"
                 : "text-[var(--cyan)] hover:underline"

@@ -1,9 +1,9 @@
 // Pins the static hero code view: the gutter, the ONE-based current line (the
-// hub's numbering, not CodeBlock's zero-based one), the editor's metrics and
-// current-line treatment, the reveal, and the shared highlighter's colors.
+// hub's numbering, not CodeBlock's zero-based one), scrolling to that line,
+// and the shared highlighter's colors.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
 
 // jsdom implements no scrollIntoView, so every render that marks a line needs
@@ -30,6 +30,14 @@ describe("StaticCodeView", () => {
     ).toEqual(["1", "2", "3"]);
   });
 
+  it("lets a keyboard reach the scroll box, which holds no control of its own", () => {
+    render(<StaticCodeView value={"a\nb\nc"} currentLine={null} />);
+    const box = screen.getByRole("group", { name: "program source" });
+    expect(box.getAttribute("tabindex")).toBe("0");
+    box.focus();
+    expect(document.activeElement).toBe(box);
+  });
+
   it("marks the one-based currentLine, not the line at that index", () => {
     const { container } = render(<StaticCodeView value={"a\nb\nc"} currentLine={2} />);
     const marked = container.querySelectorAll("[data-current]");
@@ -43,27 +51,33 @@ describe("StaticCodeView", () => {
     expect(container.querySelectorAll("[data-current]")).toHaveLength(0);
   });
 
-  it("uses the editor's 14px on 21px metrics, not CodeBlock's 13px", () => {
-    const { container } = render(<StaticCodeView value="mov x0, 1" currentLine={null} />);
-    const pre = container.querySelector("pre");
-    expect(pre?.className).toContain("text-[14px]");
-    expect(pre?.className).toContain("leading-[21px]");
-    expect(pre?.className).toContain("font-mono");
-  });
-
-  it("wears the editor's current-line treatment, 14% amber behind a 2px rule", () => {
-    const { container } = render(<StaticCodeView value={"a\nb"} currentLine={1} />);
-    const marked = container.querySelector("[data-current]");
-    expect(marked?.className).toContain("--amber)_14%");
-    expect(marked?.className).toContain("inset_2px");
-  });
-
-  it("scrolls the current line into view when it changes", () => {
-    const { rerender } = render(<StaticCodeView value={"a\nb\nc"} currentLine={1} />);
-    scrollIntoView.mockClear();
-    rerender(<StaticCodeView value={"a\nb\nc"} currentLine={3} />);
-    expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "nearest" });
+  it("scrolls only its own box to the current line, never the page", () => {
+    // scrollIntoView moved the whole page on a phone: the landing's autoplay
+    // pulled a reader who had scrolled on back up to the hero.
+    const program = "a\nb\nc\nd";
+    const { container, rerender } = render(<StaticCodeView value={program} currentLine={1} />);
+    const box = container.firstElementChild as HTMLElement;
+    let top = 0;
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => top,
+      set: (next: number) => {
+        top = next;
+      },
+    });
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 42 });
+    rows(container).forEach((row, i) => {
+      Object.defineProperty(row, "offsetTop", { configurable: true, value: i * 21 });
+      Object.defineProperty(row, "offsetHeight", { configurable: true, value: 21 });
+    });
+    // Line 4 spans 63 to 84; the nearest scroll that shows it in a 42px box
+    // is 42.
+    rerender(<StaticCodeView value={program} currentLine={4} />);
+    expect(box.scrollTop).toBe(42);
+    // Line 3 (42 to 63) is already in view, so the box holds still.
+    rerender(<StaticCodeView value={program} currentLine={3} />);
+    expect(box.scrollTop).toBe(42);
+    expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("colors a mnemonic through the shared highlighter", () => {

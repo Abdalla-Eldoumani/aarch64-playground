@@ -1,0 +1,96 @@
+{
+  "title": "Basic quiz: branching",
+  "slug": "quiz-basic-branching",
+  "order": 112,
+  "lastUpdated": "2026-10-01",
+  "topic": "branching",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Compares, the flags they leave, and the instructions that read them: `b.cond` with signed and unsigned conditions, `cbz`, and `csel`.",
+  "questions": [
+    {
+      "question": "cmp w19, w20 works out w19 - w20. What happens to that difference?",
+      "options": [
+        "It is written into w19, replacing the first value.",
+        "It is thrown away, and only the flags record it.",
+        "It is written into w0, where b.cond looks for it.",
+        "It is held in a hidden register until the next cmp."
+      ],
+      "correctAnswer": 1,
+      "explanation": "cmp is subs with its result sent to the zero register, so the difference itself is lost. What survives is N, Z, C and V, the four flags that a following b.cond, csel, cset or cinc reads.",
+      "hint": "cmp names no destination register."
+    },
+    {
+      "question": "After cmp w1, w2, which branch is taken when w1 is greater than w2, with both read as signed numbers?",
+      "options": [
+        "b.hi",
+        "b.ge",
+        "b.lt",
+        "b.gt"
+      ],
+      "correctAnswer": 3,
+      "explanation": "gt is the signed greater-than test: it holds when Z is 0 and N equals V. hi is the same test for unsigned values, and ge also branches when the two values are equal.",
+      "hint": "One of the wrong answers is the unsigned version of the same test."
+    },
+    {
+      "question": "The C reads if (temp < 0) { body }. After cmp temp_r, 0, which branch jumps past the body when the test is false?",
+      "options": [
+        "b.ge",
+        "b.gt",
+        "b.lt",
+        "b.le"
+      ],
+      "correctAnswer": 0,
+      "explanation": "To skip a body, branch on the complement of the C test. The complement of < is >=, so b.ge jumps past the body whenever temp is 0 or more. b.gt would let a temp of exactly 0 fall into the body.",
+      "hint": "Which values of temp must skip the body? Is 0 one of them?"
+    },
+    {
+      "question": "An if-else in assembly places the else block first. Why does that block end with an unconditional b?",
+      "options": [
+        "Without it, the flags from the cmp are lost before the if block.",
+        "Without it, the assembler cannot tell where the else block ends.",
+        "Without it, execution runs on into the if block, and both run.",
+        "Without it, the b.cond above is taken a second time on the way."
+      ],
+      "correctAnswer": 2,
+      "explanation": "A label only names an address, and nothing stops execution at one. When the else block finishes, the next instruction in memory is the first one of the if block, so a b to the label after both blocks is what keeps the two apart.",
+      "hint": "What instruction comes right after the else block in memory?"
+    },
+    {
+      "question": "What does cbz w19, done do?",
+      "options": [
+        "Jumps to done when the last cmp found the two values equal.",
+        "Jumps to done when w19 is 0, without touching the flags.",
+        "Sets w19 to 0, then jumps to done whatever the flags say.",
+        "Jumps to done when w19 holds anything other than 0."
+      ],
+      "correctAnswer": 1,
+      "explanation": "cbz is compare and branch on zero: it tests the register it names and jumps when that register holds 0. It reads no flags and sets none, so it needs no cmp in front of it. cbnz is the same test turned around.",
+      "hint": "The z stands for zero, and the register is named in the instruction."
+    },
+    {
+      "question": "After cmp w1, w2, what does csel w0, w1, w2, gt leave in w0?",
+      "options": [
+        "1 when w1 is greater than w2, and 0 when it is not",
+        "The smaller of w1 and w2, both read as signed",
+        "w1 plus 1 when w1 is greater, and w2 otherwise",
+        "The larger of w1 and w2, both read as signed"
+      ],
+      "correctAnswer": 3,
+      "explanation": "csel copies its first source when the condition holds and its second when it does not. gt holds when w1 > w2, so w0 gets w1 then and w2 otherwise, which is the larger of the two. Writing 1 or 0 is what cset does.",
+      "hint": "csel only ever copies one of its two source registers."
+    },
+    {
+      "question": "w1 holds -1 and w2 holds 1. After cmp w1, w2, which of b.lt and b.hi would branch?",
+      "options": [
+        "Only b.lt, since -1 is less than 1 as a signed number",
+        "Only b.hi, since -1 is stored as thirty-two 1 bits",
+        "Both, as lt reads them signed and hi reads them unsigned",
+        "Neither, since the signed and the unsigned answers disagree"
+      ],
+      "correctAnswer": 2,
+      "explanation": "One cmp sets one set of flags, and each condition reads them its own way. As signed numbers -1 < 1, so lt holds. As unsigned numbers -1 is 0xffffffff, the largest word there is, so hi (higher) holds too. Pick the condition that matches how the program means its values.",
+      "hint": "Write -1 as an unsigned 32-bit number."
+    }
+  ]
+}

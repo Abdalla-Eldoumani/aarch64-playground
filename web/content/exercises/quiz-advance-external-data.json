@@ -1,30 +1,31 @@
 {
-  "title": "Quiz: external data",
+  "title": "Advanced quiz: external data",
   "slug": "quiz-advance-external-data",
-  "order": 64,
+  "order": 104,
+  "lastUpdated": "2026-09-30",
   "topic": "external-data",
   "difficulty": "challenge",
   "variant": "quiz",
-  "prompt": "Symbol scope, PC-relative address formation with `adrp` and `add`, section permissions, and indexing an array of pointers.",
+  "prompt": "Variable scope, building an address relative to the program counter with `adrp` and `add`, section permissions, and indexing an array of pointers.",
   "questions": [
     {
       "question": "In C, how does the scope of a static local variable differ from the scope of a static global variable?",
       "options": [
         "The static local is destroyed when its block ends, while the static global lives for the whole program.",
         "The static local is visible to every file in the program, while the static global is visible only inside its own file.",
-        "The static local is visible only inside the block that declares it, while the static global is visible only inside the file that declares it.",
-        "The static local is stored on the stack, while the static global is stored in the .data section."
+        "The static local is stored on the stack, while the static global is stored in the .data section.",
+        "The static local is visible only inside the block that declares it, while the static global is visible only inside the file that declares it."
       ],
-      "correctAnswer": 2,
+      "correctAnswer": 3,
       "explanation": "Both have static storage duration, so both live for the whole run and both sit in .data or .bss rather than on the stack. The difference is visibility: a static global is private to its file, and a static local is private to the block that declares it.",
       "hint": "Both persist for the entire run, so the difference is visibility rather than lifetime."
     },
     {
       "question": "An array of string pointers is indexed with ldr x2, [x0, w1, sxtw #3], where x0 holds the address of the array and w1 holds the index. What does the sxtw #3 contribute?",
       "options": [
-        "It sign-extends the 32-bit index in w1 to 64 bits and scales it by 8, because each pointer in the array is 8 bytes wide.",
+        "It sign-extends the index in w1 to 64 bits and multiplies it by 8, the size of one pointer.",
         "It scales the index by 4, because string literals are always 4-byte aligned.",
-        "It sign-extends the 64-bit base register so it matches the 128-bit vector registers.",
+        "It sign-extends the 64-bit base in x0 so the address matches the 128-bit vector registers.",
         "It adds 3 pad bytes so the computed address lands on an aligned boundary."
       ],
       "correctAnswer": 0,
@@ -46,24 +47,24 @@
     {
       "question": "A programmer-initialized constant is placed in the .text section, for example const_m: .hword 42. What happens if the program stores a new value to that address?",
       "options": [
-        "The program takes a segmentation fault, because .text is mapped read-only.",
         "The assembler quietly moves the constant into .data so the store succeeds.",
         "The store succeeds and the value changes.",
+        "The program takes a segmentation fault, because .text is mapped read-only.",
         "The store succeeds but overwrites adjacent machine instructions, so the program branches to the wrong place."
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 2,
       "explanation": "Linux maps .text as read-only and executable, so a store into that section raises SIGSEGV. Anything the program needs to write belongs in .data or .bss.",
       "hint": "Ask what permissions the loader gives the section that holds machine code."
     },
     {
       "question": "Reading a variable that lives in .data starts with adrp x0, var followed by add x0, x0, :lo12:var. Why are two instructions needed before the ldr?",
       "options": [
-        "The address is 64 bits and no single 4-byte instruction can carry it, so the pair builds the address in two steps.",
-        "adrp reads the variable off disk and add places the value into memory.",
-        "adrp sign-extends the 32-bit value held in the variable to 64 bits.",
-        "The pair converts the stored value to the endianness the processor expects."
+        "adrp reads the variable off the disk into memory, and add then copies the value into x0.",
+        "No 4-byte instruction can hold a 64-bit address, so the pair builds it in two steps.",
+        "adrp sign-extends the 32-bit value held in the variable to 64 bits so add can use it.",
+        "The pair converts the stored value to the byte order the processor expects to load."
       ],
-      "correctAnswer": 0,
+      "correctAnswer": 1,
       "explanation": "Every AArch64 instruction is 4 bytes, so a 64-bit address cannot travel as one immediate. adrp loads the address of the 4 KB page that contains var, add with :lo12: fills in the offset of var within that page, and the ldr then uses the completed address.",
       "hint": "Count how many bits one AArch64 instruction has left over for an immediate."
     }

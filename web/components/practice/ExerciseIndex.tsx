@@ -1,28 +1,9 @@
 "use client";
 
 /**
- * The practice index: two columns of ruled datasheet rows, coding exercises
- * on the left and theory sets on the right, each grouped by topic in course
- * order (lib/content/practice-topics owns both the split and the order). A
- * shared search box and difficulty filter sit above both columns, plus a
- * solved indicator, empty and loading states, and the progress row. It
- * receives already-validated index rows as props from the
- * server index page (loadExerciseIndex narrows each exercise to the seven
- * fields below, blurb included) and renders every row field as plain React
- * text (auto-escaped), so there is no markdown/HTML injection path here.
- *
- * Each row leads with its sheet number `5.N` (the 1-based position in the
- * sorted order, stable under filtering), then the title, a quieter blurb line,
- * and the difficulty/solved meta, inside one bordered container per column
- * with hairlines between rows and a sunken band at each topic boundary.
- *
- * Solved state comes from a useSyncExternalStore over the solved-state store:
- * the server snapshot is empty, so the server and first client render agree and
- * the solved badges appear after hydration without a mismatch, then update live
- * when a check passes here or in another tab.
- *
- * A quiet progress row below the columns exports that set as a small json file
- * and imports one back, since localStorage is the only place it lives.
+ * The practice index. Row fields render as plain React text, except the
+ * blurb, which the server page has already run through the sanitizing lesson
+ * renderer, so exercise content still has no way to inject markup here.
  */
 
 import {
@@ -34,6 +15,7 @@ import {
   useSyncExternalStore,
   type ChangeEvent,
   type JSX,
+  type ReactNode,
 } from "react";
 import Link from "next/link";
 import type { ExerciseIndexRow } from "@/lib/content/exercise-schema";
@@ -44,6 +26,8 @@ import {
   subscribeSolved,
 } from "@/lib/playground/solved-state";
 import { compareByOrder } from "@/lib/content/content-order";
+import { slugify } from "@/lib/content/lesson-toc";
+import { matchesAllWords } from "@/lib/content/search-words";
 import {
   PRACTICE_SIDES,
   practiceSide,
@@ -84,9 +68,11 @@ const DIFFICULTY_RANK: Record<string, number> = { intro: 0, core: 1, challenge: 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
 const CHIP_CLASS =
-  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
-const META_CLASS = "font-mono text-[11px] text-[var(--text-tertiary)]";
-const CAPTION_CLASS = "font-mono text-[11px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
+  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+const JUMP_CLASS =
+  "touch-target inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] text-[var(--cyan)] outline-none [font:var(--type-small)] underline-offset-2 hover:underline focus-visible:[box-shadow:var(--ring)] lg:hidden";
+const META_CLASS = "font-mono text-[12px] text-[var(--text-tertiary)]";
+const CAPTION_CLASS = "font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-tertiary)]";
 
 /** A quiet placeholder card, reused for the no-exercises and no-match states. */
 function EmptyCard({ message }: { message: string }): JSX.Element {
@@ -98,7 +84,7 @@ function EmptyCard({ message }: { message: string }): JSX.Element {
 }
 
 const PROGRESS_LINK_CLASS =
-  "inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+  "touch-target inline-flex min-h-[24px] items-center rounded-[var(--radius-control)] px-1 text-[var(--text-secondary)] transition-colors hover:text-[var(--cyan)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
 
 /**
  * Export / import for the solved set and the answers saved beside it. Both
@@ -179,7 +165,7 @@ function ProgressRow(): JSX.Element {
   );
 
   return (
-    <div className="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
+    <div className="flex items-center gap-2 font-mono text-[12px] text-[var(--text-tertiary)]">
       <span>progress:</span>
       <button
         type="button"
@@ -212,7 +198,10 @@ function toggleValue(set: Set<string>, value: string): Set<string> {
 
 interface Row {
   exercise: ExerciseIndexRow;
+  /** The plain text, for the search. */
   blurb: string;
+  /** The same text rendered, inline code and all. */
+  renderedBlurb: ReactNode;
   sheetNumber: string;
 }
 
@@ -240,7 +229,7 @@ function groupByTopic(rows: Row[]): TopicGroup[] {
 }
 
 function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.Element {
-  const { exercise, blurb, sheetNumber } = row;
+  const { exercise, blurb, renderedBlurb, sheetNumber } = row;
   return (
     <li>
       <Link href={`/practice/${exercise.slug}`} className={ROW_CLASS}>
@@ -251,12 +240,12 @@ function ExerciseRow({ row, isSolved }: { row: Row; isSolved: boolean }): JSX.El
           <span className="font-sans text-[15px] font-semibold text-[var(--text-primary)] group-hover:text-[var(--cyan)]">
             {exercise.title}
           </span>
-          {blurb && <span className="text-sm text-[var(--text-secondary)]">{blurb}</span>}
+          {blurb && <span className="text-sm text-[var(--text-secondary)]">{renderedBlurb}</span>}
           {(exercise.difficulty || isSolved) && (
             <span className="mt-1 flex flex-wrap items-center gap-3">
               {exercise.difficulty && <span className={META_CLASS}>{exercise.difficulty}</span>}
               {isSolved && (
-                <span className="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--success)]">
+                <span className="inline-flex items-center gap-1 font-mono text-[12px] text-[var(--success)]">
                   <span aria-hidden="true" className="h-2 w-2 rounded-full bg-[var(--success)]" />
                   solved
                 </span>
@@ -285,7 +274,8 @@ function SideColumn({
   rows: Row[];
   solvedSet: Set<string>;
 }): JSX.Element {
-  const headingId = useId();
+  // A readable id, since the jump link above the lists points at it.
+  const headingId = slugify(side.title);
   const solvedCount = all.filter(({ exercise }) => solvedSet.has(exercise.slug)).length;
   const noun = all.length === 1 ? "exercise" : "exercises";
   const groups = groupByTopic(rows);
@@ -296,7 +286,7 @@ function SideColumn({
         <p className={CAPTION_CLASS}>{side.caption}</p>
         <h2
           id={headingId}
-          className="font-serif text-2xl font-semibold leading-tight text-[var(--text-primary)]"
+          className="scroll-mt-24 font-serif text-2xl font-semibold leading-tight text-[var(--text-primary)]"
         >
           {side.title}
         </h2>
@@ -335,9 +325,12 @@ function SideColumn({
 
 export function ExerciseIndex({
   exercises,
+  blurbs,
   loading,
 }: {
   exercises: ExerciseIndexRow[];
+  /** Each row's blurb, rendered on the server, by slug. */
+  blurbs: Record<string, ReactNode>;
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
@@ -356,9 +349,10 @@ export function ExerciseIndex({
       [...exercises].sort(compareByOrder).map((exercise, index) => ({
         exercise,
         blurb: exercise.blurb,
+        renderedBlurb: blurbs[exercise.slug],
         sheetNumber: `5.${index + 1}`,
       })),
-    [exercises],
+    [exercises, blurbs],
   );
 
   const allDifficulties = useMemo(() => {
@@ -367,19 +361,17 @@ export function ExerciseIndex({
     return [...set].sort((a, b) => (DIFFICULTY_RANK[a] ?? 99) - (DIFFICULTY_RANK[b] ?? 99));
   }, [rows]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return rows.filter(({ exercise, blurb }) => {
-      const haystack = [exercise.title, exercise.topic ?? "", exercise.difficulty ?? "", blurb]
-        .join(" ")
-        .toLowerCase();
-      const matchesQuery = q === "" || haystack.includes(q);
-      const matchesDifficulty =
-        activeDifficulties.size === 0 ||
-        (exercise.difficulty ? activeDifficulties.has(exercise.difficulty) : false);
-      return matchesQuery && matchesDifficulty;
-    });
-  }, [rows, query, activeDifficulties]);
+  const filtered = useMemo(
+    () =>
+      rows.filter(({ exercise, blurb }) => {
+        const text = [exercise.title, exercise.topic ?? "", exercise.difficulty ?? "", blurb].join(" ");
+        const matchesDifficulty =
+          activeDifficulties.size === 0 ||
+          (exercise.difficulty ? activeDifficulties.has(exercise.difficulty) : false);
+        return matchesAllWords(query, text) && matchesDifficulty;
+      }),
+    [rows, query, activeDifficulties],
+  );
 
   // A side with nothing on the sheet at all is left out, so a content set
   // that is all coding exercises renders as one column rather than one
@@ -421,7 +413,7 @@ export function ExerciseIndex({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="search exercises"
-            className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:shadow-[var(--ring)]"
+            className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:[box-shadow:var(--ring)]"
           />
         </div>
         {allDifficulties.length > 0 && (
@@ -439,6 +431,13 @@ export function ExerciseIndex({
             ))}
           </div>
         )}
+        {/* Stacked under lg, the theory sets start some 14,000px down a
+            phone's page. */}
+        {sides.slice(1).map(({ side }) => (
+          <a key={side.id} href={`#${slugify(side.title)}`} className={JUMP_CLASS}>
+            jump to the {side.title.toLowerCase()}
+          </a>
+        ))}
       </div>
 
       <div className={`grid gap-10 ${sides.length > 1 ? "lg:grid-cols-2 lg:gap-8" : ""}`}>

@@ -2,13 +2,9 @@
 
 import Link from "next/link";
 
-// A bordered cyan pill (cyan = the reader acting), shared by the lesson article
-// (code and editor blocks) and the exercise sheet so the playground hand-off
-// reads as one control everywhere. 44px tall for a coarse-pointer target; the
-// resting outline carries the button shape, hover tints the fill (kept light
-// enough that the cyan label still clears WCAG AA on the light surface), focus
-// shows the ring token. Layout (margins, self-alignment) comes through
-// className so each caller places it without forking the style.
+// One style for the lesson and exercise links into the playground. The hover
+// tint stays faint so the cyan label keeps WCAG AA contrast on the light theme.
+// Callers set margins and alignment through className.
 const CLASS =
   "inline-flex min-h-[44px] items-center gap-1.5 rounded-[var(--radius-control)] whitespace-nowrap " +
   "border border-[color-mix(in_srgb,var(--cyan)_60%,transparent)] px-3 " +

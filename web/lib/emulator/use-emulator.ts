@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
-import { buildDisassembly, type DecodedInstruction } from "@/lib/emulator/disassembly";
+import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
+import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
 import type {
   AssembleOutcome,
@@ -23,7 +24,10 @@ import { useBreakpoints } from "@/lib/emulator/use-breakpoints";
 import { useConsoleOutput } from "@/lib/emulator/use-console-output";
 import { useCpuView } from "@/lib/emulator/use-cpu-view";
 import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
+import { formatSteps } from "@/lib/emulator/format-steps";
 import { parseArgs } from "@/lib/playground/args";
+import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
+import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
 
 // The hub is the import site every consumer already uses, so the contract
@@ -36,10 +40,25 @@ export {
   MAX_CONSOLE_CHARS,
 } from "@/lib/emulator/use-console-output";
 
+// One frozen empty list, so an assemble that dropped nothing hands the shell
+// the same array and its drop notice does not re-fire.
+const NO_LINES: number[] = [];
+
+// x16 and x17 (ip0, ip1) are the linker's scratch registers: the stub a `bl
+// printf` runs through writes them, the program does not. Inside a call they
+// are left out of the writes, so a stop there never names a value the student
+// never wrote.
+function withoutCallScratch(snap: StateSnapshot): StateSnapshot {
+  if (!snap.externalCall) return snap;
+  return { ...snap, changedRegs: snap.changedRegs.filter((i) => i !== 16 && i !== 17) };
+}
+
 export function useEmulator(): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
   const sourceRef = useRef("");
+  // The files that source joins: the notes name lines per file.
+  const workspaceRef = useRef<Workspace>({ main: "", extras: [] });
   const frameRef = useRef(0);
   // Authoritative linker address -> editor-line map for the current
   // assembly. Empty until the first successful hosted assemble; an empty
@@ -56,13 +75,22 @@ export function useEmulator(): EmulatorState {
   // guard would still see the pre-assemble halt and silently skip the
   // run; the ref always reflects the latest snapshot.
   const haltedRef = useRef(false);
-  // Loaded-program gate for the execution controls. Stepping or running an
-  // empty machine decodes zeroed memory ("unknown instruction: 0x00000000")
-  // and fills the replay ring with steps that never really executed, so
-  // run/step/stepBack no-op until an assemble succeeds. A ref shadows the
-  // state for the same reason as haltedRef: callbacks captured before an
-  // awaited assemble must see the fresh flag.
+  // Run, step, and step back do nothing until an assemble succeeds: an empty
+  // machine decodes zeroed memory ("unknown instruction: 0x00000000") and
+  // fills the replay ring with steps that never ran. A ref, like haltedRef,
+  // so callbacks captured before an awaited assemble see the fresh flag.
   const programLoadedRef = useRef(false);
+  // The latest snapshot's blocked and canStepBack flags, for the same reason
+  // as haltedRef: the callbacks below act on them before a render lands.
+  const blockedRef = useRef(false);
+  const canStepBackRef = useRef(false);
+  // Set when a RUN stopped at a read, so the console's answer can resume it.
+  // Every other way the machine moves on clears it.
+  const runBlockedRef = useRef(false);
+  // A named save's step count, keyed by name: the machine restores its
+  // registers and memory, and the counter has to come back with them.
+  const savedStepsRef = useRef<Map<string, number>>(new Map());
+  const stepCountRef = useRef(0);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -74,7 +102,11 @@ export function useEmulator(): EmulatorState {
   const [stepCount, setStepCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
+  const [droppedBreakpoints, setDroppedBreakpoints] = useState<number[]>(NO_LINES);
   const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
+  // The last snapshot's call, kept while a run hides it: a run's final
+  // snapshot lands before the run is over, so the stop shows it from here.
+  const lastCallRef = useRef<ExternalCall | null>(null);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
@@ -94,6 +126,8 @@ export function useEmulator(): EmulatorState {
     stderr,
     appendStdout,
     appendStderr,
+    notes,
+    appendNotes,
     syncSeen,
     clearScrollback,
     preserveScrollback,
@@ -101,17 +135,18 @@ export function useEmulator(): EmulatorState {
     setOutputTap,
   } = useConsoleOutput(backendRef);
   const {
-    pushStdin,
+    pushStdin: pushStdinToBackend,
     closeStdin,
     setSnapshotsPaused,
     lint,
     uploadVfsFile,
     readVfsFile,
+    readMemory,
     deleteVfsFile,
     resolveLabel,
     m4Expand,
-    saveState,
-    deleteState,
+    saveState: saveStateToBackend,
+    deleteState: deleteStateFromBackend,
   } = useBackendPassthroughs(backendRef);
   const {
     registers,
@@ -141,21 +176,39 @@ export function useEmulator(): EmulatorState {
     setBreakpointAddress,
     clearBreakpointAddress,
     rekeyAfterAssemble,
-  } = useBreakpoints({ backendRef, lineMapRef, sourceRef, codeBase });
+  } = useBreakpoints({ backendRef, lineMapRef, sourceRef, programLoadedRef, codeBase });
+
+  useEffect(() => {
+    stepCountRef.current = stepCount;
+  }, [stepCount]);
+
+  // Every stdin push lands here too, because the machine keeps only the input
+  // no read has consumed yet. Assemble and reset start it over with the
+  // machine; the cap bounds a long terminal session's keystrokes.
+  const stdinLogRef = useRef("");
+  const pushStdin = useCallback(
+    (s: string, interactive?: boolean) => {
+      stdinLogRef.current = (stdinLogRef.current + s).slice(-MAX_STDIN_BYTES);
+      pushStdinToBackend(s, interactive);
+    },
+    [pushStdinToBackend],
+  );
+  const stdinGiven = useCallback(() => stdinLogRef.current, []);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
     if (snap.frame > frameRef.current) {
       frameRef.current = snap.frame;
       invalidateMemory();
     }
-    const pcNum = applyRegisters(snap);
+    const pcNum = applyRegisters(withoutCallScratch(snap));
     setIsHalted(snap.halted);
     haltedRef.current = snap.halted;
     setBlocked(snap.blocked);
-    // A halted machine wants nothing: the emulator only ever SETS raw mode
-    // (a termios call) and never clears it on exit, // A halted machine wants
-    // nothing: the emulator only ever SETS raw mode and never clears it on
-    // exit, so the flag would otherwise outlive the program that set it.
+    blockedRef.current = snap.blocked;
+    canStepBackRef.current = snap.canStepBack;
+    // A halted machine wants no terminal: the emulator sets raw mode (a
+    // termios call) but never clears it on exit, so the flag would outlive
+    // the program that set it.
     const wantsTerm = snap.wantsTerminal && !snap.halted;
     wantsTerminalRef.current = wantsTerm;
     setWantsTerminal(wantsTerm);
@@ -172,15 +225,14 @@ export function useEmulator(): EmulatorState {
     // sends neither, and the scrollback stays append-only as before.
     if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
-    // Drive the current-line marker off the linker's authoritative
-    // address->editor-line map: look the snapshot pc up directly instead
-    // of counting non-label source lines (which double-counts data/macro
-    // lines and drifts on complex programs). Fall back to the legacy
-    // line-count path only when the map is empty (bare-metal, already 1:1).
-    // An external call is a PAUSED-state affordance. A run passes through
-    // one on every printf, so honoring it mid-run would strobe the card and
-    // drag the marker back to the call site on every heartbeat; the pc the
-    // run reports is the truth there.
+    // Worded against the files just assembled, whose joined lines the rows name.
+    if (snap.clobberNotes?.length) {
+      appendNotes(clobberNoteTexts(snap.clobberNotes, workspaceRef.current));
+    }
+    // An external call shows only while paused: a run passes through one on
+    // every printf, and showing it mid-run would flicker the card and drag
+    // the marker back to the call site on every heartbeat.
+    lastCallRef.current = snap.externalCall ?? null;
     const call = (!runningRef.current && snap.externalCall) || null;
     setExternalCall(call);
     const map = lineMapRef.current;
@@ -220,6 +272,7 @@ export function useEmulator(): EmulatorState {
       setDirtyAddrsTick((t) => t + 1);
     }
   }, [
+    appendNotes,
     appendStderr,
     appendStdout,
     applyRegisters,
@@ -279,15 +332,20 @@ export function useEmulator(): EmulatorState {
       source: string,
       args: string[],
       surfaceErrors: boolean,
+      workspace: Workspace = { main: source, extras: [] },
     ): Promise<AssembleOutcome> => {
       const backend = backendRef.current;
       if (!backend) {
         return Promise.resolve({ success: false, error: "emulator not loaded", errorLine: null });
       }
       sourceRef.current = source;
+      workspaceRef.current = workspace;
+      runBlockedRef.current = false;
+      stdinLogRef.current = "";
       if (surfaceErrors) {
         setError(null);
         setAssemblyErrors([]);
+        setDroppedBreakpoints(NO_LINES);
         // Console scrollback and the step counter belong to the EDITOR's
         // debugging session. A terminal build (`gcc foo.s`, `./foo`) shares
         // the one machine but must not erase what the student was reading;
@@ -300,9 +358,8 @@ export function useEmulator(): EmulatorState {
         // the scrollback as history parks it out of the counters' reach.
         preserveScrollback();
       }
-      // The backend wipes the machine on every assemble attempt, so the old
-      // program is gone the moment one starts; the flag comes back only on
-      // success. A failed assemble leaves the controls gated.
+      // The old program stops counting the moment an attempt starts; the flag
+      // comes back only on success. A failed assemble leaves the controls gated.
       markProgramLoaded(false);
       // The replay ring is the editor's scrubber history and seeking only
       // repaints React state (never the CPU), so a terminal build leaves it
@@ -313,23 +370,28 @@ export function useEmulator(): EmulatorState {
       lineMapRef.current = emptyLineMap();
       detectHostedMode(source).then(setHostedMode).catch(() => {});
 
+      // A failure can leave the old program in the machine (the bare-metal
+      // assembler clears it only on success; an empty or thrown attempt never
+      // reaches it). The reset's snapshot returns every pane to the cold-load
+      // state, and is awaited so a caller's seeds land after the wipe.
+      const fail = async (outcome: AssembleOutcome): Promise<AssembleOutcome> => {
+        setInstructions([]);
+        await backend.reset().catch(() => {});
+        return outcome;
+      };
+
       if (!hasAssemblableContent(source)) {
         if (surfaceErrors) setError("no instructions to assemble");
-        setInstructions([]);
-        return Promise.resolve({
+        return fail({
           success: false,
           error: "no instructions to assemble",
           errorLine: null,
         });
       }
 
-      // Return the promise chain so callers that must run only after the
-      // backend has loaded the program (the embed/checker Run, which has no
-      // separate Assemble control) can await assembly.
-      // isAssembling drives the Assemble button's disabled "loading..."
-      // state, which is the EDITOR's control: a terminal build flashing it
-      // told the student their button was busy with work they never asked
-      // for.
+      // Returned so callers with no Assemble button (the embed and checker
+      // Run) can await it. Only the editor's assemble marks that button busy;
+      // a terminal build did not come from it.
       if (surfaceErrors) setIsAssembling(true);
       return backend
         .assemble(source, args)
@@ -348,24 +410,22 @@ export function useEmulator(): EmulatorState {
               setAssemblyErrors(errors);
               setError(result.error ?? null);
             }
-            return {
+            return fail({
               success: false,
               error: result.error ?? null,
               errorLine,
-            };
+            });
           }
           const base = await backend.codeBase();
-          // Fetch the authoritative line map alongside codeBase (mirroring
-          // the existing codeBase round-trip), parse it into addr<->line
-          // lookups, and key the disassembly text off it for this assembly,
-          // along with the marker and breakpoints through the ref.
+          // The marker, breakpoints, and disassembly all read this map.
           const flatMap = await backend.lineMap();
           const map = parseLineMap(flatMap);
           lineMapRef.current = map;
           const mapped = !isEmptyLineMap(map);
           // The gutter dots are re-keyed through the FRESH map; lines that
-          // no longer resolve lose their dot.
-          await rekeyAfterAssemble({ base, source, map });
+          // no longer resolve lose their dot, and the editor says which.
+          const dropped = await rekeyAfterAssemble({ base, source, map });
+          if (surfaceErrors && dropped.length > 0) setDroppedBreakpoints(dropped);
           // The post-assemble snapshot was applied while the loaded flag was
           // still down (and before this map existed), so it left no marker.
           // Recompute the entry marker from the live PC now: through the map
@@ -378,14 +438,13 @@ export function useEmulator(): EmulatorState {
           markCurrentLine(entryLine);
           // One bulk read for the whole code region: a per-instruction loop
           // costs instruction_count worker round-trips per assemble.
+          const count = listingLength(base, result.instruction_count, map);
           const codeBytes =
-            result.instruction_count > 0
-              ? await backend.getMemory(base, result.instruction_count * 4)
-              : new Uint8Array(0);
+            count > 0 ? await backend.getMemory(base, count * 4) : new Uint8Array(0);
           setInstructions(
             buildDisassembly({
               base,
-              count: result.instruction_count,
+              count,
               codeBytes,
               source,
               map,
@@ -394,10 +453,10 @@ export function useEmulator(): EmulatorState {
           markProgramLoaded(true);
           return { success: true, error: null, errorLine: null };
         })
-        .catch((e: unknown): AssembleOutcome => {
+        .catch((e: unknown): Promise<AssembleOutcome> => {
           const message = e instanceof Error ? e.message : String(e);
           if (surfaceErrors) setError(message);
-          return { success: false, error: message, errorLine: null };
+          return fail({ success: false, error: message, errorLine: null });
         })
         .finally(() => {
           if (surfaceErrors) setIsAssembling(false);
@@ -415,8 +474,8 @@ export function useEmulator(): EmulatorState {
   );
 
   const assemble = useCallback(
-    (source: string, args: string[] = []): Promise<boolean> =>
-      assembleWith(source, args, true).then((r) => r.success),
+    (source: string, args: string[] = [], workspace?: Workspace): Promise<boolean> =>
+      assembleWith(source, args, true, workspace).then((r) => r.success),
     [assembleWith],
   );
 
@@ -425,8 +484,8 @@ export function useEmulator(): EmulatorState {
   // editor's error markers: the terminal's error belongs to the terminal's
   // file, not the source the editor happens to show.
   const assembleForTool = useCallback(
-    (source: string, args: string[] = []): Promise<AssembleOutcome> =>
-      assembleWith(source, args, false),
+    (source: string, args: string[] = [], workspace?: Workspace): Promise<AssembleOutcome> =>
+      assembleWith(source, args, false, workspace),
     [assembleWith],
   );
 
@@ -448,8 +507,11 @@ export function useEmulator(): EmulatorState {
   const step = useCallback(() => {
     const backend = backendRef.current;
     // Gate on a loaded program (through the ref, like run) so the controls,
-    // shortcuts, palette, and terminal all share one no-program guard.
-    if (!backend || !programLoadedRef.current) return;
+    // shortcuts, palette, and terminal all share one no-program guard. A
+    // halted machine executes nothing, so a step there must not count one
+    // or capture a replay frame of a step that never happened.
+    if (!backend || !programLoadedRef.current || haltedRef.current) return;
+    runBlockedRef.current = false;
     setError(null);
     backend
       .step()
@@ -471,7 +533,10 @@ export function useEmulator(): EmulatorState {
 
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
-    if (!backend || !programLoadedRef.current) return;
+    // Past the oldest kept frame the machine does not move, and the counter
+    // must not move without it.
+    if (!backend || !programLoadedRef.current || !canStepBackRef.current) return;
+    runBlockedRef.current = false;
     setError(null);
     backend
       .stepBack()
@@ -481,9 +546,20 @@ export function useEmulator(): EmulatorState {
       });
   }, []);
 
+  const saveState = useCallback((name: string) => {
+    savedStepsRef.current.set(name, stepCountRef.current);
+    saveStateToBackend(name);
+  }, [saveStateToBackend]);
+
+  const deleteState = useCallback((name: string) => {
+    savedStepsRef.current.delete(name);
+    deleteStateFromBackend(name);
+  }, [deleteStateFromBackend]);
+
   const loadState = useCallback((name: string) => {
     const backend = backendRef.current;
     if (!backend) return;
+    runBlockedRef.current = false;
     // A restored save is a live machine with a program in memory, so the
     // execution controls come back even when a reset preceded the load.
     // Any error banner describes a run the restored state never took.
@@ -491,9 +567,16 @@ export function useEmulator(): EmulatorState {
       if (ok) {
         setError(null);
         markProgramLoaded(true);
+        // The counter goes back to the save's own count, and the replay
+        // frames describe a timeline the machine is no longer on.
+        const saved = savedStepsRef.current.get(name);
+        if (saved != null) {
+          setStepCount(saved);
+          resetReplayHistory();
+        }
       }
     });
-  }, [markProgramLoaded]);
+  }, [markProgramLoaded, resetReplayHistory]);
 
   const run = useCallback(() => {
     const backend = backendRef.current;
@@ -504,6 +587,10 @@ export function useEmulator(): EmulatorState {
     // palette's Run) from stacking another 1M-step budget on the machine.
     if (!backend || !programLoadedRef.current || haltedRef.current) return;
     if (runningRef.current) return;
+    runBlockedRef.current = false;
+    // The last stop's alert ("paused after 1,000,000 steps") describes a run
+    // that is over; step clears it the same way.
+    setError(null);
     setIsRunning(true);
     runningRef.current = true;
     const drive = async (): Promise<void> => {
@@ -528,12 +615,22 @@ export function useEmulator(): EmulatorState {
           await new Promise<void>((resolve) => setTimeout(resolve, ms));
           if (runningRef.current) continue;
         }
+        // The snapshot this result carries has already landed, so the ref
+        // says whether the run stopped at a read rather than for good.
+        runBlockedRef.current = blockedRef.current && !runResult.error;
+        // That snapshot hid any library call, since the run was still on. A
+        // stop inside printf, or at a scanf's read, marks the `bl` line.
+        const call = lastCallRef.current;
+        if (call && programLoadedRef.current) {
+          setExternalCall(call);
+          markCurrentLine(call.callSiteLine);
+        }
         setStepCount((c) => {
           const next = c + total;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           else if (runResult.step_limit_reached) {
             setError(
-              `paused after ${total.toLocaleString()} steps without finishing. ` +
+              `paused after ${formatSteps(total)} without finishing. ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
             );
           }
@@ -554,12 +651,19 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [pushReplayFrame, surfaceRuntimeError]);
+  }, [markCurrentLine, pushReplayFrame, surfaceRuntimeError]);
+
+  const resumeAfterInput = useCallback(() => {
+    if (!runBlockedRef.current) return;
+    runBlockedRef.current = false;
+    run();
+  }, [run]);
 
   const pause = useCallback(() => {
     const backend = backendRef.current;
     if (!backend) return;
     runningRef.current = false;
+    runBlockedRef.current = false;
     setIsRunning(false);
     void backend.pause();
   }, []);
@@ -568,6 +672,8 @@ export function useEmulator(): EmulatorState {
     const backend = backendRef.current;
     if (!backend) return;
     runningRef.current = false;
+    runBlockedRef.current = false;
+    stdinLogRef.current = "";
     setIsRunning(false);
     setError(null);
     setAssemblyErrors([]);
@@ -604,6 +710,7 @@ export function useEmulator(): EmulatorState {
       const outcome = await assembleWith(params.source, argList, true);
       if (!outcome.success) return { success: false, stepped: 0 };
       if (params.stdin) {
+        stdinLogRef.current = params.stdin.slice(-MAX_STDIN_BYTES);
         await backend.pushStdin(params.stdin);
       }
       // The persisted count is untrusted (an imported bundle passes a
@@ -650,6 +757,7 @@ export function useEmulator(): EmulatorState {
       error,
       assemblyErrors,
       breakpoints,
+      droppedBreakpoints,
       currentLine,
       externalCall,
       instructions,
@@ -657,6 +765,7 @@ export function useEmulator(): EmulatorState {
       memoryRegions,
       stdout,
       stderr,
+      notes,
       blocked,
       wantsTerminal,
       setOutputTap,
@@ -681,7 +790,10 @@ export function useEmulator(): EmulatorState {
       remapBreakpoints,
       getMemory,
       getMemoryMapped,
+      readMemory,
       pushStdin,
+      stdinGiven,
+      resumeAfterInput,
       closeStdin,
       setSnapshotsPaused,
       lint,
@@ -706,14 +818,15 @@ export function useEmulator(): EmulatorState {
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
+      droppedBreakpoints, resumeAfterInput,
       currentLine, externalCall, instructions, codeBase, memoryRegions,
-      stdout, stderr, blocked,
+      stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
-      getMemory, getMemoryMapped,
-      pushStdin, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
+      getMemory, getMemoryMapped, readMemory,
+      pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, replayTick, dirtyAddrsTick, seekReplay,
     ],

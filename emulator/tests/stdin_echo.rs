@@ -1,14 +1,8 @@
-//! Cooked-tty echo for typed input, and the display counters that let a
-//! host unprint it again.
-//!
-//! A real terminal in cooked mode prints what you type, so a session at a
-//! real prompt reads "Enter score 1: 10" while a console that shows only
-//! the program's own output reads "Enter score 1: ".
-//! `push_stdin_interactive` marks a run of queued bytes as typed; the
-//! first read that touches the run echoes it whole, at the moment it is
-//! consumed. `push_stdin` keeps the old silent behavior
-//! for the redirect paths (fixtures, scripted terminal drives, the
-//! exercise checker), and raw mode echoes nothing at all.
+//! Typed input shows in the output the way a terminal shows it ("Enter
+//! score 1: 10"), and the display counters let the page take it back on a
+//! step back. A line queued with `push_stdin_interactive` echoes whole when
+//! the first read reaches it; `push_stdin` (redirected input and the
+//! exercise checker) and raw mode echo nothing.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -104,8 +98,9 @@ main:
         ret
 "#;
 
-/// TCGETS, clear ICANON, TCSETS: the real route a terminal program takes
-/// into raw mode. Then one getchar the program echoes itself.
+/// Read the terminal settings (TCGETS), turn off line mode (ICANON) and
+/// write them back (TCSETS): how a real program enters raw mode. Then one
+/// getchar the program echoes itself.
 const RAW_MODE_GETCHAR: &str = r#"
 define(fp, x29)
 define(lr, x30)
@@ -192,7 +187,7 @@ main:
 #[test]
 fn push_stdin_never_echoes() {
     // The redirect path. Every fixture, the corpus runner, the scripted
-    // terminal drives and the exercise checker come through here, so this
+    // terminal tests and the exercise checker come through here, so this
     // transcript must not change.
     let mut cpu = load(TWO_PROMPTS);
     cpu.push_stdin(b"10\n20\n");
@@ -217,7 +212,7 @@ fn an_interactive_line_echoes_once_after_its_prompt() {
 
 #[test]
 fn a_line_typed_at_a_blocked_prompt_echoes_when_the_read_resumes() {
-    // The web's actual flow: the program parks on scanf, the student types,
+    // What the page does: the program waits on scanf, the student types,
     // the run resumes. The echo has to land after the prompt that asked for
     // it, and the newline the NEXT read skips must not print itself.
     let mut cpu = load(TWO_PROMPTS);
@@ -259,7 +254,7 @@ fn the_same_program_stays_silent_on_a_redirect() {
 
 #[test]
 fn raw_mode_suppresses_the_echo() {
-    // A termios program paints its own screen and would fight the echo for
+    // A raw-mode program draws its own screen and would fight the echo for
     // the cursor, so raw mode echoes nothing: the only byte on stdout is
     // the one the program chose to print itself.
     let mut cpu = load(RAW_MODE_GETCHAR);
@@ -313,7 +308,7 @@ fn echoed_input_counts_toward_the_display_counter() {
     let mut cpu = load(GETCHAR_LINE);
     cpu.push_stdin_interactive(b"ab\n");
     run_to_halt(&mut cpu);
-    // "type: " + "ab\n" + "done\n": the echo drains to the host like any
+    // "type: " + "ab\n" + "done\n": the echo reaches the page like any
     // other output, so it is counted like any other output.
     assert_eq!(cpu.stdout_seen(), 14);
 }
@@ -351,7 +346,7 @@ fn stepping_back_over_the_echo_replays_it_exactly_once() {
     cpu.push_stdin_interactive(b"10\n");
     cpu.push_stdin_interactive(b"20\n");
 
-    // Mirror what a host does with the counters: keep every byte stdout
+    // Do what the page does with the counters: keep every byte stdout
     // produced, and trim back to the frame's count when a step is undone.
     let mut transcript: Vec<u8> = Vec::new();
     let mut stepped_back = false;

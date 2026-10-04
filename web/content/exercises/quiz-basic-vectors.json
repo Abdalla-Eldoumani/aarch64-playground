@@ -1,0 +1,96 @@
+{
+  "title": "Basic quiz: vectors",
+  "slug": "quiz-basic-vectors",
+  "order": 136,
+  "lastUpdated": "2026-10-01",
+  "topic": "floating-point",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "The lanes and arrangements of a `v` register, the scalar names for its low bits, the lane-by-lane `add`, the saturating `uqadd`, `dup`, copying a lane out for `printf`, and which `v` registers a call may change.",
+  "questions": [
+    {
+      "question": "How many lanes does v3.16b have, and how wide is each one?",
+      "options": [
+        "8 lanes of 16 bits",
+        "4 lanes of 32 bits",
+        "16 lanes of 8 bits",
+        "16 lanes of 16 bits"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The number in the arrangement counts the lanes, and the letter gives their width. b means a byte, 8 bits. 16 lanes of 8 bits fill all 128 bits of the register.",
+      "hint": "b stands for byte."
+    },
+    {
+      "question": "Which name reads the low 32 bits of v6 as one value?",
+      "options": [
+        "s6",
+        "h6",
+        "d6",
+        "q6"
+      ],
+      "correctAnswer": 0,
+      "explanation": "s6 is the low 32 bits of v6, the same bits a single-precision float uses. h6 is the low 16 bits, d6 the low 64, and q6 all 128.",
+      "hint": "The floating-point lesson used the same name for a single."
+    },
+    {
+      "question": "What does add v2.4s, v0.4s, v1.4s do?",
+      "options": [
+        "It adds v0 and v1 as two 128-bit numbers, carrying from lane to lane",
+        "It adds each lane of v0 to the same lane of v1: four separate adds",
+        "It adds all eight lanes of v0 and v1 into one total in lane 0 of v2",
+        "It adds only lane 0 and leaves the other three lanes of v2 unchanged"
+      ],
+      "correctAnswer": 1,
+      "explanation": "A vector add works lane by lane: lane 0 of v0 plus lane 0 of v1 goes to lane 0 of v2, and the same for lanes 1 to 3. No carry crosses from one lane to the next. Totalling the lanes of one register is the job of addv.",
+      "hint": "Each lane stands alone."
+    },
+    {
+      "question": "A byte lane holds 250. What does it hold after uqadd adds 10 to it?",
+      "options": [
+        "4",
+        "250",
+        "255",
+        "260"
+      ],
+      "correctAnswer": 2,
+      "explanation": "uqadd (unsigned saturating add) stops at the largest value a lane can hold instead of wrapping. 250 + 10 is 260, which does not fit in 8 bits, so the lane holds 255. A plain add would wrap to 260 - 256 = 4.",
+      "hint": "A saturating add sticks at the top of the range."
+    },
+    {
+      "question": "Which instruction copies w9 into all four lanes of v3?",
+      "options": [
+        "ins v3.s[0], w9",
+        "addv s3, v3.4s",
+        "movi v3.4s, 9",
+        "dup v3.4s, w9"
+      ],
+      "correctAnswer": 3,
+      "explanation": "dup (duplicate) copies one general register into every lane. ins copies it into one lane only, movi takes a constant rather than a register, and addv totals the lanes instead of filling them.",
+      "hint": "The value is duplicated."
+    },
+    {
+      "question": "Which v registers may a function you call change in every one of their 128 bits?",
+      "options": [
+        "v0 to v7 and v16 to v31",
+        "v8 to v15, and no others",
+        "every v register except v0",
+        "none, since every v register is kept"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Under the calling convention, a function you call must hand back unchanged only the low 64 bits of v8 to v15, the parts named d8 to d15. The upper halves of v8 to v15 may come back changed, and so may every bit of v0 to v7 and v16 to v31. So no v register keeps a whole 128-bit value across a call.",
+      "hint": "The rule protects d8 to d15, and a d register is only the low half."
+    },
+    {
+      "question": "Which instruction copies lane 2 of v4.4s into w1, ready for the first %d of a printf?",
+      "options": [
+        "umov w1, v4.s[0]",
+        "mov w1, v4.s[2]",
+        "dup s1, v4.s[2]",
+        "addv s1, v4.4s"
+      ],
+      "correctAnswer": 1,
+      "explanation": "mov w1, v4.s[2] copies 32-bit lane 2 into the general register w1, where printf looks for the value of its first %d. This mov is another name for umov, so umov w1, v4.s[0] is the same instruction for lane 0. dup s1, v4.s[2] puts lane 2 in s1, a register printf does not read for %d.",
+      "hint": "printf reads %d values from the w registers."
+    }
+  ]
+}

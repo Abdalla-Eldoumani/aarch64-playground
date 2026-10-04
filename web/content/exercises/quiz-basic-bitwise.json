@@ -1,0 +1,84 @@
+{
+  "title": "Basic quiz: bit manipulation",
+  "slug": "quiz-basic-bitwise",
+  "order": 132,
+  "lastUpdated": "2026-10-01",
+  "topic": "bitwise",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Setting and clearing one bit with a mask, the AND of n with n - 1, branching on a single bit with `tbnz`, moving a field down with a shift and a mask, and rotating.",
+  "questions": [
+    {
+      "question": "w9 holds 1 shifted left by 5. Which instruction turns bit 5 of w19 on and leaves every other bit of w19 as it was?",
+      "options": [
+        "and w19, w19, w9",
+        "eor w19, w19, w9",
+        "bic w19, w19, w9",
+        "orr w19, w19, w9"
+      ],
+      "correctAnswer": 3,
+      "explanation": "orr gives a 1 wherever either source has a 1. The mask has a 1 only in bit 5, so bit 5 of w19 ends up 1 and every other bit passes through unchanged. and would clear every bit except bit 5, eor would turn bit 5 off if it was already on, and bic would clear bit 5.",
+      "hint": "An OR with 0 leaves a bit alone, and an OR with 1 always gives 1."
+    },
+    {
+      "question": "x19 holds n, a power of two such as 8 or 64, and x20 holds n - 1. What does and x9, x19, x20 leave in x9?",
+      "options": [
+        "0, because n and n - 1 share no set bit",
+        "1, because only bit 0 is set in both",
+        "n, because the AND keeps n's single set bit",
+        "n - 1, because the AND keeps the low bits"
+      ],
+      "correctAnswer": 0,
+      "explanation": "A power of two has a single 1 bit. Subtracting 1 clears that bit and sets every bit below it, so 8 (1000) becomes 7 (0111). The two values have no 1 bit in the same place, so the AND is 0. For any other positive n the AND keeps at least one bit, which is how a program tests for a power of two.",
+      "hint": "Write 8 and 7 in binary, one above the other."
+    },
+    {
+      "question": "Which instruction jumps to odd when bit 0 of w19 is 1, with no cmp or tst before it?",
+      "options": [
+        "tbz w19, 0, odd",
+        "tbnz w19, 0, odd",
+        "cbnz w19, odd",
+        "b.ne odd"
+      ],
+      "correctAnswer": 1,
+      "explanation": "tbnz (test bit and branch if not zero) looks at the one bit it names and branches when that bit is 1. tbz branches when the bit is 0. cbnz tests the whole register, so it would also jump for 2 or 4, and b.ne reads the flags, which nothing has set here.",
+      "hint": "Two of the options name a single bit. Which of those branches when the bit is set?"
+    },
+    {
+      "question": "Bits 4 to 7 of w0 hold a 4-bit field. Which pair of instructions moves that field down to bits 0 to 3 of w1, with zeros above it?",
+      "options": [
+        "and w1, w0, 0xF, then lsr w1, w1, 4",
+        "lsl w1, w0, 4, then and w1, w1, 0xF0",
+        "asr w1, w0, 4, then orr w1, w1, 0xF",
+        "lsr w1, w0, 4, then and w1, w1, 0xF"
+      ],
+      "correctAnswer": 3,
+      "explanation": "lsr by 4 moves bits 4 to 7 down to bits 0 to 3, and the and with 0xF then clears everything above them. Masking with 0xF first keeps bits 0 to 3, which the shift then throws away, so that pair always gives 0. ubfx w1, w0, 4, 4 does the same job in one instruction.",
+      "hint": "Move the field down first, then clear whatever came down with it."
+    },
+    {
+      "question": "What does ror w1, w0, 8 do with the 8 bits it moves out of the low end of w0?",
+      "options": [
+        "It puts them back in at the top, as bits 24 to 31",
+        "It drops them and fills bits 24 to 31 with zeros",
+        "It drops them and copies the sign bit into bits 24 to 31",
+        "It leaves them where they were and clears bits 24 to 31"
+      ],
+      "correctAnswer": 0,
+      "explanation": "ror (rotate right) is a shift right that loses nothing. Each bit that leaves bit 0 comes back in at bit 31. Rotating 0x12345678 right by 8 gives 0x78123456. lsr fills the top with zeros instead, and asr fills it with copies of the sign bit.",
+      "hint": "A rotate treats the register as a ring."
+    },
+    {
+      "question": "Which value in w9 makes and w19, w19, w9 clear bit 0 of w19 and keep its other 31 bits?",
+      "options": [
+        "0x00000001",
+        "0x7FFFFFFF",
+        "0xFFFFFFFE",
+        "0xFFFFFFFF"
+      ],
+      "correctAnswer": 2,
+      "explanation": "and keeps a bit only where the mask has a 1. 0xFFFFFFFE has a 1 in every place but bit 0, so bit 0 is cleared and the rest survive. 0x00000001 keeps only bit 0, 0x7FFFFFFF clears bit 31 instead, and 0xFFFFFFFF changes nothing. bic with a mask of 1 gives the same result without building the inverted mask.",
+      "hint": "The mask needs a 0 in the bit to clear and a 1 everywhere else."
+    }
+  ]
+}

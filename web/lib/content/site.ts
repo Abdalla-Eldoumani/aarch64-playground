@@ -5,6 +5,15 @@
 export const SITE_URL = "https://aarch64-playground.com";
 export const REPO_URL = "https://github.com/Abdalla-Eldoumani/aarch64-playground";
 
+/** The name every title, share card, structured-data entry, and the app manifest print. */
+export const SITE_NAME = "AArch64 Playground";
+
+// The home page's search result. The root layout falls back to the same
+// pair, so a page without its own copy still reads as the home page.
+export const HOME_TITLE = "ARMv8 assembly emulator and debugger";
+export const HOME_DESCRIPTION =
+  "Write, run, and step through ARMv8 assembly in your browser while the registers, stack, and memory update. A free study tool for CPSC 355.";
+
 // The preview image messaging apps show. Open Graph and Twitter cards do not deep-merge
 // across route segments, so every restated card pulls this one image; the url
 // stays relative and resolves through metadataBase to the production origin.
@@ -12,7 +21,7 @@ export const SHARE_CARD_IMAGE = {
   url: "/og.png",
   width: 1200,
   height: 630,
-  alt: "cpsc 355 playground: the debugger mid-step, with the current instruction and a changed register highlighted",
+  alt: "AArch64 Playground, an ARMv8 emulator and debugger in the browser, beside a register file with one register just changed",
 } as const;
 
 // The facts the footer states, kept here so the copy has one source. The
@@ -30,7 +39,7 @@ export const CREDIBILITY = {
   engineNote: "a hand-written Rust interpreter compiled to WebAssembly",
   // The host's analytics are cookieless aggregate counts; everything a
   // student writes stays in their browser.
-  privacyNote: "No accounts · cookieless visit counts only · programs stay in your browser",
+  privacyNote: "No accounts · visits counted without cookies · programs stay in your browser",
 } as const;
 
 export interface NavRoute {
@@ -52,4 +61,23 @@ export const NAV_ROUTES: NavRoute[] = [
 export function isActiveRoute(pathname: string, href: string): boolean {
   if (href === "/") return pathname === "/";
   return pathname === href || pathname.startsWith(href + "/");
+}
+
+// The fragment /reference gives an instruction's entry: lower case with dots
+// as dashes, so b.cond is #b-cond. The entry's id, the fragment it writes, and
+// every link into it go through this one rule.
+export function referenceId(mnemonic: string): string {
+  return mnemonic.toLowerCase().replace(/\./g, "-");
+}
+
+// The fragment /reference gives a pitfall card; following it opens the
+// pitfalls tab at that card.
+export function pitfallFragment(slug: string): string {
+  return `pitfall-${slug}`;
+}
+
+// The fragment /reference gives a section of the calling-convention guide;
+// following it opens that tab at the section.
+export function callingConventionFragment(section: string): string {
+  return `calling-convention-${section}`;
 }

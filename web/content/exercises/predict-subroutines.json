@@ -1,7 +1,8 @@
 {
   "title": "Predict: subroutines",
   "slug": "predict-subroutines",
-  "order": 61,
+  "order": 101,
+  "lastUpdated": "2026-09-28",
   "topic": "subroutines",
   "difficulty": "challenge",
   "variant": "prediction",
@@ -25,15 +26,15 @@
       "code": "cube:\n    mul w9, w0, w0\n    mul w0, w9, w0\n    ret",
       "question": "cube calls nothing and writes only w0 and w9. How many bytes does it allocate on the stack? Answer in decimal.",
       "answer": "0",
-      "explanation": "cube makes no call, so nothing overwrites x30 and the return address never has to be saved. x0 through x7 and x9 through x15 are caller-saved, so a routine that writes only w0 and w9 has nothing to preserve for its caller. With no local variables either, it skips the frame record and allocates nothing.",
+      "explanation": "cube makes no call, so nothing overwrites x30 and the return address never has to be saved. x0 through x7 and x9 through x15 are caller-saved, so a routine that writes only w0 and w9 has nothing to preserve for its caller. With no local variables either, it skips the frame record (the saved x29 and x30) and allocates nothing.",
       "hint": "It calls nothing and touches only caller-saved registers, so what is left to save?"
     },
     {
       "code": "// C, where struct mystruct is 64 bytes of int members\nstruct mystruct lvar;\nreturn lvar;",
       "question": "This structure is far too wide to come back in the result registers, so the caller passes a hidden pointer to the space that receives it. Which register carries that pointer? Write the register name, for example x0.",
       "answer": "x8",
-      "explanation": "An integer structure larger than 16 bytes does not fit in the result registers x0 and x1, so it is returned indirectly. The calling code reserves the memory, puts its address in x8, and the subroutine writes the result through that pointer instead of returning a value in x0.",
-      "hint": "The convention reserves one register for the indirect result location, and it sits after the eight argument registers."
+      "explanation": "An integer structure larger than 16 bytes does not fit in the result registers x0 and x1, so it is returned through memory instead. The calling code reserves the memory, puts its address in x8, and the subroutine writes the result through that pointer instead of returning a value in x0.",
+      "hint": "The convention reserves one register for the address of a returned structure, and it sits right after the eight argument registers."
     }
   ]
 }

@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useId, useRef } from "react";
 import { formatWord32 } from "@/lib/emulator/format-hex";
 import type { DecodedInstruction } from "@/lib/emulator/use-emulator";
 
@@ -33,6 +34,23 @@ export function InstructionView({
 }: InstructionViewProps) {
   // One address drives both the marker and the window.
   const marker = anchorPc ?? pc;
+  const headingId = useId();
+  const boxRef = useRef<HTMLDivElement>(null);
+  const currentRef = useRef<HTMLTableRowElement>(null);
+
+  // Keep the current row in the pane after a step or a stop, the way the
+  // editor follows its line: the nearest scroll, at once, and nothing during
+  // a run. The box's own scrollTop moves, never the page's.
+  useEffect(() => {
+    const box = boxRef.current;
+    const row = currentRef.current;
+    if (running || !box || !row) return;
+    const view = box.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    if (r.top < view.top) box.scrollTop -= view.top - r.top;
+    else if (r.bottom > view.bottom) box.scrollTop += r.bottom - view.bottom;
+  }, [marker, running, instructions]);
+
   if (instructions.length === 0) {
     return (
       <div className="p-3 text-xs text-[var(--text-secondary)]">
@@ -55,14 +73,25 @@ export function InstructionView({
     : instructions;
 
   return (
-    <div className="p-3 text-xs">
-      <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[10px] mb-2">
+    // The pane's scroll box, so the follow above can move it, and a named stop
+    // whose focus outline sits inside it: an outer ring is clipped by the pane.
+    <div
+      ref={boxRef}
+      role="group"
+      aria-labelledby={headingId}
+      tabIndex={0}
+      className="h-full overflow-auto p-3 text-xs focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+    >
+      <h2
+        id={headingId}
+        className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px] mb-2"
+      >
         disassembly
       </h2>
       {windowed && (
         <p
           role="status"
-          className="mb-2 font-mono text-[10px] text-[var(--text-tertiary)]"
+          className="mb-2 font-mono text-[12px] text-[var(--text-tertiary)]"
         >
           showing {(start + 1).toLocaleString()}-
           {(start + visible.length).toLocaleString()} of{" "}
@@ -85,6 +114,8 @@ export function InstructionView({
             return (
               <tr
                 key={instr.address}
+                ref={isCurrent ? currentRef : undefined}
+                aria-current={isCurrent ? "true" : undefined}
                 className={
                   isCurrent
                     ? `text-[var(--amber)]${running ? " anim-run-breathe" : ""}`

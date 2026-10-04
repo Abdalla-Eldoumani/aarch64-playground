@@ -1,16 +1,13 @@
 #!/usr/bin/env node
 /*
- * Brotli budget for the JavaScript a route's document actually loads.
+ * Brotli budget for the JavaScript each route's document loads.
  *
- * size-limit can only glob file names, and the App Router's shared chunks
- * are named by webpack-assigned ids that move whenever the module graph
- * moves. A glob over those ids measures the wrong chunk the moment a
- * refactor renumbers them, which is how the xterm budget once ended up
- * measuring nothing. So this reads the build's own manifests
- * instead of guessing at names: the root set from build-manifest.json, and
- * the per-route set from app-build-manifest.json when the build emits one,
- * otherwise from the prerendered document's own <script src> list, which is
- * exactly what the browser fetches.
+ * size-limit can only glob file names, and webpack renumbers the shared
+ * chunks whenever the module graph moves, which once left the xterm budget
+ * measuring nothing. This reads the build's own manifests instead: the root
+ * set from build-manifest.json, and each route's set from
+ * app-build-manifest.json, or from the prerendered page's <script src> tags
+ * when the build emits no such manifest.
  *
  *   node scripts/bundle-budget.js
  *
@@ -24,11 +21,10 @@ const zlib = require("node:zlib");
 const NEXT_DIR = path.join(__dirname, "..", "web", ".next");
 
 /**
- * One budget per prerendered entry document. `page` is the
- * app-build-manifest key; `document` is the prerendered HTML that answers
- * the same question when that manifest is absent. Limits are the measured
- * brotli total plus ten percent, so a limit far above the measurement (a
- * budget that can never fire) is a bug to fix here.
+ * One budget per prerendered page. `page` is the app-build-manifest key and
+ * `document` the prerendered HTML used when that manifest is absent. Each
+ * limit is the measured brotli size plus ten percent; a limit far above the
+ * measurement can never fire, so it is a bug.
  */
 const ROUTES = [
   {

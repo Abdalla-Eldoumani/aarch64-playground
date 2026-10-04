@@ -1,7 +1,8 @@
 {
   "title": "Fill in the blank: binary logic",
   "slug": "blanks-binary-logic",
-  "order": 35,
+  "order": 75,
+  "lastUpdated": "2026-09-27",
   "topic": "binary-logic",
   "difficulty": "core",
   "variant": "blanks",

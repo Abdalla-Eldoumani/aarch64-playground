@@ -1,0 +1,11 @@
+alloca(1): mod16=0 len=0 first=-
+alloca(3): mod16=0 len=2 first=b
+alloca(17): mod16=0 len=16 first=c
+alloca(33): mod16=0 len=32 first=d
+alloca(100): mod16=0 len=99 first=e
+alloca(4097): mod16=0 len=4096 first=f
+pile: block 0 of 40 | block 39 of 40 | total=11425
+once x3000: sum=655628
+chain=18071254873433950257
+survive=4899
+big=3514885427

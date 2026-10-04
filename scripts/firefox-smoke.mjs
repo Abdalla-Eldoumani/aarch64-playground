@@ -2,8 +2,8 @@
 // are present, the editor renders, and the page logs no errors.
 // Catches engine-specific regressions Chromium-only Playwright misses.
 //
-//   node scripts/firefox-smoke.mjs                  # default http://localhost:3000
-//   SITE=http://other node scripts/firefox-smoke.mjs
+//   node scripts/firefox-smoke.mjs                  # http://localhost:3000/playground
+//   SITE=http://other node scripts/firefox-smoke.mjs  # http://other/playground
 
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -15,7 +15,10 @@ const webModules = path.join(here, "..", "web", "node_modules", "playwright");
 const require = createRequire(import.meta.url);
 const { firefox } = require(webModules);
 
-const SITE = process.env.SITE || "http://localhost:3000";
+// The playground is the page with the editor, whatever path SITE names; its
+// query string (a preview share link, say) is kept.
+const url = new URL(process.env.SITE || "http://localhost:3000");
+url.pathname = "/playground";
 
 let exit = 0;
 const browser = await firefox.launch({ headless: true });
@@ -28,7 +31,7 @@ page.on("console", (msg) => {
   if (msg.type() === "error") errors.push(`console: ${msg.text()}`);
 });
 
-const res = await page.goto(SITE);
+const res = await page.goto(url.href);
 if (!res || !res.ok()) {
   console.error(`navigation failed: status ${res?.status()}`);
   exit = 1;

@@ -1,0 +1,17 @@
+xor       3ddb6efe 12 a5 5a 36 62
+upper     e197beea 48 ff 00 4c 38
+rot13     dd4b0fdf 48 ff 00 79 38
+sat_add   27c771ed 7e ff ff ff c3
+sat_sub   7c2a2716 12 00 00 00 00
+avg       bf9d990f 3f ff 80 b1 62
+absdiff   5ce552d3 12 00 ff 89 53
+max       cce557db 48 ff ff f5 8b
+rotl3     e4c14e68 42 ff 00 63 c1
+abs_s8    baaa3b32 7e 5f 55 80 5a
+narrow    246560e2 54 2b 00 7f 42
+pairsum   2b6f4e6a 47 6c 9b 77 00
+interleave f200bc81 48 36 8b
+wide 5496 2bd3 422b
+spaces 42
+bswap b5747770 48ff006c 40a6de38
+again     5c0e108a 47 4c 9b 57 00

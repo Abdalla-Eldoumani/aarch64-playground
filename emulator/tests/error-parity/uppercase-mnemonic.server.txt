@@ -1,0 +1,4 @@
+$ gcc uppercase-mnemonic.s -o program
+uppercase-mnemonic.s: Assembler messages:
+uppercase-mnemonic.s:6: Error: unknown mnemonic `mvo' -- `mvo x0,[sp,16]'
+[exit 1]

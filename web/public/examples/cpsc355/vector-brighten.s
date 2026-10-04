@@ -32,7 +32,7 @@ fmt_after:  .string "after:\n"
 show:
         stp     fp, lr, [sp, -48]!
         mov     fp, sp
-        stp     x19, x20, [fp, 16]      // main keeps values in these
+        stp     x19, x20, [fp, 16]      // callee-saved: put back before ret
         str     x21, [fp, 32]
 
         ldr     row_r, =picture

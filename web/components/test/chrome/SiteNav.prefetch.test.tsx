@@ -37,32 +37,32 @@ function routeLink(label: string): HTMLElement {
 }
 
 describe("SiteNav route prefetching", () => {
-  it("starts every route link cold", () => {
+  it("turns prefetch off on every route link at first", () => {
     render(<SiteNav variant="full" />);
     for (const route of NAV_ROUTES) {
       expect(routeLink(route.label).getAttribute("data-prefetch")).toBe("false");
     }
   });
 
-  it("warms a route link on pointer enter", () => {
+  it("allows prefetch on a route link once the pointer enters it", () => {
     render(<SiteNav variant="full" />);
     const learn = routeLink("Learn");
     fireEvent.mouseEnter(learn);
     expect(routeLink("Learn").getAttribute("data-prefetch")).toBe("null");
-    // Only the hovered route warms; the rest stay cold.
+    // Only the hovered route turns prefetch on; the rest stay off.
     expect(routeLink("Reference").getAttribute("data-prefetch")).toBe("false");
   });
 
-  it("warms a route link on keyboard focus", () => {
+  it("allows prefetch on a route link once it takes keyboard focus", () => {
     render(<SiteNav variant="full" />);
     fireEvent.focus(routeLink("Learn"));
     expect(routeLink("Learn").getAttribute("data-prefetch")).toBe("null");
   });
 
-  it("leaves the Open playground CTA on the default prefetch", () => {
+  it("leaves the Open playground link on the default prefetch", () => {
     render(<SiteNav variant="full" />);
-    // The one destination worth warming eagerly: the CTA is the landing's
-    // primary action, so it keeps Next's default rather than the hover gate.
+    // Opening the playground is the landing's main action, so this link
+    // prefetches early instead of waiting for hover or focus.
     expect(
       screen.getByRole("link", { name: "Open playground" }).getAttribute("data-prefetch"),
     ).toBe("undefined");

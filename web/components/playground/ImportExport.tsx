@@ -36,13 +36,9 @@ export interface ImportExportProps {
 }
 
 /**
- * Import and export buttons in the header. Importing one file sends its
- * body to the active target (main / an extra) so a student editing extras
- * isn't surprised when their import overwrites the wrong buffer; picking
- * several files at once hands the whole set to the parent as named files,
- * and a single `.json` is read as a workspace bundle through the same path.
- * Export offers `.asm` / `.s` download of the buffer, `.json` download of
- * the whole workspace, plus copy-to-clipboard.
+ * Import and export in the header. Picked files, or one workspace `.json`,
+ * go to the parent as named files; a host without `onImportMany` gets one
+ * file's body for the tab being edited.
  */
 export function ImportExport({
   source,
@@ -155,11 +151,10 @@ export function ImportExport({
               return;
             }
           }
-          if (files.length === 1 || !onImportMany) {
-            onImport(target, files[0].body);
-          } else {
-            onImportMany(files);
-          }
+          // One file goes by name too, so cube.s lands as its own tab
+          // instead of over the code on screen.
+          if (onImportMany) onImportMany(files);
+          else onImport(target, files[0].body);
         })
         .catch(() => {
           // A moved or unreadable file rejects file.text(); without it the
@@ -171,7 +166,7 @@ export function ImportExport({
   );
 
   return (
-    <div className={`flex items-center gap-1 ${className}`}>
+    <div className={`flex items-center gap-1 ${className}`} data-walkthrough="export">
       <input
         ref={fileRef}
         type="file"
@@ -184,7 +179,7 @@ export function ImportExport({
       <button
         type="button"
         onClick={() => fileRef.current?.click()}
-        className="text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
+        className="touch-target text-[12px] [@media(pointer:coarse)]:text-[13px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
         aria-label="import assembly file"
       >
         import
@@ -210,7 +205,7 @@ export function ImportExport({
       <button
         type="button"
         onClick={copy}
-        className={`text-[11px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+        className={`touch-target text-[12px] [@media(pointer:coarse)]:text-[13px] rounded px-1.5 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
           copied
             ? "text-[var(--success)]"
             : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"

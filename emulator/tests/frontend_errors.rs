@@ -14,6 +14,14 @@ fn assemble_err(src: &str) -> String {
     }
 }
 
+/// Assemble and load without running, so a test can read what landed where.
+fn loaded(src: &str) -> Cpu {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).unwrap_or_else(|e| panic!("should assemble: {e}"));
+    cpu.load_linked_image(&image).expect("load");
+    cpu
+}
+
 #[test]
 fn ldr_eq_outside_text_is_rejected_not_panicked() {
     // A missing .text used to panic the wasm module: pass 1d sized the
@@ -70,7 +78,7 @@ fn duplicate_labels_are_rejected_naming_both_lines() {
                loop:\n\
                ret\n";
     let msg = assemble_err(src);
-    assert!(msg.contains("`loop`"), "message was: {msg}");
+    assert!(msg.contains("`loop'"), "message was: {msg}");
     assert!(msg.contains("line 4"), "message was: {msg}");
     assert!(msg.contains("line 7"), "message was: {msg}");
 }
@@ -84,7 +92,7 @@ fn cross_section_duplicate_labels_are_rejected() {
                .text\n\
                main: ret\n";
     let msg = assemble_err(src);
-    assert!(msg.contains("`buf`"), "message was: {msg}");
+    assert!(msg.contains("`buf'"), "message was: {msg}");
 }
 
 #[test]
@@ -335,7 +343,6 @@ ret
 fn exponent_floats_lex_in_double_and_float_lists() {
     // `.double 1e5` was "invalid integer literal `1e5`"; `.double 1e-3`
     // quoted text the student never typed ("1e").
-    let cpu = Cpu::new();
     let src = ".data
 d: .double 1e5
 e: .double 1e-3
@@ -345,7 +352,12 @@ f: .float 2E4
 main:
 ret
 ";
-    assert!(assemble_hosted(src, &cpu.host).is_ok(), "exponent floats should assemble");
+    let cpu = loaded(src);
+    let at = |name: &str| cpu.resolve_label(name).expect(name);
+    // The IEEE-754 patterns of 1e5 and 1e-3 as doubles and 2e4 as a single.
+    assert_eq!(cpu.mem.read_u64(at("d")).unwrap(), 0x40F8_6A00_0000_0000);
+    assert_eq!(cpu.mem.read_u64(at("e")).unwrap(), 0x3F50_624D_D2F1_A9FC);
+    assert_eq!(cpu.mem.read_u32(at("f")).unwrap(), 0x469C_4000);
 }
 
 #[test]
@@ -415,7 +427,6 @@ ret
 fn dotted_local_labels_work_in_data_slots() {
     // `.quad .L2` is literal GCC jump-table output; the deferral test
     // only knew Ident and Dot, so DirectiveIdent fell into the evaluator.
-    let cpu = Cpu::new();
     let src = ".text
                .global main
                main:
@@ -425,7 +436,11 @@ fn dotted_local_labels_work_in_data_slots() {
                .data
                table: .quad .L2
 ";
-    assert!(assemble_hosted(src, &cpu.host).is_ok(), ".quad .L2 should assemble");
+    let cpu = loaded(src);
+    let table = cpu.resolve_label("table").expect("table");
+    // .L2 is the word after main's ret, so the slot holds main + 4.
+    let main = cpu.resolve_label("main").expect("main");
+    assert_eq!(cpu.mem.read_u64(table).unwrap(), main + 4);
 }
 
 #[test]
@@ -497,12 +512,6 @@ fn the_conformance_corpus_lints_clean() {
     }
 }
 
-/// `.` inside an `ldr xN, =expr` operand means the address of that LDR,
-/// and the literal pool is keyed by operand TEXT. Both halves were wrong:
-/// `.` resolved to zero, and two identical operands at different
-/// addresses shared one slot. GAS allocates a separate pool entry per
-/// site (`R_AARCH64_ABS64 .text+0xc` and `.text+0x14` for two
-/// `ldr xN, =. + 8` four instructions apart).
 #[test]
 fn symbol_plus_offset_resolves_into_the_middle_of_an_object() {
     // csarm's sym_offset probe: `msg+19` is 19 bytes past `msg`, the
@@ -607,6 +616,9 @@ fn relocatable_operand_errors_name_the_symbol() {
     }
 }
 
+/// `.` in `ldr xN, =expr` is the address of that ldr, so two identical
+/// operands at different addresses need their own pool slots, as GAS gives
+/// them. Both used to go wrong: `.` read as zero, and the two shared a slot.
 #[test]
 fn dot_relative_ldr_eq_resolves_per_site() {
     let src = ".text\n\
@@ -654,14 +666,10 @@ fn dot_relative_ldr_eq_resolves_per_site() {
     assert_eq!(cpu.regs.read_gpr(0, true), cpu.regs.read_gpr(1, true));
 }
 
-/// GAS treats `=` as `.set`, which is positional: each use takes the most
-/// recent definition above it. Two files concatenated into one workspace
-/// can each write `len = . - msg` against their own string, and the linker
-/// kept only the first value and handed it to both files' uses.
-///
-/// Oracle (`aarch64-linux-gnu-as` on the same source): the first `.word
-/// len` is 9 and the second is 3; a `.word len` placed above both
-/// definitions is 9, the first binding.
+/// GAS treats `=` as `.set`: each use takes the latest definition above it,
+/// so two joined files can each define `len = . - msg`. The linker used to
+/// keep only the first. `aarch64-linux-gnu-as` gives 9 for the first
+/// `.word len`, 3 for the second, and 9 for one above both definitions.
 #[test]
 fn a_redefined_equate_resolves_against_the_definition_above_each_use() {
     let src = ".data\n\
@@ -745,9 +753,12 @@ fn data_before_text_still_assembles() {
                bl printf\n\
                mov x0, 0\n\
                ret\n";
-    let cpu = Cpu::new();
-    assert!(assemble_hosted(src, &cpu.host).is_ok());
+    // Built and run, the .data-first program prints its string.
+    let mut cpu = loaded(src);
+    cpu.run_until_break(10_000).expect("run");
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "hi\n");
 }
+
 /// Both of these used to overflow the wasm stack rather than return an
 /// error. A wasm stack overflow is unrecoverable: the trap skips
 /// wasm-bindgen's borrow-guard Drop, so every later call fails on a stuck
@@ -803,7 +814,7 @@ fn the_entry_point_is_a_label_and_start_counts_as_one() {
                   ret\n";
     let msg = assemble_err(equate);
     assert!(
-        msg.contains("no entry point") || msg.contains("no `main:`"),
+        msg.contains("undefined reference to `main'"),
         "an equate named main must not become the entry point, got: {msg}"
     );
 
@@ -837,14 +848,10 @@ fn the_entry_point_is_a_label_and_start_counts_as_one() {
 
 #[test]
 fn a_brace_register_list_survives_the_frontend_and_runs() {
-    // The hosted parser used to refuse every `{...}` operand: the `.` of
-    // an arrangement made the operand look like an expression, and the
-    // evaluator then reported "unexpected `{`". That closed the whole
-    // structure load/store family, and TBL with it, to real programs.
-    // This drives one of each shape end to end and checks the bytes.
-    //
-    // buf holds 0..31, idx holds the table indices, out is the store
-    // target. Every expected value below is read off those two tables.
+    // The parser used to refuse every `{...}` operand (it took the `.` in
+    // `v0.16b` for an expression), which shut out the structure loads and
+    // stores and TBL. One of each shape runs here; buf holds 0..31 and idx
+    // the table indices, so every expected value reads off those two.
     let src = "        .data\n\
                buf:    .byte 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15\n\
                        .byte 16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31\n\

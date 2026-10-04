@@ -3,11 +3,8 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { BitFieldDiagram } from "@/components/diagrams/BitFieldDiagram";
 import type { BitField } from "@/lib/content/reference-data";
 
-const THEMES = ["dark", "light", "high-contrast"] as const;
-
 afterEach(() => {
   cleanup();
-  document.documentElement.removeAttribute("data-theme");
 });
 
 // A worked 32-bit example whose nibble split is easy to eyeball: the four
@@ -49,7 +46,7 @@ describe("BitFieldDiagram", () => {
     expect(narrow.style.flexGrow).toBe("5");
   });
 
-  it("uses a caller color when provided and a token default otherwise", () => {
+  it("uses the caller's color when given and the default color otherwise", () => {
     render(
       <BitFieldDiagram
         fields={[
@@ -61,7 +58,6 @@ describe("BitFieldDiagram", () => {
     const [colored, plain] = screen.getAllByRole("listitem");
     expect(colored.style.borderTopColor).toBe("magenta");
     expect(plain.style.borderTopColor).toBe("");
-    expect(plain.className).toContain("border-t-[var(--border-strong)]");
   });
 
   it("falls back to a sample encoding when no fields are given", () => {
@@ -150,19 +146,30 @@ describe("BitFieldDiagram", () => {
     expect(screen.getByText("25 : 0")).toBeTruthy();
   });
 
+  // A phone shows no scrollbar until a swipe, so a row cut at the right edge
+  // needs a cue, and scrolling the row to its last field clears it.
+  it("fades the row's right edge while fields run past it, until the row is scrolled to its end", () => {
+    Object.defineProperty(HTMLElement.prototype, "scrollWidth", { configurable: true, get: () => 600 });
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => 300 });
+    try {
+      render(<BitFieldDiagram fields={WORKED_FIELDS} />);
+      const row = screen.getByRole("list");
+      const fade = () => row.parentElement?.querySelector('[aria-hidden="true"].bg-gradient-to-l');
+      expect(fade()).toBeTruthy();
+      Object.defineProperty(row, "scrollLeft", { configurable: true, value: 300 });
+      fireEvent.scroll(row);
+      expect(fade()).toBeNull();
+    } finally {
+      // The prototype getters are jsdom's zeros; drop the overrides.
+      delete (HTMLElement.prototype as { scrollWidth?: number }).scrollWidth;
+      delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
+    }
+  });
+
   it("stays free of bit headers and amber by default", () => {
     render(<BitFieldDiagram fields={WORKED_FIELDS} />);
     expect(screen.queryByText("31 : 24")).toBeNull();
     const rd = screen.getAllByRole("listitem")[3];
     expect(rd.className).not.toContain("var(--amber)");
-  });
-
-  it("renders the default form under every theme without crashing", () => {
-    for (const theme of THEMES) {
-      document.documentElement.setAttribute("data-theme", theme);
-      const { unmount } = render(<BitFieldDiagram />);
-      expect(screen.getByLabelText("instruction encoding")).toBeTruthy();
-      unmount();
-    }
   });
 });

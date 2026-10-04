@@ -713,9 +713,9 @@ stack_rest:
 // stack_ask(x0 = prompt, w1 = low bound, w2 = high bound, x3 = what to
 //           say when the answer falls outside)
 //        -> w0 = value, w1 = 1 when the value is usable
-// The one reader the module prompts with: it reprompts in place on an
-// out-of-range answer and refuses a closed stdin, so a finished script
-// walks back out of the menu instead of pushing zeros.
+// The push value is read through here. An out-of-range answer
+// asks again in place, and input that has run out returns w1 = 0, so a
+// piped script that ends backs out of the menu instead of pushing zeros.
 stack_ask:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -1081,7 +1081,7 @@ stack_clear_interactive:
     ret
 
 // stack_push(w0 = value) -> w0 = 1 on success, 0 on overflow
-// No calls, so no callee-saved register has to be spilled.
+// No calls, so x1-x3 are safe to use and no x19-x28 register needs saving.
     .global stack_push
 stack_push:
     stp     fp, lr, [sp, -16]!

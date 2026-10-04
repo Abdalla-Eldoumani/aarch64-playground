@@ -1,15 +1,20 @@
-// The launch choice at the component boundary: the run-mode control appears
-// for exactly the interactive examples, run stays literal run in both modes,
-// the composite launch assembles first and stops at a failed assemble, and
-// a program with no explicit choice runs in the console, with no run-mode
-// control.
+// Running in the console or the terminal: which examples offer the choice,
+// what run does in each mode, and that a program with no choice runs in the
+// console as it always has.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import type { ReactNode } from "react";
 
+// The editor's change handler, so a case can type into the buffer.
+const editorProps = vi.hoisted(() => ({
+  current: null as null | { onChange: (next: string) => void },
+}));
 vi.mock("@/components/playground/lazy-editor", () => ({
-  Editor: () => <div data-testid="editor" />,
+  Editor: (props: { onChange: (next: string) => void }) => {
+    editorProps.current = props;
+    return <div data-testid="editor" />;
+  },
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
@@ -28,9 +33,8 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
   DEBUG_SPLIT: { label: "resize registers and tabs" },
 }));
 
-// The console's ownership badge is one of the five suppression points, and
-// the watermark says where a terminal session took its output over; the
-// props carry both, so capture them rather than rendering the whole panel.
+// The props say whether the terminal owns the console and from which byte of
+// output; reading them is simpler than rendering the whole panel.
 const consoleProps = vi.hoisted(() => ({
   current: null as null | {
     ownedByTerminal: boolean;
@@ -88,8 +92,8 @@ import {
 import { makeHub as baseHub } from "@/components/test/playground/helpers/emulator-hub";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
 
-// The key predates the mode having two spellings; the widened decode has to
-// keep reading what a returning student's browser already wrote.
+// The key is older than the words it now stores; keeping it lets a returning
+// student's browser still load the "1" or "0" it saved before.
 const LAUNCH_KEY = "aarch64-playground:terminal-program";
 
 const SOURCE = "        mov x0, 1\n";
@@ -131,9 +135,10 @@ function runModeGroup(): HTMLElement | null {
 }
 
 // The tab band renders only the active panel, so the console's ownership
-// props exist only once the console tab is the selected one.
+// props exist only once the console tab is the selected one. The tab's name
+// gains ", new output" when output lands behind another tab.
 function showConsole(): void {
-  fireEvent.click(screen.getByRole("tab", { name: "console" }));
+  fireEvent.click(screen.getByRole("tab", { name: /^console\b/ }));
 }
 
 function makeIO() {
@@ -157,7 +162,7 @@ async function registerPaneIO(io: ReturnType<typeof makeIO>): Promise<void> {
 }
 
 function argsBox(): HTMLInputElement {
-  return screen.getByLabelText("command-line arguments") as HTMLInputElement;
+  return screen.getByLabelText("args (command-line arguments)") as HTMLInputElement;
 }
 
 beforeEach(() => {
@@ -195,8 +200,8 @@ describe("the run-mode control's presence", () => {
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
     expect(runModeGroup()).not.toBeNull();
-    // snake starts in the console; its raw-mode
-    // edge takes the pane mid-run, which is not this control's business.
+    // snake starts in the console and moves to the terminal by itself once it
+    // turns raw mode on; this control plays no part in that.
     expect(
       screen.getByLabelText("run in the console").getAttribute("aria-pressed"),
     ).toBe("true");
@@ -242,7 +247,7 @@ describe("the run-mode control's presence", () => {
     expect(runModeGroup()).toBeNull();
   });
 
-  it("goes inert while a foreground session owns the pane", async () => {
+  it("is disabled while a program is running in the terminal pane", async () => {
     const hub: Hub = makeHub({ blocked: true });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -270,8 +275,8 @@ describe("the run-mode control's presence", () => {
       ).toBe(true),
     );
 
-    // Halt the machine and re-render so the drive's poll reads it through
-    // emuRef and stands down; the session must not outlive the test.
+    // Halt the machine and re-render so the terminal session sees it and
+    // ends; the session must not outlive the test.
     useEmulatorMock.mockReturnValue(makeHub({ isHalted: true, blocked: false }));
     rerender(<EmbeddablePlayground ref={ref} chrome="full" startSource={SOURCE} />);
     await act(async () => {
@@ -286,7 +291,7 @@ describe("the run-mode control's presence", () => {
 });
 
 describe("the mode the control chooses", () => {
-  it("arms the terminal takeover: run hands the pane over instead of running", () => {
+  it("set to terminal, run opens the terminal tab instead of running here", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -320,7 +325,7 @@ describe("the mode the control chooses", () => {
     expect(consoleProps.current!.ownedByTerminal).toBe(false);
   });
 
-  it("persists the chosen mode under the existing key, in words", () => {
+  it("saves the chosen mode under the existing key, as a word", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     act(() => {
@@ -332,8 +337,8 @@ describe("the mode the control chooses", () => {
   });
 
   it("reads the old boolean value a returning student's browser holds", () => {
-    // "1" was the takeover before the key held a mode name; a reloaded dsav
-    // workspace must keep its terminal-first run.
+    // "1" meant terminal before the key held a mode name; a reloaded dsav
+    // workspace must still run in the terminal first.
     window.localStorage.setItem(LAUNCH_KEY, "1");
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
@@ -357,12 +362,12 @@ describe("the mode the control chooses", () => {
   });
 });
 
-describe("launchInteractive, the composite launch", () => {
+describe("launchInteractive: assemble, then run in the terminal, in one action", () => {
   function launchAction(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
     return ref.current!.getCommands().find((a) => a.id === "launch-terminal")!;
   }
 
-  it("assembles first, then hands the pane over", async () => {
+  it("assembles first, then opens the terminal tab", async () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -389,7 +394,7 @@ describe("launchInteractive, the composite launch", () => {
     );
   });
 
-  it("stops at a failed assemble: no takeover, no tab switch", async () => {
+  it("stops at a failed assemble: no terminal run, no tab switch", async () => {
     const hub: Hub = makeHub({ assemble: vi.fn().mockResolvedValue(false) });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -431,7 +436,7 @@ describe("launchInteractive, the composite launch", () => {
     expect(hub.assemble).not.toHaveBeenCalled();
   });
 
-  it("names the surface the run action lands in", () => {
+  it("says where the run command sends the program", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -440,21 +445,20 @@ describe("launchInteractive, the composite launch", () => {
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
     expect(ref.current!.getCommands().find((a) => a.id === "run")!.description).toBe(
-      "run until halt or breakpoint",
+      "run until halt or breakpoint, assembling first if the code changed or the program ended",
     );
 
     fireEvent.click(screen.getByLabelText("run in the terminal"));
     const runAction = ref.current!.getCommands().find((a) => a.id === "run")!;
     expect(runAction.description).toBe("run this program in the terminal tab");
-    // An assembled program hands over; it does not re-assemble.
+    // An assembled program goes straight to the terminal, with no second assemble.
     act(() => runAction.run());
     expect(hub.assemble).not.toHaveBeenCalled();
   });
 });
 
-describe("run from a cold load", () => {
-  // The run button is disabled with nothing assembled, so a cold-load run
-  // press arrives through F5, the palette, or the handle, all one funnel.
+describe("run straight after a program loads", () => {
+  // F5, the command palette and the handle all call one run.
   function pressRun(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
     act(() => ref.current!.run());
   }
@@ -470,7 +474,7 @@ describe("run from a cold load", () => {
     });
   }
 
-  it("assembles and takes over in terminal mode with nothing assembled", async () => {
+  it("assembles and opens the terminal tab in terminal mode with nothing assembled", async () => {
     const hub: Hub = makeHub({ programLoaded: false });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -486,8 +490,8 @@ describe("run from a cold load", () => {
         "true",
       ),
     );
-    // The drive does the run() itself once the pane registers; the press
-    // never calls the hub's run directly in this mode.
+    // The terminal session calls run() itself once the pane is ready; the
+    // press never calls it directly in this mode.
     expect(hub.run).not.toHaveBeenCalled();
   });
 
@@ -502,7 +506,7 @@ describe("run from a cold load", () => {
     );
   });
 
-  it("hands an assembled terminal program over without re-assembling", () => {
+  it("sends an assembled terminal program to the terminal without assembling again", () => {
     const hub: Hub = makeHub({ programLoaded: true });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -517,7 +521,7 @@ describe("run from a cold load", () => {
     );
   });
 
-  it("keeps the no-op in console mode with nothing assembled", async () => {
+  it("assembles, then runs in the console, with nothing assembled", async () => {
     const hub: Hub = makeHub({ programLoaded: false });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -529,16 +533,14 @@ describe("run from a cold load", () => {
     await act(async () => {
       pressRun(ref);
     });
-    // The press reaches the hub, which has nothing to run. No assemble, no
-    // takeover.
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
     expect(hub.run).toHaveBeenCalledTimes(1);
-    expect(hub.assemble).not.toHaveBeenCalled();
     expect(screen.getByRole("tab", { name: "term" }).getAttribute("aria-selected")).toBe(
       "false",
     );
   });
 
-  it("leaves the pane alone when the cold-load assemble fails", async () => {
+  it("leaves the terminal tab alone when the first assemble fails", async () => {
     const hub: Hub = makeHub({
       programLoaded: false,
       assemble: vi.fn().mockResolvedValue(false),
@@ -559,8 +561,8 @@ describe("run from a cold load", () => {
   });
 
   it("keeps the run button clickable in terminal mode with nothing assembled", async () => {
-    // The mouse path has to reach the same one-action launch the keyboard
-    // does; a disabled button here would mean assemble-then-run by pointer.
+    // A click must launch in one action, as the keyboard does; a disabled
+    // button would make a mouse user assemble, then run.
     const hub: Hub = makeHub({ programLoaded: false });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -580,7 +582,7 @@ describe("run from a cold load", () => {
     );
   });
 
-  it("leaves the run button disabled in console mode with nothing assembled", () => {
+  it("keeps the run button clickable in console mode with nothing assembled", async () => {
     const hub: Hub = makeHub({ programLoaded: false });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -588,12 +590,16 @@ describe("run from a cold load", () => {
     act(() => {
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
-    expect((screen.getByRole("button", { name: "run" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    const run = screen.getByRole("button", { name: "run" }) as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    await act(async () => {
+      fireEvent.click(run);
+    });
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.run).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the button disabled while the launch's own assemble is in flight", () => {
+  it("keeps the button disabled while the first assemble is still running", () => {
     const hub: Hub = makeHub({ programLoaded: false, isAssembling: true });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -604,7 +610,7 @@ describe("run from a cold load", () => {
     );
   });
 
-  it("keeps the button disabled while blocked, in either mode", () => {
+  it("keeps the button disabled while the program waits for input, in either mode", () => {
     const hub: Hub = makeHub({ programLoaded: false, blocked: true });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -621,9 +627,9 @@ describe("run from a cold load", () => {
     );
   });
 
-  it("surfaces a cold-load assemble failure the way assemble always does", () => {
-    // The failure rides emu.assemblyErrors / emu.error, which Controls
-    // renders in its own error box: the composite adds no second channel.
+  it("shows a failed first assemble the way assemble always does", () => {
+    // The failure comes through emu.assemblyErrors and emu.error, which
+    // Controls shows in its own error box; the launch adds no second place.
     const hub: Hub = makeHub({
       programLoaded: false,
       error: "line 3: unknown mnemonic 'movv'",
@@ -638,8 +644,93 @@ describe("run from a cold load", () => {
   });
 });
 
+describe("run after an edit or a finish", () => {
+  // Run starts the program on screen from the top when the code, files or
+  // args changed since the last assemble, or the program finished, as a
+  // lesson's run does; assemble alone loads without running.
+  const EDITED = "        mov x0, 9\n";
+
+  async function assembled(hub: Hub) {
+    useEmulatorMock.mockReturnValue(hub);
+    mount(createRef<EmbeddablePlaygroundHandle>());
+    await fullChromeMounted();
+    // The run row's assemble (the first-run card has one of its own).
+    const assemble = screen
+      .getAllByRole("button", { name: "assemble" })
+      .find((b) => b.getAttribute("aria-keyshortcuts") === "F6")!;
+    await act(async () => {
+      fireEvent.click(assemble);
+    });
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    // Assemble alone loads without running.
+    expect(hub.run).not.toHaveBeenCalled();
+  }
+
+  async function clickRun() {
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "run" }));
+    });
+  }
+
+  it("assembles the edited code first, then runs it", async () => {
+    const hub = makeHub();
+    await assembled(hub);
+    act(() => editorProps.current!.onChange(EDITED));
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(hub.assemble).mock.calls[1][0]).toBe(EDITED);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("assembles first when only the arguments changed", async () => {
+    const hub = makeHub();
+    await assembled(hub);
+    fireEvent.change(argsBox(), { target: { value: "5 7" } });
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(vi.mocked(hub.assemble).mock.calls[1][1]).toEqual(["5", "7"]);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("carries on an unchanged program without assembling again", async () => {
+    const hub = makeHub();
+    await assembled(hub);
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs a finished program again from the top", async () => {
+    const hub = makeHub({ isHalted: true });
+    await assembled(hub);
+    const run = screen.getByRole("button", { name: "run" }) as HTMLButtonElement;
+    expect(run.disabled).toBe(false);
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(2);
+    expect(hub.run).toHaveBeenCalledTimes(1);
+  });
+
+  it("launches a finished terminal program again in the terminal", async () => {
+    const hub = makeHub({ isHalted: true });
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    mount(ref);
+    await fullChromeMounted();
+    act(() => {
+      ref.current!.loadProgram({ source: SOURCE, stem: "dsav", launch: "terminal", label: "dsav" });
+    });
+    await clickRun();
+    expect(hub.assemble).toHaveBeenCalledTimes(1);
+    await waitFor(() =>
+      expect(screen.getByRole("tab", { name: "term" }).getAttribute("aria-selected")).toBe(
+        "true",
+      ),
+    );
+  });
+});
+
 describe("regression: a program with no explicit choice", () => {
-  it("runs a plain example exactly as it does today", () => {
+  it("runs a plain example in the console, with no run-mode control", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -655,7 +746,7 @@ describe("regression: a program with no explicit choice", () => {
     expect(hub.assemble).not.toHaveBeenCalled();
   });
 
-  it("keeps the default-terminal example's takeover with no control touched", () => {
+  it("sends a default-terminal example to the terminal with no control touched", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -676,7 +767,7 @@ describe("regression: a program with no explicit choice", () => {
     );
   });
 
-  it("leaves a hand-written buffer with no control and no ownership claim", () => {
+  it("runs the student's own code in the console, with no run-mode control", () => {
     const hub: Hub = makeHub();
     useEmulatorMock.mockReturnValue(hub);
     mount(createRef<EmbeddablePlaygroundHandle>());
@@ -688,9 +779,10 @@ describe("regression: a program with no explicit choice", () => {
   });
 });
 
-describe("the console's watermark for a terminal-owned run", () => {
-  // A live drive polls on a 32ms timer; hand it a halted machine and give it
-  // one tick so the session tears down inside the test that started it.
+describe("terminalOwnedFrom: where the terminal took the console's output over", () => {
+  // A running terminal session checks the machine every 32ms; hand it a
+  // halted machine and wait one check so the session ends inside the test
+  // that started it.
   async function endSession(
     ref: React.RefObject<EmbeddablePlaygroundHandle | null>,
     rerender: (ui: React.ReactElement) => void,
@@ -702,18 +794,17 @@ describe("the console's watermark for a terminal-owned run", () => {
     });
   }
 
-  // The frames a raw-mode program paints while the tab switches, the pane
-  // mounts, and its io registers, all of it after the tty went raw and
-  // before any drive exists.
+  // Screens a raw-mode program draws after it turns raw mode on and before
+  // the terminal session starts.
   const FRAMES = "[2J[H frame one[2J[H frame two";
 
-  it("hides every frame a raw-mode program paints before the drive attaches", async () => {
+  it("hides every frame a raw-mode program draws before the terminal session starts", async () => {
     useEmulatorMock.mockReturnValue(makeHub());
     const ref = createRef<EmbeddablePlaygroundHandle>();
     const { rerender } = mount(ref);
     showConsole();
 
-    // The tty goes raw. Nothing has printed and no pane exists yet.
+    // The program turns raw mode on. Nothing has printed and no pane exists yet.
     useEmulatorMock.mockReturnValue(makeHub({ wantsTerminal: true }));
     await act(async () => {
       rerender(view(ref));
@@ -729,9 +820,9 @@ describe("the console's watermark for a terminal-owned run", () => {
     showConsole();
     expect(consoleProps.current!.terminalOwnedFrom).toBe(0);
 
-    // The pane registers and the drive attaches: the earlier pin stands, so
-    // not one of those bytes is the console's to show. (The slicing itself
-    // is ConsolePanel's; its own tests cover what renders.)
+    // The pane is ready and the session starts: the earlier value stands, so
+    // none of those bytes show in the console. ConsolePanel's own tests cover
+    // what it renders.
     await registerPaneIO(makeIO());
     showConsole();
     await waitFor(() => expect(consoleProps.current!.terminalOwnedFrom).toBe(0));
@@ -740,14 +831,14 @@ describe("the console's watermark for a terminal-owned run", () => {
     await endSession(ref, rerender);
   });
 
-  it("keeps a cooked line printed before the tty went raw, and hides the rest", async () => {
+  it("keeps a line printed before raw mode, and hides the rest", async () => {
     const printed = "menu ready\n";
     useEmulatorMock.mockReturnValue(makeHub({ stdout: printed }));
     const ref = createRef<EmbeddablePlaygroundHandle>();
     const { rerender } = mount(ref);
     showConsole();
 
-    // The program prints its menu in cooked mode, then flips to raw.
+    // The program prints its menu in normal (cooked) mode, then turns raw mode on.
     useEmulatorMock.mockReturnValue(makeHub({ stdout: printed, wantsTerminal: true }));
     await act(async () => {
       rerender(view(ref));
@@ -755,8 +846,8 @@ describe("the console's watermark for a terminal-owned run", () => {
     showConsole();
     expect(consoleProps.current!.terminalOwnedFrom).toBe(11);
 
-    // Frames paint over the following renders and the drive attaches after
-    // them; the watermark stays where the cooked output ended.
+    // Frames arrive over the next renders and the session starts after them;
+    // terminalOwnedFrom stays where the menu ended.
     useEmulatorMock.mockReturnValue(
       makeHub({ stdout: printed + FRAMES, wantsTerminal: true }),
     );
@@ -770,7 +861,7 @@ describe("the console's watermark for a terminal-owned run", () => {
     await endSession(ref, rerender);
   });
 
-  it("pins zero when the run started in the terminal", async () => {
+  it("is 0 when the run started in the terminal", async () => {
     const soup = "[2J[H drawn frame";
     useEmulatorMock.mockReturnValue(makeHub());
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -790,7 +881,7 @@ describe("the console's watermark for a terminal-owned run", () => {
     await waitFor(() => expect(consoleProps.current!.terminalOwnedFrom).toBe(0));
 
     // The bytes still reach this panel; hiding them is the panel's job, and
-    // the watermark is what tells it there is nothing here to show.
+    // terminalOwnedFrom is what tells it there is nothing here to show.
     useEmulatorMock.mockReturnValue(makeHub({ stdout: soup }));
     rerender(view(ref));
     expect(consoleProps.current!.stdout).toBe(soup);
@@ -799,7 +890,7 @@ describe("the console's watermark for a terminal-owned run", () => {
     await endSession(ref, rerender);
   });
 
-  it("leaves a classic console run with no watermark at all", () => {
+  it("stays unset for a plain console run", () => {
     const hub: Hub = makeHub({ stdout: "sum = 10\n" });
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
@@ -813,7 +904,7 @@ describe("the console's watermark for a terminal-owned run", () => {
     expect(consoleProps.current!.terminalOwnedFrom).toBeNull();
   });
 
-  it("drops the watermark on reset, so the next console run renders whole", async () => {
+  it("clears on reset, so the next console run shows all its output", async () => {
     useEmulatorMock.mockReturnValue(makeHub());
     const ref = createRef<EmbeddablePlaygroundHandle>();
     const { rerender } = mount(ref);
@@ -836,24 +927,24 @@ describe("the console's watermark for a terminal-owned run", () => {
   });
 });
 
-describe("the args box a mode-args example runs with", () => {
+describe("the arguments box for an example that takes the run mode as an argument", () => {
   function loadCalc(ref: React.RefObject<EmbeddablePlaygroundHandle | null>) {
     act(() => {
       ref.current!.loadProgram({ source: SOURCE, stem: "calc", label: "calculator" });
     });
   }
 
-  it("seeds the console token at load in console mode", () => {
+  it("starts the box at 'console' when loaded in console mode", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     loadCalc(ref);
     expect(argsBox().value).toBe("console");
   });
 
-  it("migrates the legacy program-name seed to the bare token", () => {
-    // The emulator owns argv[0], so a persisted box holding `./calc console`
-    // would hand calc an extra argument. It migrates in place; anything else
-    // the student typed stays theirs.
+  it("rewrites the old './calc console' form to just 'console'", () => {
+    // The emulator supplies argv[0] itself, so a saved box holding
+    // `./calc console` would give calc an extra argument. It is rewritten in
+    // place; anything else the student typed stays theirs.
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     loadCalc(ref);
@@ -861,7 +952,7 @@ describe("the args box a mode-args example runs with", () => {
     expect(argsBox().value).toBe("console");
   });
 
-  it("seeds an empty box at load in terminal mode", () => {
+  it("starts the box empty when loaded in terminal mode", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     act(() => {
@@ -875,9 +966,9 @@ describe("the args box a mode-args example runs with", () => {
     expect(argsBox().value).toBe("");
   });
 
-  it("overrides the fixture args a mode-args example also declares", () => {
-    // temp-convert carries a .args fixture and also takes the console token; the
-    // mode owns the box, so the token wins at load.
+  it("puts the mode word in place of the example's own saved arguments", () => {
+    // temp-convert has its own .args file and also takes the mode word; the
+    // mode decides the box, so the word wins at load.
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     act(() => {
@@ -891,7 +982,7 @@ describe("the args box a mode-args example runs with", () => {
     expect(argsBox().value).toBe("console");
   });
 
-  it("follows the run-mode control both ways while the box stays clean", () => {
+  it("follows the run-mode control both ways while the student has not typed in the box", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     loadCalc(ref);
@@ -913,7 +1004,7 @@ describe("the args box a mode-args example runs with", () => {
     expect(argsBox().value).toBe("./calc scientific");
   });
 
-  it("still follows the mode from the payload's own seeded value", () => {
+  it("still follows the mode when the box holds the example's own arguments", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     act(() => {
@@ -924,14 +1015,14 @@ describe("the args box a mode-args example runs with", () => {
         label: "temperature",
       });
     });
-    // The fixture form is a value the app itself seeds, so the box still
-    // counts as clean.
+    // The example's own arguments are a value the app fills in, so the box
+    // still counts as untouched.
     fireEvent.change(argsBox(), { target: { value: "32 F" } });
     fireEvent.click(screen.getByLabelText("run in the terminal"));
     expect(argsBox().value).toBe("");
   });
 
-  it("leaves an example outside the table on its own fixture args", () => {
+  it("leaves an example with no run-mode choice on its own arguments", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
     act(() => {
@@ -953,17 +1044,19 @@ describe("the args box a mode-args example runs with", () => {
     mount(ref);
     loadCalc(ref);
 
-    // The button, the shortcut, and the palette all land on the handle's
-    // assemble, which is the one funnel the args text reaches the hub by.
+    // The button, the shortcut, and the command palette all call the handle's
+    // assemble, the only path the arguments take to the emulator.
     await act(async () => {
       ref.current!.assemble();
     });
-    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["console"]);
+    // The third argument is the workspace the notes name lines by.
+    const workspace = { main: SOURCE, extras: [] };
+    expect(hub.assemble).toHaveBeenCalledWith(SOURCE, ["console"], workspace);
 
     fireEvent.change(argsBox(), { target: { value: "./calc scientific" } });
     await act(async () => {
       ref.current!.assemble();
     });
-    expect(hub.assemble).toHaveBeenLastCalledWith(SOURCE, ["./calc", "scientific"]);
+    expect(hub.assemble).toHaveBeenLastCalledWith(SOURCE, ["./calc", "scientific"], workspace);
   });
 });

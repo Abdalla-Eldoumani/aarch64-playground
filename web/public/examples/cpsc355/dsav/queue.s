@@ -231,8 +231,7 @@ display_queue_menu:
     ldr     x2, =queue_opt_0
     bl      queue_menu_line
 
-    // how much of the buffer is spoken for, so the menu is never a dead
-    // end
+    // how many slots are in use, so the menu shows the queue's state
     mov     w0, 13
     mov     w1, 15
     bl      ui_at
@@ -1061,7 +1060,8 @@ queue_clear_interactive:
     ret
 
 // queue_enqueue(w0 = value) -> w0 = 1 on success, 0 when the buffer is
-// full. No calls, so no callee-saved register has to be spilled.
+// full. It calls nothing, so x0 to x6 are safe to use and none of x19 to
+// x28 has to be saved on the stack.
     .global queue_enqueue
 queue_enqueue:
     stp     fp, lr, [sp, -16]!

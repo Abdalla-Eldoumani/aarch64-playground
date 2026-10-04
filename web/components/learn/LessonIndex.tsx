@@ -1,27 +1,23 @@
 "use client";
 
 /**
- * The learn index: ruled datasheet rows ordered by metadata, with a labeled
- * search box, a tag filter, and empty + loading states. It receives
- * already-validated index rows as props from the server index page
- * (loadLessonIndex narrows each lesson to LessonIndexRow, leaving the body
- * unread) and renders every row field as plain React text
- * (auto-escaped), so there is no markdown/HTML injection path here.
- *
- * Each row leads with its sheet number `4.N` (the 1-based position in the
- * sorted order, stable under filtering), then the title and a quieter
- * description line, inside one bordered container with hairlines between rows.
+ * The learn index: numbered rows with a search box and a tag filter. Rows
+ * arrive already validated and render as plain React text, so there is no
+ * Markdown or HTML injection path here.
  */
 
 import { useId, useMemo, useState, type JSX } from "react";
 import Link from "next/link";
 import type { LessonIndexRow } from "@/lib/content/lesson-schema";
 import { compareByOrder } from "@/lib/content/content-order";
+import { matchesAllWords } from "@/lib/content/search-words";
 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
+const SUMMARY_CLASS =
+  "fold-summary w-fit font-mono text-[12px] uppercase tracking-[0.14em] text-[var(--text-secondary)] hover:text-[var(--cyan)]";
 const CHIP_CLASS =
-  "inline-flex min-h-[44px] items-center rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:shadow-[var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
+  "inline-flex min-h-[44px] items-center whitespace-nowrap rounded-[var(--radius-control)] border border-[var(--border)] px-3 text-[var(--text-secondary)] outline-none [font:var(--type-small)] hover:border-[var(--cyan)] focus-visible:[box-shadow:var(--ring)] aria-pressed:border-[var(--cyan)] aria-pressed:bg-[var(--cyan)] aria-pressed:text-[var(--on-cyan)]";
 
 /** A quiet placeholder card, reused for the no-lessons and no-match states. */
 function EmptyCard({ message }: { message: string }): JSX.Element {
@@ -59,18 +55,16 @@ export function LessonIndex({
     return [...set].sort((a, b) => a.localeCompare(b));
   }, [numbered]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    return numbered.filter(({ lesson }) => {
-      const haystack = [lesson.title, lesson.summary ?? "", ...(lesson.tags ?? [])]
-        .join(" ")
-        .toLowerCase();
-      const matchesQuery = q === "" || haystack.includes(q);
-      const matchesTags =
-        activeTags.size === 0 || (lesson.tags ?? []).some((tag) => activeTags.has(tag));
-      return matchesQuery && matchesTags;
-    });
-  }, [numbered, query, activeTags]);
+  const filtered = useMemo(
+    () =>
+      numbered.filter(({ lesson }) => {
+        const text = [lesson.title, lesson.summary ?? "", ...(lesson.tags ?? [])].join(" ");
+        const matchesTags =
+          activeTags.size === 0 || (lesson.tags ?? []).some((tag) => activeTags.has(tag));
+        return matchesAllWords(query, text) && matchesTags;
+      }),
+    [numbered, query, activeTags],
+  );
 
   function toggleTag(tag: string): void {
     setActiveTags((prev) => {
@@ -112,23 +106,30 @@ export function LessonIndex({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="search lessons"
-            className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:shadow-[var(--ring)]"
+            className="w-full min-h-[44px] rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-sunken)] px-3 py-2 text-[var(--text-primary)] outline-none [font:var(--type-body)] placeholder:text-[var(--text-tertiary)] focus-visible:[box-shadow:var(--ring)]"
           />
         </div>
         {allTags.length > 0 && (
-          <div role="group" aria-label="Filter by tag" className="flex flex-wrap gap-2">
-            {allTags.map((tag) => (
-              <button
-                key={tag}
-                type="button"
-                aria-pressed={activeTags.has(tag)}
-                onClick={() => toggleTag(tag)}
-                className={CHIP_CLASS}
-              >
-                {tag}
-              </button>
-            ))}
-          </div>
+          // Folded: open, two dozen chips took five rows over the list on a
+          // wide screen. The count keeps a chosen tag in sight while shut.
+          <details>
+            <summary className={SUMMARY_CLASS}>
+              filter by tag{activeTags.size > 0 && ` (${activeTags.size} chosen)`}
+            </summary>
+            <div role="group" aria-label="Filter by tag" className="flex flex-wrap gap-2">
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  type="button"
+                  aria-pressed={activeTags.has(tag)}
+                  onClick={() => toggleTag(tag)}
+                  className={CHIP_CLASS}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          </details>
         )}
       </div>
 
@@ -154,7 +155,7 @@ export function LessonIndex({
                       {lesson.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="font-mono text-[11px] text-[var(--text-tertiary)]"
+                          className="font-mono text-[12px] text-[var(--text-tertiary)]"
                         >
                           {tag}
                         </span>

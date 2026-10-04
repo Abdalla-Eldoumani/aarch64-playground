@@ -1,38 +1,24 @@
 /**
- * Every mnemonic the assembler accepts, lowercase, in the order the public
- * instruction reference documents them.
- *
- * This is the name list on its own, with no prose attached, because the
- * surfaces that only need names must not drag the hover-card table into their
- * bundle: the landing page highlights its hero program through
- * highlight-arm64, and the summaries, details and examples in
- * instruction-docs are several kilobytes it would never render.
- *
- * The list is not a second source of truth. lib/test/asm/mnemonics.test.ts
- * pins it to the hover-card table in both directions, the same way
- * reference-data and instruction-docs are pinned to each other and both are
- * pinned to the assembler's own SUPPORTED_MNEMONICS, so an instruction cannot
- * reach one list and miss another.
- *
- * The conditional-branch family is absent on purpose. The hover-card table
- * folds it onto a single `B.COND` placeholder, which is not a spelling anyone
- * writes; the concrete `b.<cond>` forms are matched by CONDITIONAL_BRANCH_RE
- * in highlight-arm64 and by COND_BRANCHES in the editor's Monaco grammar.
+ * Every mnemonic the assembler accepts, lowercase, in instruction-reference
+ * order. The names live apart from the hover-card prose so the landing page's
+ * highlighter does not pull that table into its bundle; mnemonics.test.ts
+ * keeps the two lists equal. The `b.<cond>` branches are left out because the
+ * table folds them into one `B.COND` entry and both highlighters match them.
  */
 export const ARM64_MNEMONIC_NAMES: readonly string[] = [
   "mov", "movz", "movk", "movn", "add", "adds", "sub", "subs", "ccmp",
   "ccmn", "smaddl", "smsubl", "umaddl", "umsubl", "smnegl", "umnegl", "clz",
   "cls", "rbit", "rev", "rev16", "rev32", "adc", "adcs", "sbc", "sbcs",
-  "and", "ands", "orr", "eor", "bic", "lsl", "lsr", "asr", "ror", "sbfx",
+  "and", "ands", "orr", "eor", "bic", "lsl", "lsr", "asr", "ror", "extr", "sbfx",
   "ubfx", "bfi", "bfxil", "ubfiz", "sbfiz", "sxtb", "sxth", "sxtw", "uxtb",
   "uxth", "uxtw", "mul", "madd", "msub", "mneg", "smull", "umull", "smulh",
   "umulh", "udiv", "sdiv", "neg", "negs", "mvn", "orn", "eon", "cmp", "cmn",
   "tst", "csel", "csinc", "csinv", "csneg", "cset", "csetm", "cinc", "cinv",
   "cneg", "ldr", "str", "ldrb", "strb", "ldrh", "strh", "ldrsb", "ldrsh",
-  "ldrsw", "ldp", "stp", "adr", "adrp", "b", "bl", "br", "blr", "ret", "cbz",
-  "cbnz", "tbz", "tbnz", "svc", "nop", "fmov", "fadd", "fsub", "fmul",
+  "ldrsw", "ldpsw", "ldp", "stp", "adr", "adrp", "b", "bl", "br", "blr", "ret", "cbz",
+  "cbnz", "tbz", "tbnz", "svc", "brk", "nop", "fmov", "fadd", "fsub", "fmul",
   "fdiv", "fnmul", "fmadd", "fmsub", "fnmadd", "fnmsub", "fmax", "fmin",
-  "fmaxnm", "fminnm", "fneg", "fabs", "fsqrt", "fcsel", "fcmp", "fcmpe",
+  "fmaxnm", "fminnm", "fneg", "fabs", "fsqrt", "fcsel", "fcmp", "fcmpe", "fccmp", "fccmpe",
   "fcvt", "scvtf", "ucvtf", "fcvtzs", "fcvtns", "fcvtnu", "fcvtzu", "fcvtas",
   "fcvtau", "fcvtms", "fcvtmu", "fcvtps", "fcvtpu", "ldur", "stur", "ldnp",
   "stnp", "movi", "mvni", "dup", "ins", "umov", "smov", "mla", "mls", "pmul",

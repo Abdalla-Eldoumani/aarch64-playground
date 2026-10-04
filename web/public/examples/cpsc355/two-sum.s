@@ -51,7 +51,7 @@ define(STATUS_ROW, 20)
 // Array cells are drawn five columns wide, so a value outside this
 // range would spill into its neighbour. The target gets a wider
 // range because it is only ever printed as plain text, and both
-// ranges keep target - arr[i] far away from a 32-bit wrap.
+// ranges keep target - arr[i] far away from 32-bit overflow.
 define(VALUE_MIN, -99)
 define(VALUE_MAX, 999)
 define(TARGET_MIN, -9999)
@@ -62,8 +62,8 @@ define(TARGET_MAX, 9999)
 // reported as out of range rather than as junk.
 define(DIGIT_MAX, 9)
 
-// The palette, by role rather than by name. These are 256-colour SGR
-// escapes; printf treats them as any other text, so drawing is just a
+// The palette, by role rather than by name. These are 256-colour escape
+// codes; printf treats them as any other text, so drawing is just a
 // sequence of printfs with the right control bytes mixed in.
         .data
 th_fg_text:     .string "\x1b[38;5;189m"   // body text
@@ -169,8 +169,8 @@ pre_txt5:       .string "arr=[3,3,4,7,1,8]      target=10"
 pre_txt6:       .string "arr=[0,16,32,48,33]    target=49"
 
 // Each preset_table row is 24 bytes: 8-byte pointer to the array,
-// 4-byte length, 4-byte target, 8 bytes of padding to keep the next
-// row 8-aligned. The stride lets us index with one multiply.
+// 4-byte length, 4-byte target, 8 bytes of padding. Every row is the
+// same size (the stride), so one multiply finds any row.
 preset_d1:      .word 2, 7, 11, 15
 preset_d2:      .word -3, 4, 1, -1
 preset_d3:      .word 5, 5
@@ -356,7 +356,7 @@ prompt_arg:     .skip 4
 
 
 // main seeds the animation delay, clears the "array set" and "target
-// set" flags, and then picks a face. Started as "two_sum_viz console"
+// set" flags, and then picks a mode. Started as "two_sum_viz console"
 // it runs the solver as plain lines and returns; started with no
 // arguments it drops into the menu loop, and each menu option is a
 // short helper that returns here. The loop exits only on option 0.
@@ -758,7 +758,7 @@ chs_outer:
 chs_insert:
         // No match yet. Record (val, i) unless val is already in the
         // table, in which case the index sitting there is the earlier
-        // one and it stays; The visualizer follows the same rule, so a
+        // one and it stays; the visualizer follows the same rule, so a
         // repeated value names the same index on both paths.
         mov     w0, w23
         mov     w1, w25
@@ -1264,7 +1264,7 @@ dsb_speed:
         ret
 
 
-// set_from_preset shows six canned (array, target) pairs and copies
+// set_from_preset shows six ready-made (array, target) pairs and copies
 // the chosen one into shared state. Option 0 cancels.
 set_from_preset:
         stp     fp, lr, [sp, -16]!
@@ -1338,8 +1338,8 @@ set_from_preset:
         cbz     w0, sfp_cancel
 
         // Look up the chosen row: &preset_table + (choice - 1) * 24.
-        // Each row holds (pointer, length, target), so we pass
-        // &row[0], &row[8], &row[12] to apply_preset.
+        // Each row holds (pointer, length, target), so we pass the
+        // pointer stored at row[0], then &row[8] and &row[12].
         sub     w0, w0, 1
         mov     w9, PRESET_STRIDE
         mul     w0, w0, w9
@@ -1359,7 +1359,7 @@ sfp_cancel:
 
 // apply_preset copies one preset into shared state. The copy loop
 // has no bl call inside it, so scratch registers survive iteration
-// to iteration without any spills.
+// to iteration without being saved to the stack.
 //
 // Input:  x0 = data pointer (length * 4 bytes)
 //         x1 = &length
@@ -1585,7 +1585,7 @@ er_done:
 // draw_array paints the array row, optional i/j pointer carets
 // beneath it, and picks per-cell colours based on the mode. Rows
 // 6-10 of the terminal are ours:
-//   row 6   section label "ARRAY"
+//   row 6   section label "array"
 //   row 7   index row      " [0]  [1]  [2] ... "
 //   row 8   value row      "[ 42][  7][ 11] ..."
 //   row 9   caret row      "   ^          ^"
@@ -1781,10 +1781,10 @@ da_ptr_skip:
 
 // draw_hash paints the 16-slot hash table as two rows of eight cells
 // each. Rows 12-16 are ours:
-//   row 12  section label "HASH TABLE ..."
-//   row 13  slot labels 00-07
+//   row 12  section label "hash table ..."
+//   row 13  slot labels  0-7
 //   row 14  slot values  0-7
-//   row 15  slot labels 08-15
+//   row 15  slot labels  8-15
 //   row 16  slot values  8-15
 //
 // An empty slot is a faint dot. A highlighted slot gets a filled
@@ -1923,7 +1923,7 @@ dh_done:
         ret
 
 
-// clear_trace_area draws the "TRACE" header on row 18 and blanks the
+// clear_trace_area draws the "trace" header on row 18 and blanks the
 // two narration rows below it (19, 20). Called before each frame's narration
 // goes down.
 clear_trace_area:
@@ -2060,7 +2060,7 @@ run_brute_force:
         bl      th_off
 
         // max = n*(n-1)/2 for the counter line.  Computed once and
-        // stashed in w28 because scratch regs get clobbered by the
+        // stashed in w28 because scratch regs get overwritten by the
         // draw helpers below.
         sub     w9, w20, 1
         mul     w28, w20, w9
@@ -2100,9 +2100,9 @@ bf_inner:
         add     w22, w22, 1
 
         // Narration frame. The format string has eight %d slots:
-        // i, j, i, j, a, b, sum, target. The AArch64 variadic ABI
-        // puts the first seven int args in w1-w7 and the eighth on
-        // the stack, so we shove target onto [sp] and keep the rest
+        // i, j, i, j, a, b, sum, target. The calling convention puts
+        // the first seven after the format in w1-w7 and the eighth on
+        // the stack, so we store target at [sp] and keep the rest
         // in registers.
         bl      clear_trace_area
         mov     w0, 19
@@ -2137,7 +2137,7 @@ bf_inner:
         mov     w2, w28
         bl      draw_stats
 
-        // Miss vs match. The helpers clobbered scratch regs, so
+        // Miss vs match. The helpers overwrote scratch regs, so
         // reload arr[i], arr[j], and re-add before comparing.
         ldr     w9,  [x19, w23, SXTW #2]
         ldr     w10, [x19, w24, SXTW #2]
@@ -2732,7 +2732,7 @@ clear_screen:
         ret
 
 
-// hide_cursor_call sends the DECTCEM hide sequence so the cursor
+// hide_cursor_call sends the escape code that hides the cursor, so it
 // does not blink over the animation.
 hide_cursor_call:
         stp     fp, lr, [sp, -16]!
@@ -2754,8 +2754,8 @@ show_cursor_call:
         ret
 
 
-// move_cursor positions the cursor at (row, col) using a CSI H
-// escape. Rows and columns are 1-indexed, matching the terminal's
+// move_cursor positions the cursor at (row, col) with a cursor-move
+// escape code. Rows and columns are 1-indexed, matching the terminal's
 // own conventions.
 //
 // Input:  w0 = row, w1 = col

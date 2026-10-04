@@ -51,18 +51,9 @@ export interface CpuView {
 }
 
 /**
- * The register/PC/marker view and the replay history behind it. They are
- * one module because they are one set of values seen twice: a capture
- * reads exactly the refs this view maintains, and a seek writes exactly
- * the state it renders. Seeking is visual only: it never touches the CPU, so
- * the next forward step resumes from the live PC.
- */
-/**
- * The register view before a machine exists: X0..X30 zeroed, the stack pointer
- * at the top of the stack region, the pc at the code base. Exported because
- * the embed's pre-engage frame paints exactly these values, so the register
- * pane occupies its area before the hub arrives and the grid never moves under
- * the host page.
+ * The register view before a machine exists. Exported so the embed's
+ * placeholder paints the same values and the register grid does not shift
+ * when the emulator loads.
  */
 export const IDLE_CPU_VIEW = {
   registers: Array<string>(31).fill("0x0000000000000000"),
@@ -71,6 +62,11 @@ export const IDLE_CPU_VIEW = {
   nzcv: 0,
 };
 
+/**
+ * The register view and its replay history, in one hook because a capture
+ * reads exactly the refs this view keeps and a seek writes exactly the state
+ * it renders. A seek never touches the CPU, so the next step resumes live.
+ */
 export function useCpuView(): CpuView {
   const [registers, setRegisters] = useState<string[]>(
     () => [...IDLE_CPU_VIEW.registers],

@@ -1,0 +1,76 @@
+{
+  "title": "Newton's square root",
+  "slug": "newtons-square-root",
+  "order": 65,
+  "lastUpdated": "2026-09-30",
+  "topic": "floating-point",
+  "difficulty": "challenge",
+  "prompt": "Find the square root of the number in the stdin box without the `fsqrt` instruction, using the rule Isaac Newton's method gives for square roots: if `guess` is a guess at the root of `n`, then\n\n`next = (guess + n / guess) / 2`\n\nis a better one. Start at or above the root (`n` itself, or `1.0` when `n` is below 1) and every step lands closer, always from above. In exact arithmetic that goes on forever; in floating point the guesses soon stop getting smaller, because a double holds only so many digits. So repeat the rule, compare each `next` with `guess` using `fcmp`, and stop as soon as `next` is not smaller. `guess` is then the answer. Do not count steps: a big `n` needs far more of them than a small one.\n\nPrint the root with the `%.6f` format in `.data`, which reads a double from `d0`. Two inputs need care before the loop:\n\n- a negative number has no real square root: print `no real square root` and return 1\n- the root of 0 is 0; left to the loop, the guess shrinks to zero and `0 / 0` is not a number, so the loop never ends\n\n## What is checked\n\n- the root printed for the number in the stdin box, and for more numbers you cannot see\n- the exit status (0, or 1 for a negative number)\n- the loop is yours: `fdiv` and `fcmp` present, no `fsqrt`",
+  "starter": "// square root by Newton's method: improve a guess until it stops shrinking\ndefine(fp, x29)\ndefine(lr, x30)\n\nn_s = 16                                    // the number read by scanf\nalloc = -(16 + 8) & -16\ndealloc = -alloc\n\n.data\nfmt_in:     .string \"%lf\"\nfmt_root:   .string \"square root = %.6f\\n\"\nfmt_neg:    .string \"no real square root\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in\n        add     x1, fp, n_s\n        bl      scanf\n\n        ldr     d1, [fp, n_s]               // d1 = n\n\n        // TODO:\n        //   - a negative n prints fmt_neg and returns 1\n        //   - 0 is its own root: print it straight away\n        //   - otherwise start the guess at n, or at 1.0 when n is below 1,\n        //     and repeat  next = (guess + n / guess) / 2  until next is no\n        //     longer smaller than guess; guess is then the root\n        // fmov d2, xzr puts 0.0 in d2 to compare against, and fmov can\n        // load a few small constants directly, 1.0 and 0.5 among them.\n        // printf takes the double to print in d0 and fmt_root in x0.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+  "args": "",
+  "stdin": "10\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "square root = 3.162278\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "fdiv"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "fcmp"
+      },
+      {
+        "kind": "forbids-instruction",
+        "mnemonics": [
+          "fsqrt"
+        ]
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "2\n",
+      "stdout": "square root = 1.414214\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0.25\n",
+      "stdout": "square root = 0.500000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1000000\n",
+      "stdout": "square root = 1000.000000\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "1\n",
+      "stdout": "square root = 1.000000\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "square root = 0.000000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "-9\n",
+      "stdout": "no real square root\n",
+      "exitCode": 1,
+      "edge": true
+    }
+  ]
+}

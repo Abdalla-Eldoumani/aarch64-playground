@@ -3,153 +3,24 @@
 @tailwind utilities;
 
 /* =============================================================================
-   aarch64 playground: design tokens v2
-   One system, two densities. Amber = the machine acting. Cyan = you acting.
-   One semantic token drives each state across all three themes. The 32-bit
-   instruction word runs through the field boxes, bit rulers, and blueprint
-   paper.
+   Design tokens. Every colour, per theme, comes from lib/theme/tokens.ts: the
+   Tailwind config writes those blocks into the base layer above, so no colour
+   value is written in this file. Amber is the machine acting, cyan is you
+   acting. What follows is theme-independent.
 ============================================================================= */
 
-/* ----- DARK · primary surface (default) ----- */
-:root,
-[data-theme="dark"] {
-  --bg-base:        #0B0C10;
-  --bg-sunken:      #0F1116;
-  --bg-raised:      #14171D;
-  --bg-panel:       #191D24;
-  --bg-elevated:    #212630;
-  --border:         #262B33;
-  --border-strong:  #3A414C;
-
-  --text-primary:   #EDEEF1;
-  --text-secondary: #A5ACB6;
-  --text-tertiary:  #858D99; /* 4.5:1 on every dark surface, --bg-elevated included */
-
-  --amber:          #FFB224;  /* execution: pc, current line, run, decode-strip Rd */
-  --amber-dim:      #7A5510;
-
-  --cyan:           #3EC5E8;  /* interaction: links, focus, primary actions, selected tab/nav */
-  --cyan-dim:       #1B6376;
-  --on-cyan:        #052430;  /* text/icon on a filled cyan control */
-
-  --success:        #4ADE80;
-  --warning:        #FFB454;
-  --danger:         #FF6B6B;
-  --changed:        #FFCB5E;  /* the just-written value's ink; the flash itself is the amber write bar */
-
-  --focus:          var(--cyan);
-
-  /* Blueprint paper + datasheet marginalia. The grid is CSS-only (see .paper)
-     and self-disabling in high-contrast where --grid-line goes transparent. */
-  --grid-line:      rgba(237, 238, 241, 0.03);
-  --crop:           #4A515C;
-
-  /* Syntax colors for the read-only CodeBlock, matched per theme to the editor's
-     Monaco palette (web/components/Editor.tsx) so the editor and read-only code
-     read the same. --syntax-comment is lifted from the editor's gray to clear
-     WCAG AA on the code surface; --syntax-string reuses the literal (number) hue
-     since the editor grammar has no string token. */
-  --syntax-keyword:  #6FA8FF;
-  --syntax-register: #FF7EB6;
-  --syntax-number:   #B49BFF;
-  --syntax-string:   #B49BFF;
-  --syntax-comment:  #8B939E;
-  --syntax-label:    #3DD68C;
-
-  /* Viewport-safe insets and the panel font scale are theme-independent,
-     so the base/dark block owns them; they cascade to every theme via :root. */
+/* Viewport-safe insets and the panel font scale are the same in every theme. */
+:root {
   --safe-bottom:    env(safe-area-inset-bottom, 0px);
   --safe-top:       env(safe-area-inset-top, 0px);
+  --safe-left:      env(safe-area-inset-left, 0px);
+  --safe-right:     env(safe-area-inset-right, 0px);
   --font-scale:     1;
 }
 
-/* ----- LIGHT · true light (ink on blueprint paper) ----- */
-[data-theme="light"] {
-  --bg-base:        #FCFCFD;
-  --bg-sunken:      #F4F5F7;
-  --bg-raised:      #FFFFFF;
-  --bg-panel:       #FFFFFF;
-  --bg-elevated:    #E9EBEF;
-  --border:         #E2E5EA;
-  --border-strong:  #C9CED6;
-
-  --text-primary:   #14161A;
-  --text-secondary: #565E68;
-  --text-tertiary:  #626A73; /* 4.5:1 on every light surface incl. --bg-elevated hover */
-
-  /* The three state hues sit darker than their dark-theme cousins on
-     purpose: as text they must clear 4.5:1 on every light surface AND on
-     their own 10-15% tint bands (the quiz chips, callouts, and the
-     current-instruction row are the worst cases). */
-  --amber:          #81520C;
-  --amber-dim:      #E7CD96;
-  --cyan:           #0E7490;
-  --cyan-dim:       #9AD3DF;
-  --on-cyan:        #FFFFFF;
-
-  --success:        #186A2D;
-  --warning:        #8D5400;
-  --danger:         #C2362F;
-  --changed:        #8A5700;
-
-  --focus:          var(--cyan);
-
-  --grid-line:      rgba(20, 22, 26, 0.04);
-  --crop:           #B9C0C9;
-
-  --syntax-keyword:  #1D4ED8;
-  --syntax-register: #BE185D;
-  --syntax-number:   #6D28D9;
-  --syntax-string:   #6D28D9;
-  --syntax-comment:  #5A626B;
-  --syntax-label:    #047857;
-}
-
-/* ----- HIGH-CONTRAST · pure-black, white hairlines, WCAG AAA, texture off ----- */
-[data-theme="high-contrast"] {
-  --bg-base:        #000000;
-  --bg-sunken:      #0A0A0A;
-  --bg-raised:      #141414;
-  --bg-panel:       #141414;
-  --bg-elevated:    #1E1E1E;
-  --border:         #FFFFFF;
-  --border-strong:  #FFFFFF;
-
-  --text-primary:   #FFFFFF;
-  --text-secondary: #E6E6E6;
-  --text-tertiary:  #C7C7C7;
-
-  --amber:          #FFC247;
-  --amber-dim:      #6B4A00;
-  --cyan:           #5AD7F0;
-  --cyan-dim:       #2C9FB8;
-  --on-cyan:        #00181E;
-
-  --success:        #5CF06B;
-  --warning:        #FFC247;
-  --danger:         #FF8585;
-  --changed:        #FFD480;
-
-  --focus:          #FFFFFF;
-
-  --grid-line:      transparent;  /* texture off: nothing competes with text */
-  --crop:           #FFFFFF;
-
-  --syntax-keyword:  #8BE0FF;
-  --syntax-register: #FFB6E6;
-  --syntax-number:   #D4B6FF;
-  --syntax-string:   #D4B6FF;
-  --syntax-comment:  #D1D5DB;
-  --syntax-label:    #9EF0C1;
-}
-
 /* =============================================================================
-   TYPE: IBM Plex Sans (UI/display), JetBrains Mono (signature), Source Serif 4
-   (editorial leads + margin notes). next/font binds --font-sans/--font-mono/
-   --font-serif on <html> to the self-hosted hashed families (layout.tsx); the
-   --type-* shorthands reference those vars so they resolve to the self-hosted
-   fonts. The family vars are not redeclared here: that would shadow
-   next/font.
+   TYPE. next/font sets --font-sans, --font-mono and --font-serif on <html>
+   (layout.tsx). They are not redeclared here, which would shadow next/font.
 ============================================================================= */
 :root {
   --type-display:  700 64px/1.03  var(--font-sans);   /* tracking -0.03em  */
@@ -161,34 +32,27 @@
   --type-body:     400 15px/1.75  var(--font-sans);
   --type-small:    400 13px/1.50  var(--font-sans);
   --type-code:     400 14px/1.50  var(--font-mono);   /* editor: 14/21px    */
-  --type-label:    500 10px/1.40  var(--font-mono);   /* .14em, uppercase   */
-  --type-kicker:   600 11px/1.40  var(--font-mono);   /* .18em, uppercase   */
-  --type-docrule:  400 10px/1.40  var(--font-mono);   /* .08em, uppercase   */
+  --type-label:    500 12px/1.40  var(--font-mono);   /* .14em, uppercase   */
+  --type-kicker:   600 12px/1.40  var(--font-mono);   /* .18em, uppercase   */
+  --type-docrule:  400 12px/1.40  var(--font-mono);   /* .08em, uppercase   */
 }
 
 /* =============================================================================
    SPACE · RADII · ELEVATION · MOTION
-   Every .anim-* class below reads its duration from these tokens, so retiming
-   the system is a one-line change here. The lone exception is the mobile pane
-   fade, pinned at 50ms so a mid-debug pane switch lands rather than eases.
+   Each .anim-* class takes its duration from these tokens.
 ============================================================================= */
 :root {
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
   --space-6: 24px; --space-8: 32px; --space-12: 48px; --space-16: 64px;
 
-  /* Corner doctrine: machine-facing chrome (toolbars, tabs, panels,
-     register and memory rows, chips, panel micro-inputs) is square
-     (--radius-control), and the Tailwind rounded/rounded-sm scale resolves
-     to it, so the rule holds by token. The soft edge survives on text
-     inputs and primary action buttons (--radius-action), cards
-     (--radius-card), and dialogs (--radius-modal). */
+  /* Corner doctrine: machine-facing chrome (toolbars, tabs, panels, rows,
+     chips) is square, and Tailwind's rounded scale resolves to these tokens so
+     the rule holds everywhere. Text inputs, primary buttons, cards and dialogs
+     keep a soft edge. */
   --radius-control: 0px;
   --radius-action:  4px;
   --radius-card:    8px;
   --radius-modal:   10px;
-
-  --shadow-overlay: 0 1px 2px rgba(0,0,0,.3), 0 8px 24px rgba(0,0,0,.25);
-  --shadow-frame:   0 1px 2px rgba(0,0,0,.3), 0 12px 32px rgba(0,0,0,.35);
 
   --ring: 0 0 0 2px var(--bg-base), 0 0 0 4px var(--focus);
 
@@ -202,6 +66,16 @@
   --error-shake: 200ms;
   --modal-rise: 160ms;
   --decode-latch: 120ms;
+
+  /* The shared motion scale: things arrive on the ease-out and leave on the
+     quicker ease-in, and a leave takes the short step so it never holds up
+     the next action. Nothing runs longer than 300ms. */
+  --motion-short: 120ms;
+  --motion-base: 180ms;
+  --motion-long: 240ms;
+  --ease-arrive: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-leave: cubic-bezier(0.4, 0, 1, 1);
+  --stagger-step: 16ms;
 }
 
 html {
@@ -209,10 +83,20 @@ html {
   font-size: 16px;
 }
 
-/* Text selection carries the interaction pole: a cyan wash in every theme. */
+/* Text selection carries the interaction pole, translucent so marks under it show. */
 ::selection {
-  background: color-mix(in srgb, var(--cyan) 30%, transparent);
+  background: var(--selection);
   color: var(--text-primary);
+}
+
+/* Preflight's fixed grey placeholder falls to 2.5:1 on the light themes. In
+   the base layer this comes after preflight, so it wins while a component's
+   own placeholder: class still overrides it. */
+@layer base {
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-tertiary);
+  }
 }
 
 body {
@@ -240,10 +124,8 @@ body {
 
 /* =============================================================================
    BLUEPRINT PAPER
-   A faint 24px cell grid on page roots (landing, learn, practice, reference).
-   Never on the playground main surface: the debugger stays flat. In
-   high-contrast --grid-line is transparent, so the helper is self-disabling
-   there.
+   A faint grid for the reading pages, never the playground, where the debugger
+   stays flat. High-contrast turns it off through a transparent --grid-line.
 ============================================================================= */
 .paper {
   background-color: var(--bg-base);
@@ -254,31 +136,19 @@ body {
 }
 
 /* Motion. Each animation is opt-in via a class so existing layout is
-   untouched; `prefers-reduced-motion` strips every one except the block
-   caret (see its own comment below: native carets blink under reduced
-   motion too), so vestibular-sensitive users see static UI. */
+   untouched, and every class runs only under no-preference (the block
+   below), so a reader who asks for less motion sees a static page. */
 @keyframes step-pop {
   0%   { transform: scale(1); }
   35%  { transform: scale(1.15); }
   100% { transform: scale(1); }
 }
-@keyframes tab-fade-in {
-  from { opacity: 0.45; }
-  to   { opacity: 1; }
-}
 
-/* Register write flash: the 2px write bar strikes in wide and settles,
-   like a latch closing: no background wash and no rounded pill. The end state
-   equals the static bar the changed row carries, so the settle reads as one
-   motion. Amber-driven so it follows the theme.
-
-   The four machine animations draw on a ::before layer and animate transform
-   and opacity only: box-shadow and border-color keyframes paint, and 31
-   register rows re-flashing on every step put that paint on the main thread.
-   The layer rests at scaleX(0) / opacity 0, so where the animation does
-   not run (under prefers-reduced-motion, and before the landing arms its
-   boot stagger) nothing is drawn at all and the static bar is the only
-   cue. */
+/* The four machine animations draw on a ::before layer and animate only
+   transform and opacity: box-shadow and border-color keyframes repaint, and 31
+   register rows flashing on every step put that work on the main thread. The
+   layer rests at scaleX(0), so where no animation runs nothing is drawn and the
+   row's static bar is the only cue. */
 .anim-reg-flash,
 .anim-boot-flash,
 .anim-run-breathe,
@@ -361,17 +231,10 @@ body {
   85%      { transform: translateX(1px); }
 }
 
-/* Decode-strip re-latch: when the decode panel re-renders on a step, every
-   field box's border flashes from amber back to the resting hairline, the
-   fields latching the new instruction word. The destination field stays amber
-   via its own inline styling. Static under prefers-reduced-motion: the fields
-   simply swap.
-
-   border-color is a paint property, so the amber is an overlay ring that fades
-   out against the box's own resting border instead. inset: 0 keeps the ring
-   inside the border box: a negative inset would sit exactly on the border but
-   would also push a permanent pixel of scrollable overflow into the field
-   row's overflow-x-auto strip. */
+/* Decode-strip re-latch: the field boxes flash amber on each step. The amber
+   is an overlay ring that fades, because animating border-color repaints.
+   inset: 0 keeps the ring inside the border box; a negative inset would add a
+   pixel of scrollable overflow to the field row. */
 .anim-decode-latch::before {
   content: "";
   position: absolute;
@@ -386,22 +249,16 @@ body {
   to   { opacity: 0; }
 }
 
-/* The block caret blinks unconditionally, like a native text caret (browsers
-   blink those under reduced motion too): a ~1s hard on/off toggle of a small
-   static box, not movement. Every other animation stays motion-gated below. */
-.anim-cursor-blink {
-  animation: cursor-blink var(--cursor-blink) infinite;
-}
-
 /* Every .anim-* class below is applied only here, so each one is static under
    prefers-reduced-motion. */
 @media (prefers-reduced-motion: no-preference) {
   .anim-step-pop {
     animation: step-pop var(--step-pop) var(--ease) 1;
   }
-  .anim-tab-fade {
-    /* Off-token at 50ms; see the motion block above. */
-    animation: tab-fade-in 50ms linear 1;
+  .anim-cursor-blink {
+    /* It blinks for as long as the page is open, with no control to stop
+       it, so a reader who asks for less motion gets a solid caret. */
+    animation: cursor-blink var(--cursor-blink) infinite;
   }
   .anim-reg-flash::before {
     /* ~120ms in (peak at 20% of the 600ms total) then ~480ms out, timed from
@@ -409,13 +266,9 @@ body {
     animation: reg-strike calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
   }
   .boot-flash-armed .anim-boot-flash::before {
-    /* Power-on write: a landing row flashes once with the register-write
-       tint, staggered per row via --boot-delay so the block reads as values
-       landing in a register file, top to bottom. Content never moves or
-       hides, so there is no layout shift; under prefers-reduced-motion the
-       rows are simply static. The armed class arrives after mount, so the
-       stagger answers hydration and never the first paint. `backwards` holds
-       the from-frame through the delay. */
+    /* Staggered by --boot-delay so the landing rows light top to bottom. The
+       armed class arrives after mount, so the stagger starts after hydration,
+       not on first paint; `backwards` holds the first frame through the delay. */
     animation: boot-strike calc(var(--reg-flash-in) + var(--reg-flash-out)) var(--ease) 1;
     animation-delay: var(--boot-delay, 0ms);
     animation-fill-mode: backwards;
@@ -445,21 +298,69 @@ body {
   }
 }
 
-/* Safe-area inset top, applied to the first flex child (the header) so the
-   inset participates in the flex chain instead of pushing the body below the
-   visible viewport on notched devices. */
-.safe-area-top {
-  padding-top: var(--safe-top);
+/* The site bar's theme row (ThemeControl). Closed it is invisible; open it
+   grows out of its button, which sits at its right edge. The transitions live
+   in the block below, so under reduced motion it opens and closes in place. */
+.theme-strip {
+  transform-origin: right center;
+}
+.theme-strip[data-open="false"] {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateX(8px) scale(0.96);
+}
+.theme-strip[data-open="false"] .theme-swatch {
+  opacity: 0;
+  transform: translateX(6px);
+}
+@media (prefers-reduced-motion: no-preference) {
+  /* Leaving: one short fade, no stagger, and visibility drops once it ends. */
+  .theme-strip {
+    transition:
+      opacity var(--motion-short) var(--ease-leave),
+      transform var(--motion-short) var(--ease-leave),
+      visibility 0s linear var(--motion-short);
+  }
+  .theme-strip[data-open="true"] {
+    transition:
+      opacity var(--motion-base) var(--ease-arrive),
+      transform var(--motion-base) var(--ease-arrive),
+      visibility 0s;
+  }
+  .theme-strip .theme-swatch {
+    transition:
+      opacity var(--motion-short) var(--ease-leave),
+      transform var(--motion-short) var(--ease-leave),
+      background-color var(--dur-ui) var(--ease);
+  }
+  /* Arriving swatches follow the row out, one stagger step apart (--i is the
+     distance from the button). The colour fade is the hover. */
+  .theme-strip[data-open="true"] .theme-swatch {
+    transition:
+      opacity var(--motion-short) var(--ease-arrive) calc(var(--i, 0) * var(--stagger-step)),
+      transform var(--motion-short) var(--ease-arrive) calc(var(--i, 0) * var(--stagger-step)),
+      background-color var(--dur-ui) var(--ease);
+  }
+  .theme-marker {
+    transition: transform var(--motion-base) var(--ease-arrive);
+  }
+}
+
+/* Monaco fades its scrollbars, folding arrows and minimap slider on its own
+   clock (100 to 800ms). Under reduced motion they switch at once like the
+   rest of the page; !important because Monaco's stylesheet loads later with
+   longer selectors. */
+@media (prefers-reduced-motion: reduce) {
+  .monaco-editor,
+  .monaco-editor * {
+    transition: none !important;
+  }
 }
 
 /* =============================================================================
    SKIP LINK
-   The first focusable element in the document (root layout), pointing at the
-   single <main id="main"> every route renders. Clipped to a screen-reader-only
-   box until focus, then a fixed mono chip in the top-left: fixed rather than
-   in flow because the nav's backdrop-blur and the debugger's header band would
-   both paint over an in-flow control. z-index sits above the highest overlay
-   in the app (z-[80]) so the chip is never covered while it has focus.
+   Hidden until focused, then fixed, because the nav's blur and the debugger's
+   header would paint over it in flow. z-index 100 clears the top overlay (80).
 ============================================================================= */
 .skip-link {
   position: absolute;
@@ -494,100 +395,101 @@ body {
   box-shadow: var(--ring);
 }
 
+/* The toggle of a folded section (a lesson's answers, the tag filter): a
+   44px row with the ring on keyboard focus. Here rather than as utilities
+   because each copy of the class string ships in a page's script. The
+   transparent outline still shows in forced-colors mode. */
+.fold-summary {
+  cursor: pointer;
+  line-height: 44px;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+.fold-summary:focus-visible {
+  box-shadow: var(--ring);
+}
+
 /* Panel content inherits `--font-scale`; opt-in classes use it. */
 .panel-scaled {
   font-size: calc(0.75rem * var(--font-scale));
 }
 
+/* The offline badge (chrome/OfflineBadge) sits above the playground in the
+   body's column. Holding that column to one screen lets the playground shrink
+   by the badge's height, so its run row stays on screen. */
+body:has(> .playground-shell) {
+  height: 100dvh;
+}
+
 /* =============================================================================
-   INSTRUMENT BANDS (header + controls)
-   Under sm the debugger's two chrome rows compress from stacked wrap rows into
-   horizontally scrolling instrument bands: on a phone the editor is the point,
-   so the chrome takes a single strip that scrolls within itself (the same
-   self-scroll pattern as the tab strip) with every control at full size and
-   hit target, instead of wrapping into rows that push the editor below the
-   fold. The 639.98px bound matches Tailwind's max-sm. The scrollbar is hidden
-   because the fade at each edge is the affordance.
+   PHONES AND TOUCH SCREENS
+   Under 768px wide the phone bar carries the site links; in a window 760px
+   tall or less (SHORT_SCREEN_MAX_HEIGHT, which takes in a phone on its side)
+   the phone bar or the short band does. Either way the site nav steps aside.
 ============================================================================= */
-@media (max-width: 639.98px) {
-  .header-band,
-  .controls-band {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-    /* A fade at each edge says "there is more this way" without an extra
-       element inside a row whose children are all interactive, and it reads
-       the same in all three themes. The scroll padding matches the two fade
-       widths, so a control scrolled into view by a tab press lands past the
-       fade rather than under it. */
-    scroll-padding-inline: 12px 24px;
-    -webkit-mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      #000 12px,
-      #000 calc(100% - 24px),
-      transparent 100%
-    );
-    mask-image: linear-gradient(
-      to right,
-      transparent 0,
-      #000 12px,
-      #000 calc(100% - 24px),
-      transparent 100%
-    );
-  }
-  .header-band > *,
-  .controls-band > * {
-    flex-shrink: 0;
-  }
-  /* Spacers the width of each fade, so the first and last controls can scroll
-     clear of it: without them the last control sits under the end fade at
-     maximum scroll and its focus ring is dimmed. */
-  .header-band::before,
-  .controls-band::before {
-    content: "";
-    flex: 0 0 12px;
-  }
-  .header-band::after,
-  .controls-band::after {
-    content: "";
-    flex: 0 0 24px;
-  }
-  /* The spacer pushes the status chips right on a wide row; inside a scrolling
-     strip it would only add empty scroll width, and its neighbours (the step
-     counter and the halted chip) are already hidden under sm. */
-  .controls-spacer {
+@media (max-width: 767.98px), (max-height: 760px) {
+  .playground-site-nav {
     display: none;
   }
 }
 
+@media (pointer: coarse) {
+  /* 44px is the least a fingertip hits reliably, so dense 24px controls grow
+     only on touch. The class is doubled because Tailwind emits its variant
+     utilities (sm:min-h-0) after this file, and a single class would lose. */
+  .touch-target.touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  /* iOS zooms the page into any field whose text is under 16px when it takes
+     focus, and leaves it zoomed. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* A lesson term's card (LessonMarkdown) sits along the bottom edge at every
+   size: hung off a term, it ran past the right edge under 1024px and widened
+   the page, and past the bottom edge for a term low in a laptop window. The
+   auto margins centre it once the width reaches its cap. */
+.term-card {
+  position: fixed;
+  inset: auto 1rem calc(1rem + var(--safe-bottom));
+  z-index: 60;
+  width: auto;
+  max-width: 32rem;
+  margin: 0 auto;
+  padding: 0.5rem 0.75rem;
+}
+
 /* =============================================================================
    EMBEDDED PLAYGROUND LAYOUT
-   The hero, lesson, and exercise embeds render at whatever width their host
-   gives them (a wide hero, a prose measure), so the arrangement is chosen by
-   container queries against the embed itself, not viewport breakpoints.
-   Under 38rem: a vertical stack, editor first and largest.
-   38rem to 56rem: a full-width editor over full-width registers over the
-   console, so the editor keeps real line length inside a reading column and
-   the register file gets the whole measure to lay its columns out in. 38rem
-   sits below the narrowest prose measure the site produces (the exercise
-   column at 691px), so every reading column gets that arrangement and only
-   true phone widths keep the even stack.
-   56rem and up: the editor beside a registers-over-console rail.
-   The base stack doubles as the fallback where container queries are
-   unsupported.
+   The host sets an embed's width, so container queries on the embed pick the
+   arrangement. 38rem sits below the narrowest reading column (691px), and the
+   base stack is the fallback where container queries are unsupported.
 ============================================================================= */
-/* The host frame every embed but the hero sits in. On a phone a fixed 560px
-   frame is most of the viewport before the page's own chrome, so the height
-   follows the small viewport instead: svh is the collapsed-toolbar height, so
-   the frame never hides under a mobile browser's expanding bar, and the vh
-   line above it is the fallback for engines that drop the svh declaration.
-   The floor keeps a landscape phone from squeezing the editor to nothing. */
+/* On a phone a fixed 560px frame fills the screen, so it follows the small
+   viewport: svh never hides under an expanding browser bar, the vh line is the
+   fallback, and the floor keeps a landscape phone's editor usable. */
 @media (max-width: 639.98px) {
   .embed-frame {
     height: min(72vh, 560px);
     height: min(72svh, 560px);
     min-height: 420px;
+  }
+}
+/* A phone on its side is 320 to 430px tall, so neither the 560px frame nor the
+   420px floor fit, and the code and the run row were never on screen
+   together. Under 500px tall the frame takes the screen less the site bar
+   (64px at its tallest). The class is doubled to beat the sm: and lg: heights
+   Tailwind emits after this file. */
+@media (max-height: 499.98px) {
+  .embed-frame.embed-frame {
+    height: calc(100vh - 4rem);
+    height: calc(100svh - 4rem);
+    min-height: 0;
   }
 }
 .embed-layout {
@@ -609,6 +511,12 @@ body {
 }
 .embed-area-console {
   grid-area: console;
+}
+/* The view switch and the status line show only in the single-pane frame
+   below; where container queries are missing, the base stack is what shows. */
+.embed-view,
+.embed-status {
+  display: none;
 }
 @container (min-width: 38rem) {
   .embed-grid {
@@ -638,6 +546,43 @@ body {
     border-bottom: 1px solid var(--border);
   }
 }
+/* One pane at a time on a phone or touch screen, where the stacked console was
+   too short for its 44px input row. The editor is hidden, not removed, so its
+   caret and undo survive a switch. Placed after the bands so it wins. */
+@media (max-width: 639.98px), (pointer: coarse) {
+  @container (max-width: 55.98rem) {
+    .embed-view {
+      display: flex;
+    }
+    .embed-status {
+      display: block;
+    }
+    .embed-grid {
+      grid-template-areas: "pane";
+      grid-template-rows: minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .embed-area-editor,
+    .embed-area-registers,
+    .embed-area-console {
+      grid-area: pane;
+      border-bottom: 0;
+    }
+    .embed-grid:not([data-pane="editor"]) .embed-area-editor {
+      visibility: hidden;
+    }
+    .embed-grid:not([data-pane="registers"]) .embed-area-registers,
+    .embed-grid:not([data-pane="console"]) .embed-area-console {
+      display: none;
+    }
+  }
+}
+/* The landing demo steps on its own. Until the reader clicks, taps or focuses
+   into it, a wheel or a swipe over its scroll boxes passes through them and
+   scrolls the page; the walk still moves the boxes from script. */
+[data-hands-off] .inner-scroll {
+  pointer-events: none;
+}
 
 ::-webkit-scrollbar {
   width: 6px;
@@ -663,6 +608,15 @@ body {
   background: var(--border-strong);
 }
 
+/* A control that draws no focus of its own (a range slider, a plain field, a
+   file tab) showed the browser's ring instead of the cyan one. This gives it
+   the same 2px cyan band at the same 2px gap. Zero specificity, so any
+   component's own focus rule still wins. */
+:where(a, button, input, select, textarea, summary, [tabindex]):where(:focus-visible) {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
 /* Forced colors (Windows High Contrast). The focus ring everywhere else is
    a box-shadow, which forced-colors mode strips, so focus would be
    invisible; a real outline in the system Highlight color survives. */
@@ -675,21 +629,21 @@ body {
 
 /* =============================================================================
    MONACO BUTTON TOOLTIPS
-   Monaco renders the hover for a widget button (the find widget's close, say)
-   through its context-view service, which positions the card by setting a
-   left offset and then lets the box shrink to fit whatever room is left
-   between that offset and the container's right edge. Against the right edge
-   of the editor pane that room is 120px, too narrow for "Close
-   (Shift+Escape)", so the label wrapped to a second line and the taller card
-   covered the 16px button it belonged to: elementFromPoint returned the card
-   and the click never reached the button, leaving the widget with no working
-   close. Sizing the card to its content instead lets it stay one line and
-   clear of the button, capped so a long label still wraps rather than running
-   off the page. The override has to win over the inline width the service
-   writes, and it is scoped to hover cards so context menus keep their own
-   measured width.
+   Monaco squeezes a hover card against the editor's right edge, so a long
+   label wrapped and the taller card covered the find widget's close button,
+   taking its clicks. Sized to content it stays on one line; !important beats
+   Monaco's inline width, and :has() leaves context menus their own width.
 ============================================================================= */
 .context-view.monaco-component:has(.workbench-hover) {
   width: max-content !important;
   max-width: 500px !important;
+}
+
+/* Monaco fades a disabled toggle in its find box (find in selection) to 40%,
+   which put the icon under 3:1 on the light themes. It takes the theme's
+   disabled ink at full strength instead, which the theme tests hold to 3:1;
+   !important because Monaco writes an inline colour on every toggle. */
+.monaco-editor .find-widget .monaco-custom-toggle.disabled {
+  opacity: 1;
+  color: var(--vscode-disabledForeground) !important;
 }

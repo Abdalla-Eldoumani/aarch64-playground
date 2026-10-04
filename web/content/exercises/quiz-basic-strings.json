@@ -1,0 +1,84 @@
+{
+  "title": "Basic quiz: strings",
+  "slug": "quiz-basic-strings",
+  "order": 124,
+  "lastUpdated": "2026-10-01",
+  "topic": "strings",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "How text is stored as bytes: character codes, the zero byte that ends a string, the directives that store text, and the instructions that read and write one byte.",
+  "questions": [
+    {
+      "question": "What value does mov w10, 'a' put in w10?",
+      "options": [
+        "65",
+        "90",
+        "97",
+        "122"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A character between single quotes stands for its ASCII code, and the code for a lower-case a is 97. 65 is A, 90 is Z, and 122 is z.",
+      "hint": "Lower-case letters come 32 codes after their capitals, and A is 65."
+    },
+    {
+      "question": "How many bytes does .ascii \"stop\" store?",
+      "options": [
+        "3",
+        "4",
+        "5",
+        "8"
+      ],
+      "correctAnswer": 1,
+      "explanation": ".ascii stores the codes of the four characters and nothing after them. .string \"stop\" would store 5 bytes, the last one the zero that ends a string.",
+      "hint": "Count the letters, then ask whether this directive adds a zero byte."
+    },
+    {
+      "question": "A loop walks a string one byte at a time. How does it know it has reached the end?",
+      "options": [
+        "It stops at the byte that holds 0, the terminator",
+        "It reads the length from the byte in front of the first character",
+        "It stops at the first newline, the character with code 10",
+        "It stops when its address reaches the next label in .data"
+      ],
+      "correctAnswer": 0,
+      "explanation": "Nothing in memory records how long a string is. Code that walks one, %s in printf included, reads bytes until it loads a 0. A newline is an ordinary character that can sit anywhere in the text, and a label leaves nothing in memory to find.",
+      "hint": "Think about what .string adds that .ascii does not."
+    },
+    {
+      "question": "Which instruction loads one byte from the address in x9 and fills the rest of w11 with zeros?",
+      "options": [
+        "ldrsb w11, [x9]",
+        "ldrh w11, [x9]",
+        "ldr w11, [x9]",
+        "ldrb w11, [x9]"
+      ],
+      "correctAnswer": 3,
+      "explanation": "ldrb loads one byte and fills the rest of the register with zeros. ldrsb also loads one byte but copies its top bit into the rest, ldrh loads two bytes, and ldr w11 loads four.",
+      "hint": "The b in the name means byte; an s in front of it would mean signed."
+    },
+    {
+      "question": "After ldrb w10, [x9], w10 holds the code of the character '6'. Which instruction turns it into the number 6?",
+      "options": [
+        "add w10, w10, '0'",
+        "lsr w10, w10, 4",
+        "sub w10, w10, '0'",
+        "sub w10, w10, 6"
+      ],
+      "correctAnswer": 2,
+      "explanation": "'6' is stored as its code, 54. Taking away the code of '0', 48, leaves 6, and the same subtraction works for every digit because '0' to '9' have consecutive codes.",
+      "hint": "The digit codes start at the code for '0'."
+    },
+    {
+      "question": "A program changes a string in place with strb. Which section must the string be declared in?",
+      "options": [
+        "In .text, beside the code that changes it",
+        "In .data, which holds values the program may change",
+        "In .bss, which starts out holding the text you wrote",
+        "In any section, since strb can write anywhere"
+      ],
+      "correctAnswer": 1,
+      "explanation": "The program may write to .data, and .data starts out holding the text written in the source. .text is read-only once Linux has loaded the program, so a strb there ends it with a segmentation fault. .bss can be written but starts out as zeros, so it cannot hold text from the source.",
+      "hint": "The string needs its text from the start, and it must accept writes."
+    }
+  ]
+}

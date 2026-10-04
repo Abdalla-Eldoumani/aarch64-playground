@@ -17,7 +17,7 @@ describe("buildSuggestions", () => {
     expect(labels).toContain(".section");
   });
 
-  it("suggests libc + labels in a `bl` context", () => {
+  it("suggests libc functions and labels after `bl`", () => {
     const got = buildSuggestions(
       ctx(".text\nmain:\n  ret\n", "  bl pr", 7),
     );

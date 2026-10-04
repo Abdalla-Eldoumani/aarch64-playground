@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	classify
 classify:
 	tbnz	w0, #31, .L3
@@ -36,7 +36,7 @@ classify:
 	.string	"%d %d %d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -80]!
@@ -99,10 +99,10 @@ main:
 	bl	printf
 	mov	w3, 0
 	mov	w1, 0
-	.align 5
+	.p2align 5,,15
 .L14:
 	mov	w0, 0
-	.align 5
+	.p2align 5,,15
 .L15:
 	cmp	w3, w0
 	add	w4, w0, w3

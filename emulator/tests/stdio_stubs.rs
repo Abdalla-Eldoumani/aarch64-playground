@@ -1,8 +1,8 @@
-//! End-to-end contracts for the FILE*-level stdio stubs (fopen /
-//! fprintf / fclose over the VFS), the shape assignment log-file
-//! programs use: fopen("file", "w"), fprintf per record, one fclose.
-//! Plus the three standard streams, which are linkable symbols naming
-//! loader-written words rather than descriptors fopen handed out.
+//! Tests for fopen, fprintf and fclose writing to the emulator's in-memory
+//! files, the way assignment programs write a log file: fopen("file", "w"),
+//! one fprintf per record, one fclose. Also covers stdin, stdout and
+//! stderr, which are symbols for words the loader fills in, not handles
+//! that fopen returned.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -301,8 +301,8 @@ main:
 #[test]
 fn fclose_of_a_standard_stream_succeeds_without_closing_it() {
     // A student who calls fclose on stdout must not lose the rest of the
-    // program's output: fd 0/1/2 are not fopen descriptors, so there is
-    // nothing to drop.
+    // program's output: fopen never opened stdout, so there is nothing to
+    // close.
     let source = r#"
 define(fp, x29)
 define(lr, x30)
@@ -374,4 +374,80 @@ main:
         message.contains("fprintf") && message.contains("fopen"),
         "message names the cause and the fix: {message}"
     );
+}
+
+/// Optimized gcc output calls the stream forms of putchar and getchar and
+/// turns a constant fputs into fwrite. Each answers what glibc answers:
+/// the byte as an unsigned char, EOF at the end of input, and the count of
+/// whole items written.
+#[test]
+fn putc_getc_and_fwrite_move_bytes_through_the_streams() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+block:          .string "block"
+fmt:            .string "|%d %d %d %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        stp     x19, x20, [sp, -16]!
+        stp     x21, x22, [sp, -16]!
+
+        ldr     x0, =stdin
+        ldr     x0, [x0]
+        bl      getc
+        mov     w19, w0                 // 'h'
+        ldr     x1, =stdout
+        ldr     x1, [x1]
+        bl      putc
+        mov     w20, w0                 // putc answers the byte
+
+        mov     w0, 'E'
+        ldr     x1, =stderr
+        ldr     x1, [x1]
+        bl      fputc
+
+        ldr     x0, =block
+        mov     x1, 1
+        mov     x2, 5
+        ldr     x3, =stdout
+        ldr     x3, [x3]
+        bl      fwrite
+        mov     w21, w0                 // 5 items
+
+        ldr     x0, =stdin
+        ldr     x0, [x0]
+        bl      getc                    // 'i'
+        ldr     x0, =stdin
+        ldr     x0, [x0]
+        bl      getc                    // end of input: EOF
+        mov     w4, w0
+
+        ldr     x0, =fmt
+        mov     w1, w19
+        mov     w2, w20
+        mov     w3, w21
+        bl      printf
+
+        ldp     x21, x22, [sp], 16
+        ldp     x19, x20, [sp], 16
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    cpu.push_stdin(b"hi");
+    cpu.close_stdin();
+    let result = cpu.run_until_break(2_000_000).expect("run");
+    assert!(result.halted, "program did not halt: {:?}", cpu.abort_message);
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "hblock|104 104 5 -1\n");
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stderr()), "E");
 }

@@ -1,27 +1,10 @@
 //! CPSC 355 conformance suite: the emulator regression gate.
 //!
-//! Each fixture under `conformance/` is an ORIGINAL assignment-style
-//! program, one per category a student writes: arithmetic and loops,
-//! branching with the condition codes, an array on the stack, a leaf
-//! subroutine, a non-leaf subroutine that calls a leaf, a printf/scanf
-//! round trip, a floating-point calculation, a file-I/O syscall
-//! sequence, bitfield packing (the bitwise-tutorial material:
-//! bfi / ubfx / bic), and `.req` register aliasing (how later
-//! assignments name registers). None reproduces course-archive text; every one is authored
-//! to the course style (lowercase mnemonics, m4 aliases, AAPCS64
-//! prologue/epilogue where the function needs one, contextual stack
-//! discipline, idiomatic addressing and syscalls).
-//!
-//! Two kinds of check run here:
-//!   * run-and-assert: assemble, load (with stdin / VFS where needed),
-//!     run to halt, and assert stdout + exit code + register/memory/VFS
-//!     state.
-//!   * full step-check: on the baseline arithmetic program and the
-//!     non-leaf program, assert the pc advances one instruction at a time
-//!     (and to known branch targets), `bl` steps into the callee and `ret`
-//!     returns after the call, `step_back` restores state, a breakpoint is
-//!     hit at the right address, and the linker line map points main's
-//!     first instruction at the right editor line.
+//! Each program under `conformance/` is original, in the course style, and
+//! stands for one kind of student program: loops, branches, a stack array,
+//! leaf and non-leaf calls, printf/scanf, floating point, file syscalls,
+//! bitfields and `.req` aliases. Each is run and its output checked; two
+//! are also stepped to check stepping, step-back, breakpoints and the line map.
 //!
 //! Any change to the emulator has to leave this suite green.
 

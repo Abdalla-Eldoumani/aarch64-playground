@@ -4,13 +4,51 @@ updates:
     directory: /web
     schedule:
       interval: weekly
+    # New versions wait 7 days, so a broken release is usually pulled first.
+    # next ships security fixes as normal releases, so it and eslint-config-next never wait.
+    cooldown:
+      default-days: 7
+      exclude: ["next", "eslint-config-next"]
+    # react, vitest, and size-limit packages require matching versions of each other,
+    # so one bumped alone fails npm ci; next and eslint-config-next release as a pair.
+    groups:
+      next:
+        patterns: ["next", "eslint-config-next"]
+      react:
+        patterns: ["react", "react-dom", "@types/react", "@types/react-dom"]
+      vitest:
+        patterns: ["vitest", "@vitest/*"]
+      size-limit:
+        patterns: ["size-limit", "@size-limit/*"]
+    # Deliberate holds: each of these moves in a planned migration, not in
+    # a weekly bump. Security updates still arrive for all of them.
+    ignore:
+      # Tracks the Node 24 runtime in .nvmrc and on Vercel.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
+      - dependency-name: tailwindcss
+        update-types: ["version-update:semver-major"]
+      - dependency-name: eslint
+        update-types: ["version-update:semver-major"]
+      - dependency-name: concurrently
+        update-types: ["version-update:semver-major"]
+      # Below 1.0 a minor can break the API, and the site bundles this exact version.
+      - dependency-name: monaco-editor
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: playwright
   - package-ecosystem: cargo
     directory: /emulator
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
   # The root manifest is not listed: its `next` entry exists only for Vercel's
   # framework detection, and its `postcss` override moves with web/'s.

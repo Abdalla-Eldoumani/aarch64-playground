@@ -6,54 +6,36 @@ use crate::errors::{EmuError, MemAccess};
 const PAGE_SIZE: usize = 4096;
 const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 
-/// Hard ceiling on how many 4 KiB pages a single program may have mapped
-/// at once. A store that would map a NEW page beyond this cap faults with
-/// `MemoryFault { access: Write }` instead of allocating, so a runaway
-/// allocation (a memory bomb, or unbounded recursion growing the stack)
-/// aborts calmly rather than growing the wasm heap until the tab dies.
+/// Most 4 KiB pages a program may have mapped at once. A write that would
+/// map one more faults with `MemoryFault { access: Write }`, so a runaway
+/// allocation or recursion stops calmly rather than growing the wasm heap
+/// until the tab dies. `map_page`, which maps the fixed baseline, is exempt.
 ///
-/// 8192 pages is 32 MiB of live program memory: enough to back the full
-/// 8 MiB stack (2048 pages, matching the course servers' `ulimit -s`) and
-/// the 16 MiB heap window (4096 pages) touched together, with the section
-/// baseline and headroom on top, yet still well under tab exhaustion. The
-/// stack floor must stay below this cap in page terms so runaway recursion
-/// meets the stack-overflow message, never the memory-cap one. Page
-/// buffers are shared copy-on-write with the step-back snapshot ring, so
-/// the peak is the live cap plus whatever the ring's frames still hold of
-/// pages the program has since rewritten. The pre-mapped stack/code/data
-/// baseline and `map_page` are not subject to the cap (they are the fixed
-/// baseline).
+/// 8192 pages is 32 MiB: the full 8 MiB stack (the course servers'
+/// `ulimit -s`) and the 16 MiB heap together, plus the sections. The stack
+/// floor must stay under this cap so runaway recursion gets the
+/// stack-overflow message, not this one. Named saves may still hold old
+/// copies of pages on top of it.
 pub const MAX_MAPPED_PAGES: usize = 8192;
 
-/// Upper bound on how many `(addr, len)` ranges the dirty log holds
-/// between drains. The log is a hint for the UI's changed-byte tint, not
-/// machine state, so it is allowed to be approximate. Unbounded, and
-/// copied into every snapshot frame, it turns a buffer-filling loop into
-/// quadratic time: a 24 MB memset died on a 417 MB allocation.
-/// Sequential writes coalesce into the previous range, so a whole-buffer
-/// fill costs one entry; past the cap further ranges widen the last entry
-/// instead of appending.
+/// Most `(addr, len)` ranges the dirty log holds between drains. The log
+/// only drives the UI's changed-byte tint, so it may be approximate; left
+/// unbounded, a 24 MB memset once died on a 417 MB allocation. Past the
+/// cap, new ranges widen the last entry instead of appending.
 const MAX_DIRTY_RANGES: usize = 4096;
 
-/// Sparse page-based memory.
+/// Sparse memory in 4 KiB pages, mapped on first write. Reads of unmapped
+/// addresses fault. Accesses are little-endian, and unaligned ones succeed
+/// byte by byte, as in Linux user space (SCTLR.A = 0). The stack-pointer
+/// alignment check (SA0) belongs to the executor, since it checks SP, not
+/// the address.
 ///
-/// Pages are 4 KiB, allocated on first write (auto-map). Reads to unmapped
-/// addresses fault. All multi-byte accesses are little-endian; unaligned
-/// accesses fall back to byte-at-a-time and succeed, modeling Linux
-/// userspace normal memory (SCTLR.A = 0). The stack-pointer alignment
-/// rule (SA0) is the executor's job, not this module's: it checks SP
-/// itself, never the effective address.
-///
-/// Each write also records an `(addr, len)` range in `dirty` so callers
-/// (the snapshot layer) can surface a per-step list of changed addresses
-/// for the replay scrubber's memory-diff highlighting. The buffer is
-/// drained by `take_dirty()` between steps.
+/// Every write is logged as an `(addr, len)` range that `take_dirty()`
+/// drains, so the UI can tint the bytes a step changed.
 pub struct Memory {
-    /// Page buffers behind `Rc` so a snapshot clone shares them instead of
-    /// copying every live page. A write goes through `Rc::make_mut`, which
-    /// copies only the one page a still-referenced frame is holding.
-    /// Deep-cloning the whole address space per step costs about 33x the
-    /// price of running the instruction.
+    /// Page buffers behind `Rc` so a named save's clone shares them instead
+    /// of copying every live page. A write goes through `Rc::make_mut`,
+    /// which copies only the one page a save is still holding.
     pages: HashMap<u64, Rc<Vec<u8>>>,
     /// Zeroed page buffers recycled by `clear()`. Never freed: dropping
     /// 4 KiB buffers under wasm32's bundled `dlmalloc` can corrupt its
@@ -62,20 +44,60 @@ pub struct Memory {
     free: Vec<Vec<u8>>,
     dirty: Vec<(u64, usize)>,
     written: u64,
+    /// `[start, end)` spans that read as zeros before their first write:
+    /// the data sections the loader placed. Linux maps a whole `.bss`, so a
+    /// read of an untouched page there answers 0 rather than faulting.
+    zero_fill: Vec<(u64, u64)>,
+    /// While `recording`, what the running step's writes replaced, so its
+    /// step-back frame can put them back; between steps a spare buffer
+    /// (see `record_undo`).
+    undo: MemUndo,
+    recording: bool,
 }
 
+/// What a step's writes replaced: each run of written bytes with the bytes
+/// that were there before, and each page a write mapped. Copying the page
+/// table into every step-back frame made a deep recursion step about 9
+/// times slower; this costs about what the step wrote.
+#[derive(Default)]
+pub struct MemUndo {
+    /// `(addr, len)` per run, in write order. A write that starts where the
+    /// last run ended extends it, so filling a buffer is one run.
+    runs: Vec<(u64, usize)>,
+    /// The replaced bytes of every run, end to end.
+    old: Vec<u8>,
+    /// Pages the writes mapped, to unmap again.
+    mapped: Vec<u64>,
+}
+
+impl MemUndo {
+    fn save(&mut self, addr: u64, replaced: &[u8]) {
+        match self.runs.last_mut() {
+            Some((start, len)) if start.wrapping_add(*len as u64) == addr => *len += replaced.len(),
+            _ => self.runs.push((addr, replaced.len())),
+        }
+        self.old.extend_from_slice(replaced);
+    }
+}
+
+/// What an untouched page inside a `zero_fill` span reads as.
+static ZERO_PAGE: [u8; PAGE_SIZE] = [0; PAGE_SIZE];
+
 impl Clone for Memory {
-    /// Snapshots need the live pages, never the recycle pool: cloning the
-    /// pool would copy megabytes of zeroed buffers into every step-back
-    /// frame. The dirty log is left behind for the same reason: it
-    /// belongs to the UI's next drain, not to the machine state a frame
-    /// restores.
+    /// A named save needs the live pages, never the recycle pool: cloning
+    /// the pool would copy megabytes of zeroed buffers into every save.
+    /// The dirty log and the undo log are left behind for the same reason:
+    /// they belong to the UI's next drain and to the running step, not to
+    /// the machine state a save restores.
     fn clone(&self) -> Self {
         Self {
             pages: self.pages.clone(),
             free: Vec::new(),
             dirty: Vec::new(),
             written: self.written,
+            zero_fill: self.zero_fill.clone(),
+            undo: MemUndo::default(),
+            recording: false,
         }
     }
 }
@@ -92,7 +114,69 @@ impl Memory {
             free: Vec::new(),
             dirty: Vec::new(),
             written: 0,
+            zero_fill: Vec::new(),
+            undo: MemUndo::default(),
+            recording: false,
         }
+    }
+
+    /// Start logging what writes replace. The log fills `slot`'s buffers
+    /// (a recycled frame's), which trade places with this memory's spare
+    /// until `finish_undo` trades them back, so a step allocates and frees
+    /// nothing for its log.
+    pub fn record_undo(&mut self, slot: &mut MemUndo) {
+        std::mem::swap(&mut self.undo, slot);
+        // A bulk step (a memset over megabytes) leaves a frame's buffers
+        // big, and they stay big. Shrinking them would gain nothing: wasm
+        // memory never shrinks, so the next big step reuses the space.
+        let log = &mut self.undo;
+        log.runs.clear();
+        log.old.clear();
+        log.mapped.clear();
+        self.recording = true;
+    }
+
+    /// Stop logging and trade the filled log back into `slot`.
+    pub fn finish_undo(&mut self, slot: &mut MemUndo) {
+        if std::mem::take(&mut self.recording) {
+            std::mem::swap(&mut self.undo, slot);
+        }
+    }
+
+    /// Put back what the logged writes replaced, newest first, then unmap
+    /// the pages they mapped. The changed-byte log empties too: the memory
+    /// is back where it was before anything changed.
+    pub fn undo(&mut self, log: MemUndo) {
+        let mut end = log.old.len();
+        for &(addr, len) in log.runs.iter().rev() {
+            let start = end - len;
+            // Back through the write path, 16 bytes at a time. Every page
+            // a logged write touched is still mapped, so none can fail.
+            for (i, chunk) in log.old[start..end].chunks(16).enumerate() {
+                let _ = self.write_le(addr.wrapping_add(16 * i as u64), chunk);
+            }
+            end = start;
+        }
+        for base in log.mapped {
+            if let Some(page) = self.pages.remove(&base) {
+                // Recycled rather than dropped, as in `clear()`.
+                if let Ok(mut page) = Rc::try_unwrap(page) {
+                    page.fill(0);
+                    self.free.push(page);
+                }
+            }
+        }
+        self.dirty.clear();
+    }
+
+    /// Name the spans that read as zeros until written (the loaded data
+    /// sections), replacing any earlier ones.
+    pub fn set_zero_fill(&mut self, spans: Vec<(u64, u64)>) {
+        self.zero_fill = spans;
+    }
+
+    fn in_zero_fill(&self, addr: u64) -> bool {
+        self.zero_fill.iter().any(|&(start, end)| addr >= start && addr < end)
     }
 
     /// Drain the dirty-write buffer accumulated since the last call.
@@ -150,16 +234,24 @@ impl Memory {
 
     /// Explicitly map a page so it can be read before being written.
     pub fn map_page(&mut self, addr: u64) {
-        let base = addr & PAGE_MASK;
-        let Self { pages, free, .. } = self;
-        pages
-            .entry(base)
-            .or_insert_with(|| Rc::new(free.pop().unwrap_or_else(new_page)));
+        self.page_or_map(addr & PAGE_MASK);
+    }
+
+    /// The page at `base`, mapped first if it is new (and the mapping
+    /// logged, when an undo log is open).
+    fn page_or_map(&mut self, base: u64) -> &mut Rc<Vec<u8>> {
+        let Self { pages, free, undo, recording, .. } = self;
+        pages.entry(base).or_insert_with(|| {
+            if *recording {
+                undo.mapped.push(base);
+            }
+            Rc::new(free.pop().unwrap_or_else(new_page))
+        })
     }
 
     /// Check whether the page containing `addr` is mapped.
     pub fn is_mapped(&self, addr: u64) -> bool {
-        self.pages.contains_key(&(addr & PAGE_MASK))
+        self.pages.contains_key(&(addr & PAGE_MASK)) || self.in_zero_fill(addr)
     }
 
     /// Number of 4 KiB pages currently mapped. Used to enforce and observe
@@ -168,20 +260,17 @@ impl Memory {
         self.pages.len()
     }
 
-    /// Unmap every page, parking the zeroed buffers in the recycle pool.
-    ///
-    /// The buffers are recycled rather than dropped to keep the dlmalloc
-    /// workaround (see `free`) closed, while `mapped_page_count()` (the
-    /// `MAX_MAPPED_PAGES` budget) returns to zero. Without the unmap,
-    /// a program that hit the page cap left the budget exhausted forever
-    /// and the NEXT program was blamed for it: reset never gave the pages
-    /// back.
+    /// Unmap every page, parking the zeroed buffers in the recycle pool (see
+    /// `free`) so the page budget returns to zero. Without this, a program
+    /// that hit the cap left the budget spent and the next program was
+    /// blamed.
     pub fn clear(&mut self) {
+        self.zero_fill.clear();
         let Self { pages, free, .. } = self;
         for (_, page) in pages.drain() {
-            // A page a snapshot frame still shares cannot be recycled:
-            // zeroing it would rewrite that frame's memory. Those are
-            // dropped and the frame keeps the only reference.
+            // A page a named save still shares cannot be recycled:
+            // zeroing it would rewrite that save's memory. Those are
+            // dropped and the save keeps the only reference.
             if let Ok(mut page) = Rc::try_unwrap(page) {
                 page.fill(0);
                 free.push(page);
@@ -197,16 +286,20 @@ impl Memory {
 
     fn get_page(&self, addr: u64) -> Result<&[u8], EmuError> {
         let base = addr & PAGE_MASK;
-        self.pages
-            .get(&base)
-            .map(|b| b.as_slice())
-            .ok_or(EmuError::MemoryFault {
+        match self.pages.get(&base) {
+            Some(page) => Ok(page.as_slice()),
+            None if self.in_zero_fill(addr) => Ok(&ZERO_PAGE),
+            None => Err(EmuError::MemoryFault {
                 address: addr,
                 access: MemAccess::Read,
-            })
+            }),
+        }
     }
 
-    fn get_page_mut(&mut self, addr: u64) -> Result<&mut [u8], EmuError> {
+    /// Write `bytes` (16 at most, all inside `addr`'s page), mapping the
+    /// page on first write and logging what they replace when an undo log
+    /// is open.
+    fn write_in_page(&mut self, addr: u64, bytes: &[u8]) -> Result<(), EmuError> {
         let base = addr & PAGE_MASK;
         // A write to an already-mapped page always succeeds. A write that
         // would map a NEW page is refused once the cap is reached, so a
@@ -217,14 +310,18 @@ impl Memory {
                 access: MemAccess::Write,
             });
         }
-        let Self { pages, free, .. } = self;
-        let page = pages
-            .entry(base)
-            .or_insert_with(|| Rc::new(free.pop().unwrap_or_else(new_page)));
-        // Copy-on-write: a page a snapshot frame still shares is copied
-        // once, here, instead of the whole address space being copied at
-        // every step.
-        Ok(Rc::make_mut(page).as_mut_slice())
+        let off = Self::page_offset(addr);
+        let mut replaced = [0u8; 16];
+        // Copy-on-write: a page a named save still shares is copied once,
+        // here.
+        let slot = &mut Rc::make_mut(self.page_or_map(base))[off..off + bytes.len()];
+        replaced[..bytes.len()].copy_from_slice(slot);
+        slot.copy_from_slice(bytes);
+        if self.recording {
+            self.undo.save(addr, &replaced[..bytes.len()]);
+        }
+        self.note_write(addr, bytes.len());
+        Ok(())
     }
 
     // -- public read/write --
@@ -311,76 +408,41 @@ impl Memory {
 
     /// Write a single byte (auto-maps the page).
     pub fn write_u8(&mut self, addr: u64, val: u8) -> Result<(), EmuError> {
-        let off = Self::page_offset(addr);
-        let page = self.get_page_mut(addr)?;
-        page[off] = val;
-        self.note_write(addr, 1);
-        Ok(())
+        self.write_in_page(addr, &[val])
     }
 
     /// Write a 16-bit little-endian value. Tolerates unaligned (and
     /// page-crossing) addresses via byte fallback; auto-maps pages.
     pub fn write_u16(&mut self, addr: u64, val: u16) -> Result<(), EmuError> {
-        if Self::spans_page(addr, 2) {
-            for (i, b) in val.to_le_bytes().iter().enumerate() {
-                self.write_u8(addr.wrapping_add(i as u64), *b)?;
-            }
-            return Ok(());
-        }
-        let off = Self::page_offset(addr);
-        let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr)?;
-        page[off..off + 2].copy_from_slice(&bytes);
-        self.note_write(addr, 2);
-        Ok(())
+        self.write_le(addr, &val.to_le_bytes())
     }
 
     /// Write a 32-bit little-endian value; see `write_u16`.
     pub fn write_u32(&mut self, addr: u64, val: u32) -> Result<(), EmuError> {
-        if Self::spans_page(addr, 4) {
-            for (i, b) in val.to_le_bytes().iter().enumerate() {
-                self.write_u8(addr.wrapping_add(i as u64), *b)?;
-            }
-            return Ok(());
-        }
-        let off = Self::page_offset(addr);
-        let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr)?;
-        page[off..off + 4].copy_from_slice(&bytes);
-        self.note_write(addr, 4);
-        Ok(())
+        self.write_le(addr, &val.to_le_bytes())
     }
 
     /// Write a 64-bit little-endian value; see `write_u16`.
     pub fn write_u64(&mut self, addr: u64, val: u64) -> Result<(), EmuError> {
-        if Self::spans_page(addr, 8) {
-            for (i, b) in val.to_le_bytes().iter().enumerate() {
-                self.write_u8(addr.wrapping_add(i as u64), *b)?;
-            }
-            return Ok(());
-        }
-        let off = Self::page_offset(addr);
-        let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr)?;
-        page[off..off + 8].copy_from_slice(&bytes);
-        self.note_write(addr, 8);
-        Ok(())
+        self.write_le(addr, &val.to_le_bytes())
     }
 
     /// Write a 128-bit little-endian value; see `write_u16`.
     pub fn write_u128(&mut self, addr: u64, val: u128) -> Result<(), EmuError> {
-        if Self::spans_page(addr, 16) {
-            for (i, b) in val.to_le_bytes().iter().enumerate() {
-                self.write_u8(addr.wrapping_add(i as u64), *b)?;
+        self.write_le(addr, &val.to_le_bytes())
+    }
+
+    /// Write `bytes` (16 at most, already little-endian) at `addr`. One
+    /// that crosses into the next page goes byte by byte, so each page is
+    /// mapped (or refused at the cap) as it is reached.
+    fn write_le(&mut self, addr: u64, bytes: &[u8]) -> Result<(), EmuError> {
+        if Self::spans_page(addr, bytes.len()) {
+            for (i, b) in bytes.iter().enumerate() {
+                self.write_in_page(addr.wrapping_add(i as u64), std::slice::from_ref(b))?;
             }
             return Ok(());
         }
-        let off = Self::page_offset(addr);
-        let bytes = val.to_le_bytes();
-        let page = self.get_page_mut(addr)?;
-        page[off..off + 16].copy_from_slice(&bytes);
-        self.note_write(addr, 16);
-        Ok(())
+        self.write_in_page(addr, bytes)
     }
 
     fn spans_page(addr: u64, len: usize) -> bool {
@@ -598,8 +660,8 @@ mod tests {
 
     #[test]
     fn cloning_memory_does_not_carry_the_recycle_pool() {
-        // The snapshot ring clones Memory every step; a cloned pool would
-        // copy megabytes of parked buffers into each frame.
+        // A named save clones Memory; a cloned pool would copy megabytes
+        // of parked buffers into each save.
         let mut mem = Memory::new();
         for i in 0..64 {
             mem.write_u8(i * 4096, 1).unwrap();
@@ -613,22 +675,21 @@ mod tests {
 
     #[test]
     fn cloning_shares_page_buffers_until_one_is_written() {
-        // The step-back ring clones Memory on every step. Copying every
-        // live page there cost ~33x the price of running the instruction;
-        // sharing the buffers and copying one on write is what makes the
-        // ring affordable.
+        // A named save clones Memory. Copying every live page would make
+        // each save copy the whole address space; sharing the buffers and
+        // copying one on write keeps a named save cheap.
         let mut mem = Memory::new();
         for i in 0..64 {
             mem.write_u8(i * 4096, 1).unwrap();
         }
-        let frame = mem.clone();
+        let save = mem.clone();
         assert!(
             mem.pages.values().all(|p| Rc::strong_count(p) == 2),
             "a clone must share every page, not copy it"
         );
 
         mem.write_u8(0, 2).unwrap();
-        assert_eq!(frame.read_u8(0).unwrap(), 1, "the frame keeps the old byte");
+        assert_eq!(save.read_u8(0).unwrap(), 1, "the save keeps the old byte");
         assert_eq!(mem.read_u8(0).unwrap(), 2);
         let shared = mem
             .pages
@@ -640,9 +701,9 @@ mod tests {
 
     #[test]
     fn a_buffer_fill_records_one_dirty_range() {
-        // One entry per byte, copied into every snapshot frame: 12 fills
-        // of a 64 KiB buffer build a 12 MB log and take 0.4 s of pure
-        // bookkeeping.
+        // One entry per byte would let a single buffer fill eat the whole
+        // MAX_DIRTY_RANGES budget the UI's write tint reads; a fill stays
+        // one range.
         let mut mem = Memory::new();
         for i in 0..40_000u64 {
             mem.write_u8(0x1000 + i, 0xAB).unwrap();
@@ -672,11 +733,11 @@ mod tests {
     #[test]
     fn a_clone_leaves_the_dirty_log_behind() {
         // The log belongs to the UI's next drain, not to the machine state
-        // a snapshot restores; carrying it makes every frame pay for it.
+        // a named save restores, so a save starts with an empty log.
         let mut mem = Memory::new();
         mem.write_u32(0x1000, 7).unwrap();
-        let frame = mem.clone();
-        assert!(frame.dirty.is_empty());
+        let save = mem.clone();
+        assert!(save.dirty.is_empty());
         assert_eq!(mem.take_dirty(), vec![(0x1000, 4)]);
     }
 
@@ -735,5 +796,61 @@ mod tests {
         mem.write_u8(0x1000, 0xAA).unwrap();
         let out = mem.read_bytes(0x0FFE, 4).unwrap();
         assert_eq!(out, vec![0, 0, 0xAA, 0]);
+    }
+
+    #[test]
+    fn undo_puts_back_every_write_newest_first() {
+        // The same bytes written twice, and a write across a page edge:
+        // undoing must land on what was there before the first write.
+        let mut mem = Memory::new();
+        mem.write_u64(0x1000, 0x1111_1111_1111_1111).unwrap();
+        mem.write_u64(0x1FF8, 0x2222_2222_2222_2222).unwrap();
+        mem.write_u8(0x2000, 0x33).unwrap();
+        let mut log = MemUndo::default();
+        mem.record_undo(&mut log);
+        mem.write_u64(0x1000, 0xAAAA).unwrap();
+        mem.write_u8(0x1003, 0xBB).unwrap();
+        mem.write_u128(0x1FF8, u128::MAX).unwrap();
+        mem.write_bytes(0x1100, &[7; 40]).unwrap();
+        mem.finish_undo(&mut log);
+        mem.undo(log);
+        assert_eq!(mem.read_u64(0x1000).unwrap(), 0x1111_1111_1111_1111);
+        assert_eq!(mem.read_u64(0x1FF8).unwrap(), 0x2222_2222_2222_2222);
+        assert_eq!(mem.read_u64(0x2000).unwrap(), 0x33);
+        assert_eq!(mem.read_bytes(0x1100, 40).unwrap(), vec![0; 40]);
+        assert!(mem.take_dirty().is_empty(), "after an undo nothing has changed");
+    }
+
+    #[test]
+    fn undo_unmaps_the_pages_the_writes_mapped() {
+        let mut mem = Memory::new();
+        mem.write_u8(0x1000, 1).unwrap();
+        let mut log = MemUndo::default();
+        mem.record_undo(&mut log);
+        mem.write_u32(0x5000, 9).unwrap();
+        mem.map_page(0x9000);
+        assert_eq!(mem.mapped_page_count(), 3);
+        mem.finish_undo(&mut log);
+        mem.undo(log);
+        assert_eq!(mem.mapped_page_count(), 1);
+        assert!(mem.read_u8(0x5000).is_err(), "the page faults again, as before the step");
+        assert!(!mem.is_mapped(0x9000));
+        mem.map_page(0x5000);
+        assert_eq!(mem.read_u32(0x5000).unwrap(), 0, "a recycled page comes back zeroed");
+    }
+
+    #[test]
+    fn a_buffer_fill_logs_one_run() {
+        // One record per byte would make a memset's log several times the
+        // size of what it overwrote.
+        let mut mem = Memory::new();
+        let mut log = MemUndo::default();
+        mem.record_undo(&mut log);
+        for i in 0..40_000u64 {
+            mem.write_u8(0x1000 + i, 0xAB).unwrap();
+        }
+        mem.finish_undo(&mut log);
+        assert_eq!(log.runs, vec![(0x1000, 40_000)]);
+        assert_eq!(log.old.len(), 40_000);
     }
 }

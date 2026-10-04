@@ -17,7 +17,7 @@
 	.string	"argv_end_null=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -80]!
@@ -46,7 +46,7 @@ main:
 	mov	w21, 0
 	stp	x19, x20, [sp, 16]
 	mov	x19, 1
-	.align 5
+	.p2align 5,,15
 .L3:
 	ldr	x20, [x22, x19, lsl 3]
 	mov	x0, x20

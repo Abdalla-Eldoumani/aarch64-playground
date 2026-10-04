@@ -4,8 +4,8 @@ import { NAV_ROUTES } from "@/lib/content/site";
 
 describe("landing data", () => {
   it("FEATURES is a non-empty catalog with a title and description per entry", () => {
-    // Data-driven contract: adding a capability is one entry, so the shape is
-    // what matters: every entry must carry a renderable title and description.
+    // Adding a feature is one entry, so only the shape is checked: every entry
+    // needs a title and a description to render.
     expect(FEATURES.length).toBeGreaterThanOrEqual(3);
     for (const feature of FEATURES) {
       expect(feature.title.trim().length).toBeGreaterThan(0);

@@ -1,10 +1,7 @@
-//! Instruction-semantics edges through the hosted pipeline: cmp flag
-//! patterns at the signed/unsigned boundaries, conditional branches that
-//! must fall through, division by zero (defined on AArch64 to produce
-//! zero, never a trap), madd/msub arithmetic, and stp/ldp pre/post-index
-//! writeback observed one step at a time. Complements the acceptance
-//! matrix, which proves each condition's taken direction; the emphasis
-//! here is boundary values and the not-taken directions.
+//! Instruction edge cases, run through the hosted pipeline: flags at the
+//! signed/unsigned boundaries, division by zero (zero on AArch64, never a
+//! trap), writeback one step at a time, single precision, NaN rules, and
+//! encodings checked word for word against GNU as.
 
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
@@ -704,4 +701,179 @@ main:
     let cpu = run(src);
     assert_eq!(cpu.regs.read_gpr(5, true), u64::MAX, "low half borrows");
     assert_eq!(cpu.regs.read_gpr(6, true), 0, "high half pays the borrow");
+}
+
+/// Forms optimized gcc output reaches for that this encoder refused or
+/// spelled differently. Every word is what GAS 2.46.1 on the course
+/// servers emitted for the same line.
+#[test]
+fn optimized_gcc_forms_encode_to_the_words_the_servers_emit() {
+    use aarch64_emulator::assembler::assemble;
+
+    let cases: [(&str, u32); 24] = [
+        ("fcmp d0, #0.0", 0x1e60_2008),
+        ("fcmpe s3, #0.0", 0x1e20_2078),
+        ("fcmp d5, 0.0", 0x1e60_20a8),
+        ("fcmp s1, #0", 0x1e20_2028),
+        ("fccmp s22, s23, 4, ne", 0x1e37_16c4),
+        ("fccmp d1, d2, #15, nv", 0x1e62_f42f),
+        ("fccmpe d0, d31, #0, al", 0x1e7f_e410),
+        ("fccmpe s7, s8, 8, gt", 0x1e28_c4f8),
+        // gcc writes a byte with its top bit set sign-extended to 64 bits.
+        ("movi v30.8b, 0xffffffffffffffe0", 0x0f07_e41e),
+        ("movi v0.8b, -1", 0x0f07_e7e0),
+        ("movi v1.16b, -128", 0x4f04_e401),
+        ("movi v2.4h, 0xffffffffffffff80", 0x0f04_8402),
+        ("movi v3.2s, -1, lsl 8", 0x0f07_27e3),
+        // A negative X immediate that is one shifted halfword is MOVZ.
+        ("mov x2, -4607182418800017408", 0xd2f8_0202),
+        ("mov x0, -9223372036854775808", 0xd2f0_0000),
+        ("mov x1, -281474976710656", 0xd2ff_ffe1),
+        ("mov w3, -2147483648", 0x52b0_0003),
+        ("neg w0, w0, lsl 1", 0x4b00_07e0),
+        ("extr x0, x1, x2, 12", 0x93c2_3020),
+        ("ldpsw x3, x4, [x5, 8]", 0x6941_10a3),
+        ("frintm d0, d1", 0x1e65_4020),
+        ("frintn s2, s3", 0x1e24_4062),
+        ("brk #1000", 0xd420_7d00),
+        ("shl v0.4s, v1.4s, 3", 0x4f23_5420),
+    ];
+    for (src, expected) in cases {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(got[0], expected, "{src}: got {:#010x}, GAS emits {expected:#010x}", got[0]);
+    }
+
+    // GAS refuses both of these, and so does this encoder, in GAS's words.
+    for (src, reason) in [
+        ("movi v0.8b, -129", "out of range -128 to 255 at operand 2 -- `movi v0.8b,-129'"),
+        ("fcmp d0, #1.0", "immediate zero expected at operand 2 -- `fcmp d0,#1.0'"),
+    ] {
+        let msg = assemble(src).expect_err(src).to_string();
+        assert!(msg.contains(reason), "{src}: {msg}");
+    }
+}
+
+/// fcmp takes zero in any spelling GAS reads as +0.0, and refuses -0.0,
+/// whose sign bit is set. The word and the refusal are GAS 2.46.1's on the
+/// course servers; the hosted pipeline must pass each spelling through.
+#[test]
+fn fcmp_takes_every_spelling_of_positive_zero() {
+    use aarch64_emulator::assembler::assemble as encode;
+
+    for line in ["fcmp d0, #0.00", "fcmp d0, #0e0", "fcmp d0, #0x0"] {
+        let got = encode(line).unwrap_or_else(|e| panic!("{line}: {e}"));
+        assert_eq!(got[0], 0x1e60_2008, "{line}: got {:#010x}", got[0]);
+        let src = format!(".text\n.global main\nmain:\n    {line}\n    ret\n");
+        let image = assemble_hosted(&src, &Cpu::new().host).unwrap_or_else(|e| panic!("{line}: {e}"));
+        let (_, text) = image.writes.iter().find(|(at, _)| *at == image.text_base).expect(".text");
+        assert_eq!(text[..4], 0x1e60_2008u32.to_le_bytes(), "{line} in a program");
+    }
+    let msg = encode("fcmp d0, #-0.0").expect_err("-0.0").to_string();
+    assert!(msg.contains("immediate zero expected at operand 2 -- `fcmp d0,#-0.0'"), "{msg}");
+}
+
+/// The same forms decode back and compute what the hardware computes.
+#[test]
+fn optimized_gcc_forms_run_to_the_right_values() {
+    let src = r#"
+.text
+.global main
+main:
+    mov     x1, 0xab
+    mov     x2, 0x1200
+    extr    x3, x1, x2, 8
+    sub     sp, sp, 16
+    mov     w9, -5
+    mov     w10, 7
+    stp     w9, w10, [sp]
+    ldpsw   x4, x5, [sp]
+    add     sp, sp, 16
+    mov     w6, 3
+    neg     w6, w6, lsl 1
+    fmov    d0, -2.5
+    frintm  d1, d0
+    frintn  d2, d0
+    fcvtzs  x11, d1
+    fcvtzs  x12, d2
+    movi    v3.8b, 0xffffffffffffffe0
+    umov    x13, v3.d[0]
+    fcmp    d0, #0.0
+    cset    w14, mi
+    fmov    d4, 1.0
+    fccmp   d4, d0, 0, mi
+    cset    w15, gt
+    fccmp   d4, d0, 4, eq
+    cset    w16, eq
+    mov     x17, -4607182418800017408
+    fmov    d5, x17
+    fcvtzs  x18, d5
+    mov     x8, 93
+    svc     0
+"#;
+    let cpu = run(src);
+    let x = |r: u8| cpu.regs.read_gpr(r, true);
+    // The pair shifted right by 8: xm's bits from 8 up, xn's low byte on top.
+    assert_eq!(x(3), 0xab00_0000_0000_0012);
+    assert_eq!(x(4) as i64, -5, "ldpsw sign-extends each word");
+    assert_eq!(x(5), 7);
+    assert_eq!(cpu.regs.read_gpr(6, false) as i32, -6);
+    assert_eq!(x(11) as i64, -3, "frintm rounds toward minus infinity");
+    assert_eq!(x(12) as i64, -2, "frintn breaks the tie to even");
+    assert_eq!(x(13), 0xe0e0_e0e0_e0e0_e0e0);
+    assert_eq!(x(14), 1, "fcmp against #0.0 sets N for a negative");
+    assert_eq!(x(15), 1, "mi held, so fccmp compared 1.0 with -2.5");
+    assert_eq!(x(16), 1, "eq failed, so fccmp wrote the literal Z");
+    assert_eq!(x(18) as i64, -4, "the bit pattern of -4.0");
+}
+
+/// Scalar floating point follows AArch64's NaN and rounding rules, not the
+/// host's: a signalling NaN beats a quiet one and comes back quiet, inf * 0
+/// plus a quiet NaN is the default NaN, conversions keep a NaN's sign and
+/// payload, and a 64-bit integer rounds to single precision once: through a
+/// double it can land on a tie the integer never had.
+#[test]
+fn scalar_fp_follows_the_aarch64_nan_and_rounding_rules() {
+    let src = r#"
+.data
+.balign 8
+qnan_neg:   .quad 0xfff8000000000001
+snan:       .quad 0x7ff0000000000002
+inf:        .quad 0x7ff0000000000000
+snan_d:     .quad 0x7ff4000000000000
+snan_s:     .word 0x7fa00000
+.text
+.global main
+main:
+    ldr     x9, =qnan_neg
+    ldr     d0, [x9]
+    ldr     x9, =snan
+    ldr     d1, [x9]
+    ldr     x9, =inf
+    ldr     d2, [x9]
+    fmov    d3, 1.0
+    fadd    d4, d3, d0
+    fadd    d5, d0, d1
+    movi    d6, #0
+    fmadd   d7, d2, d6, d0
+    ldr     x9, =snan_d
+    ldr     d8, [x9]
+    fcvt    s8, d8
+    ldr     x9, =snan_s
+    ldr     s10, [x9]
+    fcvt    d10, s10
+    ldr     x12, =0x1000001000000001
+    scvtf   s9, x12
+    mov     x8, 93
+    svc     0
+"#;
+    let cpu = run(src);
+    let d = |r: u8| cpu.regs.read_fpr_bits(r);
+    assert_eq!(d(4), 0xfff8_0000_0000_0001, "a quiet NaN operand propagates as it is");
+    assert_eq!(d(5), 0x7ff8_0000_0000_0002, "the signalling NaN wins, quieted");
+    assert_eq!(d(7), 0x7ff8_0000_0000_0000, "inf * 0 + qNaN is the default NaN");
+    assert_eq!(d(8) as u32, 0x7fe0_0000, "narrowing keeps the payload's top bits");
+    assert_eq!(d(10), 0x7ffc_0000_0000_0000, "widening keeps the payload");
+    // 2^60 + 2^36 + 1 is just past halfway between two singles; through a
+    // double the +1 is lost and the tie goes to even.
+    assert_eq!(d(9) as u32, 0x5d80_0001);
 }

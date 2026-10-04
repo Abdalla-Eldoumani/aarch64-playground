@@ -1,0 +1,96 @@
+{
+  "title": "Basic quiz: debugging in the playground",
+  "slug": "quiz-basic-debugging",
+  "order": 135,
+  "lastUpdated": "2026-10-01",
+  "topic": "memory",
+  "difficulty": "intro",
+  "variant": "quiz",
+  "prompt": "Where a breakpoint stops a run, what reset keeps, the pause after 1,000,000 instructions, what a watch shows, the rows of the stack view, and what the diagnostic bundle does with your program.",
+  "questions": [
+    {
+      "question": "You set a breakpoint on a line and press run. Where does the program stop?",
+      "options": [
+        "Just before that line runs, with the line highlighted",
+        "Just after that line runs, with the next line highlighted",
+        "At the first line of the function that holds the breakpoint",
+        "At the next bl after that line, before the call is made"
+      ],
+      "correctAnswer": 0,
+      "explanation": "A breakpoint makes run stop just before its line runs. The line is highlighted as the next one to run, and its effect is not in the registers yet. Press step to run it and see the change.",
+      "hint": "The highlighted line is always the next one to run."
+    },
+    {
+      "question": "What does reset (Shift+F5) do with the breakpoints you have set?",
+      "options": [
+        "It clears them, and the program starts over",
+        "It keeps them, and the program starts over",
+        "It keeps them, and the program carries on from the stop",
+        "It turns each one into a watch on that line"
+      ],
+      "correctAnswer": 1,
+      "explanation": "reset starts the program over from the top and keeps every breakpoint where it was, so the next run stops at the same lines. To clear a breakpoint, click the strip beside its line number again.",
+      "hint": "You start over many times while you hunt one bug. Setting every mark again each time would be slow."
+    },
+    {
+      "question": "The word 3 sits at fp + 24 and the word 7 at fp + 28. What does a watch on [fp, 24] show?",
+      "options": [
+        "0x0000000000000003",
+        "0x0000000300000007",
+        "0x0000000700000003",
+        "0x0300000007000000"
+      ],
+      "correctAnswer": 2,
+      "explanation": "A memory watch reads 8 bytes, so it shows both words. The machine is little-endian, so the byte at the lowest address is the lowest byte of the value. The word at fp + 24, 3, fills the low half, and the word at fp + 28, 7, fills the high half.",
+      "hint": "The word at the lower address lands in the low half."
+    },
+    {
+      "question": "A run pauses with a message after 1,000,000 instructions. Which of these is true?",
+      "options": [
+        "The program has crashed, and it must be assembled again",
+        "The playground has cleared your breakpoints and watches",
+        "The output printed so far has been thrown away",
+        "Pressing run again carries on from where it paused"
+      ],
+      "correctAnswer": 3,
+      "explanation": "The pause is a guard, not a crash, and run carries on from where it stopped. If the program keeps pausing, the usual cause is a loop whose exit test never comes true. Set a breakpoint on the test and watch the loop counter.",
+      "hint": "The pause stops a program that might never end. It does nothing to the work done so far."
+    },
+    {
+      "question": "A program starts with define(count_r, w19). Which watch shows the count?",
+      "options": [
+        "w19",
+        "count_r",
+        "*count_r",
+        "[count_r]"
+      ],
+      "correctAnswer": 0,
+      "explanation": "m4 replaces count_r with w19 before the assembler sees the file, so the program the playground runs never contains the name count_r. Watches know register names and the names from = lines, so watch w19.",
+      "hint": "Which step turns define names into registers, and does the machine ever see those names?"
+    },
+    {
+      "question": "main opens with stp fp, lr, [sp, -32]! and then mov fp, sp. What does the stack row [fp, 8] hold?",
+      "options": [
+        "the saved fp, the frame pointer of main's caller",
+        "the saved lr, the address main returns to",
+        "the first local variable in main's new frame",
+        "the value sp held before the stp instruction ran"
+      ],
+      "correctAnswer": 1,
+      "explanation": "stp stores its first register at the lower address. After stp fp, lr, [sp, -32]! and mov fp, sp, the saved fp sits at [fp, 0] and the saved lr at [fp, 8]. The locals start at [fp, 16].",
+      "hint": "stp writes fp first, at the lower address, and lr 8 bytes above it."
+    },
+    {
+      "question": "What happens when you press the diagnostic bundle button?",
+      "options": [
+        "The report is emailed to whoever runs the site",
+        "The program is uploaded so that others can run it",
+        "The report is shown to you, and nothing is sent",
+        "The machine state is saved under a name for later"
+      ],
+      "correctAnswer": 2,
+      "explanation": "The bundle packs the program, its output, the registers, the flags, the stack, and the .data and .bss sections into one report and shows it to you in full. Nothing leaves the page unless you copy it. Saving the machine state under a name is the saves tab's job.",
+      "hint": "The playground has no server to send anything to."
+    }
+  ]
+}

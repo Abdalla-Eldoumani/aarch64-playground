@@ -1,4 +1,5 @@
 // ansi.s - ANSI escape sequence helpers
+// an escape sequence is text the terminal obeys instead of printing:
 // screen clearing, cursor movement, colors and attributes
 
 define(fp, x29)
@@ -65,7 +66,7 @@ fmt_color:              .string "\x1b[%dm"
 
 // the whole set; dsav uses clear_screen, move_cursor, hide/show_cursor
 
-// ansi_clear_screen() - clear everything and home the cursor
+// ansi_clear_screen() - clear everything and put the cursor at the top left
     .global ansi_clear_screen
 ansi_clear_screen:
     stp     fp, lr, [sp, -16]!

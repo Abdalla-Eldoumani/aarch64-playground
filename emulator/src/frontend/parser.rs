@@ -1,14 +1,8 @@
-//! Section-aware parser. Runs after m4 expansion and lexing. Produces a
+//! Section-aware parser. Runs after m4 expansion and lexing and produces a
 //! `Program` with sections, labels, globals, and aliases.
 //!
-//! Instruction encoding is deferred to the linker: we hold each instruction
-//! as a raw token slice and its original line number, because the token
-//! stream contains enough information to encode once the symbol table
-//! (labels, section base addresses) is final.
-//!
-//! Data directive expressions evaluate eagerly with an empty resolver; a
-//! slot that names a label defers, holding its raw tokens for the linker to
-//! fold once the symbol table is final (GCC jump tables rely on this).
+//! Instructions, and data values that name a label, stay as raw tokens for
+//! the linker: they can only be encoded once every label has an address.
 
 use std::collections::HashMap;
 
@@ -23,9 +17,35 @@ use crate::errors::EmuError;
 /// `Program`.
 pub fn parse(source: &str) -> Result<Program, EmuError> {
     let expanded = expand(source)?;
-    let (text, req_aliases) = apply_req_aliases(&expanded.text)?;
+    // Everything below counts lines of m4's output, which gains lines where
+    // a macro body spans several; items and errors carry the editor's line.
+    // Tokens keep the output line, which is how the linker finds the text.
+    let map = expanded.line_map;
+    let editor_line = |line: usize| map.get(line.wrapping_sub(1)).copied().unwrap_or(line);
+    let mut prog = parse_expanded(&expanded.text, expanded.defines).map_err(|mut e| {
+        if let EmuError::ParseError { line, .. } | EmuError::PreprocError { line, .. } = &mut e {
+            *line = editor_line(*line);
+        }
+        e
+    })?;
+    for item in prog.sections.iter_mut().flat_map(|s| s.items.iter_mut()) {
+        if let Item::Label { original_line, .. }
+        | Item::SymbolAssignment { original_line, .. }
+        | Item::Instruction { original_line, .. }
+        | Item::ReserveExpr { original_line, .. }
+        | Item::DataExprs { original_line, .. } = item
+        {
+            *original_line = editor_line(*original_line);
+        }
+    }
+    Ok(prog)
+}
+
+fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Program, EmuError> {
+    let (text, req_aliases) = apply_req_aliases(text)?;
+    let text = name_local_labels(&text)?;
     let mut prog = Program::new();
-    prog.aliases = expanded.defines;
+    prog.aliases = defines;
     prog.aliases.extend(req_aliases);
     prog.expanded_source = text.clone();
     let tokens = lex(&text, 1)?;
@@ -39,21 +59,16 @@ pub fn parse(source: &str) -> Result<Program, EmuError> {
     Ok(prog)
 }
 
-/// Apply GAS `name .req register` aliases textually, after m4 and before
-/// lexing. Course assignment files alias both general and FP registers
-/// this way (`fp .req x29`, `sum .req d19`). A definition takes effect on
-/// the lines after it; the definition line itself is blanked, not removed,
-/// so line numbers stay aligned with the editor. m4 has already stripped
-/// comments, so a whitespace split sees exactly the definition's three
-/// words. Substitution is the same token-boundary, string-literal-safe
-/// walk m4 defines use, so an alias works anywhere a register can appear
-/// and never rewrites `.string` text. The alias target is taken as
-/// written; a target that is not a register surfaces as the normal
-/// unknown-register error at the first use site.
+/// Apply GAS `name .req register` aliases as text, after m4 and before
+/// lexing (`fp .req x29`, `sum .req d19`). An alias applies from the line
+/// after its definition, and the definition line is blanked, not removed,
+/// so line numbers match the editor. m4 has already stripped comments, so
+/// a definition splits into exactly three words. Substitution reuses m4's
+/// walk, so an alias never rewrites `.string` text, and a target that is
+/// not a register fails as an unknown register where it is first used.
 ///
-/// Expansion is bounded exactly the way m4's is. This pass runs on
-/// already-expanded text, where a chain of aliases each naming the one
-/// before it materializes gigabytes before the assembler sees a line.
+/// Expansion is capped the same way m4's is: this runs on already-expanded
+/// text, where a chain of aliases can grow to gigabytes.
 fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), EmuError> {
     // Fast path: nothing to do for the overwhelmingly common case.
     if !text.contains(".req") {
@@ -116,6 +131,102 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
         }
     }
     Ok((out, aliases))
+}
+
+/// GAS's numeric local labels: `N:` may be defined any number of times,
+/// and `Nb` / `Nf` name the nearest definition above or below. Each
+/// definition gets a name of its own here, before lexing, so everything
+/// after this sees ordinary labels. m4 has already stripped comments;
+/// string and character literals are copied as they are.
+pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
+    let is_word = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
+    let name = |n: &str, k: usize| format!(".L{n}_fb{k}");
+    // Definitions of each number so far (a program uses a handful, so a
+    // list), and the forward references, checked once all are counted.
+    let mut seen: Vec<(&str, usize)> = Vec::new();
+    let count = |seen: &[(&str, usize)], n: &str| seen.iter().find(|e| e.0 == n).map_or(0, |e| e.1);
+    let mut forward: Vec<(&str, usize, usize)> = Vec::new();
+    let mut out = String::with_capacity(text.len());
+    for (idx, line) in text.split('\n').enumerate() {
+        if idx > 0 {
+            out.push('\n');
+        }
+        let b = line.as_bytes();
+        let mut i = 0;
+        // Only labels so far on this line, so `N:` defines one.
+        let mut label_place = true;
+        while i < b.len() {
+            let start = i;
+            if b[i] == b'"' || b[i] == b'\'' {
+                i += 1;
+                while i < b.len() {
+                    i += 1;
+                    if b[i - 1] == b'\\' {
+                        i += 1;
+                    } else if b[i - 1] == b[start] {
+                        break;
+                    }
+                }
+                out.push_str(&line[start..i.min(b.len())]);
+                label_place = false;
+                continue;
+            }
+            if !is_word(b[i]) {
+                while i < b.len() && !is_word(b[i]) && b[i] != b'"' && b[i] != b'\'' {
+                    label_place &= b[i].is_ascii_whitespace() || b[i] == b':';
+                    i += 1;
+                }
+                out.push_str(&line[start..i]);
+                continue;
+            }
+            while i < b.len() && is_word(b[i]) {
+                i += 1;
+            }
+            let word = &line[start..i];
+            let (digits, last) = word.split_at(word.len() - 1);
+            let colon = b.get(i) == Some(&b':');
+            if label_place && colon && word.bytes().all(|c| c.is_ascii_digit()) {
+                let k = count(&seen, word) + 1;
+                match seen.iter_mut().find(|e| e.0 == word) {
+                    Some(e) => e.1 = k,
+                    None => seen.push((word, k)),
+                }
+                out.push_str(&name(word, k));
+            } else if !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && (last == "b" || last == "f") {
+                let k = count(&seen, digits);
+                if last == "b" && k == 0 {
+                    return Err(err(
+                        idx + 1,
+                        &format!(
+                            "backward ref to unknown label \"{digits}:\"\n`{word}` means the \
+                             nearest `{digits}:` above, and there is none"
+                        ),
+                    ));
+                }
+                let k = if last == "b" { k } else { k + 1 };
+                if last == "f" {
+                    forward.push((digits, k, idx + 1));
+                }
+                out.push_str(&name(digits, k));
+                label_place = false;
+            } else {
+                out.push_str(word);
+                label_place &= colon;
+            }
+        }
+    }
+    for &(n, k, line) in &forward {
+        if count(&seen, n) < k {
+            return Err(err(
+                line,
+                &format!(
+                    "local label `\"{n}\" (instance number {k} of a fb label)' is not defined\n\
+                     `{n}f` means the next `{n}:` below, and there is none"
+                ),
+            ));
+        }
+    }
+    Ok(out)
 }
 
 /// A `.req` alias name: identifier shaped, no dots (dotted names are GCC
@@ -186,6 +297,31 @@ fn parse_line(
             line_tokens = &line_tokens[2..];
             continue;
         }
+        // `name = expr`, where a dotted name is gcc's too: it pins a section
+        // anchor partway into a section with `.set .LANCHOR1, . + 4352`.
+        TokenKind::Ident(name) | TokenKind::DirectiveIdent(name)
+            if line_tokens
+                .get(1)
+                .is_some_and(|t| matches!(t.kind, TokenKind::Equals))
+                && !line_tokens
+                    .get(2)
+                    .is_some_and(|t| matches!(t.kind, TokenKind::Equals)) =>
+        {
+            // Record as a symbol-assignment item so Pass 1a can evaluate the
+            // body at this exact section offset. We keep the body as raw
+            // text (via the tokens' textual form) and let the linker
+            // lex+evaluate it, so `.` and label references pick up the
+            // right meaning.
+            let body_tokens = &line_tokens[2..];
+            let body = stringify_tokens_space(body_tokens);
+            let section = prog.section_or_insert(*current);
+            section.items.push(Item::SymbolAssignment {
+                name: name.clone(),
+                body,
+                original_line: first.line,
+            });
+            Ok(())
+        }
         TokenKind::DirectiveIdent(name) => {
             parse_directive(name, &line_tokens[1..], prog, current, first.line)
         }
@@ -211,29 +347,6 @@ fn parse_line(
             );
             line_tokens = &line_tokens[2..];
             continue;
-        }
-        TokenKind::Ident(name)
-            if line_tokens
-                .get(1)
-                .is_some_and(|t| matches!(t.kind, TokenKind::Equals))
-                && !line_tokens
-                    .get(2)
-                    .is_some_and(|t| matches!(t.kind, TokenKind::Equals)) =>
-        {
-            // `name = expr`. Record as a symbol-assignment item so Pass 1a
-            // can evaluate the body at this exact section offset. We keep
-            // the body as raw text (via the tokens' textual form) and let
-            // the linker lex+evaluate it, so `.` and label references pick
-            // up the right meaning.
-            let body_tokens = &line_tokens[2..];
-            let body = stringify_tokens_space(body_tokens);
-            let section = prog.section_or_insert(*current);
-            section.items.push(Item::SymbolAssignment {
-                name: name.clone(),
-                body,
-                original_line: first.line,
-            });
-            Ok(())
         }
         TokenKind::Ident(_) => {
             // Instruction line: hand the whole slice to the linker later.
@@ -264,24 +377,24 @@ fn parse_line(
 }
 
 /// Every directive spelling `parse_directive` recognizes, aliases included.
-/// `.equ`/`.set` are listed but rejected: the parser answers them with the
-/// teaching message that points at `NAME = expression`, which is a real
-/// answer rather than "unknown directive". `detect_hosted_mode` in lib.rs decides from this list which
-/// programs take the hosted path, and `every_directive_reaches_an_arm`
-/// proves no entry falls through to the unknown-directive arm.
+/// `.equ`/`.set` are listed but answered with a message pointing at
+/// `NAME = expression`, which helps more than "unknown directive".
+/// `detect_hosted_mode` in lib.rs reads this list, and
+/// `every_directive_reaches_an_arm` checks no entry falls through.
 pub const DIRECTIVES: &[&str] = &[
     // sections
     ".text", ".data", ".bss", ".rodata", ".section",
     // symbol attributes
     ".global", ".globl", ".type", ".size",
     // alignment and reservation
-    ".balign", ".align", ".skip", ".zero", ".space",
+    ".balign", ".align", ".p2align", ".skip", ".zero", ".space",
     // strings
     ".string", ".asciz", ".ascii",
     // integers
-    ".byte", ".hword", ".short", ".word", ".quad", ".dword",
+    ".byte", ".hword", ".short", ".2byte", ".word", ".4byte", ".quad", ".dword", ".xword",
+    ".8byte",
     // floats
-    ".double", ".float",
+    ".double", ".float", ".single",
     // recognized, answered with the "write NAME = expression" message
     ".equ", ".set",
 ];
@@ -340,19 +453,38 @@ fn parse_directive(
             }
             prog.section_or_insert(*current)
                 .items
-                .push(Item::AlignToBytes(value as u64));
+                .push(Item::AlignToBytes { bytes: value as u64, max_skip: None });
             Ok(())
         }
-        ".align" => {
-            // On AArch64 GAS, `.align N` is power-of-two: align to 2^N bytes.
-            let n = eval_const(rest, line)?;
-            if !(0..=32).contains(&n) {
-                return Err(err(line, ".align exponent out of range"));
+        ".align" | ".p2align" => {
+            // On AArch64 GAS both align to 2^N bytes and take `N, fill,
+            // max`; gcc writes `.p2align 5,,15`. A max of 0 means no limit.
+            let groups = split_comma_groups(rest);
+            if groups.is_empty() || groups[0].is_empty() || groups.len() > 3 {
+                return Err(err(line, &format!("expected `{name} N` or `{name} N,,max`")));
             }
-            let bytes = 1u64 << n;
+            if groups.get(1).is_some_and(|fill| !fill.is_empty()) {
+                return Err(err(
+                    line,
+                    "an alignment fill value is not supported: the padding is zero \
+                     bytes (no-ops in .text). Leave the fill out, as in `.p2align 4,,15`",
+                ));
+            }
+            let n = eval_const(groups[0], line)?;
+            if !(0..=32).contains(&n) {
+                return Err(err(line, &format!("{name} exponent out of range")));
+            }
+            let max_skip = match groups.get(2) {
+                Some(max) => match eval_const(max, line)? {
+                    0 => None,
+                    m if m > 0 => Some(m as u64),
+                    _ => return Err(err(line, &format!("{name} needs a non-negative max"))),
+                },
+                None => None,
+            };
             prog.section_or_insert(*current)
                 .items
-                .push(Item::AlignToBytes(bytes));
+                .push(Item::AlignToBytes { bytes: 1u64 << n, max_skip });
             Ok(())
         }
         ".skip" | ".zero" | ".space" => {
@@ -440,13 +572,13 @@ fn parse_directive(
             Ok(())
         }
         ".byte" => emit_int_list(rest, prog, *current, line, 1),
-        ".hword" | ".short" => emit_int_list(rest, prog, *current, line, 2),
-        ".word" => emit_int_list(rest, prog, *current, line, 4),
+        ".hword" | ".short" | ".2byte" => emit_int_list(rest, prog, *current, line, 2),
+        ".word" | ".4byte" => emit_int_list(rest, prog, *current, line, 4),
         // `.dword` is the spelling course files write for 8-byte values;
-        // `.quad` is the GAS name GCC output carries. Same emission.
-        ".quad" | ".dword" => emit_int_list(rest, prog, *current, line, 8),
+        // AArch64 gcc writes `.xword` for every 8-byte value. Same emission.
+        ".quad" | ".dword" | ".xword" | ".8byte" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
-        ".float" => emit_float_list(rest, prog, *current, line, false),
+        ".float" | ".single" => emit_float_list(rest, prog, *current, line, false),
         // Constants are supported, just not under these spellings; say so
         // instead of calling the directive unknown.
         ".equ" | ".set" => Err(err(
@@ -532,13 +664,10 @@ fn emit_int_list(
     // symbol lists) report a baffling "end of input" for a file that ends
     // nowhere near this line.
     reject_empty_groups(&exprs, rest, line)?;
-    // A value that names a symbol or `.` cannot be computed here: label
-    // addresses exist only after the linker places every section. Course
-    // pointer tables (`.dword label_january, ...`) are the motivating
-    // case, and dotted local labels (`.quad .L2`, GCC jump tables) lex as
-    // DirectiveIdent. Defer the whole list so slot addressing stays
-    // contiguous; pure-constant lists keep the immediate Bytes path and
-    // its parse-time error reporting.
+    // A value naming a label or `.` waits for the linker, which alone knows
+    // addresses (`.dword label_january, ...`; `.quad .L2` lexes as a
+    // DirectiveIdent). The whole list waits so its slots stay together;
+    // an all-constant list becomes bytes here and reports errors here.
     let needs_link_resolution = exprs.iter().any(|group| {
         group.iter().any(|t| {
             matches!(
@@ -717,6 +846,7 @@ fn stringify_tokens_space(tokens: &[Token]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::rejects;
 
     fn parse_ok(src: &str) -> Program {
         parse(src).expect("parse should succeed")
@@ -937,7 +1067,7 @@ mod tests {
         assert!(text
             .items
             .iter()
-            .any(|i| matches!(i, Item::AlignToBytes(4))));
+            .any(|i| matches!(i, Item::AlignToBytes { bytes: 4, max_skip: None })));
     }
 
     #[test]
@@ -948,7 +1078,19 @@ mod tests {
         assert!(text
             .items
             .iter()
-            .any(|i| matches!(i, Item::AlignToBytes(16))));
+            .any(|i| matches!(i, Item::AlignToBytes { bytes: 16, max_skip: None })));
+    }
+
+    #[test]
+    fn p2align_takes_gccs_max_skip_and_refuses_a_fill() {
+        let p = parse_ok(".text\n.p2align 5,,15\n.p2align 2,,0\n");
+        let items = &p.section(SectionKind::Text).unwrap().items;
+        assert!(matches!(items[0], Item::AlignToBytes { bytes: 32, max_skip: Some(15) }));
+        assert!(matches!(items[1], Item::AlignToBytes { bytes: 4, max_skip: None }));
+        let e = parse(".data\n.p2align 3, 0\n").unwrap_err().to_string();
+        assert!(e.contains("fill value is not supported"), "got: {e}");
+        let e = parse(".data\n.p2align 3,,-1\n").unwrap_err().to_string();
+        assert!(e.contains("non-negative max"), "got: {e}");
     }
 
     #[test]
@@ -1181,7 +1323,7 @@ mod tests {
 
     #[test]
     fn unknown_directive_errors() {
-        assert!(parse(".nosuch 1\n").is_err());
+        rejects(parse(".nosuch 1\n"), "unknown directive `.nosuch`");
     }
 
     #[test]
@@ -1261,14 +1403,47 @@ mod tests {
     }
 
     #[test]
+    fn numeric_local_labels_name_the_nearest_definition() {
+        let text = name_local_labels("1: b 1f\n1: b.ne 1b\n  cbz x0, 1b\n2:\n.quad 2b, 1f\n1:").unwrap();
+        assert_eq!(
+            text,
+            ".L1_fb1: b .L1_fb2\n.L1_fb2: b.ne .L1_fb2\n  cbz x0, .L1_fb2\n.L2_fb1:\n\
+             .quad .L2_fb1, .L1_fb3\n.L1_fb3:"
+        );
+        // Numbers that are not label references keep their text.
+        let kept = "ld1 {v0.16b}, [x0], 16\n.byte 0x1b, 0b101, 1\n.string \"1: 1b\"\nmov w0, '1'\n.2byte 3";
+        assert_eq!(name_local_labels(kept).unwrap(), kept);
+    }
+
+    #[test]
+    fn a_numeric_label_with_no_definition_fails_with_gas_wording() {
+        let e = parse(".text\nmain: b 2b\n2: ret\n").unwrap_err().to_string();
+        assert!(e.contains("line 2") && e.contains("backward ref to unknown label \"2:\""), "{e}");
+        let e = parse(".text\n1: ret\nmain: cbz x0, 1f\n").unwrap_err().to_string();
+        assert!(e.contains("local label `\"1\" (instance number 2 of a fb label)' is not defined"), "{e}");
+    }
+
+    #[test]
+    fn single_is_gnu_as_spelling_of_float() {
+        // The words GNU as wrote for each line on csarm.
+        let p = parse_ok(".data\n.single 1.5, -2.25\n.single 3\n.single 0r1.5\n");
+        let bytes = section_bytes(&p, SectionKind::Data);
+        let words: Vec<u32> = bytes
+            .chunks(4)
+            .map(|c| u32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect();
+        assert_eq!(words, [0x3fc0_0000, 0xc010_0000, 0x4040_0000, 0x3fc0_0000]);
+    }
+
+    #[test]
     fn balign_requires_positive_argument() {
-        assert!(parse(".text\n.balign 0\n").is_err());
-        assert!(parse(".text\n.balign -4\n").is_err());
+        rejects(parse(".text\n.balign 0\n"), ".balign needs a positive byte count");
+        rejects(parse(".text\n.balign -4\n"), ".balign needs a positive byte count");
     }
 
     #[test]
     fn skip_rejects_negative_count() {
-        assert!(parse(".bss\n.skip -1\n").is_err());
+        rejects(parse(".bss\n.skip -1\n"), ".skip needs a non-negative byte count");
     }
 
     // -- source-map correctness --
@@ -1299,14 +1474,10 @@ mod tests {
 
     #[test]
     fn every_directive_reaches_an_arm() {
-        // Feed each listed spelling a plausible operand and check what comes
-        // back is never the unknown-directive fallthrough. What else it says
-        // does not matter: `.equ`/`.set` answer with the teaching message,
-        // which is the point of listing them. So this fails on exactly one
-        // thing: a name in DIRECTIVES the match no longer has an arm for.
-        //
-        // First pin that the probe reaches the fallthrough at all, so a
-        // directive that died earlier could not pass the walk vacuously.
+        // Each listed spelling, given a plausible operand, must never reach
+        // the unknown-directive arm; any other error (`.equ`/`.set`) is fine.
+        // First check the probe can reach that arm at all, so the walk
+        // cannot pass without testing anything.
         let unknown = parse(".nosuchthing 1\n").unwrap_err().to_string();
         assert!(
             unknown.contains("unknown directive"),
@@ -1316,10 +1487,11 @@ mod tests {
             let operand = match *name {
                 ".section" => " .rodata",
                 ".global" | ".globl" | ".type" | ".size" => " main",
-                ".balign" | ".align" | ".skip" | ".zero" | ".space" => " 4",
+                ".balign" | ".align" | ".p2align" | ".skip" | ".zero" | ".space" => " 4",
                 ".string" | ".asciz" | ".ascii" => " \"hi\"",
-                ".byte" | ".hword" | ".short" | ".word" | ".quad" | ".dword" => " 1",
-                ".double" | ".float" => " 1.0",
+                ".byte" | ".hword" | ".short" | ".2byte" | ".word" | ".4byte" | ".quad"
+                | ".dword" | ".xword" | ".8byte" => " 1",
+                ".double" | ".float" | ".single" => " 1.0",
                 ".equ" | ".set" => " SIZE, 40",
                 _ => "",
             };

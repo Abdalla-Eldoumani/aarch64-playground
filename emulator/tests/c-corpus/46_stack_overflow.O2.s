@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	rec
 rec:
 	sub	sp, sp, #1040
@@ -24,7 +24,7 @@ rec:
 	.string	"%ld\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -16]!

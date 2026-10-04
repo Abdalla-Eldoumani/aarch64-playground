@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { KIND_CLASS, tokenizeLine } from "@/lib/asm/highlight-arm64";
+import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 
 export interface StaticCodeViewProps {
   /** The source to render. Never edited: this view has no input path. */
@@ -12,37 +13,56 @@ export interface StaticCodeViewProps {
    * `highlightLine`. Null while nothing is loaded.
    */
   currentLine: number | null;
+  /** When the pc follow may move the box; the landing demo waits for a
+   *  reader who is scrolling the page. Straight away by default. */
+  holdScroll?: ScrollHold;
 }
 
 /**
- * A read-only, syntax-colored, current-line-marked view of one program with a
- * line-number gutter: everything the landing hero showed through Monaco, and
- * none of Monaco. It server-renders, so the hero's code text is in the initial
- * HTML rather than a placeholder a client-side chain has to replace.
- *
- * The metrics are pinned to the editor's, not inherited: 14px text on a 21px
- * line (`--type-code` in globals.css, `fontSize: 14` in Editor.tsx), the
- * resolved `--font-mono` stack that `.font-mono` carries, and a 40px gutter
- * matching Monaco's `lineNumbersMinChars: 3` plus its glyph margin. Reusing
- * CodeBlock's 13px would reflow the hero. The current-line treatment restates
- * Editor.tsx's, a 14% amber wash behind a 2px amber left rule, rather than
- * CodeBlock's quieter 10% and 3px.
- *
- * Code renders as text spans only, with no HTML-string path, so a
- * caller-supplied program cannot inject markup.
+ * The hero's code without Monaco: it server-renders, so the code is in the
+ * first HTML. Sizes match Editor.tsx, not CodeBlock's 13px, so the hero keeps
+ * its layout. Code renders as text spans, so a program cannot inject markup.
  */
-export function StaticCodeView({ value, currentLine }: StaticCodeViewProps) {
+export function StaticCodeView({
+  value,
+  currentLine,
+  holdScroll = scrollNow,
+}: StaticCodeViewProps) {
   const lines = value.replace(/\n$/, "").split("\n");
+  const boxRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLSpanElement>(null);
 
-  // Follow the pc the way the editor does. `block: "nearest"` scrolls only when
-  // the line is actually out of view, so a program that fits never jumps.
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "nearest" });
-  }, [currentLine]);
+  // Follow the pc the way the editor does: the nearest scroll, and only when
+  // the line is out of view, so a program that fits never moves. The box's
+  // own scrollTop is written rather than calling scrollIntoView, which also
+  // scrolls the page: on a phone the autoplay yanked a reader who had
+  // scrolled past the hero back up to it every half second.
+  useEffect(
+    () =>
+      holdScroll(() => {
+        const box = boxRef.current;
+        const line = activeRef.current;
+        if (!box || !line) return;
+        const top = line.offsetTop;
+        const bottom = top + line.offsetHeight;
+        if (top < box.scrollTop) box.scrollTop = top;
+        else if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
+      }),
+    [currentLine, holdScroll],
+  );
 
   return (
-    <div className="h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)]">
+    // `relative` makes this box the lines' offsetParent, so their offsetTop
+    // is measured from the top of the scrolled content. It holds no control,
+    // so it takes focus itself: otherwise a keyboard cannot scroll it. The
+    // focus outline sits inside the box, where the embed frame cannot clip it.
+    <div
+      ref={boxRef}
+      role="group"
+      aria-label="program source"
+      tabIndex={0}
+      className="inner-scroll relative h-full w-full min-h-0 overflow-auto bg-[var(--bg-base)] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+    >
       <pre className="min-w-full font-mono text-[14px] leading-[21px] text-[var(--text-primary)]">
         <code>
           {lines.map((line, index) => {

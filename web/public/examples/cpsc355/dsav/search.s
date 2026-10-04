@@ -1,15 +1,12 @@
 // search.s - four ways to look for a value
 //
-// Linear reads every cell in order. Binary halves the window and never
-// looks at a value to decide where to look next. Jump strides by the
-// square root of n and then walks one block. Interpolation reads the
+// Linear reads every cell in order. Binary halves the window (the cells
+// still in play), picking the middle by position alone. Jump strides by
+// the square root of n and then walks one block. Interpolation reads the
 // values at the ends of the window and guesses where the target should
-// sit. The screen is built so those four stories can be compared: one
-// array row, one index ruler under it, one marker row, one sentence
-// naming what the current frame is doing, and one line of arithmetic
-// showing where the next probe came from. The chrome is drawn once per
-// operation; a frame repaints the array, the ruler and the status lines
-// and nothing else.
+// sit. All four share one screen so they can be compared. Each step
+// redraws only the array, the index row, the markers and the status lines,
+// including the arithmetic line that shows where the next probe came from.
 
 define(fp, x29)
 define(lr, x30)
@@ -47,7 +44,7 @@ define(lr, x30)
     search_mk_jump = 5
     search_mk_guess = 6
 
-    // roles th_fg, th_bg, ui_text and ui_badge understand
+    // colour roles th_fg, th_bg, ui_text and ui_badge understand
     search_role_text = 0
     search_role_dim = 1
     search_role_faint = 2
@@ -74,9 +71,8 @@ search_active:      .word 0                 // 1 while a run is under way
 search_ready:       .word 0                 // 1 once the sample array is loaded
 
 // What a first visit finds already loaded. The values ascend with uneven
-// gaps, a search for 67 costs interpolation one
-// guess and binary four halvings, which is the lesson the arithmetic line
-// is there to show.
+// gaps, so a search for 67 costs interpolation one guess and binary four
+// probes, which is what the arithmetic line is there to show.
     .balign 4
 search_seed:        .word 4, 11, 19, 28, 35, 46, 67, 73, 81, 94
 
@@ -300,7 +296,7 @@ search_state_range:
 .Lsearch_range_done:
     ret
 
-// search_clear_marks() - no pointer outlives the frame that placed it
+// search_clear_marks() - no marker outlives the frame that placed it
 search_clear_marks:
     ldr     x0, =search_mark
     mov     w1, 0
@@ -360,7 +356,7 @@ search_result:
     ret
 
 // search_reset() - every run starts from the same clean state, so no
-// marker, no grey prefix and no probe count crosses from one run to the
+// marker, no greyed-out cell and no probe count crosses from one run to the
 // next
 search_reset:
     stp     fp, lr, [sp, -32]!
@@ -890,7 +886,7 @@ search_notice:
     ldr     x0, =search_foot_menu
     bl      ui_footer
 
-    // 60 wide from column 10, so the wall stands at column 69 and the
+    // 60 wide from column 10, so the right border is at column 69 and the
     // longest message here stops well short of it
     mov     w0, 10
     mov     w1, 10
@@ -1373,7 +1369,7 @@ search_sort_screen:
 //   -> w0 = target, w1 = 1 to run, 0 to go back
 // One place for everything the four searches share: the empty check, the
 // full state reset, the sort that binary, jump and interpolation need, the
-// chrome, and the target prompt.
+// parts of the screen that do not move, and the target prompt.
 search_open:
     stp     fp, lr, [sp, -80]!
     mov     fp, sp
@@ -1696,7 +1692,7 @@ search_run_binary:
     mov     w1, search_mk_high
     bl      search_set_mark
     mov     w0, w23
-    mov     w1, search_mk_mid               // last, so a collision reads mid
+    mov     w1, search_mk_mid               // last, so a shared cell shows mid
     bl      search_set_mark
 
     mov     w0, w23

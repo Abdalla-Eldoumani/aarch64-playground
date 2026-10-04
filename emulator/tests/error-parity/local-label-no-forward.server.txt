@@ -1,0 +1,4 @@
+$ gcc local-label-no-forward.s -o program
+local-label-no-forward.s: Assembler messages:
+local-label-no-forward.s: Error: local label `"1" (instance number 2 of a fb label)' is not defined
+[exit 1]

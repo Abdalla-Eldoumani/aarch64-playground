@@ -28,8 +28,8 @@ describe("splitPasteLines", () => {
 
 describe("sanitizeInput", () => {
   it("removes whole escape sequences, not just the ESC byte", () => {
-    // A pasted colored shell transcript carries full SGR sequences; the
-    // sequence must go as a unit or "[32m" survives as literal text.
+    // A pasted colored shell transcript carries full color escape sequences;
+    // each must go as a unit or "[32m" survives as literal text.
     expect(sanitizeInput("\x1b[32mhello\x1b[0m")).toBe("hello");
     expect(sanitizeInput("ls\x1b[A")).toBe("ls");
     expect(sanitizeInput("\x1bOP")).toBe("");
@@ -90,9 +90,9 @@ describe("TerminalInputState", () => {
     s.commit("ls");
     s.commit("cat foo");
     s.handlePrintable("p");           // start typing the next command
-    s.handleUp();                     // pull most recent
+    s.handleUp();
     expect(s.buffer).toBe("cat foo");
-    s.handleUp();                     // pull the older one
+    s.handleUp();
     expect(s.buffer).toBe("ls");
   });
 

@@ -1,0 +1,15 @@
+fnv: cbf29ce484222325 af63dc4c8601ec8c 77bd4ceb90a5287b
+words 55 distinct 34 cap 64 used 34 arena 169 moves 5
+get: the=12 kite=3 hill=2 tractor=1 dragon=-1 =-1 Kite=-1 hedge=2
+del: 1 1 0 0 1 1
+after: the=40 saw=40 and=-1 red=-1 live 32 used 34 cap 64
+slots 1:rode=1 2:back=1 11:turned=2 12:small=1 13:a=1 15:again=1
+  18:below=1 19:hedge=2 21:shake=1 24:warm=1 25:tractor=1 26:hid=1
+  29:barn=1 35:went=1 36:to=1 37:dark=1 40:waiting=1 42:hill=2
+  43:saw=40 46:while=1 47:over=1 48:it=1 49:on=1 50:farmer=1
+  51:birds=1 54:kite=3 55:air=1 56:where=1 57:old=1 58:sat=1
+  60:the=40 62:in=2
+hash ok 32 of 32
+vector grows 14 bad 0 last cap 472 head -1000 -993 -937
+dirty 171 171
+calloc nonzero 0

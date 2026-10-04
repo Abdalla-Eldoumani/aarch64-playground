@@ -1,0 +1,49 @@
+{
+  "title": "The macro that ate my message",
+  "slug": "the-macro-that-ate-my-message",
+  "order": 4,
+  "lastUpdated": "2026-09-30",
+  "topic": "armv8",
+  "difficulty": "intro",
+  "prompt": "This program reads a ticket count and a price in cents, multiplies them, and prints the bill on one line. With the input `3 125` it should print:\n\n```\ncount = 3, price = 125, total = 375\n```\n\nRun it and read what it prints instead. The multiply is fine; the words in the message are what went wrong.\n\nm4 reads the whole file before the assembler does, and it replaces every whole word that matches a `define` name, even inside a quoted string. Fix the program so the message prints exactly as shown above, without changing the text between the quotes.\n\n## What is checked\n\n- with the input `3 125` the bill line matches word for word\n- the program returns 0\n- the checker also runs a few inputs you do not see, including a count of zero, a negative price, and a total too big for 32 bits",
+  "starter": "// read a ticket count and a price in cents, then print the bill\n// on one line\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(count, x19)\ndefine(price, x20)\ndefine(total, x21)\n\n.data\nfmt_in:     .string \"%ld %ld\"\nfmt_out:    .string \"count = %ld, price = %ld, total = %ld\\n\"\n\n.bss\n.balign 8\ncount_m:    .skip 8\nprice_m:    .skip 8\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // scanf fills both slots\n        ldr     x1, =count_m\n        ldr     x2, =price_m\n        bl      scanf\n\n        ldr     x9, =count_m\n        ldr     count, [x9]\n        ldr     x9, =price_m\n        ldr     price, [x9]\n        mul     total, count, price         // the bill, in cents\n\n        ldr     x0, =fmt_out\n        mov     x1, count\n        mov     x2, price\n        mov     x3, total\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "3 125\n",
+  "variant": "identify-bug",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "count = 3, price = 125, total = 375\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "12 450\n",
+      "stdout": "count = 12, price = 450, total = 5400\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0 999\n",
+      "stdout": "count = 0, price = 999, total = 0\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "4 -250\n",
+      "stdout": "count = 4, price = -250, total = -1000\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1000000 250000\n",
+      "stdout": "count = 1000000, price = 250000, total = 250000000000\n",
+      "exitCode": 0
+    }
+  ]
+}

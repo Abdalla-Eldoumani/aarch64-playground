@@ -19,7 +19,7 @@ arr:    .skip 40                        // 10 ints
 .text
 
 // find_max(x0 = arr base, w1 = n) -> w0 = max value
-// Uses only scratch registers, so no callee-saved register needs spilling
+// Uses only scratch registers, so no callee-saved register needs saving
         .balign 4
         .global find_max
 find_max:

@@ -1,0 +1,66 @@
+{
+  "title": "Monster roster",
+  "slug": "monster-roster",
+  "order": 36,
+  "lastUpdated": "2026-09-30",
+  "topic": "arrays",
+  "difficulty": "challenge",
+  "prompt": "Find the monster with the most hit points in a roster of up to eight, which the starter reads into `roster`, an array of structures. Each input line is a name of up to five letters, the monster's hit points, and its attitude, for example `Troll 88 -35`. Print the monster with the most hit points in this form:\n\n```text\nstrongest: Troll, 88 hp, attitude -35\n```\n\nIf two monsters tie, the one listed first wins. If the roster has no monsters, print `the roster is empty` instead.\n\nA structure (a struct in C) is a group of fields stored side by side, each at a fixed distance, its offset, from the start of the structure. The starter names the offsets: the name at 0, the attitude at 6, the hit points at 8, and each monster takes 12 bytes, so monster i starts at `roster + i * 12`. Load each field with its own size. The attitude is a signed halfword (16 bits): a 32-bit load at its offset would also pick up two bytes of the hit points, and an unsigned load turns -35 into 65501.\n\n## What is checked\n\n- one line naming the strongest monster, or the empty-roster line\n- the program exits cleanly\n- the attitude is loaded as a signed halfword (`ldrsh` present)\n- your program also runs on rosters you do not see: a tie, a single monster, an empty roster, the strongest listed last, and a roster where every monster has negative hit points",
+  "starter": "// read a roster of monsters into an array of structs and report the strongest\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(base_r, x19)\ndefine(n_r, w20)\ndefine(i_r, w21)\ndefine(elem_r, x22)\n\ndefine(MAX, 8)\n\n// struct monster {\n//         char  name[6];      // up to 5 letters and the zero byte\n//         short attitude;     // -32768 (hostile) to 32767 (friendly)\n//         int   hp;           // hit points\n// };\nname_o = 0                                  // field offsets inside one monster\nattitude_o = 6\nhp_o = 8\nmonster_size = 12\n\n.data\nfmt_n:      .string \"%d\"\nfmt_in:     .string \"%5s %d %d\"\nfmt_out:    .string \"strongest: %s, %d hp, attitude %d\\n\"\nmsg_empty:  .string \"the roster is empty\\n\"\n\n.bss\n.align 4\nroster:     .skip 96                        // MAX monsters of monster_size bytes\ncount:      .skip 4\natt_m:      .skip 4                         // the attitude as scanf reads it, a full int\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_n                  // how many monsters follow\n        ldr     x1, =count\n        bl      scanf\n        ldr     x9, =count\n        ldr     n_r, [x9]\n\n        cmp     n_r, 0                      // keep n between 0 and MAX\n        b.ge    n_not_negative\n        mov     n_r, 0\nn_not_negative:\n        cmp     n_r, MAX\n        b.le    n_in_range\n        mov     n_r, MAX\nn_in_range:\n        ldr     base_r, =roster\n\n        mov     i_r, 0                      // one line per monster\n        b       fill_test\nfill_loop:\n        sxtw    x9, i_r\n        mov     x10, monster_size\n        madd    elem_r, x9, x10, base_r     // elem = roster + i * monster_size\n        ldr     x0, =fmt_in\n        add     x1, elem_r, name_o\n        add     x2, elem_r, hp_o\n        ldr     x3, =att_m\n        bl      scanf\n        ldr     x9, =att_m\n        ldr     w10, [x9]\n        strh    w10, [elem_r, attitude_o]   // the field keeps the low 16 bits\n        add     i_r, i_r, 1\nfill_test:\n        cmp     i_r, n_r\n        b.lt    fill_loop\n\n        // TODO: when n is 0, print msg_empty. Otherwise find the monster\n        // with the most hit points (a tie goes to the one listed first)\n        // and print its name, hit points and attitude with fmt_out.\n        // Load each field with the size it was declared with.\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "4\nImp 12 -80\nOrc 45 -20\nTroll 88 -35\nPixie 9 60\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "strongest: Troll, 88 hp, attitude -35\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "ldrsh"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "3\nImp 12 -80\nTroll 120 -40\nSlime 30 15\n",
+      "stdout": "strongest: Troll, 120 hp, attitude -40\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "0\n",
+      "stdout": "the roster is empty\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "2\nGhost -5 10\nWisp -3 -1\n",
+      "stdout": "strongest: Wisp, -3 hp, attitude -1\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "3\nOrc 50 5\nGolem 50 -100\nLich 49 100\n",
+      "stdout": "strongest: Orc, 50 hp, attitude 5\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "1\nWyrm 70000 -32768\n",
+      "stdout": "strongest: Wyrm, 70000 hp, attitude -32768\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "4\nBat 3 0\nRat 4 1\nCat 5 2\nGnat 9 -7\n",
+      "stdout": "strongest: Gnat, 9 hp, attitude -7\n",
+      "exitCode": 0
+    }
+  ]
+}

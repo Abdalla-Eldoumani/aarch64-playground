@@ -1,15 +1,9 @@
 /**
- * Build-time, server-only exercise loader. The `node:fs` / `node:path` imports are
- * the server-only guard: Next refuses to bundle node built-ins into a Client
- * Component, so a client module that imports this file fails the build. That is
- * an equivalent of `import "server-only"` without adding the `server-only`
- * package, which would break the no-new-deps fence and this module's own unit
- * test. Only server components import this; client renderers receive
- * already-validated exercises as props.
- *
- * Every file is validated by `validateExercise` at load. Invalid JSON or invalid
- * content throws an `Error` that names the offending file, so unvalidated
- * content can never reach a renderer or the checker.
+ * Build-time exercise loader. Importing node:fs keeps it server-only: Next
+ * will not bundle node built-ins into a client component, so a client import
+ * fails the build, without the `server-only` package that would break this
+ * module's unit test. A bad file throws with its name, so unchecked content
+ * never reaches a renderer or the checker.
  */
 
 import fs from "node:fs";
@@ -24,15 +18,30 @@ import { compareByOrder } from "@/lib/content/content-order";
 /** The real content directory, resolved against the build's cwd (web/). */
 const DEFAULT_DIR = path.join(process.cwd(), "content/exercises");
 
+// A production build reads each folder once. Every exercise page asks for
+// the whole folder three times (its metadata, the page, its sheet number) and
+// every lesson page once more, which was hundreds of full reads per build.
+// Development and tests read it on every call, so an edited file shows at once.
+const builtOnce = new Map<string, Exercise[]>();
+
 /**
- * Read, parse, and validate every `*.json` exercise in `dir` (defaults to the
- * real content directory). Returns the valid exercises sorted by `order`. Throws
- * a named `Error` on unparseable JSON, on content that fails `validateExercise`,
- * or on a duplicate slug. An absent directory is treated as empty so the build
- * does not crash before any exercise is authored. The `dir` parameter exists
- * only for testability; production callers pass nothing.
+ * Every `*.json` exercise in `dir`, validated and sorted by `order`. Throws on
+ * bad JSON, invalid content, or a duplicate slug. A missing directory counts
+ * as empty so the build runs before any exercise exists. `dir` is for tests.
  */
 export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
+  if (process.env.NODE_ENV !== "production") return readExercises(dir);
+  let exercises = builtOnce.get(dir);
+  if (!exercises) {
+    exercises = readExercises(dir);
+    builtOnce.set(dir, exercises);
+  }
+  // A copy, so a caller that sorts or splices its list cannot reorder the
+  // next caller's.
+  return exercises.slice();
+}
+
+function readExercises(dir: string): Exercise[] {
   if (!fs.existsSync(dir)) return [];
 
   // Sort filenames first so the read order (and any order ties) is deterministic.
@@ -76,9 +85,10 @@ export function loadAllExercises(dir: string = DEFAULT_DIR): Exercise[] {
 }
 
 /**
- * A plain-text row summary from the prompt: the first non-empty line with
- * leading Markdown markers (#, >, -, *) stripped, clipped to a row-sized
- * length. Rendered as plain text, never Markdown.
+ * A row summary from the prompt: the first non-empty line with leading
+ * Markdown markers (#, >, -, *) stripped, clipped to a row-sized length. The
+ * index renders its inline code, so a clip never stops inside a code span,
+ * where the opening backtick would show bare.
  */
 function blurbFromPrompt(prompt: string): string {
   const firstLine =
@@ -87,7 +97,10 @@ function blurbFromPrompt(prompt: string): string {
       .map((line) => line.trim())
       .find((line) => line.length > 0) ?? "";
   const plain = firstLine.replace(/^[#>\-*\s]+/, "").trim();
-  return plain.length > 140 ? `${plain.slice(0, 140)}...` : plain;
+  if (plain.length <= 140) return plain;
+  let clipped = plain.slice(0, 140);
+  if ((clipped.match(/`/g) ?? []).length % 2 === 1) clipped = clipped.slice(0, clipped.lastIndexOf("`"));
+  return `${clipped.trimEnd()}...`;
 }
 
 /**

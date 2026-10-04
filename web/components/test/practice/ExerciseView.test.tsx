@@ -2,13 +2,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { act, forwardRef, useEffect, useImperativeHandle, type Ref } from "react";
 import type { Exercise } from "@/lib/content/exercise-schema";
-import type { CheckResult } from "@/lib/content/exercise-checker";
-import { checkExercise } from "@/lib/content/exercise-checker";
-import { markSolved } from "@/lib/playground/solved-state";
+import { runHeadless } from "@/lib/emulator/headless-run";
+import { isSolved } from "@/lib/playground/solved-state";
 import { readShareHash } from "@/lib/playground/share";
 
-// readShareHash returns a discriminated verdict; these tests only
-// care about the ok payload.
+// readShareHash returns either a state or the reason it failed; these tests
+// only need the state.
 function okShareState(hash: string) {
   const r = readShareHash(hash);
   if (r.kind !== "ok") throw new Error(`expected ok, got ${r.kind}`);
@@ -16,26 +15,53 @@ function okShareState(hash: string) {
 }
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 
-// Shared between the embed mock and the assertions: the snapshot the embed
-// hands the checker, and the live source its getSource() returns. vi.hoisted so
-// they exist when the (hoisted) mock factory runs.
-const { MOCK_SNAPSHOT, MOCK_SOURCE, TYPED_SOURCE, LOADED } = vi.hoisted(() => ({
-  TYPED_SOURCE: "// what the student typed\n        mov     x0, 7",
-  LOADED: [] as string[],
-  MOCK_SNAPSHOT: {
-    registers: Array.from({ length: 31 }, () => "0x0000000000000000"),
+// Shared between the embed mock and the assertions: the machine state the
+// embed hands the real checker, and the live source its getSource() returns.
+// A test swaps both through ANSWER; the default is the failing answer below.
+// vi.hoisted so they exist when the (hoisted) mock factory runs.
+const { ANSWER, FAILING, PASSING, TYPED_SOURCE, LOADED } = vi.hoisted(() => {
+  const snapshot = (x0: string, stdout: string) => ({
+    registers: [x0, ...Array.from({ length: 30 }, () => "0x0000000000000000")],
     sp: "0x0000000000000000",
     pc: 0,
     nzcv: 0,
-    stdout: "",
+    stdout,
     stderr: "",
     exitCode: 0,
     isRunning: false,
     isHalted: true,
     error: null,
-  },
-  MOCK_SOURCE: "// the live student source\n        mov     x0, 1\n        ret",
-}));
+  });
+  // Hardcodes 55 and never loops: x0 is 42, stdout is wrong, no b.lt.
+  const FAILING = {
+    snapshot: snapshot("0x000000000000002a", "sum = 42\n"),
+    source: "// the live student source\n        mov     x0, 55\n        ret",
+  };
+  // Loops with b.lt and leaves 55 in x0 without writing 55 anywhere.
+  const PASSING = {
+    snapshot: snapshot("0x0000000000000037", "sum = 55\n"),
+    source: [
+      "main:   mov     x0, 0",
+      "        mov     x1, 1",
+      "top:   add     x0, x0, x1",
+      "        add     x1, x1, 1",
+      "        cmp     x1, 11",
+      "        b.lt    top",
+      "        ret",
+    ].join("\n"),
+  };
+  return {
+    ANSWER: { ...FAILING },
+    FAILING,
+    PASSING,
+    TYPED_SOURCE: "// what the student typed\n        mov     x0, 7",
+    LOADED: [] as string[],
+  };
+});
+
+function answerWith(answer: typeof FAILING) {
+  Object.assign(ANSWER, answer);
+}
 
 // Stub the shared embed with a light marker that echoes the props the view
 // feeds it (so a dropped stdin shows as a missing data-startstdin), exposes
@@ -48,6 +74,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
       startSource?: string;
       startArgs?: string;
       startStdin?: string;
+      showArgs?: boolean;
       onCheck?: (snapshot: unknown) => void;
       onSourceChange?: (source: string) => void;
     },
@@ -56,7 +83,7 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
     useImperativeHandle(
       ref,
       () => ({
-        getSource: () => MOCK_SOURCE,
+        getSource: () => ANSWER.source,
         loadSource: (source: string) => {
           LOADED.push(source);
         },
@@ -76,8 +103,9 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
         data-startsource={props.startSource}
         data-startargs={props.startArgs}
         data-startstdin={props.startStdin}
+        data-showargs={props.showArgs ? "1" : undefined}
       >
-        <button type="button" onClick={() => props.onCheck?.(MOCK_SNAPSHOT)}>
+        <button type="button" onClick={() => props.onCheck?.(ANSWER.snapshot)}>
           check
         </button>
         <button type="button" onClick={() => props.onSourceChange?.(TYPED_SOURCE)}>
@@ -88,13 +116,15 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
   }),
 }));
 
-vi.mock("@/lib/content/exercise-checker", () => ({ checkExercise: vi.fn() }));
-vi.mock("@/lib/playground/solved-state", () => ({ markSolved: vi.fn() }));
+// The hidden inputs run on a machine of their own; neither the wasm nor the
+// runner loads here, so each test decides what a hidden run prints. The
+// checker and the solved record are the real modules.
+vi.mock("@/lib/emulator/emulator", () => ({ loadEmulator: vi.fn(async () => ({})) }));
+vi.mock("@/lib/emulator/headless-run", () => ({ runHeadless: vi.fn() }));
 
 import { ExerciseView } from "@/components/practice/ExerciseView";
 
-const checkExerciseMock = vi.mocked(checkExercise);
-const markSolvedMock = vi.mocked(markSolved);
+const runHeadlessMock = vi.mocked(runHeadless);
 
 afterEach(() => {
   cleanup();
@@ -102,6 +132,7 @@ afterEach(() => {
   vi.useRealTimers();
   window.localStorage.clear();
   LOADED.length = 0;
+  answerWith(FAILING);
 });
 
 const ANSWER_KEY = (slug: string) => `aarch64-playground:practice:answer:${slug}`;
@@ -145,27 +176,6 @@ const bugExercise: Exercise = {
   variant: "identify-bug",
 };
 
-const passResult: CheckResult = {
-  pass: true,
-  results: [],
-  structural: [],
-  summary: "all checks passed",
-};
-
-const failResult: CheckResult = {
-  pass: false,
-  results: [
-    {
-      assertion: { kind: "register", reg: "x0", equals: 55 },
-      pass: false,
-      expected: "55",
-      actual: "42",
-    },
-  ],
-  structural: [{ assertion: { kind: "forbids-literal", value: 55 }, pass: false }],
-  summary: "1 of 2 checks passing",
-};
-
 describe("ExerciseView", () => {
   it("renders the prompt through the real LessonMarkdown", () => {
     render(<ExerciseView exercise={writeExercise} />);
@@ -174,7 +184,7 @@ describe("ExerciseView", () => {
     expect(screen.getByText(/the prompt body text here/i)).toBeTruthy();
   });
 
-  it("renders a shape-only specification table and never the expected values", () => {
+  it("lists what the program must do in the specification, never the expected values", () => {
     render(<ExerciseView exercise={writeExercise} />);
     const criteria = screen.getByRole("region", { name: /specification/i });
     const text = criteria.textContent ?? "";
@@ -182,7 +192,7 @@ describe("ExerciseView", () => {
     expect(text).toContain("exits with the right code");
     expect(text).toContain("prints the right output");
     expect(text).toContain("uses b.lt");
-    expect(text).toContain("computes the result (does not hardcode it)");
+    expect(text).toContain("does not hardcode the answer");
     // The expected register value and the expected stdout must never appear.
     expect(text).not.toContain("55");
     expect(text).not.toContain("sum = 55");
@@ -228,24 +238,19 @@ describe("ExerciseView", () => {
     expect(screen.queryByText(/this program is broken/i)).toBeNull();
   });
 
-  it("on a passing check shows the pass state, marks solved, and checks the live source", () => {
-    checkExerciseMock.mockReturnValue(passResult);
+  it("on a passing check shows the pass state and marks solved", () => {
+    // The starter has no b.lt, so this passes only if the live source is checked.
+    answerWith(PASSING);
     render(<ExerciseView exercise={writeExercise} />);
 
     fireEvent.click(screen.getByRole("button", { name: /check/i }));
 
-    expect(checkExerciseMock).toHaveBeenCalledWith(
-      writeExercise.acceptance,
-      MOCK_SNAPSHOT,
-      MOCK_SOURCE,
-    );
     const status = screen.getByRole("status");
     expect(status.textContent).toContain("all checks passed");
-    expect(markSolvedMock).toHaveBeenCalledWith("write-exercise");
+    expect(isSolved("write-exercise")).toBe(true);
   });
 
-  it("on a failing check shows expected-vs-actual, the failed structural label, and does not mark solved", () => {
-    checkExerciseMock.mockReturnValue(failResult);
+  it("on a failing check shows expected and actual values and the failed rule, and does not mark solved", () => {
     render(<ExerciseView exercise={writeExercise} />);
 
     fireEvent.click(screen.getByRole("button", { name: /check/i }));
@@ -254,12 +259,13 @@ describe("ExerciseView", () => {
     expect(status.textContent).toContain("leaves the right value in x0");
     expect(status.textContent).toContain("expected 55, got 42");
     expect(status.textContent).toContain(
-      "computes the result (does not hardcode it): the value 55 appears literally in your source",
+      "does not hardcode the answer: the value 55 appears literally in your program",
     );
-    expect(markSolvedMock).not.toHaveBeenCalled();
+    expect(status.textContent).not.toContain("all checks passed");
+    expect(isSolved("write-exercise")).toBe(false);
   });
 
-  it("forwards an in-cap stdin to the embed and drops an oversize one", () => {
+  it("forwards stdin within the size limit to the embed and drops an oversize one", () => {
     const withStdin: Exercise = { ...writeExercise, slug: "stdin-ok", stdin: "queued input" };
     const { unmount } = render(<ExerciseView exercise={withStdin} />);
     expect(screen.getByTestId("embed").getAttribute("data-startstdin")).toBe("queued input");
@@ -377,5 +383,149 @@ describe("ExerciseView saved answers", () => {
       bugExercise.starter,
     );
     expect(storedAnswer("bug-exercise")).toBeNull();
+  });
+});
+
+describe("ExerciseView hidden inputs", () => {
+  const hiddenExercise: Exercise = {
+    ...writeExercise,
+    slug: "hidden-exercise",
+    stdin: "10\n",
+    hiddenCases: [
+      { stdin: "3\n", stdout: "sum = 6\n", exitCode: 0 },
+      { stdin: "0\n", stdout: "sum = 0\n", exitCode: 0, edge: true },
+      { args: "7", stdout: "sum = 28\n", exitCode: 0 },
+    ],
+  };
+  const outcome = {
+    assembleError: null,
+    error: null,
+    finished: true,
+    stdout: "",
+    exitCode: 0,
+    stackBalanced: true,
+    frameIntact: true,
+  };
+
+  it("names how many hidden inputs there are and never what they are", () => {
+    render(<ExerciseView exercise={hiddenExercise} />);
+    const text = screen.getByRole("region", { name: /specification/i }).textContent ?? "";
+    expect(text).toContain("3 more inputs you do not see");
+    expect(text).not.toContain("sum = 6");
+    expect(text).not.toContain("28");
+  });
+
+  // A hidden run prints what the program would for that case's input; the
+  // real checkHiddenCase grades it.
+  function printsFor(outputs: Record<string, string>) {
+    runHeadlessMock.mockImplementation(async (_emu, _source, argv, stdin) => ({
+      ...outcome,
+      stdout: outputs[stdin ?? argv.join(" ")],
+    }));
+  }
+
+  it("runs them after the visible checks pass, shows a failing one's input, and does not mark solved", async () => {
+    answerWith(PASSING);
+    printsFor({ "3\n": "sum = 6\n", "0\n": "sum = 1\n", "7": "sum = 28\n" });
+    render(<ExerciseView exercise={hiddenExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+    await screen.findByText(/hidden input 3/);
+    expect(runHeadlessMock).toHaveBeenCalledTimes(3);
+    // The live source and each case's own input reach the runner.
+    expect(runHeadlessMock.mock.calls[0].slice(1)).toEqual([PASSING.source, [], "3\n"]);
+    expect(runHeadlessMock.mock.calls[2].slice(1)).toEqual([PASSING.source, ["7"], undefined]);
+    const status = screen.getByRole("status").textContent ?? "";
+    expect(status).toContain('input "0\\n"');
+    expect(status).toContain('it prints something else: got "sum = 1\\n"');
+    expect(status).not.toContain("sum = 0");
+    expect(status).not.toContain("all checks passed");
+    expect(isSolved("hidden-exercise")).toBe(false);
+  });
+
+  it("marks solved once every hidden input passes too", async () => {
+    answerWith(PASSING);
+    printsFor({ "3\n": "sum = 6\n", "0\n": "sum = 0\n", "7": "sum = 28\n" });
+    render(<ExerciseView exercise={hiddenExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+    await screen.findByText("all checks passed");
+    expect(isSolved("hidden-exercise")).toBe(true);
+  });
+
+  it("holds the hidden inputs back while the visible checks fail", () => {
+    render(<ExerciseView exercise={hiddenExercise} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+    expect(screen.getByRole("status").textContent).toContain(
+      "3 hidden inputs run once the checks above pass",
+    );
+    expect(runHeadlessMock).not.toHaveBeenCalled();
+  });
+
+  it("brings the results into view in answer to a check, and only then", () => {
+    const scroll = vi.fn();
+    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { value: scroll, configurable: true });
+    try {
+      render(<ExerciseView exercise={writeExercise} />);
+      expect(scroll).not.toHaveBeenCalled();
+
+      fireEvent.click(screen.getByRole("button", { name: /check/i }));
+
+      expect(scroll).toHaveBeenCalledTimes(1);
+      expect(scroll.mock.contexts[0]).toBe(screen.getByRole("status"));
+      expect(scroll.mock.calls[0][0]).toMatchObject({ block: "nearest" });
+    } finally {
+      delete (HTMLElement.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+    }
+  });
+});
+
+describe("ExerciseView arguments and instruction rules", () => {
+  it("gives the embed an args box only when the exercise takes arguments", () => {
+    const { unmount } = render(<ExerciseView exercise={{ ...writeExercise, args: "12 7" }} />);
+    expect(screen.getByTestId("embed").getAttribute("data-showargs")).toBe("1");
+    unmount();
+
+    render(<ExerciseView exercise={{ ...writeExercise, args: "" }} />);
+    expect(screen.getByTestId("embed").getAttribute("data-showargs")).toBeNull();
+    // An empty args row would only say there is nothing to say.
+    expect(screen.getByRole("region", { name: /specification/i }).textContent).not.toContain("args");
+  });
+
+  it("names forbidden instructions and scoped checks in plain words", () => {
+    const exercise: Exercise = {
+      ...writeExercise,
+      acceptance: {
+        results: [{ kind: "exit", equals: 0 }],
+        structural: [
+          { kind: "forbids-instruction", mnemonics: ["mul", "madd", "msub"] },
+          { kind: "uses-instruction", mnemonic: "bl fact", in: "fact" },
+          { kind: "forbids-literal", value: "%lo" },
+        ],
+      },
+    };
+    render(<ExerciseView exercise={exercise} />);
+    const text = screen.getByRole("region", { name: /specification/i }).textContent ?? "";
+    expect(text).toContain("does not use mul, madd or msub");
+    expect(text).toContain("uses bl fact in fact");
+    expect(text).toContain("does not contain %lo");
+  });
+
+  it("says which forbidden instruction a failing program used", () => {
+    answerWith({ ...PASSING, source: "main:   madd    x0, x1, x2, x3\n        ret" });
+    const exercise: Exercise = {
+      ...writeExercise,
+      acceptance: {
+        results: [{ kind: "exit", equals: 0 }],
+        structural: [{ kind: "forbids-instruction", mnemonics: ["mul", "madd"] }],
+      },
+    };
+    render(<ExerciseView exercise={exercise} />);
+    fireEvent.click(screen.getByRole("button", { name: /check/i }));
+    expect(screen.getByRole("status").textContent).toContain("madd appears in your program");
   });
 });

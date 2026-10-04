@@ -14,24 +14,26 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: ButtonVariant;
 }
 
-// 44px tall so coarse pointers can hit it; the focus ring is the `--ring` token
-// (two-layer box-shadow that resolves `--focus` -> cyan per theme) shown only on
-// keyboard focus.
-// `active:translate-y-px` is the press: one device pixel of travel on the
-// pointer-down frame, discrete state rather than an animation, so it reads
-// under prefers-reduced-motion without motion over time.
+// 44px tall so a finger can hit it. The press is one pixel of travel, a state
+// change rather than an animation, so it still shows under reduced motion.
 const BASE =
   "inline-flex items-center justify-center gap-2 " +
   "px-4 min-h-[44px] font-sans text-[14px] font-medium transition-colors " +
   "focus:outline-none focus-visible:[box-shadow:var(--ring)] " +
-  "active:translate-y-px disabled:opacity-50 disabled:pointer-events-none";
+  "active:translate-y-px disabled:pointer-events-none " +
+  // A faded cyan fill still read as live, so disabled drops the fill for the
+  // sunken surface with a dashed edge: the shape, not only the colour, says
+  // it is off, and the label keeps its 4.5:1 (7:1 in high contrast). An
+  // outline, unlike a border, takes no room, so nothing shifts on toggle.
+  // The border goes clear so its solid line (white in high contrast) cannot
+  // fill the dash's gaps.
+  "disabled:outline-dashed disabled:outline-1 disabled:-outline-offset-1 " +
+  "disabled:outline-[var(--border-strong)] disabled:border-transparent " +
+  "disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)]";
 
-// Hover mixes a step of the label's ink into the fill instead of thinning the
-// control with opacity, so the label gains contrast while hovered and the
-// shift lands correctly in all three themes (brighter on dark, deeper on
-// light) from the same rule.
-// Primary keeps the soft action edge (--radius-action); the supporting
-// variants sit in machine chrome and follow the square control token.
+// Hover mixes some label color into the fill rather than fading it with
+// opacity, so the label gains contrast in every theme from one rule.
+// Primary keeps the rounder action corner; the others use the square one.
 const VARIANTS: Record<ButtonVariant, string> = {
   primary:
     "rounded-[var(--radius-action)] bg-[var(--cyan)] text-[var(--on-cyan)] " +

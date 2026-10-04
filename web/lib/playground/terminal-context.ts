@@ -1,6 +1,7 @@
 import type { RefObject } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
 import type { DispatchContext, TerminalProgramIO } from "@/lib/terminal/dispatch";
+import { combineSources, type Workspace } from "@/lib/playground/file-map";
 import { validateStdin } from "@/lib/playground/upload-guard";
 
 export type TerminalContextDeps = {
@@ -9,8 +10,8 @@ export type TerminalContextDeps = {
    *  below would poll an isRunning that can never change and report the pre-run
    *  stdout and exit code. */
   machine: RefObject<EmulatorState>;
-  /** The editor's live workspace as the one string the assembler sees. */
-  combinedSource: () => string;
+  /** The editor's live workspace: main plus any extra files. */
+  workspace: () => Workspace;
   /** Put the home directory back after a tool assemble wipes the machine. */
   applySeeds: () => void;
   /** The playground's working-set write paths, so a terminal redirect or an
@@ -25,13 +26,9 @@ export type TerminalContextDeps = {
 };
 
 /**
- * The shell's view of the machine: the VFS, the course toolchain (m4, gcc,
- * `./name`), gdb-lite's stepping and register reads, and the editor's own
- * program behind `./program`.
- *
- * Rebuilt on demand rather than held, and every read goes through the deps'
- * refs, so the context is a thin adapter with no state of its own and the
- * terminal pane never re-initializes underneath an open session.
+ * The terminal's view of the machine. Every read goes through the deps' refs,
+ * so the context holds no state, can be rebuilt on demand, and never resets
+ * the terminal pane under an open session.
  */
 export function createTerminalContext(deps: TerminalContextDeps): DispatchContext {
   const { machine, applySeeds, driveForeground } = deps;
@@ -49,6 +46,7 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     args: string[],
     stdin?: string,
     io?: TerminalProgramIO,
+    workspace?: Workspace,
   ) => {
     // The tool assemble deliberately leaves the editor's console
     // scrollback alone, so the hub's stdout/stderr still hold whatever the
@@ -58,14 +56,11 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     const priorErr = machine.current.stderr;
     const since = (now: string, before: string) =>
       now.startsWith(before) ? now.slice(before.length) : now;
-    // Tool-channel assemble: the terminal's program must not paint the
-    // editor's error markers, and the verdict comes back directly. The
-    // assemble wiped the machine, home directory included, so put the
-    // working set back whatever the outcome.
-    // args[0] is the `./name` the terminal displays; the emulator owns
-    // argv[0] and re-adds it, so only argv[1..] goes through. Passing
-    // the whole array would double the program name.
-    const verdict = await machine.current.assembleForTool(text, args.slice(1));
+    // The tool assemble keeps the editor's error markers clean and returns
+    // the verdict directly, but wipes the home directory, so the working set
+    // goes back whatever the outcome. The emulator adds argv[0] itself, so
+    // passing args[0] too would double the program name.
+    const verdict = await machine.current.assembleForTool(text, args.slice(1), workspace);
     applySeeds();
     if (!verdict.success) {
       // The verdict is the only carrier of the assemble error here;
@@ -138,8 +133,10 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     // The editor's program: the same run shape as a compiled executable,
     // over the live workspace (main plus any extra files, exactly what
     // the assemble button builds).
-    runProgram: async (args: string[], stdin?: string, io?: TerminalProgramIO) =>
-      runText(deps.combinedSource(), args, stdin, io),
+    runProgram: async (args: string[], stdin?: string, io?: TerminalProgramIO) => {
+      const ws = deps.workspace();
+      return runText(combineSources(ws.main, ws.extras), args, stdin, io, ws);
+    },
     step: async () => {
       machine.current.step();
       const e = machine.current;

@@ -1,6 +1,7 @@
 // Uppercase a line of text sixteen characters at a time.
-// A v register holds 16 bytes, so one compare and one subtract fix all
-// sixteen at once; the line buffer is exactly four registers wide.
+// A v register holds 16 bytes, one per lane, so one compare and one
+// subtract fix all sixteen at once; the line buffer is exactly four
+// registers wide.
 
 define(fp, x29)
 define(lr, x30)

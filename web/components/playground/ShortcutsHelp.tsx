@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { useFocusTrap } from "@/lib/hooks/use-focus-trap";
+import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { CREDIBILITY } from "@/lib/content/site";
 
 export interface Shortcut {
@@ -31,37 +31,47 @@ export function ShortcutsHelp({ open, onClose, shortcuts }: ShortcutsHelpProps) 
       role="dialog"
       aria-modal="true"
       aria-label="keyboard shortcuts"
-      onClick={onClose}
+      onClick={closeOnBackdropClick(onClose)}
     >
       <div
         ref={ref}
-        className="w-full max-w-md rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl p-5 anim-modal-rise"
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col rounded-md border border-[var(--border)] bg-[var(--bg-sunken)] shadow-2xl p-5 anim-modal-rise"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
-          keyboard shortcuts
+          Keyboard shortcuts
         </h2>
-        <dl className="text-xs space-y-1.5">
-          {shortcuts.map((s) => (
-            <div
-              key={s.keys}
-              className="flex items-center justify-between gap-3"
-            >
-              <dt className="text-[var(--text-secondary)]">{s.description}</dt>
-              <dd>
-                <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-mono">
-                  {s.keys}
-                </kbd>
-              </dd>
-            </div>
-          ))}
-        </dl>
-        {/* The playground renders no footer, so this modal carries the
-            course-context disclaimer the other routes state there. */}
-        <p className="mt-3 border-t border-[var(--border)] pt-2 text-[10px] leading-relaxed text-[var(--text-tertiary)]">
-          {CREDIBILITY.disclaimer}
-        </p>
-        <div className="mt-4 text-right">
+        {/* The list scrolls on its own so a short screen keeps the heading
+            and close in view; a scroll box with no control in it needs a
+            tab stop of its own for a keyboard to scroll it. */}
+        <div
+          role="region"
+          aria-label="shortcut list"
+          tabIndex={0}
+          className="-mx-1 min-h-0 overflow-y-auto px-1 rounded focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+        >
+          <dl className="text-xs space-y-1.5">
+            {shortcuts.map((s) => (
+              <div
+                key={s.keys}
+                className="flex items-center justify-between gap-3"
+              >
+                <dt className="text-[var(--text-secondary)]">{s.description}</dt>
+                <dd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-[var(--bg-base)] text-[var(--text-primary)] border border-[var(--border)] font-mono">
+                    {s.keys}
+                  </kbd>
+                </dd>
+              </div>
+            ))}
+          </dl>
+          {/* The playground renders no footer, so this modal carries the
+              course-context disclaimer the other routes state there. */}
+          <p className="mt-3 border-t border-[var(--border)] pt-2 text-[12px] leading-relaxed text-[var(--text-tertiary)]">
+            {CREDIBILITY.disclaimer}
+          </p>
+        </div>
+        <div className="mt-4 shrink-0 text-right">
           <button
             type="button"
             onClick={onClose}

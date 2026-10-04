@@ -13,11 +13,9 @@ interface ErrorBoundaryState {
 }
 
 /**
- * Class-based error boundary for panel subtrees. Next's error.tsx convention
- * nets only a whole route segment, so a single throwing panel would unmount
- * the entire playground, editor buffer included; this keeps the blast radius
- * to the panel that threw. A wrapped block that unmounts (a tab switch) gets
- * a fresh boundary on return.
+ * Catches a crash inside one panel. Next's error.tsx covers only a whole
+ * route, so one failing panel would take down the playground and the code in
+ * the editor with it.
  */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   state: ErrorBoundaryState = { failed: false };

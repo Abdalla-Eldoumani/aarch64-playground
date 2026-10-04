@@ -1,0 +1,60 @@
+{
+  "title": "The price is right",
+  "slug": "the-price-is-right",
+  "order": 42,
+  "lastUpdated": "2026-09-30",
+  "topic": "memory",
+  "difficulty": "intro",
+  "prompt": "The starter reads a price in cents and a quantity straight into two 32-bit words in `.data`, `price` and `quantity`. Multiply them and store the product in the third word, `total`. The last lines of the starter load all three words back out of memory and print them, so the bill only shows up if it really is in `total`.\n\nA value in `.data` takes two loads to reach: `ldr x9, =price` puts the address of `price` in `x9`, then `ldr w10, [x9]` fetches the 32-bit value stored at that address. `str` goes the other way: `str w12, [x9]` writes `w12` to the address in `x9`.\n\n## What is checked\n\n- with input `1299 3` the line reads `3 x 1299 cents = 3897 cents`\n- the program exits cleanly\n- `mul` works out the bill and `str` writes it to memory\n- the program also runs on prices and quantities you do not see, including a quantity of 0 and a negative quantity (items handed back)",
+  "starter": "// work out a bill from a price and a quantity kept in .data\ndefine(fp, x29)\ndefine(lr, x30)\n\n.data\n        .balign 4\nprice:      .word 0                         // cents for one item, read from input\nquantity:   .word 0                         // how many, read from input\ntotal:      .word 0                         // price times quantity belongs here\nfmt_in:     .string \"%d %d\"\nfmt_out:    .string \"%d x %d cents = %d cents\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        ldr     x0, =fmt_in                 // scanf writes straight into both words\n        ldr     x1, =price\n        ldr     x2, =quantity\n        bl      scanf\n\n        // TODO: load price and quantity from memory, multiply them,\n        // and store the product in total\n\n        ldr     x0, =fmt_out                // print all three words from memory\n        ldr     x9, =quantity\n        ldr     w1, [x9]\n        ldr     x9, =price\n        ldr     w2, [x9]\n        ldr     x9, =total\n        ldr     w3, [x9]\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "args": "",
+  "stdin": "1299 3\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "3 x 1299 cents = 3897 cents\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "mul"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "str"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "1299 0\n",
+      "stdout": "0 x 1299 cents = 0 cents\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "450 -2\n",
+      "stdout": "-2 x 450 cents = -900 cents\n",
+      "exitCode": 0,
+      "edge": true
+    },
+    {
+      "stdin": "0 7\n",
+      "stdout": "7 x 0 cents = 0 cents\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "99999 21474\n",
+      "stdout": "21474 x 99999 cents = 2147378526 cents\n",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

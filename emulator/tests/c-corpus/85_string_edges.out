@@ -1,0 +1,33 @@
+strlen: 0 1 299 2
+cmp: -1 1 0 1 1 -1
+ncmp: 0 -1 0 0
+memcmp: -1 1 0
+strncpy pad: 61 62 00 00 00 00 23 23
+strncpy cut: 61 62 63 64 23 23 23 23
+strcat: [one,two,three] 1 13
+strchr: 2 12 1 2 10 10
+strstr: 1 3 1 1 2
+memmove up: 0101234589 down: 1234534589 set: 1234534AA9
+strtok: 0:alpha@4 1:beta@11 2:gamma@17
+cut [  ,,alpha| beta|;gamma|,  ]
+pairs: a 1 b 22 c 1
+strtol[  -0x1f,0] = -31 end 7
+strtol[0777,0] = 511 end 4
+strtol[z,36] = 35 end 1
+strtol[12abc,10] = 12 end 2
+strtol[  +,10] = 0 end 0
+strtol[0x,16] = 0 end 1
+strtol[9223372036854775807,10] = 9223372036854775807 end 19
+strtol[9223372036854775808,10] = 9223372036854775807 end 19
+strtol[-9223372036854775809,10] = -9223372036854775808 end 20
+strtol[  42  ,10] = 42 end 4
+strtol[101102,2] = 22 end 5
+strtol[Zz,36] = 1295 end 2
+strtol[-0,0] = 0 end 2
+atoi: -123 0 42
+snprintf: 12 [abcdef-] *
+size0: 6 *; size1: 3 0; sprintf: 15 [beef|   ab|7  |]
+ctype: 10 52 6 26 0
+upper: 31 32 33 20 43 41 46 e9
+HELLO, WORLD! 123 CAF
+plain char: 233 1

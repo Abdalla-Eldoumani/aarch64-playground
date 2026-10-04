@@ -10,7 +10,7 @@ describe("readWorkspaceBundle", () => {
     expect(result).toEqual({ ok: true, files: [{ name: "main.asm", body: "ret\n" }] });
   });
 
-  it("fails closed on a version it does not know", () => {
+  it("rejects a version it does not know", () => {
     const result = readWorkspaceBundle(JSON.stringify({ version: 2, files: [] }));
     expect(result).toEqual({
       ok: false,
@@ -18,11 +18,11 @@ describe("readWorkspaceBundle", () => {
     });
   });
 
-  it("fails closed on text that is not json", () => {
+  it("rejects text that is not json", () => {
     expect(readWorkspaceBundle("mov x0, 1").ok).toBe(false);
   });
 
-  it("fails closed on a file name that would write its own assembly line", () => {
+  it("rejects a file name that would write its own assembly line", () => {
     // The name is pasted into combineSources' `// ---- name ----` marker,
     // so a newline in it hands the linker lines nobody typed.
     const result = readWorkspaceBundle(
@@ -40,7 +40,7 @@ describe("readWorkspaceBundle", () => {
     });
   });
 
-  it("fails closed on a traversing, empty, or overlong name", () => {
+  it("rejects a name with a folder in it, a blank name, or one that is too long", () => {
     const bundle = (name: string) =>
       readWorkspaceBundle(JSON.stringify({ version: 1, files: [{ name, body: "ret\n" }] }));
     expect(bundle("../secrets.s").ok).toBe(false);

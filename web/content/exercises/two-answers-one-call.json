@@ -1,0 +1,59 @@
+{
+  "title": "Two answers, one call",
+  "slug": "two-answers-one-call",
+  "order": 52,
+  "lastUpdated": "2026-09-30",
+  "topic": "subroutines",
+  "difficulty": "core",
+  "prompt": "A function hands back one value in x0, but a division has two answers. `divmod(a, b, &q, &r)` gets both out: the caller (the code making the call) passes the *addresses* of two of its own variables, and `divmod` writes the quotient and the remainder into them. It returns 0 in w0 when it worked, and -1 when b is 0, in which case it writes nothing.\n\nThe starter's `main` reads pairs of numbers into its frame until the input runs out, and prints each result from the frame slots `q_s` and `r_s`. Write `divmod`, and fill in the call in `main`: a in x0, b in x1, and the addresses of the two slots in x2 and x3 (`add x2, fp, q_s` puts an address in a register).\n\nUse `sdiv`, which rounds toward zero the way C does, so -17 / 5 is -3 remainder -2. The remainder is a - q * b, one `msub`. Check b first: dividing by zero does not stop an ARMv8 program, `sdiv` quietly answers 0.\n\n`main` exits with the number of pairs that had no answer, so a script running the program can tell something went wrong.\n\nThe starter's input prints:\n\n```\n17 / 5 = 3 remainder 2\n100 / 7 = 14 remainder 2\n```\n\n## What is checked\n\n- the two lines above\n- the program exits with status 0\n- the same checks on other inputs the checker keeps hidden, including negative numbers, a divisor of 0 (the exit status must count them), and no input at all\n- `sdiv` does the division and `str` writes the answers",
+  "starter": "// divide pairs of numbers with one call that hands back quotient and remainder\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(a_r, x19)\ndefine(b_r, x20)\ndefine(fails_r, w21)\n\nalloc = -(16 + 32) & -16                    // fp and lr, then four 8-byte slots\ndealloc = -alloc\na_s = 16\nb_s = 24\nq_s = 32\nr_s = 40\n\n.data\nfmt_in:     .string \"%ld %ld\"\nfmt_ok:     .string \"%ld / %ld = %ld remainder %ld\\n\"\nfmt_zero:   .string \"%ld / 0 has no answer\\n\"\n\n.text\n\n// divmod(x0 = a, x1 = b, x2 = &quotient, x3 = &remainder) -> w0 = 0, or -1 when b is 0\n        .balign 4\n        .global divmod\ndivmod:\n        // TODO: when b is 0, return -1 and write nothing. Otherwise\n        // write a / b to the address in x2 and the remainder to the\n        // address in x3, and return 0.\n        mov     w0, 0                       // replace this placeholder\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n        mov     fails_r, 0\n        b       fill_test\n\nnext_pair:\n        ldr     a_r, [fp, a_s]\n        ldr     b_r, [fp, b_s]\n\n        // TODO: call divmod with a, b, and the addresses of the two\n        // frame slots q_s and r_s.\n\n        cmp     w0, 0\n        b.ne    no_answer\n\n        ldr     x0, =fmt_ok\n        mov     x1, a_r\n        mov     x2, b_r\n        ldr     x3, [fp, q_s]\n        ldr     x4, [fp, r_s]\n        bl      printf\n        b       fill_test\n\nno_answer:\n        add     fails_r, fails_r, 1\n        ldr     x0, =fmt_zero\n        mov     x1, a_r\n        bl      printf\n\nfill_test:\n        ldr     x0, =fmt_in\n        add     x1, fp, a_s\n        add     x2, fp, b_s\n        bl      scanf\n        cmp     w0, 2                       // both numbers matched; anything else ends the input\n        b.eq    next_pair\n\n        mov     w0, fails_r                 // the exit status counts the pairs with no answer\n        ldp     fp, lr, [sp], dealloc\n        ret\n",
+  "args": "",
+  "stdin": "17 5\n100 7\n",
+  "variant": "write",
+  "acceptance": {
+    "results": [
+      {
+        "kind": "stdout",
+        "equals": "17 / 5 = 3 remainder 2\n100 / 7 = 14 remainder 2\n"
+      },
+      {
+        "kind": "exit",
+        "equals": 0
+      }
+    ],
+    "structural": [
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "sdiv"
+      },
+      {
+        "kind": "uses-instruction",
+        "mnemonic": "str"
+      }
+    ]
+  },
+  "hiddenCases": [
+    {
+      "stdin": "-17 5\n17 -5\n-17 -5\n",
+      "stdout": "-17 / 5 = -3 remainder -2\n17 / -5 = -3 remainder 2\n-17 / -5 = 3 remainder -2\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "9 0\n0 4\n7 0\n",
+      "stdout": "9 / 0 has no answer\n0 / 4 = 0 remainder 0\n7 / 0 has no answer\n",
+      "exitCode": 2,
+      "edge": true
+    },
+    {
+      "stdin": "1000000000000 3\n3 10\n",
+      "stdout": "1000000000000 / 3 = 333333333333 remainder 1\n3 / 10 = 0 remainder 3\n",
+      "exitCode": 0
+    },
+    {
+      "stdin": "",
+      "stdout": "",
+      "exitCode": 0,
+      "edge": true
+    }
+  ]
+}

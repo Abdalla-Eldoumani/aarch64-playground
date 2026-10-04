@@ -7,7 +7,7 @@ afterEach(() => cleanup());
 describe("NotFound", () => {
   it("renders the default title and message", () => {
     render(<NotFound />);
-    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("page not found");
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Page not found");
     expect(screen.getByText(/is not mapped/i)).toBeTruthy();
   });
 
@@ -26,7 +26,7 @@ describe("NotFound", () => {
     expect(link.getAttribute("href")).toBe("/playground");
   });
 
-  it("includes the 0x404 doc rule and mono gloss, and no false signal 11", () => {
+  it("shows the 0x00000404 code and the branch caption, with no false signal 11", () => {
     render(<NotFound />);
     expect(screen.getByText("0x00000404")).toBeTruthy();
     expect(screen.queryByText(/signal 11/i)).toBeNull();

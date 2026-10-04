@@ -2,27 +2,13 @@ import { vi } from "vitest";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
 
 /**
- * One stand-in for the emulator hub, shared by every playground component
- * suite.
- *
- * Typed against the real EmulatorState rather than a loose record, because a
- * loose record hides exactly the mistakes a fake exists to catch: a suite can
- * miss fpRegisters, externalCall, or memoryRegions, so the d-register view, the
- * external-call card, and the memory jump list render their fallback branch,
- * and a typo in an override name never fails.
- *
- * The defaults describe a loaded machine with nothing assembled and nothing
- * run. Where a field gates a whole view, the default is the one that leaves
- * the view in its fallback branch: fpRegisters is [] (RegisterPanel shows the
- * d-file only at exactly 32 slots, so [] reads as a wasm build with no FP
- * surface), externalCall is null (the pc is on one of the program's own
- * instructions), and memoryRegions is [] (the memory panel falls back to its
- * own section list). A suite that wants the other branch passes it.
- *
- * The mocks are built per call, so two hubs in one test never share call
- * records. Every promise-returning field resolves the shape its type
- * promises; an assemble resolving `undefined` lets a suite pass on a branch
- * the real hub can never take.
+ * One emulator hub stand-in for every playground suite, typed against the real
+ * EmulatorState so a missing field or a mistyped override fails to compile.
+ * Defaults: a loaded machine, nothing assembled or run, and each view a field
+ * gates (d registers, external-call card, memory jump list) on its fallback.
+ * Mocks are built per call so two hubs in one test never share call records.
+ * Async fields resolve their real shape: an assemble resolving undefined would
+ * let a suite pass on a branch the real hub never takes.
  */
 export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
   return {
@@ -43,6 +29,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     error: null,
     assemblyErrors: [],
     breakpoints: new Set<number>(),
+    droppedBreakpoints: [],
     currentLine: null,
     externalCall: null,
     instructions: [],
@@ -50,6 +37,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     memoryRegions: [],
     stdout: "",
     stderr: "",
+    notes: [],
     blocked: false,
     wantsTerminal: false,
     setOutputTap: vi.fn(),
@@ -78,7 +66,10 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     remapBreakpoints: vi.fn(),
     getMemory: vi.fn(() => new Uint8Array()),
     getMemoryMapped: vi.fn(() => true),
+    readMemory: vi.fn(async (_addr: number, len: number) => new Uint8Array(len)),
     pushStdin: vi.fn(),
+    stdinGiven: vi.fn(() => ""),
+    resumeAfterInput: vi.fn(),
     setSnapshotsPaused: vi.fn(),
     closeStdin: vi.fn(),
     uploadVfsFile: vi.fn(),

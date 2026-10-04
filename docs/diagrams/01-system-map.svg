@@ -10,7 +10,7 @@
 <text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">01 · SYSTEM MAP</text>
 <text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">One surface, two threads, no server</text>
 <line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
-<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 1/4</text>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · diagram 1 of 4</text>
 <rect x="40" y="112" width="760" height="340" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 3"/>
 <text x="50" y="128" font-size="10.5" fill="#565E68" font-weight="600" text-anchor="start" letter-spacing="1">BROWSER TAB · MAIN THREAD</text>
 <rect x="830" y="112" width="330" height="340" fill="none" stroke="#C9CED6" stroke-width="1" stroke-dasharray="4 3"/>
@@ -49,7 +49,7 @@
 <path d="M 602 280 L 634 280" fill="none" stroke="#0E7490" stroke-width="1.25" marker-end="url(#arrow-cyan)"/>
 <text x="618" y="238" font-size="10.5" fill="#0E7490" font-weight="400" text-anchor="middle">assemble, step, run</text>
 <path d="M 708 250 L 708 200" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
-<text x="716" y="230" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="start">snapshot fan-out</text>
+<text x="716" y="230" font-size="10.5" fill="#81520C" font-weight="400" text-anchor="start">sends snapshot</text>
 <path d="M 507 310 L 507 380" fill="none" stroke="#14161A" stroke-width="1.25" stroke-dasharray="5 4" marker-end="url(#arrow)"/>
 <text x="515" y="350" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="start">save / restore</text>
 <path d="M 782 272 L 850 272" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
@@ -59,7 +59,7 @@
 <path d="M 980 280 L 1002 280" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
 <path d="M 1072 310 L 1072 380" fill="none" stroke="#14161A" stroke-width="1.25" marker-end="url(#arrow)"/>
 <text x="1080" y="350" font-size="10.5" fill="#14161A" font-weight="400" text-anchor="start">wasm-bindgen</text>
-<text x="40" y="480" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Every panel is a view over the last StateSnapshot the hub fanned out; no panel talks to the machine.</text>
+<text x="40" y="480" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Every panel is a view over the last StateSnapshot the hub sent out; no panel talks to the machine.</text>
 <text x="40" y="496" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">State lives in Rust and React never mirrors it. Without a Worker the same hub drives a MainThreadBackend in process.</text>
 <rect x="40" y="513" width="14" height="10" fill="#DDF1F5" stroke="#0E7490"/>
 <text x="60" y="522" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="start">student acting</text>

@@ -22,7 +22,7 @@ describe("BlanksBlock", () => {
     expect(check.disabled).toBe(true);
   });
 
-  it("accepts a match against any accepted string, ignoring case and whitespace", () => {
+  it("accepts any listed answer, ignoring case and surrounding spaces", () => {
     const onAttempt = vi.fn();
     render(<BlanksBlock {...PROPS} onAttempt={onAttempt} />);
     fireEvent.change(screen.getByLabelText(PROPS.prompt), { target: { value: "  LDRB " } });
@@ -46,6 +46,12 @@ describe("BlanksBlock", () => {
 });
 
 describe("BlanksBlock controlled answer", () => {
+  // The blank's own outline is off, so the ring is its only focus mark.
+  it("rings the blank on keyboard focus", () => {
+    render(<BlanksBlock {...PROPS} />);
+    expect(screen.getByLabelText(PROPS.prompt).className).toContain("focus-visible:[box-shadow:var(--ring)]");
+  });
+
   it("renders the answer the sheet passes in", () => {
     render(<BlanksBlock {...PROPS} value="ldrb" onValueChange={() => {}} />);
     expect((screen.getByLabelText(PROPS.prompt) as HTMLInputElement).value).toBe("ldrb");

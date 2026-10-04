@@ -1,11 +1,9 @@
 import type { ReferenceInstruction } from "@/lib/content/reference-data";
 
 /**
- * Wrap a single-instruction example in a minimal program the playground can
- * assemble. The assembler defaults to .text, so the example needs only an
- * aapcs64 prologue/epilogue and a success return around it. The try-in-
- * playground deep-link uses this so a one-line example still opens as a
- * complete, assemblable program rather than a bare instruction.
+ * Wrap a one-instruction example in a program that assembles, so the
+ * try-in-playground link opens a whole program. The assembler starts in
+ * .text, so a prologue, an epilogue, and a return of 0 are all it needs.
  */
 export function wrapInMain(example: string): string {
   const body = example
@@ -24,11 +22,9 @@ ${body}
 }
 
 /**
- * The source the try-in-playground link carries for an instruction. Entries
- * whose bare example names an undefined label or symbol carry a complete
- * authored `runnable`; every other entry wraps its illustrative example. Shared
- * by the reference component and the assemble test so the linked payload and the
- * asserted payload are the one source.
+ * The source a try-in-playground link carries. An entry whose example names an
+ * undefined label brings its own `runnable`; the rest are wrapped. The
+ * reference and its assemble test share this so both see the same program.
  */
 export function playgroundSource(instruction: ReferenceInstruction): string {
   return instruction.runnable ?? wrapInMain(instruction.example);

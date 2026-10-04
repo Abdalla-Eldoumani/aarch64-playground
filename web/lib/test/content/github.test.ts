@@ -7,6 +7,7 @@ import { fetchStarCount, formatStarCount } from "@/lib/content/github";
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.unstubAllEnvs();
   vi.restoreAllMocks();
 });
 
@@ -33,8 +34,8 @@ describe("fetchStarCount", () => {
 
     // The whole init object is pinned, so an Authorization header cannot be
     // added by accident: this call is anonymous on purpose.
-    // The query string carries the deploy's commit (or "local") so each
-    // deploy gets its own build-cache key; the path itself is pinned.
+    // The query string carries the deployment id (or "local") so each
+    // deployment gets its own build-cache key; the path itself is pinned.
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringMatching(
         /^https:\/\/api\.github\.com\/repos\/Abdalla-Eldoumani\/aarch64-playground\?deploy=[\w-]+$/,
@@ -50,6 +51,23 @@ describe("fetchStarCount", () => {
     // No revalidation interval: one would turn every route that renders the
     // nav into an ISR page, so the count is read once per build instead.
     expect(fetchMock.mock.calls[0][1]).not.toHaveProperty("next");
+  });
+
+  it("keys the cache on the deployment, not the commit", async () => {
+    // A deploy hook rebuilds the same commit to refresh the count; a commit
+    // key would hand that rebuild the count cached by the last deploy.
+    vi.stubEnv("VERCEL_GIT_COMMIT_SHA", "0123abc");
+    vi.stubEnv("VERCEL_DEPLOYMENT_ID", "dpl_second");
+    vi.resetModules();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(okWith({ stargazers_count: 214 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const { fetchStarCount: fresh } = await import("@/lib/content/github");
+    await fresh();
+
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\?deploy=dpl_second$/);
   });
 
   it("returns null when the api answers 404", async () => {

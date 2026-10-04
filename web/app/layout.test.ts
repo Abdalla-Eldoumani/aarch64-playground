@@ -1,43 +1,31 @@
 import { describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { brotliDecompressSync } from "node:zlib";
 import { SITE_URL } from "@/lib/content/site";
 
-// next/font/google only runs inside the Next build; stub the three loaders so
-// the layout module can be imported for its metadata export. Each stub keeps
-// the options it was called with, because those options are the font
-// configuration, and every face declared there lands in a render-blocking
-// stylesheet on every route. The options are kept in a plain record rather
-// than read back from mock call history: the loaders run once, at import,
-// and vitest clears every mock's history before each test.
+// next/font/local runs only inside the Next build. The stub records each
+// call's options in a plain object, not mock call history: the loader runs
+// once per font at import, and vitest clears call history before each test.
 interface FontOptions {
-  weight?: string[];
-  style?: string[];
+  src: string;
+  weight?: string;
+  style?: string;
   display?: string;
+  variable: string;
 }
 
-type FontLoader = (options: FontOptions) => { variable: string };
-
 const fonts = vi.hoisted(() => {
-  const declared: { sans?: FontOptions; mono?: FontOptions; serif?: FontOptions } = {};
-  const loader =
-    (name: keyof typeof declared, variable: string): FontLoader =>
-    (options) => {
-      declared[name] = options;
-      return { variable };
-    };
+  const declared: Record<string, FontOptions> = {};
   return {
     declared,
-    plexSans: loader("sans", "--font-sans"),
-    jetBrainsMono: loader("mono", "--font-mono"),
-    sourceSerif: loader("serif", "--font-serif"),
+    localFont: (options: FontOptions) => {
+      declared[options.variable] = options;
+      return { variable: options.variable };
+    },
   };
 });
-vi.mock("next/font/google", () => ({
-  IBM_Plex_Sans: fonts.plexSans,
-  JetBrains_Mono: fonts.jetBrainsMono,
-  Source_Serif_4: fonts.sourceSerif,
-}));
+vi.mock("next/font/local", () => ({ default: fonts.localFont }));
 
 import { metadata } from "./layout";
 
@@ -67,14 +55,21 @@ describe("share card metadata", () => {
     const title = metadata.title;
     const template =
       title && typeof title === "object" && "template" in title ? title.template : null;
-    expect(template).toBe("%s · cpsc 355 playground");
+    expect(template).toBe("%s · AArch64 Playground");
+  });
+
+  it("falls back to the home page's title and snippet", () => {
+    const title = metadata.title;
+    const fallback = title && typeof title === "object" && "default" in title ? title.default : null;
+    expect(fallback).toBe("ARMv8 assembly emulator and debugger · AArch64 Playground");
+    expect(metadata.description).toContain("CPSC 355");
   });
 
   it("carries a complete open graph card", () => {
     const og = metadata.openGraph;
-    expect(og?.title).toBe("cpsc 355 playground");
+    expect(og?.title).toBe("ARMv8 assembly emulator and debugger · AArch64 Playground");
     expect(og?.description).toBeTruthy();
-    expect(og?.siteName).toBe("cpsc 355 playground");
+    expect(og?.siteName).toBe("AArch64 Playground");
     expect(og?.url).toBe("/");
     expect(og && "type" in og && og.type).toBe("website");
   });
@@ -92,13 +87,13 @@ describe("share card metadata", () => {
     expect(twitter && "card" in twitter && twitter.card).toBe(
       "summary_large_image",
     );
-    expect(twitter?.title).toBe("cpsc 355 playground");
+    expect(twitter?.title).toBe("ARMv8 assembly emulator and debugger · AArch64 Playground");
     expect(twitter?.description).toBeTruthy();
     const [image] = asImages(twitter?.images);
     expect(image.url).toBe("/og.png");
   });
 
-  it("ships the cover the tags advertise: a real 1200x630 png, light enough to unfurl", () => {
+  it("ships the cover the tags advertise: a real 1200x630 png, small enough for link previews", () => {
     // Vitest runs from web/, so the public dir sits under the cwd.
     const png = readFileSync(join(process.cwd(), "public", "og.png"));
     // PNG signature, then width and height straight from the IHDR chunk, so
@@ -108,27 +103,88 @@ describe("share card metadata", () => {
     ]);
     expect(png.readUInt32BE(16)).toBe(1200);
     expect(png.readUInt32BE(20)).toBe(630);
-    expect(png.byteLength).toBeLessThan(300 * 1024);
+    expect(png.byteLength).toBeLessThan(64 * 1024);
   });
 });
 
 // A stray face costs every route: the next/font stylesheet is
 // render-blocking.
 describe("font declarations", () => {
-  it("declares the serif upright only", () => {
-    const options = fonts.declared.serif!;
-    expect(options.style).toBeUndefined();
-    expect(options.weight).toEqual(["400", "600"]);
-  });
+  const families = ["--font-serif", "--font-sans", "--font-mono"];
 
-  it("declares all four weights for the sans and the mono", () => {
-    expect(fonts.declared.sans!.weight).toEqual(["400", "500", "600", "700"]);
-    expect(fonts.declared.mono!.weight).toEqual(["400", "500", "600", "700"]);
+  it("declares one self-hosted file per family, the serif upright only", () => {
+    expect(Object.keys(fonts.declared).sort()).toEqual([...families].sort());
+    expect(fonts.declared["--font-serif"].style).toBeUndefined();
   });
 
   it("swaps every family, so no face blocks first paint", () => {
-    for (const options of [fonts.declared.serif, fonts.declared.sans, fonts.declared.mono]) {
-      expect(options!.display).toBe("swap");
+    for (const name of families) expect(fonts.declared[name].display).toBe("swap");
+  });
+
+  // Each file is a variable font; the declared range must match the file's
+  // own weight axis, read from its fvar table, or a weight the pages ask for
+  // falls outside the face and the browser fakes it.
+  it("declares each file's own weight range, wide enough for every weight the pages use", () => {
+    for (const name of families) {
+      const { src, weight } = fonts.declared[name];
+      const file = readFileSync(join(process.cwd(), "app", src));
+      expect(`${weightAxis(file).min} ${weightAxis(file).max}`).toBe(weight);
+      const [min, max] = weight!.split(" ").map(Number);
+      expect(min).toBeLessThanOrEqual(400);
+      expect(max).toBeGreaterThanOrEqual(name === "--font-serif" ? 600 : 700);
+    }
+  });
+
+  it("ships each font's OFL license beside it", () => {
+    for (const name of families) {
+      const license = fonts.declared[name].src.replace("-latin.woff2", "-ofl.txt");
+      const text = readFileSync(join(process.cwd(), "app", license), "utf8");
+      expect(text).toContain("SIL Open Font License, Version 1.1");
     }
   });
 });
+
+/** The wght axis of a woff2 file's fvar table, decoded with node's brotli. */
+function weightAxis(woff2: Buffer): { min: number; max: number } {
+  const TAG_INDEX: Record<number, string> = { 47: "fvar" };
+  const at = { i: 48 };
+  const base128 = () => {
+    let value = 0;
+    for (;;) {
+      const b = woff2[at.i++];
+      value = value * 128 + (b & 0x7f);
+      if (!(b & 0x80)) return value;
+    }
+  };
+  const tables: { tag: string; length: number }[] = [];
+  for (let t = 0; t < woff2.readUInt16BE(12); t++) {
+    const flags = woff2[at.i++];
+    let tag = TAG_INDEX[flags & 0x3f] ?? `#${flags & 0x3f}`;
+    if ((flags & 0x3f) === 63) {
+      tag = woff2.toString("latin1", at.i, at.i + 4);
+      at.i += 4;
+    }
+    const origLength = base128();
+    // glyf (10) and loca (11) are transformed at version 0, every other
+    // table at any other version; a transformed table stores its new length.
+    const glyfOrLoca = (flags & 0x3f) === 10 || (flags & 0x3f) === 11;
+    const transformed = glyfOrLoca ? flags >> 6 === 0 : flags >> 6 !== 0;
+    tables.push({ tag, length: transformed ? base128() : origLength });
+  }
+  const data = brotliDecompressSync(woff2.subarray(at.i, at.i + woff2.readUInt32BE(20)));
+  let offset = 0;
+  for (const { tag, length } of tables) {
+    if (tag === "fvar") {
+      const fvar = data.subarray(offset, offset + length);
+      const first = fvar.readUInt16BE(4);
+      for (let a = 0; a < fvar.readUInt16BE(8); a++) {
+        const p = first + a * fvar.readUInt16BE(10);
+        if (fvar.toString("latin1", p, p + 4) === "wght") {
+          return { min: fvar.readInt32BE(p + 4) / 65536, max: fvar.readInt32BE(p + 12) / 65536 };
+        }
+      }
+    }
+    offset += length;
+  }
+  throw new Error("no wght axis");
+}

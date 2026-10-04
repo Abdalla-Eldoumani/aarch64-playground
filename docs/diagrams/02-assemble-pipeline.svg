@@ -10,7 +10,7 @@
 <text x="40" y="46" font-size="11" fill="#81520C" font-weight="600" text-anchor="start" letter-spacing="2">02 · ASSEMBLE</text>
 <text x="40" y="72" font-size="20" fill="#14161A" font-weight="600" text-anchor="start">From source text to a loaded image</text>
 <line x1="40" y1="88" x2="1160" y2="88" stroke="#C9CED6" stroke-width="1"/>
-<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · sheet 2/4</text>
+<text x="1160" y="46" font-size="11" fill="#8A929C" font-weight="400" text-anchor="end">aarch64-playground · architecture · diagram 2 of 4</text>
 <rect x="40" y="160" width="196" height="62" fill="#FFFFFF" stroke="#14161A" stroke-width="1"/>
 <text x="138.0" y="188.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">m4.rs</text>
 <text x="138.0" y="203.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">define(NAME, BODY)</text>
@@ -59,7 +59,7 @@
 <rect x="660" y="450" width="220" height="56" fill="#F6EBD3" stroke="#81520C" stroke-width="1"/>
 <text x="770.0" y="475.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Cpu::load_linked_image</text>
 <text x="770.0" y="490.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">reset, map pages, write</text>
-<text x="770" y="520" font-size="9.5" fill="#8A929C" font-weight="400" text-anchor="middle">sections, __main_return in LR</text>
+<text x="770" y="520" font-size="9.5" fill="#8A929C" font-weight="400" text-anchor="middle">sections, set LR so main's ret ends the run</text>
 <path d="M 964 478 L 880 478" fill="none" stroke="#81520C" stroke-width="1.25" marker-end="url(#arrow-amber)"/>
 <rect x="360" y="450" width="200" height="56" fill="#F4F5F7" stroke="#565E68" stroke-width="1"/>
 <text x="460.0" y="475.0" font-size="12" fill="#14161A" font-weight="600" text-anchor="middle">Line map</text>
@@ -71,6 +71,6 @@
 <text x="150.0" y="490.0" font-size="10.5" fill="#565E68" font-weight="400" text-anchor="middle">errors, current line, breakpoints</text>
 <path d="M 360 478 L 260 478" fill="none" stroke="#0E7490" stroke-width="1.25" marker-end="url(#arrow-cyan)"/>
 <text x="40" y="560" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Every pipeline error carries original_line, so a diagnostic lands on the line the student wrote, before m4 touched it.</text>
-<text x="40" y="576" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Source without .global main, sections, or a libc reference takes the older one-pass bare-metal assembler instead.</text>
-<text x="40" y="592" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">The linker matches GAS: label immediates fold to section offsets and symbol+offset resolves before the adrp page split.</text>
+<text x="40" y="576" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">Source with no directive, no m4 define, and no libc call takes the older bare-metal assembler instead.</text>
+<text x="40" y="592" font-size="11" fill="#565E68" font-weight="400" text-anchor="start">The linker matches the GNU assembler: label immediates fold to section offsets and symbol+offset resolves before the adrp page split.</text>
 </svg>

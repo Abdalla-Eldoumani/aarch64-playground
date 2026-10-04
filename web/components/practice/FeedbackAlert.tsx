@@ -1,11 +1,9 @@
 "use client";
 
 /**
- * The one feedback surface every interactive block renders after a
- * submission: success shows the author's explanation, failure shows the
- * hint (or a generic retry line) and never the explanation, so a wrong
- * attempt cannot read its way to the answer. Shared across the quiz,
- * blanks, and prediction blocks so the three grade with one look.
+ * The feedback the quiz, blanks, and prediction blocks share. A wrong attempt
+ * sees only the hint, never the explanation, so it cannot read its way to the
+ * answer.
  */
 
 import type { JSX } from "react";

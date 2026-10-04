@@ -1,6 +1,6 @@
-// Non-blocking keyboard input. An arrow key arrives as three bytes, so a
-// sequence in progress reads again at once rather than waiting for the next
-// frame; the four arrows come back as the w/a/s/d codes.
+// Keyboard input that never waits for a key. An arrow key arrives as
+// three bytes, so a sequence in progress reads again at once rather than
+// waiting for the next frame; the four arrows come back as the w/a/s/d codes.
 
 define(key_reg, w19)                            // Current key value
 define(state_reg, w20)                          // Escape sequence state
@@ -44,7 +44,7 @@ input_init:
                 ldp     fp, lr, [sp], 16
                 ret
 
-// input_poll - Poll for keyboard input (non-blocking)
+// input_poll - Poll for keyboard input (never waits)
 // Returns: w0 = key code, or KEY_NONE (-1) if no key pressed
 // Handles arrow keys as escape sequences
                 .global input_poll
@@ -57,7 +57,7 @@ input_poll:
                 add     x0, x0, :lo12:esc_state
                 ldr     state_reg, [x0]
 
-                // Try to read a byte (non-blocking due to VMIN=0, VTIME=0)
+                // Try to read a byte; returns at once if no key is waiting
                 mov     x0, STDIN
                 adrp    x1, input_buf
                 add     x1, x1, :lo12:input_buf

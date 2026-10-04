@@ -1,10 +1,7 @@
 /**
- * Bit ruler: a 26px strip of 32 tick marks (one per bit of an instruction
- * word) with bit-index labels on the nibble boundaries. Pure CSS (a
- * repeating-linear-gradient draws the ticks), zero assets. Rides under the
- * site nav on the landing page as the brand's calibration strip. Decorative:
- * `aria-hidden` so screen readers skip it. Under sm only every-8th label
- * renders so the strip never crowds.
+ * A decorative strip of 32 ticks, one per bit of an instruction word, under
+ * the landing page nav. Screen readers skip it; phones show every eighth label
+ * so it never crowds.
  */
 const LABELED_BITS = [31, 28, 24, 20, 16, 12, 8, 4, 0];
 
@@ -30,7 +27,7 @@ export function BitRuler({ className = "" }: { className?: string }) {
         return (
           <span
             key={bit}
-            className={`absolute top-[9px] font-mono text-[9px] leading-none text-[var(--text-tertiary)] ${
+            className={`absolute top-[9px] font-mono text-[12px] leading-none text-[var(--text-tertiary)] ${
               everyEight ? "" : "hidden sm:inline"
             }`}
             style={{

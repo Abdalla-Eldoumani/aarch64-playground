@@ -1,6 +1,6 @@
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	compute
 compute:
 	mov	w0, 45
@@ -14,7 +14,7 @@ compute:
 	.string	"v=%d\n"
 	.text
 	.align	2
-	.align 5
+	.p2align 5,,15
 	.global	main
 main:
 	stp	x29, x30, [sp, -32]!

@@ -3,37 +3,51 @@
 import { useEffect, useRef, useState } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
+import { stripEscapeSequences } from "@/lib/terminal/input-state";
+import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 
 interface ConsolePanelProps {
   stdout: string;
   stderr: string;
+  /** The machine's plain-language notes about the run, under the output. */
+  notes?: string[];
   blocked: boolean;
   /** A terminal program owns the pane's input: its reads are answered by
    *  keystrokes in the terminal, so this console's stdin box would send
    *  into a session it cannot see. Disabled, with a pointer to the tab. */
   ownedByTerminal?: boolean;
-  /** Where in `stdout` a terminal-owned session began, or null when no
-   *  session has taken this program over. The session's own bytes were
-   *  written to the pane, which is a real terminal; this scrollback is
-   *  plain text, so a full-screen program's escape sequences land here as
-   *  literal garbage. Everything up to the watermark printed before the
-   *  takeover and stays; the rest is one note pointing at the tab it
-   *  happened in. */
+  /** Where in `stdout` a terminal session took the program over, or null.
+   *  This scrollback is plain text, where a full-screen program's escape
+   *  sequences print as garbage, so later output becomes one note naming the tab. */
   terminalOwnedFrom?: number | null;
   exitCode: number | null;
   vfsFiles: string[];
   /** Queue stdin. The second argument marks a line typed at a prompt, which
    *  the machine echoes into the transcript as a read consumes it. */
   pushStdin: (s: string, interactive?: boolean) => void;
+  /** Called after a line or an end-of-input is sent, so a run parked on the
+   *  read picks up again instead of waiting for another run press. */
+  onInputSent?: () => void;
   /** Whether a typed line is echoed into the transcript. The checker
    *  chrome turns this off: its fast path grades the live stdout, and an
    *  echoed byte there would fail a correct program's `equals` check. */
   echoStdin?: boolean;
+  /** Whether the empty state names F10 and F5. Only the playground page binds
+   *  them, so the embeds point at their buttons instead. */
+  keyHints?: boolean;
+  /** Whether the frame has a step button, so the empty state names only the
+   *  buttons a reader can find. The landing demo has none. */
+  stepButton?: boolean;
+  /** When new output may scroll the box; the landing demo waits for a reader
+   *  who is scrolling the page. Straight away by default. */
+  holdScroll?: ScrollHold;
   /** Signal end-of-input (wired to ctrl-d in the stdin box). */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   clearConsole: () => void;
 }
+
+const NO_NOTES: string[] = [];
 
 /**
  * Console pane: scrollback for stdout/stderr, a stdin input row, a clear
@@ -46,11 +60,16 @@ export function ConsolePanel({
   terminalOwnedFrom = null,
   stdout,
   stderr,
+  notes = NO_NOTES,
   blocked,
   exitCode,
   vfsFiles,
   pushStdin,
+  onInputSent,
   echoStdin = true,
+  keyHints = true,
+  stepButton = true,
+  holdScroll = scrollNow,
   closeStdin,
   uploadVfsFile,
   clearConsole,
@@ -86,11 +105,14 @@ export function ConsolePanel({
   }, []);
 
   // Auto-scroll on new output unless the user has scrolled up.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !autoScrollRef.current) return;
-    el.scrollTop = el.scrollHeight;
-  }, [stdout, stderr]);
+  useEffect(
+    () =>
+      holdScroll(() => {
+        const el = scrollRef.current;
+        if (el && autoScrollRef.current) el.scrollTop = el.scrollHeight;
+      }),
+    [stdout, stderr, notes, holdScroll],
+  );
 
   const handleScroll = () => {
     const el = scrollRef.current;
@@ -118,14 +140,32 @@ export function ConsolePanel({
     // console then reads "Enter score 1: 10", like the terminal pane and
     // like a real cooked-mode tty. The checker chrome opts out.
     pushStdin(stdinValue + "\n", echoStdin);
+    onInputSent?.();
     setStdinValue("");
   };
 
   // Output from before a terminal session took over; the session's own
   // bytes belong to the pane. stderr is never routed there, so it renders
-  // whole: this scrollback is the only surface that ever shows it.
+  // whole: this scrollback is the only surface that ever shows it. A
+  // full-screen program often clears the screen before it claims the
+  // terminal, so its escape sequences are dropped rather than printed raw.
   const shownStdout =
-    terminalOwnedFrom == null ? stdout : stdout.slice(0, terminalOwnedFrom);
+    terminalOwnedFrom == null
+      ? stdout
+      : stripEscapeSequences(stdout.slice(0, terminalOwnedFrom));
+  const buttons = stepButton ? "step or run" : "run";
+  // The read waits on this box. Its placeholder has room for a few words,
+  // so the whole instruction goes under the output instead.
+  const reading = blocked && !ownedByTerminal;
+
+  // End of input, as Ctrl+D gives in a shell: a read-until-end loop sees
+  // read return 0 and finishes. A phone keyboard has no Ctrl key, so under a
+  // finger the same thing is a button while a read waits; with a keyboard
+  // the box keeps its width for the placeholder.
+  const endInput = () => {
+    closeStdin();
+    onInputSent?.();
+  };
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -150,7 +190,7 @@ export function ConsolePanel({
           {blocked && !ownedByTerminal && (
             <span
               role="status"
-              className="px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] text-[10px]"
+              className="px-1.5 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] text-[12px]"
             >
               waiting for input
             </span>
@@ -158,19 +198,19 @@ export function ConsolePanel({
           {ownedByTerminal && (
             <span
               role="status"
-              className="px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-secondary)] text-[10px]"
+              className="px-1.5 py-0.5 rounded bg-[var(--bg-raised)] text-[var(--text-secondary)] text-[12px]"
             >
               running in the terminal
             </span>
           )}
           {exitCode != null && (
-            <span className="text-[var(--text-secondary)] text-[10px]">
+            <span className="text-[var(--text-secondary)] text-[12px]">
               exit {exitCode}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
-          <label className="cursor-pointer text-[var(--cyan)] hover:underline">
+          <label className="touch-target inline-flex items-center cursor-pointer text-[var(--cyan)] hover:underline">
             upload file
             <input
               type="file"
@@ -182,7 +222,7 @@ export function ConsolePanel({
           <button
             type="button"
             onClick={clearConsole}
-            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+            className="touch-target text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
           >
             clear
           </button>
@@ -191,30 +231,49 @@ export function ConsolePanel({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 min-h-0 overflow-auto px-2 py-1 font-mono whitespace-pre-wrap"
+        className="inner-scroll flex-1 min-h-0 overflow-auto px-2 py-1 font-mono whitespace-pre-wrap"
       >
         {shownStdout && <span>{shownStdout}</span>}
         {terminalOwnedFrom != null && (
-          <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+          <p className="font-sans text-[12px] text-[var(--text-secondary)]">
             this run happened in the terminal tab
           </p>
         )}
         {stderr && <span className="text-[var(--danger)]">{stderr}</span>}
-        {!shownStdout && !stderr && terminalOwnedFrom == null && (
+        {notes.map((note, i) => (
+          <p
+            key={i}
+            role="note"
+            className="mt-1 font-sans text-[12px] whitespace-normal text-[var(--text-primary)]"
+          >
+            <span className="font-semibold text-[var(--warning)]">note: </span>
+            {note}
+          </p>
+        ))}
+        {reading && (
+          <p className="mt-1 font-sans text-[12px] whitespace-normal text-[var(--text-primary)]">
+            {coarsePointer
+              ? "Your program is reading input. Type a line and tap send, or tap end input when there is nothing more to send."
+              : "Your program is reading input. Type a line and press Enter, or press Ctrl+D with the box empty to end the input."}
+          </p>
+        )}
+        {!reading && !shownStdout && !stderr && notes.length === 0 && terminalOwnedFrom == null && (
           <div className="space-y-1">
             <p className="font-serif text-[13px] text-[var(--text-primary)]">
               Output prints here as your program runs.
             </p>
-            <p className="font-sans text-[11px] text-[var(--text-secondary)]">
+            <p className="font-sans text-[12px] text-[var(--text-secondary)]">
               {coarsePointer
-                ? "Tap step or run under the editor, or feed stdin from the box below."
-                : "Step with F10, run with F5, or feed stdin from the box below."}
+                ? `Tap ${buttons} under the editor, or feed stdin from the box below.`
+                : keyHints
+                  ? "Step with F10, run with F5, or feed stdin from the box below."
+                  : `Press ${buttons} under the editor, or feed stdin from the box below.`}
             </p>
           </div>
         )}
       </div>
       {vfsFiles.length > 0 && (
-        <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[10px] text-[var(--text-secondary)]">
+        <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[12px] text-[var(--text-secondary)]">
           vfs: {vfsFiles.join(", ")}
         </div>
       )}
@@ -232,27 +291,41 @@ export function ConsolePanel({
             // getchar sees EOF and read-until-EOF loops can finish.
             if (e.ctrlKey && (e.key === "d" || e.key === "D") && stdinValue === "") {
               e.preventDefault();
-              closeStdin();
+              endInput();
             }
           }}
           placeholder={
             ownedByTerminal
               ? "this program reads from the terminal tab; type there"
               : blocked
-                ? "the program is waiting for input. type a line and press enter, or press Ctrl+D to close the input"
+                ? coarsePointer
+                  ? "type a line"
+                  : "type a line, or Ctrl+D to end"
                 : "stdin"
           }
           disabled={ownedByTerminal}
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           aria-label="Standard input"
-          className="flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:opacity-50 disabled:cursor-not-allowed"
+          className="touch-target min-w-0 flex-1 bg-[var(--bg-base)] border border-[var(--border)] rounded px-2 py-0.5 outline-none focus-visible:border-[var(--cyan)] disabled:cursor-not-allowed"
         />
         <button
           type="submit"
           disabled={ownedByTerminal}
-          className="px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="touch-target px-2 py-0.5 rounded bg-[var(--cyan)] text-[var(--on-cyan)] hover:brightness-110 disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed"
         >
           send
         </button>
+        {reading && coarsePointer && (
+          <button
+            type="button"
+            onClick={endInput}
+            className="touch-target whitespace-nowrap px-2 py-0.5 rounded border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-elevated)] focus:outline-none focus-visible:[box-shadow:var(--ring)]"
+          >
+            end input
+          </button>
+        )}
       </form>
     </div>
   );
