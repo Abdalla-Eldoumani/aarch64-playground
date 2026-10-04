@@ -72,9 +72,12 @@ function tabFor(fragment: string): string | null {
 
 export function ReferenceView({
   instructions,
+  course,
   lessonTitles,
 }: {
   instructions: ReferenceInstruction[];
+  /** The mnemonics the course's programs use, for the instruction finder. */
+  course?: readonly string[];
   /** Lesson titles by slug, for the pitfall cards' lesson links. */
   lessonTitles: Record<string, string>;
 }): JSX.Element {
@@ -133,7 +136,7 @@ export function ReferenceView({
       <div key={active} className={`${switched ? "anim-panel-in " : ""}mt-8`}>
         {active === "instructions" && (
           <div className="grid gap-10 lg:grid-cols-[minmax(0,1fr)_240px] lg:gap-11 xl:grid-cols-[minmax(0,1fr)_280px]">
-            <InstructionReference instructions={instructions} />
+            <InstructionReference instructions={instructions} course={course} />
             <AapcsRail />
           </div>
         )}
