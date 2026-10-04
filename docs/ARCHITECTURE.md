@@ -9,7 +9,7 @@ changes, [CONTRIBUTING.md](CONTRIBUTING.md) has the folder layout, and
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/system-map-dark.svg">
-  <img src="diagrams/system-map-light.svg" alt="System map. On the page's main thread, the editor sends the source and arguments to the useEmulator hub. The hub calls WorkerClient, or MainThreadBackend when no Worker can start, and passes each StateSnapshot to the panels. WorkerClient sends requests to emulator.worker.ts in a Web Worker, which calls the Rust emulator compiled to wasm and sends a StateSnapshot back.">
+  <img src="diagrams/system-map-light.svg" alt="System map. On the page's main thread, the editor sends the source and the args box sends the program arguments to the useEmulator hub. The hub calls assemble, step, and runUntilBreak on WorkerClient, or on MainThreadBackend when no Worker can start, and passes each StateSnapshot to the panels. WorkerClient sends requests to emulator.worker.ts in a Web Worker, which calls step and run_until_break on the Rust emulator compiled to wasm and sends a StateSnapshot back.">
 </picture>
 
 ## Two halves
@@ -125,7 +125,7 @@ so prompts, starters, and answers stay off the index pages.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/assemble-pipeline-dark.svg">
-  <img src="diagrams/assemble-pipeline-light.svg" alt="Assemble pipeline. The editor's files become one source string. detect_hosted_mode sends source that uses directives, m4 macros, or library calls through m4.rs, lexer.rs, parser.rs, and pipeline.rs in frontend/, and sends bare-metal source to assembler.rs, which pipeline.rs also calls to encode each line. cpu/loader.rs writes the result into memory. Error lines and the line map go back to the editor.">
+  <img src="diagrams/assemble-pipeline-light.svg" alt="Assemble pipeline. The editor's files become one source string. detect_hosted_mode sends source that uses directives, m4 macros, or library calls through m4.rs, lexer.rs, parser.rs, and pipeline.rs in frontend/, and sends bare-metal source to assembler.rs, which pipeline.rs also sends one line at a time to get back its instruction word. cpu/loader.rs writes the result into memory. Error lines and the line map go back to the editor.">
 </picture>
 
 The pipeline runs m4 (`m4.rs`), the lexer, and the parser, groups the lines by
@@ -250,7 +250,7 @@ on every new frame.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/run-loop-dark.svg">
-  <img src="diagrams/run-loop-light.svg" alt="Run sequence. Pressing run sends runUntilBreak to the worker with a budget of 1,000,000 steps. The worker loops in run-loop.ts: the emulator runs 10,000 steps and returns a RunResult, the worker yields and stops if the run was paused or reset, and it sends a StateSnapshot at most every 50 ms. The loop ends on a halt, an error, a breakpoint, a read with no input, a sleep, or the budget. The final reply redraws the panels. If the run stopped to wait for input, sending a line pushes it to stdin and starts the run again.">
+  <img src="diagrams/run-loop-light.svg" alt="Run sequence. Pressing run sends runUntilBreak to the worker with a budget of 1,000,000 steps. The worker loops in run-loop.ts: the emulator runs 10,000 steps and returns a RunResult, the worker yields and stops if the run was paused or reset, and it sends a StateSnapshot at most every 50 ms, which updates the panels and the console during the run. The loop ends on a halt, an error, a breakpoint, a read with no input, a sleep, or the budget. The final reply redraws the panels. If the run stopped to wait for input, sending a line pushes it to stdin and starts the run again.">
 </picture>
 
 The emulator runs in a Web Worker so a long run cannot freeze the page.
