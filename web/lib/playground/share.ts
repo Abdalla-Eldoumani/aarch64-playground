@@ -3,6 +3,7 @@
 import LZString from "lz-string";
 import { buildDeepLinkQuery } from "@/lib/hooks/use-deep-link";
 import { validateFileName } from "@/lib/playground/file-map";
+import { parseChecks, type ProgramCheck } from "@/lib/playground/program-checks";
 import { MAX_SHARE_DECOMPRESSED_BYTES, MAX_SHARE_HASH_BYTES } from "@/lib/playground/upload-guard";
 import type { Theme } from "@/lib/hooks/use-theme";
 
@@ -18,6 +19,9 @@ export interface ShareState {
   args?: string;
   stdin?: string;
   cursor?: { line: number; column: number };
+  /** The program's test cases. Old links have none; old clients ignore the
+   *  key, as they do any key they do not read. */
+  checks?: ProgramCheck[];
 }
 
 /** More files than this in a hash is a hand-crafted payload, not a
@@ -157,6 +161,9 @@ export function readShareHash(hash: string): ShareReadResult {
         const c = o.cursor as { line: number; column: number };
         out.cursor = { line: c.line, column: c.column };
       }
+      // A malformed list is dropped and the program still opens.
+      const checks = parseChecks(o.checks);
+      if (checks && checks.length > 0) out.checks = checks;
       return { kind: "ok", state: out };
     } catch {
       return { kind: "corrupt" };
