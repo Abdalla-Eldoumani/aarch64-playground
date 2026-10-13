@@ -97,6 +97,7 @@ const PANES = {
   converter: <span>CONVERTER</span>,
   memwatch: <span>MEMWATCH</span>,
   saves: <span>SAVES</span>,
+  checks: <span>CHECKS</span>,
 };
 
 const RUN_STATUS = {
