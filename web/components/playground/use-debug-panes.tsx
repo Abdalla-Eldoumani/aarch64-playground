@@ -10,6 +10,7 @@ import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import type { DebugPanes } from "@/components/playground/RightTabs";
 import {
   BaseConverter,
+  ChecksPanel,
   MemoryPanel,
   MemoryWatches,
   SavesPanel,
@@ -24,12 +25,15 @@ import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 type Drive = ReturnType<typeof useTerminalDrive>;
 
-/** The eight machine panes, built during the surface's render. Not a
+/** The machine panes and the checks, built during the surface's render. Not a
  *  component, so the element tree stays as it was; named as a hook, though
  *  it calls none, because it takes the surface's refs. */
 export function useDebugPanes({
   emu,
   source,
+  extraFiles,
+  checks,
+  setChecks,
   argsText,
   loadProgram,
   stageVfsFile,
@@ -44,7 +48,10 @@ export function useDebugPanes({
   terminalUploadRef,
   loadedRef,
   toast,
-}: Pick<FullChromeSurfaceProps, "emu" | "source" | "argsText" | "loadProgram" | "stageVfsFile"> & {
+}: Pick<
+  FullChromeSurfaceProps,
+  "emu" | "source" | "extraFiles" | "checks" | "setChecks" | "argsText" | "loadProgram" | "stageVfsFile"
+> & {
   fpValue: number;
   frameSlots: ReturnType<typeof parseFrameSlots>;
   launchMode: ReturnType<typeof useLaunchMode>["mode"];
@@ -178,8 +185,14 @@ export function useDebugPanes({
     </ErrorBoundary>
   );
 
-  // The eight machine views as one bundle: the tab strip and the phone
-  // layout each render the same set, so neither has to name them one by one.
+  const checksBlock = (
+    <ErrorBoundary label="checks">
+      <ChecksPanel checks={checks} onChange={setChecks} workspace={{ main: source, extras: extraFiles }} />
+    </ErrorBoundary>
+  );
+
+  // The panes as one bundle: the tab strip and the phone layout each render
+  // the same set, so neither has to name them one by one.
   const panes: DebugPanes = {
     memory: memoryBlock,
     stack: stackBlock,
@@ -189,6 +202,7 @@ export function useDebugPanes({
     converter: converterBlock,
     memwatch: memWatchBlock,
     saves: savesBlock,
+    checks: checksBlock,
   };
 
   return panes;
