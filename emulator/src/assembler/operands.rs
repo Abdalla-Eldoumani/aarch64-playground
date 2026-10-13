@@ -26,8 +26,24 @@ pub(super) fn split_operands(s: &str) -> Vec<&str> {
     let mut result = Vec::new();
     let mut depth = 0;
     let mut start = 0;
+    // A char literal's comma or bracket is a value, not syntax: `','`.
+    let mut in_char = false;
+    let mut escape = false;
     for (i, c) in s.char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if in_char {
+            match c {
+                '\\' => escape = true,
+                '\'' => in_char = false,
+                _ => {}
+            }
+            continue;
+        }
         match c {
+            '\'' => in_char = true,
             '[' | '{' => depth += 1,
             ']' | '}' => depth -= 1,
             ',' if depth == 0 => {
@@ -711,6 +727,14 @@ mod tests {
         assert_eq!(assemble("MOV W0, '\\0'").unwrap(), assemble("MOV W0, #48").unwrap());
         assert_eq!(assemble("MOV W0, '\\v'").unwrap(), assemble("MOV W0, #0x76").unwrap());
         rejects(assemble("MOV W0, '\\x41'"), "write any other code as a number");
+    }
+
+    #[test]
+    fn char_literal_comma_is_not_an_operand_separator() {
+        assert_eq!(assemble("MOV W1, ','").unwrap(), assemble("MOV W1, #44").unwrap());
+        assert_eq!(assemble("CMP W1, ','").unwrap(), assemble("CMP W1, #44").unwrap());
+        assert_eq!(assemble("MOV W1, '\\''").unwrap(), assemble("MOV W1, #39").unwrap());
+        assert_eq!(assemble("MOV W1, '\\\\'").unwrap(), assemble("MOV W1, #92").unwrap());
     }
 
     #[test]
