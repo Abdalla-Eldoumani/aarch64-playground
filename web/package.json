@@ -21,7 +21,8 @@
     "lighthouse:mobile": "lighthouse http://localhost:3000 --quiet --chrome-flags=\"--headless=new\" --output=html --output=json --output-path=./.lighthouse/mobile",
     "audit:deps": "node ../scripts/audit-deps.js",
     "audit:headers": "node ../scripts/check-headers.js",
-    "smoke:firefox": "node ../scripts/firefox-smoke.mjs"
+    "smoke:firefox": "node ../scripts/firefox-smoke.mjs",
+    "smoke:browser": "node ../scripts/browser-smoke.mjs"
   },
   "size-limit": [
     {
