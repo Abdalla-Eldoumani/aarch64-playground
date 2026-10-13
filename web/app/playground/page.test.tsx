@@ -18,6 +18,7 @@ const handle = vi.hoisted(() => ({
   getSource: vi.fn(() => ""),
   getArgs: vi.fn(() => ""),
   getCursor: vi.fn(() => ({ line: 1, column: 1 })),
+  getChecks: vi.fn(() => []),
   getCommands: vi.fn(() => []),
   toggleBreakpoint: vi.fn(),
   notifyError: vi.fn(),
@@ -197,6 +198,13 @@ describe("page boot and handoff", () => {
     expect(receivedPropsRef.current.fromShare).toBe(true);
     // The boot consumed the hash; the post-mount pass must not apply it twice.
     expect(handle.loadProgram).not.toHaveBeenCalled();
+  });
+
+  it("hands a share link's checks to the playground at boot", () => {
+    const checks = [{ name: "nine", stdin: "", args: "", stdout: "9\n", exitCode: 0 }];
+    window.history.replaceState({}, "", `/playground${buildShareHash({ source: "ret", checks })}`);
+    render(<Home />);
+    expect(receivedPropsRef.current.startChecks).toEqual(checks);
   });
 
   it("boots the autosave when the URL carries no program", () => {
