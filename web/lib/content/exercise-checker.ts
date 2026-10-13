@@ -285,6 +285,9 @@ export interface HiddenRunOutcome {
   error: string | null;
   /** False when the step budget ran out before the program ended. */
   finished: boolean;
+  /** True when the run stopped on a read the closed input cannot answer
+   *  (a raw-mode key read), not on the step budget. */
+  waiting: boolean;
   stdout: string;
   exitCode: number | null;
   /** Whether main returned with sp where it found it; null when the program
