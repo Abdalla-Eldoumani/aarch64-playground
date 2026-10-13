@@ -432,6 +432,7 @@ describe("checkHiddenCase", () => {
       assembleError: null,
       error: null,
       finished: true,
+      waiting: false,
       stdout: "25\n",
       exitCode: 0,
       stackBalanced: true,
