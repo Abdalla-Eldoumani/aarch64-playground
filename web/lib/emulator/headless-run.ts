@@ -60,6 +60,7 @@ export async function runHeadless(
       assembleError: loaded.error ?? "the program did not assemble",
       error: null,
       finished: false,
+      waiting: false,
       stdout: "",
       exitCode: null,
       stackBalanced: null,
@@ -78,12 +79,16 @@ export async function runHeadless(
 
   let error: string | null = null;
   let steps = 0;
+  let waiting = false;
   while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
     const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
     error = slice.error;
     // A slice that made no progress without halting cannot make any later
     // either, so it ends the run rather than spinning until the budget.
-    if (slice.steps_executed === 0 && !slice.halted) break;
+    if (slice.steps_executed === 0 && !slice.halted) {
+      waiting = true;
+      break;
+    }
     steps += slice.steps_executed;
     if (!machine.isHalted() && error === null) await nextTask();
   }
@@ -94,6 +99,7 @@ export async function runHeadless(
     assembleError: null,
     error,
     finished,
+    waiting,
     stdout: machine.takeStdout(),
     exitCode: machine.getExitCode(),
     stackBalanced: returnedFromMain ? BigInt(machine.getSp()) === entrySp : null,
