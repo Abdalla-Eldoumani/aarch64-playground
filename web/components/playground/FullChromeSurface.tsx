@@ -5,6 +5,7 @@ import type { EmulatorState } from "@/lib/emulator/use-emulator";
 import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
 import { collectDiagnostic } from "@/lib/playground/diagnostic-bundle";
 import { formatAsm } from "@/lib/asm/asm-formatter";
@@ -89,6 +90,9 @@ export interface FullChromeSurfaceProps {
   setActiveFile: (next: number) => void;
   argsText: string;
   setArgsText: (next: string) => void;
+  /** The checks panel's list; the shell holds it so a share link can carry it. */
+  checks: ProgramCheck[];
+  setChecks: (next: ProgramCheck[]) => void;
   setCursor: (next: { line: number; column: number }) => void;
   lintWarnings: Array<{ line: number; message: string }>;
   errorFocus: { line: number; nonce: number } | null;
@@ -131,6 +135,8 @@ export function FullChromeSurface({
   setActiveFile,
   argsText,
   setArgsText,
+  checks,
+  setChecks,
   setCursor,
   lintWarnings,
   errorFocus,
@@ -153,7 +159,11 @@ export function FullChromeSurface({
   const height = useScreenHeight();
   // A phone has its own compact chrome; the short layout is for the rest.
   const short = height === "short" && phone === null;
-  const [activeTab, setActiveTab] = useState<RightTab>("memory");
+  // A link that carried checks opens on them. A phone keeps its code view:
+  // its layout takes no pane request from before it mounted.
+  const [activeTab, setActiveTab] = useState<RightTab>(() =>
+    fromShare && checks.length > 0 ? "checks" : "memory",
+  );
   // The view the phone layout has on screen; the desktop tab state above
   // says nothing about a phone.
   const [phonePane, setPhonePane] = useState("code");
@@ -270,6 +280,7 @@ export function FullChromeSurface({
         // A new program starts on a fresh console; no session owns it yet.
         liveRef.current.dropTerminalWatermark();
         setShareBanner(Boolean(payload.fromShare));
+        if (payload.checks && payload.checks.length > 0) requestPane("checks");
         loadedSourceRef.current = payload.source;
         loadedFilesRef.current = new Map((payload.files ?? []).map((f) => [f.name, f.body]));
         return nextArgs;
@@ -500,6 +511,9 @@ export function FullChromeSurface({
   const panes = useDebugPanes({
     emu,
     source,
+    extraFiles,
+    checks,
+    setChecks,
     argsText,
     loadProgram,
     stageVfsFile,
