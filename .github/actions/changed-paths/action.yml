@@ -16,6 +16,9 @@ outputs:
   web:
     description: '"true" when verify-corpus, the build, and the vitest shards should run'
     value: ${{ steps.classify.outputs.web }}
+  browser:
+    description: '"true" when the browser smoke test should run'
+    value: ${{ steps.classify.outputs.browser }}
 
 runs:
   using: composite
