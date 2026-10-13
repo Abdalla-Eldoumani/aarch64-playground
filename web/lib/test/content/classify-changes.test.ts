@@ -13,8 +13,8 @@ const { classify } = createRequire(import.meta.url)(SCRIPT) as {
   classify: (files: string[]) => Record<string, unknown>;
 };
 
-const NOTHING = { rust: false, static: false, web: false };
-const EVERYTHING = { rust: true, static: true, web: true };
+const NOTHING = { rust: false, static: false, web: false, browser: false };
+const EVERYTHING = { rust: true, static: true, web: true, browser: true };
 
 describe("the path filter", () => {
   it("runs the web jobs and not the Rust ones for a web change", () => {
@@ -52,6 +52,37 @@ describe("the path filter", () => {
     expect(classify(["docs/instruction-reference.md"]).rust).toBe(true);
     expect(classify(["web/public/examples/cpsc355/hello.s"]).rust).toBe(true);
     expect(classify(["web/content/exercises/sum.json"]).rust).toBe(false);
+  });
+
+  it("runs the cargo jobs and the browser test for a deploy script change", () => {
+    // The script holds the toolchain pins the deploy builds with.
+    expect(classify(["scripts/vercel-build.sh"])).toEqual({ classes: ["web"], ...EVERYTHING });
+  });
+
+  it("runs the web tests for emulator test data the web tests read", () => {
+    expect(classify(["emulator/tests/error-parity/ldr_unknown.server.txt"])).toEqual({
+      classes: ["emulator"],
+      ...NOTHING,
+      rust: true,
+      web: true,
+    });
+    expect(classify(["emulator/tests/c-corpus/78_switch_dense.O2plain.s"]).web).toBe(true);
+    expect(classify(["emulator/tests/c-corpus/01_hello.c"]).web).toBe(false);
+  });
+
+  it("runs the browser test only when the build or the wasm can change", () => {
+    for (const file of [
+      "emulator/Cargo.lock",
+      "web/package-lock.json",
+      "web/next.config.mjs",
+      "vercel.json",
+      "scripts/browser-smoke.mjs",
+    ]) {
+      expect(classify([file]).browser, file).toBe(true);
+    }
+    for (const file of ["web/components/ui/Button.tsx", "emulator/tests/simd.rs", "docs/DEPLOY.md"]) {
+      expect(classify([file]).browser, file).toBe(false);
+    }
   });
 
   it("runs everything for a workflow change", () => {
@@ -94,11 +125,11 @@ describe("the path filter as the workflow runs it", () => {
 
   it("reads NUL-separated paths from stdin and writes the step outputs", () => {
     expect(run([], "docs/DEPLOY.md\0emulator/tests/simd.rs\0")).toBe(
-      "classes=docs,emulator\nrust=true\nstatic=false\nweb=false\n",
+      "classes=docs,emulator\nrust=true\nstatic=false\nweb=false\nbrowser=false\n",
     );
   });
 
   it("turns every job on with --all", () => {
-    expect(run(["--all"], "")).toBe("classes=all\nrust=true\nstatic=true\nweb=true\n");
+    expect(run(["--all"], "")).toBe("classes=all\nrust=true\nstatic=true\nweb=true\nbrowser=true\n");
   });
 });
