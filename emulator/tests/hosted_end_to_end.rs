@@ -293,6 +293,39 @@ msg:
 }
 
 #[test]
+fn hosted_pipeline_reads_char_literals_holding_separators() {
+    // A comma inside quotes once split the operand list: `mov w1, ','`
+    // reported a missing operand and `cmp w1, ','` a stray quote. GNU as
+    // takes both. Each line cancels its own value, so 44 survives only if
+    // every literal reads as its character.
+    let src = r#"
+.text
+.global main
+main:
+    mov w1, ','
+    cmp w1, ','
+    b.ne bad
+    add w0, w1, ','
+    sub w0, w0, ','
+    add w0, w0, '\''
+    sub w0, w0, 39
+    add w0, w0, '\\'
+    sub w0, w0, 92
+    add w0, w0, ';'
+    sub w0, w0, 59
+    add w0, w0, '/'     // a slash before the comment
+    sub w0, w0, 47
+    ret
+bad:
+    mov w0, 1
+    ret
+"#;
+    let (_, exit_code, halted) = run_source(src);
+    assert!(halted, "program should halt");
+    assert_eq!(exit_code, Some(44));
+}
+
+#[test]
 fn hosted_pipeline_handles_m4_register_aliases_and_data_word() {
     let src = r#"
 define(counter_r, w19)
