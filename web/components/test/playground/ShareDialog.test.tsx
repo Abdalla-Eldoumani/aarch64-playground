@@ -163,4 +163,19 @@ describe("ShareDialog with a program too large for a link", () => {
       false,
     );
   });
+
+  it("carries the checks by default and leaves them out when unticked", () => {
+    const checks = [{ name: "one", stdin: "", args: "", stdout: "1\n" }];
+    render(<ShareDialog open state={{ ...STATE, checks }} onClose={vi.fn()} />);
+    const box = screen.getByLabelText("include the check") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(okShareState(urlValue().slice(urlValue().indexOf("#"))).checks).toEqual(checks);
+    fireEvent.click(box);
+    expect(okShareState(urlValue().slice(urlValue().indexOf("#"))).checks).toBeUndefined();
+  });
+
+  it("offers no checks choice for a program without checks", () => {
+    renderDialog();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
 });
