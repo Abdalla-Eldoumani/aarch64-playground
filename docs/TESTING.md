@@ -170,6 +170,19 @@ Vercel. In Chrome, each script logs a 404 error and a refused-script error.
 In Firefox, each logs one blocked-script error, which the smoke test prints
 and ignores.
 
+`npm run smoke:browser` does the same in Chromium and goes further: it loads
+a program from a share link, assembles it, steps five instructions and reads
+two registers, runs it to its console output, and opens a share link with two
+checks, one right and one wrong, expecting one pass and one fail. Point it at
+an installed Chromium with `CHROMIUM_PATH`, or run
+`npx playwright install chromium` first:
+
+```bash
+npm run build
+npm run start &
+npm run smoke:browser
+```
+
 ## What CI runs
 
 `.github/workflows/check.yml` runs on every push and pull request to `main` and
@@ -180,7 +193,10 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 `wasm`, `corpus`, `web-build`, and `web-test`, and
 `docs/instruction-reference.md` runs those four and `rust`. A lesson or
 example change skips lint and typecheck, and a change under `emulator/tests/`
-runs only the Rust jobs. A change to a workflow, or to a file no rule names,
+runs only the Rust jobs, except the error-parity cases and the one corpus
+program the web tests read, which run the web tests too.
+`scripts/vercel-build.sh` runs the Rust jobs as well as the web ones, since it
+holds the toolchain pins the deploy builds with. A change to a workflow, or to a file no rule names,
 runs everything, and so do a push to `main`, the weekly run, and the pull
 request from `integration` to `main`.
 
@@ -195,10 +211,16 @@ request open runs no tests.
 - `rust`: `cargo test` without the C corpus, plus the corpus split across
   three jobs (`CORPUS_SHARD=1/3` and so on).
 - `corpus`: `node scripts/verify-corpus.js`.
-- `web-static`: the dependency audit, a check that `security.txt` is at least
-  30 days from its expiry date, `npm run lint`, and `npm run typecheck`.
+- `web-static`: a check that the Rust and wasm-pack versions in the workflows
+  match the ones `scripts/vercel-build.sh` deploys with
+  (`.github/scripts/check-pins.js`), the dependency audit, a check that
+  `security.txt` is at least 30 days from its expiry date, `npm run lint`, and
+  `npm run typecheck`.
 - `web-build`: `npm run build` and `npm run size`.
 - `web-test`: `npm test` split into six shards.
+- `browser`: when the emulator, the wasm build inputs, or the build
+  configuration change, `npm run build`, `next start`, and
+  `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
   the floors in `web/vitest.config.mts`.
@@ -208,6 +230,8 @@ request open runs no tests.
 Three more workflows run weekly: `bounds.yml` (the slow limit tests),
 `corpus.yml` (rebuilds the C corpus with a cross compiler and qemu, and
 replays the `-O2` tiers), and `refresh-stars.yml` (see [DEPLOY.md](DEPLOY.md)).
+`browser.yml` runs every night: the Chromium smoke test and the Firefox one
+against a production build, whatever changed.
 
 ## Once a term
 
