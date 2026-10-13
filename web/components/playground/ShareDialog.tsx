@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { buildShareUrl, shareHashSize, type ShareState } from "@/lib/playground/share";
 import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { SITE_NAME } from "@/lib/content/site";
@@ -12,16 +12,19 @@ export interface ShareDialogProps {
 }
 
 /**
- * The `#p2=` hash carries the whole editor state (files, args, stdin, cursor),
- * so the recipient opens the program exactly as the sender saw it.
+ * The `#p2=` hash carries the whole editor state (files, args, stdin, cursor,
+ * checks), so the recipient opens the program exactly as the sender saw it.
  */
 export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   const [copied, setCopied] = useState(false);
+  const [withChecks, setWithChecks] = useState(true);
+  const checksId = useId();
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(open, ref, onClose);
+  const checkCount = state.checks?.length ?? 0;
   // Build the URL during render; since we only read `state` and
   // `open`, this stays consistent without a setState-in-effect round.
-  const url = open ? buildShareUrl(state) : "";
+  const url = open ? buildShareUrl(withChecks ? state : { ...state, checks: undefined }) : "";
   // Measure before offering: a fragment over the receiver's cap opens to a
   // "too large" banner on the other end, so the sender must be told here
   // rather than handing out a link that is already dead.
@@ -80,6 +83,20 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <p className="text-[12px] text-[var(--text-secondary)] mb-2">
             the program is packed into the link itself; nothing is sent to a server.
           </p>
+        )}
+        {checkCount > 0 && (
+          <div className="flex items-center gap-2 mb-2 text-[12px] text-[var(--text-primary)]">
+            <input
+              id={checksId}
+              type="checkbox"
+              checked={withChecks}
+              onChange={(e) => setWithChecks(e.target.checked)}
+              className="touch-target accent-[var(--cyan)]"
+            />
+            <label htmlFor={checksId}>
+              include the {checkCount === 1 ? "check" : `${checkCount} checks`}
+            </label>
+          </div>
         )}
         {!oversize && (
           <textarea
