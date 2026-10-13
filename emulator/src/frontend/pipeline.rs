@@ -1314,8 +1314,24 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
     let mut depth: i32 = 0;
     let mut start: usize = 0;
     let bytes = s.as_bytes();
+    // A char literal's comma or bracket is a value, not syntax: `','`.
+    let mut in_char = false;
+    let mut escape = false;
     for (i, &b) in bytes.iter().enumerate() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        if in_char {
+            match b {
+                b'\\' => escape = true,
+                b'\'' => in_char = false,
+                _ => {}
+            }
+            continue;
+        }
         match b {
+            b'\'' => in_char = true,
             b'[' | b'(' | b'{' => depth += 1,
             b']' | b')' | b'}' => depth -= 1,
             b',' if depth == 0 => {
@@ -1651,8 +1667,8 @@ fn strip_leading_labels(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_branch_mnemonic, redirect_bl_to_trampoline_tokens, stringify_tokens,
-        strip_leading_labels,
+        is_branch_mnemonic, redirect_bl_to_trampoline_tokens, split_top_level_commas,
+        stringify_tokens, strip_leading_labels,
     };
     use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
@@ -1689,6 +1705,14 @@ mod tests {
         assert_eq!(strip_leading_labels("mov w3, ';'"), "mov w3, ';'");
         assert_eq!(strip_leading_labels("here: mov w3, ';' ; a comment"), "mov w3, ';'");
         assert_eq!(strip_leading_labels(".string \"a;b\" // trailing"), ".string \"a;b\"");
+    }
+
+    #[test]
+    fn operand_split_keeps_char_literals_whole() {
+        assert_eq!(split_top_level_commas("w1, ','"), vec!["w1", " ','"]);
+        assert_eq!(split_top_level_commas("w0, w1, '\\''"), vec!["w0", " w1", " '\\''"]);
+        assert_eq!(split_top_level_commas("w0, '\\\\', 1"), vec!["w0", " '\\\\'", " 1"]);
+        assert_eq!(split_top_level_commas("w1, '(', 0, eq"), vec!["w1", " '('", " 0", " eq"]);
     }
 
     #[test]
