@@ -401,6 +401,7 @@ describe("ExerciseView hidden inputs", () => {
     assembleError: null,
     error: null,
     finished: true,
+    waiting: false,
     stdout: "",
     exitCode: 0,
     stackBalanced: true,
