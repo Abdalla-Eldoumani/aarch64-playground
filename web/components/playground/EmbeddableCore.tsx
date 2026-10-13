@@ -12,6 +12,7 @@ import type { FullChromeBridge } from "@/components/playground/FullChromeSurface
 import { useEmulator } from "@/lib/emulator/use-emulator";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
 import { useAutoplay, useScrollHold } from "@/lib/playground/use-autoplay";
@@ -71,6 +72,7 @@ export function EmbeddableCore({
   startArgs,
   startStdin,
   startCursor,
+  startChecks,
   fromShare,
   readOnly,
   staticEditor,
@@ -128,6 +130,9 @@ export function EmbeddableCore({
   // Declared here because the effects and callbacks below already read them.
   const sourceRef = useRef(source);
   const extraFilesRef = useRef(extraFiles);
+  // The checks panel's list (full chrome only), kept for the page's life;
+  // a payload that carries checks replaces it.
+  const [checks, setChecks] = useState<ProgramCheck[]>(startChecks ?? []);
   const [activeFile, setActiveFile] = useState<number>(-1);
   // The workspace as the machine last saw it. Lines the machine reports
   // (current line, errors, faults) resolve against this, not the live buffers,
@@ -257,6 +262,7 @@ export function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
+      if (payload.checks) setChecks(payload.checks);
       // The launch mode, the console watermark and the shared-program banner
       // all live on the full surface; it settles them and hands back the value
       // the args box should take, which for a two-faced example its mode owns.
@@ -422,6 +428,7 @@ export function EmbeddableCore({
   // during render.
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
+  const checksRef = useRef(checks);
   const onStateChangeRef = useRef(onStateChange);
   const onSourceChangeRef = useRef(onSourceChange);
   const assembleRef = useRef(assembleWithHistory);
@@ -435,6 +442,7 @@ export function EmbeddableCore({
     extraFilesRef.current = extraFiles;
     argsRef.current = argsText;
     cursorRef.current = cursor;
+    checksRef.current = checks;
     onStateChangeRef.current = onStateChange;
     onSourceChangeRef.current = onSourceChange;
     assembleRef.current = assembleWithHistory;
@@ -442,7 +450,7 @@ export function EmbeddableCore({
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
     toggleBreakpointRef.current = toggleBreakpointAtCaret;
-  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret]);
+  }, [emu, source, extraFiles, argsText, cursor, checks, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret]);
 
   // The buffer itself, which onStateChange deliberately does not mirror (its
   // ten fields are the machine's outcome, not the editor's). Fires on mount
@@ -554,6 +562,7 @@ export function EmbeddableCore({
       getFiles: () => extraFilesRef.current,
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
+      getChecks: () => checksRef.current,
       getCommands: () => buildCommandsRef.current(),
       toggleBreakpoint: () => toggleBreakpointRef.current(),
       walk,
@@ -758,6 +767,8 @@ export function EmbeddableCore({
         setActiveFile={setActiveFile}
         argsText={argsText}
         setArgsText={setArgsText}
+        checks={checks}
+        setChecks={setChecks}
         setCursor={setCursor}
         lintWarnings={lintWarnings}
         errorFocus={errorFocus}
