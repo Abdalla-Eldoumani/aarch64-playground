@@ -468,8 +468,9 @@ jobs:
   # Chromium against a production build (next build, then next start) of
   # the real wasm: the playground loads with a clean console, a program
   # assembles, steps and runs, and checks opened from a share link report a
-  # pass and a fail. It runs when the emulator, the wasm build inputs, or the
-  # build configuration change; browser.yml runs it nightly whatever changed.
+  # pass and a fail. It runs when emulator/src/, the Cargo files, the package
+  # manifests, the build configuration, or the smoke script change (not for a
+  # change to the site's own code alone); browser.yml runs it nightly on main.
   browser:
     name: browser smoke
     if: github.event_name != 'push' || github.ref_name != 'integration'
