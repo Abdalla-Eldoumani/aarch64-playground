@@ -107,7 +107,9 @@ try {
   expect(true, "the run prints its output in the console");
   expect(await page.getByText("exit 0", { exact: true }).isVisible(), "the console shows exit 0");
 
-  // Checks from a link: one right, one deliberately wrong.
+  // Checks from a link: one right, one deliberately wrong. about:blank first,
+  // so the link boots the page as a fresh tab would, not as a hash change.
+  await page.goto("about:blank");
   await page.goto(
     shareUrl({
       source: PROGRAM,
@@ -118,9 +120,8 @@ try {
     }),
     { waitUntil: "load" },
   );
-  const checksTab = page.getByRole("tab", { name: "checks" });
-  await checksTab.waitFor();
-  expect((await checksTab.getAttribute("aria-selected")) === "true", "a link with checks opens the checks tab");
+  await page.getByRole("tab", { name: "checks", selected: true }).waitFor();
+  expect(true, "a link with checks opens the checks tab");
   await page.getByRole("button", { name: "run checks" }).click();
   await page.getByRole("status").filter({ hasText: "1 of 2 checks pass" }).waitFor();
   expect(true, "the checks report 1 of 2 passing");
