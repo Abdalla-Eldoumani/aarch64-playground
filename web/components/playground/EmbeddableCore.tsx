@@ -124,6 +124,10 @@ export function EmbeddableCore({
     startCursor ?? { line: 1, column: 1 },
   );
   const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
+  // Latest-value refs for the buffers, synced with the others further down.
+  // Declared here because the effects and callbacks below already read them.
+  const sourceRef = useRef(source);
+  const extraFilesRef = useRef(extraFiles);
   const [activeFile, setActiveFile] = useState<number>(-1);
   // The workspace as the machine last saw it. Lines the machine reports
   // (current line, errors, faults) resolve against this, not the live buffers,
@@ -227,6 +231,9 @@ export function EmbeddableCore({
   });
 
 
+  // What the embed last assembled, for the run and check gates further down.
+  // Declared here because loadProgram clears it.
+  const lastRunSourceRef = useRef<string | null>(null);
   const loadProgram = useCallback(
     (payload: HandoffPayload) => {
       // The replaced buffer stays recoverable through recents; entries are
@@ -299,7 +306,6 @@ export function EmbeddableCore({
   // nothing is loaded, the source or args changed (`runKey`), or the program
   // finished; only a paused or blocked unchanged program resumes. A failed
   // assemble skips the run. `fromTop` is Ctrl+Enter's assemble-and-run.
-  const lastRunSourceRef = useRef<string | null>(null);
   const runKey = `${argsText}\n${source}`;
   // A press while that assemble is in flight is dropped: a second assemble
   // resets the machine after the first queued its seeds, so both seeds land
@@ -414,8 +420,6 @@ export function EmbeddableCore({
   // still reading live editor / hub state when the host calls a method. The
   // refs are synced in an effect; the react-hooks rules forbid writing a ref
   // during render.
-  const sourceRef = useRef(source);
-  const extraFilesRef = useRef(extraFiles);
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
   const onStateChangeRef = useRef(onStateChange);
