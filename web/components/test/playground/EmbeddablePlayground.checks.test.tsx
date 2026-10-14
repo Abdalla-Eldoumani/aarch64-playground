@@ -1,9 +1,10 @@
 // pins how the checks reach the full playground: a share link's checks open
 // the checks tab with them loaded, the handle hands the list back for the
-// share dialog, and a delivered program replaces the list only when it
-// carries checks of its own.
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+// share dialog, every delivered program replaces the list with its own
+// checks or none and clears the last run's report, a load from recents asks
+// before it drops checks, and a run gets the working set's files.
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import type { ReactNode } from "react";
 
@@ -31,6 +32,9 @@ vi.mock("@/components/playground/ResizableLayout", () => ({
 const useEmulatorMock = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/emulator/use-emulator", () => ({ useEmulator: useEmulatorMock }));
 
+const runner = vi.hoisted(() => ({ runChecks: vi.fn() }));
+vi.mock("@/lib/playground/check-runner", () => runner);
+
 import {
   EmbeddablePlayground,
   type EmbeddablePlaygroundHandle,
@@ -45,6 +49,19 @@ function setWidth(px: number): void {
 }
 
 const SHARED: ProgramCheck[] = [{ name: "prints seven", stdin: "", args: "", stdout: "7\n" }];
+
+function pickFirstRecent(): void {
+  fireEvent.click(screen.getByRole("combobox", { name: "load recent program" }));
+  const entry = screen.getAllByRole("option").find((option) => option.textContent !== "clear history");
+  fireEvent.pointerDown(entry!);
+}
+
+// The full surface and the checks panel arrive through dynamic imports, and a
+// first transform inside a test can outlast its one-second wait.
+beforeAll(async () => {
+  await import("@/components/playground/FullChromeSurface");
+  await import("@/components/playground/ChecksPanel");
+});
 
 beforeEach(() => {
   useEmulatorMock.mockReturnValue(makeHub());
@@ -72,16 +89,79 @@ describe("checks in the full playground", () => {
     expect((await screen.findByRole("tab", { name: "memory" })).getAttribute("aria-selected")).toBe("true");
   });
 
-  it("replaces the list only for a delivery that carries checks, and shows them", async () => {
+  it("replaces the list on every delivery, and shows a delivery's own checks", async () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     render(<EmbeddablePlayground ref={ref} chrome="full" startSource="ret" startChecks={SHARED} />);
     await screen.findByRole("tab", { name: "memory" });
+    // The last program's checks would only fail on this one.
     act(() => ref.current?.loadProgram({ source: "nop" }));
-    expect(ref.current?.getChecks()).toEqual(SHARED);
+    expect(ref.current?.getChecks()).toEqual([]);
     const next: ProgramCheck[] = [{ name: "prints eight", stdin: "", args: "", stdout: "8\n" }];
     act(() => ref.current?.loadProgram({ source: "nop", checks: next, fromShare: true }));
     expect(ref.current?.getChecks()).toEqual(next);
     expect(screen.getByRole("tab", { name: "checks" }).getAttribute("aria-selected")).toBe("true");
     expect(await screen.findByText("prints eight")).toBeTruthy();
+  });
+
+  it("runs the checks with the working set's files", async () => {
+    runner.runChecks.mockResolvedValue({
+      kind: "ran",
+      outcomes: [
+        {
+          assembleError: null,
+          error: null,
+          errorLine: null,
+          finished: true,
+          stdout: "7\n",
+          exitCode: 0,
+          stackBalanced: true,
+          frameIntact: true,
+        },
+      ],
+    });
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(<EmbeddablePlayground ref={ref} chrome="full" startSource="ret" />);
+    await screen.findByRole("tab", { name: "memory" });
+    act(() =>
+      ref.current?.loadProgram({ source: "nop", vfs: { "input.txt": "7\n" }, checks: SHARED, fromShare: true }),
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "run checks" }));
+    await waitFor(() =>
+      expect(runner.runChecks).toHaveBeenCalledWith({ main: "nop", extras: [] }, SHARED, { "input.txt": "7\n" }),
+    );
+  });
+
+  it("drops the last run's report when another program is delivered", async () => {
+    runner.runChecks.mockResolvedValue({ kind: "assemble-error", message: "main.asm line 1: unknown mnemonic" });
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(<EmbeddablePlayground ref={ref} chrome="full" startSource="ret" startChecks={SHARED} fromShare />);
+    fireEvent.click(await screen.findByRole("button", { name: "run checks" }));
+    expect(await screen.findByText("main.asm line 1: unknown mnemonic")).toBeTruthy();
+    act(() => ref.current?.loadProgram({ source: "nop" }));
+    expect(await screen.findByText("No checks yet.")).toBeTruthy();
+    expect(screen.queryByText("main.asm line 1: unknown mnemonic")).toBeNull();
+    expect(screen.queryByText("the program does not assemble, so no check ran")).toBeNull();
+  });
+
+  it("asks before a load from recents drops the checks, and keeps them on no", async () => {
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(<EmbeddablePlayground ref={ref} chrome="full" startSource={"// first\nret\n"} />);
+    await screen.findByRole("tab", { name: "memory" });
+    // The first program goes to recents; the second arrives with checks and no edits.
+    act(() => ref.current?.loadProgram({ source: "// second\nret\n", checks: SHARED }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      pickFirstRecent();
+      expect(confirm).toHaveBeenCalledWith(
+        "Load this program? It removes your check. Checks are not saved anywhere, so you cannot get them back.",
+      );
+      expect(ref.current?.getChecks()).toEqual(SHARED);
+      confirm.mockReturnValue(true);
+      pickFirstRecent();
+      expect(ref.current?.getChecks()).toEqual([]);
+      expect(ref.current?.getSource()).toBe("// first\nret\n");
+    } finally {
+      confirm.mockRestore();
+    }
   });
 });
