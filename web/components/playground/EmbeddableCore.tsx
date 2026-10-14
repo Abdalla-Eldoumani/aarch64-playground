@@ -130,8 +130,8 @@ export function EmbeddableCore({
   // Declared here because the effects and callbacks below already read them.
   const sourceRef = useRef(source);
   const extraFilesRef = useRef(extraFiles);
-  // The checks panel's list (full chrome only), kept for the page's life;
-  // a payload that carries checks replaces it.
+  // The checks panel's list (full chrome only), never saved; every program
+  // handoff replaces it with the payload's checks or none.
   const [checks, setChecks] = useState<ProgramCheck[]>(startChecks ?? []);
   const [activeFile, setActiveFile] = useState<number>(-1);
   // The workspace as the machine last saw it. Lines the machine reports
@@ -228,7 +228,7 @@ export function EmbeddableCore({
 
   // Input seeds and the working file set: what the machine needs on it that
   // is not the program text, and the record assemble's reset restores from.
-  const { applySeeds, stageVfsFile, removeVfsFile, seedFromPayload } = useWorkingSet({
+  const { applySeeds, stageVfsFile, removeVfsFile, seedFromPayload, workingFiles } = useWorkingSet({
     isHome: chrome === "full",
     startStdin,
     machine: emuRef,
@@ -262,7 +262,7 @@ export function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
-      if (payload.checks) setChecks(payload.checks);
+      setChecks(payload.checks ?? []);
       // The launch mode, the console watermark and the shared-program banner
       // all live on the full surface; it settles them and hands back the value
       // the args box should take, which for a two-faced example its mode owns.
@@ -779,6 +779,7 @@ export function EmbeddableCore({
         applySeeds={applySeeds}
         stageVfsFile={stageVfsFile}
         removeVfsFile={removeVfsFile}
+        workingFiles={workingFiles}
         fromShare={fromShare}
         onOpenCommandPalette={onOpenCommandPalette}
         onOpenShortcutsHelp={onOpenShortcutsHelp}
