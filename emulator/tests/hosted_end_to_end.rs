@@ -309,6 +309,8 @@ main:
     sub w0, w0, ','
     add w0, w0, '\''
     sub w0, w0, 39
+    add w0, w0, ''', lsl 12
+    sub w0, w0, 39, lsl 12
     add w0, w0, '\\'
     sub w0, w0, 92
     add w0, w0, ';'
