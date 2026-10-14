@@ -98,7 +98,7 @@ function standaloneTokenRegex(token: string): RegExp {
 }
 
 /** Quote a string for feedback (so newlines read as \n) and clip it for display. */
-function display(value: string): string {
+export function display(value: string): string {
   const clipped = value.length > MAX_DISPLAY ? `${value.slice(0, MAX_DISPLAY)}...` : value;
   return JSON.stringify(clipped);
 }
@@ -283,11 +283,10 @@ export interface HiddenRunOutcome {
   assembleError: string | null;
   /** A runtime fault, or null. */
   error: string | null;
+  /** The fault's line in the source the run was given, or null. */
+  errorLine: number | null;
   /** False when the step budget ran out before the program ended. */
   finished: boolean;
-  /** True when the run stopped on a read the closed input cannot answer
-   *  (a raw-mode key read), not on the step budget. */
-  waiting: boolean;
   stdout: string;
   exitCode: number | null;
   /** Whether main returned with sp where it found it; null when the program
