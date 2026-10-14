@@ -367,7 +367,7 @@ jobs:
       - name: assert budget globs match real chunks
         if: steps.paths.outputs.web == 'true'
         working-directory: web
-        run: node -e "const fs=require('fs');const files=fs.readdirSync('.next/static/chunks');const need=[/^monaco\..*\.js$/,/^monaco-worker\..*\.js$/,/^terminal\..*\.js$/];const missing=need.filter(re=>!files.some(f=>re.test(f)));if(missing.length){console.error('budget glob matched nothing:',missing.map(String).join(' '));process.exit(1)}"
+        run: node -e "const fs=require('fs');const files=fs.readdirSync('.next/static/chunks');const need=[/^monaco\..*\.js$/,/^monaco-worker\..*\.js$/,/^terminal\..*\.js$/,/^xterm\..*\.js$/];const missing=need.filter(re=>!files.some(f=>re.test(f)));if(missing.length){console.error('budget glob matched nothing:',missing.map(String).join(' '));process.exit(1)}"
 
       - name: size-limit
         if: steps.paths.outputs.web == 'true'
