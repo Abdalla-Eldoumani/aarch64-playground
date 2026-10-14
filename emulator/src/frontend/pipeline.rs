@@ -13,7 +13,7 @@ use crate::assembler;
 use crate::cpu::{CODE_BASE, SECTION_WINDOW};
 use crate::errors::EmuError;
 use crate::frontend::expr::evaluate;
-use crate::frontend::lexer::{lex, TokenKind};
+use crate::frontend::lexer::{lex, parse_char_literal, TokenKind};
 use crate::frontend::linker::encode_ldr_literal;
 use crate::frontend::parser::parse;
 use crate::frontend::sections::{align_padding, Item, Program, SectionKind};
@@ -1314,24 +1314,17 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
     let mut depth: i32 = 0;
     let mut start: usize = 0;
     let bytes = s.as_bytes();
-    // A char literal's comma or bracket is a value, not syntax: `','`.
-    let mut in_char = false;
-    let mut escape = false;
-    for (i, &b) in bytes.iter().enumerate() {
-        if escape {
-            escape = false;
-            continue;
-        }
-        if in_char {
-            match b {
-                b'\\' => escape = true,
-                b'\'' => in_char = false,
-                _ => {}
+    let mut i = 0;
+    while i < bytes.len() {
+        // A char literal's comma or bracket is a value, not syntax: `','`.
+        // The lexer has already refused a malformed one.
+        if bytes[i] == b'\'' {
+            if let Ok((_, len)) = parse_char_literal(&s[i..], 0) {
+                i += len;
+                continue;
             }
-            continue;
         }
-        match b {
-            b'\'' => in_char = true,
+        match bytes[i] {
             b'[' | b'(' | b'{' => depth += 1,
             b']' | b')' | b'}' => depth -= 1,
             b',' if depth == 0 => {
@@ -1340,6 +1333,7 @@ fn split_top_level_commas(s: &str) -> Vec<&str> {
             }
             _ => {}
         }
+        i += 1;
     }
     out.push(&s[start..]);
     out
@@ -1713,6 +1707,10 @@ mod tests {
         assert_eq!(split_top_level_commas("w0, w1, '\\''"), vec!["w0", " w1", " '\\''"]);
         assert_eq!(split_top_level_commas("w0, '\\\\', 1"), vec!["w0", " '\\\\'", " 1"]);
         assert_eq!(split_top_level_commas("w1, '(', 0, eq"), vec!["w1", " '('", " 0", " eq"]);
+        assert_eq!(
+            split_top_level_commas("w0, w1, ''', lsl 12"),
+            vec!["w0", " w1", " '''", " lsl 12"]
+        );
     }
 
     #[test]
