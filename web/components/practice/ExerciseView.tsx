@@ -23,12 +23,12 @@ import {
   type HiddenCaseCheck,
   type StructuralCheck,
 } from "@/lib/content/exercise-checker";
-import type { EmulatorInstance } from "@/lib/emulator/emulator";
 import { markSolved } from "@/lib/playground/solved-state";
 import { clearAnswer, readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
 import { validateStdin } from "@/lib/playground/upload-guard";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Callout } from "@/components/ui/Callout";
+import { CheckSquare } from "@/components/ui/CheckSquare";
 import { Kicker } from "@/components/ui/Kicker";
 import { OpenInPlayground } from "@/components/ui/OpenInPlayground";
 import {
@@ -208,35 +208,16 @@ type HiddenState =
   | { status: "failed" }
   | { status: "done"; checks: HiddenCaseCheck[] };
 
-/**
- * One machine for every hidden run on the page, created on the first check.
- * Each assemble resets it, so runs cannot leak into each other, and a single
- * instance means repeated checks never pile up emulator memory.
- */
-let hiddenMachine: Promise<EmulatorInstance> | null = null;
-
-function machineForHiddenCases(): Promise<EmulatorInstance> {
-  hiddenMachine ??= import("@/lib/emulator/emulator")
-    .then((m) => m.loadEmulator())
-    .catch((error: unknown) => {
-      // A failed load (offline, a stale chunk) must not stick for the page's life.
-      hiddenMachine = null;
-      throw error;
-    });
-  return hiddenMachine;
-}
-
 async function runHiddenCases(source: string, cases: HiddenCase[]): Promise<HiddenCaseCheck[]> {
-  const [machine, { runHeadless }] = await Promise.all([
-    machineForHiddenCases(),
-    import("@/lib/emulator/headless-run"),
-  ]);
-  const checks: HiddenCaseCheck[] = [];
-  for (const testCase of cases) {
-    const outcome = await runHeadless(machine, source, parseArgs(testCase.args ?? ""), testCase.stdin);
-    checks.push(checkHiddenCase(testCase, outcome));
-  }
-  return checks;
+  const { runHeadless, withHeadlessMachine } = await import("@/lib/emulator/headless-run");
+  return withHeadlessMachine(async (machine) => {
+    const checks: HiddenCaseCheck[] = [];
+    for (const testCase of cases) {
+      const outcome = await runHeadless(machine, source, parseArgs(testCase.args ?? ""), testCase.stdin);
+      checks.push(checkHiddenCase(testCase, outcome));
+    }
+    return checks;
+  });
 }
 
 function prefersReducedMotion(): boolean {
@@ -254,21 +235,6 @@ function SpecRow({ label, children }: { label: string; children: ReactNode }): J
         {children}
       </span>
     </div>
-  );
-}
-
-/** The 14px pass/fail square with its ✓/✗ glyph, plus text for screen readers. */
-function CheckSquare({ pass }: { pass: boolean }): JSX.Element {
-  const tone = pass
-    ? "border-[var(--success)] bg-[color-mix(in_srgb,var(--success)_15%,transparent)] text-[var(--success)]"
-    : "border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_15%,transparent)] text-[var(--danger)]";
-  return (
-    <span
-      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center border font-mono text-[12px] font-bold leading-none ${tone}`}
-    >
-      <span aria-hidden="true">{pass ? "✓" : "✗"}</span>
-      <span className="sr-only">{pass ? "passed" : "failed"}</span>
-    </span>
   );
 }
 
