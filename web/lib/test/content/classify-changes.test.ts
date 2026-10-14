@@ -54,9 +54,14 @@ describe("the path filter", () => {
     expect(classify(["web/content/exercises/sum.json"]).rust).toBe(false);
   });
 
-  it("runs the cargo jobs and the browser test for a deploy script change", () => {
-    // The script holds the toolchain pins the deploy builds with.
-    expect(classify(["scripts/vercel-build.sh"])).toEqual({ classes: ["web"], ...EVERYTHING });
+  it("runs the pin check and not the cargo or browser jobs for a deploy script change", () => {
+    // web-static's check-pins step holds the script's toolchain pins to the workflows.
+    expect(classify(["scripts/vercel-build.sh"])).toEqual({
+      classes: ["web"],
+      ...NOTHING,
+      static: true,
+      web: true,
+    });
   });
 
   it("runs the web tests for emulator test data the web tests read", () => {
@@ -77,6 +82,7 @@ describe("the path filter", () => {
       "web/next.config.mjs",
       "vercel.json",
       "scripts/browser-smoke.mjs",
+      "scripts/smoke-noise.mjs",
     ]) {
       expect(classify([file]).browser, file).toBe(true);
     }
