@@ -117,7 +117,6 @@
   },
   "overrides": {
     "dompurify": "3.4.16",
-    "postcss": "8.5.30",
-    "sharp": "0.35.5"
+    "postcss": "8.5.30"
   }
 }
