@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useRef, useState } from "react";
-import { buildShareUrl, shareHashSize, type ShareState } from "@/lib/playground/share";
+import { buildShareUrl, readShareHash, shareHashSize, type ShareState } from "@/lib/playground/share";
 import { closeOnBackdropClick, useFocusTrap } from "@/lib/hooks/use-focus-trap";
 import { SITE_NAME } from "@/lib/content/site";
 
@@ -9,6 +9,24 @@ export interface ShareDialogProps {
   open: boolean;
   state: ShareState;
   onClose: () => void;
+}
+
+/**
+ * The link for `state`, and whether the receiver gets all of it. Its own
+ * reader decides: past its caps the link opens to a "too large" banner, and
+ * checks or files it cannot read whole are dropped without a word, so the
+ * sender must be told here rather than handed a link that is already broken.
+ */
+function measure(state: ShareState) {
+  const url = buildShareUrl(state);
+  const hashAt = url.indexOf("#");
+  const hash = hashAt < 0 ? "" : url.slice(hashAt);
+  const read = readShareHash(hash);
+  const whole =
+    read.kind === "ok" &&
+    (read.state.checks?.length ?? 0) === (state.checks?.length ?? 0) &&
+    (read.state.files?.length ?? 0) === (state.files?.length ?? 0);
+  return { url, size: shareHashSize(hash), whole };
 }
 
 /**
@@ -22,17 +40,17 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
   const ref = useRef<HTMLDivElement>(null);
   useFocusTrap(open, ref, onClose);
   const checkCount = state.checks?.length ?? 0;
-  // Build the URL during render; since we only read `state` and
-  // `open`, this stays consistent without a setState-in-effect round.
-  const url = open ? buildShareUrl(withChecks ? state : { ...state, checks: undefined }) : "";
-  // Measure before offering: a fragment over the receiver's cap opens to a
-  // "too large" banner on the other end, so the sender must be told here
-  // rather than handing out a link that is already dead.
-  const hashAt = url.indexOf("#");
-  const size = shareHashSize(hashAt < 0 ? "" : url.slice(hashAt));
-  const oversize = size.chars > size.max;
 
   if (!open) return null;
+
+  // Built during render from `state` and `withChecks` alone, so no
+  // setState-in-effect round is needed.
+  const bare = { ...state, checks: undefined };
+  const link = measure(withChecks ? state : bare);
+  const { url, size } = link;
+  const refused = !link.whole;
+  // The checks are named as the cause only when the program alone would travel.
+  const checksTooLarge = refused && withChecks && checkCount > 0 && measure(bare).whole;
 
   // Without the platform's share sheet a share button could only copy, so
   // it would be a second copy button under another name.
@@ -72,12 +90,18 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
         <h2 className="font-serif text-base font-semibold tracking-tight text-[var(--text-primary)] mb-3">
           Share this program
         </h2>
-        {oversize ? (
+        {checksTooLarge ? (
           <p role="alert" className="text-[12px] text-[var(--danger)] mb-2">
-            this workspace is too large to share as a link (
-            {size.chars.toLocaleString()} characters compressed, limit{" "}
-            {size.max.toLocaleString()}). pick workspace .json from the
-            export menu in the header and send that file instead.
+            {checkCount === 1 ? "the check is" : "the checks are"} too large to carry in a
+            link. untick the box below to share the program alone.
+          </p>
+        ) : refused ? (
+          <p role="alert" className="text-[12px] text-[var(--danger)] mb-2">
+            this workspace does not fit in a link
+            {size.chars > size.max &&
+              ` (${size.chars.toLocaleString()} characters compressed, limit ${size.max.toLocaleString()})`}
+            . pick workspace .json from the export menu in the header and send
+            that file instead.
           </p>
         ) : (
           <p className="text-[12px] text-[var(--text-secondary)] mb-2">
@@ -98,7 +122,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
             </label>
           </div>
         )}
-        {!oversize && (
+        {!refused && (
           <textarea
             readOnly
             value={url}
@@ -120,7 +144,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
             <button
               type="button"
               onClick={share}
-              disabled={oversize}
+              disabled={refused}
               className="touch-target text-xs text-[var(--text-primary)] bg-[var(--cyan-dim)] hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] rounded px-2 py-1 disabled:bg-[var(--bg-sunken)] disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]"
             >
               share
@@ -129,7 +153,7 @@ export function ShareDialog({ open, state, onClose }: ShareDialogProps) {
           <button
             type="button"
             onClick={copy}
-            disabled={oversize}
+            disabled={refused}
             className={`touch-target text-xs rounded px-2 py-1 disabled:text-[var(--text-tertiary)] disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
               copied
                 ? "text-[var(--success)]"
