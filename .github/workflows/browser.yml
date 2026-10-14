@@ -1,9 +1,9 @@
 name: browser
 
-# The browser suite every night, whatever changed: check.yml runs the
-# Chromium smoke test only when the emulator or the build can have moved, and
-# a browser or dependency change can break the page without either. This adds
-# Firefox, which catches engine-specific regressions Chromium does not.
+# The browser suite every night on main. check.yml already ran Chromium on
+# each push there; this catches what breaks with no new commit (the runner
+# image and the Node 24 it carries, the system libraries playwright installs),
+# and adds Firefox, which check.yml never runs.
 on:
   schedule:
     - cron: "23 5 * * *"
