@@ -60,7 +60,7 @@ repository root.
 | Loading a program from a link, an example, or the last session | `web/lib/playground/playground-handoff.ts`, `web/lib/hooks/use-deep-link.ts` |
 | Console or terminal choice for the interactive examples (`?run=`) | `web/components/playground/RunModeControl.tsx`, `web/lib/playground/playground-handoff.ts` |
 | Recent programs | `web/components/playground/RecentPrograms.tsx`, `web/lib/playground/auto-save.ts` |
-| Checks: a program's own test cases (stdin, args, expected output and exit code), run on a separate machine | `web/components/playground/ChecksPanel.tsx`, `web/lib/playground/program-checks.ts`, `check-runner.ts` |
+| Checks: a program's own test cases (stdin, args, expected output and exit code), run on the headless machine the exercise checker also uses, not the one being debugged | `web/components/playground/ChecksPanel.tsx`, `web/lib/playground/program-checks.ts`, `check-runner.ts`, `web/lib/emulator/headless-run.ts` |
 
 ## Panels
 
