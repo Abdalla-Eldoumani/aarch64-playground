@@ -2,7 +2,7 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this. The caller may reuse the machine, since every assemble resets it.
+ * this and the playground runs its checks on it.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
@@ -12,6 +12,7 @@ import type { HiddenRunOutcome } from "@/lib/content/exercise-checker";
 export type HeadlessMachine = Pick<
   EmulatorInstance,
   | "assembleAndLoadWithArgs"
+  | "uploadVfsFile"
   | "pushStdin"
   | "closeStdin"
   | "runUntilBreak"
@@ -23,6 +24,36 @@ export type HeadlessMachine = Pick<
   | "getRegister"
   | "getMemoryRange"
 >;
+
+/**
+ * One machine for every headless run on the page, made on first use. Each
+ * assemble resets it, so runs cannot leak into each other, and a single
+ * instance means repeated checks never pile up emulator memory.
+ */
+let shared: Promise<EmulatorInstance> | null = null;
+let lastUse: Promise<void> = Promise.resolve();
+
+function sharedMachine(): Promise<EmulatorInstance> {
+  shared ??= import("@/lib/emulator/emulator")
+    .then((m) => m.loadEmulator())
+    .catch((error: unknown) => {
+      // A failed load (offline, a stale chunk) must not stick for the page's life.
+      shared = null;
+      throw error;
+    });
+  return shared;
+}
+
+/**
+ * Lend the page's headless machine to `use`. A run yields between slices and
+ * a load resets the machine, so each use waits for the one before to end,
+ * failed or not. The queue keeps no use's result alive.
+ */
+export function withHeadlessMachine<T>(use: (machine: HeadlessMachine) => Promise<T>): Promise<T> {
+  const turn = lastUse.then(async () => use(await sharedMachine()));
+  lastUse = turn.then(() => undefined, () => undefined);
+  return turn;
+}
 
 /**
  * Steps one run may take. Every shipped reference solution needs well under a
@@ -48,25 +79,33 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   return a.length === b.length && a.every((byte, i) => byte === b[i]);
 }
 
+/**
+ * `files` (name to text) go into the file system after the load, as a normal
+ * run's seed files do.
+ */
 export async function runHeadless(
   machine: HeadlessMachine,
   source: string,
   args: string[],
   stdin: string | undefined,
+  files: Record<string, string> = {},
 ): Promise<HiddenRunOutcome> {
   const loaded = machine.assembleAndLoadWithArgs(source, args);
   if (!loaded.success) {
     return {
       assembleError: loaded.error ?? "the program did not assemble",
       error: null,
+      errorLine: null,
       finished: false,
-      waiting: false,
       stdout: "",
       exitCode: null,
       stackBalanced: null,
       frameIntact: true,
     };
   }
+  // The load emptied the file system.
+  const encoder = new TextEncoder();
+  for (const [name, body] of Object.entries(files)) machine.uploadVfsFile(name, encoder.encode(body));
   if (stdin) machine.pushStdin(stdin);
   machine.closeStdin();
 
@@ -78,17 +117,15 @@ export async function runHeadless(
   const guardBefore = machine.getMemoryRange(guardAddress, FRAME_GUARD_BYTES).slice();
 
   let error: string | null = null;
+  let errorLine: number | null = null;
   let steps = 0;
-  let waiting = false;
   while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
     const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
     error = slice.error;
+    errorLine = slice.error_line;
     // A slice that made no progress without halting cannot make any later
     // either, so it ends the run rather than spinning until the budget.
-    if (slice.steps_executed === 0 && !slice.halted) {
-      waiting = true;
-      break;
-    }
+    if (slice.steps_executed === 0 && !slice.halted) break;
     steps += slice.steps_executed;
     if (!machine.isHalted() && error === null) await nextTask();
   }
@@ -98,8 +135,8 @@ export async function runHeadless(
   return {
     assembleError: null,
     error,
+    errorLine,
     finished,
-    waiting,
     stdout: machine.takeStdout(),
     exitCode: machine.getExitCode(),
     stackBalanced: returnedFromMain ? BigInt(machine.getSp()) === entrySp : null,
