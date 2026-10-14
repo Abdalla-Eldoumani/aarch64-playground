@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import type { parseFrameSlots } from "@/lib/emulator/frame-labels";
+import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 import type { useLaunchMode } from "@/lib/playground/use-launch-mode";
 import type { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
@@ -35,8 +36,10 @@ export function useDebugPanes({
   checks,
   setChecks,
   argsText,
-  loadProgram,
+  loadProgramWithConfirm,
   stageVfsFile,
+  workingFiles,
+  delivery,
   fpValue,
   frameSlots,
   launchMode,
@@ -50,8 +53,19 @@ export function useDebugPanes({
   toast,
 }: Pick<
   FullChromeSurfaceProps,
-  "emu" | "source" | "extraFiles" | "checks" | "setChecks" | "argsText" | "loadProgram" | "stageVfsFile"
+  | "emu"
+  | "source"
+  | "extraFiles"
+  | "checks"
+  | "setChecks"
+  | "argsText"
+  | "stageVfsFile"
+  | "workingFiles"
 > & {
+  /** A program delivery that asks first when it would replace edits or checks. */
+  loadProgramWithConfirm: (payload: HandoffPayload) => boolean;
+  /** Bumped on every program delivery, so the checks panel starts fresh. */
+  delivery: number;
   fpValue: number;
   frameSlots: ReturnType<typeof parseFrameSlots>;
   launchMode: ReturnType<typeof useLaunchMode>["mode"];
@@ -168,7 +182,7 @@ export function useDebugPanes({
         source={source}
         args={argsText}
         stepCount={emu.stepCount}
-        onLoadProgram={loadProgram}
+        onLoadProgram={loadProgramWithConfirm}
         onRestoreBookmark={async (params) => {
           const verdict = await emu.restoreBookmark(params);
           // The restore assembled the bookmark's own program, so a run press
@@ -187,7 +201,13 @@ export function useDebugPanes({
 
   const checksBlock = (
     <ErrorBoundary label="checks">
-      <ChecksPanel checks={checks} onChange={setChecks} workspace={{ main: source, extras: extraFiles }} />
+      <ChecksPanel
+        key={delivery}
+        checks={checks}
+        onChange={setChecks}
+        workspace={{ main: source, extras: extraFiles }}
+        workingFiles={workingFiles}
+      />
     </ErrorBoundary>
   );
 
