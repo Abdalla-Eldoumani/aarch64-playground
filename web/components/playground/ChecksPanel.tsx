@@ -1,36 +1,45 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { flushSync } from "react-dom";
+import { display } from "@/lib/content/exercise-checker";
 import { HEADLESS_STEP_BUDGET } from "@/lib/emulator/headless-run";
 import { formatSteps } from "@/lib/emulator/format-steps";
-import { machineForChecks, runChecks } from "@/lib/playground/check-runner";
+import { DOUBLE_PRESS_MS } from "@/lib/hooks/use-focus-trap";
+import { runChecks, type ChecksRun } from "@/lib/playground/check-runner";
 import type { Workspace } from "@/lib/playground/file-map";
 import {
   MAX_CHECKS,
+  MAX_NAME_CHARS,
+  exitStatus,
   gradeCheck,
   type CheckVerdict,
   type OutputDifference,
   type ProgramCheck,
 } from "@/lib/playground/program-checks";
-import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
+import { MAX_ARGS_CHARS, MAX_STDIN_BYTES, validateStdin } from "@/lib/playground/upload-guard";
+import { CheckSquare } from "@/components/ui/CheckSquare";
 
 export interface ChecksPanelProps {
   checks: ProgramCheck[];
-  onChange: (next: ProgramCheck[]) => void;
+  onChange: Dispatch<SetStateAction<ProgramCheck[]>>;
   /** The workspace on screen; a run reads it at the moment it starts. */
   workspace: Workspace;
+  /** The working set's files, read when a run starts. */
+  workingFiles: () => Record<string, string>;
 }
 
 type Report =
-  | { kind: "assemble-error"; message: string }
+  | Extract<ChecksRun, { kind: "assemble-error" }>
   /** `ran` is the list as it stood, so an edited check stops showing a stale result. */
   | { kind: "ran"; ran: ProgramCheck[]; verdicts: CheckVerdict[] };
 
 const FIELD =
-  "touch-target w-full bg-[var(--bg-raised)] border border-[var(--border)] rounded px-2 py-1 " +
+  "touch-target w-full bg-[var(--bg-raised)] border border-[var(--border-control)] rounded px-2 py-1 " +
   "text-[12px] font-mono text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] " +
   "focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]";
 const LABEL = "block mb-0.5 text-[12px] text-[var(--text-secondary)]";
+const CAP_NOTE = "mt-0.5 text-[12px] text-[var(--warning)]";
 const ACTION =
   "touch-target px-2 py-0.5 text-[12px] rounded bg-[var(--cyan-dim)] text-[var(--text-primary)] " +
   "hover:bg-[var(--cyan)] hover:text-[var(--on-cyan)] disabled:bg-[var(--bg-sunken)] " +
@@ -40,16 +49,11 @@ const QUIET =
   "touch-target px-1.5 py-0.5 text-[12px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] " +
   "disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]";
 
-function sameCheck(a: ProgramCheck | undefined, b: ProgramCheck): boolean {
-  return (
-    a !== undefined &&
-    a.name === b.name &&
-    a.stdin === b.stdin &&
-    a.args === b.args &&
-    a.stdout === b.stdout &&
-    a.exitCode === b.exitCode
-  );
-}
+/** A share link drops every check when one field is over this. */
+const CAP_KIB = MAX_STDIN_BYTES / 1024;
+
+/** Characters shown ahead of the first difference, so the reader sees what led to it. */
+const LEAD_CHARS = 40;
 
 function checkName(check: ProgramCheck, index: number): string {
   return check.name.trim() || `check ${index + 1}`;
@@ -68,8 +72,6 @@ function verdictLine(check: ProgramCheck, verdict: CheckVerdict): string {
       return `crashed: ${verdict.error}`;
     case "step-limit":
       return `did not finish within ${formatSteps(HEADLESS_STEP_BUDGET)}`;
-    case "waiting":
-      return "stopped waiting for input it never got";
     case "stdout":
       return "wrong output";
     case "exit":
@@ -81,9 +83,11 @@ function verdictLine(check: ProgramCheck, verdict: CheckVerdict): string {
   }
 }
 
-/** A line as the reader sees it: quoted, so trailing spaces and empty lines show. */
-function shown(line: string | null): string {
-  return line === null ? "(no line)" : JSON.stringify(line);
+/** A line as the reader sees it: quoted, so leading spaces and an empty line show, and clipped around `column`. */
+function shown(line: string | null, column: number): string {
+  if (line === null) return "(no line)";
+  const from = Math.max(0, column - LEAD_CHARS);
+  return display(from > 0 ? `...${line.slice(from)}` : line);
 }
 
 function Difference({ difference }: { difference: OutputDifference }) {
@@ -92,26 +96,11 @@ function Difference({ difference }: { difference: OutputDifference }) {
       <div className="text-[var(--text-secondary)]">first difference, line {difference.line}</div>
       <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-x-2">
         <span className="text-[var(--text-secondary)]">expected</span>
-        <span className="break-all text-[var(--text-primary)]">{shown(difference.expected)}</span>
+        <span className="break-all text-[var(--text-primary)]">{shown(difference.expected, difference.column)}</span>
         <span className="text-[var(--text-secondary)]">actual</span>
-        <span className="break-all text-[var(--danger)]">{shown(difference.actual)}</span>
+        <span className="break-all text-[var(--danger)]">{shown(difference.actual, difference.column)}</span>
       </div>
     </div>
-  );
-}
-
-/** The pass/fail square: the glyph for sight, the word for a screen reader. */
-function Mark({ pass }: { pass: boolean }) {
-  const tone = pass
-    ? "border-[var(--success)] text-[var(--success)]"
-    : "border-[var(--danger)] text-[var(--danger)]";
-  return (
-    <span
-      className={`inline-flex h-3.5 w-3.5 shrink-0 items-center justify-center border font-mono text-[12px] font-bold leading-none ${tone}`}
-    >
-      <span aria-hidden="true">{pass ? "✓" : "✗"}</span>
-      <span className="sr-only">{pass ? "passed" : "failed"}</span>
-    </span>
   );
 }
 
@@ -120,12 +109,20 @@ function Mark({ pass }: { pass: boolean }) {
  * what the program must print, and optionally exit with. Every run happens
  * on a separate machine, so the program being debugged is left alone.
  */
-export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
+export function ChecksPanel({ checks, onChange, workspace, workingFiles }: ChecksPanelProps) {
   const id = useId();
   const [open, setOpen] = useState<number | null>(null);
   const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState<"checks" | "fill" | null>(null);
   const [note, setNote] = useState<string | null>(null);
+  // A fill ends after the list may have changed, and must know if its check still stands.
+  const latest = useRef(checks);
+  useEffect(() => {
+    latest.current = checks;
+  });
+  const addRef = useRef<HTMLButtonElement>(null);
+  const editRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+  const removedAt = useRef(Number.NEGATIVE_INFINITY);
 
   const update = (index: number, patch: Partial<ProgramCheck>) => {
     onChange(checks.map((c, i) => (i === index ? { ...c, ...patch } : c)));
@@ -136,11 +133,20 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
     setOpen(checks.length);
   };
 
-  const remove = (index: number) => {
-    onChange(checks.filter((_, i) => i !== index));
-    // Results are matched to checks by position, so a removal drops them.
-    setReport(null);
-    setOpen(null);
+  const remove = (index: number, clicks: number) => {
+    // The next check's remove button slides into this one's place, so a double
+    // press would remove it too; a touch's second tap can still say 1.
+    if (clicks > 1 || performance.now() - removedAt.current < DOUBLE_PRESS_MS) return;
+    removedAt.current = performance.now();
+    // Committed now, so the row the focus moves to already shows its new check.
+    flushSync(() => {
+      onChange(checks.filter((_, i) => i !== index));
+      // Results are matched to checks by position, so a removal drops them.
+      setReport(null);
+      setOpen(null);
+    });
+    const left = checks.length - 1;
+    (left === 0 ? addRef.current : editRefs.current[Math.min(index, left - 1)])?.focus();
   };
 
   const runAll = async () => {
@@ -148,8 +154,7 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
     setNote(null);
     const ran = checks;
     try {
-      const machine = await machineForChecks();
-      const result = await runChecks(machine, workspace, ran);
+      const result = await runChecks(workspace, ran, workingFiles());
       setReport(
         result.kind === "assemble-error"
           ? result
@@ -163,22 +168,33 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
   };
 
   const fill = async (index: number) => {
+    const target = checks[index];
     setBusy("fill");
     setNote(null);
     try {
-      const machine = await machineForChecks();
-      const result = await runChecks(machine, workspace, [checks[index]]);
+      const result = await runChecks(workspace, [target], workingFiles());
       if (result.kind === "assemble-error") {
         setReport(result);
         return;
       }
       const outcome = result.outcomes[0];
-      update(index, { stdout: outcome.stdout });
-      setNote(
-        outcome.error !== null || !outcome.finished
-          ? "filled with what the program printed before it stopped early"
-          : `filled with the program's output (it exited with ${outcome.exitCode ?? "no code"})`,
-      );
+      if (validateStdin(outcome.stdout) !== null) {
+        setNote(
+          `the program printed over ${CAP_KIB} KiB, too long for a share link to carry, so nothing was filled`,
+        );
+      } else if (!latest.current.includes(target)) {
+        setNote("the check changed while the program ran, so nothing was filled");
+      } else {
+        // Against the list as it is now, so changes to other checks during the run stay.
+        onChange((now) => now.map((c) => (c === target ? { ...c, stdout: outcome.stdout } : c)));
+        // As $? shows it, so the note never names a code the exit field refuses.
+        const exitCode = exitStatus(outcome.exitCode);
+        setNote(
+          outcome.error !== null || !outcome.finished
+            ? "filled with what the program printed before it stopped early"
+            : `filled with the program's output (it exited with ${exitCode ?? "no code"})`,
+        );
+      }
     } catch {
       setNote("the emulator did not load, so nothing ran. reload the page and try again");
     } finally {
@@ -186,15 +202,21 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
     }
   };
 
-  const ranCount = report?.kind === "ran" ? report.verdicts.length : 0;
-  const passCount = report?.kind === "ran" ? report.verdicts.filter((v) => v.pass).length : 0;
+  // The rows and the count read the same verdicts. Matched by identity: an edit
+  // makes a new check, and a check added since the run was never in it.
+  const verdicts = checks.map((check, i) =>
+    report?.kind === "ran" && report.ran[i] === check ? report.verdicts[i] : null,
+  );
+  const current = verdicts.filter((v) => v !== null);
+  const ranCount = current.length;
+  const passCount = current.filter((v) => v.pass).length;
   const status =
     busy === "checks"
       ? `running ${checks.length} ${checks.length === 1 ? "check" : "checks"}`
       : note ??
         (report?.kind === "assemble-error"
           ? "the program does not assemble, so no check ran"
-          : report?.kind === "ran"
+          : ranCount > 0
             ? `${passCount} of ${ranCount} ${ranCount === 1 ? "check passes" : "checks pass"}`
             : "");
 
@@ -204,7 +226,13 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
         <h2 className="text-[var(--text-secondary)] uppercase tracking-wider text-[12px]">checks</h2>
         <span className="text-[12px] text-[var(--text-secondary)]">{checks.length}</span>
         <div className="ml-auto flex gap-1">
-          <button type="button" className={QUIET} onClick={add} disabled={checks.length >= MAX_CHECKS}>
+          <button
+            ref={addRef}
+            type="button"
+            className={QUIET}
+            onClick={add}
+            disabled={checks.length >= MAX_CHECKS}
+          >
             add check
           </button>
           <button
@@ -233,27 +261,31 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
             <p className="font-serif text-[12px] text-[var(--text-primary)]">No checks yet.</p>
             <p className="font-sans text-[12px] text-[var(--text-secondary)]">
               A check gives the program some input and says what it should print. Add one,
-              then run checks to test the program on all of them at once.
+              then run checks to test the program on all of them at once. Checks last until
+              you load another program or close the page; a share link carries them with the program.
             </p>
           </div>
         )}
         <ul className="space-y-2">
           {checks.map((check, index) => {
-            const verdict =
-              report?.kind === "ran" && sameCheck(report.ran[index], check)
-                ? report.verdicts[index]
-                : null;
+            const verdict = verdicts[index];
             const editing = open === index;
             const base = `${id}-${index}`;
             const name = checkName(check, index);
+            // Only the open check's fields are measured: each measure encodes the whole text.
+            const stdinOver = editing && validateStdin(check.stdin) !== null;
+            const stdoutOver = editing && validateStdin(check.stdout) !== null;
             return (
               <li key={index} className="border border-[var(--border)] bg-[var(--bg-sunken)] p-2">
                 <div className="flex items-center gap-2">
-                  {verdict && <Mark pass={verdict.pass} />}
+                  {verdict && <CheckSquare pass={verdict.pass} />}
                   <span className="min-w-0 flex-1 truncate font-mono text-[12px] text-[var(--text-primary)]">
                     {name}
                   </span>
                   <button
+                    ref={(node) => {
+                      editRefs.current[index] = node;
+                    }}
                     type="button"
                     className={QUIET}
                     aria-expanded={editing}
@@ -267,7 +299,7 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
                     type="button"
                     className={`${QUIET} hover:text-[var(--danger)]`}
                     aria-label={`remove ${name}`}
-                    onClick={() => remove(index)}
+                    onClick={(e) => remove(index, e.detail)}
                   >
                     remove
                   </button>
@@ -291,7 +323,7 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
                         id={`${base}-name`}
                         type="text"
                         value={check.name}
-                        maxLength={100}
+                        maxLength={MAX_NAME_CHARS}
                         onChange={(e) => update(index, { name: e.target.value })}
                         spellCheck={false}
                         autoCorrect="off"
@@ -323,8 +355,14 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
                         spellCheck={false}
                         autoCorrect="off"
                         autoCapitalize="off"
+                        aria-describedby={stdinOver ? `${base}-stdin-cap` : undefined}
                         className={FIELD}
                       />
+                      {stdinOver && (
+                        <p id={`${base}-stdin-cap`} className={CAP_NOTE}>
+                          over {CAP_KIB} KiB, too long for a share link to carry
+                        </p>
+                      )}
                     </div>
                     <div>
                       <label htmlFor={`${base}-stdout`} className={LABEL}>expected output</label>
@@ -336,8 +374,14 @@ export function ChecksPanel({ checks, onChange, workspace }: ChecksPanelProps) {
                         spellCheck={false}
                         autoCorrect="off"
                         autoCapitalize="off"
+                        aria-describedby={stdoutOver ? `${base}-stdout-cap` : undefined}
                         className={FIELD}
                       />
+                      {stdoutOver && (
+                        <p id={`${base}-stdout-cap`} className={CAP_NOTE}>
+                          over {CAP_KIB} KiB, too long for a share link to carry
+                        </p>
+                      )}
                     </div>
                     <div className="flex flex-wrap items-end gap-2">
                       <div className="w-36">
