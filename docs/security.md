@@ -57,7 +57,8 @@ reaches React, the editor, or the emulator.
 | Input | Checked by | Refuses |
 | --- | --- | --- |
 | `?bundle=` diagnostic link | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
-| `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a field of the wrong type, more than 16 KiB compressed or 1 MiB decompressed |
+| `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a source that is not text or does not match its checksum, a file name the **+** tab would refuse, more than 16 KiB compressed or 1 MiB decompressed. Any other field of the wrong type, or a files list of the wrong shape or over 16 files, is dropped, and the program still opens |
+| Checks in a `#p2=` link | `web/lib/playground/program-checks.ts` (`parseChecks`) | more than 32 checks, a name over 100 characters, args over 1000 characters, stdin or expected output over 100 KiB, an exit code that is not a whole number from 0 to 255, a field of the wrong type. One bad check drops the whole list, and the program still opens |
 | `?example=` | `web/lib/hooks/use-deep-link.ts`, regex `/^[\w.-]+$/` | paths and special characters |
 | `?theme=` and `?run=` | the same file, a fixed list of values | any other value |
 | `?embed=` | the same file | anything but exactly `1` |
@@ -65,6 +66,14 @@ reaches React, the editor, or the emulator.
 | `.s`, `.asm`, or `.txt` upload | `web/lib/playground/upload-guard.ts` | files over 1 MiB |
 | Virtual filesystem upload | `web/lib/playground/upload-guard.ts` | files over 4 MiB |
 | Bookmark JSON upload | `web/lib/playground/upload-guard.ts` | files over 1 MiB |
+
+Stdin typed into the console or terminal, redirected with `<`, or given by an
+example, a lesson, an exercise or a share link's checks is held to 100 KiB
+(`web/lib/playground/upload-guard.ts`). Two paths are not: a check typed into
+the playground's **checks** tab, whose stdin over the cap gets a note and is
+kept out of share links but is read whole by the run, and a bookmark imported
+from a file, whose stdin is held only by the file's 1 MiB cap. Both are the
+student's own input, run in their own tab.
 
 ## Limits in the emulator
 
@@ -128,12 +137,14 @@ node scripts/audit-deps.js --omit=dev
 node scripts/audit-deps.js
 ```
 
-`overrides` in `web/package.json` holds `dompurify`, which arrives through
-monaco-editor, and `postcss` at patched versions. monaco-editor also bundles
-its own copy of DOMPurify, which `overrides` cannot reach. That copy only
-cleans the editor's own widgets, and the site never passes the editor
-untrusted HTML, so a hostile document cannot reach it. It is checked again at
-every monaco-editor update.
+`overrides` in `web/package.json` holds three packages at patched versions:
+`dompurify`, which arrives through monaco-editor, and `postcss` and `sharp`,
+which arrive through Next.js. The root `package.json` holds the same `postcss`
+override for the copy of Next.js that Vercel installs there. monaco-editor
+also bundles its own copy of DOMPurify, which `overrides` cannot reach. That
+copy only cleans the editor's own widgets, and the site never passes the
+editor untrusted HTML, so a hostile document cannot reach it. It is checked
+again at every monaco-editor update.
 
 ## Check the headers
 
