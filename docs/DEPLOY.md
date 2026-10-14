@@ -43,8 +43,13 @@ Vercel detects Next.js) and then runs `npm ci` in `web/`. The build command is
    deploy if the worker's file list does not match the files the second build
    made.
 
-CI pins the same Rust and wasm-pack versions (`.github/workflows/check.yml`),
-so a pull request tests the compiler that ships.
+CI pins the same versions in more than one workflow: `check.yml` and
+`browser.yml` set both Rust and wasm-pack, and `bounds.yml` and `corpus.yml`
+set Rust. `.github/scripts/check-pins.js`, run in CI's `web-static` job,
+fails when any of them differs from the pins in `scripts/vercel-build.sh`, so
+a pull request tests the compiler that ships. A Rust bump changes the script
+and all four workflows together; a wasm-pack bump changes the script,
+`check.yml`, and `browser.yml`.
 
 ## Addresses
 
