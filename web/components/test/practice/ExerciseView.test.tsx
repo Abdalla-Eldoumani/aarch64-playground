@@ -116,11 +116,14 @@ vi.mock("@/components/playground/EmbeddablePlayground", () => ({
   }),
 }));
 
-// The hidden inputs run on a machine of their own; neither the wasm nor the
-// runner loads here, so each test decides what a hidden run prints. The
-// checker and the solved record are the real modules.
+// The hidden inputs run on the page's headless machine. The wasm never loads
+// and runHeadless is stubbed, so each test decides what a hidden run prints.
+// The checker, the machine's queue and the solved record are the real modules.
 vi.mock("@/lib/emulator/emulator", () => ({ loadEmulator: vi.fn(async () => ({})) }));
-vi.mock("@/lib/emulator/headless-run", () => ({ runHeadless: vi.fn() }));
+vi.mock("@/lib/emulator/headless-run", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/emulator/headless-run")>()),
+  runHeadless: vi.fn(),
+}));
 
 import { ExerciseView } from "@/components/practice/ExerciseView";
 
@@ -400,8 +403,8 @@ describe("ExerciseView hidden inputs", () => {
   const outcome = {
     assembleError: null,
     error: null,
+    errorLine: null,
     finished: true,
-    waiting: false,
     stdout: "",
     exitCode: 0,
     stackBalanced: true,
