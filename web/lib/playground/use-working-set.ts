@@ -27,6 +27,8 @@ export type WorkingSet = {
   /** Install a program handoff's inputs as the seeds every later assemble
    *  re-applies, seeding its files onto the machine now. */
   seedFromPayload: (payload: InputSeeds) => void;
+  /** The staged files as assemble puts them back, never what a run wrote. */
+  workingFiles: () => Record<string, string>;
 };
 
 /**
@@ -131,11 +133,14 @@ export function useWorkingSet(opts: {
     });
   }, [isHome, machineLoaded, uploadAll]);
 
+  const workingFiles = useCallback(() => seedsRef.current.vfs ?? {}, []);
+
   return {
     applySeeds,
     persistWorkingSet,
     stageVfsFile,
     removeVfsFile,
     seedFromPayload,
+    workingFiles,
   };
 }
