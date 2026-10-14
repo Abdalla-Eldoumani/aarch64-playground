@@ -8,6 +8,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { realErrors } from "./smoke-noise.mjs";
 
 // Resolve playwright from web/node_modules regardless of where node was invoked.
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -75,13 +76,7 @@ console.log(`firefox: editor ok, headers ok, sw count = ${swCount}`);
 if (errors.length > 0) {
   console.error("console / page errors:");
   for (const e of errors) console.error(`  ${e}`);
-  // Filter known-noise: favicon 404, and Vercel Analytics / Speed
-  // Insights script 404s on localhost (those endpoints are proxied
-  // by Vercel's edge, not by `next start`).
-  const real = errors.filter(
-    (e) => !/favicon/i.test(e) && !/_vercel\/(insights|speed-insights)/i.test(e),
-  );
-  if (real.length) exit = 1;
+  if (realErrors(errors).length) exit = 1;
 }
 
 await browser.close();
