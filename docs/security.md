@@ -137,9 +137,9 @@ node scripts/audit-deps.js --omit=dev
 node scripts/audit-deps.js
 ```
 
-`overrides` in `web/package.json` holds three packages at patched versions:
-`dompurify`, which arrives through monaco-editor, and `postcss` and `sharp`,
-which arrive through Next.js. The root `package.json` holds the same `postcss`
+`overrides` in `web/package.json` holds two packages at patched versions:
+`dompurify`, which arrives through monaco-editor, and `postcss`, which arrives
+through Next.js. The root `package.json` holds the same `postcss`
 override for the copy of Next.js that Vercel installs there. monaco-editor
 also bundles its own copy of DOMPurify, which `overrides` cannot reach. That
 copy only cleans the editor's own widgets, and the site never passes the
