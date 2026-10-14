@@ -174,8 +174,11 @@ and ignores.
 header check: it loads a program from a share link, assembles it, steps five
 instructions and reads two registers, runs it to its console output, and opens
 a share link with two checks, one right and one wrong, expecting one pass and
-one fail. Point it at an installed Chromium with `CHROMIUM_PATH`, or run
-`npx playwright install chromium` first:
+one fail. It also fails on any console or page error except the analytics
+errors above and a missing favicon, the same filter the Firefox test uses
+(`scripts/smoke-noise.mjs`). It reads `SITE` the same way. Run
+`npx playwright install chromium` first, or set `CHROMIUM_PATH` to an
+installed Chromium:
 
 ```bash
 npm run build
@@ -195,10 +198,11 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 example change skips lint and typecheck, and a change under `emulator/tests/`
 runs only the Rust jobs, except the error-parity cases and the one corpus
 program the web tests read, which also run `wasm`, `corpus`, `web-build`, and
-`web-test`. A change to `scripts/vercel-build.sh` runs no Rust job:
-`web-static` checks its toolchain pins against the workflows. A change to a
-workflow, or to a file no rule names, runs everything, and so do a push to
-`main`, the weekly run, and the pull request from `integration` to `main`.
+`web-test`. A change to `scripts/vercel-build.sh` runs neither the Rust jobs
+nor `browser`: CI never runs that script, and `web-static` checks its
+toolchain pins against the workflows. A change to a workflow, or to a file no
+rule names, runs everything, and so do a push to `main`, the weekly run, and
+the pull request from `integration` to `main`.
 
 A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
 it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that
@@ -216,12 +220,15 @@ request open runs no tests.
   (`.github/scripts/check-pins.js`), the dependency audit, a check that
   `security.txt` is at least 30 days from its expiry date, `npm run lint`, and
   `npm run typecheck`.
-- `web-build`: `npm run build` and `npm run size`.
+- `web-build`: `npm run build`, a check that the lazy chunks the size budgets
+  name (Monaco, its worker, the terminal, and xterm) exist, since a budget
+  whose files match nothing passes, and `npm run size`.
 - `web-test`: `npm test` split into six shards.
 - `browser`: when `emulator/src/`, the Cargo files, the package manifests, the
-  build configuration, or the smoke script change (not for a change to the
-  site's own code alone), `npm run build`, `next start`, and
-  `scripts/browser-smoke.mjs` in Chromium.
+  build configuration, the script that writes the service worker's file list,
+  the Chromium smoke script, or the noise filter the two smoke tests share
+  change (not for a change to the site's own code alone), `npm run build`,
+  `next start`, and `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
   the floors in `web/vitest.config.mts`.
