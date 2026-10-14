@@ -59,8 +59,8 @@ export interface HandoffPayload {
   stdin?: string;
   vfs?: Record<string, string>;
   cursor?: { line: number; column: number };
-  /** Test cases for the checks panel; a payload without them leaves the
-   *  panel's list as it was. */
+  /** Test cases for the checks panel. A payload without them empties the
+   *  list: checks belong to the program they were written for. */
   checks?: ProgramCheck[];
   /** Drives the loaded-from-a-share-link banner. */
   fromShare?: boolean;
