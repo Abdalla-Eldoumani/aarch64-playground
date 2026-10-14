@@ -26,32 +26,27 @@ pub(super) fn split_operands(s: &str) -> Vec<&str> {
     let mut result = Vec::new();
     let mut depth = 0;
     let mut start = 0;
-    // A char literal's comma or bracket is a value, not syntax: `','`.
-    let mut in_char = false;
-    let mut escape = false;
-    for (i, c) in s.char_indices() {
-        if escape {
-            escape = false;
-            continue;
-        }
-        if in_char {
-            match c {
-                '\\' => escape = true,
-                '\'' => in_char = false,
-                _ => {}
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        // A char literal's comma or bracket is a value, not syntax: `','`.
+        // A malformed one is left for parse_immediate to refuse.
+        if bytes[i] == b'\'' {
+            if let Ok((_, len)) = crate::frontend::lexer::parse_char_literal(&s[i..], 0) {
+                i += len;
+                continue;
             }
-            continue;
         }
-        match c {
-            '\'' => in_char = true,
-            '[' | '{' => depth += 1,
-            ']' | '}' => depth -= 1,
-            ',' if depth == 0 => {
+        match bytes[i] {
+            b'[' | b'{' => depth += 1,
+            b']' | b'}' => depth -= 1,
+            b',' if depth == 0 => {
                 result.push(s[start..i].trim());
                 start = i + 1;
             }
             _ => {}
         }
+        i += 1;
     }
     let last = s[start..].trim();
     if !last.is_empty() {
@@ -735,6 +730,12 @@ mod tests {
         assert_eq!(assemble("CMP W1, ','").unwrap(), assemble("CMP W1, #44").unwrap());
         assert_eq!(assemble("MOV W1, '\\''").unwrap(), assemble("MOV W1, #39").unwrap());
         assert_eq!(assemble("MOV W1, '\\\\'").unwrap(), assemble("MOV W1, #92").unwrap());
+        // GAS reads ''' as 39, so its third quote closes it rather than
+        // opening a literal that swallows the shift.
+        assert_eq!(
+            assemble("ADD W0, W1, ''', LSL 12").unwrap(),
+            assemble("ADD W0, W1, #39, LSL #12").unwrap()
+        );
     }
 
     #[test]
