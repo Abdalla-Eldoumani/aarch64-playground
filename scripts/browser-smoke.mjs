@@ -11,6 +11,7 @@
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { realErrors } from "./smoke-noise.mjs";
 
 // Playwright and lz-string resolve from web/node_modules wherever node was invoked.
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -128,8 +129,7 @@ try {
 } catch (error) {
   expect(false, `the run reached its end (${error instanceof Error ? error.message : error})`);
 } finally {
-  // Vercel's analytics scripts 404 under `next start`; nothing else is noise.
-  const real = errors.filter((e) => !/favicon/i.test(e) && !/_vercel\/(insights|speed-insights)/i.test(e));
+  const real = realErrors(errors);
   expect(real.length === 0, `no console or page errors${real.length ? `:\n  ${real.join("\n  ")}` : ""}`);
   await browser.close();
 }
