@@ -170,11 +170,11 @@ Vercel. In Chrome, each script logs a 404 error and a refused-script error.
 In Firefox, each logs one blocked-script error, which the smoke test prints
 and ignores.
 
-`npm run smoke:browser` does the same in Chromium and goes further: it loads
-a program from a share link, assembles it, steps five instructions and reads
-two registers, runs it to its console output, and opens a share link with two
-checks, one right and one wrong, expecting one pass and one fail. Point it at
-an installed Chromium with `CHROMIUM_PATH`, or run
+`npm run smoke:browser` drives the playground in Chromium instead, without the
+header check: it loads a program from a share link, assembles it, steps five
+instructions and reads two registers, runs it to its console output, and opens
+a share link with two checks, one right and one wrong, expecting one pass and
+one fail. Point it at an installed Chromium with `CHROMIUM_PATH`, or run
 `npx playwright install chromium` first:
 
 ```bash
@@ -194,11 +194,11 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 `docs/instruction-reference.md` runs those four and `rust`. A lesson or
 example change skips lint and typecheck, and a change under `emulator/tests/`
 runs only the Rust jobs, except the error-parity cases and the one corpus
-program the web tests read, which run the web tests too.
-`scripts/vercel-build.sh` runs the Rust jobs as well as the web ones, since it
-holds the toolchain pins the deploy builds with. A change to a workflow, or to a file no rule names,
-runs everything, and so do a push to `main`, the weekly run, and the pull
-request from `integration` to `main`.
+program the web tests read, which also run `wasm`, `corpus`, `web-build`, and
+`web-test`. A change to `scripts/vercel-build.sh` runs no Rust job:
+`web-static` checks its toolchain pins against the workflows. A change to a
+workflow, or to a file no rule names, runs everything, and so do a push to
+`main`, the weekly run, and the pull request from `integration` to `main`.
 
 A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
 it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that
@@ -218,8 +218,9 @@ request open runs no tests.
   `npm run typecheck`.
 - `web-build`: `npm run build` and `npm run size`.
 - `web-test`: `npm test` split into six shards.
-- `browser`: when the emulator, the wasm build inputs, or the build
-  configuration change, `npm run build`, `next start`, and
+- `browser`: when `emulator/src/`, the Cargo files, the package manifests, the
+  build configuration, or the smoke script change (not for a change to the
+  site's own code alone), `npm run build`, `next start`, and
   `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
