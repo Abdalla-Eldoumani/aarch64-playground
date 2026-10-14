@@ -510,7 +510,8 @@ export function InstructionReference({
             </p>
           )}
           {groups.length === 0 ? (
-            renderItems(flat)
+            // Bare in the ternary, this call trips react-hooks/refs on the rows' onClick.
+            <>{renderItems(flat)}</>
           ) : (
             groups.map((group) => (
               <div key={group.category} className="flex flex-col gap-1">
