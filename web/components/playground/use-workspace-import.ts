@@ -33,17 +33,31 @@ function confirmImport(what: string, replaced: string[], edited: boolean): boole
   );
 }
 
+// What a program load asks. Checks are saved nowhere, so losing them is said outright.
+function loadQuestion(label: string, edited: boolean, checks: number): string {
+  const what = checks === 1 ? "your check" : `your ${checks} checks`;
+  const kept = `The current code stays under "recent" if you want it back.`;
+  const gone = "Checks are not saved anywhere, so you cannot get them back.";
+  if (checks === 0) return `Load ${label}? It replaces your edits in main.asm. ${kept}`;
+  if (!edited) return `Load ${label}? It removes ${what}. ${gone}`;
+  return `Load ${label}? It replaces your edits in main.asm and removes ${what}. ${kept} ${gone}`;
+}
+
 /** Import and program loads into the workspace, asking before either
- *  replaces code the student wrote. */
+ *  replaces code the student wrote, or a load drops their checks. */
 export function useWorkspaceImport({
   source,
   setSource,
   extraFiles,
   setExtraFiles,
+  checks,
   toast,
   resetLaunch,
   loadProgram,
-}: Pick<FullChromeSurfaceProps, "source" | "setSource" | "extraFiles" | "setExtraFiles" | "loadProgram"> & {
+}: Pick<
+  FullChromeSurfaceProps,
+  "source" | "setSource" | "extraFiles" | "setExtraFiles" | "checks" | "loadProgram"
+> & {
   toast: ReturnType<typeof useToast>;
   resetLaunch: ReturnType<typeof useLaunchMode>["reset"];
 }) {
@@ -129,22 +143,22 @@ export function useWorkspaceImport({
   // A load replacing edits made since the last load or import asks first.
   // The replaced text also goes to recents, so the question is only about
   // work the student may not know is kept there; an untouched example is
-  // swapped without asking.
+  // swapped without asking. Every load replaces the checks, so any checks ask too.
+  // False when the student says no, so a caller can leave its own step undone.
   const loadProgramWithConfirm = useCallback(
-    (payload: HandoffPayload) => {
-      const edited = source.trim() !== "" && source !== loadedSourceRef.current;
+    (payload: HandoffPayload): boolean => {
+      const edited =
+        source.trim() !== "" && source !== loadedSourceRef.current && source !== payload.source;
       if (
-        edited &&
-        source !== payload.source &&
-        !window.confirm(
-          `Load ${payload.label ?? "this program"}? It replaces your edits in main.asm. The current code stays under "recent" if you want it back.`,
-        )
+        (edited || checks.length > 0) &&
+        !window.confirm(loadQuestion(payload.label ?? "this program", edited, checks.length))
       ) {
-        return;
+        return false;
       }
       loadProgram(payload);
+      return true;
     },
-    [source, loadProgram],
+    [source, checks, loadProgram],
   );
   return { loadedSourceRef, loadedFilesRef, handleImport, handleImportMany, loadProgramWithConfirm };
 }

@@ -220,6 +220,44 @@ describe("readShareHash decompression-bomb guard", () => {
   });
 });
 
+describe("share hash checks", () => {
+  const checks = [
+    { name: "doubles", stdin: "21\n", args: "", stdout: "42\n", exitCode: 0 },
+    { name: "takes argv", stdin: "", args: "a 'b c'", stdout: "2\n" },
+  ];
+
+  it("round-trips a program with its checks", () => {
+    const state: ShareState = { source: "ret\n", args: "x", checks };
+    expect(okState(buildShareHash(state))).toEqual(state);
+  });
+
+  it("opens a link made before checks existed exactly as before", () => {
+    // A v2 payload as the release before checks built it: source, args,
+    // stdin, cursor and the checksum, and no checks key.
+    const legacy = buildShareHash({ source: "ret\n", args: "1", cursor: { line: 1, column: 1 } });
+    expect(okState(legacy)).toEqual({ source: "ret\n", args: "1", cursor: { line: 1, column: 1 } });
+    expect("checks" in okState(legacy)).toBe(false);
+  });
+
+  it("drops a malformed checks array and still opens the program", () => {
+    const hash = buildShareHash({ source: "ret\n" }).slice("#p2=".length);
+    const json = JSON.parse(LZString.decompressFromEncodedURIComponent(hash)) as Record<string, unknown>;
+    for (const bad of [
+      [{ name: "x", stdin: "", args: "", stdout: 1 }],
+      [{ name: "x", stdin: "", args: "", stdout: "", exitCode: 300 }],
+      "checks",
+      Array.from({ length: 33 }, () => checks[1]),
+    ]) {
+      const link = `#p2=${LZString.compressToEncodedURIComponent(JSON.stringify({ ...json, checks: bad }))}`;
+      expect(okState(link)).toEqual({ source: "ret\n" });
+    }
+  });
+
+  it("leaves an empty checks list off the state", () => {
+    expect(okState(buildShareHash({ source: "ret\n", checks: [] }))).toEqual({ source: "ret\n" });
+  });
+});
+
 describe("share integrity checksum", () => {
   it("reports corrupt when a decodable payload's source fails the checksum", () => {
     // A one-character mangle can decode to a VALID payload whose source differs

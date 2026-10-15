@@ -1,7 +1,8 @@
 // pins the share dialog: the textarea carries a URL whose #p2= hash
 // round-trips back to the exact editor state, copy writes that URL to
-// the clipboard and confirms with a transient label, and the modal
-// closes from button, backdrop, and Escape.
+// the clipboard and confirms with a transient label, the modal closes
+// from button, backdrop, and Escape, and a link the receiver would refuse
+// or open without its checks is never offered.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ShareDialog } from "@/components/playground/ShareDialog";
@@ -114,6 +115,34 @@ describe("ShareDialog", () => {
       clock.mockRestore();
     }
   });
+
+  it("carries the checks by default and leaves them out when unticked", () => {
+    const checks = [{ name: "one", stdin: "", args: "", stdout: "1\n" }];
+    render(<ShareDialog open state={{ ...STATE, checks }} onClose={vi.fn()} />);
+    const box = screen.getByLabelText("include the check") as HTMLInputElement;
+    expect(box.checked).toBe(true);
+    expect(okShareState(urlValue().slice(urlValue().indexOf("#"))).checks).toEqual(checks);
+    fireEvent.click(box);
+    expect(okShareState(urlValue().slice(urlValue().indexOf("#"))).checks).toBeUndefined();
+  });
+
+  it("offers no checks choice for a program without checks", () => {
+    renderDialog();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+
+  it("refuses a link whose checks the receiver would drop, and names them", () => {
+    // Repetitive output compresses to a few hundred characters, well inside
+    // the link's length cap, but is over what one check may hold.
+    const checks = [{ name: "big", stdin: "", args: "", stdout: "x\n".repeat(60_000) }];
+    render(<ShareDialog open state={{ ...STATE, checks }} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("shareable url")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("the check is too large to carry in a link");
+    expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty("disabled", true);
+    fireEvent.click(screen.getByLabelText("include the check"));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(okShareState(urlValue().slice(urlValue().indexOf("#")))).toEqual(STATE);
+  });
 });
 
 describe("ShareDialog with a program too large for a link", () => {
@@ -135,7 +164,8 @@ describe("ShareDialog with a program too large for a link", () => {
     render(<ShareDialog open state={BIG} onClose={vi.fn()} />);
     expect(screen.queryByLabelText("shareable url")).toBeNull();
     const alert = screen.getByRole("alert");
-    expect(alert.textContent).toContain("too large to share as a link");
+    expect(alert.textContent).toContain("does not fit in a link");
+    expect(alert.textContent).toContain("characters compressed");
     expect(alert.textContent).toContain(".json");
     expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty(
       "disabled",
@@ -146,6 +176,26 @@ describe("ShareDialog with a program too large for a link", () => {
       "disabled",
       false,
     );
+  });
+
+  it("refuses a program that packs small but opens past the receiver's 1 MiB cap", () => {
+    // Repetitive text compresses to a few thousand characters, inside the
+    // link's length cap, so the packed size is not what to report.
+    render(<ShareDialog open state={{ source: "nop\n".repeat(300_000) }} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("shareable url")).toBeNull();
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).toContain("does not fit in a link");
+    expect(alert.textContent).not.toContain("characters compressed");
+    expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty("disabled", true);
+  });
+
+  it("refuses a workspace with more files than the receiver reads", () => {
+    // The receiver drops a files array over 16, and main.asm alone would not link.
+    const files = Array.from({ length: 17 }, (_, i) => ({ name: `f${i}.s`, body: "ret\n" }));
+    render(<ShareDialog open state={{ source: "mov x0, 1\nret\n", files }} onClose={vi.fn()} />);
+    expect(screen.queryByLabelText("shareable url")).toBeNull();
+    expect(screen.getByRole("alert").textContent).toContain("does not fit in a link");
+    expect(screen.getByRole("button", { name: "copy link" })).toHaveProperty("disabled", true);
   });
 
   it("still offers the link for a multi-file workspace that fits", () => {

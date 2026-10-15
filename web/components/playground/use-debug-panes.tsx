@@ -2,6 +2,7 @@
 
 import type { RefObject } from "react";
 import type { parseFrameSlots } from "@/lib/emulator/frame-labels";
+import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import { MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
 import type { useLaunchMode } from "@/lib/playground/use-launch-mode";
 import type { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
@@ -10,6 +11,7 @@ import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import type { DebugPanes } from "@/components/playground/RightTabs";
 import {
   BaseConverter,
+  ChecksPanel,
   MemoryPanel,
   MemoryWatches,
   SavesPanel,
@@ -24,15 +26,20 @@ import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 
 type Drive = ReturnType<typeof useTerminalDrive>;
 
-/** The eight machine panes, built during the surface's render. Not a
+/** The machine panes and the checks, built during the surface's render. Not a
  *  component, so the element tree stays as it was; named as a hook, though
  *  it calls none, because it takes the surface's refs. */
 export function useDebugPanes({
   emu,
   source,
+  extraFiles,
+  checks,
+  setChecks,
   argsText,
-  loadProgram,
+  loadProgramWithConfirm,
   stageVfsFile,
+  workingFiles,
+  delivery,
   fpValue,
   frameSlots,
   launchMode,
@@ -44,7 +51,21 @@ export function useDebugPanes({
   terminalUploadRef,
   loadedRef,
   toast,
-}: Pick<FullChromeSurfaceProps, "emu" | "source" | "argsText" | "loadProgram" | "stageVfsFile"> & {
+}: Pick<
+  FullChromeSurfaceProps,
+  | "emu"
+  | "source"
+  | "extraFiles"
+  | "checks"
+  | "setChecks"
+  | "argsText"
+  | "stageVfsFile"
+  | "workingFiles"
+> & {
+  /** A program delivery that asks first when it would replace edits or checks. */
+  loadProgramWithConfirm: (payload: HandoffPayload) => boolean;
+  /** Bumped on every program delivery, so the checks panel starts fresh. */
+  delivery: number;
   fpValue: number;
   frameSlots: ReturnType<typeof parseFrameSlots>;
   launchMode: ReturnType<typeof useLaunchMode>["mode"];
@@ -161,7 +182,7 @@ export function useDebugPanes({
         source={source}
         args={argsText}
         stepCount={emu.stepCount}
-        onLoadProgram={loadProgram}
+        onLoadProgram={loadProgramWithConfirm}
         onRestoreBookmark={async (params) => {
           const verdict = await emu.restoreBookmark(params);
           // The restore assembled the bookmark's own program, so a run press
@@ -178,8 +199,20 @@ export function useDebugPanes({
     </ErrorBoundary>
   );
 
-  // The eight machine views as one bundle: the tab strip and the phone
-  // layout each render the same set, so neither has to name them one by one.
+  const checksBlock = (
+    <ErrorBoundary label="checks">
+      <ChecksPanel
+        key={delivery}
+        checks={checks}
+        onChange={setChecks}
+        workspace={{ main: source, extras: extraFiles }}
+        workingFiles={workingFiles}
+      />
+    </ErrorBoundary>
+  );
+
+  // The panes as one bundle: the tab strip and the phone layout each render
+  // the same set, so neither has to name them one by one.
   const panes: DebugPanes = {
     memory: memoryBlock,
     stack: stackBlock,
@@ -189,6 +222,7 @@ export function useDebugPanes({
     converter: converterBlock,
     memwatch: memWatchBlock,
     saves: savesBlock,
+    checks: checksBlock,
   };
 
   return panes;

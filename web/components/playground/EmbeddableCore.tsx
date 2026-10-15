@@ -12,6 +12,7 @@ import type { FullChromeBridge } from "@/components/playground/FullChromeSurface
 import { useEmulator } from "@/lib/emulator/use-emulator";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { parseArgs } from "@/lib/playground/args";
 import { formatAsm } from "@/lib/asm/asm-formatter";
 import { useAutoplay, useScrollHold } from "@/lib/playground/use-autoplay";
@@ -71,6 +72,7 @@ export function EmbeddableCore({
   startArgs,
   startStdin,
   startCursor,
+  startChecks,
   fromShare,
   readOnly,
   staticEditor,
@@ -124,6 +126,13 @@ export function EmbeddableCore({
     startCursor ?? { line: 1, column: 1 },
   );
   const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
+  // Latest-value refs for the buffers, synced with the others further down.
+  // Declared here because the effects and callbacks below already read them.
+  const sourceRef = useRef(source);
+  const extraFilesRef = useRef(extraFiles);
+  // The checks panel's list (full chrome only), never saved; every program
+  // handoff replaces it with the payload's checks or none.
+  const [checks, setChecks] = useState<ProgramCheck[]>(startChecks ?? []);
   const [activeFile, setActiveFile] = useState<number>(-1);
   // The workspace as the machine last saw it. Lines the machine reports
   // (current line, errors, faults) resolve against this, not the live buffers,
@@ -219,7 +228,7 @@ export function EmbeddableCore({
 
   // Input seeds and the working file set: what the machine needs on it that
   // is not the program text, and the record assemble's reset restores from.
-  const { applySeeds, stageVfsFile, removeVfsFile, seedFromPayload } = useWorkingSet({
+  const { applySeeds, stageVfsFile, removeVfsFile, seedFromPayload, workingFiles } = useWorkingSet({
     isHome: chrome === "full",
     startStdin,
     machine: emuRef,
@@ -227,6 +236,9 @@ export function EmbeddableCore({
   });
 
 
+  // What the embed last assembled, for the run and check gates further down.
+  // Declared here because loadProgram clears it.
+  const lastRunSourceRef = useRef<string | null>(null);
   const loadProgram = useCallback(
     (payload: HandoffPayload) => {
       // The replaced buffer stays recoverable through recents; entries are
@@ -250,6 +262,7 @@ export function EmbeddableCore({
       // program at its next assemble.
       setExtraFiles(payload.files ?? []);
       setActiveFile(-1);
+      setChecks(payload.checks ?? []);
       // The launch mode, the console watermark and the shared-program banner
       // all live on the full surface; it settles them and hands back the value
       // the args box should take, which for a two-faced example its mode owns.
@@ -299,7 +312,6 @@ export function EmbeddableCore({
   // nothing is loaded, the source or args changed (`runKey`), or the program
   // finished; only a paused or blocked unchanged program resumes. A failed
   // assemble skips the run. `fromTop` is Ctrl+Enter's assemble-and-run.
-  const lastRunSourceRef = useRef<string | null>(null);
   const runKey = `${argsText}\n${source}`;
   // A press while that assemble is in flight is dropped: a second assemble
   // resets the machine after the first queued its seeds, so both seeds land
@@ -414,10 +426,9 @@ export function EmbeddableCore({
   // still reading live editor / hub state when the host calls a method. The
   // refs are synced in an effect; the react-hooks rules forbid writing a ref
   // during render.
-  const sourceRef = useRef(source);
-  const extraFilesRef = useRef(extraFiles);
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
+  const checksRef = useRef(checks);
   const onStateChangeRef = useRef(onStateChange);
   const onSourceChangeRef = useRef(onSourceChange);
   const assembleRef = useRef(assembleWithHistory);
@@ -431,6 +442,7 @@ export function EmbeddableCore({
     extraFilesRef.current = extraFiles;
     argsRef.current = argsText;
     cursorRef.current = cursor;
+    checksRef.current = checks;
     onStateChangeRef.current = onStateChange;
     onSourceChangeRef.current = onSourceChange;
     assembleRef.current = assembleWithHistory;
@@ -438,7 +450,7 @@ export function EmbeddableCore({
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
     toggleBreakpointRef.current = toggleBreakpointAtCaret;
-  }, [emu, source, extraFiles, argsText, cursor, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret]);
+  }, [emu, source, extraFiles, argsText, cursor, checks, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret]);
 
   // The buffer itself, which onStateChange deliberately does not mirror (its
   // ten fields are the machine's outcome, not the editor's). Fires on mount
@@ -550,6 +562,7 @@ export function EmbeddableCore({
       getFiles: () => extraFilesRef.current,
       getArgs: () => argsRef.current,
       getCursor: () => cursorRef.current,
+      getChecks: () => checksRef.current,
       getCommands: () => buildCommandsRef.current(),
       toggleBreakpoint: () => toggleBreakpointRef.current(),
       walk,
@@ -754,6 +767,8 @@ export function EmbeddableCore({
         setActiveFile={setActiveFile}
         argsText={argsText}
         setArgsText={setArgsText}
+        checks={checks}
+        setChecks={setChecks}
         setCursor={setCursor}
         lintWarnings={lintWarnings}
         errorFocus={errorFocus}
@@ -764,6 +779,7 @@ export function EmbeddableCore({
         applySeeds={applySeeds}
         stageVfsFile={stageVfsFile}
         removeVfsFile={removeVfsFile}
+        workingFiles={workingFiles}
         fromShare={fromShare}
         onOpenCommandPalette={onOpenCommandPalette}
         onOpenShortcutsHelp={onOpenShortcutsHelp}

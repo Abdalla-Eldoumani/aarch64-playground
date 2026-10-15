@@ -542,7 +542,9 @@ pub(crate) fn integer_error(text: &str) -> String {
     format!("invalid integer literal `{text}`")
 }
 
-fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
+/// The operand splitters step over a literal by the length this returns,
+/// so `','` and `'''` end where the lexer ends them.
+pub(crate) fn parse_char_literal(s: &str, line: usize) -> Result<(u32, usize), EmuError> {
     // s starts with the opening quote.
     let bytes = s.as_bytes();
     if bytes.len() < 3 {

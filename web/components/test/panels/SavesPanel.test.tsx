@@ -18,7 +18,7 @@ function renderPanel(overrides: Partial<SavesPanelProps> = {}) {
     source: "// buffer\nret",
     args: "",
     stepCount: 0,
-    onLoadProgram: vi.fn(),
+    onLoadProgram: vi.fn(() => true),
     onRestoreBookmark: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
@@ -65,6 +65,19 @@ describe("SavesPanel bookmark load", () => {
       (props.onRestoreBookmark as ReturnType<typeof vi.fn>).mock
         .invocationCallOrder[0],
     );
+  });
+
+  it("restores nothing when the student declines to replace their work", async () => {
+    act(() => {
+      putSave({ name: "walk", source: "ret", stepCount: 2, savedAt: new Date().toISOString() });
+    });
+    const props = renderPanel({ onLoadProgram: vi.fn(() => false) });
+    fireEvent.click(screen.getByRole("button", { name: "load" }));
+    expect(props.onLoadProgram).toHaveBeenCalledTimes(1);
+    // A declined load keeps the current program, so stepping it to the
+    // bookmark's step would walk the wrong program.
+    await act(async () => {});
+    expect(props.onRestoreBookmark).not.toHaveBeenCalled();
   });
 
   it("a bookmark without args or stdin still hands off with both undefined", () => {

@@ -12,7 +12,7 @@ function getFocusables(root: HTMLElement | null): HTMLElement[] {
 
 /** The usual double-click interval: a second press this soon after the
  *  first belongs to the same double press. */
-const DOUBLE_PRESS_MS = 500;
+export const DOUBLE_PRESS_MS = 500;
 
 /** When a trapped dialog last opened. */
 let lastOpenedAt = Number.NEGATIVE_INFINITY;

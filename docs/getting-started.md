@@ -88,8 +88,10 @@ each program.
 ## Share a program
 
 Press **share**. The dialog shows a link with the whole program compressed
-into it. Opening the link loads the program into the editor, and nothing is
-sent to a server.
+into it. If the program has checks, a box such as **include the 2 checks**
+starts ticked and puts them in the link too; untick it to share the program
+alone. Opening the link loads the program into the editor, with any checks in
+the **checks** tab, and nothing is sent to a server.
 
 When a program misbehaves and you want help, press **diagnostic bundle**. It
 shows a report of the program, its input and output, and the registers, stack,
@@ -117,6 +119,25 @@ and memory, and copies it or a link that reopens the program.
   to flip it.
 - The **saves** tab stores the machine under a name, and bookmarks that
   survive a reload.
+- The **checks** tab holds test cases for your program. A check gives the
+  program stdin and args and says what it should print, and optionally the
+  exit code it should end with. The program reads that stdin as if from a
+  file, so a read past its end sees end of input instead of waiting, as
+  `./program < file` would. **run checks** runs every check on a separate
+  machine, so the program you are debugging stays where it was. Each check's
+  run can open the files in the playground's virtual filesystem, and it stops
+  as unfinished after 5,000,000 steps. A check with the wrong output shows
+  the first line where it differs. Spaces or tabs at the end of a line and
+  newlines at the end of the output do not fail a check, but the result says
+  when it passed only by ignoring them. **fill expected output from a run**
+  fills in what the program prints now for that check's input. Checks are
+  not saved with the program in the browser, in the workspace .json file, or
+  in the diagnostic bundle, so a reload, leaving the page, or loading another
+  program loses them; only a share link carries them. Reloading a tab opened
+  from a share link brings back the checks the link was sent with. Loading an
+  example, a recent program, a bookmark, or a tutorial asks first. Opening a
+  link in the same tab, or going back to one, replaces the program, its
+  unsaved edits, and its checks without asking.
 - The **+** beside the file tab adds more source files. They are assembled
   together with `main.asm`.
 - The register panel switches between the integer (`x`), floating-point (`d`),

@@ -17,6 +17,7 @@ const PANES = {
   converter: <div data-testid="conv" />,
   memwatch: <div data-testid="memwatch" />,
   saves: <div data-testid="saves" />,
+  checks: <div data-testid="checks" />,
 };
 
 const STATUS: PhoneLayoutProps["runStatus"] = {
@@ -111,6 +112,7 @@ describe("PhoneLayout", () => {
       "converter",
       "memory watches",
       "saves",
+      "checks",
     ]);
     fireEvent.click(within(list).getByRole("button", { name: "converter" }));
     expect(screen.getByTestId("conv")).toBeTruthy();

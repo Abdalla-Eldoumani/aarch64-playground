@@ -18,8 +18,9 @@ export interface SavesPanelProps {
   stepCount: number;
   /** Delivers the bookmarked program (source, args, stdin) as a full
    *  program handoff, so the machine resets and the bookmark's inputs
-   *  become the seeds every later assemble re-applies. */
-  onLoadProgram: (payload: HandoffPayload) => void;
+   *  become the seeds every later assemble re-applies. False when the
+   *  student declines to replace their edits or checks. */
+  onLoadProgram: (payload: HandoffPayload) => boolean;
   onRestoreBookmark: (params: {
     source: string;
     args?: string;
@@ -240,12 +241,13 @@ export function SavesPanel({
                   // stdin as the current seeds, so a later manual
                   // re-assemble replays the bookmark's inputs instead of
                   // whatever program was loaded before it.
-                  onLoadProgram({
+                  const loaded = onLoadProgram({
                     source: s.source,
                     label: s.name,
                     args: s.args,
                     stdin: s.stdin,
                   });
+                  if (!loaded) return;
                   try {
                     const verdict = await onRestoreBookmark({
                       source: s.source,

@@ -924,6 +924,24 @@ describe("loading a program from recents and the tutorial", () => {
     await waitFor(() => expect(hub.assemble).toHaveBeenCalled());
     expect(hub.pushStdin).not.toHaveBeenCalled();
   });
+
+  it("asks before a tutorial snippet replaces the checks, and keeps them on no", async () => {
+    useEmulatorMock.mockReturnValue(makeHub());
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(<EmbeddablePlayground ref={ref} chrome="full" startSource="// old" />);
+    await waitFor(() => expect(tutorialProps.current).not.toBeNull());
+    const checks = [{ name: "prints one", stdin: "", args: "", stdout: "1\n" }];
+    act(() => ref.current!.loadProgram({ source: "// mine", checks }));
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    try {
+      act(() => tutorialProps.current!.onLoadSnippet("mov x0, 1", "scores", "", ""));
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(ref.current!.getSource()).toBe("// mine");
+      expect(ref.current!.getChecks()).toEqual(checks);
+    } finally {
+      confirm.mockRestore();
+    }
+  });
 });
 
 describe("keeping earlier work (full chrome)", () => {

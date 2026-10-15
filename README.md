@@ -18,6 +18,12 @@ steps in [Run it locally](#run-it-locally).
   registers, the stack, and memory update.
 - Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
   on files kept in the browser.
+- Write checks for your own program in the playground's **checks** tab. Each
+  check gives the program some input and arguments and says what it should
+  print, and optionally the exit code. **run checks** runs them all without
+  touching the program you are debugging. Checks are not saved: they last
+  until you load another program or leave or reload the page, and a share link
+  carries them.
 - Read 32 lessons, each with programs you can run in place. Every lesson ends
   with buttons to the previous and next lessons, and first links the
   exercises that practice it.
@@ -29,8 +35,8 @@ steps in [Run it locally](#run-it-locally).
   course uses, and you can search it in plain words, such as `multiply` or
   `load a byte`. The reference also walks through the calling convention and
   lists 36 common mistakes, each a program you can run.
-- Send a program as a link. The whole program is inside the link, so no server
-  stores it.
+- Send a program as a link, with its checks if it has any. Everything is
+  inside the link, so no server stores it.
 - Install the site as an app. After one visit the playground works offline,
   and **Save every page for offline** keeps the lessons, practice, and
   reference too.
@@ -68,7 +74,8 @@ steps in [Run it locally](#run-it-locally).
   There are no accounts, and clearing the site's data deletes them. The
   practice page can export your progress to a file and import it elsewhere.
 - A share link holds up to 16 KiB of compressed text. Send a longer program as
-  a file: pick **workspace .json** from the playground's **export** menu.
+  a file: pick **workspace .json** from the playground's **export** menu. The
+  file does not carry checks.
 
 ## Run it locally
 

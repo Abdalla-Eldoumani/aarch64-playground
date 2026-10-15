@@ -18,6 +18,7 @@ const MORE = [
   { id: "convert", label: "converter" },
   { id: "memwatch", label: "memory watches" },
   { id: "saves", label: "saves" },
+  { id: "checks", label: "checks" },
 ] as const;
 type MoreId = (typeof MORE)[number]["id"];
 
@@ -182,6 +183,7 @@ export function PhoneLayout({
         {side === "more" && more === "convert" && <div className="min-h-0 flex-1 overflow-auto">{panes.converter}</div>}
         {side === "more" && more === "memwatch" && <div className="min-h-0 flex-1 overflow-auto">{panes.memwatch}</div>}
         {side === "more" && more === "saves" && <div className="min-h-0 flex-1 overflow-auto">{panes.saves}</div>}
+        {side === "more" && more === "checks" && <div className="min-h-0 flex-1 overflow-auto">{panes.checks}</div>}
       </div>
 
       <div className={`${place.controls} min-w-0`}>{controls}</div>

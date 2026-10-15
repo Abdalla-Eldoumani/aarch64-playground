@@ -42,8 +42,10 @@ If a rebuilt emulator does not show up, stop the dev server, delete
   - `content/`: lessons and exercises as JSON (see
     [authoring-content.md](authoring-content.md)).
   - `public/examples/`: the example programs in the playground's menu.
-- `scripts/`: the deploy build, the corpus check, the header check, the
-  dependency audit, the size budget, and the parity sweep.
+- `scripts/`: the deploy build and the service worker's file list, the
+  emulator watcher `npm run dev:all` runs, the corpus check, the header check,
+  the dependency audit, the size budget, the browser smoke tests, and the
+  parity sweep.
 - `docs/`: these docs.
 - `tools/`: small course helpers. Nothing there ships or runs in CI.
 

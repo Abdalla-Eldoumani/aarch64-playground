@@ -28,6 +28,15 @@ const WASM_INPUTS = /^emulator\/(src\/|Cargo\.toml$|Cargo\.lock$)/;
 // Files outside emulator/ that the Rust tests read.
 const READ_BY_RUST = /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/)/;
 
+// Emulator test data the web tests read: error-explain's server transcripts
+// and the dense -O2 program share.test measures a link with.
+const READ_BY_WEB = /^emulator\/tests\/(error-parity\/|c-corpus\/78_switch_dense\.O2plain\.s$)/;
+
+// What the production build is made from besides the emulator: the manifests,
+// the build and deploy config, and the browser smoke test itself.
+const BUILD_CONFIG =
+  /^(web\/(package(-lock)?\.json|next\.config\.mjs|tsconfig\.json|tailwind\.config\.ts|postcss\.config\.js)$|vercel\.json$|package\.json$|scripts\/(write-precache-list\.js|browser-smoke\.mjs|smoke-noise\.mjs)$)/;
+
 function classOf(file) {
   const rule = RULES.find(([, pattern]) => pattern.test(file));
   return rule ? rule[0] : "workflows";
@@ -42,15 +51,17 @@ function classify(files) {
     classes: [...classes].sort(),
     // cargo test and the three corpus shards
     rust: everything || classes.has("emulator") || any(READ_BY_RUST),
-    // lint, typecheck, and the dependency audit; typecheck reads the
-    // wasm bundles' generated types
+    // lint, typecheck, the dependency audit, and the toolchain pin check (all
+    // a vercel-build.sh change needs); typecheck reads the wasm bundles' types
     static: everything || classes.has("web") || wasm,
     // verify-corpus, next build + size-limit, and the vitest shards
-    web: everything || classes.has("web") || classes.has("content") || wasm,
+    web: everything || classes.has("web") || classes.has("content") || wasm || any(READ_BY_WEB),
+    // the browser smoke test against a production build of the real wasm
+    browser: everything || wasm || any(BUILD_CONFIG),
   };
 }
 
-const EVERYTHING = { classes: ["all"], rust: true, static: true, web: true };
+const EVERYTHING = { classes: ["all"], rust: true, static: true, web: true, browser: true };
 
 if (require.main === module) {
   const fs = require("fs");

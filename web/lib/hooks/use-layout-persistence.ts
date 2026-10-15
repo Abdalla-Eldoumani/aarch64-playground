@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef } from "react";
 import {
   safeGetItem,
   safeRemoveItem,
@@ -23,6 +23,15 @@ function readStored(scope: string): number[] | null {
   return null;
 }
 
+interface Layout {
+  sizes: number[];
+  ready: boolean;
+}
+
+function mergeLayout(prev: Layout, change: Partial<Layout>): Layout {
+  return { ...prev, ...change };
+}
+
 /**
  * Panel sizes per scope in localStorage (a breakpoint, plus "-short" in a
  * short window, plus the group's side); reset clears only the current scope.
@@ -34,18 +43,15 @@ export function useLayoutPersistence(
   scope: string,
   fallback: number[],
 ): [number[], (next: number[]) => void, () => void, boolean] {
-  const [sizes, setSizes] = useState<number[]>(fallback);
-  const [ready, setReady] = useState(false);
+  // A reducer, so the stored layout can arrive from the load effect below.
+  const [{ sizes, ready }, edit] = useReducer(mergeLayout, { sizes: fallback, ready: false });
   // The synchronous half of `ready`: a save can arrive between the render
   // that changed `scope` and the effect that loads it, and state is too late.
   const loadedFor = useRef<string | null>(null);
 
   useEffect(() => {
-    loadedFor.current = null;
-    setReady(false);
-    setSizes(readStored(scope) ?? fallback);
+    edit({ sizes: readStored(scope) ?? fallback, ready: true });
     loadedFor.current = scope;
-    setReady(true);
     // `fallback` is out of the deps on purpose: a new array identity must not
     // overwrite a loaded layout.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -54,7 +60,7 @@ export function useLayoutPersistence(
   const save = useCallback(
     (next: number[]) => {
       if (loadedFor.current !== scope) return;
-      setSizes(next);
+      edit({ sizes: next });
       safeSetItem(`${KEY_PREFIX}${scope}`, JSON.stringify(next));
     },
     [scope],
@@ -62,7 +68,7 @@ export function useLayoutPersistence(
 
   const reset = useCallback(() => {
     safeRemoveItem(`${KEY_PREFIX}${scope}`);
-    setSizes(fallback);
+    edit({ sizes: fallback });
   }, [scope, fallback]);
 
   return [sizes, save, reset, ready];

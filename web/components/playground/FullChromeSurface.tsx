@@ -5,6 +5,7 @@ import type { EmulatorState } from "@/lib/emulator/use-emulator";
 import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { parseFrameSlots } from "@/lib/emulator/frame-labels";
 import { collectDiagnostic } from "@/lib/playground/diagnostic-bundle";
 import { formatAsm } from "@/lib/asm/asm-formatter";
@@ -89,6 +90,9 @@ export interface FullChromeSurfaceProps {
   setActiveFile: (next: number) => void;
   argsText: string;
   setArgsText: (next: string) => void;
+  /** The checks panel's list; the shell holds it so a share link can carry it. */
+  checks: ProgramCheck[];
+  setChecks: React.Dispatch<React.SetStateAction<ProgramCheck[]>>;
   setCursor: (next: { line: number; column: number }) => void;
   lintWarnings: Array<{ line: number; message: string }>;
   errorFocus: { line: number; nonce: number } | null;
@@ -102,6 +106,7 @@ export interface FullChromeSurfaceProps {
   applySeeds: WorkingSet["applySeeds"];
   stageVfsFile: WorkingSet["stageVfsFile"];
   removeVfsFile: WorkingSet["removeVfsFile"];
+  workingFiles: WorkingSet["workingFiles"];
   /** A share-link boot: raises the banner over the header band. */
   fromShare?: boolean;
   onOpenCommandPalette?: () => void;
@@ -131,6 +136,8 @@ export function FullChromeSurface({
   setActiveFile,
   argsText,
   setArgsText,
+  checks,
+  setChecks,
   setCursor,
   lintWarnings,
   errorFocus,
@@ -141,6 +148,7 @@ export function FullChromeSurface({
   applySeeds,
   stageVfsFile,
   removeVfsFile,
+  workingFiles,
   fromShare,
   onOpenCommandPalette,
   onOpenShortcutsHelp,
@@ -153,7 +161,11 @@ export function FullChromeSurface({
   const height = useScreenHeight();
   // A phone has its own compact chrome; the short layout is for the rest.
   const short = height === "short" && phone === null;
-  const [activeTab, setActiveTab] = useState<RightTab>("memory");
+  // A link that carried checks opens on them. A phone keeps its code view:
+  // its layout takes no pane request from before it mounted.
+  const [activeTab, setActiveTab] = useState<RightTab>(() =>
+    fromShare && checks.length > 0 ? "checks" : "memory",
+  );
   // The view the phone layout has on screen; the desktop tab state above
   // says nothing about a phone.
   const [phonePane, setPhonePane] = useState("code");
@@ -168,6 +180,9 @@ export function FullChromeSurface({
     setPaneRequest({ pane, nonce: Date.now() });
   }, []);
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
+  // Counts program deliveries. The checks panel remounts on each, so the last
+  // program's run report and note go with it.
+  const [delivery, setDelivery] = useState(0);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   // Each bump opens the walkthrough where the student left it.
   const [walkthroughRequest, setWalkthroughRequest] = useState(0);
@@ -186,7 +201,7 @@ export function FullChromeSurface({
   } = useLaunchMode({ args: argsText, setArgs: setArgsText });
   const importTarget = getImportTarget(activeFile);
   const { loadedSourceRef, loadedFilesRef, handleImport, handleImportMany, loadProgramWithConfirm } =
-    useWorkspaceImport({ source, setSource, extraFiles, setExtraFiles, toast, resetLaunch, loadProgram });
+    useWorkspaceImport({ source, setSource, extraFiles, setExtraFiles, checks, toast, resetLaunch, loadProgram });
   // The terminal pane's foreground sessions: the shared drive, the console
   // watermark a session leaves behind, and the two rising edges (a blocked
   // read, a raw-mode program) that decide which pane comes forward.
@@ -270,6 +285,8 @@ export function FullChromeSurface({
         // A new program starts on a fresh console; no session owns it yet.
         liveRef.current.dropTerminalWatermark();
         setShareBanner(Boolean(payload.fromShare));
+        setDelivery((n) => n + 1);
+        if (payload.checks && payload.checks.length > 0) requestPane("checks");
         loadedSourceRef.current = payload.source;
         loadedFilesRef.current = new Map((payload.files ?? []).map((f) => [f.name, f.body]));
         return nextArgs;
@@ -500,9 +517,14 @@ export function FullChromeSurface({
   const panes = useDebugPanes({
     emu,
     source,
+    extraFiles,
+    checks,
+    setChecks,
     argsText,
-    loadProgram,
+    loadProgramWithConfirm,
     stageVfsFile,
+    workingFiles,
+    delivery,
     fpValue,
     frameSlots,
     launchMode,
@@ -690,8 +712,7 @@ export function FullChromeSurface({
           // seed, not an immediate push: the assemble the tutorial asks
           // for next resets the machine, which would wipe a pushed queue
           // and re-apply the previous program's inputs instead.
-          loadProgram({ source: src, label, args, stdin });
-          setTutorialOpen(false);
+          if (loadProgramWithConfirm({ source: src, label, args, stdin })) setTutorialOpen(false);
         }}
         onStartWalkthrough={() => {
           setTutorialOpen(false);

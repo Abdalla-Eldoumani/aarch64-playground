@@ -6,6 +6,7 @@ import {
   type BundleDecoder,
 } from "@/lib/hooks/use-deep-link";
 import { validateFileName, type SourceFile } from "@/lib/playground/file-map";
+import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { readShareHash } from "@/lib/playground/share";
 import {
   MAX_VFS_BYTES,
@@ -58,6 +59,9 @@ export interface HandoffPayload {
   stdin?: string;
   vfs?: Record<string, string>;
   cursor?: { line: number; column: number };
+  /** Test cases for the checks panel. A payload without them empties the
+   *  list: checks belong to the program they were written for. */
+  checks?: ProgramCheck[];
   /** Drives the loaded-from-a-share-link banner. */
   fromShare?: boolean;
 }
@@ -73,6 +77,7 @@ export interface PlaygroundBoot {
   args: string;
   stdin?: string;
   cursor?: { line: number; column: number };
+  checks?: ProgramCheck[];
   fromShare: boolean;
   fromBundle: boolean;
   /** Set when the URL carried our share prefix but the payload failed: the
@@ -129,6 +134,7 @@ export function resolveBoot(
       args: shared.state.args ?? "",
       stdin: shared.state.stdin,
       cursor: shared.state.cursor,
+      checks: shared.state.checks,
       fromShare: true,
       fromBundle: false,
     };
@@ -187,6 +193,7 @@ export function resolveHandoff(
         args: shared.state.args,
         stdin: shared.state.stdin,
         cursor: shared.state.cursor,
+        checks: shared.state.checks,
         label: "shared program",
         fromShare: true,
       },

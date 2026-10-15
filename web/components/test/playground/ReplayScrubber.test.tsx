@@ -115,6 +115,33 @@ describe("ReplayScrubber", () => {
     }
   });
 
+  it("drops the pin and stops playback when the frames are cleared", () => {
+    vi.useFakeTimers();
+    try {
+      const onSeek = vi.fn();
+      const frames = [frame(1), frame(2), frame(3)];
+      const { rerender } = render(
+        <ReplayScrubber frames={frames} currentStep={3} onSeek={onSeek} />,
+      );
+      fireEvent.change(screen.getByRole("slider", { name: /replay/i }), { target: { value: "0" } });
+      fireEvent.click(screen.getByRole("button", { name: "replay the saved steps" }));
+      // An assemble or reset empties the ring. The live step stays put here, so
+      // only the shrink can release the pin.
+      rerender(<ReplayScrubber frames={[]} currentStep={3} onSeek={onSeek} />);
+      onSeek.mockClear();
+      act(() => {
+        vi.runAllTimers();
+      });
+      expect(onSeek).not.toHaveBeenCalled();
+      rerender(<ReplayScrubber frames={frames} currentStep={3} onSeek={onSeek} />);
+      const slider = screen.getByRole("slider", { name: /replay/i }) as HTMLInputElement;
+      expect(slider.value).toBe("2");
+      expect(screen.getByRole("button", { name: "replay the saved steps" })).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("returns to the live frame when playback runs to the end", () => {
     vi.useFakeTimers();
     try {

@@ -12,7 +12,8 @@ export type RightTab =
   | "watches"
   | "convert"
   | "memwatch"
-  | "saves";
+  | "saves"
+  | "checks";
 
 /**
  * Rendered nodes, not hub fields: the shell owns the one `useEmulator()` hub,
@@ -27,6 +28,7 @@ export interface DebugPanes {
   converter: ReactNode;
   memwatch: ReactNode;
   saves: ReactNode;
+  checks: ReactNode;
 }
 
 export interface RightTabsProps {
@@ -48,6 +50,7 @@ const TABS: readonly RightTab[] = [
   "convert",
   "memwatch",
   "saves",
+  "checks",
 ];
 
 /**
@@ -96,11 +99,13 @@ export function RightTabs({
               role="tab"
               aria-selected={selected}
               aria-controls={`right-panel-${tab}`}
-              // The eight labels take 352px. px-3 fits them on one row in a
-              // 1280px window's 573px column; a narrower strip (1024's is
-              // 458px) wrapped to a second row, so under 34rem the padding
-              // tightens to 6px.
-              className={`touch-target relative min-h-[2.25rem] px-3 py-1 text-xs transition-colors [@container(max-width:34rem)]:px-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
+              // The nine labels take 396px. px-3 fits them on one row from a
+              // 616px strip; narrower (a 1280px window's is 573px) the padding
+              // tightens to 6px, and between 28.5rem and 31.5rem (a 1024px
+              // window's 458px) to 2px, which still fits a coarse pointer's
+              // 44px floors (451px). A strip too narrow for one row even
+              // then wraps, and keeps 6px so the tabs stay apart.
+              className={`touch-target relative min-h-[2.25rem] px-3 py-1 text-xs transition-colors [@container(31.5rem<width<=38.5rem)]:px-1.5 [@container(28.5rem<width<=31.5rem)]:px-[2px] [@container(width<=28.5rem)]:px-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)] ${
                 selected
                   ? "text-[var(--cyan)] border-b border-[var(--cyan)]"
                   : "text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
@@ -157,6 +162,9 @@ export function RightTabs({
         )}
         {activeTab === "saves" && (
           <div className="h-full overflow-auto">{panes.saves}</div>
+        )}
+        {activeTab === "checks" && (
+          <div className="h-full overflow-auto">{panes.checks}</div>
         )}
       </div>
     </div>

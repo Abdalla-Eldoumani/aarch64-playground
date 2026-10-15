@@ -37,6 +37,10 @@ export const ReplayScrubber = dynamic(
   () => import("@/components/playground/ReplayScrubber").then((m) => m.ReplayScrubber),
   { ssr: false },
 );
+export const ChecksPanel = dynamic(
+  () => import("@/components/playground/ChecksPanel").then((m) => m.ChecksPanel),
+  { ssr: false },
+);
 export const SavesPanel = dynamic(
   () => import("@/components/panels/SavesPanel").then((m) => m.SavesPanel),
   { ssr: false },

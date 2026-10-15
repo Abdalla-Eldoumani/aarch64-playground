@@ -11,6 +11,7 @@ import {
 import { IDLE_CPU_VIEW } from "@/lib/emulator/use-cpu-view";
 import type { RegView } from "@/lib/emulator/emulator-state";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
+import type { ProgramCheck } from "@/lib/playground/program-checks";
 import type { WalkCommand, WalkState } from "@/lib/playground/use-autoplay";
 import type { Action } from "@/lib/playground/commands";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
@@ -70,6 +71,8 @@ export type EmbeddablePlaygroundHandle = {
   getFiles(): SourceFile[];
   getArgs(): string;
   getCursor(): { line: number; column: number };
+  /** The checks panel's list (empty outside the full playground). */
+  getChecks(): ProgramCheck[];
   /** The command Action[] built inside the component so a host-rendered
    *  palette has no duplicate logic. */
   getCommands(): Action[];
@@ -96,6 +99,8 @@ export type EmbeddablePlaygroundProps = {
   startArgs?: string;
   startStdin?: string;
   startCursor?: { line: number; column: number };
+  /** Full chrome: the checks a share link carried. */
+  startChecks?: ProgramCheck[];
   /** The host knows a program arrived from a share link; drives the banner. */
   fromShare?: boolean;
   /** Hero = read-only; lessons and exercises editable. */
@@ -371,6 +376,7 @@ export const EmbeddablePlayground = forwardRef<
       getArgs: () => innerHandleRef.current?.getArgs() ?? startArgs ?? "",
       getCursor: () =>
         innerHandleRef.current?.getCursor() ?? { line: 1, column: 1 },
+      getChecks: () => innerHandleRef.current?.getChecks() ?? [],
       getCommands: () => innerHandleRef.current?.getCommands() ?? [],
       toggleBreakpoint: () => innerHandleRef.current?.toggleBreakpoint(),
       walk: (command: WalkCommand) => runOrQueue((handle) => handle.walk(command)),

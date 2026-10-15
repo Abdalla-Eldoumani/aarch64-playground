@@ -59,6 +59,14 @@ describe("resolveBoot", () => {
     expect(boot.fromBundle).toBe(false);
   });
 
+  it("carries a share link's checks, and none for a link without them", () => {
+    const checks = [{ name: "seven", stdin: "", args: "", stdout: "7\n" }];
+    expect(resolveBoot("", buildShareHash({ source: "ret", checks }), null, "default").checks).toEqual(
+      checks,
+    );
+    expect(resolveBoot("", SHARE_HASH, null, "default").checks).toBeUndefined();
+  });
+
   it("falls back to the autosave, then the default", () => {
     expect(resolveBoot("", "", "saved work", "default").source).toBe("saved work");
     expect(resolveBoot("", "", null, "default").source).toBe("default");
@@ -111,6 +119,17 @@ describe("resolveHandoff", () => {
     expect(decision.payload.stdin).toBe("in\n");
     expect(decision.payload.cursor).toEqual({ line: 2, column: 3 });
     expect(decision.payload.fromShare).toBe(true);
+  });
+
+  it("delivers a missed share link's checks with its program", () => {
+    const checks = [{ name: "seven", stdin: "", args: "", stdout: "7\n", exitCode: 0 }];
+    const decision = resolveHandoff(
+      { fromShare: false, fromBundle: false },
+      "",
+      buildShareHash({ source: "ret", checks }),
+    );
+    if (decision?.kind !== "share") throw new Error("expected share");
+    expect(decision.payload.checks).toEqual(checks);
   });
 
   it("delivers a bundle the boot missed, ahead of a share hash", () => {

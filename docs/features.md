@@ -60,6 +60,7 @@ repository root.
 | Loading a program from a link, an example, or the last session | `web/lib/playground/playground-handoff.ts`, `web/lib/hooks/use-deep-link.ts` |
 | Console or terminal choice for the interactive examples (`?run=`) | `web/components/playground/RunModeControl.tsx`, `web/lib/playground/playground-handoff.ts` |
 | Recent programs | `web/components/playground/RecentPrograms.tsx`, `web/lib/playground/auto-save.ts` |
+| Checks: a program's own test cases (stdin, args, expected output and exit code), run on the headless machine the exercise checker also uses, not the one being debugged | `web/components/playground/ChecksPanel.tsx`, `web/lib/playground/program-checks.ts`, `check-runner.ts`, `web/lib/emulator/headless-run.ts` |
 
 ## Panels
 
@@ -82,7 +83,7 @@ repository root.
 | Feature | Files |
 | --- | --- |
 | More than one source file | `web/components/playground/MultiFileTabs.tsx`, `web/lib/playground/file-map.ts` |
-| Share links (`#p2=`) | `web/lib/playground/share.ts`, `web/components/playground/ShareDialog.tsx` |
+| Share links (`#p2=`), with the checks when there are any | `web/lib/playground/share.ts`, `web/components/playground/ShareDialog.tsx` |
 | Import and export (`.asm`, `.s`, workspace `.json`) | `web/components/playground/ImportExport.tsx`, `web/lib/playground/workspace-bundle.ts` |
 | Command-line arguments | `web/components/playground/ArgsInput.tsx`, `web/lib/playground/args.ts` |
 | Upload size limits | `web/lib/playground/upload-guard.ts` |
