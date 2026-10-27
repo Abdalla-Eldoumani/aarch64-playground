@@ -1,5 +1,5 @@
 import { formatWord64 } from "@/lib/emulator/format-hex";
-import { readFrameLayout, readFrames, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { readFrameLayout, readFrames, type FrameExports, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -388,7 +388,7 @@ interface RawRunResult {
 }
 
 // the WASM module's Emulator instance shape
-interface WasmEmulatorInstance {
+interface WasmEmulatorInstance extends FrameExports {
   assemble_and_load(source: string): unknown;
   assemble_and_load_with_args(source: string, args: string[]): unknown;
   step(): unknown;
@@ -433,10 +433,6 @@ interface WasmEmulatorInstance {
   stderr_seen?(): number;
   /** Optional: clobber note rows, present once the crate ships them. */
   take_clobber_notes?(): Uint32Array;
-  /** Optional: the call stack and frame layout (FrameExports). */
-  frames?(): Float64Array;
-  frame_layout?(): Float64Array;
-  frame_names?(): string[];
   is_blocked(): boolean;
   get_exit_code(): bigint | number | null | undefined;
   upload_vfs_file(path: string, data: Uint8Array): void;
