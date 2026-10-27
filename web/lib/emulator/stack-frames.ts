@@ -409,6 +409,11 @@ export function drawFrames(input: DrawInput): DrawnStack {
   const rows = snapshot.frames;
   const innermost = rows[rows.length - 1];
 
+  const overwritten = (hit: FrameHit) => {
+    const line = lineOf(hit.pc);
+    return line ? `overwritten by ${line}` : "overwritten";
+  };
+
   const frameName = (record: number) => {
     const owner = rows.find((r) => r.record === record);
     if (owner) return nameOf(owner.entry);
@@ -474,8 +479,8 @@ export function drawFrames(input: DrawInput): DrawnStack {
         : row.fpEntry === 0
           ? "0, no caller frame"
           : `${frameName(row.fpEntry)}'s frame`;
-      const fpHit = fpChanged && row.fpHit != null;
-      boxes.push(box(R, 8, base, "saved", "saved fp (x29)", fpHit ? `${fpText} · overwritten` : fpText, fpHit));
+      const fpHit = fpChanged ? row.fpHit : null;
+      boxes.push(box(R, 8, base, "saved", "saved fp (x29)", fpHit ? `${fpText} · ${overwritten(fpHit)}` : fpText, !!fpHit));
       const savedLr = word(R + 8);
       const lrChanged = savedLr != null && savedLr !== BigInt(row.retAddr);
       const lrLine = lrChanged ? lineOf(Number(savedLr)) : lineOf(row.retAddr);
@@ -484,8 +489,8 @@ export function drawFrames(input: DrawInput): DrawnStack {
         : row.flags & RUNTIME_CALL
           ? "back to qsort or bsearch"
           : `back to ${lrLine ?? "the C runtime"}`;
-      const lrHit = lrChanged && row.lrHit != null;
-      boxes.push(box(R + 8, 8, base, "saved", "saved lr (x30)", lrHit ? `${lrText} · overwritten` : lrText, lrHit));
+      const lrHit = lrChanged ? row.lrHit : null;
+      boxes.push(box(R + 8, 8, base, "saved", "saved lr (x30)", lrHit ? `${lrText} · ${overwritten(lrHit)}` : lrText, !!lrHit));
       const top = row.spEntry - R;
       let gap = 16;
       const padding = (to: number) => {
