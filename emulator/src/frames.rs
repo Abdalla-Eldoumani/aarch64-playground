@@ -75,7 +75,7 @@ pub struct Activation {
     /// Where its frame record sat when it last called out, 0 for none.
     pub record: u64,
     /// One more than the index of the nearest caller with a frame record,
-    /// 0 for none: the record a stray store reaches first.
+    /// 0 for none: a chain through every record above this activation.
     watch: usize,
     pub flags: u8,
     /// The latest writes that changed its saved fp and its saved lr.
@@ -330,52 +330,71 @@ impl CallStack {
         0
     }
 
-    /// The step's writes (`writes`, from memory's undo log) against the
-    /// nearest caller frame record. A write that left its saved fp or lr
+    /// The step's writes (`writes`, from `Memory::step_writes`) against
+    /// every caller's frame record. A write that left a saved fp or lr
     /// holding something else is recorded on the record's owner, with the
     /// step and what `writer` returns: the writing pc and x29.
     ///
-    /// shortcut: only the nearest record is watched. An overflow reaches it
-    /// first, and its owner is the first to return wrong; watch every
-    /// record if a stray pointer write needs naming.
+    /// shortcut: the search takes the records to fall with depth, as they
+    /// do whenever a call leaves fp at or above sp; a call made with fp
+    /// below sp can put a record out of that order, and a write to it goes
+    /// unnamed. Scan every record if such a program ever needs naming.
     pub(crate) fn watch_writes(
         &mut self,
         writes: &[(u64, usize)],
         step: u64,
         mem: &Memory,
         writer: impl FnOnce() -> (u64, u64),
-        log: Option<&mut FrameUndo>,
+        mut log: Option<&mut FrameUndo>,
     ) {
         let Some(top) = self.acts.last() else { return };
         // Past the cap the recorded top is itself a caller.
-        let owner = if self.uncounted > 0 && top.record != 0 { self.acts.len() } else { top.watch };
-        let Some(i) = owner.checked_sub(1) else { return };
-        let record = self.acts[i].record;
-        let lands = |slot: u64, &(addr, len): &(u64, usize)| {
-            addr < slot.saturating_add(8) && addr.saturating_add(len as u64) > slot
-        };
-        if !writes.iter().any(|w| lands(record, w) || lands(record.wrapping_add(8), w)) {
+        let nearest = if self.uncounted > 0 && top.record != 0 { self.acts.len() } else { top.watch };
+        let Some(nearest) = nearest.checked_sub(1) else { return };
+        // The nearest record is the lowest: a write that ends below it
+        // reaches none, which is almost every write.
+        let floor = self.acts[nearest].record;
+        if writes.iter().all(|&(addr, len)| addr.saturating_add(len as u64) <= floor) {
             return;
         }
         let (pc, fp) = writer();
-        let owner = &mut self.acts[i];
-        let old = (owner.fp_hit, owner.lr_hit);
-        let slots = [(record, owner.fp_entry), (record.wrapping_add(8), owner.ret_addr)];
-        for w in writes {
-            for (k, &(slot, expect)) in slots.iter().enumerate() {
-                if lands(slot, w) && mem.read_u64(slot).ok() != Some(expect) {
-                    let hit = Hit { step, pc, fp_offset: w.0.wrapping_sub(fp) as i64 };
-                    if k == 0 {
-                        owner.fp_hit = hit;
-                    } else {
-                        owner.lr_hit = hit;
+        for &(addr, len) in writes {
+            let end = addr.saturating_add(len as u64);
+            // An activation's record, or else the nearest above it: these
+            // fall with depth, so the ones reaching past `addr` come first.
+            let record_from = |a: &Activation| match (a.record, a.watch) {
+                (0, 0) => u64::MAX,
+                (0, w) => self.acts[w - 1].record,
+                (r, _) => r,
+            };
+            let reaching = self.acts[..=nearest].partition_point(|a| record_from(a).saturating_add(16) > addr);
+            let mut at = reaching.checked_sub(1).and_then(|i| match self.acts[i].record {
+                0 => self.acts[i].watch.checked_sub(1),
+                _ => Some(i),
+            });
+            // Up the chain from the lowest record reaching past `addr` to
+            // the first that starts at or past `end`.
+            while let Some(i) = at {
+                let a = &mut self.acts[i];
+                if a.record >= end {
+                    break;
+                }
+                let lands = |slot: u64| addr < slot.saturating_add(8) && end > slot;
+                let old = (a.fp_hit, a.lr_hit);
+                let hit = Hit { step, pc, fp_offset: addr.wrapping_sub(fp) as i64 };
+                if lands(a.record) && mem.read_u64(a.record).ok() != Some(a.fp_entry) {
+                    a.fp_hit = hit;
+                }
+                let lr_slot = a.record.wrapping_add(8);
+                if lands(lr_slot) && mem.read_u64(lr_slot).ok() != Some(a.ret_addr) {
+                    a.lr_hit = hit;
+                }
+                if (a.fp_hit, a.lr_hit) != old {
+                    if let Some(log) = log.as_deref_mut() {
+                        log.hit.push((i, old.0, old.1));
                     }
                 }
-            }
-        }
-        if (owner.fp_hit, owner.lr_hit) != old {
-            if let Some(log) = log {
-                log.hit.push((i, old.0, old.1));
+                at = a.watch.checked_sub(1);
             }
         }
     }
