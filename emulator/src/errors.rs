@@ -8,7 +8,7 @@ pub enum MemAccess {
 }
 
 /// Every fallible operation in the emulator returns this.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum EmuError {
     /// Instruction word does not match any known encoding.
     UnknownInstruction(u32),
@@ -163,6 +163,15 @@ impl fmt::Display for EmuError {
             }
             Self::RuntimeError { message } => write!(f, "{message}"),
         }
+    }
+}
+
+// A derived Debug would escape every message string, and the `expect`
+// calls on an EmuError result would ship that code (about 1 kB
+// compressed) for panic text no student sees.
+impl fmt::Debug for EmuError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(self, f)
     }
 }
 
