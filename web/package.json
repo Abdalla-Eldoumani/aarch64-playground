@@ -57,6 +57,11 @@
       "limit": "80 KB"
     },
     {
+      "name": "lazy stack frames view",
+      "path": ".next/static/chunks/frames.*.js",
+      "limit": "5 KB"
+    },
+    {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
       "limit": "217.4 KB"
