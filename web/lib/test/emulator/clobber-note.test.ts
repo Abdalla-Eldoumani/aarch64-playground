@@ -27,6 +27,12 @@ describe("clobberNoteTexts", () => {
     ]);
   });
 
+  it("leaves a callee-saved register's row to the frames view", () => {
+    // x19 is never a library call's leftover: its row comes from a ret.
+    expect(clobberNoteTexts([19, 0, 5, 6, 28, 0, 5, 6], ONE_FILE)).toEqual([]);
+    expect(clobberNoteTexts([19, 0, 5, 6, 9, 0, 5, 6], ONE_FILE)).toHaveLength(1);
+  });
+
   it("words a d register with the floating-point ranges", () => {
     // d3 is 32 + 3.
     const [note] = clobberNoteTexts([35, 0, 5, 6], ONE_FILE);
