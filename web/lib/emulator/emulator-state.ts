@@ -68,7 +68,7 @@ export interface EmulatorState {
   externalCall: ExternalCall | null;
   /** The call stack numbers as of the last snapshot, null before a
    *  program loads and on a wasm build without them. Raw on purpose:
-   *  `decodeFrames` (lib/emulator/frame-data) ships with the view that
+   *  `decodeFrames` (lib/emulator/stack-frames) ships with the view that
    *  reads them, not with every page the hub runs on. */
   frames: number[] | null;
   /** The last assemble's frame layout for `decodeFrameLayout`; null
