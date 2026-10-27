@@ -5,6 +5,7 @@ import {
   loadMemoryMap,
   type EmulatorInstance,
 } from "@/lib/emulator/emulator";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { runChunked } from "@/lib/emulator/run-loop";
 import {
@@ -70,6 +71,9 @@ export interface EmulatorBackend {
   /** The emulator's address bands, read once from the wasm module; empty
    *  on a build that predates the export. */
   memoryMap(): Promise<MemoryRegion[]>;
+  /** The last assemble's frame layout (lib/emulator/frame-data); null on
+   *  a wasm build that predates it. */
+  frameLayout(): Promise<FrameLayoutPayload | null>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
 }
@@ -285,6 +289,10 @@ class MainThreadBackend implements EmulatorBackend {
     return this.regions;
   }
 
+  async frameLayout(): Promise<FrameLayoutPayload | null> {
+    return this.requireEmu().frameLayout();
+  }
+
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -309,6 +317,7 @@ class MainThreadBackend implements EmulatorBackend {
     const stdoutSeen = this.emu.stdoutSeen();
     const stderrSeen = this.emu.stderrSeen();
     const clobberNotes = this.emu.takeClobberNotes();
+    const frames = this.emu.frames();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -328,6 +337,7 @@ class MainThreadBackend implements EmulatorBackend {
       ...(stdoutSeen != null ? { stdoutSeen } : {}),
       ...(stderrSeen != null ? { stderrSeen } : {}),
       ...(clobberNotes.length ? { clobberNotes } : {}),
+      ...(frames ? { frames } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
