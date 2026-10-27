@@ -1,5 +1,6 @@
 "use client";
 
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type {
   AssembleResultPayload,
@@ -208,6 +209,10 @@ export class WorkerClient {
 
   memoryMap(): Promise<MemoryRegion[]> {
     return this.send<MemoryRegion[]>({ id: 0, kind: "memoryMap" });
+  }
+
+  frameLayout(): Promise<FrameLayoutPayload | null> {
+    return this.send<FrameLayoutPayload | null>({ id: 0, kind: "frameLayout" });
   }
 
   terminate(): void {
