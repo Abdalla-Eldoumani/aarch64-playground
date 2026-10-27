@@ -131,19 +131,16 @@ main:
 // helper's array holds four ints at fp + 16 to fp + 31, the top of its
 // 32-byte frame, so arr[4] to arr[7] land on main's frame record, which
 // starts right above: arr[4] and arr[5] on the saved fp, arr[6] and arr[7]
-// on the saved lr.
-const ARRAY_OVERFLOW = `// helper writes 8 ints into a 4-int local array: the last four land on
-// main's saved fp and lr.
+// on the saved lr. Laid out so the store sits on line 32 and its eighth run
+// is step 45, the moment the course's overflow walkthrough stops on.
+const ARRAY_OVERFLOW = `// helper writes 8 ints into its 4-int array: the last four land on main's saved fp and lr.
 define(fp, x29)
 define(lr, x30)
-
 arr_s = 16                              // int arr[4]: bytes 16 to 31
 alloc = -(16 + 16) & -16                // 16 bytes of locals: -32
 dealloc = -alloc
-
 .data
-fmt:    .string "done\\n"
-
+fmt_done:   .string "done\\n"
 .text
         .balign 4
         .global main
@@ -151,13 +148,12 @@ main:
         stp     fp, lr, [sp, alloc]!
         mov     fp, sp
         bl      helper
-        ldr     x0, =fmt
+        ldr     x0, =fmt_done
         bl      printf
         mov     w0, 0
         ldp     fp, lr, [sp], dealloc
         ret
-
-// helper() fills arr[i] = i (bug: runs to 8, arr holds 4)
+// helper() sets arr[i] = i while i < 8, but arr holds 4 ints
         .balign 4
         .global helper
 helper:
@@ -165,13 +161,13 @@ helper:
         mov     fp, sp
         add     x9, fp, arr_s           // x9 = &arr[0]
         mov     w10, 0                  // i = 0
-        b       hp_test
 hp_loop:
-        str     w10, [x9, w10, SXTW 2]  // arr[i] = i
+        cmp     w10, 8                  // bug: the bound should be 4
+        b.ge    hp_done
+        str     w10, [x9, w10, sxtw 2]  // arr[i] = i
         add     w10, w10, 1
-hp_test:
-        cmp     w10, 8                  // bug: should be 4
-        b.lt    hp_loop
+        b       hp_loop
+hp_done:
         ldp     fp, lr, [sp], dealloc
         ret
 `;
@@ -399,16 +395,19 @@ describe("drawFrames", () => {
     p.emu.free();
   });
 
-  // After arr[7] = 7: main's saved fp holds arr[5]:arr[4] = 0x5_00000004
-  // and its saved lr arr[7]:arr[6] = 0x7_00000006, which is no code.
-  it("marks main's saved fp and lr overwritten by the array's last four", () => {
+  // Step 45 stores arr[7] = 7: main's saved fp holds arr[5]:arr[4] =
+  // 0x5_00000004 and its saved lr arr[7]:arr[6] = 0x7_00000006, which is no
+  // code. Both were last changed by the store on line 32.
+  it("marks main's saved fp and lr overwritten by the array's last four, naming the line", () => {
     const p = load(ARRAY_OVERFLOW);
-    runTo(p, lineOf(ARRAY_OVERFLOW, "str     w10, [x9, w10, SXTW 2]"), 8);
+    expect(lineOf(ARRAY_OVERFLOW, "str     w10, [x9, w10, sxtw 2]")).toBe(32);
+    for (let i = 0; i < 44; i++) p.emu.step();
     const stack = draw(p, stepWriting(p));
+    expect(Number(p.emu.frames()[0])).toBe(45);
     expect(rows(stack, 0)).toEqual([
       "fp + 16 | padding | 16 bytes",
-      "fp + 8 | saved lr (x30) | 0x700000006 (not code) · overwritten",
-      "fp + 0 | saved fp (x29) | 0x500000004 · overwritten",
+      "fp + 8 | saved lr (x30) | 0x700000006 (not code) · overwritten by line 32",
+      "fp + 0 | saved fp (x29) | 0x500000004 · overwritten by line 32",
     ]);
     expect(stack.frames[0].boxes.map((b) => [b.kind, b.overwritten, b.wrote])).toEqual([
       ["padding", false, false],
@@ -425,6 +424,9 @@ describe("drawFrames", () => {
       `fp + 8 | saved lr (x30) | back to line ${call + 1}`,
       "fp + 0 | saved fp (x29) | main's frame | sp, fp",
     ]);
+    // Only a saved fp or lr ever names the line that wrote it.
+    const others = stack.frames.flatMap((f) => f.boxes).filter((b) => b.kind !== "saved");
+    expect(others.filter((b) => /overwritten|by line/.test(b.detail))).toEqual([]);
     p.emu.free();
   });
 });
