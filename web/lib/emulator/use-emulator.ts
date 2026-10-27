@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
-import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
+import { at, clobberNoteTexts, place } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
@@ -110,6 +110,10 @@ export function useEmulator(): EmulatorState {
   const lastCallRef = useRef<ExternalCall | null>(null);
   const [frames, setFrames] = useState<number[] | null>(null);
   const [frameLayout, setFrameLayout] = useState<FrameLayoutPayload | null>(null);
+  const lineLabel = useCallback((addr: number) => {
+    const line = pcToSourceLineFromMap(addr, lineMapRef.current);
+    return line == null ? null : at(place(line, workspaceRef.current));
+  }, []);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
@@ -769,6 +773,7 @@ export function useEmulator(): EmulatorState {
       externalCall,
       frames,
       frameLayout,
+      lineLabel,
       instructions,
       codeBase,
       memoryRegions,
@@ -828,7 +833,7 @@ export function useEmulator(): EmulatorState {
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
-      currentLine, externalCall, frames, frameLayout, instructions, codeBase, memoryRegions,
+      currentLine, externalCall, frames, frameLayout, lineLabel, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
