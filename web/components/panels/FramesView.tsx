@@ -92,17 +92,23 @@ export function FramesView({
     }
   }
 
-  // The innermost frame stays in view while stepping: the nearest edge,
-  // written to this box alone so the page never scrolls under the reader.
+  // While stepping, what the step wrote stays in view (a write over a
+  // caller's frame is the bug to see), else the innermost call: the nearest
+  // edge, or the low end, where sp is, of anything taller than the box.
+  // Written to this box alone, so the page never scrolls under the reader.
   const boxRef = useRef<HTMLDivElement>(null);
   const innermostRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     const box = boxRef.current;
-    const frame = innermostRef.current;
-    if (!box || !frame || running) return;
-    const bottom = frame.offsetTop + frame.offsetHeight;
-    if (bottom > box.scrollTop + box.clientHeight) box.scrollTop = bottom - box.clientHeight;
-    else if (frame.offsetTop < box.scrollTop) box.scrollTop = frame.offsetTop;
+    if (!box || running) return;
+    const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
+    const targets = wrote.length > 0 ? wrote : innermostRef.current ? [innermostRef.current] : [];
+    if (targets.length === 0) return;
+    const top = Math.min(...targets.map((t) => t.offsetTop));
+    const bottom = Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight));
+    if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
+      box.scrollTop = bottom - box.clientHeight;
+    } else if (top < box.scrollTop) box.scrollTop = top;
   }, [frames, running]);
 
   const idle = !programLoaded
@@ -147,6 +153,7 @@ export function FramesView({
                   {frame.boxes.map((box) => (
                     <li
                       key={box.addr}
+                      data-wrote={box.wrote || undefined}
                       className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2"
                     >
                       <span className="text-right font-mono text-[12px] text-[var(--text-tertiary)]">
