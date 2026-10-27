@@ -1,7 +1,15 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import {
+  decodeFrameLayout,
+  decodeFrames,
+  FRAME_STATE,
+  readFrameLayout,
+  readFrames,
+} from "@/lib/emulator/frame-data";
 
 // Pins the emulator calls the web layer relies on, against the real node
 // build. Every expected value is worked out by hand in the comments, never by
@@ -829,5 +837,101 @@ describe("clobber notes", () => {
       expect(Array.from(emu.take_clobber_notes())).toEqual([9, 0, 10, 12]);
       expect(Array.from(emu.take_clobber_notes())).toEqual([]);
     });
+  });
+});
+
+describe("frames", () => {
+  /** The address the line map gives 1-based editor `line`. */
+  function pcOfLine(emu: EmulatorInstance, line: number): number {
+    const map = Array.from(emu.get_line_map());
+    for (let i = 0; i + 1 < map.length; i += 2) {
+      if (map[i + 1] === line) return map[i];
+    }
+    throw new Error(`no instruction on line ${line}`);
+  }
+
+  // The shipped locals example with its fixture input "7 4", stopped on
+  // line 38 (`ldr a_r, [fp, a_s]`), once scanf has stored both. The slides
+  // draw this frame: 32 bytes, the saved fp at fp + 0 (0, main has no
+  // caller frame) and the saved lr at fp + 8, a_s = 7 at fp + 16 and
+  // b_s = 4 at fp + 20.
+  it("decodes the locals frame the slides draw", () => {
+    withEmulator((emu) => {
+      const source = readFileSync(path.join(process.cwd(), "public/examples/cpsc355/locals.s"), "utf8");
+      assemble(emu, source);
+      emu.push_stdin("7 4\n");
+      emu.set_breakpoint(pcOfLine(emu, 38));
+      emu.run_until_break(10_000);
+      const snap = decodeFrames(emu.frames());
+      const layout = decodeFrameLayout({ numbers: Array.from(emu.frame_layout()), names: emu.frame_names() });
+      expect(snap?.frames).toHaveLength(1);
+      const main = snap!.frames[0];
+      const fp = Number(emu.get_register(29));
+      expect(main.state).toBe(FRAME_STATE.complete);
+      expect(main.record).toBe(fp);
+      expect(main.spEntry - main.lo).toBe(32);
+      expect(readU64(emu, fp)).toBe(0n);
+      const view = new DataView(emu.get_memory_range(fp + 16, 8).buffer);
+      expect([view.getInt32(0, true), view.getInt32(4, true)]).toEqual([7, 4]);
+      const fn = layout!.functions.find((f) => f.entry === main.entry);
+      expect(fn?.name).toBe("main");
+      expect(fn?.frameBytes).toBe(32);
+      expect(fn?.slots.map((s) => [s.offset, s.width, s.name])).toEqual([
+        [16, 4, "a_s"],
+        [20, 4, "b_s"],
+      ]);
+      expect(snap!.chainOk).toBe(true);
+    });
+  });
+
+  // helper writes marks[i] = i + 1 for i = 0 to 7 into a four-int array at
+  // fp + 16 of its 32-byte frame, which ends at main's frame record, so
+  // marks[4] and marks[5] land on main's saved fp and marks[6] and
+  // marks[7] on its saved lr: 7 | 8 << 32. main's ret then jumps to
+  // 0x800000007. Line 11 is the store, line 22 main's ret.
+  it("reports the writes over main's record and the return they break", () => {
+    withEmulator((emu) => {
+      assemble(
+        emu,
+        [
+          "marks_s = 16", // 1
+          "        .text", // 2
+          "        .global helper", // 3
+          "helper: stp     x29, x30, [sp, -32]!", // 4
+          "        mov     x29, sp", // 5
+          "        add     x9, x29, marks_s", // 6
+          "        mov     w10, 0", // 7
+          "        b       test", // 8
+          "fill:", // 9
+          "        add     w11, w10, 1", // 10
+          "        str     w11, [x9, w10, sxtw 2]", // 11
+          "        add     w10, w10, 1", // 12
+          "test:   cmp     w10, 8", // 13
+          "        b.lt    fill", // 14
+          "        ldp     x29, x30, [sp], 32", // 15
+          "        ret", // 16
+          "        .global main", // 17
+          "main:   stp     x29, x30, [sp, -32]!", // 18
+          "        mov     x29, sp", // 19
+          "        bl      helper", // 20
+          "        ldp     x29, x30, [sp], 32", // 21
+          "        ret", // 22
+        ].join("\n"),
+      );
+      emu.run_until_break(10_000);
+      expect(emu.is_halted()).toBe(true);
+      const snap = decodeFrames(emu.frames())!;
+      const main = snap.frames[0];
+      expect(main.fpHit).toMatchObject({ pc: pcOfLine(emu, 11), element: 5 });
+      expect(main.lrHit).toMatchObject({ pc: pcOfLine(emu, 11), element: 7 });
+      expect(emu.frame_names()[main.lrHit!.arrayName!]).toBe("marks_s");
+      expect(snap.badReturn).toMatchObject({ pc: pcOfLine(emu, 22), target: 0x8_0000_0007 });
+    });
+  });
+
+  it("reads as absent from a wasm build that predates the frames", () => {
+    expect(readFrames({})).toBeNull();
+    expect(readFrameLayout({})).toBeNull();
+    expect(decodeFrames([])).toBeNull();
   });
 });
