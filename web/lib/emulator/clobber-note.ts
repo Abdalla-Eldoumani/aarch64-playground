@@ -51,7 +51,7 @@ export function place(line: number, ws: Workspace): Place {
 }
 
 /** "line 16", or "ui.s line 269" in a helper file. */
-function at(p: Place): string {
+export function at(p: Place): string {
   return p.file ? `${p.file} line ${p.line}` : `line ${p.line}`;
 }
 
