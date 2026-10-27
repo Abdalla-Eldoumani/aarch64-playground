@@ -10,6 +10,9 @@ const h = vi.hoisted(() => ({
   // The clobber note rows the fake wrapper drains; [] is also what an
   // older wasm build answers.
   notes: [] as number[],
+  // The call stack numbers the fake wrapper reports; null is the older-wasm
+  // answer.
+  frames: null as number[] | null,
 }));
 
 vi.mock("@/lib/worker/client", () => ({
@@ -42,6 +45,7 @@ function fakeEmu() {
     stdoutSeen: () => h.seen.stdout,
     stderrSeen: () => h.seen.stderr,
     takeClobberNotes: () => h.notes,
+    frames: () => h.frames,
     listVfsFiles: () => [],
     listStates: () => [],
     takeDirtyAddrs: () => [],
@@ -177,5 +181,17 @@ describe("MainThreadBackend clobber notes", () => {
     h.notes = [];
     const without = await pickBackend()!.init();
     expect("clobberNotes" in without).toBe(false);
+  });
+});
+
+describe("MainThreadBackend frames", () => {
+  test("the snapshot carries the call stack numbers, and no key from an older wasm", async () => {
+    setPref("main");
+    h.frames = [7, 0, 0, 0, 1, 0, 0, 0, 0, 0];
+    const withFrames = await pickBackend()!.init();
+    expect(withFrames.frames).toEqual([7, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+    h.frames = null;
+    const without = await pickBackend()!.init();
+    expect("frames" in without).toBe(false);
   });
 });
