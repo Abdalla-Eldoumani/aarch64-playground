@@ -25,12 +25,14 @@ type FramesViewProps = Pick<
   | "programLoaded"
 > & { running: boolean };
 
-// Saved registers sit on a raised surface in the register ink, locals on a
-// faint success tint, and the gaps are dashed outlines; a changed saved
-// register takes the danger style instead. Every tint mixes over --bg-base,
-// so its text contrast is the one the theme tests hold for 15% fills.
+// Saved registers sit on a raised surface in the approved look's purple (the
+// number ink: the register ink is pink in the dark themes and read as the
+// danger red beside it), locals on a faint success tint, and the gaps are
+// dashed outlines; a changed saved register takes the danger style instead.
+// Every tint mixes over --bg-base, so its text contrast is the one the theme
+// tests hold for 15% fills.
 const KIND_STYLE: Record<BoxKind, string> = {
-  saved: "border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--syntax-register)]",
+  saved: "border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--syntax-number)]",
   local: "border border-[var(--border)] bg-[color-mix(in_srgb,var(--success)_10%,var(--bg-base))] text-[var(--success)]",
   padding: "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)]",
   reserved: "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)]",
@@ -145,7 +147,7 @@ export function FramesView({
                   {frame.boxes.map((box) => (
                     <li
                       key={box.addr}
-                      className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_3.5rem] items-center gap-2"
+                      className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2"
                     >
                       <span className="text-right font-mono text-[12px] text-[var(--text-tertiary)]">
                         {box.offset}
@@ -162,7 +164,7 @@ export function FramesView({
                           {box.wrote && <span className="sr-only">, just written</span>}
                         </div>
                       </div>
-                      <span className="font-mono text-[12px] text-[var(--text-secondary)]">
+                      <span className="whitespace-nowrap font-mono text-[12px] text-[var(--text-secondary)]">
                         {box.marker && (
                           <>
                             <span aria-hidden="true">← </span>
