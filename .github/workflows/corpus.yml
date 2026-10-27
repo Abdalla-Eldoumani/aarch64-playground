@@ -21,7 +21,9 @@ env:
 jobs:
   regen:
     name: rebuild and compare behaviour (cross gcc + qemu)
-    runs-on: ubuntu-latest
+    # Both jobs stay on 24.04 through the term: the C corpus references come
+    # from this image's gcc, and a newer image brings a newer gcc.
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -36,7 +38,7 @@ jobs:
 
   optimized:
     name: replay the optimized tiers (emulator)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
