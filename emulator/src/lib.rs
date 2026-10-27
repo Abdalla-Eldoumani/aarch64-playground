@@ -5,6 +5,7 @@ pub mod decoder;
 pub mod errors;
 pub mod executor;
 pub mod fpu;
+pub mod frames;
 pub mod frontend;
 pub mod hosted;
 pub mod memory;
@@ -231,6 +232,10 @@ pub struct Emulator {
     /// instead. Kept here rather than on `cpu` because it is not execution
     /// state.
     line_map: Vec<u32>,
+    /// The slots each function names, from the same assemble: what the
+    /// frames view draws inside each activation. Empty beside an empty
+    /// line map.
+    frame_layout: frames::layout::FrameLayout,
 }
 
 /// Flatten the linker's `(addr, line)` pairs into the flat `[addr, line,
@@ -348,7 +353,7 @@ impl Emulator {
     pub fn new() -> Self {
         // install panic hook so Rust panics surface as readable JS errors
         console_error_panic_hook::set_once();
-        Self { cpu: Cpu::new(), line_map: Vec::new() }
+        Self { cpu: Cpu::new(), line_map: Vec::new(), frame_layout: Default::default() }
     }
 
     /// Assemble source text and load the resulting program. Sources that
@@ -361,6 +366,7 @@ impl Emulator {
         // failed assemble or the bare-metal path leaves it empty and the
         // web layer falls back to the legacy line-count heuristic.
         self.line_map.clear();
+        self.frame_layout = Default::default();
         if detect_hosted_mode(source) {
             self.cpu.reset();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
@@ -368,13 +374,16 @@ impl Emulator {
                     let count = image.instruction_count;
                     self.line_map = flatten_line_map(&image.line_map);
                     match self.cpu.load_linked_image(&image) {
-                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
-                            success: true,
-                            error: None,
-                            error_line: None,
-                            instruction_count: count,
-                        })
-                        .unwrap(),
+                        Ok(()) => {
+                            self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
+                            serde_wasm_bindgen::to_value(&AssembleResultJs {
+                                success: true,
+                                error: None,
+                                error_line: None,
+                                instruction_count: count,
+                            })
+                            .unwrap()
+                        }
                         Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
                             success: false,
                             error: Some(e.to_string()),
@@ -445,6 +454,7 @@ impl Emulator {
     ) -> JsValue {
         // Clear the map up front for the same reason as assemble_and_load.
         self.line_map.clear();
+        self.frame_layout = Default::default();
         if detect_hosted_mode(source) {
             self.cpu.reset();
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -453,13 +463,16 @@ impl Emulator {
                     let count = image.instruction_count;
                     self.line_map = flatten_line_map(&image.line_map);
                     match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
-                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
-                            success: true,
-                            error: None,
-                            error_line: None,
-                            instruction_count: count,
-                        })
-                        .unwrap(),
+                        Ok(()) => {
+                            self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
+                            serde_wasm_bindgen::to_value(&AssembleResultJs {
+                                success: true,
+                                error: None,
+                                error_line: None,
+                                instruction_count: count,
+                            })
+                            .unwrap()
+                        }
                         Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
                             success: false,
                             error: Some(e.to_string()),
@@ -814,6 +827,24 @@ impl Emulator {
         let mut rows = self.cpu.take_clobber_notes();
         clobber_note_lines(&mut rows, &self.line_map);
         rows
+    }
+
+    /// The call stack as the program stands, as the flat numbers
+    /// `frames::view_numbers` lays out; worked out on each call, so the
+    /// web asks once per snapshot.
+    pub fn frames(&self) -> Vec<f64> {
+        frames::view_numbers(&frames::frame_view(&self.cpu, &self.frame_layout))
+    }
+
+    /// The last assemble's frame layout as the flat numbers
+    /// `FrameLayout::numbers` lays out. Changes only on assemble.
+    pub fn frame_layout(&self) -> Vec<f64> {
+        self.frame_layout.numbers()
+    }
+
+    /// The program's own names the layout refers to by index.
+    pub fn frame_names(&self) -> Vec<String> {
+        self.frame_layout.names.clone()
     }
 
     // -- hosted runtime --
