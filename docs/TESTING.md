@@ -145,7 +145,9 @@ npm run size
 It checks each budget in the `size-limit` list in `web/package.json` (the
 route chunks, the lazy editor and terminal, the emulator's `.wasm`, the
 stylesheets, and two index payloads), then runs `scripts/bundle-budget.js` for
-the shared chunks the home page and the playground load.
+the shared chunks the home page and the playground load. That script also
+fails when any copy of DOMPurify in the built chunks is older than the version
+`overrides` pins in `web/package.json` (docs/security.md, "Dependencies").
 
 `npm run lighthouse` and `npm run lighthouse:mobile` measure a production
 server that is already running on <http://localhost:3000> (`npm run start`).
