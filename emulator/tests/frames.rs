@@ -1,0 +1,773 @@
+//! The call stack behind the stack frames view, through the crate's public
+//! surface: the activations a program is inside, the view a snapshot
+//! draws, the static layout that names the slots, and the records of a
+//! write over a caller's saved fp or lr and of a return that goes astray.
+//! Expected numbers come from the course's slides and from frames worked
+//! out by hand, never from the tracker's own arithmetic.
+
+#[path = "common/frame_walk.rs"]
+mod frame_walk;
+
+use std::path::PathBuf;
+
+use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
+use aarch64_emulator::frames::{
+    frame_view, Activation, BadReturn, FrameView, Hit, COMPLETE, ENTERED, LEAF, LR_UNSAVED, MAX_ACTIVATIONS,
+    MAX_DRAWN, RESERVED, RUNTIME_CALL,
+};
+use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
+use frame_walk::{walk, Tally};
+
+fn repo_root() -> PathBuf {
+    let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    p.pop();
+    p
+}
+
+fn read(path: &PathBuf) -> String {
+    std::fs::read_to_string(path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()))
+        .replace("\r\n", "\n")
+}
+
+struct Loaded {
+    cpu: Cpu,
+    image: LinkedImage,
+    layout: FrameLayout,
+}
+
+fn load(source: &str) -> Loaded {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(source, &cpu.host).unwrap_or_else(|e| panic!("assemble: {e}"));
+    cpu.load_linked_image(&image).expect("load");
+    let layout = frame_layout(source, &image, &cpu.mem);
+    Loaded { cpu, image, layout }
+}
+
+impl Loaded {
+    /// The address of the first instruction on 1-based editor `line`.
+    fn pc_of(&self, line: u32) -> u64 {
+        self.image
+            .line_map
+            .iter()
+            .find(|(_, l)| *l == line)
+            .unwrap_or_else(|| panic!("no instruction on line {line}"))
+            .0
+    }
+
+    /// Run until the instruction on `line` is next.
+    fn run_to_line(&mut self, line: u32) {
+        let pc = self.pc_of(line);
+        self.cpu.set_breakpoint(pc);
+        let r = self.cpu.run_until_break(1_000_000).expect("run");
+        self.cpu.clear_breakpoint(pc);
+        assert_eq!(self.cpu.regs.read_pc(), pc, "stopped at {r:?} instead of line {line}");
+    }
+
+    fn view(&self) -> FrameView {
+        frame_view(&self.cpu, &self.layout)
+    }
+
+    fn name(&self, id: Option<u32>) -> &str {
+        id.map_or("", |i| self.layout.names[i as usize].as_str())
+    }
+
+    fn mem_u32(&self, at: u64) -> u32 {
+        self.cpu.mem.read_u32(at).expect("mapped")
+    }
+
+    fn mem_u64(&self, at: u64) -> u64 {
+        self.cpu.mem.read_u64(at).expect("mapped")
+    }
+
+    fn step(&mut self, n: usize) {
+        for _ in 0..n {
+            self.cpu.step().expect("step");
+        }
+    }
+}
+
+fn assert_agrees(tally: &Tally) {
+    assert_eq!(
+        tally.disagree, 0,
+        "the frame chain disagreed with the call stack:\n  {}",
+        tally.examples.join("\n  ")
+    );
+    assert!(tally.agree > 0, "no step was checked");
+}
+
+// ---------------------------------------------------------------------------
+// Agreement with the frame chain at every step
+// ---------------------------------------------------------------------------
+
+/// Long-running examples (calc, snake, deadzone) idle in a loop for
+/// millions of steps; the first stretch covers every call they make.
+const EXAMPLE_STEPS: u64 = 300_000;
+
+/// The helper files of the two multi-file examples, in the order the web
+/// pastes them, read from the list the web itself uses.
+fn example_files(stem: &str) -> Vec<String> {
+    let handoff = read(&repo_root().join("web/lib/playground/playground-handoff.ts"));
+    let list = handoff.split("export const EXAMPLE_FILES").nth(1).expect("EXAMPLE_FILES");
+    let Some(body) = list.split(&format!("{stem}: [")).nth(1) else { return Vec::new() };
+    body.split(']')
+        .next()
+        .unwrap_or("")
+        .split('"')
+        .skip(1)
+        .step_by(2)
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn every_shipped_example_agrees_with_the_frame_chain_at_every_step() {
+    let dir = repo_root().join("web/public/examples/cpsc355");
+    let mut stems: Vec<String> = std::fs::read_dir(&dir)
+        .expect("examples")
+        .filter_map(|e| e.ok()?.file_name().into_string().ok()?.strip_suffix(".s").map(str::to_string))
+        .collect();
+    stems.sort();
+    assert!(stems.len() >= 27, "examples shrank: {}", stems.len());
+    let mut total = Tally::default();
+    for stem in &stems {
+        let mut source = read(&dir.join(format!("{stem}.s")));
+        for name in example_files(stem) {
+            source.push_str(&format!("\n// ---- {name} ----\n"));
+            source.push_str(&read(&dir.join(stem).join(&name)));
+        }
+        let mut cpu = Cpu::new();
+        let image = assemble_hosted(&source, &cpu.host).unwrap_or_else(|e| panic!("{stem}: {e}"));
+        let args_line = std::fs::read_to_string(dir.join("fixtures").join(format!("{stem}.args"))).unwrap_or_default();
+        let args: Vec<&str> = args_line.split_whitespace().collect();
+        cpu.load_linked_image_with_args(&image, &args).expect("load");
+        if let Ok(stdin) = std::fs::read_to_string(dir.join("fixtures").join(format!("{stem}.stdin"))) {
+            cpu.push_stdin(stdin.replace("\r\n", "\n").as_bytes());
+        }
+        total.add(walk(&mut cpu, EXAMPLE_STEPS, stem));
+    }
+    println!("examples: {total:?}");
+    assert_agrees(&total);
+}
+
+/// Ten C programs at -O0 covering what course code rarely does: deep and
+/// mutual recursion, tail calls written as calls, function pointers,
+/// qsort and bsearch running the program's comparators, varargs and big
+/// frames. The whole corpus runs weekly (c_corpus.rs).
+const C_SUBSET: [&str; 10] = [
+    "05_functions",
+    "26_deep_recursion",
+    "38_varargs",
+    "40_funcptr_qsort_like",
+    "52_mutual_recursion",
+    "54_tail_calls",
+    "55_big_frames",
+    "80_qsort_bsearch",
+    "82_callbacks_generic",
+    "83_linked_lists",
+];
+
+/// Each program's first steps, which reach every kind of call each makes:
+/// to the end, the 6,000-deep recursion in 54_tail_calls alone takes
+/// seconds. The weekly test walks every corpus program to its end.
+const C_SUBSET_STEPS: u64 = 150_000;
+
+#[test]
+fn ten_c_programs_agree_with_the_frame_chain_at_every_step() {
+    let dir = repo_root().join("emulator/tests/c-corpus");
+    let mut total = Tally::default();
+    for stem in C_SUBSET {
+        let source = read(&dir.join(format!("{stem}.s")));
+        let mut cpu = Cpu::new();
+        let image = assemble_hosted(&source, &cpu.host).unwrap_or_else(|e| panic!("{stem}: {e}"));
+        cpu.load_linked_image(&image).expect("load");
+        if let Ok(stdin) = std::fs::read_to_string(dir.join(format!("{stem}.stdin"))) {
+            cpu.push_stdin(stdin.replace("\r\n", "\n").as_bytes());
+        }
+        cpu.close_stdin();
+        let tally = walk(&mut cpu, C_SUBSET_STEPS, stem);
+        assert_eq!(cpu.call_stack().bad_return(), BadReturn::default(), "{stem}: a return went astray");
+        total.add(tally);
+    }
+    println!("C subset: {total:?}");
+    assert_agrees(&total);
+    assert!(total.max_depth > 1000, "the subset reaches deep recursion");
+}
+
+// ---------------------------------------------------------------------------
+// Frames as the course draws them
+// ---------------------------------------------------------------------------
+
+#[test]
+fn the_locals_example_has_the_frame_on_the_slides() {
+    let mut p = load(&read(&repo_root().join("web/public/examples/cpsc355/locals.s")));
+    p.cpu.push_stdin(b"7 4\n");
+    p.run_to_line(38); // ldr a_r, [fp, a_s]: scanf has stored both
+    let v = p.view();
+    assert_eq!(v.frames.len(), 1);
+    let main = &v.frames[0];
+    let fp = p.cpu.regs.snapshot()[29];
+    assert_eq!((main.state, main.record), (COMPLETE, fp));
+    // The slides: a 32-byte frame, the saved fp at fp + 0 and the saved lr
+    // at fp + 8, a_s = 7 at fp + 16 and b_s = 4 at fp + 20.
+    assert_eq!(main.activation.sp_entry - main.lo, 32);
+    assert_eq!(p.mem_u64(fp), 0, "main has no caller frame");
+    assert_eq!(Some(p.mem_u64(fp + 8)), p.cpu.host.lookup("__main_return"));
+    let f = p.layout.function_at(main.activation.entry).expect("main's layout");
+    assert_eq!((p.name(f.name), f.frame_bytes), ("main", 32));
+    let slots: Vec<(i64, u8, &str)> = f.slots.iter().map(|s| (s.offset, s.width, p.name(s.name))).collect();
+    assert_eq!(slots, [(16, 4, "a_s"), (20, 4, "b_s")]);
+    assert_eq!((p.mem_u32(fp + 16), p.mem_u32(fp + 20)), (7, 4));
+    assert!(v.chain_ok);
+}
+
+/// Three locals with padding, worked by hand: a 48-byte frame with count
+/// at fp + 16, padding at 20 to 23 so the long starts at a multiple of 8,
+/// total at fp + 24, flag at fp + 32, and 12 bytes of padding above it.
+const PADDED: &str = r#"
+// Keeps a count, a long total and a flag in main's frame, with padding
+// before the long so it starts at a multiple of 8.
+
+define(fp, x29)
+define(lr, x30)
+
+count_s = 16                            // int count: bytes 16 to 19
+total_s = 24                            // long total: bytes 24 to 31
+flag_s = 32                             // int flag: bytes 32 to 35
+alloc = -(16 + 20) & -16                // 20 bytes of locals, rounded up: -48
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+
+        mov     w9, 3
+        str     w9, [fp, count_s]       // count = 3
+        mov     x9, 1000
+        str     x9, [fp, total_s]       // total = 1000
+        mov     w9, 1
+        str     w9, [fp, flag_s]        // flag = 1
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn a_padded_frame_matches_the_hand_worked_layout() {
+    let mut p = load(PADDED);
+    let state = |p: &Loaded| p.view().frames[0].state;
+    assert_eq!(state(&p), ENTERED, "nothing pushed at main's first instruction");
+    p.step(1);
+    assert_eq!(state(&p), RESERVED, "record pushed, fp not set yet");
+    p.step(1);
+    assert_eq!(state(&p), COMPLETE);
+    p.run_to_line(28); // mov w0, 0
+    let main = &p.view().frames[0];
+    let fp = main.record;
+    assert_eq!(main.activation.sp_entry - main.lo, 48);
+    let f = p.layout.function_at(main.activation.entry).unwrap();
+    let slots: Vec<(i64, u8, &str)> = f.slots.iter().map(|s| (s.offset, s.width, p.name(s.name))).collect();
+    assert_eq!(slots, [(16, 4, "count_s"), (24, 8, "total_s"), (32, 4, "flag_s")]);
+    assert_eq!(f.frame_bytes, 48);
+    assert_eq!((p.mem_u32(fp + 16), p.mem_u64(fp + 24), p.mem_u32(fp + 32)), (3, 1000, 1));
+    p.step(2); // mov, ldp: the frame is released and ret comes next
+    assert_eq!(state(&p), ENTERED);
+}
+
+const RECURSION: &str = r#"
+// sum_down(n) adds n + (n - 1) + ... + 1 by calling itself; each call
+// keeps its own n in its frame.
+
+define(fp, x29)
+define(lr, x30)
+
+n_s = 16                                // int n: bytes 16 to 19
+alloc = -(16 + 4) & -16                 // 4 bytes of locals, rounded up: -32
+dealloc = -alloc
+
+        .data
+fmt_out:    .string "sum = %d\n"
+
+        .text
+// sum_down(w0 = n) -> w0 = n + (n - 1) + ... + 1
+        .balign 4
+        .global sum_down
+sum_down:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        str     w0, [fp, n_s]           // this call's n
+        cbz     w0, sd_done             // sum_down(0) = 0
+        sub     w0, w0, 1
+        bl      sum_down                // w0 = sum_down(n - 1)
+        ldr     w9, [fp, n_s]           // n is still in this call's frame
+        add     w0, w0, w9
+sd_done:
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+// add_one(w0 = x) -> w0 = x + 1
+// Leaf function: no frame of its own
+        .balign 4
+        .global add_one
+add_one:
+        add     w0, w0, 1
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 4
+        bl      sum_down                // w0 = 10
+        bl      add_one                 // w0 = 11
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// RECURSION's lines (1-based, the source opens with a blank line).
+const SUM_DOWN_RECURSES: u32 = 25;
+const SUM_DOWN_DONE: u32 = 29;
+const SUM_DOWN_RET: u32 = 30;
+const MAIN_CALLS_SUM_DOWN: u32 = 46;
+const MAIN_CALLS_ADD_ONE: u32 = 47;
+
+#[test]
+fn recursion_four_calls_deep_matches_the_hand_worked_frames() {
+    let mut p = load(RECURSION);
+    p.run_to_line(SUM_DOWN_DONE); // first reached in the call with n = 0
+    let v = p.view();
+    assert!(v.chain_ok);
+    let main = &v.frames[0];
+    assert_eq!(main.activation.sp_entry - main.lo, 16);
+    let line_of = |pc: u64| p.image.line_map.iter().find(|(at, _)| *at == pc).map(|(_, l)| *l);
+    // main, then sum_down(4), (3), (2), (1), (0): 32 bytes each, n at fp + 16.
+    let calls = &v.frames[1..];
+    assert_eq!(calls.len(), 5);
+    for (k, f) in calls.iter().enumerate() {
+        assert_eq!(f.state, COMPLETE);
+        assert_eq!(f.activation.sp_entry - f.lo, 32, "sum_down frame {k}");
+        assert_eq!(f.record, f.lo, "fp sits at the bottom of the frame");
+        assert_eq!(p.mem_u32(f.record + 16), 4 - k as u32, "n in frame {k}");
+        let from = if k == 0 { MAIN_CALLS_SUM_DOWN } else { SUM_DOWN_RECURSES };
+        assert_eq!(line_of(f.activation.call_pc), Some(from));
+        assert_eq!(f.activation.ret_addr, f.activation.call_pc + 4);
+    }
+    // Each saved fp is the caller's frame record.
+    for pair in v.frames.windows(2) {
+        assert_eq!(p.mem_u64(pair[1].record), pair[0].record);
+    }
+    p.run_to_line(MAIN_CALLS_ADD_ONE); // every sum_down has returned
+    assert_eq!(p.view().frames.len(), 1);
+    p.step(1);
+    let v = p.view();
+    assert_eq!((v.frames.len(), v.frames[1].state), (2, LEAF));
+    assert_eq!(v.frames[0].state, COMPLETE, "main called out with its record in place");
+}
+
+// ---------------------------------------------------------------------------
+// Back restores the frames exactly
+// ---------------------------------------------------------------------------
+
+/// Everything the call stack holds, plus the view drawn from it.
+fn whole_state(p: &Loaded) -> (Vec<Activation>, u64, BadReturn, FrameView) {
+    let stack = p.cpu.call_stack();
+    (stack.activations().to_vec(), stack.uncounted(), stack.bad_return(), p.view())
+}
+
+/// Step `steps` forward, then back as many, then forward again: back must
+/// land on exactly the frames it left, and the replay on exactly the
+/// frames the first pass reached.
+fn back_restores(p: &mut Loaded, steps: usize, what: &str) {
+    let before = whole_state(p);
+    p.step(steps);
+    let after = whole_state(p);
+    assert_ne!(before, after, "{what}: the steps changed the frames");
+    for _ in 0..steps {
+        p.cpu.step_back();
+    }
+    assert_eq!(whole_state(p), before, "{what}: back {steps} restores the frames");
+    p.step(steps);
+    assert_eq!(whole_state(p), after, "{what}: the same steps again land in the same place");
+}
+
+#[test]
+fn back_across_a_call_and_a_return_restores_the_frames() {
+    let mut p = load(RECURSION);
+    p.run_to_line(MAIN_CALLS_SUM_DOWN);
+    back_restores(&mut p, 3, "a call");
+    p.run_to_line(SUM_DOWN_RET); // the n = 0 call's ret
+    back_restores(&mut p, 2, "a return");
+    p.run_to_line(MAIN_CALLS_ADD_ONE); // after five returns in a row
+    back_restores(&mut p, 1, "a call to a leaf");
+}
+
+#[test]
+fn a_named_save_restores_the_call_stack() {
+    let mut p = load(RECURSION);
+    p.run_to_line(SUM_DOWN_DONE);
+    let saved = whole_state(&p);
+    p.cpu.save_state("deep");
+    p.run_to_line(MAIN_CALLS_ADD_ONE);
+    assert!(p.cpu.load_state("deep"));
+    // The step count is the runaway wall's and survives a restore on
+    // purpose; everything the call stack holds comes back.
+    let mut restored = whole_state(&p);
+    restored.3.step = saved.3.step;
+    assert_eq!(restored, saved);
+}
+
+// ---------------------------------------------------------------------------
+// A write over a caller's saved fp and lr, and the return it breaks
+// ---------------------------------------------------------------------------
+
+const OVERFLOW: &str = r#"
+// fill_marks writes eight marks into a four-int local array: the last
+// four land on main's saved fp and lr.
+
+define(fp, x29)
+define(lr, x30)
+
+marks_s = 16                            // int marks[4]: bytes 16 to 31
+alloc = -(16 + 16) & -16                // 16 bytes of locals: -32
+dealloc = -alloc
+
+        .text
+// fill_marks() sets marks[i] = i + 1 for i = 0 to 7 (bug: marks holds 4)
+        .balign 4
+        .global fill_marks
+fill_marks:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, marks_s         // x9 = &marks[0]
+        mov     w10, 0                  // i = 0
+        b       fm_test
+fm_loop:
+        add     w11, w10, 1
+        str     w11, [x9, w10, sxtw 2]  // marks[i] = i + 1
+        add     w10, w10, 1
+fm_test:
+        cmp     w10, 8                  // bug: should be 4
+        b.lt    fm_loop
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        bl      fill_marks
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+const FILL_MARKS_STORE: u32 = 24;
+const MAIN_RET: u32 = 40;
+
+#[test]
+fn an_overflow_onto_mains_record_is_named_and_explains_the_bad_return() {
+    let mut p = load(OVERFLOW);
+    let store = p.pc_of(FILL_MARKS_STORE);
+    let main_ret = p.pc_of(MAIN_RET);
+    // By hand: main's frame record sits where fill_marks's frame ends, so
+    // marks[4] and marks[5] (step 12 + 5i: steps 32 and 37) cover the saved
+    // fp and marks[6] and marks[7] (steps 42 and 47) the saved lr.
+    p.step(36);
+    // Back across the write that changes the saved fp a second time.
+    back_restores(&mut p, 1, "a corruption");
+    let v = p.view();
+    let main = &v.frames[0];
+    // marks[5] is 36 bytes above fill_marks's fp (marks_s + 5 * 4).
+    assert_eq!(main.activation.fp_hit, Hit { step: 37, pc: store, fp_offset: 36 });
+    assert_eq!(main.fp_hit_element.map(|(i, n)| (i, p.name(n).to_string())), Some((5, "marks_s".to_string())));
+    assert_eq!(main.activation.lr_hit.step, 0, "the saved lr is still intact");
+    p.step(10);
+    let main = &p.view().frames[0];
+    assert_eq!((main.activation.lr_hit.step, main.activation.lr_hit.pc), (47, store));
+    assert_eq!(main.lr_hit_element.map(|(i, _)| i), Some(7));
+    assert_eq!(p.mem_u64(main.record), 0x6_0000_0005, "marks[5] and marks[4]");
+    assert_eq!(p.mem_u64(main.record + 8), 0x8_0000_0007, "marks[7] and marks[6]");
+    // fill_marks's own record is intact, so it returns to main; main's ret
+    // then takes the overwritten lr.
+    p.run_to_line(MAIN_RET);
+    assert_eq!(p.view().frames.len(), 1);
+    p.step(1);
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!(bad, BadReturn { step: 55, pc: main_ret, target: 0x8_0000_0007 });
+    assert_eq!(p.view().frames.len(), 1, "a return to no caller leaves the stack as it was");
+}
+
+// ---------------------------------------------------------------------------
+// Callee-saved registers and an lr that was never saved
+// ---------------------------------------------------------------------------
+
+const FORGETFUL: &str = r#"
+// bump_count changes x19 and never puts it back; main still trusts x19.
+
+define(fp, x29)
+define(lr, x30)
+define(count_r, w19)
+
+        .data
+fmt_out:    .string "count = %d\n"
+
+        .text
+// bump_count() -> w0 = 1 (bug: changes x19 without saving it)
+        .balign 4
+        .global bump_count
+bump_count:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w19, 50                 // bug: x19 belongs to the caller
+        mov     w0, 1
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     count_r, 5              // count = 5
+        bl      bump_count
+        add     w1, count_r, w0         // count + 1, expected 6
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_callee_that_keeps_x19_changed_is_marked_and_the_callers_read_noted() {
+    let mut p = load(FORGETFUL);
+    let ret = p.pc_of(21);
+    let read = p.pc_of(30);
+    p.run_to_line(21);
+    assert!(p.view().leftovers.is_empty());
+    p.step(1);
+    assert_eq!(p.view().leftovers, [(19, ret)], "the quiet mark at bump_count's ret");
+    assert!(p.cpu.take_clobber_notes().is_empty(), "nothing has read x19 yet");
+    p.step(1);
+    // [register, read by an instruction, the ret that left it, the reader]
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, ret as u32, read as u32]);
+    let r = p.cpu.run_until_break(1000).unwrap();
+    assert!(r.halted);
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "count = 51\n");
+    assert!(p.cpu.take_clobber_notes().is_empty(), "main's own x19 is its to change");
+}
+
+const NO_SAVED_LR: &str = r#"
+// greet prints a line but never saves lr, so its ret comes back to itself.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_hi:     .string "hi\n"
+
+        .text
+// greet() prints "hi" (bug: calls printf without saving lr)
+        .balign 4
+        .global greet
+greet:
+        ldr     x0, =fmt_hi
+        bl      printf
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      greet
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_call_out_before_lr_is_saved_is_flagged_and_its_return_goes_astray() {
+    let mut p = load(NO_SAVED_LR);
+    let ret = p.pc_of(17);
+    p.step(200);
+    let stack = p.cpu.call_stack();
+    let acts = stack.activations();
+    assert_eq!(acts.len(), 2, "main and greet, however often greet's ret runs");
+    assert_ne!(acts[1].flags & LR_UNSAVED, 0);
+    assert_eq!(acts[0].flags & LR_UNSAVED, 0, "main saved lr before its call");
+    let bad = stack.bad_return();
+    assert_eq!((bad.pc, bad.target), (ret, ret), "the ret jumps to itself");
+}
+
+#[test]
+fn a_comparator_run_by_qsort_is_a_call_the_runtime_made() {
+    let source = read(&repo_root().join("emulator/tests/c-corpus/80_qsort_bsearch.s"));
+    let mut p = load(&source);
+    let qsort = p.cpu.host.lookup("qsort").unwrap();
+    let mut seen = false;
+    for _ in 0..10_000 {
+        p.cpu.step().unwrap();
+        if let Some(top) = p.cpu.call_stack().activations().last().filter(|a| a.flags & RUNTIME_CALL != 0) {
+            assert_eq!((top.call_pc, top.ret_addr), (qsort, qsort));
+            seen = true;
+            break;
+        }
+    }
+    assert!(seen, "qsort ran a comparator");
+}
+
+// ---------------------------------------------------------------------------
+// Hostile programs stay bounded
+// ---------------------------------------------------------------------------
+
+/// Run `source` for at most `steps` steps, drawing the view after every
+/// one, as a stepping student would: nothing may panic, and the call stack
+/// stays within its cap.
+fn survives(source: &str, steps: usize) -> Loaded {
+    let mut p = load(source);
+    for _ in 0..steps {
+        let r = p.cpu.step().expect("step");
+        let v = p.view();
+        assert!(v.frames.len() <= MAX_DRAWN);
+        assert!(p.cpu.call_stack().activations().len() <= MAX_ACTIVATIONS);
+        if r.halted {
+            break;
+        }
+    }
+    p
+}
+
+#[test]
+fn hostile_frames_never_panic_or_loop() {
+    // fp pointing into .data when a call is made.
+    let p = survives(
+        r#"
+// Calls helper with fp pointing into .data.
+        .data
+junk:   .quad   0, 0, 0, 0
+        .text
+        .balign 4
+        .global main
+main:
+        ldr     x29, =junk              // fp into .data
+        bl      helper
+        mov     w0, 0
+        ret
+        .balign 4
+        .global helper
+helper:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldp     x29, x30, [sp], 16
+        ret
+"#,
+        100,
+    );
+    assert!(!p.view().chain_ok || p.cpu.is_halted());
+    // sp off a multiple of 16 at a call.
+    survives(
+        r#"
+// Calls helper with sp off a multiple of 16.
+        .text
+        .balign 4
+        .global main
+main:
+        sub     sp, sp, 8               // sp misaligned
+        bl      helper
+        add     sp, sp, 8
+        ret
+        .balign 4
+        .global helper
+helper:
+        stp     x29, x30, [sp, -16]!
+        ldp     x29, x30, [sp], 16
+        ret
+"#,
+        100,
+    );
+    // A bl into the middle of a function, past its prologue.
+    survives(
+        r#"
+// Enters helper past its prologue, so its epilogue pops main's record.
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        bl      helper_mid
+        ldp     x29, x30, [sp], 16
+        ret
+        .balign 4
+        .global helper
+helper:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+helper_mid:
+        ldp     x29, x30, [sp], 16
+        ret
+"#,
+        100,
+    );
+    // A computed blr, once into code and once into data.
+    survives(
+        r#"
+// Calls through computed addresses: into helper and into .data.
+        .data
+junk:   .quad   0
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldr     x9, =helper
+        add     x9, x9, 4               // skip helper's first instruction
+        blr     x9
+        ldr     x9, =junk
+        blr     x9                      // into data
+        ldp     x29, x30, [sp], 16
+        ret
+        .balign 4
+        .global helper
+helper:
+        nop
+        ret
+"#,
+        100,
+    );
+    // A return to a library stub's address, and an fp whose record points
+    // at itself.
+    let p = survives(
+        r#"
+// Returns into puts's stub, after making fp's record point at itself.
+        .data
+msg:    .string "hi"
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        str     x29, [x29]              // the record's saved fp is itself
+        ldr     x0, =msg
+        ldr     x30, =puts
+        ret                             // into the stub, not a caller
+"#,
+        100,
+    );
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!(Some(bad.target), p.cpu.host.lookup("puts"));
+}
