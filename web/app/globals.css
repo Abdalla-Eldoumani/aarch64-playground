@@ -557,6 +557,10 @@ body:has(> .playground-shell) {
     .embed-status {
       display: block;
     }
+    /* The view switch offers registers and stack itself here. */
+    .embed-side {
+      display: none;
+    }
     .embed-grid {
       grid-template-areas: "pane";
       grid-template-rows: minmax(0, 1fr);
