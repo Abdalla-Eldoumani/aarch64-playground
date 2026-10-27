@@ -4,13 +4,24 @@
 //! write over a caller's saved fp or lr and of a return that goes astray.
 //! Expected numbers come from the course's slides and from frames worked
 //! out by hand, never from the tracker's own arithmetic.
+//!
+//! Cases: every shipped example and ten C programs against the frame chain
+//! at every step; the slides' locals frame and hand-worked padded and
+//! recursive frames; Back across a call, a return and a corruption, and a
+//! named save; overruns onto the nearest caller's and a grand-caller's
+//! saved fp and lr, through an array base and through a passed pointer,
+//! with the ring recording, paused, and stopped by its side budget; a
+//! callee leaving x19 changed; a call out before lr is saved; a qsort
+//! comparator; hostile programs (fp into .data, misaligned sp, a bl into a
+//! function's middle, a computed blr, a return into a stub, an fp record
+//! pointing at itself).
 
 #[path = "common/frame_walk.rs"]
 mod frame_walk;
 
 use std::path::PathBuf;
 
-use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::cpu::{Cpu, MAX_SNAPSHOT_SIDE_BYTES};
 use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
 use aarch64_emulator::frames::{
     frame_view, Activation, BadReturn, FrameView, Hit, COMPLETE, ENTERED, LEAF, LR_UNSAVED, MAX_ACTIVATIONS,
@@ -506,6 +517,203 @@ fn an_overflow_onto_mains_record_is_named_and_explains_the_bad_return() {
     let bad = p.cpu.call_stack().bad_return();
     assert_eq!(bad, BadReturn { step: 55, pc: main_ret, target: 0x8_0000_0007 });
     assert_eq!(p.view().frames.len(), 1, "a return to no caller leaves the stack as it was");
+}
+
+const PASS_ARRAY: &str = r#"
+// helper keeps four ints and has fill store i into eight of them: the
+// last four land on main's frame record, two records above fill's.
+
+define(fp, x29)
+define(lr, x30)
+
+nums_s = 16                             // int nums[4]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16                // 16 bytes of locals: -32
+dealloc = -alloc
+
+        .text
+// fill(x0 = int *arr, w1 = n) sets arr[i] = i for i = 0 to n - 1
+        .balign 4
+        .global fill
+fill:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w9, 0                   // i = 0
+        b       fill_test
+fill_loop:
+        str     w9, [x0, w9, sxtw 2]    // arr[i] = i
+        add     w9, w9, 1
+fill_test:
+        cmp     w9, w1
+        b.lt    fill_loop
+        ldp     fp, lr, [sp], 16
+        ret
+
+// helper() has fill set its nums (bug: asks for 8, nums holds 4)
+        .balign 4
+        .global helper
+helper:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x0, fp, nums_s          // x0 = &nums[0]
+        mov     w1, 8                   // bug: should be 4
+        bl      fill
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      helper
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+const PA_FILL_STORE: u32 = 22;
+const PA_FILL_LDP: u32 = 27;
+const PA_MAIN_RET: u32 = 50;
+
+/// By hand, with S main's entry sp: main's record sits at S - 16, helper's
+/// at S - 48 with nums at S - 32 to S - 17, and fill's x29 is S - 64.
+/// fill's loop stores arr[i] at step 15 + 4i: arr[5] (S - 12, fill's fp +
+/// 52) last changes main's saved fp, at step 35, and arr[7] (fp + 60) its
+/// saved lr, at step 43. main's ret, step 53, takes 7 << 32 | 6.
+fn assert_pass_array_end(p: &Loaded, mode: &str) {
+    let store = p.pc_of(PA_FILL_STORE);
+    let stack = p.cpu.call_stack();
+    let main = stack.activations()[0];
+    assert_eq!(main.fp_hit, Hit { step: 35, pc: store, fp_offset: 52 }, "{mode}: main's saved fp");
+    assert_eq!(main.lr_hit, Hit { step: 43, pc: store, fp_offset: 60 }, "{mode}: main's saved lr");
+    let main_ret = p.pc_of(PA_MAIN_RET);
+    assert_eq!(stack.bad_return(), BadReturn { step: 53, pc: main_ret, target: 0x7_0000_0006 }, "{mode}");
+    // fill reached nums through a pointer, not through an array base of its
+    // own, so no element is named.
+    let v = p.view();
+    assert_eq!((v.frames[0].fp_hit_element, v.frames[0].lr_hit_element), (None, None), "{mode}");
+}
+
+#[test]
+fn an_overrun_through_a_passed_pointer_is_caught_on_the_grand_callers_record() {
+    let mut p = load(PASS_ARRAY);
+    // arr[0] (step 15) starts where helper's record ends and arr[3] (step
+    // 27) ends where main's starts: writes between two records touch
+    // neither.
+    p.step(27);
+    let acts = p.cpu.call_stack().activations().to_vec();
+    assert_eq!(acts.len(), 3, "main, helper and fill");
+    let untouched = |a: &Activation| (a.fp_hit, a.lr_hit) == (Hit::default(), Hit::default());
+    assert!(acts.iter().all(untouched), "no false hit: {acts:?}");
+    p.step(7);
+    back_restores(&mut p, 1, "a write over a grand-caller's saved fp");
+    p.run_to_line(PA_FILL_LDP);
+    assert!(untouched(&p.cpu.call_stack().activations()[1]), "helper's record is intact");
+    // fill and helper return, main's ret goes astray, the fetch faults.
+    p.step(8);
+    assert!(p.cpu.is_halted() && p.cpu.can_step_back());
+    assert_pass_array_end(&p, "stepping");
+}
+
+#[test]
+fn the_grand_callers_record_is_watched_in_every_mode_the_ring_has() {
+    let run = |set_up: fn(&mut Cpu)| {
+        let mut p = load(PASS_ARRAY);
+        set_up(&mut p.cpu);
+        assert!(p.cpu.run_until_break(1000).expect("run").halted);
+        p
+    };
+    let p = run(|_| {});
+    assert!(p.cpu.can_step_back(), "the ring recorded the run");
+    assert_pass_array_end(&p, "run");
+    // The web pauses the ring while the terminal pane drives a program.
+    let p = run(|cpu| cpu.snapshots_paused = true);
+    assert!(!p.cpu.can_step_back(), "the paused ring recorded nothing");
+    assert_pass_array_end(&p, "ring paused");
+    // Queued stdin past the side budget stops the ring on its own.
+    let p = run(|cpu| cpu.push_stdin(&[b'7'; MAX_SNAPSHOT_SIDE_BYTES + 1]));
+    assert!(!p.cpu.can_step_back(), "the ring stopped past the side budget");
+    assert_pass_array_end(&p, "side state past the budget");
+}
+
+const TWO_RECORDS: &str = r#"
+// fill_marks writes twelve marks into a four-int local array: the
+// overrun covers helper's frame record, then main's.
+
+define(fp, x29)
+define(lr, x30)
+
+marks_s = 16                            // int marks[4]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16                // 16 bytes of locals: -32
+dealloc = -alloc
+
+        .text
+// fill_marks() sets marks[i] = i for i = 0 to 11 (bug: marks holds 4)
+        .balign 4
+        .global fill_marks
+fill_marks:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, marks_s         // x9 = &marks[0]
+        mov     w10, 0                  // i = 0
+        b       fm_test
+fm_loop:
+        str     w10, [x9, w10, sxtw 2]  // marks[i] = i
+        add     w10, w10, 1
+fm_test:
+        cmp     w10, 12                 // bug: should be 4
+        b.lt    fm_loop
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+// helper() has fill_marks fill its marks
+        .balign 4
+        .global helper
+helper:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      fill_marks
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      helper
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+const TR_STORE: u32 = 23;
+const TR_HELPER_RET: u32 = 39;
+
+#[test]
+fn an_overrun_through_an_array_base_names_the_element_on_each_record_it_crosses() {
+    let mut p = load(TWO_RECORDS);
+    let store = p.pc_of(TR_STORE);
+    assert!(p.cpu.run_until_break(1000).expect("run").halted);
+    // By hand, with S main's entry sp: main's record sits at S - 16,
+    // helper's at S - 32, and fill_marks's x29 is S - 64 with marks at
+    // S - 48. marks[i] is stored at step 14 + 4i, fp + 16 + 4i: marks[4]
+    // to [7] cover helper's record, marks[8] to [11] main's. helper's ldp
+    // then loads 7 << 32 | 6 into lr and its ret (step 65) goes astray,
+    // leaving both frames.
+    let v = p.view();
+    let [main, helper] = &v.frames[..] else { panic!("{} frames, not main and helper", v.frames.len()) };
+    let named = |e: Option<(i64, Option<u32>)>| e.map(|(i, n)| (i, p.name(n).to_string()));
+    assert_eq!(helper.activation.fp_hit, Hit { step: 34, pc: store, fp_offset: 36 });
+    assert_eq!(named(helper.fp_hit_element), Some((5, "marks_s".to_string())));
+    assert_eq!(helper.activation.lr_hit, Hit { step: 42, pc: store, fp_offset: 44 });
+    assert_eq!(named(helper.lr_hit_element), Some((7, "marks_s".to_string())));
+    assert_eq!(main.activation.fp_hit, Hit { step: 50, pc: store, fp_offset: 52 });
+    assert_eq!(named(main.fp_hit_element), Some((9, "marks_s".to_string())));
+    assert_eq!(main.activation.lr_hit, Hit { step: 58, pc: store, fp_offset: 60 });
+    assert_eq!(named(main.lr_hit_element), Some((11, "marks_s".to_string())));
+    let helper_ret = p.pc_of(TR_HELPER_RET);
+    assert_eq!(v.bad_return, BadReturn { step: 65, pc: helper_ret, target: 0x7_0000_0006 });
 }
 
 // ---------------------------------------------------------------------------
