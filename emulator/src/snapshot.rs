@@ -9,30 +9,31 @@
 //!
 //! The ring keeps at most `capacity` frames and drops the oldest past that.
 //!
-//! A frame is taken on every step, so it holds the three large parts,
-//! registers, memory and the heap, only as undo logs of what its step
-//! changed in them. A named save, which has to outlive any number of
+//! A frame is taken on every step, so it holds the four large parts,
+//! registers, memory, the heap and the call stack, only as undo logs of
+//! what its step changed in them. A named save, which has to outlive any number of
 //! later steps, holds them whole.
 
 use std::collections::{HashMap, VecDeque};
 
 use crate::cpu::{OpenFile, StdinSegment};
+use crate::frames::{CallStack, FrameUndo};
 use crate::hosted::heap::{HeapState, HeapUndo};
 use crate::memory::{MemUndo, Memory};
 use crate::registers::{RegUndo, RegisterFile};
 
 /// One step-back frame: the state before a step, with registers, memory
 /// and the heap as logs of what the step changed.
-pub type StepFrame = Snapshot<RegUndo, MemUndo, HeapUndo>;
+pub type StepFrame = Snapshot<RegUndo, MemUndo, HeapUndo, FrameUndo>;
 
 /// One named save: the whole state.
-pub type SavedState = Snapshot<RegisterFile, Memory, HeapState>;
+pub type SavedState = Snapshot<RegisterFile, Memory, HeapState, CallStack>;
 
 /// Everything `Cpu::step_back` or a named save needs to restore, with
-/// registers, memory and the heap in the forms `R`, `M` and `H` (see the
-/// module note).
+/// registers, memory, the heap and the call stack in the forms `R`, `M`,
+/// `H` and `F` (see the module note).
 #[derive(Clone, Default)]
-pub struct Snapshot<R, M, H> {
+pub struct Snapshot<R, M, H, F> {
     pub regs: R,
     pub mem: M,
     pub halted: bool,
@@ -67,6 +68,8 @@ pub struct Snapshot<R, M, H> {
     /// note); these let the host trim its own transcript instead.
     pub stdout_seen: u64,
     pub stderr_seen: u64,
+    /// The calls the program is inside, behind the stack frames view.
+    pub frames: F,
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
@@ -158,7 +161,7 @@ mod tests {
 
     /// A blank snapshot of either form: a step-back frame where the ring
     /// takes it, a named save where `save_named` does.
-    fn empty_snap<R: Default, M: Default, H: Default>() -> Snapshot<R, M, H> {
+    fn empty_snap<R: Default, M: Default, H: Default, F: Default>() -> Snapshot<R, M, H, F> {
         Snapshot {
             regs: R::default(),
             mem: M::default(),
@@ -178,6 +181,7 @@ mod tests {
             callbacks: Default::default(),
             stdout_seen: 0,
             stderr_seen: 0,
+            frames: F::default(),
         }
     }
 
