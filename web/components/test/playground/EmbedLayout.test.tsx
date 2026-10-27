@@ -4,7 +4,7 @@
 // only by a container query, which jsdom cannot evaluate, so the tests read
 // the grid's data-pane instead of what is painted. Also the registers or
 // stack choice a frame that steps offers, and that it is remembered.
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { EmbedLayout, type EmbedLayoutProps } from "@/components/playground/EmbedLayout";
 
@@ -146,6 +146,48 @@ describe("the registers or stack switch beside the registers", () => {
     expect(screen.getByTestId("frames")).toBeTruthy();
     fireEvent.click(within(side()).getByRole("button", { name: "registers" }));
     expect(window.localStorage.getItem("aarch64-playground:embed-stack")).toBe("0");
+  });
+
+  // A lesson page holds several editors; the choice is one per viewer, so
+  // every frame on the page switches with the one pressed, and keeps it.
+  test("switches every frame on the page at once, and they all reopen on it", () => {
+    const pair = () =>
+      render(
+        <>
+          <EmbedLayout {...props({ registers: <div data-testid="regs-a" />, stack: <div data-testid="frames-a" /> })} />
+          <EmbedLayout {...props({ registers: <div data-testid="regs-b" />, stack: <div data-testid="frames-b" /> })} />
+        </>,
+      );
+    pair();
+    const [first, second] = screen.getAllByRole("group", { name: "registers or stack" });
+    fireEvent.click(within(first).getByRole("button", { name: "stack" }));
+    expect(screen.getByTestId("frames-a")).toBeTruthy();
+    expect(screen.getByTestId("frames-b")).toBeTruthy();
+    expect(within(second).getByRole("button", { name: "stack" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(within(second).getByRole("button", { name: "registers" }));
+    expect(screen.getByTestId("regs-a")).toBeTruthy();
+    expect(screen.getByTestId("regs-b")).toBeTruthy();
+    fireEvent.click(within(first).getByRole("button", { name: "stack" }));
+    cleanup();
+    pair();
+    expect(screen.getByTestId("frames-a")).toBeTruthy();
+    expect(screen.getByTestId("frames-b")).toBeTruthy();
+  });
+
+  // The browser tells a page when another of its tabs writes the key.
+  test("follows a choice made in another tab", () => {
+    render(<EmbedLayout {...props()} />);
+    act(() => {
+      window.localStorage.setItem("aarch64-playground:embed-stack", "1");
+      window.dispatchEvent(
+        new StorageEvent("storage", { key: "aarch64-playground:embed-stack", newValue: "1", storageArea: window.localStorage }),
+      );
+    });
+    expect(screen.getByTestId("frames")).toBeTruthy();
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", { key: "aarch64-playground:theme", newValue: "0" }));
+    });
+    expect(screen.getByTestId("frames")).toBeTruthy();
   });
 
   test("keeps the registers when storage throws", () => {
