@@ -9,6 +9,8 @@
 use aarch64_emulator::cpu::{
     step_ceiling_message, Cpu, MAX_SNAPSHOT_SIDE_BYTES, MAX_TOTAL_STEPS, MEMORY_CAP_MESSAGE,
 };
+use aarch64_emulator::frames::layout::frame_layout;
+use aarch64_emulator::frames::{frame_view, MAX_ACTIVATIONS, MAX_DRAWN};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 use aarch64_emulator::hosted::syscalls::MAX_OPEN_FILES;
 use aarch64_emulator::memory::MAX_MAPPED_PAGES;
@@ -317,4 +319,42 @@ main:   stp     x29, x30, [sp, -16]!
         "the cause must be the stack floor, not the page cap: {msg}"
     );
     assert!(msg.contains("recursion"), "the message names the usual cause: {msg}");
+}
+
+/// Recursion with 16-byte frames goes about 524,000 calls deep before the
+/// stack floor: far past the call stack's cap. The stack keeps its cap and
+/// counts the rest, the view still draws main and the innermost frames,
+/// and the floor, the step ceiling and the page cap hold as before.
+#[test]
+fn recursion_past_the_call_stack_cap_stays_within_it() {
+    let src = "
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        bl      main
+";
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(src, &cpu.host).expect("assembles");
+    cpu.load_linked_image(&image).expect("loads");
+    let error = loop {
+        let r = cpu.run_until_break(1_000_000).expect("run");
+        assert!(cpu.call_stack().activations().len() <= MAX_ACTIVATIONS);
+        if r.halted {
+            break r.error;
+        }
+    };
+    let msg = error.expect("runaway recursion must abort with a message");
+    assert!(msg.contains("stack overflow"), "the stack floor stops it: {msg}");
+    let stack = cpu.call_stack();
+    assert_eq!(stack.activations().len(), MAX_ACTIVATIONS);
+    // 8 MiB of 16-byte frames, less the few the floor check leaves.
+    assert!(stack.depth() > 500_000, "every call is still counted: {}", stack.depth());
+    assert!(cpu.steps_total() < MAX_TOTAL_STEPS);
+    assert!(cpu.mem.mapped_page_count() <= MAX_MAPPED_PAGES);
+    let view = frame_view(&cpu, &frame_layout(src, &image, &cpu.mem));
+    assert_eq!(view.frames.len(), MAX_DRAWN);
+    assert_eq!(view.hidden, MAX_ACTIVATIONS - MAX_DRAWN);
+    assert_eq!(view.hidden_entry, image.symbols["main"]);
+    assert_eq!(view.uncounted, stack.uncounted());
 }
