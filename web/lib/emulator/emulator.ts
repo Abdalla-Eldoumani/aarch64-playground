@@ -1,4 +1,5 @@
 import { formatWord64 } from "@/lib/emulator/format-hex";
+import { readFrameLayout, readFrames, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -166,6 +167,17 @@ export class EmulatorInstance {
    *  on a wasm build that predates them. */
   takeClobberNotes(): number[] {
     return Array.from(this.inner.take_clobber_notes?.() ?? []);
+  }
+
+  /** The call stack numbers lib/emulator/frame-data decodes; null on a
+   *  wasm build that predates them. */
+  frames(): number[] | null {
+    return readFrames(this.inner);
+  }
+
+  /** The last assemble's frame layout; null on an older wasm build. */
+  frameLayout(): FrameLayoutPayload | null {
+    return readFrameLayout(this.inner);
   }
 
   isBlocked(): boolean {
@@ -421,6 +433,10 @@ interface WasmEmulatorInstance {
   stderr_seen?(): number;
   /** Optional: clobber note rows, present once the crate ships them. */
   take_clobber_notes?(): Uint32Array;
+  /** Optional: the call stack and frame layout (FrameExports). */
+  frames?(): Float64Array;
+  frame_layout?(): Float64Array;
+  frame_names?(): string[];
   is_blocked(): boolean;
   get_exit_code(): bigint | number | null | undefined;
   upload_vfs_file(path: string, data: Uint8Array): void;
