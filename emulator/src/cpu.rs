@@ -9,6 +9,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::decoder;
 use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
+use crate::frames::CallStack;
 use crate::frontend::sections::{align_padding, Item, Program};
 use crate::hosted::{HostContext, HostOutcome, HostTable, RETURNS_IN_D0, RETURNS_NOTHING};
 use crate::memory::Memory;
@@ -464,6 +465,9 @@ pub struct Cpu {
     /// notes sit beside.
     clobber_notes: Vec<u32>,
     clobber_noted: u64,
+    /// The calls the program is inside (frames.rs). Machine state: in every
+    /// snapshot, and every change a step makes is in that step's frame.
+    frames: CallStack,
 }
 
 impl Cpu {
@@ -509,6 +513,7 @@ impl Cpu {
             trampoline_names: Vec::new(),
             clobber_notes: Vec::new(),
             clobber_noted: 0,
+            frames: CallStack::default(),
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -669,6 +674,7 @@ impl Cpu {
                 callbacks,
                 stdout_seen,
                 stderr_seen,
+                frames,
             } = self.snapshots.push_slot();
             *halted = self.halted;
             *blocked = self.blocked;
@@ -699,6 +705,7 @@ impl Cpu {
             }
             *stdout_seen = self.stdout_seen;
             *stderr_seen = self.stderr_seen;
+            self.frames.record_undo(frames);
             // What the step overwrites lands in the frame's own log
             // buffers, lent out until `step` hands them back once the step
             // is over.
@@ -758,6 +765,51 @@ impl Cpu {
         }
     }
 
+    /// Whether `addr` is one of the program's own instructions.
+    fn in_program(&self, addr: u64) -> bool {
+        self.text_end.is_some_and(|end| (CODE_BASE..end).contains(&addr))
+    }
+
+    /// Keep the call stack in step with a call or a return the instruction
+    /// at `pc` just made. Every other instruction passes straight through.
+    fn track_call_or_return(&mut self, pc: u64, instr: &decoder::Instruction) {
+        use decoder::{BrRegOp, Instruction as I};
+        match *instr {
+            I::BrImm { link: true, .. } | I::BrReg { op: BrRegOp::Blr, .. } => {
+                let target = self.regs.read_pc();
+                let into_program = self.in_program(target);
+                let regs = self.regs.snapshot();
+                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                self.frames.on_call(pc, target, into_program, &regs, &self.mem, log);
+            }
+            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
+                let regs = self.regs.snapshot();
+                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_total, &regs, log);
+                if changed != 0 {
+                    self.regs.mark_callee_saved(changed, pc);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Check the step's writes against the nearest caller's frame record.
+    /// Most steps write nothing, and most writes land below that record.
+    fn watch_frame_records(&mut self, pc: u64, lr: u64) {
+        let writes = self.mem.step_writes();
+        if writes.is_empty() {
+            return;
+        }
+        // A library call's write names the `bl` that made the call.
+        let writer = || {
+            let at = if self.host.contains_address(pc) { lr.wrapping_sub(4) } else { pc };
+            (at, self.regs.snapshot()[29])
+        };
+        let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+        self.frames.watch_writes(writes, self.steps_total, &self.mem, writer, log);
+    }
+
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         let pc = self.regs.read_pc();
@@ -766,6 +818,7 @@ impl Cpu {
         // not the program's.
         self.regs.take_clobbered_reads();
         let result = self.execute_step();
+        self.watch_frame_records(pc, lr);
         self.note_clobbered_reads(pc, lr);
         // After the clobber notes, which can carry a register's origin to
         // another: that change belongs to this step's frame too.
@@ -909,6 +962,7 @@ impl Cpu {
         if result == ExecResult::Advance {
             self.regs.write_pc(pc + 4);
         }
+        self.track_call_or_return(pc, &instr);
 
         if result == ExecResult::Halted {
             self.halted = true;
