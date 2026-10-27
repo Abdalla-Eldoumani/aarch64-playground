@@ -707,7 +707,7 @@ const markdownCell = (s) =>
 
 // The diagnosis behind each row that came back `differs` when the sweep was
 // last read by hand. A row with no entry here prints as undiagnosed, which is
-// the point: a NEW disagreement stands out instead of blending into the five
+// the point: a NEW disagreement stands out instead of blending into the ones
 // that are understood.
 const KNOWN_CAUSES = {
   "example-calc":
@@ -716,8 +716,8 @@ const KNOWN_CAUSES = {
     "GNU m4 expands a define's FIRST argument. Each of dsav's files repeats `define(fp, x29)`, so once they are pasted into one buffer the second one arrives as `define(x29, x29)` and m4 loops forever on the next `x29`. The course build runs m4 once per file, so this is a property of the single-buffer paste rather than of dsav; the playground's own m4 binds names without expanding them and is unaffected.",
   "example-snake":
     "snake is freestanding: it defines `_start` and never defines `main`. gcc links crt1.o, which already defines `_start` and then calls `main`, so ld reports both a duplicate and a missing symbol. Build this one the way its own project does, with `as` and `ld` (or `gcc -nostartfiles`).",
-  "pitfall-6-fault":
-    "By design, and the pitfall says so. The fault half reads x9 after a call, so it prints whatever the callee left behind: the playground's printf leaves announce's 1, glibc's leaves a stack address. Both halves demonstrate the same trap; the value is unspecified on either side.",
+  "exercise-return-to-sender":
+    "An unfinished starter, so the difference is expected. `describe` is a bare `ret` and `next_n` never sets x2 to x5 before calling printf, so both sides print whatever earlier calls left in those registers: the playground's after-call fill (0xDEADBEEF) against what glibc's scanf left behind on csarm.",
 };
 
 function report(programs, pgAll, svAll, machine) {
