@@ -21,9 +21,12 @@ pub const MAX_ACTIVATIONS: usize = 16_384;
 /// Most activations a view draws: main, then the innermost 63.
 pub const MAX_DRAWN: usize = 64;
 
-/// How far below the top a `ret` looks for the call it returns from. A
-/// return that skips more frames than this counts as unexpected; the bound
-/// keeps a loop of bad returns from scanning a deep stack every step.
+/// How far below the top a `ret` looks for the call it returns from. The
+/// bound keeps a loop of bad returns from scanning a deep stack every step.
+///
+/// shortcut: a return that skips more than 64 calls counts as unexpected
+/// and leaves them on the stack; search deeper if a course program ever
+/// unwinds that far in one `ret`.
 const UNWIND_SEARCH: usize = 64;
 
 /// `Activation::flags`: it called out with `bl` or `blr` while no frame
