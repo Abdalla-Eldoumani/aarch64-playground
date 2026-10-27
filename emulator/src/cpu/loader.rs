@@ -32,6 +32,7 @@ impl Cpu {
         // previously loaded hosted image left behind.
         self.trampoline_base = 0;
         self.trampoline_names.clear();
+        self.frames.start(CODE_BASE, &self.regs.snapshot());
     }
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
@@ -89,6 +90,7 @@ impl Cpu {
         }
         crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
         crate::hosted::stdio::write_stdio_globals(&mut self.mem).map_err(map_write_fault)?;
+        self.frames.start(image.entry_point, &self.regs.snapshot());
         self.halted = false;
         // Refresh the symbol table from the linker so debugger
         // surfaces (`gdb b <label>`, future symbolic features) can
