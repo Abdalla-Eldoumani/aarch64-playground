@@ -38,7 +38,8 @@ function isArrangementId(raw: string | null): raw is ArrangementId {
 
 /** Persisted boolean flag, SSR-safe (reads localStorage after mount). A
  *  reducer, like the lane arrangement below, so the stored value can arrive
- *  from an effect. */
+ *  from an effect. Every copy of the flag follows a change at once: the
+ *  other embeds on a lesson page, and the viewer's other tabs. */
 export function usePersistedFlag(
   key: string,
   fallback = false,
@@ -49,10 +50,18 @@ export function usePersistedFlag(
     // state, no separate branch needed.
     const stored = safeGetItem(key);
     if (stored != null) apply(stored === "1");
+    const follow = (event: StorageEvent) => {
+      if (event.key === key && event.newValue) apply(event.newValue === "1");
+    };
+    window.addEventListener("storage", follow);
+    return () => window.removeEventListener("storage", follow);
   }, [key]);
   const set = useCallback((next: boolean) => {
-    apply(next);
-    safeSetItem(key, next ? "1" : "0");
+    const newValue = next ? "1" : "0";
+    safeSetItem(key, newValue);
+    // The browser tells only the other tabs; this page hears it from here,
+    // which also carries the choice when storage is unavailable.
+    window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
   }, [key]);
   return [value, set];
 }
