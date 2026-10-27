@@ -116,7 +116,7 @@
     "vitest": "5.0.3"
   },
   "overrides": {
-    "dompurify": "3.4.16",
+    "dompurify": "3.4.17",
     "postcss": "8.5.30"
   }
 }
