@@ -3,13 +3,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import {
-  decodeFrameLayout,
-  decodeFrames,
-  FRAME_STATE,
-  readFrameLayout,
-  readFrames,
-} from "@/lib/emulator/frame-data";
+import { readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
+import { decodeFrameLayout, decodeFrames, FRAME_STATE } from "@/lib/emulator/stack-frames";
 
 // Pins the emulator calls the web layer relies on, against the real node
 // build. Every expected value is worked out by hand in the comments, never by
