@@ -192,7 +192,9 @@ pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext>
 fn line_at(line_map: &[u32], pc: u64) -> Option<u32> {
     let target = pc as u32;
     line_map
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .find(|pair| pair[0] == target)
         .map(|pair| pair[1])
 }
@@ -200,7 +202,7 @@ fn line_at(line_map: &[u32], pc: u64) -> Option<u32> {
 /// Turn the two pcs of each `Cpu::take_clobber_notes` row into the editor
 /// lines the web words the note from, 0 where the map has none.
 pub fn clobber_note_lines(rows: &mut [u32], line_map: &[u32]) {
-    for row in rows.chunks_exact_mut(4) {
+    for row in rows.as_chunks_mut::<4>().0 {
         row[2] = line_at(line_map, u64::from(row[2])).unwrap_or(0);
         row[3] = line_at(line_map, u64::from(row[3])).unwrap_or(0);
     }
