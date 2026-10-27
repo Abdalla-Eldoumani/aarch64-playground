@@ -257,6 +257,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     memoryMap() {
       return Promise.resolve(cfg.memoryRegions);
     },
+    frameLayout() {
+      return Promise.resolve(null);
+    },
     getMemory(addr, len) {
       calls.getMemory.push([addr, len]);
       return Promise.resolve(cfg.memBytes);
