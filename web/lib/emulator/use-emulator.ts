@@ -5,6 +5,12 @@ import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
 import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
+import {
+  decodeFrameLayout,
+  decodeFrames,
+  type FrameLayout,
+  type FramesSnapshot,
+} from "@/lib/emulator/frame-data";
 import type {
   AssembleOutcome,
   AssemblyError,
@@ -107,6 +113,8 @@ export function useEmulator(): EmulatorState {
   // The last snapshot's call, kept while a run hides it: a run's final
   // snapshot lands before the run is over, so the stop shows it from here.
   const lastCallRef = useRef<ExternalCall | null>(null);
+  const [frames, setFrames] = useState<FramesSnapshot | null>(null);
+  const [frameLayout, setFrameLayout] = useState<FrameLayout | null>(null);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
@@ -225,6 +233,7 @@ export function useEmulator(): EmulatorState {
     // sends neither, and the scrollback stays append-only as before.
     if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
+    setFrames(snap.frames ? decodeFrames(snap.frames) : null);
     // Worded against the files just assembled, whose joined lines the rows name.
     if (snap.clobberNotes?.length) {
       appendNotes(clobberNoteTexts(snap.clobberNotes, workspaceRef.current));
@@ -376,6 +385,7 @@ export function useEmulator(): EmulatorState {
       // state, and is awaited so a caller's seeds land after the wipe.
       const fail = async (outcome: AssembleOutcome): Promise<AssembleOutcome> => {
         setInstructions([]);
+        setFrameLayout(null);
         await backend.reset().catch(() => {});
         return outcome;
       };
@@ -450,6 +460,8 @@ export function useEmulator(): EmulatorState {
               map,
             }),
           );
+          const layout = await backend.frameLayout().catch(() => null);
+          setFrameLayout(layout && decodeFrameLayout(layout));
           markProgramLoaded(true);
           return { success: true, error: null, errorLine: null };
         })
@@ -760,6 +772,8 @@ export function useEmulator(): EmulatorState {
       droppedBreakpoints,
       currentLine,
       externalCall,
+      frames,
+      frameLayout,
       instructions,
       codeBase,
       memoryRegions,
@@ -819,7 +833,7 @@ export function useEmulator(): EmulatorState {
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
-      currentLine, externalCall, instructions, codeBase, memoryRegions,
+      currentLine, externalCall, frames, frameLayout, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
