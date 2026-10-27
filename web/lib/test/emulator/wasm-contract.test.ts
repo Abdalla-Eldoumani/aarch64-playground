@@ -884,48 +884,62 @@ describe("frames", () => {
     });
   });
 
-  // helper writes marks[i] = i + 1 for i = 0 to 7 into a four-int array at
-  // fp + 16 of its 32-byte frame, which ends at main's frame record, so
-  // marks[4] and marks[5] land on main's saved fp and marks[6] and
-  // marks[7] on its saved lr: 7 | 8 << 32. main's ret then jumps to
-  // 0x800000007. Line 11 is the store, line 22 main's ret.
+  const OVERFLOW = `// fill_marks writes eight marks into a four-int local array: the last
+// four land on main's saved fp and lr.
+
+define(fp, x29)
+define(lr, x30)
+
+marks_s = 16                            // int marks[4]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16                // 16 bytes of locals: -32
+dealloc = -alloc
+
+        .text
+// fill_marks() sets marks[i] = i + 1 for i = 0 to 7 (bug: marks holds 4)
+        .balign 4
+        .global fill_marks
+fill_marks:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, marks_s         // x9 = &marks[0]
+        mov     w10, 0                  // i = 0
+        b       fm_test
+fm_loop:
+        add     w11, w10, 1
+        str     w11, [x9, w10, sxtw 2]  // marks[i] = i + 1
+        add     w10, w10, 1
+fm_test:
+        cmp     w10, 8                  // bug: should be 4
+        b.lt    fm_loop
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      fill_marks
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  // fill_marks's 32-byte frame ends at main's frame record, with marks at
+  // fp + 16, so marks[4] and marks[5] land on main's saved fp and marks[6]
+  // and marks[7] on its saved lr: 7 | 8 << 32. main's ret then jumps to
+  // 0x800000007. Line 23 is the store, line 39 main's ret.
   it("reports the writes over main's record and the return they break", () => {
     withEmulator((emu) => {
-      assemble(
-        emu,
-        [
-          "marks_s = 16", // 1
-          "        .text", // 2
-          "        .global helper", // 3
-          "helper: stp     x29, x30, [sp, -32]!", // 4
-          "        mov     x29, sp", // 5
-          "        add     x9, x29, marks_s", // 6
-          "        mov     w10, 0", // 7
-          "        b       test", // 8
-          "fill:", // 9
-          "        add     w11, w10, 1", // 10
-          "        str     w11, [x9, w10, sxtw 2]", // 11
-          "        add     w10, w10, 1", // 12
-          "test:   cmp     w10, 8", // 13
-          "        b.lt    fill", // 14
-          "        ldp     x29, x30, [sp], 32", // 15
-          "        ret", // 16
-          "        .global main", // 17
-          "main:   stp     x29, x30, [sp, -32]!", // 18
-          "        mov     x29, sp", // 19
-          "        bl      helper", // 20
-          "        ldp     x29, x30, [sp], 32", // 21
-          "        ret", // 22
-        ].join("\n"),
-      );
+      assemble(emu, OVERFLOW);
       emu.run_until_break(10_000);
       expect(emu.is_halted()).toBe(true);
       const snap = decodeFrames(emu.frames())!;
       const main = snap.frames[0];
-      expect(main.fpHit).toMatchObject({ pc: pcOfLine(emu, 11), element: 5 });
-      expect(main.lrHit).toMatchObject({ pc: pcOfLine(emu, 11), element: 7 });
+      expect(main.fpHit).toMatchObject({ pc: pcOfLine(emu, 23), element: 5 });
+      expect(main.lrHit).toMatchObject({ pc: pcOfLine(emu, 23), element: 7 });
       expect(emu.frame_names()[main.lrHit!.arrayName!]).toBe("marks_s");
-      expect(snap.badReturn).toMatchObject({ pc: pcOfLine(emu, 22), target: 0x8_0000_0007 });
+      expect(snap.badReturn).toMatchObject({ pc: pcOfLine(emu, 39), target: 0x8_0000_0007 });
     });
   });
 
