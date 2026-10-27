@@ -37,7 +37,8 @@ export type RequestKind =
   | "clearConsole"
   | "codeBase"
   | "lineMap"
-  | "memoryMap";
+  | "memoryMap"
+  | "frameLayout";
 
 export interface BaseRequest<K extends RequestKind> {
   id: number;
@@ -77,7 +78,8 @@ export type Request =
   | BaseRequest<"clearConsole">
   | BaseRequest<"codeBase">
   | BaseRequest<"lineMap">
-  | BaseRequest<"memoryMap">;
+  | BaseRequest<"memoryMap">
+  | BaseRequest<"frameLayout">;
 
 export interface OkResponse<T> {
   id: number;
@@ -225,6 +227,12 @@ export interface StateSnapshot {
    * lib/emulator/clobber-note. Undefined on wasm builds that predate them.
    */
   clobberNotes?: number[];
+  /**
+   * The call stack as the program stands, as the flat numbers
+   * lib/emulator/frame-data decodes. Undefined on wasm builds that predate
+   * the frames export, which hides the stack frames view.
+   */
+  frames?: number[];
   /**
    * `(addr, len)` pairs of memory ranges written since the previous
    * snapshot. Drives memory-cell diff highlighting in the replay scrubber.
