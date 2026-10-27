@@ -1,4 +1,5 @@
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
+import type { FrameLayout, FramesSnapshot } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
 import type { Workspace } from "@/lib/playground/file-map";
@@ -65,6 +66,12 @@ export interface EmulatorState {
    *  line the student wrote. Null mid-run, where calls pass too fast to
    *  show, and on older wasm builds. */
   externalCall: ExternalCall | null;
+  /** The call stack as of the last snapshot (lib/emulator/frame-data);
+   *  null before a program loads and on a wasm build without it. */
+  frames: FramesSnapshot | null;
+  /** The slots each function names, from the last assemble; null beside
+   *  a failed assemble and on a wasm build without it. */
+  frameLayout: FrameLayout | null;
   instructions: DecodedInstruction[];
   codeBase: number;
   /**
