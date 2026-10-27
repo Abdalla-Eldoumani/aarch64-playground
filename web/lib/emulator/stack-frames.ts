@@ -1,0 +1,350 @@
+/**
+ * The stack frames view as words and boxes: the machine's call stack
+ * (frame-data's decoders), the program's frame layout and the stack's bytes,
+ * drawn the way the course draws a frame. High addresses first, one box per
+ * saved register, local, array element and gap, each at its offset from fp
+ * (from sp while fp is not set yet), with sp and fp marked where they point.
+ */
+
+import type { Width } from "@/lib/asm/base-convert";
+import {
+  FRAME_STATE,
+  RUNTIME_CALL,
+  type FrameLayout,
+  type FrameRow,
+  type FramesSnapshot,
+  type FunctionLayout,
+} from "@/lib/emulator/frame-data";
+import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
+import { floatText, integerReading } from "@/lib/emulator/register-format";
+
+export type BoxKind = "saved" | "local" | "padding" | "reserved";
+
+export interface StackBox {
+  /** The lowest address the box covers, and its size in bytes. */
+  addr: number;
+  size: number;
+  /** "fp + 16", or "sp + 16" before fp points at the frame. */
+  offset: string;
+  kind: BoxKind;
+  /** "saved lr (x30)", "a_s = 7", "padding". */
+  title: string;
+  /** "back to line 40", "int, 4 bytes", "12 bytes". */
+  detail: string;
+  /** A saved fp or lr that a write changed from what the call left there. */
+  overwritten: boolean;
+  /** The last step wrote into it: the amber bar. */
+  wrote: boolean;
+  /** "sp", "fp" or "sp, fp" for the registers pointing into it, else "". */
+  marker: string;
+}
+
+export interface DrawnFrame {
+  /** Place in the call stack, 0 for main. */
+  index: number;
+  name: string;
+  bytes: number;
+  /** "called from line 39"; null for main. */
+  from: string | null;
+  /** What an unfinished or unusual frame is doing, null for a complete one. */
+  state: string | null;
+  boxes: StackBox[];
+}
+
+export interface DrawnStack {
+  /** main, then the innermost calls. */
+  frames: DrawnFrame[];
+  /** The calls left out between main and the innermost ones, in words. */
+  folded: string | null;
+  /** Calls deeper than the machine keeps track of, in words. */
+  untracked: string | null;
+  /** Calls deep, main counted. */
+  depth: number;
+}
+
+/** Bytes read from the stack for one drawing. */
+export interface StackBytes {
+  addr: number;
+  bytes: Uint8Array;
+}
+
+export interface DrawInput {
+  snapshot: FramesSnapshot;
+  layout: FrameLayout | null;
+  sp: number;
+  fp: number;
+  pc: number;
+  /** The ranges `rangesToRead` asked for, as read. */
+  memory: readonly StackBytes[];
+  /** The last step's writes, as `[addr, len]`. */
+  written: readonly (readonly [number, number])[];
+  /** The machine's address bands: an 8-byte value inside one is a pointer. */
+  regions: readonly MemoryRegion[];
+  lineLabel: (addr: number) => string | null;
+}
+
+const STATE_WORDS: Record<number, string> = {
+  [FRAME_STATE.entered]: "just entered, nothing pushed yet",
+  [FRAME_STATE.reserved]: "frame reserved, fp not set yet",
+  [FRAME_STATE.leaf]: "leaf: no frame of its own",
+  [FRAME_STATE.nonstandard]: "nonstandard frame",
+  [FRAME_STATE.noRecord]: "no frame record",
+};
+
+/** An array draws at most this many elements; the rest fold into one box. */
+const MAX_ELEMENTS = 32;
+/** shortcut: a frame span reads at most 16 KiB above its low end, so boxes
+ *  higher up in a bigger frame show no value; read per box if a course
+ *  program ever keeps that much on the stack. */
+const MAX_READ = 16 * 1024;
+
+const COUNT = new Intl.NumberFormat("en-US");
+
+/** formatWord32's form, for a 64-bit word too: at least 8 digits. */
+function hex(value: number | bigint): string {
+  return `0x${BigInt(value).toString(16).padStart(8, "0")}`;
+}
+
+function plural(count: number, word: string): string {
+  return `${COUNT.format(count)} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** The stack ranges a drawing needs: the drawn frames' bytes, merged where
+ *  they touch, so the view reads one or two ranges a snapshot. */
+export function rangesToRead(snapshot: FramesSnapshot): [number, number][] {
+  const spans = snapshot.frames
+    .filter((f) => f.spEntry > f.lo)
+    .map((f) => [f.lo, f.spEntry])
+    .sort((a, b) => a[0] - b[0]);
+  const merged: number[][] = [];
+  for (const [lo, hi] of spans) {
+    const last = merged[merged.length - 1];
+    if (last && lo <= last[1]) last[1] = Math.max(last[1], hi);
+    else merged.push([lo, hi]);
+  }
+  return merged.map(([lo, hi]) => [lo, Math.min(hi - lo, MAX_READ)]);
+}
+
+function bytesAt(memory: readonly StackBytes[], addr: number, size: number): Uint8Array | null {
+  for (const span of memory) {
+    const start = addr - span.addr;
+    if (start >= 0 && start + size <= span.bytes.length) return span.bytes.subarray(start, start + size);
+  }
+  return null;
+}
+
+function littleEndian(bytes: Uint8Array): bigint {
+  let value = 0n;
+  for (let i = bytes.length - 1; i >= 0; i--) value = (value << 8n) | BigInt(bytes[i]);
+  return value;
+}
+
+const INT_KINDS: Record<number, string> = { 1: "char", 2: "short", 4: "int", 8: "long" };
+
+/** The C type a slot reads as and its value: an int as a signed decimal, a
+ *  long as a decimal, a pointer (a value inside one of the machine's
+ *  regions) in hex. */
+function typed(
+  bytes: Uint8Array | null,
+  width: number,
+  float: boolean,
+  regions: readonly MemoryRegion[],
+): { kind: string | null; value: string | null } {
+  const bits = bytes ? littleEndian(bytes) : null;
+  if (float && (width === 4 || width === 8)) {
+    const fw = width === 4 ? 32 : 64;
+    return { kind: width === 4 ? "float" : "double", value: bits == null ? null : floatText(bits, fw) };
+  }
+  if (width === 8 && bits != null && bits <= BigInt(Number.MAX_SAFE_INTEGER) && regionFor(Number(bits), regions)) {
+    return { kind: "pointer", value: hex(bits) };
+  }
+  const kind = INT_KINDS[width] ?? null;
+  if (!kind) return { kind: null, value: bits == null ? null : hex(bits) };
+  return { kind, value: bits == null ? null : integerReading(bits, (width * 8) as Width).signed };
+}
+
+/** One named place in a frame: a slot, or one element of an array. */
+interface Item {
+  offset: number;
+  width: number;
+  float: boolean;
+  label: string;
+  /** Set on the box that stands for the elements past MAX_ELEMENTS. */
+  more?: { count: number; width: number };
+}
+
+/** The function's named places inside the frame, lowest first, none
+ *  overlapping another. An array runs from its base to the next name above
+ *  it (or the frame's top), and wins over a slot at its own base. */
+function itemsOf(fn: FunctionLayout | undefined, top: number): Item[] {
+  if (!fn) return [];
+  const offsets = [...fn.slots, ...fn.arrays].map((s) => s.offset);
+  const items: Item[] = [];
+  for (const array of fn.arrays) {
+    const end = Math.min(top, ...offsets.filter((o) => o > array.offset));
+    const count = Math.max(0, Math.floor((end - array.offset) / array.width));
+    const name = array.name ?? "array";
+    for (let k = 0; k < Math.min(count, MAX_ELEMENTS); k++) {
+      items.push({ offset: array.offset + k * array.width, width: array.width, float: false, label: `${name}[${k}]` });
+    }
+    if (count > MAX_ELEMENTS) {
+      const rest = count - MAX_ELEMENTS;
+      items.push({
+        offset: array.offset + MAX_ELEMENTS * array.width,
+        width: rest * array.width,
+        float: false,
+        label: `${name}[${MAX_ELEMENTS}] to ${name}[${count - 1}]`,
+        more: { count: rest, width: array.width },
+      });
+    }
+  }
+  for (const slot of fn.slots) {
+    const label = slot.field ? `${slot.name ?? "?"}.${slot.field}` : (slot.name ?? `[fp, ${slot.offset}]`);
+    items.push({ offset: slot.offset, width: slot.width, float: slot.float, label });
+  }
+  // Stable, so an array's element keeps its place ahead of a slot at the same offset.
+  items.sort((a, b) => a.offset - b.offset);
+  const kept: Item[] = [];
+  let end = 16;
+  for (const item of items) {
+    if (item.offset < end || item.offset + item.width > top) continue;
+    kept.push(item);
+    end = item.offset + item.width;
+  }
+  return kept;
+}
+
+export function drawFrames(input: DrawInput): DrawnStack {
+  const { snapshot, layout, memory, written, regions } = input;
+  const labels = new Map<number, string | null>();
+  // Recursion repeats the same call and return lines, so each is looked up once.
+  const lineOf = (addr: number) => {
+    if (!labels.has(addr)) labels.set(addr, input.lineLabel(addr));
+    return labels.get(addr) ?? null;
+  };
+  const fnAt = (entry: number) => layout?.functions.find((f) => f.entry === entry);
+  const nameOf = (entry: number) => fnAt(entry)?.name ?? hex(entry);
+  const rows = snapshot.frames;
+  const innermost = rows[rows.length - 1];
+
+  const frameName = (record: number) => {
+    const owner = rows.find((r) => r.record === record);
+    if (owner) return nameOf(owner.entry);
+    return snapshot.hidden > 0 && snapshot.hiddenEntry ? nameOf(snapshot.hiddenEntry) : "the caller";
+  };
+
+  const box = (
+    addr: number,
+    size: number,
+    base: { at: number; name: string },
+    kind: BoxKind,
+    title: string,
+    detail: string,
+    overwritten = false,
+  ): StackBox => {
+    const delta = addr - base.at;
+    const inside = (reg: number) => reg >= addr && reg < addr + size;
+    return {
+      addr,
+      size,
+      offset: `${base.name} ${delta < 0 ? "-" : "+"} ${Math.abs(delta)}`,
+      kind,
+      title,
+      detail,
+      overwritten,
+      wrote: written.some(([at, len]) => at < addr + size && addr < at + len),
+      marker: [inside(input.sp) && "sp", inside(input.fp) && "fp"].filter(Boolean).join(", "),
+    };
+  };
+
+  const drawFrame = (row: FrameRow): DrawnFrame => {
+    const fn = fnAt(row.entry);
+    const released = row === innermost && row.state === FRAME_STATE.entered && input.pc !== row.entry;
+    // shortcut: "released" is read from sp back at entry with the pc moved
+    // on, which is the epilogue's ldp in course code; a function that runs
+    // code before its stp reads as released there too.
+    const state = released ? "frame released, ret comes next" : (STATE_WORDS[row.state] ?? null);
+    const callLine = lineOf(row.callPc);
+    const from =
+      row.index === 0
+        ? null
+        : row.flags & RUNTIME_CALL
+          ? "called by qsort or bsearch"
+          : callLine && `called from ${callLine}`;
+    const R = row.record;
+    const hasRecord = R !== 0 && R >= row.lo && R + 16 <= row.spEntry;
+    const base = hasRecord && row.state !== FRAME_STATE.reserved ? { at: R, name: "fp" } : { at: input.sp, name: "sp" };
+    const boxes: StackBox[] = [];
+    if (!hasRecord) {
+      if (row.spEntry > row.lo) {
+        boxes.push(box(row.lo, row.spEntry - row.lo, base, "reserved", "reserved", plural(row.spEntry - row.lo, "byte")));
+      }
+    } else {
+      if (R > row.lo) boxes.push(box(row.lo, R - row.lo, base, "reserved", "reserved", plural(R - row.lo, "byte")));
+      const word = (at: number) => {
+        const bytes = bytesAt(memory, at, 8);
+        return bytes ? littleEndian(bytes) : null;
+      };
+      const savedFp = word(R);
+      const fpChanged = savedFp != null && savedFp !== BigInt(row.fpEntry);
+      const fpText = fpChanged
+        ? hex(savedFp)
+        : row.fpEntry === 0
+          ? "0, no caller frame"
+          : `${frameName(row.fpEntry)}'s frame`;
+      const fpHit = fpChanged && row.fpHit != null;
+      boxes.push(box(R, 8, base, "saved", "saved fp (x29)", fpHit ? `${fpText} · overwritten` : fpText, fpHit));
+      const savedLr = word(R + 8);
+      const lrChanged = savedLr != null && savedLr !== BigInt(row.retAddr);
+      const lrLine = lrChanged ? lineOf(Number(savedLr)) : lineOf(row.retAddr);
+      const lrText = lrChanged
+        ? `${hex(savedLr)} (${lrLine ?? "not code"})`
+        : row.flags & RUNTIME_CALL
+          ? "back to qsort or bsearch"
+          : `back to ${lrLine ?? "the C runtime"}`;
+      const lrHit = lrChanged && row.lrHit != null;
+      boxes.push(box(R + 8, 8, base, "saved", "saved lr (x30)", lrHit ? `${lrText} · overwritten` : lrText, lrHit));
+      const top = row.spEntry - R;
+      let gap = 16;
+      const padding = (to: number) => {
+        if (to > gap) boxes.push(box(R + gap, to - gap, base, "padding", "padding", plural(to - gap, "byte")));
+      };
+      for (const item of itemsOf(fn, top)) {
+        padding(item.offset);
+        const at = R + item.offset;
+        if (item.more) {
+          const each = INT_KINDS[item.more.width] ?? "element";
+          boxes.push(box(at, item.width, base, "local", item.label, `${plural(item.more.count, `more ${each}`)}, ${plural(item.width, "byte")}`));
+        } else {
+          const { kind, value } = typed(bytesAt(memory, at, item.width), item.width, item.float, regions);
+          const title = value == null ? item.label : `${item.label} = ${value}`;
+          const size = plural(item.width, "byte");
+          boxes.push(box(at, item.width, base, "local", title, kind ? `${kind}, ${size}` : size));
+        }
+        gap = item.offset + item.width;
+      }
+      padding(top);
+    }
+    return {
+      index: row.index,
+      name: fn?.name ?? hex(row.entry),
+      bytes: row.spEntry - row.lo,
+      from,
+      state,
+      boxes: boxes.reverse(),
+    };
+  };
+
+  return {
+    frames: rows.map(drawFrame),
+    folded:
+      snapshot.hidden > 0
+        ? `${plural(snapshot.hidden, "more call")}${snapshot.hiddenEntry ? ` of ${nameOf(snapshot.hiddenEntry)}` : ""}`
+        : null,
+    untracked:
+      snapshot.uncounted > 0
+        ? `${plural(snapshot.uncounted, "deeper call")} not shown: the playground stops keeping track this deep`
+        : null,
+    depth: rows.length + snapshot.hidden + snapshot.uncounted,
+  };
+}
