@@ -794,8 +794,9 @@ impl Cpu {
         }
     }
 
-    /// Check the step's writes against the nearest caller's frame record.
-    /// Most steps write nothing, and most writes land below that record.
+    /// Check the step's writes against every caller's frame record, in
+    /// every mode the ring has. Most steps write nothing, and most writes
+    /// land below the nearest record.
     fn watch_frame_records(&mut self, pc: u64, lr: u64) {
         let writes = self.mem.step_writes();
         if writes.is_empty() {
@@ -814,9 +815,10 @@ impl Cpu {
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         let pc = self.regs.read_pc();
         let lr = self.regs.read_gpr(30, true);
-        // Reads made between steps (the register panel, the lr above) are
-        // not the program's.
+        // Reads made between steps (the register panel, the lr above) and
+        // writes (the loader, a step back) are not the program's.
         self.regs.take_clobbered_reads();
+        self.mem.start_step();
         let result = self.execute_step();
         self.watch_frame_records(pc, lr);
         self.note_clobbered_reads(pc, lr);
