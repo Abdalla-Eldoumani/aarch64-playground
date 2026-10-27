@@ -438,6 +438,34 @@ impl RegisterFile {
         }
     }
 
+    /// Mark the callee-saved registers in `mask` (bit N for xN) as left
+    /// changed by the call whose `ret` is at `ret_pc`, so the caller's first
+    /// read of one is noted the way a library call's leftovers are. The
+    /// origin's register (19 to 28) is what tells the two kinds of note
+    /// apart.
+    pub fn mark_callee_saved(&mut self, mask: u32, ret_pc: u64) {
+        for code in 19..29u8 {
+            if (mask >> code) & 1 != 0 {
+                self.log(RegEdit::Origin(code, self.clobber_origins[usize::from(code)]));
+                // Every address the loader hands out fits in 32 bits.
+                self.clobber_origins[usize::from(code)] =
+                    ClobberOrigin { register: code, call_pc: ret_pc as u32, copied_at: 0 };
+            }
+        }
+        self.clobbered.x |= mask;
+    }
+
+    /// The registers still holding what a returning call left in a
+    /// callee-saved register, with the `ret` that left it.
+    pub fn callee_leftovers(&self) -> Vec<(u8, u64)> {
+        (0..31u8)
+            .filter(|&r| (self.clobbered.x >> r) & 1 != 0)
+            .map(|r| (r, self.clobber_origins[usize::from(r)]))
+            .filter(|(_, origin)| (19..29).contains(&origin.register))
+            .map(|(r, origin)| (r, u64::from(origin.call_pc)))
+            .collect()
+    }
+
     /// The clobbered registers read since the last take, emptied.
     pub fn take_clobbered_reads(&self) -> RegMask {
         self.clobbered_reads.take()
