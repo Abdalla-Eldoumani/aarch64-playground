@@ -6,6 +6,7 @@
  */
 
 import init, { Emulator, memoryMap } from "@/lib/wasm/aarch64_emulator";
+import { readFrameLayout, readFrames, type FrameExports } from "@/lib/emulator/frame-data";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { runChunked } from "@/lib/emulator/run-loop";
 import { isDeadInstance } from "@/lib/worker/dead-instance";
@@ -389,6 +390,11 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: readMemoryMap() });
         return;
       }
+      case "frameLayout": {
+        await ensureWasm();
+        post({ id: msg.id, kind: "ok", value: readFrameLayout(require_emulator() as unknown as FrameExports) });
+        return;
+      }
       default: {
         const _exhaustive: never = msg;
         post({
@@ -483,6 +489,9 @@ function snapshot(): StateSnapshot {
   // Drained like stdout; absent on an older cached WASM.
   const emulatorNotes = emulator as unknown as { take_clobber_notes?: () => Uint32Array };
   const clobberNotes = emulatorNotes.take_clobber_notes?.();
+  // Worked out per snapshot (the chain walk grows with depth); absent on
+  // an older cached WASM.
+  const frames = readFrames(emulator as unknown as FrameExports);
   const exit = emulator.get_exit_code();
   return {
     frame,
@@ -503,6 +512,7 @@ function snapshot(): StateSnapshot {
     ...(stdoutSeen != null ? { stdoutSeen } : {}),
     ...(stderrSeen != null ? { stderrSeen } : {}),
     ...(clobberNotes?.length ? { clobberNotes: Array.from(clobberNotes) } : {}),
+    ...(frames ? { frames } : {}),
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
     wantsTerminal,
