@@ -3,8 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { formatWord32 } from "@/lib/emulator/format-hex";
-import { decodeFrameLayout, decodeFrames } from "@/lib/emulator/frame-data";
-import { drawFrames, rangesToRead, type BoxKind } from "@/lib/emulator/stack-frames";
+import {
+  decodeFrameLayout,
+  decodeFrames,
+  drawFrames,
+  rangesToRead,
+  type BoxKind,
+} from "@/lib/emulator/stack-frames";
 
 type FramesViewProps = Pick<
   EmulatorState,
