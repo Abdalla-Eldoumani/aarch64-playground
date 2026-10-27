@@ -22,7 +22,8 @@ env:
 jobs:
   bounds:
     name: runaway walls (release, ignored tests)
-    runs-on: ubuntu-latest
+    # Pinned so every workflow runs on the same image.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
 
