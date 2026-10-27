@@ -169,6 +169,12 @@ impl Memory {
         self.dirty.clear();
     }
 
+    /// The `(addr, len)` runs the running step has written, while its undo
+    /// log is recording; empty otherwise.
+    pub fn step_writes(&self) -> &[(u64, usize)] {
+        if self.recording { &self.undo.runs } else { &[] }
+    }
+
     /// Name the spans that read as zeros until written (the loaded data
     /// sections), replacing any earlier ones.
     pub fn set_zero_fill(&mut self, spans: Vec<(u64, u64)>) {
