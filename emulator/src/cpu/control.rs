@@ -130,6 +130,7 @@ impl Cpu {
         self.refund_output_total = 0;
         self.clobber_notes.clear();
         self.clobber_noted = 0;
+        self.frames.clear();
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
@@ -145,6 +146,17 @@ impl Cpu {
     /// program is loaded. See the fall-through guard in `step`.
     pub fn text_end(&self) -> Option<u64> {
         self.text_end
+    }
+
+    /// Steps taken since the last load or reset, as the step ceiling counts
+    /// them: the clock the call stack's records are stamped with.
+    pub fn steps_total(&self) -> u64 {
+        self.steps_total
+    }
+
+    /// The calls the program is inside, main first.
+    pub fn call_stack(&self) -> &crate::frames::CallStack {
+        &self.frames
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether
@@ -177,13 +189,15 @@ impl Cpu {
             callbacks: self.callbacks.clone(),
             stdout_seen: self.stdout_seen,
             stderr_seen: self.stderr_seen,
+            frames: self.frames.clone(),
         };
         self.snapshots.save_named(name, snap);
     }
 
-    /// Restore everything `snap` holds except registers, memory and the
-    /// heap, which go back to the caller to apply the way their form needs.
-    fn restore_from<R, M, H>(&mut self, snap: Snapshot<R, M, H>) -> (R, M, H) {
+    /// Restore everything `snap` holds except registers, memory, the heap
+    /// and the call stack, which go back to the caller to apply the way
+    /// their form needs.
+    fn restore_from<R, M, H, F>(&mut self, snap: Snapshot<R, M, H, F>) -> (R, M, H, F) {
         self.halted = snap.halted;
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
@@ -206,7 +220,7 @@ impl Cpu {
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
-        (snap.regs, snap.mem, snap.heap)
+        (snap.regs, snap.mem, snap.heap, snap.frames)
     }
 
     /// Restore a previously saved state by name. Returns `true` when a
@@ -215,7 +229,7 @@ impl Cpu {
         let Some(snap) = self.snapshots.load_named(name) else {
             return false;
         };
-        (self.regs, self.mem, self.heap) = self.restore_from(snap);
+        (self.regs, self.mem, self.heap, self.frames) = self.restore_from(snap);
         // The ring still holds frames recorded AFTER this save was taken,
         // so every one of them lies in the restored machine's future:
         // stepping back into one would move the program FORWARD past the
@@ -257,10 +271,11 @@ impl Cpu {
                 StepOutcome::Advance
             };
         };
-        let (regs, mem, heap) = self.restore_from(*snap);
+        let (regs, mem, heap, frames) = self.restore_from(*snap);
         self.regs.undo(regs);
         self.mem.undo(mem);
         self.heap.undo(heap);
+        self.frames.undo(frames);
         // Un-count the step this frame undoes and drop any abort recorded
         // after it; otherwise a step taken right after backing off the step
         // ceiling would re-halt reporting a runaway loop for an instruction
