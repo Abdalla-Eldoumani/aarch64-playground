@@ -370,8 +370,10 @@ function materialize(programs) {
 // ---------------------------------------------------------------------
 // Playground side, driven the way verify-corpus.js drives it: assemble with
 // argv (the loader owns argv[0] = ./program), upload the VFS AFTER assemble
-// because loading resets the machine, push stdin, then run in slices so a
-// program that blocks on stdin is reported rather than spun on.
+// because loading resets the machine, push stdin, then close it: csarm's
+// runner reads stdin from a file or /dev/null, so a read past the input sees
+// end of file there. Run in slices so a program that still blocks (a read
+// that ignored the end of input) is reported rather than spun on.
 function runPlayground(wasm, p) {
   const emu = new wasm.Emulator();
   const asm = emu.assemble_and_load_with_args(p.program, p.args);
@@ -383,6 +385,7 @@ function runPlayground(wasm, p) {
     emu.upload_vfs_file(name, Buffer.from(body, "utf8"));
   }
   if (p.stdin) emu.push_stdin(p.stdin);
+  emu.close_stdin();
   let remaining = STEP_CAP;
   let fault = null;
   let blocked = false;
