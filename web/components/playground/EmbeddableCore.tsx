@@ -20,6 +20,7 @@ import { useWorkingSet } from "@/lib/playground/use-working-set";
 import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/lazy-editor";
+import { FramesView } from "@/components/playground/lazy-frames";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
@@ -726,6 +727,21 @@ export function EmbeddableCore({
             running={emu.isRunning}
             headingLevel={registerHeadingLevel}
             holdScroll={holdScroll}
+          />
+        }
+        stack={
+          <FramesView
+            frames={emu.frames}
+            frameLayout={emu.frameLayout}
+            registers={emu.registers}
+            sp={emu.sp}
+            pc={emu.pc}
+            getMemory={emu.getMemory}
+            dirtyAddrs={emu.dirtyAddrs}
+            memoryRegions={emu.memoryRegions}
+            lineLabel={emu.lineLabel}
+            programLoaded={emu.programLoaded}
+            running={emu.isRunning}
           />
         }
         console={
