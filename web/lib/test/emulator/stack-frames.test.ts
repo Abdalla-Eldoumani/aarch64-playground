@@ -3,9 +3,16 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { decodeFrameLayout, decodeFrames, FRAME_STATE, type FramesSnapshot } from "@/lib/emulator/frame-data";
 import { normalizeMemoryMap } from "@/lib/emulator/memory-map";
-import { drawFrames, rangesToRead, type DrawnStack } from "@/lib/emulator/stack-frames";
+import {
+  decodeFrameLayout,
+  decodeFrames,
+  drawFrames,
+  FRAME_STATE,
+  rangesToRead,
+  type DrawnStack,
+  type FramesSnapshot,
+} from "@/lib/emulator/stack-frames";
 
 // Draws real machine states from the node build. Every expected box is
 // worked out by hand from the program text (the course's slides for the
