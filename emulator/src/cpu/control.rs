@@ -217,6 +217,7 @@ impl Cpu {
             callbacks: self.callbacks.clone(),
             stdout_seen: self.stdout_seen,
             stderr_seen: self.stderr_seen,
+            steps_total: self.steps_total,
             frames: self.frames.clone(),
         };
         self.snapshots.save_named(name, snap);
@@ -299,17 +300,18 @@ impl Cpu {
                 StepOutcome::Advance
             };
         };
+        // Put back the count the step started from, bulk charge and sleep
+        // refund included, and drop any abort recorded after it; otherwise a
+        // step taken right after backing off the step ceiling would re-halt
+        // reporting a runaway loop for an instruction that never executed.
+        // Bounded: each backward step refunds what its forward step charged,
+        // and the ring holds at most its capacity.
+        self.steps_total = snap.steps_total;
         let (regs, mem, heap, frames) = self.restore_from(*snap);
         self.regs.undo(regs);
         self.mem.undo(mem);
         self.heap.undo(heap);
         self.frames.undo(frames);
-        // Un-count the step this frame undoes and drop any abort recorded
-        // after it; otherwise a step taken right after backing off the step
-        // ceiling would re-halt reporting a runaway loop for an instruction
-        // that never executed. Bounded: each backward step refunds exactly
-        // one forward step, and the ring holds at most its capacity.
-        self.steps_total = self.steps_total.saturating_sub(1);
         self.abort_message = None;
         if self.halted {
             match self.exit_code {
