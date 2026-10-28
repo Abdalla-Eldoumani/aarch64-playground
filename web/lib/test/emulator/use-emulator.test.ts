@@ -834,6 +834,34 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.notes).toEqual([card]);
   });
 
+  // The same return, met by a run that paused at its million steps: the card
+  // goes under the pause, and the console stays quiet (a pause repeats).
+  it("puts the card under a run's pause without a console note", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+      runSnapshot: { frames },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(/\nmain's ret on line 13 jumped to 0x700000006 /));
+    expect(result.current.error).toMatch(/^paused after 1,000,000 steps without finishing\. /);
+    expect(result.current.notes).toEqual([]);
+  });
+
   // A row for x19 (code 19): the ret on line 13 left it, line 11 read it.
   it("notes a caller reading x19 a call left changed, and hands the row to the frames view", async () => {
     const fake = makeBackend({ frameLayout: MAIN_ONLY, runSnapshot: { clobberNotes: [19, 0, 13, 11] } });
