@@ -6,6 +6,7 @@ import { combineSources } from "@/lib/playground/file-map";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type {
   AssembleResultPayload,
+  RunGoal,
   RunResultPayload,
   StateSnapshot,
   StepResultPayload,
@@ -161,6 +162,8 @@ interface BackendCalls {
   step: number;
   stepBack: number;
   run: number[];
+  /** The goal beside each run, in the same order. */
+  until: Array<RunGoal | undefined>;
   reset: number;
   pause: number;
   clearConsole: number;
@@ -215,6 +218,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     step: 0,
     stepBack: 0,
     run: [],
+    until: [],
     reset: 0,
     pause: 0,
     clearConsole: 0,
@@ -298,8 +302,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       };
       return Promise.resolve({ stepResult, snapshot: s });
     },
-    runUntilBreak(maxSteps) {
+    runUntilBreak(maxSteps, until) {
       calls.run.push(maxSteps);
+      calls.until.push(until);
       if (cfg.runThrows) return Promise.reject(new Error("run boom"));
       if (cfg.runDeferred) {
         return new Promise((resolve) => {
@@ -1065,6 +1070,89 @@ describe("useEmulator stepping and running", () => {
       capturedRun();
     });
     expect(fake.calls.run).toEqual([1_000_000]);
+  });
+
+  // main, one call folded out of the view, and one more: three calls deep.
+  // Two drawn rows (main and the innermost), all zero but where they sit.
+  const THREE_DEEP = [0, 0, 1, 0, 1, 0, 0, 0, 2, 0, ...Array(36).fill(0)];
+
+  it.each([
+    ["over", { depth: 3 }],
+    ["out", { depth: 2 }],
+  ] as const)("runs %s to a call depth read from the latest snapshot", async (target, until) => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: THREE_DEEP });
+    });
+    await act(async () => {
+      await result.current.runUntil(target);
+    });
+    expect(fake.calls.until).toEqual([until]);
+  });
+
+  it("finishes a library call, not the function, on a step out inside one", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: THREE_DEEP, externalCall: { name: "printf", callSitePc: CODE_BASE + 8, callSiteLine: 11 } });
+    });
+    await act(async () => {
+      await result.current.runUntil("out");
+    });
+    expect(fake.calls.until).toEqual([{ depth: 3 }]);
+  });
+
+  it("runs to the instruction a line stands for, and says so", async () => {
+    // Line 11 is the third instruction; the run stops there.
+    const fake = makeBackend({
+      runResult: { pc: CODE_BASE + 8, halted: false, steps_executed: 2, hit_breakpoint: false, error: null, reached: true },
+      runSnapshot: { pc: toHex(CODE_BASE + 8) },
+    });
+    const { result } = await mountAssembled(fake);
+    let said: string | null = null;
+    await act(async () => {
+      said = await result.current.runUntil(11);
+    });
+    expect(fake.calls.until).toEqual([{ pc: CODE_BASE + 8 }]);
+    expect(said).toBe("reached line 11");
+    expect(result.current.stopReason).toBe("reached line 11");
+    expect(result.current.stepCount).toBe(2);
+
+    // The next step moves the machine on, and the reason goes with it.
+    await act(async () => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.stepCount).toBe(3));
+    expect(result.current.stopReason).toBeNull();
+  });
+
+  it("runs nothing for a line past the last instruction, and says why", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      await result.current.runUntil(40);
+    });
+    expect(fake.calls.run).toEqual([]);
+    expect(result.current.stopReason).toBe("line 40 has no instruction to stop at");
+  });
+
+  it("resumes the same goal once the console answers a read", async () => {
+    const fake = makeBackend({ runSnapshot: { blocked: true } });
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: THREE_DEEP });
+    });
+    await act(async () => {
+      await result.current.runUntil("over");
+    });
+    expect(result.current.stopReason).toBe("waiting for input");
+    fake.cfg.runSnapshot = { frames: THREE_DEEP };
+    await act(async () => {
+      result.current.pushStdin("7\n", true);
+      result.current.resumeAfterInput();
+    });
+    await waitFor(() => expect(fake.calls.until).toEqual([{ depth: 3 }, { depth: 3 }]));
   });
 
   it("run sets the running flag until the backend resolves", async () => {
