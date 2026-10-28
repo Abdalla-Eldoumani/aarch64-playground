@@ -39,7 +39,7 @@ repository root.
 | --- | --- |
 | The one emulator component used on every page | `web/components/playground/EmbeddablePlayground.tsx`, `EmbeddableCore.tsx` (owns the emulator hook), `use-embeddable-state.ts` |
 | The full debugger's panels and dialogs, loaded only on `/playground` | `web/components/playground/FullChromeSurface.tsx`, `lazy-full-chrome.tsx`, `use-workspace-import.ts`, `use-full-chrome-run.ts`, `use-active-file.ts`, `use-debug-panes.tsx` |
-| Lesson and exercise editors (run, step, back, reset, check, and step over, step out and run to cursor, behind **more** on a phone) | `web/components/playground/EmbedLayout.tsx`, `StepGoals.tsx` |
+| Lesson and exercise editors (run, step, back, reset, check, and step over, step out and run to cursor, behind an ellipsis button, **…**, on a phone) | `web/components/playground/EmbedLayout.tsx`, `StepGoals.tsx` |
 | Editor (Monaco), loaded on demand | `web/components/playground/Editor.tsx`, `monaco-setup.ts`, `lazy-editor.tsx` |
 | Editor on touch screens | `web/components/playground/TouchEditor.tsx` |
 | Completion, hover cards, and error explanations | `web/lib/asm/asm-completion.ts`, `instruction-docs.ts`, `error-explain.ts` |
@@ -47,7 +47,7 @@ repository root.
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
 | Assemble, run, step, back, and reset | `web/components/playground/Controls.tsx`, `web/lib/emulator/use-emulator.ts` |
 | Breakpoints | `web/components/playground/Editor.tsx`, `web/lib/emulator/use-breakpoints.ts` |
-| Step over (`Ctrl+F10`: run the call on this line in one go), step out (`Ctrl+Shift+F10`: run until this function returns) and run to cursor (`Ctrl+F9`: run until the caret's line), at run speed; each stops early at a breakpoint, a read waiting for input, the step limit, the program's end, or a `ret` through an overwritten lr, and says why it stopped. On a phone they sit behind **more** in the run row | `run_until` in `emulator/src/cpu/control.rs`, `run_to` in `emulator/src/lib.rs`, `runUntil` in `web/lib/emulator/use-emulator.ts`, `web/lib/emulator/stop-reason.ts`, `web/components/playground/Controls.tsx` |
+| Step over (`Ctrl+F10`: run the call on this line in one go), step out (`Ctrl+Shift+F10`: run until this function returns) and run to cursor (`Ctrl+F9`: run until the caret's line), at run speed; each stops early at a breakpoint, a read waiting for input, the program's end, or a `ret` through an overwritten lr, and says why it stopped; after 1,000,000 steps one pauses, and pressing it again goes on to the same place. On a phone they sit behind the ellipsis button, **…** (read out as "more ways to step"), in the run row | `run_until` in `emulator/src/cpu/control.rs`, `run_to` in `emulator/src/lib.rs`, `runUntil` in `web/lib/emulator/use-emulator.ts`, `web/lib/emulator/stop-reason.ts`, `web/components/playground/Controls.tsx` |
 | Step back (the last 128 instructions) | `emulator/src/snapshot.rs` |
 | Replay slider | `web/components/playground/ReplayScrubber.tsx`, `web/lib/emulator/replay.ts` |
 | Save states and bookmarks | `web/components/panels/SavesPanel.tsx`, `web/lib/playground/named-saves.ts`, `web/lib/hooks/use-named-saves.ts` |
