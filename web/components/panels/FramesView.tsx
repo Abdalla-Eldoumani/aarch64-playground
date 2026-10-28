@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { formatWord32 } from "@/lib/emulator/format-hex";
 import { calleeCards, plain, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
@@ -13,6 +13,7 @@ import {
   type BoxKind,
   type StackBytes,
 } from "@/lib/emulator/stack-frames";
+import { PointerContext } from "@/components/panels/slot-pointer";
 
 type FramesViewProps = Pick<
   EmulatorState,
@@ -117,6 +118,10 @@ export function FramesView({
   }, [frames, snapshot, readMemory]);
   const written = slotWords?.frames === frames ? slotWords.bytes : [];
 
+  // The slot a register's pointer chip names, lit in cyan, the reader's
+  // colour, while the chip is under the mouse or focus or after a press.
+  const pointed = useContext(PointerContext)?.pointed ?? null;
+  const litAt = pointed ? parseInt(registers[pointed.reg] ?? "", 16) : NaN;
   // What went wrong, under the frames: a write over a caller's saved fp or
   // lr at the step that made it, a ret that went to no caller from then on,
   // and a caller reading x19 to x28 a call left changed at the step it read.
@@ -184,37 +189,58 @@ export function FramesView({
   // fit beside it, and stay a scroll away when not. Written to this box
   // alone, so the page never scrolls under the reader. A rotation or a
   // resize of the window or the pane brings it back the same way.
+  // A pressed pointer chip's slot holds the view instead, until the machine
+  // next moves.
   const boxRef = useRef<HTMLDivElement>(null);
   const innermostRef = useRef<HTMLLIElement>(null);
-  useEffect(() => {
+  const slotHeld = useRef(false);
+  const reveal = useEffectEvent(() => {
     const box = boxRef.current;
-    if (!box || running) return;
+    if (!box) return;
     const span = (targets: HTMLElement[]) => [
       Math.min(...targets.map((t) => t.offsetTop)),
       Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight)),
     ];
-    const reveal = () => {
-      const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
-      const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
-      if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
-      const cards = box.querySelector<HTMLElement>("[data-cards]");
-      const anchors = [calls, wrote].filter((t) => t.length > 0);
-      const tries = cards ? [...anchors.map((t) => [...t, cards]), ...anchors] : anchors;
-      // With no call drawn, the cards alone.
-      if (tries.length === 0 && cards) tries.push([cards]);
-      if (tries.length === 0) return;
-      const spans = tries.map(span);
-      const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
-      if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
-        box.scrollTop = bottom - box.clientHeight;
-      } else if (top < box.scrollTop) box.scrollTop = top;
-    };
+    const lit = slotHeld.current ? box.querySelector<HTMLElement>("[data-lit]") : null;
+    const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
+    const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
+    if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
+    const cards = box.querySelector<HTMLElement>("[data-cards]");
+    const anchors = [calls, wrote].filter((t) => t.length > 0);
+    const tries = cards ? [...anchors.map((t) => [...t, cards]), ...anchors] : anchors;
+    // With no call drawn, the cards alone.
+    if (tries.length === 0 && cards) tries.push([cards]);
+    if (lit) tries.splice(0, tries.length, [lit]);
+    if (tries.length === 0) return;
+    const spans = tries.map(span);
+    const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
+    if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
+      box.scrollTop = bottom - box.clientHeight;
+    } else if (top < box.scrollTop) box.scrollTop = top;
+  });
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || running) return;
+    slotHeld.current = false;
     reveal();
     if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(reveal);
+    const observer = new ResizeObserver(() => reveal());
     observer.observe(box);
     return () => observer.disconnect();
   }, [frames, cardKey, running]);
+  // A chip pressed in a pane this view replaced took the focus with it, so
+  // the focus comes here, where the slot is.
+  const revealSlot = useEffectEvent(() => {
+    if (running) return;
+    slotHeld.current = true;
+    reveal();
+    const active = document.activeElement;
+    if (!active || active === document.body) boxRef.current?.focus({ preventScroll: true });
+  });
+  const asked = pointed?.reveal ?? 0;
+  useEffect(() => {
+    if (asked) revealSlot();
+  }, [asked]);
 
   const idle = !programLoaded
     ? "Step through the program to watch each call's frame being built."
@@ -260,38 +286,47 @@ export function FramesView({
                       345px, too short for a 48-byte frame of three locals
                       drawn in full, each box takes one line: the title and
                       the detail side by side. */}
-                  {frame.boxes.map((box) => (
-                    <li
-                      key={box.addr}
-                      data-wrote={box.wrote || undefined}
-                      className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2 [@container(height<345px)]:mt-px"
-                    >
-                      <span className="text-right font-mono text-[12px] text-[var(--text-tertiary)]">
-                        {box.offset}
-                      </span>
-                      <div
-                        className={`px-2 py-[3px] text-[13px] leading-snug [@container(height<345px)]:flex [@container(height<345px)]:flex-wrap [@container(height<345px)]:gap-x-2 [@container(height<345px)]:py-0 [@container(height<345px)]:leading-4 ${
-                          box.overwritten ? OVERWRITTEN : KIND_STYLE[box.kind]
-                        }`}
-                        style={box.wrote ? { boxShadow: "inset 3px 0 0 0 var(--amber)" } : undefined}
+                  {frame.boxes.map((box) => {
+                    const lit = litAt >= box.addr && litAt < box.addr + box.size;
+                    // The amber bar is listed first, so it draws over the cyan ring.
+                    const marks = [box.wrote && "inset 3px 0 0 0 var(--amber)", lit && "inset 0 0 0 2px var(--cyan)"]
+                      .filter(Boolean)
+                      .join(", ");
+                    return (
+                      <li
+                        key={box.addr}
+                        data-wrote={box.wrote || undefined}
+                        data-lit={lit || undefined}
+                        className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2 [@container(height<345px)]:mt-px"
                       >
-                        <div className="break-words font-medium">{box.title}</div>
-                        <div className="break-words text-[12px] text-[var(--text-secondary)]">
-                          {box.detail}
-                          {box.wrote && <span className="sr-only">, just written</span>}
+                        <span className="text-right font-mono text-[12px] text-[var(--text-tertiary)]">
+                          {box.offset}
+                        </span>
+                        <div
+                          className={`px-2 py-[3px] text-[13px] leading-snug [@container(height<345px)]:flex [@container(height<345px)]:flex-wrap [@container(height<345px)]:gap-x-2 [@container(height<345px)]:py-0 [@container(height<345px)]:leading-4 ${
+                            box.overwritten ? OVERWRITTEN : KIND_STYLE[box.kind]
+                          }`}
+                          style={marks ? { boxShadow: marks } : undefined}
+                        >
+                          <div className="break-words font-medium">{box.title}</div>
+                          <div className="break-words text-[12px] text-[var(--text-secondary)]">
+                            {box.detail}
+                            {box.wrote && <span className="sr-only">, just written</span>}
+                            {lit && <span className="sr-only">, x{pointed?.reg} points here</span>}
+                          </div>
                         </div>
-                      </div>
-                      <span className="whitespace-nowrap font-mono text-[12px] text-[var(--text-secondary)]">
-                        {box.marker && (
-                          <>
-                            <span aria-hidden="true">← </span>
-                            {box.marker}
-                            <span className="sr-only"> points here</span>
-                          </>
-                        )}
-                      </span>
-                    </li>
-                  ))}
+                        <span className="whitespace-nowrap font-mono text-[12px] text-[var(--text-secondary)]">
+                          {box.marker && (
+                            <>
+                              <span aria-hidden="true">← </span>
+                              {box.marker}
+                              <span className="sr-only"> points here</span>
+                            </>
+                          )}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
               {i === 0 && stack.folded && (
