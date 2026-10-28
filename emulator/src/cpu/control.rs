@@ -133,6 +133,7 @@ impl Cpu {
         self.changed_fprs.clear();
         self.halted = false;
         self.steps_total = 0;
+        self.steps_taken = 0;
         self.output_total = 0;
         self.abort_message = None;
         self.stdout.clear();
@@ -177,9 +178,15 @@ impl Cpu {
     }
 
     /// Steps taken since the last load or reset, as the step ceiling counts
-    /// them: the clock the call stack's records are stamped with.
+    /// them: bulk work charged, sleeps refunded.
     pub fn steps_total(&self) -> u64 {
         self.steps_total
+    }
+
+    /// Steps taken since the last load or reset, one each: the clock the
+    /// call stack's records are stamped with.
+    pub fn steps_taken(&self) -> u64 {
+        self.steps_taken
     }
 
     /// The calls the program is inside, main first.
@@ -218,6 +225,7 @@ impl Cpu {
             stdout_seen: self.stdout_seen,
             stderr_seen: self.stderr_seen,
             steps_total: self.steps_total,
+            steps_taken: self.steps_taken,
             frames: self.frames.clone(),
         };
         self.snapshots.save_named(name, snap);
@@ -246,6 +254,7 @@ impl Cpu {
         // the step budget survives a restore.
         self.stdout_seen = snap.stdout_seen;
         self.stderr_seen = snap.stderr_seen;
+        self.steps_taken = snap.steps_taken;
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
