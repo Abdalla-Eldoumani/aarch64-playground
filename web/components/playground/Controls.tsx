@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 import { usePersistedFlag } from "@/components/panels/register-panel-settings";
 import { Button } from "@/components/ui/Button";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
@@ -95,6 +95,7 @@ export function Controls({
   // The phone row has no room for three more, so they open as a row of
   // their own; the same remembered choice as a lesson frame's ellipsis.
   const [more, setMore] = usePersistedFlag("aarch64-playground:embed-more");
+  const goalsId = useId();
   const steppable = programLoaded && !isRunning && !isHalted && !blocked;
   const goalButtons = onRunUntil
     ? GOALS.map(({ goal, label, keys }) => (
@@ -193,6 +194,7 @@ export function Controls({
               onClick={() => setMore(!more)}
               aria-label="more ways to step"
               aria-expanded={more}
+              aria-controls={goalsId}
               className={`${share("flex-[0.6]")} !min-w-[2.75rem]`}
             >
               <span>…</span>
@@ -237,7 +239,13 @@ export function Controls({
           </span>
         )}
       </div>
-      {compact && more && goalButtons && <div className="flex items-center gap-1">{goalButtons}</div>}
+      {/* Kept while shut, so the ellipsis' aria-controls names an element; a
+          class only when open, since Tailwind's flex beats the hidden rule. */}
+      {compact && goalButtons && (
+        <div id={goalsId} hidden={!more} className={more ? "flex items-center gap-1" : undefined}>
+          {goalButtons}
+        </div>
+      )}
       {stopReason && !error && (
         <p role="status" className="min-w-0 break-words font-sans text-[12px] text-[var(--text-secondary)]">
           {stopReason}
