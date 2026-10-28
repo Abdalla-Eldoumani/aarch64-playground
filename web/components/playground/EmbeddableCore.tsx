@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { FullChromeBridge } from "@/components/playground/FullChromeSurface";
 import { useEmulator } from "@/lib/emulator/use-emulator";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
@@ -116,12 +117,10 @@ export function EmbeddableCore({
     setFullReady(bridge !== null);
   }, []);
   const [source, setSource] = useState(startSource ?? "");
-  // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings,
-  // refreshed shortly after the student stops typing. Warnings, never errors:
-  // assembling stays available regardless.
-  const [lintWarnings, setLintWarnings] = useState<
-    Array<{ line: number; message: string }>
-  >([]);
+  // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings and the
+  // frame check, refreshed shortly after the student stops typing. Warnings,
+  // never errors: assembling stays available regardless.
+  const [lintWarnings, setLintWarnings] = useState<LintWarning[]>([]);
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
