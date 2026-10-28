@@ -32,8 +32,9 @@ export interface CardContext extends ProgramLines {
   layout: FrameLayout | null;
 }
 
-/** A card and the event it tells of (a slot at a step, a ret, a read), so
- *  the frames view says each event once, whatever its words. */
+/** A card and the event it tells of (a slot at a step, a function's ret
+ *  line, a read), so the frames view says each event once, whatever its
+ *  words: a loop of rets from one line is one event. */
 export interface Card {
   event: string;
   text: string;
@@ -177,7 +178,7 @@ export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | nu
     because = `, because ${name} called out${bl} before saving lr, so lr still held that call's return address`;
   }
   return {
-    event: `ret at step ${bad.step}`,
+    event: `ret at ${hex(bad.pc)} in ${hex(row.entry)}`,
     text: `${name}'s ret on ${ret ? at(ret) : "its last line"} ${went} instead of going back to ${backTo(row, ctx, fnName)}${because}.`,
     cause,
   };
