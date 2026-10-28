@@ -6,6 +6,7 @@ import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type {
   AssembleResultPayload,
   Request,
+  RunGoal,
   RunResultPayload,
   StateSnapshot,
   StepResultPayload,
@@ -90,8 +91,9 @@ export class WorkerClient {
 
   runUntilBreak(
     maxSteps: number,
+    until?: RunGoal,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
-    return this.send({ id: 0, kind: "runUntilBreak", maxSteps });
+    return this.send({ id: 0, kind: "runUntilBreak", maxSteps, until });
   }
 
   pause(): Promise<void> {
