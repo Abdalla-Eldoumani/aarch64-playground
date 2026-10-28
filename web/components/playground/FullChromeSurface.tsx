@@ -511,6 +511,7 @@ export function FullChromeSurface({
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}
+            frames={emu.frames}
             running={emu.isRunning}
           />
         </div>
