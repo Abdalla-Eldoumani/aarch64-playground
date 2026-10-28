@@ -23,6 +23,8 @@ import { FullLayout } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
 import { Toolbar } from "@/components/playground/Toolbar";
 import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
+import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { BYTES_KEY } from "@/components/playground/StackTab";
 import {
   MultiFileTabs,
   type SourceFile,
@@ -170,6 +172,9 @@ export function FullChromeSurface({
   // says nothing about a phone.
   const [phonePane, setPhonePane] = useState("code");
   const shownPane = phone ? phonePane : activeTab;
+  // The stack tab's own copy of the bytes choice switches this one too, and
+  // the frames open the debug column taller.
+  const [showBytes] = usePersistedFlag(BYTES_KEY);
   // Mirrors the palette's converter action into the phone layout, where the
   // desktop tab state has nothing to show.
   const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
@@ -684,6 +689,7 @@ export function FullChromeSurface({
         disassembly={disasmBlock}
         registers={regsBlock}
         rightTabs={rightTabs}
+        framesOpen={activeTab === "stack" && !showBytes}
         panes={panes}
         consoleBlocked={emu.blocked}
         consoleUnread={consoleUnread}
