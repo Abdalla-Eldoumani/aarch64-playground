@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { IDLE_CPU_VIEW } from "@/lib/emulator/use-cpu-view";
-import type { RegView } from "@/lib/emulator/emulator-state";
+import type { RegView, StepGoal } from "@/lib/emulator/emulator-state";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
 import type { WalkCommand, WalkState } from "@/lib/playground/use-autoplay";
@@ -60,6 +60,8 @@ export type EmbeddablePlaygroundHandle = {
   pause(): void;
   step(): void;
   stepBack(): void;
+  /** Step over, step out or run to cursor (main.asm's caret line). */
+  runUntil(goal: StepGoal): void;
   reset(): void;
   /** Swap the editor text only (an exercise's restore-starter); a new
    *  program goes through loadProgram so the last run's state is cleared. */
@@ -365,6 +367,7 @@ export const EmbeddablePlayground = forwardRef<
       pause: () => runOrQueue((handle) => handle.pause()),
       step: () => runOrQueue((handle) => handle.step()),
       stepBack: () => runOrQueue((handle) => handle.stepBack()),
+      runUntil: (goal: StepGoal) => runOrQueue((handle) => handle.runUntil(goal)),
       reset: () => runOrQueue((handle) => handle.reset()),
       loadSource: (next: string, label?: string) =>
         runOrQueue((handle) => handle.loadSource(next, label)),
@@ -422,6 +425,8 @@ export const EmbeddablePlayground = forwardRef<
           onReset={engage}
           onStep={() => pressFirst("step")}
           onStepBack={engage}
+          onRunUntil={engage}
+          stopReason={null}
           onCheck={() => pressFirst("check")}
           runStatus={IDLE_RUN_STATUS}
           hasOutput={false}
