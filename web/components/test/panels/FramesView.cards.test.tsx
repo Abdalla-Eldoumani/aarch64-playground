@@ -214,7 +214,7 @@ describe("the cards under the frames", () => {
 
   // lr-not-saved.s: show's ret on line 29 goes back to itself on steps 16,
   // 17, 18 and on, one loop and one event.
-  it("say the lr card once however many times the ret goes round", async () => {
+  it("say the lr card once however many times the ret loops back", async () => {
     const m = machine(fixture("lr-not-saved.s"));
     m.step(15);
     const { rerender } = render(<FramesView {...m.props()} />);
