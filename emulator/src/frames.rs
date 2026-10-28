@@ -30,12 +30,14 @@ pub const MAX_DRAWN: usize = 64;
 /// unwinds that far in one `ret`.
 const UNWIND_SEARCH: usize = 64;
 
-/// `Activation::flags`: it called out with `bl` or `blr` while no frame
-/// record held its lr, so its `ret` cannot find its caller.
+/// `Activation::flags`: it called out with `bl` or `blr` before it had
+/// stored x30 anywhere, so that call's return address replaced its own.
 pub const LR_UNSAVED: u8 = 1;
 /// `Activation::flags`: qsort or bsearch entered it to compare two
 /// elements; no call the program wrote did.
 pub const RUNTIME_CALL: u8 = 2;
+/// `Activation::flags`: it has stored x30 (a `str` or `stp` of x30).
+pub const LR_STORED: u8 = 4;
 
 /// `Frame::state`: the frame record is pushed and fp points at it.
 pub const COMPLETE: u8 = 0;
@@ -82,6 +84,9 @@ pub struct Activation {
     /// 0 for none: a chain through every record above this activation.
     watch: usize,
     pub flags: u8,
+    /// The return address of the latest `bl` or `blr` it made, 0 before
+    /// its first.
+    pub last_ret: u64,
     /// The latest writes that changed its saved fp and its saved lr.
     pub fp_hit: Hit,
     pub lr_hit: Hit,
@@ -107,15 +112,15 @@ pub struct CallStack {
 
 /// What one step changed in the call stack, for its step-back frame: the
 /// small fields as they were, each activation it removed (innermost
-/// first), and the old record and flags, or the old hits, of each one it
-/// changed in place.
+/// first), and the old record, flags and last call, or the old hits, of
+/// each one it changed in place.
 #[derive(Debug, Default)]
 pub struct FrameUndo {
     len: usize,
     uncounted: u64,
     bad_return: BadReturn,
     removed: Vec<Activation>,
-    marked: Vec<(usize, u64, u8)>,
+    marked: Vec<(usize, u64, u8, u64)>,
     hit: Vec<(usize, Hit, Hit)>,
 }
 
@@ -208,9 +213,9 @@ impl CallStack {
     pub(crate) fn undo(&mut self, log: FrameUndo) {
         self.acts.truncate(log.len - log.removed.len());
         self.acts.extend(log.removed.into_iter().rev());
-        for (i, record, flags) in log.marked.into_iter().rev() {
+        for (i, record, flags, last_ret) in log.marked.into_iter().rev() {
             if let Some(a) = self.acts.get_mut(i) {
-                (a.record, a.flags) = (record, flags);
+                (a.record, a.flags, a.last_ret) = (record, flags, last_ret);
             }
         }
         for (i, fp_hit, lr_hit) in log.hit.into_iter().rev() {
@@ -223,9 +228,10 @@ impl CallStack {
     }
 
     /// A `bl` or `blr` at `pc` just sent the program to `target`. The
-    /// caller's frame is settled, so note where its record sits, or that lr
-    /// went unsaved; then push the callee when `target` is the program's
-    /// own code (a library call is not pushed).
+    /// caller's frame is settled, so note where its record sits, the call's
+    /// return address, and whether lr went out unsaved; then push the
+    /// callee when `target` is the program's own code (a library call is
+    /// not pushed).
     pub(crate) fn on_call(
         &mut self,
         pc: u64,
@@ -244,12 +250,15 @@ impl CallStack {
                 Shape::Reserved => sp,
                 _ => 0,
             };
-            let flags = if record == 0 { caller.flags | LR_UNSAVED } else { caller.flags };
-            if (record, flags) != (caller.record, caller.flags) {
+            // What the call did, not the frame's shape: a function that
+            // saved lr without setting fp still saved it.
+            let flags = if caller.flags & LR_STORED == 0 { caller.flags | LR_UNSAVED } else { caller.flags };
+            let last_ret = pc.wrapping_add(4);
+            if (record, flags, last_ret) != (caller.record, caller.flags, caller.last_ret) {
                 if let Some(log) = log {
-                    log.marked.push((top, caller.record, caller.flags));
+                    log.marked.push((top, caller.record, caller.flags, caller.last_ret));
                 }
-                (caller.record, caller.flags) = (record, flags);
+                (caller.record, caller.flags, caller.last_ret) = (record, flags, last_ret);
             }
         }
         if into_program {
@@ -262,6 +271,21 @@ impl CallStack {
                 saved: callee_saved(regs),
                 ..Activation::default()
             });
+        }
+    }
+
+    /// The innermost call just stored x30: a call it makes from here goes
+    /// out with lr saved.
+    pub(crate) fn on_lr_store(&mut self, log: Option<&mut FrameUndo>) {
+        let top = self.acts.len().wrapping_sub(1);
+        // Past the cap the store is an unrecorded call's.
+        if let (0, Some(a)) = (self.uncounted, self.acts.last_mut()) {
+            if a.flags & LR_STORED == 0 {
+                if let Some(log) = log {
+                    log.marked.push((top, a.record, a.flags, a.last_ret));
+                }
+                a.flags |= LR_STORED;
+            }
         }
     }
 
@@ -592,6 +616,7 @@ pub fn view_numbers(v: &FrameView) -> Vec<f64> {
         out.extend(element(f.fp_hit_element));
         out.extend([a.lr_hit.step as f64, a.lr_hit.pc as f64]);
         out.extend(element(f.lr_hit_element));
+        out.push(a.last_ret as f64);
     }
     for &(register, ret_pc) in &v.leftovers {
         out.extend([f64::from(register), ret_pc as f64]);
