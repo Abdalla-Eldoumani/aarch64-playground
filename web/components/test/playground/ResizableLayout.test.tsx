@@ -562,4 +562,29 @@ describe("the debug column while the stack tab shows the frames", () => {
       if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
     }
   });
+
+  // Under a finger the register header's 44px targets reach 266px on an iPad
+  // Mini, so three rows take 330px: 330 / 495 of the same column.
+  it("opens the registers taller under a coarse pointer", () => {
+    const tall = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    const fine = window.matchMedia;
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.panel === "panel-regs" ? 203 : 0;
+      },
+    });
+    window.matchMedia = ((query: string) => ({
+      ...fine(query),
+      matches: query === "(pointer: coarse)",
+    })) as typeof window.matchMedia;
+    try {
+      render(layout(true));
+      const opened = setLayoutCalls.find((l) => "panel-regs" in l);
+      expect(opened?.["panel-regs"]).toBeCloseTo((330 / (203 / 0.41)) * 100, 1);
+    } finally {
+      window.matchMedia = fine;
+      if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
+    }
+  });
 });
