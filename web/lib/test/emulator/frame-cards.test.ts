@@ -352,6 +352,7 @@ describe("lr not saved before a call", () => {
     m.emu.free();
   });
 
+  // Ten million steps: about 4 s alone, more beside the rest of the suite.
   it("is added under the step ceiling's message, which stays as it is", () => {
     const m = load(LR_NOT_SAVED);
     const { error } = m.run();
@@ -363,7 +364,7 @@ describe("lr not saved before a call", () => {
     // The ceiling keeps its own explanation.
     expect(explainError(said!.error, said!.card)!.what).toContain("ten-million-instruction ceiling");
     m.emu.free();
-  });
+  }, 60_000);
 });
 
 // callee-saved.s: square (lines 17 to 20) writes x19; main's add on line 30
