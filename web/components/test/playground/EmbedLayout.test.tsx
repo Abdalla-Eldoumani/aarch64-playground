@@ -45,6 +45,8 @@ function props(over: Partial<EmbedLayoutProps> = {}): EmbedLayoutProps {
     onReset: vi.fn(),
     onStep: vi.fn(),
     onStepBack: vi.fn(),
+    onRunUntil: vi.fn(),
+    stopReason: null,
     onCheck: vi.fn(),
     runStatus: STATUS,
     hasOutput: false,
@@ -218,5 +220,46 @@ describe("the error line", () => {
     expect(line.textContent).toBe(message);
     expect(line.className).not.toMatch(/\btruncate\b/);
     expect(line.className).toMatch(/\bbreak-words\b/);
+  });
+});
+
+describe("EmbedLayout's step over, step out and run to cursor", () => {
+  test("sends each goal from its own button", async () => {
+    const p = props();
+    render(<EmbedLayout {...p} />);
+    fireEvent.click(await screen.findByRole("button", { name: "step over" }));
+    fireEvent.click(screen.getByRole("button", { name: "step out" }));
+    fireEvent.click(screen.getByRole("button", { name: "run to cursor" }));
+    expect(vi.mocked(p.onRunUntil).mock.calls).toEqual([["over"], ["out"], ["cursor"]]);
+  });
+
+  test("a frame that cannot step (the landing demo) has none of them", () => {
+    render(<EmbedLayout {...props({ showStep: false })} />);
+    expect(screen.queryByRole("button", { name: "more" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
+  });
+
+  test("more opens their row in a one-pane frame and is remembered", async () => {
+    render(<EmbedLayout {...props()} />);
+    const more = await screen.findByRole("button", { name: "more" });
+    const row = document.getElementById(more.getAttribute("aria-controls")!)!;
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(row.hasAttribute("data-open")).toBe(false);
+    fireEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(row.hasAttribute("data-open")).toBe(true);
+    expect(window.localStorage.getItem("aarch64-playground:embed-more")).toBe("1");
+  });
+
+  test("they wait while step would", async () => {
+    render(<EmbedLayout {...props({ canStep: false })} />);
+    expect(await screen.findByRole("button", { name: "step over" })).toHaveProperty("disabled", true);
+  });
+
+  test("says why the last one stopped, politely, unless an error says more", () => {
+    const { rerender } = render(<EmbedLayout {...props({ stopReason: "stopped at the breakpoint on line 30" })} />);
+    expect(screen.getByText("stopped at the breakpoint on line 30").getAttribute("role")).toBe("status");
+    rerender(<EmbedLayout {...props({ stopReason: "stopped at the breakpoint on line 30", error: "memory fault" })} />);
+    expect(screen.queryByText("stopped at the breakpoint on line 30")).toBeNull();
   });
 });
