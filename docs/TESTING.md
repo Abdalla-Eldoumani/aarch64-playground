@@ -176,11 +176,21 @@ and ignores.
 header check: it loads a program from a share link, assembles it, steps five
 instructions and reads two registers, runs it to its console output, and opens
 a share link with two checks, one right and one wrong, expecting one pass and
-one fail. It also fails on any console or page error except the analytics
-errors above and a missing favicon, the same filter the Firefox test uses
-(`scripts/smoke-noise.mjs`). It reads `SITE` the same way. Run
-`npx playwright install chromium` first, or set `CHROMIUM_PATH` to an
-installed Chromium:
+one fail. Then it checks the stack frames: it opens the locals example
+(`web/public/examples/cpsc355/locals.s`) from a share link, steps to its
+`scanf`, types `7 4` into the console, steps back into `main`, and reads the
+stack tab's frames, expecting `a_s = 7` in the box at `fp + 16` and `b_s = 4`
+in the box at `fp + 20`, where the course's slides put them. It builds every
+link with the site's own share encoder (`web/lib/playground/share.ts`), so a
+change to the link format reaches the test. It also fails on any console or
+page error except the analytics errors above and a missing favicon, the same
+filter the Firefox test uses (`scripts/smoke-noise.mjs`). It reads `SITE` the
+same way. With the maintainer's bypass value in the `PROBE_TOKEN` environment
+variable, every request to the site carries it in the `x-playground-probe`
+header, so the same test can run against <https://aarch64-playground.com>,
+whose firewall answers scripts with a challenge; the test never prints the
+value. Run `npx playwright install chromium` first, or set `CHROMIUM_PATH` to
+an installed Chromium:
 
 ```bash
 npm run build
@@ -228,8 +238,11 @@ request open runs no tests.
 - `web-test`: `npm test` split into six shards.
 - `browser`: when `emulator/src/`, the Cargo files, the package manifests, the
   build configuration, the script that writes the service worker's file list,
-  the Chromium smoke script, or the noise filter the two smoke tests share
-  change (not for a change to the site's own code alone), `npm run build`,
+  the Chromium smoke script, the noise filter the two smoke tests share, the
+  share encoder, the locals example, or the stack frames view (its decode in
+  `web/lib/emulator/frame-data.ts` and `stack-frames.ts`, `FramesView.tsx`,
+  `lazy-frames.tsx`, and the stack tab's `StackTab.tsx`) change (not for a
+  change to the rest of the site's code alone), `npm run build`,
   `next start`, and `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
