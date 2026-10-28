@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { combineSources } from "@/lib/playground/file-map";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
@@ -153,6 +154,7 @@ interface BackendConfig {
   loadStateOk: boolean;
   deleteStateOk: boolean;
   memBytes: Uint8Array;
+  frameLayout: FrameLayoutPayload | null;
 }
 
 // Records every backend interaction so a test can assert the hook forwards
@@ -206,6 +208,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     loadStateOk: true,
     deleteStateOk: true,
     memBytes: new Uint8Array(4),
+    frameLayout: null,
     ...config,
   };
 
@@ -262,7 +265,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve(cfg.memoryRegions);
     },
     frameLayout() {
-      return Promise.resolve(null);
+      return Promise.resolve(cfg.frameLayout);
     },
     getMemory(addr, len) {
       calls.getMemory.push([addr, len]);
@@ -793,6 +796,58 @@ describe("useEmulator assemble", () => {
 });
 
 describe("useEmulator stepping and running", () => {
+  // HOSTED_SOURCE's main as one function (lines 9 to 13), and its frame
+  // record 16 bytes below the stack top.
+  const MAIN_ONLY = { numbers: [1, CODE_BASE, CODE_BASE + 20, 0, 16, 1, 0, 0], names: ["main"] };
+  const RECORD = 0x7ffffff0;
+
+  // main's ret on line 13 took an lr the store on line 10 overwrote at step
+  // 5, and the next fetch faulted there. The frames numbers: a header whose
+  // slots 5 to 7 hold that return, then main's one row with its lr hit.
+  it("puts the frames' card in place of a fault's guess, in the run row and the console", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const registers = Array<string>(31).fill("0x0000000000000000");
+    registers[30] = "0x0000000700000006";
+    const first = "memory fault: the program tried to read 0x0000000700000006, which no section covers.";
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: {
+        pc: 0x7_0000_0006,
+        halted: true,
+        steps_executed: 1,
+        hit_breakpoint: false,
+        error: `${first} The base register does not hold an address`,
+      },
+      runSnapshot: { frames, registers, pc: "0x0000000700000006", halted: true },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    const card =
+      "main's ret on line 13 jumped to 0x700000006 instead of going back to the C runtime, " +
+      "because line 10 in main overwrote the saved lr in main's frame at step 5.";
+    await waitFor(() => expect(result.current.error).toBe(`${first} ${card}`));
+    expect(result.current.notes).toEqual([card]);
+  });
+
+  // A row for x19 (code 19): the ret on line 13 left it, line 11 read it.
+  it("notes a caller reading x19 a call left changed, and hands the row to the frames view", async () => {
+    const fake = makeBackend({ frameLayout: MAIN_ONLY, runSnapshot: { clobberNotes: [19, 0, 13, 11] } });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.notes).toHaveLength(1));
+    expect(result.current.notes[0]).toMatch(
+      /^Line 11 in main reads x19, but main changed it and its ret on line 13 did not put it back\. /,
+    );
+    expect(result.current.noteRows).toEqual([19, 0, 13, 11]);
+  });
+
   it("step advances the step counter and clears prior errors", async () => {
     const fake = makeBackend();
     const { result } = await mountAssembled(fake);
