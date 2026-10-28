@@ -796,9 +796,10 @@ impl Cpu {
     }
 
     /// Keep the call stack in step with a call or a return the instruction
-    /// at `pc` just made. Every other instruction passes straight through.
+    /// at `pc` just made, or a store of lr. Every other instruction passes
+    /// straight through.
     fn track_call_or_return(&mut self, pc: u64, instr: &decoder::Instruction) {
-        use decoder::{BrRegOp, Instruction as I};
+        use decoder::{BrRegOp, Instruction as I, LdStOp, LdStPairOp, MemSize};
         match *instr {
             I::BrImm { link: true, .. } | I::BrReg { op: BrRegOp::Blr, .. } => {
                 let target = self.regs.read_pc();
@@ -814,6 +815,12 @@ impl Cpu {
                 if changed != 0 {
                     self.regs.mark_callee_saved(changed, pc);
                 }
+            }
+            I::LdSt { op: LdStOp::Str, rt: 30, size: MemSize::X, .. }
+            | I::LdStPair { op: LdStPairOp::Stp, sf: true, rt: 30, .. }
+            | I::LdStPair { op: LdStPairOp::Stp, sf: true, rt2: 30, .. } => {
+                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                self.frames.on_lr_store(log);
             }
             _ => {}
         }
