@@ -1034,6 +1034,39 @@ main:
     });
   });
 
+  // Steps 1 to 32 run to main's ret (run_to's count above); step 33 fetches
+  // at 0x4141414141414141, which no page covers: the memory fault errors.rs
+  // words for a read, address in 16 hex digits.
+  const WORDS_FAULT =
+    "memory fault: the program tried to read 0x4141414141414141, which no section covers. " +
+    "The base register (the first one inside the brackets, or a pointer passed to a call) " +
+    "does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the " +
+    "value stored at the label) or a `mov` was written where `ldr xN, =label` was meant";
+
+  it("ends a run through a garbage return with the memory fault, not a trap", () => {
+    withEmulator((emu) => {
+      assemble(emu, WORDS);
+      const r = emu.run_until_break(10_000) as RawRun;
+      expect(r).toMatchObject({ halted: true, steps_executed: 33, error: WORDS_FAULT });
+      expect(r.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
+  it("steps onto a garbage return and back off it without a trap", () => {
+    withEmulator((emu) => {
+      assemble(emu, WORDS);
+      for (let i = 0; i < 31; i++) emu.step();
+      const ret = emu.step() as RawRun;
+      expect(ret.halted).toBe(false);
+      expect(ret.error ?? null).toBeNull();
+      expect(ret.pc).toBe(Number(0x4141_4141_4141_4141n));
+      const fault = emu.step() as RawRun;
+      expect(fault).toMatchObject({ halted: true, error: WORDS_FAULT });
+      const back = emu.step_back() as RawRun;
+      expect(back.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
   it("reads as absent from a wasm build that predates the frames", () => {
     expect(readFrames({})).toBeNull();
     expect(readFrameLayout({})).toBeNull();
