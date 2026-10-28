@@ -504,7 +504,7 @@ pub fn frame_view(cpu: &Cpu, layout: &FrameLayout) -> FrameView {
         })
         .collect();
     FrameView {
-        step: cpu.steps_total(),
+        step: cpu.steps_taken(),
         uncounted: stack.uncounted,
         hidden,
         hidden_entry,
