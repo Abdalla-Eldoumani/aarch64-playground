@@ -1,5 +1,6 @@
 "use client";
 
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type {
@@ -121,8 +122,8 @@ export class WorkerClient {
     return this.send<boolean>({ id: 0, kind: "isRangeMapped", addr, len });
   }
 
-  lint(source: string): Promise<Array<{ line: number; message: string }>> {
-    return this.send<Array<{ line: number; message: string }>>({
+  lint(source: string): Promise<LintWarning[]> {
+    return this.send<LintWarning[]>({
       id: 0,
       kind: "lint",
       source,
