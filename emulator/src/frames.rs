@@ -650,7 +650,6 @@ pub fn view_numbers(v: &FrameView) -> Vec<f64> {
         out.extend(element(f.fp_hit_element));
         out.extend([a.lr_hit.step as f64, a.lr_hit.pc as f64]);
         out.extend(element(f.lr_hit_element));
-        out.push(a.last_ret as f64);
     }
     for &(register, ret_pc) in &v.leftovers {
         out.extend([f64::from(register), ret_pc as f64]);
