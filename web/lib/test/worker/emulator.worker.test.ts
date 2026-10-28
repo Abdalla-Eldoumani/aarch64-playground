@@ -210,6 +210,28 @@ describe("the emulator worker", () => {
     }
   });
 
+  it.each([
+    ["step over or out", { depth: 2 }, [2, -1]],
+    ["run to cursor", { pc: 0x400010 }, [-1, 0x400010]],
+  ] as const)("runs a %s goal through run_to and stops when it is met", async (_name, until, args) => {
+    const proto = wasm.FakeEmulator.prototype as unknown as Record<string, unknown>;
+    const calls: number[][] = [];
+    // Met on the third chunk: the loop must keep going until then, no further.
+    proto.run_to = (steps: number, depth: number, pc: number) => {
+      calls.push([depth, pc]);
+      return { pc: 0x400010n, halted: false, steps_executed: steps, hit_breakpoint: false, reached: calls.length === 3 };
+    };
+    try {
+      await send({ id: 1, kind: "assemble", source: "ret", args: [] });
+      const reply = await send({ id: 2, kind: "runUntilBreak", maxSteps: 1_000_000, until });
+      const { runResult } = reply.value as { runResult: { reached: boolean; bad_return: boolean; steps_executed: number } };
+      expect(calls).toEqual([args, args, args]);
+      expect(runResult).toMatchObject({ reached: true, bad_return: false, steps_executed: 30_000 });
+    } finally {
+      delete proto.run_to;
+    }
+  });
+
   it("answers an unknown request kind with an error naming it", async () => {
     const reply = await send({ id: 9, kind: "defragment" } as unknown as Request);
     expect(reply.kind).toBe("error");
