@@ -65,7 +65,8 @@ function frameRow(index: number, entry: number, callPc: number, spEntry: number,
 function frames(called: boolean, step = 7): number[] {
   const rows = [frameRow(0, 0x400000, 0, MAIN_RECORD + 32, MAIN_RECORD, MAIN_RECORD, 0)];
   if (called) rows.push(frameRow(1, ADD_ENTRY, 0x400010, MAIN_RECORD, MAIN_RECORD, 0, 3));
-  return [step, 0, 0, 0, 1, 0, 0, 0, rows.length, 0, ...rows.flat()];
+  // No bad return, so the header's last seven numbers (its call) are 0.
+  return [step, 0, 0, 0, 1, 0, 0, 0, rows.length, 0, ...Array(7).fill(0), ...rows.flat()];
 }
 
 // main and add_two, main with one int slot a_s at fp + 16.
