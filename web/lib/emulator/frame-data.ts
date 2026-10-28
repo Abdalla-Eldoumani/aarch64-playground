@@ -41,11 +41,11 @@ export function callDepth(frames: readonly number[]): number {
 }
 
 /** The x19 to x28 a returning call left changed and nothing has written
- *  since: the register of each pair after the 10-number header and the 19
+ *  since: the register of each pair after the 17-number header and the 19
  *  numbers a frame of `view_numbers`. */
 export function calleeLeftovers(frames: readonly number[] | null): number[] {
   if (!frames) return [];
   const out: number[] = [];
-  for (let i = 10 + frames[8] * 19; i < frames.length; i += 2) out.push(frames[i]);
+  for (let i = 17 + frames[8] * 19; i < frames.length; i += 2) out.push(frames[i]);
   return out;
 }
