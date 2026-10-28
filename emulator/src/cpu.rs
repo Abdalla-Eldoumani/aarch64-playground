@@ -441,6 +441,11 @@ pub struct Cpu {
     /// the `MAX_TOTAL_STEPS` runaway-loop wall; persistent across repeated
     /// `run_until_break` calls so chunked running still reaches the ceiling.
     steps_total: u64,
+    /// Steps taken since the last load/reset, one each: the count the web
+    /// shows, and the clock the call stack stamps its events with, so a
+    /// card's "step 45" is the step the student can go back to. Unlike
+    /// `steps_total` it charges no bulk work and refunds no sleep.
+    steps_taken: u64,
     /// The runaway-loop wall itself, `MAX_TOTAL_STEPS` unless a native
     /// harness raises it (the C corpus has legitimate programs the browser
     /// budget was never sized for). The wasm surface never touches this,
@@ -518,6 +523,7 @@ impl Cpu {
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
             steps_total: 0,
+            steps_taken: 0,
             max_total_steps: MAX_TOTAL_STEPS,
             output_total: 0,
             stdout_seen: 0,
@@ -690,6 +696,7 @@ impl Cpu {
                 stdout_seen,
                 stderr_seen,
                 steps_total,
+                steps_taken,
                 frames,
             } = self.snapshots.push_slot();
             *halted = self.halted;
@@ -722,6 +729,7 @@ impl Cpu {
             *stdout_seen = self.stdout_seen;
             *stderr_seen = self.stderr_seen;
             *steps_total = self.steps_total;
+            *steps_taken = self.steps_taken;
             self.frames.record_undo(frames);
             // What the step overwrites lands in the frame's own log
             // buffers, lent out until `step` hands them back once the step
@@ -802,7 +810,7 @@ impl Cpu {
             I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
                 let regs = self.regs.snapshot();
                 let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
-                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_total, &regs, log);
+                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, log);
                 if changed != 0 {
                     self.regs.mark_callee_saved(changed, pc);
                 }
@@ -825,7 +833,7 @@ impl Cpu {
             (at, self.regs.snapshot()[29])
         };
         let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
-        self.frames.watch_writes(writes, self.steps_total, &self.mem, writer, log);
+        self.frames.watch_writes(writes, self.steps_taken, &self.mem, writer, log);
     }
 
     /// Execute one instruction at the current PC.
@@ -889,6 +897,7 @@ impl Cpu {
         // Count this executed step against the cumulative ceiling. Done
         // before the host-stub dispatch so synthetic libc calls count too.
         self.steps_total += 1;
+        self.steps_taken += 1;
 
         // If PC landed on a host-stub address (reached via `bl printf` or
         // similar), dispatch to Rust instead of fetching an instruction,
