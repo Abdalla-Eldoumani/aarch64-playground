@@ -449,7 +449,7 @@ describe("values by the slot's width", () => {
         step: 9, uncounted: 0, hidden: 0, hiddenEntry: 0, chainOk: true, badReturn: null, leftovers: [],
         frames: [{
           index: 0, entry: 0x400000, callPc: 0, retAddr: 0xffff0000, spEntry: R + 48, lo: R, fpEntry: 0,
-          record: R, state: FRAME_STATE.complete, flags: 0, fpHit: null, lrHit: null, lastRet: 0,
+          record: R, state: FRAME_STATE.complete, flags: 0, fpHit: null, lrHit: null,
         }],
       },
       layout: {
@@ -488,7 +488,7 @@ describe("values by the slot's width", () => {
 describe("rangesToRead", () => {
   const frame = (lo: number, spEntry: number) => ({
     index: 0, entry: 0, callPc: 0, retAddr: 0, spEntry, lo, fpEntry: 0, record: 0,
-    state: FRAME_STATE.complete, flags: 0, fpHit: null, lrHit: null, lastRet: 0,
+    state: FRAME_STATE.complete, flags: 0, fpHit: null, lrHit: null,
   });
   const snapshot = (frames: ReturnType<typeof frame>[]): FramesSnapshot => ({
     step: 0, uncounted: 0, hidden: 0, hiddenEntry: 0, chainOk: true, badReturn: null, frames, leftovers: [],
