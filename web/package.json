@@ -62,6 +62,11 @@
       "limit": "5 KB"
     },
     {
+      "name": "lazy frame cards and frame drawing (loaded with the frames view or on the first bad return)",
+      "path": ".next/static/chunks/frame-cards.*.js",
+      "limit": "4.3 KB"
+    },
+    {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
       "limit": "220.07 KB"
