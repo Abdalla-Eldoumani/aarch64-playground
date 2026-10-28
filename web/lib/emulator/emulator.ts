@@ -2,7 +2,7 @@ import { formatWord64 } from "@/lib/emulator/format-hex";
 import { readFrameLayout, readFrames, type FrameExports, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
-import type { ExternalCall } from "@/lib/worker/protocol";
+import type { ExternalCall, RunGoal } from "@/lib/worker/protocol";
 
 export interface AssembleResult {
   success: boolean;
@@ -43,6 +43,9 @@ export interface RunResult {
   /** Pause the last nanosleep asked for, in ms; null when the run
    *  stopped for any other reason (or the wasm predates pacing). */
   sleep_ms: number | null;
+  /** A run with a goal met it, or stopped at a return to no caller. */
+  reached: boolean;
+  bad_return: boolean;
 }
 
 export interface RegisterState {
@@ -243,8 +246,12 @@ export class EmulatorInstance {
     };
   }
 
-  runUntilBreak(maxSteps: number): RunResult {
-    const raw = this.inner.run_until_break(maxSteps) as RawRunResult;
+  runUntilBreak(maxSteps: number, until?: RunGoal): RunResult {
+    const raw = (
+      until
+        ? this.inner.run_to(maxSteps, until.depth ?? -1, until.pc ?? -1)
+        : this.inner.run_until_break(maxSteps)
+    ) as RawRunResult;
     return {
       pc: Number(raw.pc),
       halted: raw.halted,
@@ -253,6 +260,8 @@ export class EmulatorInstance {
       error: raw.error ?? null,
       error_line: raw.error_line ?? null,
       sleep_ms: raw.sleep_ms ?? null,
+      reached: raw.reached === true,
+      bad_return: raw.bad_return === true,
     };
   }
 
@@ -386,6 +395,8 @@ interface RawRunResult {
   error?: string;
   error_line?: number | null;
   sleep_ms?: number | null;
+  reached?: boolean;
+  bad_return?: boolean;
 }
 
 // the WASM module's Emulator instance shape
@@ -400,6 +411,7 @@ interface WasmEmulatorInstance extends FrameExports {
   delete_state(name: string): boolean;
   list_states(): string[];
   run_until_break(max_steps: number): unknown;
+  run_to(max_steps: number, depth: number, pc: number): unknown;
   reset(): void;
   get_pc(): bigint;
   get_register(index: number): bigint;
