@@ -38,6 +38,25 @@ vi.mock("@/lib/emulator/emulator", async (importOriginal) => {
   };
 });
 
+// A run answers a task later, as the worker's does: in one task a short goal
+// run would start and stop in a single commit, and the view would never see
+// it going.
+vi.mock("@/lib/emulator/backend", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/emulator/backend")>();
+  return {
+    ...real,
+    pickBackend: () => {
+      const backend = real.pickBackend();
+      const run = backend.runUntilBreak.bind(backend);
+      backend.runUntilBreak = async (...args) => {
+        await new Promise((posted) => setTimeout(posted, 0));
+        return run(...args);
+      };
+      return backend;
+    },
+  };
+});
+
 beforeEach(() => {
   window.localStorage.setItem("aarch64-playground:backend", "main");
 });
