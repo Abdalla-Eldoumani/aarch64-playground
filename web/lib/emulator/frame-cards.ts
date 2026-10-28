@@ -148,9 +148,9 @@ export function returnCard(ctx: CardContext, lr: bigint | null): string | null {
 /**
  * A fault or the step ceiling, reworded when a bad return explains it: a
  * fault at the address the `ret` went to keeps its first sentence and takes
- * the card in place of the crate's guess about the base register; the
- * ceiling keeps its message and takes the card under it when the frame shows
- * the cause. The card comes back alone too, for the console. Null when the
+ * the card in place of the crate's guess about the base register; the step
+ * ceiling, and a run paused after its million steps, keep their message and
+ * take the card under it when the frame shows the cause. The card comes back alone too, for the console. Null when the
  * card does not apply.
  */
 export function faultText(
@@ -162,7 +162,8 @@ export function faultText(
   const card = returnCard(ctx, lr);
   const bad = ctx.snapshot.badReturn;
   if (!card || !bad) return null;
-  if (message.includes("the playground's ceiling")) {
+  // The crate's ceiling, or a run paused after its million steps.
+  if (/the playground's ceiling|without finishing/.test(message)) {
     const row = ctx.snapshot.frames.at(-1);
     return row && (row.lrHit || row.flags & LR_UNSAVED) ? { error: `${message}\n${card}`, card } : null;
   }
