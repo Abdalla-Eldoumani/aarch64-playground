@@ -509,10 +509,10 @@ describe("Controls' step over, step out and run to cursor", () => {
     }
   });
 
-  it("keeps them behind more on a phone until it opens", () => {
+  it("keeps them behind an ellipsis on a phone until it opens", () => {
     window.localStorage.clear();
     render(<Controls {...props({ compact: true })} />);
-    const more = screen.getByRole("button", { name: "more" });
+    const more = screen.getByRole("button", { name: "more ways to step" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
     expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
     fireEvent.click(more);
