@@ -4,7 +4,9 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
 import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import type { StepGoal } from "@/lib/emulator/emulator-state";
 import { PaneSwitch } from "@/components/playground/PaneSwitch";
+import { StepGoals } from "@/components/playground/lazy-step-goals";
 import { RunStatus, type RunStatusProps } from "@/components/playground/RunStatus";
 
 export interface EmbedLayoutProps {
@@ -36,6 +38,10 @@ export interface EmbedLayoutProps {
   onReset: () => void;
   onStep: () => void;
   onStepBack: () => void;
+  /** Step over, step out, run to cursor: offered wherever step is. */
+  onRunUntil: (goal: StepGoal) => void;
+  /** Why the last of those stopped, until the machine moves again. */
+  stopReason: string | null;
   onCheck: () => void;
   /** What the status line under a narrow frame's code reports. */
   runStatus: Omit<RunStatusProps, "showPeek" | "onOpenRegisters">;
@@ -93,6 +99,8 @@ export function EmbedLayout({
   onReset,
   onStep,
   onStepBack,
+  onRunUntil,
+  stopReason,
   onCheck,
   runStatus,
   hasOutput,
@@ -230,6 +238,7 @@ export function EmbedLayout({
               back
             </button>
           )}
+          {showStep && <StepGoals onRunUntil={onRunUntil} disabled={!canStep} className={SECONDARY} />}
           {showReset && (
             <button
               type="button"
@@ -261,6 +270,11 @@ export function EmbedLayout({
             className="min-w-0 flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
           >
             {error}
+          </p>
+        )}
+        {stopReason && !error && (
+          <p role="status" className="min-w-0 flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]">
+            {stopReason}
           </p>
         )}
       </div>
