@@ -62,6 +62,8 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     loadState: vi.fn(),
     deleteState: vi.fn(),
     run: vi.fn(),
+    runUntil: vi.fn(async () => null),
+    stopReason: null,
     pause: vi.fn(),
     reset: vi.fn(),
     toggleBreakpoint: vi.fn(),
