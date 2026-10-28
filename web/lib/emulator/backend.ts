@@ -12,6 +12,7 @@ import { runChunked } from "@/lib/emulator/run-loop";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
+  type RunGoal,
   type RunResultPayload,
   type StateSnapshot,
   type StepResultPayload,
@@ -33,8 +34,11 @@ export interface EmulatorBackend {
   ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }>;
   step(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }>;
   stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }>;
+  /** With `until`, the run also stops where the goal says (step over, step
+   *  out, run to cursor). */
   runUntilBreak(
     maxSteps: number,
+    until?: RunGoal,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }>;
   pause(): Promise<void>;
   reset(): Promise<StateSnapshot>;
@@ -152,13 +156,14 @@ class MainThreadBackend implements EmulatorBackend {
 
   async runUntilBreak(
     maxSteps: number,
+    until?: RunGoal,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
     this.pauseRequested = false;
     const runResult = await runChunked(
       {
         // The typed wrapper already coerced the wasm record.
-        runChunk: (steps) => emu.runUntilBreak(steps),
+        runChunk: (steps) => emu.runUntilBreak(steps, until),
         isBlocked: () => emu.isBlocked(),
         isPauseRequested: () => this.pauseRequested,
         currentEpoch: () => this.runEpoch,
