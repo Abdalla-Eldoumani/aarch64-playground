@@ -1297,6 +1297,7 @@ main:
         ldp     fp, lr, [sp], 16
         ret
 
+// grow() zeroes temp_s, an int in the 16 bytes it takes below fp after its frame record
 grow:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
@@ -1306,6 +1307,7 @@ grow:
         ldp     fp, lr, [sp], 16
         ret
 
+// bare() zeroes an int in 16 bytes of stack it takes with no frame record
 bare:
         sub     sp, sp, 16
         str     wzr, [sp, 12]
