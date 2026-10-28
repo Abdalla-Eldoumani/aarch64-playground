@@ -41,8 +41,14 @@ function frameCheckText({ check, names }: FrameCheckRow): string {
         ? `${slot(name, offset, width)} starts below fp, outside ${owner} ${frame}-byte frame (bytes 0 to ${frame - 1}). Locals go at 16 or above.`
         : `${slot(name, offset, width)} runs past the end of ${owner} ${frame}-byte frame (bytes 0 to ${frame - 1}). Make alloc cover it, or move it down.`;
     case ON_RECORD: {
-      const saved = offset < 8 && end > 8 ? "fp and lr (bytes 0 to 15)" : offset < 8 ? "fp (bytes 0 to 7)" : "lr (bytes 8 to 15)";
-      return `${slot(name, offset, width)} sits on the saved ${saved}, which ${fn || "the function"} needs to return. Locals start at 16, above the saved fp and lr.`;
+      const who = fn || "the function";
+      const saved =
+        offset < 8 && end > 8
+          ? `fp and lr (bytes 0 to 15): ${who} needs lr to return, and the caller gets fp back when ${who} returns`
+          : offset < 8
+            ? `fp (bytes 0 to 7), which the caller gets back when ${who} returns`
+            : `lr (bytes 8 to 15), which ${who} needs to return`;
+      return `${slot(name, offset, width)} sits on the saved ${saved}. Locals start at 16, above the saved fp and lr.`;
     }
     case UNALIGNED:
       return `${name} holds 8 bytes at ${offset}, which is not a multiple of 8. Move it to a multiple of 8, such as ${Math.max(16, Math.ceil(offset / 8) * 8)}.`;
