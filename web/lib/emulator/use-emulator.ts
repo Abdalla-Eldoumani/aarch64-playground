@@ -553,7 +553,7 @@ export function useEmulator(): EmulatorState {
    * marker, so a fault raised inside printf or a syscall points at the
    * call site instead of at nothing.
    */
-  const surfaceRuntimeError = useCallback((message: string, line?: number | null) => {
+  const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true) => {
     const show = (text: string) => {
       if (line != null && line > 0) {
         setError(`line ${line}: ${text}`);
@@ -564,7 +564,8 @@ export function useEmulator(): EmulatorState {
     };
     // After a ret that went to no caller (frames header slot 5), the frame
     // may show the cause: then its card stands in for the crate's guess, in
-    // the console too. Said once, so the raw text waits for the words.
+    // the console too (not for a run's pause, which repeats every chunk).
+    // Said once, so the raw text waits for the words.
     const snap = snapRef.current;
     if (!snap?.frames?.[5]) return show(message);
     void import("@/lib/emulator/frame-cards").then(({ cardContext, faultText }) => {
@@ -572,7 +573,7 @@ export function useEmulator(): EmulatorState {
       const ctx = cardContext(snap.frames ?? null, frameLayoutRef.current, programLines);
       const said = ctx && faultText(message, ctx, BigInt(snap.registers[30] ?? 0), BigInt(snap.pc));
       show(said ? said.error : message);
-      if (said) appendNotes([said.card]);
+      if (said && note) appendNotes([said.card]);
     });
   }, [appendNotes, programLines]);
 
@@ -709,9 +710,11 @@ export function useEmulator(): EmulatorState {
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           // A goal's pause has its own words, from stopReason below.
           else if (runResult.step_limit_reached && !goal) {
-            setError(
+            surfaceRuntimeError(
               `paused after ${formatSteps(total)} without finishing. ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
+              null,
+              false,
             );
           }
           // Approximate replay capture: only the final frame of the run
