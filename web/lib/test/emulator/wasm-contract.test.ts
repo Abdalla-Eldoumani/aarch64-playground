@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
+import { wordLint } from "@/lib/emulator/frame-check";
 import { readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
 import { decodeFrameLayout, decodeFrames, FRAME_STATE } from "@/lib/emulator/stack-frames";
 
@@ -82,6 +84,30 @@ after:
         ret
 `;
 
+const SHARED_BYTES = `// Two locals that share bytes in main's frame.
+define(fp, x29)
+define(lr, x30)
+
+a_s = 16
+b_s = 18
+alloc = -(16 + 12) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 7
+        str     w9, [fp, a_s]
+        mov     x10, 4
+        str     x10, [fp, b_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+`;
+
 describe("lint_source over the real build", () => {
   it("warns on the missing-prologue shape and stays quiet on clean code", () => {
     withEmulator((emu) => {
@@ -97,6 +123,23 @@ describe("lint_source over the real build", () => {
         ".text\n.global main\nmain:\nstp x29, x30, [sp, -16]!\nmov x0, 0\nldp x29, x30, [sp], 16\nret\n",
       ) as Array<{ line: number; message: string }>;
       expect(clean).toHaveLength(0);
+    });
+  });
+
+  it("adds the frame check's findings as numbers and the program's names, which the editor words", () => {
+    withEmulator((emu) => {
+      const lintSource = (emu as unknown as { lint_source: (s: string) => unknown }).lint_source.bind(emu);
+      // alloc = -(16 + 12) & -16 = -32. a_s holds bytes 16 to 19 and b_s
+      // bytes 18 to 25: they overlap, and b_s's 8 bytes start at 18, not a
+      // multiple of 8. Both marks sit on b_s's store, line 19.
+      const rows = lintSource(SHARED_BYTES) as LintWarning[];
+      expect(rows).toEqual([
+        { line: 19, check: [0, 32, 16, 4, 18, 8], names: ["main", "a_s", "b_s"] },
+        { line: 19, check: [3, 32, 18, 8, 0, 0], names: ["main", "b_s", ""] },
+      ]);
+      expect(wordLint(rows)[0].message).toContain(
+        "a_s (4 bytes at 16 to 19) and b_s (8 bytes at 18 to 25) overlap in main's frame",
+      );
     });
   });
 });
