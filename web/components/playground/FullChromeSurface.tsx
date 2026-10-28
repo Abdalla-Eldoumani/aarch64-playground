@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
-import type { LintWarning } from "@/lib/emulator/emulator-state";
+import type { LintWarning, StepGoal } from "@/lib/emulator/emulator-state";
 import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
@@ -117,6 +117,8 @@ export interface FullChromeSurfaceProps {
   onOpenShareDialog?: () => void;
   /** Published on mount, cleared on unmount. */
   registerBridge: (bridge: FullChromeBridge | null) => void;
+  /** The shell's step over, step out and run to cursor (it knows the caret). */
+  onRunUntil: (goal: StepGoal) => void;
 }
 
 /**
@@ -157,6 +159,7 @@ export function FullChromeSurface({
   onOpenShortcutsHelp,
   onOpenShareDialog,
   registerBridge,
+  onRunUntil,
 }: FullChromeSurfaceProps) {
   const toast = useToast();
   const bp = useBreakpoint();
@@ -605,6 +608,8 @@ export function FullChromeSurface({
       onStep={emu.step}
       onStepBack={emu.stepBack}
       canStepBack={emu.canStepBack}
+      onRunUntil={onRunUntil}
+      stopReason={emu.stopReason}
       onRun={handleRun}
       onPause={emu.pause}
       onReset={restartProgram}
