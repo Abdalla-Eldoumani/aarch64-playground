@@ -981,6 +981,59 @@ main:
     });
   });
 
+  // fill_words writes four 8-byte words into a two-word array: words[3] is
+  // main's saved lr, so main's ret jumps to 0x4141414141414141, eight 'A's,
+  // what a %s overrun leaves; far above 2^53, past an exact f64.
+  const WORDS = `// fill_words writes past its array onto main's saved fp and lr.
+
+define(fp, x29)
+define(lr, x30)
+
+words_s = 16                            // long words[2]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+// fill_words() sets words[i] for i = 0 to 3 (bug: words holds 2)
+        .balign 4
+        .global fill_words
+fill_words:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, words_s         // x9 = &words[0]
+        ldr     x11, =0x4141414141414141
+        mov     w10, 0
+        b       fw_test
+fw_loop:
+        str     x11, [x9, w10, sxtw 3]  // words[i] = "AAAAAAAA"
+        add     w10, w10, 1
+fw_test:
+        cmp     w10, 4
+        b.lt    fw_loop
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      fill_words
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  it("hands back a garbage return address from run_to as a number", () => {
+    withEmulator((emu) => {
+      assemble(emu, WORDS);
+      // Step out of main: depth 0.
+      const r = emu.run_to(10_000, 0, -1) as RawRun & { bad_return: boolean; reached: boolean };
+      expect(r).toMatchObject({ bad_return: true, reached: false, halted: false });
+      expect(r.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
   it("reads as absent from a wasm build that predates the frames", () => {
     expect(readFrames({})).toBeNull();
     expect(readFrameLayout({})).toBeNull();
