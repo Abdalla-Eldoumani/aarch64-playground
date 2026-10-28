@@ -1,5 +1,5 @@
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
-import type { ProgramLines } from "@/lib/emulator/frame-cards";
+import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
@@ -27,6 +27,8 @@ export type RegView = "x" | "d" | "v";
 export interface AssemblyError {
   line: number;
   message: string;
+  /** The frames' card a runtime error carries, for the editor's hover. */
+  card?: ReturnCard;
 }
 
 /** A finding of the playground's own frame check as `lint_source` hands it
@@ -77,6 +79,10 @@ export interface EmulatorState {
    *  one; reset and a failed assemble drop the flag. */
   programLoaded: boolean;
   error: string | null;
+  /** The frames' card `error` carries in place of the crate's guess, or a
+   *  goal's stop on a bad return: the explainer picks its fix from the
+   *  card's cause. Null for any other error. */
+  errorCard: ReturnCard | null;
   assemblyErrors: AssemblyError[];
   breakpoints: Set<number>;
   /** Breakpoint lines the last assemble dropped because no instruction runs
