@@ -72,6 +72,9 @@ pub struct Snapshot<R, M, H, F> {
     /// bulk charge or sleep refund included; a named restore leaves the
     /// budget alone (`Cpu::load_state`).
     pub steps_total: u64,
+    /// Steps taken, one each whatever they cost the budget: the count the
+    /// web shows, so step-back and a named restore both put it back.
+    pub steps_taken: u64,
     /// The calls the program is inside, behind the stack frames view.
     pub frames: F,
 }
@@ -186,6 +189,7 @@ mod tests {
             stdout_seen: 0,
             stderr_seen: 0,
             steps_total: 0,
+            steps_taken: 0,
             frames: F::default(),
         }
     }
