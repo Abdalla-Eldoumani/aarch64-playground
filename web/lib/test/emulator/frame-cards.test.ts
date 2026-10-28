@@ -242,6 +242,20 @@ describe("lr not saved before a call", () => {
     m.emu.free();
   });
 
+  // The site runs a million steps a chunk and pauses there with its own words.
+  it("is added under a run's pause, with the fix for it", () => {
+    const m = load(LR_NOT_SAVED);
+    const r = m.emu.run_until_break(1_000_000) as { steps_executed: number; halted: boolean };
+    expect(r).toMatchObject({ steps_executed: 1_000_000, halted: false });
+    const paused =
+      "paused after 1,000,000 steps without finishing. press run to continue, or check for a loop " +
+      "whose exit condition never becomes true";
+    const said = faultText(paused, m.context(), m.lr(), m.pc());
+    expect(said).toEqual({ error: `${paused}\n${MISSING_LR}`, card: MISSING_LR });
+    expect(explainError(said!.error)!.fix).toMatch(/^Save lr before the function's first call/);
+    m.emu.free();
+  });
+
   it("is added under the step ceiling's message, which stays as it is", () => {
     const m = load(LR_NOT_SAVED);
     const { error } = m.run();
