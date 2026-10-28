@@ -39,8 +39,8 @@ export interface Card {
   text: string;
 }
 
-/** What the frame shows sent a ret astray: a store over the saved lr, or a
- *  call made before lr was saved. */
+/** What sent a ret astray: a store over the saved lr, or a call made
+ *  before lr was saved whose return address the ret went to. */
 export type ReturnCause = "overwritten" | "unsaved";
 
 /** The bad return's card; the explainer picks its fix from `cause`, null
@@ -166,9 +166,12 @@ export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | nu
   if (row.lrHit) {
     cause = "overwritten";
     because = `, because ${line(row.lrHit.pc) ?? "a store"} overwrote the saved lr in ${name}'s frame at step ${row.lrHit.step}`;
-  } else if (row.flags & LR_UNSAVED) {
+  } else if (row.flags & LR_UNSAVED && bad.target === row.lastRet) {
+    // It called out before storing lr, and the ret landed right after its
+    // own last call, so lr still held that call's return address. A
+    // function that did store lr lands there too when it loads lr back from
+    // a callee's old slot, so the store counts, not the frame's shape.
     cause = "unsaved";
-    // lr still points just past the call that set it.
     const call = ctx.linePlace(bad.target - 4);
     const bl = call && /^bl\b/i.test(code(call)) ? ` with \`${code(call)}\` on ${at(call)}` : "";
     because = `, because ${name} called out${bl} before saving lr, so lr still held that call's return address`;
