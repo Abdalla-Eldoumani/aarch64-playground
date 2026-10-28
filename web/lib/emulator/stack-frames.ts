@@ -33,7 +33,7 @@ export const FRAME_STATE = {
   noRecord: 5,
 } as const;
 
-/** The call out of this function happened before lr was saved. */
+/** This function called out before it had stored x30 anywhere. */
 export const LR_UNSAVED = 1;
 /** qsort or bsearch called this function to compare two elements. */
 export const RUNTIME_CALL = 2;
@@ -67,6 +67,8 @@ export interface FrameRow {
   flags: number;
   fpHit: FrameHit | null;
   lrHit: FrameHit | null;
+  /** The return address of the latest `bl`/`blr` it made, 0 before its first. */
+  lastRet: number;
 }
 
 export interface FramesSnapshot {
@@ -90,7 +92,7 @@ export interface FramesSnapshot {
 }
 
 const HEADER = 10;
-const FRAME_ROW = 18;
+const FRAME_ROW = 19;
 
 function hit(step: number, pc: number, element: number, name: number): FrameHit | null {
   if (step === 0) return null;
@@ -118,6 +120,7 @@ export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
       flags: n[r + 9],
       fpHit: hit(n[r + 10], n[r + 11], n[r + 12], n[r + 13]),
       lrHit: hit(n[r + 14], n[r + 15], n[r + 16], n[r + 17]),
+      lastRet: n[r + 18],
     });
   }
   const leftovers: FramesSnapshot["leftovers"] = [];
