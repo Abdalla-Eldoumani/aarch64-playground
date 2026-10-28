@@ -17,6 +17,7 @@ impl Cpu {
         self.halted = false;
         // A freshly loaded program starts a fresh runaway budget.
         self.steps_total = 0;
+        self.steps_taken = 0;
         self.output_total = 0;
         self.abort_message = None;
         self.term = TermState::default();
@@ -59,6 +60,7 @@ impl Cpu {
         // A fresh program starts a fresh runaway budget and clears any
         // prior bounds-abort message.
         self.steps_total = 0;
+        self.steps_taken = 0;
         self.output_total = 0;
         self.abort_message = None;
         self.stdin_closed = false;
