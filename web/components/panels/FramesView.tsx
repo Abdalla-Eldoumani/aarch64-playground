@@ -123,13 +123,13 @@ export function FramesView({
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
-  // A card is said once, when it first shows; a run's stop says its own in
-  // the run row's alert.
+  // A card is said once, when it first shows, without the backticks that
+  // mark its code; a run's stop says its own in the run row's alert.
   const cardText = cards.join(" ");
   const [seenCards, setSeenCards] = useState(cardText);
   if (seenCards !== cardText) {
     setSeenCards(cardText);
-    if (cardText && !running) setSaid((prev) => ({ text: cardText, count: prev.count + 1 }));
+    if (cardText && !running) setSaid((prev) => ({ text: cardText.replaceAll("`", ""), count: prev.count + 1 }));
   }
 
   // While stepping, what the step wrote stays in view (a write over a
