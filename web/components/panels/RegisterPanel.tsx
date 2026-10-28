@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useContext,
   useEffect,
   useEffectEvent,
   useMemo,
@@ -12,7 +13,7 @@ import {
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { formatWord64 } from "@/lib/emulator/format-hex";
 import { CLOBBER_HEX, isCallLeftover } from "@/lib/emulator/clobber-note";
-import { calleeLeftovers } from "@/lib/emulator/frame-data";
+import { calleeLeftovers, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { RegView } from "@/lib/emulator/emulator-state";
 import {
   compactHex,
@@ -30,6 +31,7 @@ import { DRegisterRow } from "@/components/panels/DRegisterRow";
 import { VRegisterRow } from "@/components/panels/VRegisterRow";
 import { hostPane, prefersReducedMotion, revealRows } from "@/components/panels/reveal-rows";
 import { INITIAL_VIEW, reduceView } from "@/components/panels/register-view-state";
+import { PointerContext } from "@/components/panels/slot-pointer";
 import {
   ARRANGEMENTS,
   ARRANGEMENT_IDS,
@@ -60,6 +62,9 @@ interface RegisterPanelProps {
   /** The hub's call stack numbers: x19 to x28 a returning call left changed
    *  get the quiet mark. */
   frames?: readonly number[] | null;
+  /** The last assemble's frame layout, which names the slots a register's
+   *  pointer chip points to. */
+  frameLayout?: FrameLayoutPayload | null;
   /** Full source text and the line the CPU is on, read only to tell a write
    *  through a v/q spelling from one through a d/s spelling: the register file
    *  is the same, the reading the student asked for is not. `currentLine` is
@@ -172,6 +177,10 @@ function usePulseIds(changed: ReadonlySet<number>): Map<number, number> {
 /** At most this many writes are named; the rest are counted. */
 const SPOKEN_WRITES = 3;
 
+/** The pointer chips ride in the frames chunk, fetched the first time a host
+ *  that can show the stack hands a panel a call stack; later panels reuse it. */
+let chipsModule: typeof import("@/components/panels/PointerChips") | null = null;
+
 function joinSpeech(parts: string[]): string {
   if (parts.length <= SPOKEN_WRITES) return parts.join(", ");
   const more = parts.length - SPOKEN_WRITES;
@@ -189,6 +198,7 @@ export function RegisterPanel({
   pc,
   nzcv,
   frames = null,
+  frameLayout = null,
   source,
   currentLine = null,
   running = false,
@@ -445,6 +455,27 @@ export function RegisterPanel({
   // emulator's stand-in for whatever the real library left there, so the
   // panel says so while any x register still holds it.
   const leftovers = useMemo(() => calleeLeftovers(frames), [frames]);
+
+  // A register pointing into a frame gets a chip naming the slot, where the
+  // host can show the stack. While a run streams snapshots the chips hold
+  // back, as the follow does.
+  const point = useContext(PointerContext)?.point;
+  const [chips, setChips] = useState(chipsModule);
+  const wantsChips = point != null && frames != null;
+  useEffect(() => {
+    if (!wantsChips || chips) return;
+    void import(/* webpackChunkName: "frames" */ "@/components/panels/PointerChips").then((m) => {
+      chipsModule = m;
+      setChips(m);
+    });
+  }, [wantsChips, chips]);
+  const pointers = useMemo(
+    () =>
+      chips && point && frames && !running
+        ? chips.pointerChips({ frames, frameLayout, registers, sp, pc, point })
+        : null,
+    [chips, point, frames, frameLayout, registers, sp, pc, running],
+  );
 
   const callLeftover = registers
     .slice(0, CALLER_SAVED_X)
@@ -723,6 +754,7 @@ export function RegisterPanel({
                     alias={ABI_ALIAS[i]}
                     changed={changedRegs.has(i)}
                     notPutBack={leftovers.includes(i)}
+                    chip={pointers?.[i]}
                   />
                 );
               })}
