@@ -47,10 +47,11 @@ export {
 // The card words, kept once their chunk has come. A stop after a bad return
 // waits for them, so its alert lands in the render that ends the run: drawn
 // a frame later, the panes jumped up and back, and WebKit reported the
-// panel group's resize as a ResizeObserver loop.
+// panel group's resize as a ResizeObserver loop. The chunk is named so its
+// bundle budget can glob it; the frames chunk loads it too.
 let frameCards: typeof import("@/lib/emulator/frame-cards") | null = null;
 const loadFrameCards = () =>
-  import("@/lib/emulator/frame-cards").then(
+  import(/* webpackChunkName: "frame-cards" */ "@/lib/emulator/frame-cards").then(
     (m) => (frameCards = m),
     () => null,
   );
