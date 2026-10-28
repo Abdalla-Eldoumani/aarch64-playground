@@ -12,8 +12,8 @@ const GOALS: [StepGoal, string][] = [
 
 /**
  * A frame's step over, step out and run to cursor, in its run row. A
- * one-pane frame (globals.css, `.embed-more`) keeps them behind "more" so the
- * row stays one line, open or shut as the viewer last left it.
+ * one-pane frame (globals.css, `.embed-more`) keeps them behind an ellipsis so
+ * the row stays one line, open or shut as the viewer last left it.
  */
 export function StepGoals({
   onRunUntil,
@@ -29,15 +29,16 @@ export function StepGoals({
   const id = useId();
   return (
     <>
+      {/* An ellipsis, not "more": a phone's view tabs already have a "more". */}
       <button
         type="button"
         onClick={() => setMore(!more)}
-        aria-label="more"
+        aria-label="more ways to step"
         aria-expanded={more}
         aria-controls={id}
-        className={`embed-more ${className}`}
+        className={`embed-more ${className} !min-w-[2.75rem] !flex-none`}
       >
-        more
+        …
       </button>
       <div id={id} className="embed-goals" data-open={more || undefined}>
         {GOALS.map(([goal, label]) => (
