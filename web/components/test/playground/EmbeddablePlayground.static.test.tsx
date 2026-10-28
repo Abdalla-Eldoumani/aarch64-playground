@@ -64,6 +64,21 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByText("loading editor...")).toBeNull();
   });
 
+  // Another frame on the page can switch this one to the stack before it
+  // engages; it shows what an engaged frame shows before its first step.
+  it("shows the frames' first words on a stack side chosen before the first press", async () => {
+    window.localStorage.setItem("aarch64-playground:embed-stack", "1");
+    try {
+      render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+      expect(
+        await screen.findByText("Step through the program to watch each call's frame being built.", {}, { timeout: 3000 }),
+      ).toBeTruthy();
+      expect(useEmulatorMock).not.toHaveBeenCalled();
+    } finally {
+      window.localStorage.removeItem("aarch64-playground:embed-stack");
+    }
+  });
+
   it("paints the same grid areas before and after the first press", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
