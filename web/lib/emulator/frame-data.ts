@@ -33,6 +33,12 @@ export function readFrameLayout(emu: FrameExports): FrameLayoutPayload | null {
   return numbers && names ? { numbers: Array.from(numbers), names } : null;
 }
 
+/** The numbers `view_numbers` (emulator/src/frames.rs) sends before the
+ *  frame rows, and in each row: here, not in stack-frames.ts, so the leftover
+ *  walk below reads them without loading the frames view's chunk. */
+export const FRAMES_HEADER = 17;
+export const FRAME_ROW = 18;
+
 /** How many calls deep the program is, main counted: the drawn frames, the
  *  ones folded between main and them, and the ones past the machine's cap
  *  (header slots 8, 2 and 1 of `view_numbers` in emulator/src/frames.rs). */
@@ -41,11 +47,10 @@ export function callDepth(frames: readonly number[]): number {
 }
 
 /** The x19 to x28 a returning call left changed and nothing has written
- *  since: the register of each pair after the 17-number header and the 18
- *  numbers a frame of `view_numbers`. */
+ *  since: the register of each pair after the header and the frame rows. */
 export function calleeLeftovers(frames: readonly number[] | null): number[] {
   if (!frames) return [];
   const out: number[] = [];
-  for (let i = 17 + frames[8] * 18; i < frames.length; i += 2) out.push(frames[i]);
+  for (let i = FRAMES_HEADER + frames[8] * FRAME_ROW; i < frames.length; i += 2) out.push(frames[i]);
   return out;
 }
