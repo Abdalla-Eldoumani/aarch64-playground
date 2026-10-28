@@ -93,7 +93,7 @@ export function Controls({
   const share = (weight: string) => (compact ? `${weight} min-w-0 !px-1 !text-[13px]` : undefined);
   const chips = !compact && !short;
   // The phone row has no room for three more, so they open as a row of
-  // their own; the same remembered choice as a lesson frame's "more".
+  // their own; the same remembered choice as a lesson frame's ellipsis.
   const [more, setMore] = usePersistedFlag("aarch64-playground:embed-more");
   const steppable = programLoaded && !isRunning && !isHalted && !blocked;
   const goalButtons = onRunUntil
@@ -187,14 +187,15 @@ export function Controls({
         )}
         {goalButtons &&
           (compact ? (
+            // An ellipsis, not "more": the phone's view tabs already have one.
             <Button
               variant="secondary"
               onClick={() => setMore(!more)}
-              aria-label="more"
+              aria-label="more ways to step"
               aria-expanded={more}
-              className={share("flex-1")}
+              className={share("flex-[0.6]")}
             >
-              <span>more</span>
+              <span>…</span>
             </Button>
           ) : (
             goalButtons
