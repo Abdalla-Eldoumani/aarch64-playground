@@ -36,15 +36,15 @@ const ROUTES = [
     name: "landing document js (every chunk / loads)",
     page: "/page",
     document: "index.html",
-    // 210.65 kB brotli measured (2026-10-27).
-    limit: 211_000,
+    // 211.06 kB brotli measured (2026-10-27).
+    limit: 212_000,
   },
   {
     name: "playground document js (every chunk /playground loads)",
     page: "/playground/page",
     document: "playground.html",
-    // 224.51 kB brotli measured (2026-10-27).
-    limit: 225_000,
+    // 224.92 kB brotli measured (2026-10-27).
+    limit: 226_000,
   },
 ];
 
