@@ -859,6 +859,37 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.errorCard).toBeNull();
   });
 
+  // main calls show on line 12 before saving lr (flags 1), so its ret on
+  // line 13 comes back to itself, the return address of that last call,
+  // until the ceiling. The run row quotes the call as code; the console's
+  // note reads as every other note does, with no backticks.
+  it("notes a card in the console without the marks around its code", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, CODE_BASE + 16, 1, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, 0, 4, 1, 0, 0, -1, -1, 0, 0, -1, -1, CODE_BASE + 16,
+    ];
+    const ceiling = "stopped after 10 million steps, which is the playground's ceiling. The usual cause is a loop";
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: { pc: CODE_BASE + 16, halted: true, steps_executed: 1, hit_breakpoint: false, error: ceiling },
+      runSnapshot: { frames, pc: "0x0000000000400010", halted: true },
+    });
+    const { result } = await mountLoaded(fake);
+    const lines = HOSTED_SOURCE.split("\n");
+    lines[11] = "        bl      show";
+    await act(async () => {
+      await expect(result.current.assemble(lines.join("\n"))).resolves.toBe(true);
+    });
+    await act(async () => {
+      result.current.run();
+    });
+    const card =
+      "main's ret on line 13 went back into main instead of going back to the C runtime, because main " +
+      "called out with `bl show` on line 12 before saving lr, so lr still held that call's return address.";
+    await waitFor(() => expect(result.current.error).toBe(`${ceiling}\n${card}`));
+    expect(result.current.notes).toEqual([card.replaceAll("`", "")]);
+  });
+
   // The same return, met by a run that paused at its million steps: the card
   // goes under the pause, and the console stays quiet (a pause repeats).
   it("puts the card under a run's pause without a console note", async () => {
