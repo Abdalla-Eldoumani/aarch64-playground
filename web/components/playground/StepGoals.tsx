@@ -32,6 +32,7 @@ export function StepGoals({
       <button
         type="button"
         onClick={() => setMore(!more)}
+        aria-label="more"
         aria-expanded={more}
         aria-controls={id}
         className={`embed-more ${className}`}
@@ -40,7 +41,14 @@ export function StepGoals({
       </button>
       <div id={id} className="embed-goals" data-open={more || undefined}>
         {GOALS.map(([goal, label]) => (
-          <button key={goal} type="button" onClick={() => onRunUntil(goal)} disabled={disabled} className={className}>
+          <button
+            key={goal}
+            type="button"
+            onClick={() => onRunUntil(goal)}
+            disabled={disabled}
+            aria-label={label}
+            className={className}
+          >
             {label}
           </button>
         ))}
