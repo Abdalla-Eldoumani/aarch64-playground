@@ -313,6 +313,7 @@ describe("step over, step out and run to cursor on the machine", () => {
         "main's ret on line 39 jumped to 0x700000006 instead of going back to the C runtime, " +
         "because line 22 in fill overwrote the saved lr in main's frame at step 40.",
       problem: true,
+      card: expect.objectContaining({ cause: "overwritten" }),
     });
     m.emu.free();
   });
@@ -323,6 +324,7 @@ describe("step over, step out and run to cursor on the machine", () => {
     m.to(17);
     const over = m.over();
     expect(over.result).toMatchObject({ bad_return: true, pc: 0x400008 });
+    expect(over.said?.card?.cause).toBe("unsaved");
     expect(over.said?.text).toBe(
       "greet's ret on line 17 went back into greet instead of going back to main at line 25, " +
         "because greet called out with `bl puts` on line 16 before saving lr, so lr still held " +
