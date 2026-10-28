@@ -1,16 +1,20 @@
 // The cards under the frames, rendered from real machine states of the node
-// build: where they sit, when they show, that each is said once, and the
-// instruction set as code. The words themselves are pinned against the
-// fixtures' hand-counted lines and steps in lib/test/emulator/frame-cards.
+// build: where they sit, when they show, that each is said once, the write
+// kept in view before them, and the instruction set as code. The words
+// themselves are pinned against the fixtures' hand-counted lines and steps
+// in lib/test/emulator/frame-cards.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { FramesView } from "@/components/panels/FramesView";
-import type { ProgramLines } from "@/lib/emulator/frame-cards";
+import { cardContext, returnCard, type ProgramLines } from "@/lib/emulator/frame-cards";
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const nodeRequire = createRequire(import.meta.url);
 const { Emulator } = nodeRequire(
@@ -75,7 +79,8 @@ function machine(source: string) {
 
 const cards = () => screen.queryByRole("list", { name: "what went wrong" });
 const said = () => screen.getByRole("status").textContent?.trim();
-/** Every text the polite status takes from now on, a repeat included. */
+/** Every text the polite status takes from now on, a repeat included; the
+ *  observer reports after the task, so read it after `heardSoFar`. */
 function listen() {
   const heard: string[] = [];
   new MutationObserver(() => heard.push(said() ?? "")).observe(screen.getByRole("status"), {
@@ -85,6 +90,7 @@ function listen() {
   });
   return heard;
 }
+const heardSoFar = () => new Promise((done) => setTimeout(done, 0));
 // The panel cache before its read lands: zeros.
 const missed = (_addr: number, len: number) => new Uint8Array(len);
 
@@ -136,37 +142,232 @@ describe("the cards under the frames", () => {
     m.emu.free();
   });
 
-  it("keep the bad return's card from main's ret on, said once", () => {
+  it("keep the bad return's card from main's ret on, said once", async () => {
     const m = machine(fixture("array-overrun.s"));
-    m.step(59);
+    m.step(58);
     const { rerender } = render(<FramesView {...m.props()} />);
+    const heard = listen();
+    m.step(1);
+    rerender(<FramesView {...m.props()} />);
     const card = within(cards()!).getByRole("listitem").textContent;
     expect(card).toMatch(/^main's ret on line 21 jumped to 0x700000006 .* at step 45\.$/);
-    rerender(<FramesView {...m.props()} />);
     // The fault: the card stays, and the status is not said again.
     m.step(1);
     rerender(<FramesView {...m.props()} />);
     expect(m.emu.is_halted()).toBe(true);
     expect(within(cards()!).getByRole("listitem").textContent).toBe(card);
-    expect(said()).toBe("");
+    await heardSoFar();
+    expect(heard).toEqual([card]);
     m.emu.free();
   });
 
-  // The run row's alert says the fault with this card in it, so the frames
-  // view does not say it a second time.
-  it("leave a card a run brought to the run row", () => {
+  // The run row's alert says the fault with this card in it (the hub's
+  // errorCard), so the frames view does not say it a second time, then or
+  // after the alert has gone.
+  it("leave a run's bad return to the run row's alert that carries it", async () => {
     const m = machine(fixture("array-overrun.s"));
     const { rerender } = render(<FramesView {...m.props()} />);
     const heard = listen();
     rerender(<FramesView {...m.props()} running />);
-    m.step(29);
-    rerender(<FramesView {...m.props()} running />);
-    m.step(31);
+    m.step(60);
     expect(m.emu.is_halted()).toBe(true);
-    rerender(<FramesView {...m.props()} />);
-    expect(within(cards()!).getByRole("listitem").textContent).toMatch(/^main's ret on line 21 jumped to 0x700000006 /);
+    const stopped = m.props();
+    rerender(<FramesView {...stopped} running />);
+    const ctx = cardContext(stopped.frames, stopped.frameLayout, stopped.programLines)!;
+    const errorCard = returnCard(ctx, BigInt(m.emu.get_register(30)))!;
+    rerender(<FramesView {...stopped} errorCard={errorCard} />);
+    expect(within(cards()!).getByRole("listitem").textContent).toBe(errorCard.text);
+    rerender(<FramesView {...stopped} />);
+    await heardSoFar();
+    expect(heard).toEqual([]);
     expect(said()).toBe("");
-    expect(heard.filter(Boolean)).toEqual([]);
+    m.emu.free();
+  });
+
+  // A Run that stops at a breakpoint on line 33, the line after the store:
+  // the run row says nothing of the write, so the status says each card
+  // once, when its word has come from the machine.
+  it("say the write card a run's stop brings, once at each stop", async () => {
+    const m = machine(fixture("array-overrun.s"));
+    const { rerender } = render(<FramesView {...m.props()} />);
+    const heard = listen();
+    const painted: string[] = [];
+    let at = 0;
+    for (const stop of [30, 35, 40, 45]) {
+      rerender(<FramesView {...m.props()} running />);
+      m.step(stop - at);
+      at = stop;
+      rerender(<FramesView {...m.props()} running />);
+      rerender(<FramesView {...m.props()} />);
+      const card = within(await screen.findByRole("list", { name: "what went wrong" })).getByRole("listitem");
+      painted.push(card.textContent!);
+      await waitFor(() => expect(heard).toEqual(painted));
+    }
+    expect(painted.map((p) => p.match(/wrote (arr_s\[\d\]) over main's saved (fp|lr)/)?.slice(1).join(" "))).toEqual([
+      "arr_s[4] fp",
+      "arr_s[5] fp",
+      "arr_s[6] lr",
+      "arr_s[7] lr",
+    ]);
+    m.emu.free();
+  });
+
+  // lr-not-saved.s: show's ret on line 29 goes back to itself on steps 16,
+  // 17, 18 and on, one loop and one event.
+  it("say the lr card once however many times the ret goes round", async () => {
+    const m = machine(fixture("lr-not-saved.s"));
+    m.step(15);
+    const { rerender } = render(<FramesView {...m.props()} />);
+    const heard = listen();
+    for (let i = 0; i < 5; i++) {
+      m.step(1);
+      rerender(<FramesView {...m.props()} />);
+    }
+    expect(within(cards()!).getByRole("listitem").textContent).toMatch(/^show's ret on line 29 went back into show /);
+    await heardSoFar();
+    expect(heard).toEqual([within(cards()!).getByRole("listitem").textContent]);
+    m.emu.free();
+  });
+
+  // clear stores 0 at arr[w11] with w11 left at 6, so every pass writes the
+  // same word over main's saved lr: steps 11, 16, 21 and 26 (stp, mov, bl,
+  // then clear's stp, mov, add, two movs, cmp, b.ge and the str at 11; add,
+  // b, cmp, b.ge and str again each 5 after). Each write is its own event,
+  // so each is said, in the same words.
+  it("say a write at each step it is made, even in the same words", async () => {
+    const m = machine(`// clear zeroes arr, but stores at the wrong index every pass.
+
+define(fp, x29)
+define(lr, x30)
+
+arr_s = 16                              // int arr[4]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      clear
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+// clear(): arr[i] = 0 for i = 0 to 3 (bug: stores at arr[w11], not arr[w10])
+        .balign 4
+        .global clear
+clear:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, arr_s           // x9 = &arr[0]
+        mov     w10, 0                  // i
+        mov     w11, 6
+cl_test:
+        cmp     w10, 4
+        b.ge    cl_done
+        str     wzr, [x9, w11, sxtw 2]
+        add     w10, w10, 1
+        b       cl_test
+cl_done:
+        ldp     fp, lr, [sp], dealloc
+        ret
+`);
+    m.step(10);
+    const { rerender } = render(<FramesView {...m.props()} />);
+    const heard = listen();
+    const words =
+      "Line 33 in clear (str wzr, [x9, w11, sxtw 2]) wrote arr_s[6] over main's saved lr. " +
+      "It now holds 0x0; it should send main back to the C runtime.";
+    // Steps 11 (the first store), 12 (no store), 16 (the second store).
+    for (const [steps, stored] of [[1, true], [1, false], [4, true]] as const) {
+      m.step(steps);
+      rerender(<FramesView {...m.props()} />);
+      if (stored) await waitFor(() => expect(within(cards()!).getByRole("listitem").textContent).toBe(words));
+      else expect(cards()).toBeNull();
+    }
+    await heardSoFar();
+    expect(heard).toEqual([words, words]);
+    m.emu.free();
+  });
+
+  // Stepped to 40, the view taken down and put back (the memory tab and
+  // back, a phone's chip press), then on to 41 and Back onto 40: the card
+  // shows each time and is said once. The same view on a new load of the
+  // program, which is how a reset, an edit and a run from the start reach
+  // it, says it again.
+  it("say a card once for the program as loaded, across a remount and Back", async () => {
+    const m = machine(fixture("array-overrun.s"));
+    m.step(39);
+    const { rerender } = render(<FramesView {...m.props()} />);
+    const heard = listen();
+    m.step(1);
+    const at40 = m.props();
+    rerender(<FramesView {...at40} />);
+    await waitFor(() => expect(heard).toHaveLength(1));
+    rerender(<></>);
+    rerender(<FramesView {...at40} />);
+    await screen.findByRole("list", { name: "what went wrong" });
+    expect(said()).toBe("");
+    const again = listen();
+    m.step(1);
+    rerender(<FramesView {...m.props()} />);
+    m.emu.step_back();
+    rerender(<FramesView {...m.props()} />);
+    await screen.findByRole("list", { name: "what went wrong" });
+    await heardSoFar();
+    expect(again).toEqual([]);
+
+    const fresh = machine(fixture("array-overrun.s"));
+    fresh.step(40);
+    rerender(<FramesView {...fresh.props()} />);
+    await waitFor(() => expect(again).toEqual(heard));
+    m.emu.free();
+    fresh.emu.free();
+  });
+
+  // The step's write first: with its call and the cards when they fit, and
+  // when the write and the cards do not fit together, the write alone.
+  it("keep the write in view before the cards when both do not fit", async () => {
+    const reports: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(readonly report: () => void) {}
+        observe() {
+          reports.push(this.report);
+        }
+        disconnect() {}
+      },
+    );
+    const m = machine(fixture("array-overrun.s"));
+    m.step(40);
+    render(<FramesView {...m.props()} />);
+    const list = await screen.findByRole("list", { name: "what went wrong" });
+    const box = screen.getByRole("group", { name: "stack frames" });
+    const wrote = box.querySelector<HTMLElement>("[data-wrote]")!;
+    const state = { top: 0 };
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 200 });
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => state.top,
+      set: (v: number) => {
+        state.top = v;
+      },
+    });
+    const place = (el: Element, top: number, height: number) => {
+      Object.defineProperty(el, "offsetTop", { configurable: true, value: top });
+      Object.defineProperty(el, "offsetHeight", { configurable: true, value: height });
+    };
+    // main's call 0 to 300 px down, its overwritten lr 200 to 240, the
+    // cards 600 to 700: only the write fits the 200 px box.
+    place(wrote.closest("[data-call]")!, 0, 300);
+    place(wrote, 200, 40);
+    place(list, 600, 100);
+    act(() => reports.forEach((report) => report()));
+    expect(state.top).toBeLessThanOrEqual(200);
+    expect(state.top + 200).toBeGreaterThanOrEqual(240);
     m.emu.free();
   });
 
