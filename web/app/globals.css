@@ -518,6 +518,14 @@ body:has(> .playground-shell) {
 .embed-status {
   display: none;
 }
+/* Step over, step out and run to cursor sit in the run row; "more" shows only
+   in the single-pane frame. */
+.embed-more {
+  display: none;
+}
+.embed-goals {
+  display: contents;
+}
 @container (min-width: 38rem) {
   .embed-grid {
     grid-template-areas: "editor editor" "registers registers" "console console";
@@ -578,6 +586,20 @@ body:has(> .playground-shell) {
     .embed-grid:not([data-pane="registers"]) .embed-area-registers,
     .embed-grid:not([data-pane="console"]) .embed-area-console {
       display: none;
+    }
+    /* Step over, step out and run to cursor wait behind "more", a row of
+       their own once opened, so the run row stays one line on a phone. */
+    .embed-more {
+      display: block;
+    }
+    .embed-goals:not([data-open]) {
+      display: none;
+    }
+    .embed-goals[data-open] {
+      display: flex;
+      flex-basis: 100%;
+      gap: 0.5rem;
+      order: 1;
     }
   }
 }
