@@ -211,10 +211,12 @@ export function PaneSplit({
 
   // The saved split loads in an effect, after the group has read its default
   // layout at mount, so it is applied here once `ready`. The drift check stops
-  // a loop: a drag saves new sizes, which run this effect again. The default
-  // (the very array, so never a saved split) grows the first pane to its
-  // opening floor, worked out from its current pixels and share.
+  // a loop: a drag saves new sizes, which run this effect again. At the
+  // default split the first pane grows to its opening floor, worked out from
+  // its current pixels and share. That push is never saved, so each opening
+  // works it out again for the window it opens in.
   const firstPane = useRef<HTMLDivElement>(null);
+  const floored = useRef<number[] | null>(null);
   const floor = spec.openFloor?.[height];
   useEffect(() => {
     if (!ready) return;
@@ -224,9 +226,9 @@ export function PaneSplit({
     let target = sizes;
     const shown = firstPane.current?.clientHeight ?? 0;
     const share = current[ids[0]] ?? 0;
-    if (floor && sizes === defaults && shown > 0 && share > 0) {
+    if (floor && sizes.every((v, i) => v === defaults[i]) && shown > 0 && share > 0) {
       const wanted = Math.min(100, (floor / shown) * share);
-      if (wanted > sizes[0]) target = [wanted, 100 - wanted];
+      if (wanted > sizes[0]) target = floored.current = [wanted, 100 - wanted];
     }
     const drifted = ids.some(
       (id, i) => Math.abs((current[id] ?? 0) - (target[i] ?? 0)) > 0.01,
@@ -241,7 +243,10 @@ export function PaneSplit({
       orientation={orientation}
       groupRef={groupRef}
       defaultLayout={toLayout(opening, ids)}
-      onLayoutChange={(layout) => save(toArray(layout, ids, sizes))}
+      onLayoutChange={(layout) => {
+        const next = toArray(layout, ids, sizes);
+        if (!floored.current?.every((v, i) => Math.abs(v - next[i]) <= 0.01)) save(next);
+      }}
       resizeTargetMinimumSize={HIT_SIZE}
       style={{ height: "100%" }}
     >
