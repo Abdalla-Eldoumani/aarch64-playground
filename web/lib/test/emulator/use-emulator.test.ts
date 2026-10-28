@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
@@ -860,6 +861,56 @@ describe("useEmulator stepping and running", () => {
     await waitFor(() => expect(result.current.error).toMatch(/\nmain's ret on line 13 jumped to 0x700000006 /));
     expect(result.current.error).toMatch(/^paused after 1,000,000 steps without finishing\. /);
     expect(result.current.notes).toEqual([]);
+  });
+
+  // Drawn a frame after the run's end, the alert left the panes a frame to
+  // jump up and back, which WebKit reported as a ResizeObserver loop.
+  it("ends a paused run and shows its card in one commit", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runDeferred: true,
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+      runSnapshot: { frames },
+    });
+    h.backend = fake.backend;
+    const commits: Array<[boolean, string | null]> = [];
+    const { result } = renderHook(() => {
+      const hub = useEmulator();
+      useLayoutEffect(() => {
+        commits.push([hub.isRunning, hub.error]);
+      });
+      return hub;
+    });
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      void result.current.run();
+    });
+    expect(result.current.isRunning).toBe(true);
+    commits.length = 0;
+    await act(async () => {
+      fake.triggerRun();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(/\nmain's ret on line 13 jumped to 0x700000006 /));
+    // No commit between the run's end and its alert.
+    const ended = commits.filter(([running]) => !running);
+    expect(ended.length).toBeGreaterThan(0);
+    for (const [, error] of ended) {
+      expect(error).toMatch(/^paused after 1,000,000 steps without finishing\. [^\n]*\nmain's ret on line 13 /);
+    }
   });
 
   // A row for x19 (code 19): the ret on line 13 left it, line 11 read it.
