@@ -61,6 +61,9 @@ function makeCtx(over: Partial<DispatchContext> = {}): DispatchContext {
     runProgram: async (_args, _stdin) => ({ stdout: "", stderr: "", exitCode: 0 }),
     step: async () => ({ halted: false, line: null }),
     runUntilBreak: async () => ({ halted: true, hit_breakpoint: false }),
+    runUntil: async () => null,
+    frameStack: async () => null,
+    lineLabel: () => null,
     setBreakpoint: async (_addr) => {},
     clearBreakpoint: async (_addr) => {},
     resolveLabel: (_label) => null,
@@ -634,10 +637,16 @@ describe("gdb-lite edges", () => {
     expect(r.lines[0]).toBe("gdb: x needs an address, e.g. x/8i $pc");
   });
 
-  it("gdb bt prints a one-frame backtrace at the current pc", async () => {
-    const ctx = makeCtx({ pcAddress: () => 0x400010 });
-    const r = await dispatchCommand("gdb bt", ctx);
-    expect(r.lines).toEqual(["#0  0x0000000000400010 in <current>"]);
+  // bt prints the real call stack now (gdb-frames.test.ts); with no
+  // program there is none to print.
+  it("gdb bt and info frame ask for a program when there is none", async () => {
+    expect(await dispatchCommand("gdb bt", makeCtx())).toEqual({
+      status: "err",
+      lines: ["gdb: bt needs an assembled program"],
+    });
+    expect((await dispatchCommand("gdb info frame", makeCtx())).lines).toEqual([
+      "gdb: info frame needs an assembled program",
+    ]);
   });
 
   it("gdb rejects an unknown subcommand by name", async () => {
