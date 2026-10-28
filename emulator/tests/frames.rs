@@ -533,6 +533,73 @@ fn an_overflow_onto_mains_record_is_named_and_explains_the_bad_return() {
     assert_eq!(p.view().frames.len(), 1, "a return to no caller leaves the stack as it was");
 }
 
+const MEMSET_OVERRUN: &str = r#"
+// wipe fills its 16-byte buffer with memset but asks for 48 bytes: the
+// last 32 land on main's frame record and the 16 bytes above it.
+
+define(fp, x29)
+define(lr, x30)
+
+buf_s = 16                              // char buf[16]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+// wipe() fills buf with 'A' (bug: 48 bytes, not 16)
+        .balign 4
+        .global wipe
+wipe:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x0, fp, buf_s           // x0 = &buf[0]
+        mov     w1, 65                  // 'A'
+        mov     x2, 48                  // bug: buf holds 16
+        bl      memset
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        bl      wipe
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+const WIPE_BL_MEMSET: u32 = 22;
+const MAIN_RET_AFTER_WIPE: u32 = 34;
+
+/// The web shows one step per step, so the tracker stamps its events with
+/// that count, not with the step budget, which charges a library call's
+/// bulk bytes on top.
+#[test]
+fn a_library_calls_write_is_stamped_with_the_steps_taken_not_the_budget() {
+    let mut p = load(MEMSET_OVERRUN);
+    let bl = p.pc_of(WIPE_BL_MEMSET);
+    // By hand: steps 1 to 3 enter wipe, 4 to 9 reach its bl memset, 10 and
+    // 11 are the call's two trampoline words and 12 is memset itself, which
+    // moves 48 bytes: 3 more steps of budget at 16 bytes a step.
+    p.step(12);
+    assert_eq!(p.cpu.steps_total(), 15, "the budget charges memset's bytes");
+    let v = p.view();
+    assert_eq!(v.step, 12);
+    let main = v.frames[0].activation;
+    assert_eq!((main.fp_hit.step, main.fp_hit.pc), (12, bl), "main's saved fp, by the bl");
+    assert_eq!((main.lr_hit.step, main.lr_hit.pc), (12, bl), "main's saved lr, by the bl");
+    p.cpu.step_back();
+    assert_eq!(p.view().step, 11, "Back takes back one step");
+    assert_eq!(p.view().frames[0].activation.lr_hit.step, 0);
+    // 12 again, 13 and 14 return to main, 15 and 16 load the 'A's, 17 is
+    // main's ret.
+    p.step(6);
+    let main_ret = p.pc_of(MAIN_RET_AFTER_WIPE);
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!(bad, BadReturn { step: 17, pc: main_ret, target: 0x4141_4141_4141_4141 });
+}
+
 const PASS_ARRAY: &str = r#"
 // helper keeps four ints and has fill store i into eight of them: the
 // last four land on main's frame record, two records above fill's.
