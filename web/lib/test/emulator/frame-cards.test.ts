@@ -94,6 +94,11 @@ const layoutOf = (emu: Machine) => ({ numbers: Array.from(emu.frame_layout()), n
 
 const texts = (cards: Card[]) => cards.map((card) => card.text);
 
+/** A ret's event: the ret's address and its function's entry, both taken
+ *  from the line map by line. */
+const retEvent = (m: Loaded, retLine: number, entryLine: number) =>
+  `ret at 0x${m.lines.lineAddr(retLine)!.toString(16)} in 0x${m.lines.lineAddr(entryLine)!.toString(16)}`;
+
 // array-overrun.s: main is lines 14 to 21, helper 26 to 36, the store on 32.
 // Steps: main's stp, mov and bl helper are 1 to 3; helper's stp, mov, add
 // and mov 4 to 7; each pass of the loop is cmp, b.ge, str, add, b, so arr[i]
@@ -154,7 +159,7 @@ describe("a ret through an overwritten lr", () => {
     m.step(58);
     expect(returnCard(m.context(), m.lr())).toBeNull();
     m.step(1);
-    expect(returnCard(m.context(), m.lr())).toEqual({ event: "ret at step 59", text: BAD_RETURN, cause: "overwritten" });
+    expect(returnCard(m.context(), m.lr())).toEqual({ event: retEvent(m, 21, 14), text: BAD_RETURN, cause: "overwritten" });
     m.emu.free();
   });
 
@@ -173,7 +178,7 @@ describe("a ret through an overwritten lr", () => {
     const said = faultText(error!, m.context(), m.lr(), m.pc());
     expect(said).toEqual({
       error: `memory fault: the program tried to read 0x0000000700000006, which no section covers. ${BAD_RETURN}`,
-      card: { event: "ret at step 59", text: BAD_RETURN, cause: "overwritten" },
+      card: { event: retEvent(m, 21, 14), text: BAD_RETURN, cause: "overwritten" },
     });
     const explained = explainError(said!.error, said!.card)!;
     expect(explained.why).toBe(BAD_RETURN);
@@ -264,7 +269,7 @@ main:
     expect(error).toBe(`memory fault: the program tried to read 0x0000000000000000, which no section covers. ${GUESS}`);
     const card = returnCard(m.context(), m.lr());
     expect(card).toEqual({
-      event: "ret at step 7",
+      event: retEvent(m, 14, 8),
       text: "main's ret on line 14 jumped to 0x0 instead of going back to the C runtime.",
       cause: null,
     });
@@ -317,7 +322,18 @@ describe("lr not saved before a call", () => {
     m.step(15);
     expect(returnCard(m.context(), m.lr())).toBeNull();
     m.step(1);
-    expect(returnCard(m.context(), m.lr())).toEqual({ event: "ret at step 16", text: MISSING_LR, cause: "unsaved" });
+    expect(returnCard(m.context(), m.lr())).toEqual({ event: retEvent(m, 29, 28), text: MISSING_LR, cause: "unsaved" });
+    m.emu.free();
+  });
+
+  // Steps 16, 17, 18: the same ret going back into show, one event.
+  it("is one event however many times the ret goes round", () => {
+    const m = load(LR_NOT_SAVED);
+    m.step(16);
+    const first = returnCard(m.context(), m.lr());
+    m.step(2);
+    expect(m.context().snapshot.badReturn?.step).toBe(18);
+    expect(returnCard(m.context(), m.lr())).toEqual(first);
     m.emu.free();
   });
 
