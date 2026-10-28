@@ -17,6 +17,7 @@ impl Cpu {
         self.halted = false;
         // A freshly loaded program starts a fresh runaway budget.
         self.steps_total = 0;
+        self.steps_taken = 0;
         self.output_total = 0;
         self.abort_message = None;
         self.term = TermState::default();
@@ -32,6 +33,7 @@ impl Cpu {
         // previously loaded hosted image left behind.
         self.trampoline_base = 0;
         self.trampoline_names.clear();
+        self.frames.start(CODE_BASE, &self.regs.snapshot());
     }
 
     /// Load a `LinkedImage` from `frontend::pipeline`. Writes each (addr,
@@ -58,6 +60,7 @@ impl Cpu {
         // A fresh program starts a fresh runaway budget and clears any
         // prior bounds-abort message.
         self.steps_total = 0;
+        self.steps_taken = 0;
         self.output_total = 0;
         self.abort_message = None;
         self.stdin_closed = false;
@@ -89,6 +92,7 @@ impl Cpu {
         }
         crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
         crate::hosted::stdio::write_stdio_globals(&mut self.mem).map_err(map_write_fault)?;
+        self.frames.start(image.entry_point, &self.regs.snapshot());
         self.halted = false;
         // Refresh the symbol table from the linker so debugger
         // surfaces (`gdb b <label>`, future symbolic features) can

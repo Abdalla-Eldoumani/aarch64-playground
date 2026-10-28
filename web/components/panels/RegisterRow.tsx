@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 export interface RegisterRowProps {
   /** Register name, e.g. "X0", "SP", "PC". */
   name: string;
@@ -15,7 +17,15 @@ export interface RegisterRowProps {
   /** When true the row plays the write flash and tints the value with
    *  `--changed`; the parent sets it for the step in which the register wrote. */
   changed?: boolean;
+  /** A callee-saved register a returning call left changed: the quiet mark,
+   *  a dashed underline on the name. The words come when the caller reads it. */
+  notPutBack?: boolean;
+  /** A pointer chip naming the stack slot the value points to, shown in the
+   *  alias's place while the value points there. */
+  chip?: ReactNode;
 }
+
+const NOT_PUT_BACK = "a call changed it and did not put it back";
 
 /**
  * One register row. Sizes are em and ch so the panel's zoom scales it. A
@@ -29,6 +39,8 @@ export function RegisterRow({
   value,
   secondary,
   changed = false,
+  notPutBack = false,
+  chip,
 }: RegisterRowProps) {
   return (
     <div
@@ -41,10 +53,26 @@ export function RegisterRow({
           : ""
       }`}
     >
-      <span className="w-[3ch] shrink-0 text-[var(--text-secondary)]">{name}</span>
-      <span className="w-[4ch] shrink-0 text-left text-[var(--text-secondary)]">
-        {alias ?? ""}
+      <span
+        className={`w-[3ch] shrink-0 text-[var(--text-secondary)] ${
+          notPutBack ? "underline decoration-[var(--warning)] decoration-dashed underline-offset-2" : ""
+        }`}
+        title={notPutBack ? NOT_PUT_BACK : undefined}
+      >
+        {name}
+        {notPutBack && <span className="sr-only">, {NOT_PUT_BACK}</span>}
       </span>
+      {chip ? (
+        // In the alias's place, and the room beside it: in a three-column
+        // frame that room alone is three characters. A zero basis claims no
+        // width, so the value never drops onto a line of its own; a size
+        // container, so the chip can drop words when the room is short.
+        <span className="flex min-w-0 flex-[1_1_0%] overflow-x-clip [container-type:inline-size]">{chip}</span>
+      ) : (
+        <span className="w-[4ch] shrink-0 text-left text-[var(--text-secondary)]">
+          {alias ?? ""}
+        </span>
+      )}
       <span className="ml-auto flex min-w-0 flex-col items-end text-right">
         <span
           title={value}

@@ -1,3 +1,4 @@
+import type { StepGoal } from "@/lib/emulator/emulator-state";
 import type { Action } from "@/lib/playground/commands";
 
 /**
@@ -24,6 +25,7 @@ export type PaletteDeps = {
   assemble: () => void;
   step: () => void;
   stepBack: () => void;
+  runUntil: (goal: StepGoal) => void;
   run: () => void;
   pause: () => void;
   reset: () => void;
@@ -93,6 +95,30 @@ export function buildPaletteCommands(deps: PaletteDeps): Action[] {
         if (!deps.blocked) deps.stepBack();
       },
     },
+    ...(
+      [
+        ["over", "Step over", "run the call on this line in one go", "Ctrl+F10"],
+        ["out", "Step out", "run until this function returns", "Ctrl+Shift+F10"],
+        [
+          "cursor",
+          "Run to cursor",
+          deps.caretLine != null ? `run until line ${deps.caretLine}, where the caret is` : "run until the caret's line",
+          "Ctrl+F9",
+        ],
+      ] as const
+    ).map(([goal, label, does, shortcut]) => ({
+      id: `step-${goal}`,
+      label,
+      description: deps.blocked
+        ? "(waiting for stdin; feed the console first)"
+        : deps.programLoaded
+          ? does
+          : "(no program; assemble first)",
+      shortcut,
+      run: () => {
+        if (!deps.blocked) deps.runUntil(goal);
+      },
+    })),
     {
       // Run's and reset's descriptions say "breakpoint" too. The palette ranks
       // a match that ends the text first and keeps list order among equals,

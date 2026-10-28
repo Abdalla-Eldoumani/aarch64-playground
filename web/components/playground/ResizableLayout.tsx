@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useSyncExternalStore, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
   Group,
   Panel,
@@ -20,6 +20,9 @@ export interface ResizableLayoutProps {
   disassembly: ReactNode;
   registers: ReactNode;
   rightTabs: ReactNode;
+  /** The stack tab is showing the frames: the debug column opens, and
+   *  saves, on FRAMES_SPLIT. */
+  framesOpen?: boolean;
 }
 
 /** What one draggable pair is: its panes, its opening split (percent, with
@@ -32,6 +35,11 @@ export interface SplitSpec {
   minSizes: [number, number];
   /** Floors under a coarse pointer, where tabs and rows are 44px targets. */
   coarseMinSizes?: [number, number];
+  /** The first pane's height on opening, at least, in pixels, per window
+   *  height; a drag may still take it down to its floor. */
+  openFloor?: Partial<Record<ScreenHeight, number>>;
+  /** That opening height under a coarse pointer, whatever the window. */
+  coarseOpenFloor?: number;
   label: string;
 }
 
@@ -73,6 +81,23 @@ export const DEBUG_SPLIT: SplitSpec = {
   minSizes: [160, 140],
   coarseMinSizes: [160, 300],
   label: "resize registers and tabs",
+};
+
+// While the stack tab shows the frames, the tabs take the larger share, so
+// a 48-byte frame of three locals shows whole: drawn in full at 1440x900,
+// a line a box in a short window (FramesView). The registers still open on
+// three rows: mid-step their header is 209px in a short window (the decode
+// strip's short form) and 227px otherwise, plus three 19px rows. Under a
+// coarse pointer (an iPad Mini) the decode strip's two-line gloss, the
+// replay bar and a three-row header leave three rows only from 400px.
+// Saved under a key of its own, so a split saved before the frames existed
+// never hides them.
+export const FRAMES_SPLIT: SplitSpec = {
+  ...DEBUG_SPLIT,
+  defaults: [41, 59],
+  byHeight: { tall: [44, 56] },
+  openFloor: { short: 270, regular: 288 },
+  coarseOpenFloor: 400,
 };
 
 // A bare <Separator /> is a zero-width transparent div, so the band is drawn
@@ -191,17 +216,30 @@ export function PaneSplit({
 
   // The saved split loads in an effect, after the group has read its default
   // layout at mount, so it is applied here once `ready`. The drift check stops
-  // a loop: a drag saves new sizes, which run this effect again.
+  // a loop: a drag saves new sizes, which run this effect again. At the
+  // default split the first pane grows to its opening floor, worked out from
+  // its current pixels and share. That push is never saved, so each opening
+  // works it out again for the window it opens in.
+  const firstPane = useRef<HTMLDivElement>(null);
+  const floored = useRef<number[] | null>(null);
+  const floor = (coarse && spec.coarseOpenFloor) || spec.openFloor?.[height];
   useEffect(() => {
     if (!ready) return;
     const handle = groupRef.current;
     if (!handle) return;
     const current = handle.getLayout();
+    let target = sizes;
+    const shown = firstPane.current?.clientHeight ?? 0;
+    const share = current[ids[0]] ?? 0;
+    if (floor && sizes.every((v, i) => v === defaults[i]) && shown > 0 && share > 0) {
+      const wanted = Math.min(100, (floor / shown) * share);
+      if (wanted > sizes[0]) target = floored.current = [wanted, 100 - wanted];
+    }
     const drifted = ids.some(
-      (id, i) => Math.abs((current[id] ?? 0) - (sizes[i] ?? 0)) > 0.01,
+      (id, i) => Math.abs((current[id] ?? 0) - (target[i] ?? 0)) > 0.01,
     );
-    if (drifted) handle.setLayout(toLayout(sizes, ids));
-  }, [groupRef, ids, ready, sizes]);
+    if (drifted) handle.setLayout(toLayout(target, ids));
+  }, [defaults, floor, groupRef, ids, ready, sizes]);
 
   const horizontal = orientation === "horizontal";
 
@@ -210,12 +248,16 @@ export function PaneSplit({
       orientation={orientation}
       groupRef={groupRef}
       defaultLayout={toLayout(opening, ids)}
-      onLayoutChange={(layout) => save(toArray(layout, ids, sizes))}
+      onLayoutChange={(layout) => {
+        const next = toArray(layout, ids, sizes);
+        if (!floored.current?.every((v, i) => Math.abs(v - next[i]) <= 0.01)) save(next);
+      }}
       resizeTargetMinimumSize={HIT_SIZE}
       style={{ height: "100%" }}
     >
       <Panel
         id={ids[0]}
+        elementRef={firstPane}
         minSize={minSizes[0]}
         defaultSize={`${opening[0] ?? defaults[0]}%`}
       >
@@ -256,6 +298,7 @@ export function ResizableLayout({
   disassembly,
   registers,
   rightTabs,
+  framesOpen = false,
 }: ResizableLayoutProps) {
   return (
     <PaneSplit
@@ -276,8 +319,8 @@ export function ResizableLayout({
       second={
         <PaneSplit
           orientation="vertical"
-          spec={DEBUG_SPLIT}
-          storageKey={`${breakpoint}-right`}
+          spec={framesOpen ? FRAMES_SPLIT : DEBUG_SPLIT}
+          storageKey={`${breakpoint}-${framesOpen ? "frames" : "right"}`}
           height={height}
           first={registers}
           second={rightTabs}

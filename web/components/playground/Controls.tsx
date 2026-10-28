@@ -1,16 +1,30 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
+import { usePersistedFlag } from "@/components/panels/register-panel-settings";
 import { Button } from "@/components/ui/Button";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { explainError } from "@/lib/asm/error-explain";
+import type { StepGoal } from "@/lib/emulator/emulator-state";
+import type { ReturnCard } from "@/lib/emulator/frame-cards";
 import { formatSteps } from "@/lib/emulator/format-steps";
+
+// The keys page.tsx binds: F10 is step, so its Ctrl forms run further.
+const GOALS: { goal: StepGoal; label: string; keys: string }[] = [
+  { goal: "over", label: "step over", keys: "Ctrl+F10" },
+  { goal: "out", label: "step out", keys: "Ctrl+Shift+F10" },
+  { goal: "cursor", label: "run to cursor", keys: "Ctrl+F9" },
+];
 
 interface ControlsProps {
   onAssemble: () => void;
   onStep: () => void;
   onStepBack?: () => void;
   canStepBack?: boolean;
+  /** Step over, step out, run to cursor. */
+  onRunUntil?: (goal: StepGoal) => void;
+  /** Why the last of those stopped, until the machine moves again. */
+  stopReason?: string | null;
   onRun: () => void;
   onPause: () => void;
   onReset: () => void;
@@ -31,6 +45,9 @@ interface ControlsProps {
    *  genuinely escape the wait by starting over. */
   blocked?: boolean;
   error: string | null;
+  /** The frames' card `error` carries (the hub's `errorCard`): the fix
+   *  line comes from its cause. */
+  errorCard?: ReturnCard | null;
   stepCount?: number;
   /** The phone row: five buttons sharing the width, no key chips, and no
    *  step counter or halted chip, which the phone's status line carries. The
@@ -49,6 +66,8 @@ export function Controls({
   onStep,
   onStepBack,
   canStepBack,
+  onRunUntil,
+  stopReason,
   onRun,
   onPause,
   onReset,
@@ -58,6 +77,7 @@ export function Controls({
   programLoaded,
   blocked = false,
   error,
+  errorCard = null,
   stepCount,
   compact = false,
   short = false,
@@ -71,12 +91,41 @@ export function Controls({
 
   // The explainer adds a cause and a fix beside the raw error string, so a
   // first failed program says what to do next.
-  const explanation = error ? explainError(error) : null;
+  // While a run goes, the last stop's alert keeps its room, unseen, so the
+  // panes below do not drop away and come back on each press: on an iPad,
+  // WebKit then reports the panel group's resize as a ResizeObserver loop.
+  const [held, setHeld] = useState<{ error: string; card: ReturnCard | null } | null>(null);
+  if (error && error !== held?.error) setHeld({ error, card: errorCard });
+  else if (!error && !isRunning && held) setHeld(null);
+  const shown = error ?? (isRunning && held ? held.error : null);
+  const explanation = shown ? explainError(shown, error ? errorCard : held?.card) : null;
 
   // On a phone the five buttons share the row, assemble a little wider for
   // its longer word, so all five fit a 320px screen with nothing to scroll.
   const share = (weight: string) => (compact ? `${weight} min-w-0 !px-1 !text-[13px]` : undefined);
   const chips = !compact && !short;
+  // The phone row has no room for three more, so they open as a row of
+  // their own; the same remembered choice as a lesson frame's ellipsis.
+  const [more, setMore] = usePersistedFlag("aarch64-playground:embed-more");
+  const goalsId = useId();
+  const steppable = programLoaded && !isRunning && !isHalted && !blocked;
+  const goalButtons = onRunUntil
+    ? GOALS.map(({ goal, label, keys }) => (
+        <Button
+          key={goal}
+          variant="secondary"
+          onClick={() => onRunUntil(goal)}
+          aria-label={label}
+          aria-keyshortcuts={keys.replace("Ctrl", "Control")}
+          title={keys}
+          className={share("flex-1")}
+          disabled={!steppable}
+        >
+          <span>{label}</span>
+          {chips && <ShortcutChip keys={keys} />}
+        </Button>
+      ))
+    : null;
 
   return (
     <div
@@ -149,6 +198,22 @@ export function Controls({
             {chips && <ShortcutChip keys="Shift+F10" />}
           </Button>
         )}
+        {goalButtons &&
+          (compact ? (
+            // An ellipsis, not "more": the phone's view tabs already have one.
+            <Button
+              variant="secondary"
+              onClick={() => setMore(!more)}
+              aria-label="more ways to step"
+              aria-expanded={more}
+              aria-controls={goalsId}
+              className={`${share("flex-[0.6]")} !min-w-[2.75rem]`}
+            >
+              <span>…</span>
+            </Button>
+          ) : (
+            goalButtons
+          ))}
         <Button
           variant="secondary"
           onClick={onReset}
@@ -186,20 +251,34 @@ export function Controls({
           </span>
         )}
       </div>
+      {/* Kept while shut, so the ellipsis' aria-controls names an element; a
+          class only when open, since Tailwind's flex beats the hidden rule. */}
+      {compact && goalButtons && (
+        <div id={goalsId} hidden={!more} className={more ? "flex items-center gap-1" : undefined}>
+          {goalButtons}
+        </div>
+      )}
+      {stopReason && !error && (
+        <p role="status" className="min-w-0 break-words font-sans text-[12px] text-[var(--text-secondary)]">
+          {stopReason}
+        </p>
+      )}
 
-      {error && (
+      {shown && (
         <div
-          role="alert"
+          role={error ? "alert" : undefined}
+          aria-hidden={error ? undefined : true}
           // Keyed by the message so a NEW error replays the ~200ms decaying
           // shake; under prefers-reduced-motion the class is inert and the
-          // danger-colored text alone carries the state.
-          key={error}
+          // danger-colored text alone carries the state. The held box has a
+          // key of its own, so the next stop's alert mounts fresh and is said.
+          key={error ?? `held:${shown}`}
           // A readable box, not a truncated line: long messages wrap in
           // full view (scrolling only past ~4 lines) instead of hiding
           // behind a hover title. In a short window it takes a full-width
           // line of its own under the buttons, so the tools keep their place
           // beside them and the wider box needs fewer lines.
-          className={`anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left ${
+          className={`${error ? "anim-error-shake" : "invisible"} min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left ${
             short ? "sm:order-last sm:basis-full sm:max-w-none" : ""
           }`}
           style={{
@@ -208,7 +287,7 @@ export function Controls({
           }}
         >
           <p className="max-h-16 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-snug text-[var(--danger)]">
-            {error}
+            {shown}
           </p>
           {explanation && (
             <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-snug text-[var(--text-tertiary)] sm:block">

@@ -9,16 +9,21 @@
  * app-build-manifest.json, or from the prerendered page's <script src> tags
  * when the build emits no such manifest.
  *
+ * It also holds every DOMPurify in the built chunks to the `overrides` pin in
+ * web/package.json (checkDompurify below).
+ *
  *   node scripts/bundle-budget.js
  *
- * Exits 0 when every route is inside its limit, 1 otherwise.
+ * Exits 0 when every route is inside its limit and every DOMPurify is at the
+ * pin or newer, 1 otherwise.
  */
 
 const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
 
-const NEXT_DIR = path.join(__dirname, "..", "web", ".next");
+const WEB_DIR = path.join(__dirname, "..", "web");
+const NEXT_DIR = path.join(WEB_DIR, ".next");
 
 /**
  * One budget per prerendered page. `page` is the app-build-manifest key and
@@ -31,15 +36,15 @@ const ROUTES = [
     name: "landing document js (every chunk / loads)",
     page: "/page",
     document: "index.html",
-    // 190,872 B brotli measured.
-    limit: 210_000,
+    // 211.26 kB brotli measured (2026-10-28).
+    limit: 212_000,
   },
   {
     name: "playground document js (every chunk /playground loads)",
     page: "/playground/page",
     document: "playground.html",
-    // 203,920 B brotli measured.
-    limit: 224_300,
+    // 225.12 kB brotli measured (2026-10-28).
+    limit: 226_000,
   },
 ];
 
@@ -95,6 +100,66 @@ function measure(route) {
   return { files: files.length, total };
 }
 
+// Minified, DOMPurify reads `n.version="3.4.17",n.removed=[]`; React and xterm
+// also assign a bare `version`, so the `removed` after it marks DOMPurify.
+const DOMPURIFY_VERSION = /\.version="(\d+)\.(\d+)\.(\d+)",[\w$]+\.removed=\[\]/g;
+
+/** True when `version` ([major, minor, patch]) comes before `pin`. */
+function isOlder(version, pin) {
+  for (let i = 0; i < 3; i++) {
+    if (version[i] !== pin[i]) return version[i] < pin[i];
+  }
+  return false;
+}
+
+/**
+ * monaco-editor bundles its own DOMPurify, which `overrides` cannot reach, so
+ * next.config.mjs swaps it for the installed copy. A Monaco update that moves
+ * that file would quietly ship the old copy again; this fails the job instead.
+ * Returns the failure messages, empty when every copy is at the pin or newer.
+ */
+function checkDompurify() {
+  const pinned = readJson(path.join(WEB_DIR, "package.json")).overrides?.dompurify;
+  const exact = /^(\d+)\.(\d+)\.(\d+)$/.exec(pinned || "");
+  if (!exact) throw new Error(`overrides.dompurify in web/package.json is "${pinned}", not an exact x.y.z version`);
+  const pin = exact.slice(1).map(Number);
+
+  const chunksDir = path.join(NEXT_DIR, "static", "chunks");
+  const copies = [];
+  for (const file of fs.readdirSync(chunksDir, { recursive: true })) {
+    if (!file.endsWith(".js")) continue;
+    const text = fs.readFileSync(path.join(chunksDir, file), "utf8");
+    for (const match of text.matchAll(DOMPURIFY_VERSION)) {
+      copies.push({ file, version: match.slice(1, 4).map(Number) });
+    }
+  }
+
+  console.log("  dompurify in the built chunks");
+  console.log(`  Pinned:     ${pinned} (overrides in web/package.json)`);
+  if (copies.length === 0) {
+    return [
+      "found no DOMPurify version in .next/static/chunks, so this check would pass on nothing. " +
+        "If the editor still bundles DOMPurify, the minifier now writes it differently: " +
+        "update DOMPURIFY_VERSION in scripts/bundle-budget.js to match the built chunk. " +
+        "If the editor no longer uses DOMPurify, remove this check and the replacement in next.config.mjs.",
+    ];
+  }
+  const failures = [];
+  for (const { file, version } of copies) {
+    const tooOld = isOlder(version, pin);
+    console.log(`  Found:      ${version.join(".")} in ${file}${tooOld ? " (older than the pin)" : ""}`);
+    if (tooOld) {
+      failures.push(
+        `${file} ships DOMPurify ${version.join(".")}, older than the ${pinned} pinned in web/package.json. ` +
+          "monaco-editor bundles its own copy at esm/vs/base/browser/dompurify/dompurify.js, and " +
+          "next.config.mjs replaces that file with the installed dompurify. After a monaco-editor update, " +
+          "check that the file still has that path and update the replacement in next.config.mjs to match.",
+      );
+    }
+  }
+  return failures;
+}
+
 function main() {
   if (!fs.existsSync(NEXT_DIR)) {
     console.error("bundle-budget: no web/.next: run `npm run build` in web/ first");
@@ -115,7 +180,11 @@ function main() {
   }
   console.log("");
 
-  if (failed) process.exit(1);
+  const dompurify = checkDompurify();
+  console.log("");
+  for (const message of dompurify) console.error(`bundle-budget: ${message}`);
+
+  if (failed || dompurify.length > 0) process.exit(1);
 }
 
 try {

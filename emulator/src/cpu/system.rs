@@ -365,7 +365,12 @@ impl Cpu {
             }
             // Into the program's comparator, arguments and link register
             // already set: the call is not over, so nothing is clobbered.
-            HostOutcome::Call(target) => self.regs.write_pc(target),
+            HostOutcome::Call(target) => {
+                self.regs.write_pc(target);
+                if self.in_program(target) {
+                    self.frames.on_runtime_call(pc, target, &self.regs.snapshot());
+                }
+            }
         }
 
         let current = self.regs.snapshot();

@@ -9,6 +9,8 @@ import type { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
 import type { createTerminalContext } from "@/lib/playground/terminal-context";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import type { DebugPanes } from "@/components/playground/RightTabs";
+import { FramesView } from "@/components/playground/lazy-frames";
+import { StackTab } from "@/components/playground/StackTab";
 import {
   BaseConverter,
   ChecksPanel,
@@ -90,11 +92,34 @@ export function useDebugPanes({
   );
   const stackBlock = (
     <ErrorBoundary label="stack">
-      <StackPanel
-        sp={emu.sp}
-        getMemory={emu.getMemory}
-        fp={fpValue}
-        frameSlots={frameSlots}
+      <StackTab
+        frames={
+          <FramesView
+            frames={emu.frames}
+            frameLayout={emu.frameLayout}
+            registers={emu.registers}
+            sp={emu.sp}
+            pc={emu.pc}
+            getMemory={emu.getMemory}
+            readMemory={emu.readMemory}
+            dirtyAddrs={emu.dirtyAddrs}
+            memoryRegions={emu.memoryRegions}
+            lineLabel={emu.lineLabel}
+            programLines={emu.programLines}
+            noteRows={emu.noteRows}
+            errorCard={emu.errorCard}
+            programLoaded={emu.programLoaded}
+            running={emu.isRunning}
+          />
+        }
+        bytes={
+          <StackPanel
+            sp={emu.sp}
+            getMemory={emu.getMemory}
+            fp={fpValue}
+            frameSlots={frameSlots}
+          />
+        }
       />
     </ErrorBoundary>
   );

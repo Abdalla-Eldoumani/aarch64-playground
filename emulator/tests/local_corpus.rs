@@ -8,6 +8,7 @@
 use std::path::{Path, PathBuf};
 
 use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frames::check::check_source;
 use aarch64_emulator::frontend::parser::parse;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
@@ -154,6 +155,30 @@ fn every_local_corpus_program_links_and_runs() {
         run_fail, 0,
         "{run_fail} corpus file(s) linked but failed to run"
     );
+}
+
+/// The frame check marks nothing in a course's own programs: a mark there
+/// would be a false one. Files that do not assemble alone are counted, not
+/// checked.
+#[test]
+fn the_frame_check_marks_no_local_corpus_program() {
+    let Some(files) = corpus_files() else { return };
+    let (mut alone, mut checked, mut skipped, mut marks) = (0, 0, 0, Vec::new());
+    for path in &files {
+        let source = std::fs::read_to_string(path).unwrap_or_default();
+        let (check, _) = check_source(&source, &Cpu::new().host);
+        if check.checked + check.skipped == 0 {
+            alone += 1;
+        }
+        (checked, skipped) = (checked + check.checked, skipped + check.skipped);
+        marks.extend(check.findings.iter().map(|f| format!("{}: {f:?}", path.display())));
+    }
+    println!(
+        "frame check: {} programs ({alone} not assembled alone), {checked} functions on the pattern, {skipped} skipped, {} marks",
+        files.len(),
+        marks.len()
+    );
+    assert!(marks.is_empty(), "the frame check marked:\n  {}", marks.join("\n  "));
 }
 
 /// The label a link error says is missing, when a `.c` file in the

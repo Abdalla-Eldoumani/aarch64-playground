@@ -81,15 +81,15 @@ steps in [Run it locally](#run-it-locally).
 
 You need:
 
-- Rust 1.96 or newer, installed through [rustup](https://rustup.rs/)
-- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/) 0.14
+- Rust 1.99 or newer, installed through [rustup](https://rustup.rs/)
+- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/) 0.15
 - [Node.js](https://nodejs.org/) 24 or newer
 
 From the repository root:
 
 ```bash
 rustup target add wasm32-unknown-unknown
-cargo install --locked --version 0.14.0 wasm-pack
+cargo install --locked --version 0.15.0 wasm-pack
 wasm-pack build emulator --target web --out-dir ../web/lib/wasm
 wasm-pack build emulator --target nodejs --out-dir ../web/lib/wasm-node
 cd web

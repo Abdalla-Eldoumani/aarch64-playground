@@ -251,8 +251,8 @@ fn strip_line_comment(line: &str) -> &str {
 // frame balance
 // ---------------------------------------------------------------------------
 
-struct FunctionSegment {
-    name: String,
+pub(crate) struct FunctionSegment {
+    pub(crate) name: String,
     /// (line, instruction text) pairs, labels stripped.
     lines: Vec<(usize, String)>,
 }
@@ -294,7 +294,7 @@ fn fold_assignments(expanded: &m4::Expanded) -> HashMap<String, i64> {
 /// Split the expanded `.text` into function segments. A function starts at
 /// a label that is `.global`, a `bl` target, or the first label seen;
 /// other labels (loop targets) stay inside the current segment.
-fn split_functions(text: &str) -> Vec<FunctionSegment> {
+pub(crate) fn split_functions(text: &str) -> Vec<FunctionSegment> {
     let mut globals: HashSet<String> = HashSet::new();
     let mut bl_targets: HashSet<String> = HashSet::new();
     for line in text.lines() {

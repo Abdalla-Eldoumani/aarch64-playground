@@ -54,6 +54,9 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "Ctrl+Enter", description: "assemble and run, even from the editor" },
   { keys: "F10", description: "step" },
   { keys: "Shift+F10", description: "step back (up to 128 instructions)" },
+  { keys: "Ctrl+F10", description: "step over: run the call on this line in one go" },
+  { keys: "Ctrl+Shift+F10", description: "step out: run until this function returns" },
+  { keys: "Ctrl+F9", description: "run to the caret's line" },
   { keys: "F5", description: "run / pause" },
   { keys: "Shift+F5", description: "reset" },
   { keys: "F9", description: "set or clear a breakpoint on the caret's line" },
@@ -319,6 +322,13 @@ export default function Home() {
       } else if (e.key === "F6") {
         e.preventDefault();
         playgroundRef.current?.assemble();
+      } else if (meta && e.key === "F10") {
+        // Ahead of the plain F10 and F9 branches, which would take these.
+        e.preventDefault();
+        playgroundRef.current?.runUntil(e.shiftKey ? "out" : "over");
+      } else if (meta && e.key === "F9") {
+        e.preventDefault();
+        playgroundRef.current?.runUntil("cursor");
       } else if (e.key === "F10" && e.shiftKey) {
         e.preventDefault();
         playgroundRef.current?.stepBack();

@@ -50,7 +50,8 @@ pub struct Memory {
     zero_fill: Vec<(u64, u64)>,
     /// While `recording`, what the running step's writes replaced, so its
     /// step-back frame can put them back; between steps a spare buffer
-    /// (see `record_undo`).
+    /// (see `record_undo`). The runs alone are kept on every step, for
+    /// `step_writes`.
     undo: MemUndo,
     recording: bool,
 }
@@ -71,12 +72,11 @@ pub struct MemUndo {
 }
 
 impl MemUndo {
-    fn save(&mut self, addr: u64, replaced: &[u8]) {
+    fn note_run(&mut self, addr: u64, len: usize) {
         match self.runs.last_mut() {
-            Some((start, len)) if start.wrapping_add(*len as u64) == addr => *len += replaced.len(),
-            _ => self.runs.push((addr, replaced.len())),
+            Some((start, n)) if start.wrapping_add(*n as u64) == addr => *n += len,
+            _ => self.runs.push((addr, len)),
         }
-        self.old.extend_from_slice(replaced);
     }
 }
 
@@ -167,6 +167,19 @@ impl Memory {
             }
         }
         self.dirty.clear();
+    }
+
+    /// Forget the runs written before the step about to run (by the loader,
+    /// a step back, or the last step), which are not its writes.
+    pub fn start_step(&mut self) {
+        self.undo.runs.clear();
+    }
+
+    /// The `(addr, len)` runs written since `start_step`, whether or not
+    /// the undo log is recording. The dirty log cannot say this: it merges
+    /// writes across steps and widens past `MAX_DIRTY_RANGES`.
+    pub fn step_writes(&self) -> &[(u64, usize)] {
+        &self.undo.runs
     }
 
     /// Name the spans that read as zeros until written (the loaded data
@@ -317,8 +330,9 @@ impl Memory {
         let slot = &mut Rc::make_mut(self.page_or_map(base))[off..off + bytes.len()];
         replaced[..bytes.len()].copy_from_slice(slot);
         slot.copy_from_slice(bytes);
+        self.undo.note_run(addr, bytes.len());
         if self.recording {
-            self.undo.save(addr, &replaced[..bytes.len()]);
+            self.undo.old.extend_from_slice(&replaced[..bytes.len()]);
         }
         self.note_write(addr, bytes.len());
         Ok(())

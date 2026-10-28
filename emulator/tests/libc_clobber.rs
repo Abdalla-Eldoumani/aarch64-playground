@@ -27,7 +27,7 @@ fn run(src: &str) -> (Cpu, Vec<u32>) {
 fn notes(cpu: &mut Cpu, map: &[u32]) -> Vec<[u32; 4]> {
     let mut rows = cpu.take_clobber_notes();
     clobber_note_lines(&mut rows, map);
-    rows.chunks_exact(4).map(|r| [r[0], r[1], r[2], r[3]]).collect()
+    rows.as_chunks::<4>().0.to_vec()
 }
 
 /// x9 holds 42 across a printf and is printed on both sides of it. The

@@ -451,3 +451,62 @@ fn stepping_back_through_the_whole_ring_retraces_every_state() {
     assert!(states[end] == seen(&cpu), "the rerun ends where the first run ended");
     assert_eq!(cpu.exit_code(), Some(0));
 }
+
+/// Fills a 64-byte local buffer with one `bl memset`. The budget charges
+/// the bytes a call moves at 16 a step (cpu::BULK_BYTES_PER_STEP) on top of
+/// the step itself, so that step costs 1 + 64 / 16 = 5.
+const MEMSET_SRC: &str = r#"// memset() fills a 64-byte buffer with 7s.
+define(fp, x29)
+define(lr, x30)
+
+buf_s = 16                              // char buf[64]: fp + 16 to fp + 79
+alloc = -(16 + 64) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x0, fp, buf_s           // x0 = &buf[0]
+        mov     w1, 7                   // the byte to store
+        mov     x2, 64                  // how many bytes
+        bl      memset
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Back puts the step budget back exactly where the step found it, a bulk
+/// charge included, and stepping again costs what it did the first time,
+/// so a run with Backs in it ends on the same count as one without.
+#[test]
+fn step_back_restores_the_step_count_a_bulk_call_charged() {
+    let load = || {
+        let mut cpu = Cpu::new();
+        let image = assemble_hosted(MEMSET_SRC, &cpu.host).expect("assemble");
+        cpu.load_linked_image(&image).expect("load");
+        cpu
+    };
+    let mut straight = load();
+    while !straight.is_halted() {
+        straight.step().expect("step");
+    }
+
+    let mut cpu = load();
+    let mut charges = Vec::new();
+    while !cpu.is_halted() {
+        let before = cpu.steps_total();
+        cpu.step().expect("step");
+        let after = cpu.steps_total();
+        cpu.step_back();
+        assert_eq!(cpu.steps_total(), before, "Back after a step that cost {}", after - before);
+        cpu.step().expect("step again");
+        assert_eq!(cpu.steps_total(), after, "the step again costs what it did");
+        charges.push(after - before);
+    }
+    assert_eq!(charges.iter().filter(|&&c| c != 1).collect::<Vec<_>>(), [&5], "only the memset costs more than one");
+    assert_eq!(cpu.steps_total(), straight.steps_total());
+    assert_eq!(cpu.exit_code(), Some(0));
+}

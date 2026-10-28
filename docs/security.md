@@ -140,11 +140,19 @@ node scripts/audit-deps.js
 `overrides` in `web/package.json` holds two packages at patched versions:
 `dompurify`, which arrives through monaco-editor, and `postcss`, which arrives
 through Next.js. The root `package.json` holds the same `postcss`
-override for the copy of Next.js that Vercel installs there. monaco-editor
-also bundles its own copy of DOMPurify, which `overrides` cannot reach. That
-copy only cleans the editor's own widgets, and the site never passes the
-editor untrusted HTML, so a hostile document cannot reach it. It is checked
-again at every monaco-editor update.
+override for the copy of Next.js that Vercel installs there.
+
+monaco-editor also bundles its own, older copy of DOMPurify, a file inside
+its package that `overrides` cannot change. The editor uses it to clean the
+text of its hover cards before showing them. Those cards never hold HTML from
+a link or a file, so the old copy was hard to reach. It still had known flaws,
+so the build swaps it out: `web/next.config.mjs` tells webpack to load the
+installed `dompurify` package
+wherever the editor asks for its own copy, so the editor runs the patched
+version. `npm run size` then reads the version each copy of DOMPurify in the
+built JavaScript states and fails if any is older than the one in
+`overrides`. A later monaco-editor update cannot bring the old copy back
+without that check failing.
 
 ## Check the headers
 

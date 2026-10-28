@@ -518,6 +518,14 @@ body:has(> .playground-shell) {
 .embed-status {
   display: none;
 }
+/* Step over, step out and run to cursor sit in the run row; the ellipsis that
+   hides them shows only in the single-pane frame. */
+.embed-more {
+  display: none;
+}
+.embed-goals {
+  display: contents;
+}
 @container (min-width: 38rem) {
   .embed-grid {
     grid-template-areas: "editor editor" "registers registers" "console console";
@@ -557,6 +565,10 @@ body:has(> .playground-shell) {
     .embed-status {
       display: block;
     }
+    /* The view switch offers registers and stack itself here. */
+    .embed-side {
+      display: none;
+    }
     .embed-grid {
       grid-template-areas: "pane";
       grid-template-rows: minmax(0, 1fr);
@@ -574,6 +586,27 @@ body:has(> .playground-shell) {
     .embed-grid:not([data-pane="registers"]) .embed-area-registers,
     .embed-grid:not([data-pane="console"]) .embed-area-console {
       display: none;
+    }
+    /* Step over, step out and run to cursor wait behind an ellipsis, a row
+       of their own once opened, so the run row stays one line on a phone. */
+    .embed-more {
+      display: block;
+    }
+    .embed-goals:not([data-open]) {
+      display: none;
+    }
+    .embed-goals[data-open] {
+      display: flex;
+      flex-basis: 100%;
+      gap: 0.5rem;
+      order: 1;
+    }
+    /* Sized by their labels and set at the phone run row's 13px, so all
+       three keep to one line on a 375px phone. */
+    .embed-goals[data-open] > button {
+      flex: 1 1 auto;
+      padding-inline: 0.375rem;
+      font-size: 13px;
     }
   }
 }

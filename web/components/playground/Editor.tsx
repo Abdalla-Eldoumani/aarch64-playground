@@ -3,6 +3,8 @@
 import MonacoEditor, { type OnMount } from "@monaco-editor/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { AssemblyError } from "@/lib/emulator/use-emulator";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
+import { wordLint } from "@/lib/emulator/frame-check";
 import { errorHoverMarkdown } from "@/lib/asm/error-explain";
 import { useToast } from "@/components/ui/Toast";
 import { TouchEditor } from "@/components/playground/TouchEditor";
@@ -20,9 +22,10 @@ interface EditorProps {
   breakpoints: Set<number>;
   onToggleBreakpoint: (line: number) => void;
   assemblyErrors: AssemblyError[];
-  /** Advisory pre-assembly lint warnings, rendered as Monaco WARNING
-   *  markers (yellow squiggles with the remedy in the hover). */
-  lintWarnings?: AssemblyError[];
+  /** Advisory pre-assembly lint warnings and frame check findings,
+   *  rendered as Monaco WARNING markers (yellow squiggles with the remedy in
+   *  the hover). */
+  lintWarnings?: LintWarning[];
   onCursorChange?: (pos: { line: number; column: number }) => void;
   /** Format-source command bound to Ctrl+Shift+F inside Monaco. The
    *  parent owns the formatter implementation so the keybinding and
@@ -95,7 +98,7 @@ export function Editor({
   // hover message, and the problems affordance for free. The first lint of a
   // page load often lands while Monaco is still loading, so the mount applies
   // the latest warnings too, not only a change to them.
-  const lintRef = useRef(lintWarnings);
+  const lintRef = useRef<AssemblyError[]>([]);
   const applyLint = useCallback(() => {
     const editor = editorRef.current;
     const monaco = monacoRef.current;
@@ -115,7 +118,7 @@ export function Editor({
     );
   }, []);
   useEffect(() => {
-    lintRef.current = lintWarnings;
+    lintRef.current = wordLint(lintWarnings);
     applyLint();
   }, [lintWarnings, applyLint]);
   const [fallback, setFallback] = useState<boolean>(() => wantsTouchEditor());
@@ -236,7 +239,7 @@ export function Editor({
           isWholeLine: true,
           className: "error-line-highlight",
           glyphMarginClassName: "error-glyph",
-          hoverMessage: { value: errorHoverMarkdown(err.message), isTrusted: false },
+          hoverMessage: { value: errorHoverMarkdown(err.message, err.card), isTrusted: false },
         },
       });
     }
