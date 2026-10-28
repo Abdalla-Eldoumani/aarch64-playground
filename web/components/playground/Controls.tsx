@@ -1,16 +1,29 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { usePersistedFlag } from "@/components/panels/register-panel-settings";
 import { Button } from "@/components/ui/Button";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { explainError } from "@/lib/asm/error-explain";
+import type { StepGoal } from "@/lib/emulator/emulator-state";
 import { formatSteps } from "@/lib/emulator/format-steps";
+
+// The keys page.tsx binds: F10 is step, so its Ctrl forms run further.
+const GOALS: { goal: StepGoal; label: string; keys: string }[] = [
+  { goal: "over", label: "step over", keys: "Ctrl+F10" },
+  { goal: "out", label: "step out", keys: "Ctrl+Shift+F10" },
+  { goal: "cursor", label: "run to cursor", keys: "Ctrl+F9" },
+];
 
 interface ControlsProps {
   onAssemble: () => void;
   onStep: () => void;
   onStepBack?: () => void;
   canStepBack?: boolean;
+  /** Step over, step out, run to cursor. */
+  onRunUntil?: (goal: StepGoal) => void;
+  /** Why the last of those stopped, until the machine moves again. */
+  stopReason?: string | null;
   onRun: () => void;
   onPause: () => void;
   onReset: () => void;
@@ -49,6 +62,8 @@ export function Controls({
   onStep,
   onStepBack,
   canStepBack,
+  onRunUntil,
+  stopReason,
   onRun,
   onPause,
   onReset,
@@ -77,6 +92,26 @@ export function Controls({
   // its longer word, so all five fit a 320px screen with nothing to scroll.
   const share = (weight: string) => (compact ? `${weight} min-w-0 !px-1 !text-[13px]` : undefined);
   const chips = !compact && !short;
+  // The phone row has no room for three more, so they open as a row of
+  // their own; the same remembered choice as a lesson frame's "more".
+  const [more, setMore] = usePersistedFlag("aarch64-playground:embed-more");
+  const steppable = programLoaded && !isRunning && !isHalted && !blocked;
+  const goalButtons = onRunUntil
+    ? GOALS.map(({ goal, label, keys }) => (
+        <Button
+          key={goal}
+          variant="secondary"
+          onClick={() => onRunUntil(goal)}
+          aria-keyshortcuts={keys.replace("Ctrl", "Control")}
+          title={keys}
+          className={share("flex-1")}
+          disabled={!steppable}
+        >
+          <span>{label}</span>
+          {chips && <ShortcutChip keys={keys} />}
+        </Button>
+      ))
+    : null;
 
   return (
     <div
@@ -149,6 +184,19 @@ export function Controls({
             {chips && <ShortcutChip keys="Shift+F10" />}
           </Button>
         )}
+        {goalButtons &&
+          (compact ? (
+            <Button
+              variant="secondary"
+              onClick={() => setMore(!more)}
+              aria-expanded={more}
+              className={share("flex-1")}
+            >
+              <span>more</span>
+            </Button>
+          ) : (
+            goalButtons
+          ))}
         <Button
           variant="secondary"
           onClick={onReset}
@@ -186,6 +234,12 @@ export function Controls({
           </span>
         )}
       </div>
+      {compact && more && goalButtons && <div className="flex items-center gap-1">{goalButtons}</div>}
+      {stopReason && !error && (
+        <p role="status" className="min-w-0 break-words font-sans text-[12px] text-[var(--text-secondary)]">
+          {stopReason}
+        </p>
+      )}
 
       {error && (
         <div
