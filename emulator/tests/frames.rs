@@ -14,7 +14,9 @@
 //! callee leaving x19 changed; a call out before lr is saved; a qsort
 //! comparator; hostile programs (fp into .data, misaligned sp, a bl into a
 //! function's middle, a computed blr, a return into a stub, an fp record
-//! pointing at itself).
+//! pointing at itself); the frame check, one program per rule, a function
+//! off the pattern, a correct frame, and no mark on any shipped example,
+//! exercise reference program or C program at -O0.
 
 #[path = "common/frame_walk.rs"]
 mod frame_walk;
@@ -22,6 +24,7 @@ mod frame_walk;
 use std::path::PathBuf;
 
 use aarch64_emulator::cpu::{Cpu, MAX_SNAPSHOT_SIDE_BYTES};
+use aarch64_emulator::frames::check::{check_source, ODD_FRAME, ON_RECORD, OUTSIDE, OVERLAP, UNALIGNED};
 use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
 use aarch64_emulator::frames::{
     frame_view, Activation, BadReturn, FrameView, Hit, COMPLETE, ENTERED, LEAF, LR_UNSAVED, MAX_ACTIVATIONS,
@@ -132,8 +135,8 @@ fn example_files(stem: &str) -> Vec<String> {
         .collect()
 }
 
-#[test]
-fn every_shipped_example_agrees_with_the_frame_chain_at_every_step() {
+/// Every shipped example as (stem, source), its helper files joined on.
+fn shipped_examples() -> Vec<(String, String)> {
     let dir = repo_root().join("web/public/examples/cpsc355");
     let mut stems: Vec<String> = std::fs::read_dir(&dir)
         .expect("examples")
@@ -141,15 +144,26 @@ fn every_shipped_example_agrees_with_the_frame_chain_at_every_step() {
         .collect();
     stems.sort();
     assert!(stems.len() >= 27, "examples shrank: {}", stems.len());
+    stems
+        .into_iter()
+        .map(|stem| {
+            let mut source = read(&dir.join(format!("{stem}.s")));
+            for name in example_files(&stem) {
+                source.push_str(&format!("\n// ---- {name} ----\n"));
+                source.push_str(&read(&dir.join(&stem).join(&name)));
+            }
+            (stem, source)
+        })
+        .collect()
+}
+
+#[test]
+fn every_shipped_example_agrees_with_the_frame_chain_at_every_step() {
+    let dir = repo_root().join("web/public/examples/cpsc355");
     let mut total = Tally::default();
-    for stem in &stems {
-        let mut source = read(&dir.join(format!("{stem}.s")));
-        for name in example_files(stem) {
-            source.push_str(&format!("\n// ---- {name} ----\n"));
-            source.push_str(&read(&dir.join(stem).join(&name)));
-        }
+    for (stem, source) in &shipped_examples() {
         let mut cpu = Cpu::new();
-        let image = assemble_hosted(&source, &cpu.host).unwrap_or_else(|e| panic!("{stem}: {e}"));
+        let image = assemble_hosted(source, &cpu.host).unwrap_or_else(|e| panic!("{stem}: {e}"));
         let args_line = std::fs::read_to_string(dir.join("fixtures").join(format!("{stem}.args"))).unwrap_or_default();
         let args: Vec<&str> = args_line.split_whitespace().collect();
         cpu.load_linked_image_with_args(&image, &args).expect("load");
@@ -978,4 +992,449 @@ main:
     );
     let bad = p.cpu.call_stack().bad_return();
     assert_eq!(Some(bad.target), p.cpu.host.lookup("puts"));
+}
+
+// ---------------------------------------------------------------------------
+// The frame check
+// ---------------------------------------------------------------------------
+
+/// A finding as (rule, line, function, frame bytes, and its slots as name,
+/// offset and width).
+type Row = (u8, u32, String, u64, Vec<(String, i64, u8)>);
+
+fn row(rule: u8, line: u32, function: &str, frame: u64, slots: &[(&str, i64, u8)]) -> Row {
+    (rule, line, function.into(), frame, slots.iter().map(|&(n, o, w)| (n.into(), o, w)).collect())
+}
+
+/// The functions checked and skipped, and each finding as a `Row`.
+fn frame_check(source: &str) -> (u32, u32, Vec<Row>) {
+    let (check, names) = check_source(source, &Cpu::new().host);
+    let name = |i: u32| names[i as usize].clone();
+    let rows = check
+        .findings
+        .iter()
+        .map(|f| {
+            let slots = [f.first, f.second].into_iter().flatten().map(|s| (name(s.name), s.offset, s.width)).collect();
+            (f.rule, f.line, f.function.map_or(String::new(), name), f.frame_bytes, slots)
+        })
+        .collect();
+    (check.checked, check.skipped, rows)
+}
+
+/// alloc = -(16 + 8) & -16 = -32. long_s holds bytes 16 to 23 and count_s
+/// bytes 20 to 23, so the count's store (line 22) lands inside the long.
+const OVERLAPPING: &str = r#"
+// Keeps a long and a count in main's frame, with the count's offset
+// inside the long's eight bytes.
+
+define(fp, x29)
+define(lr, x30)
+
+long_s = 16
+count_s = 20
+alloc = -(16 + 8) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     x9, 100
+        str     x9, [fp, long_s]
+        mov     w9, 3
+        str     w9, [fp, count_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Two names for byte 16: second_s's store (line 21) lands on first_s.
+const SAME_OFFSET: &str = r#"
+// Gives two ints the same offset by mistake.
+
+define(fp, x29)
+define(lr, x30)
+
+first_s = 16
+second_s = 16
+alloc = -(16 + 8) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 1
+        str     w9, [fp, first_s]
+        mov     w9, 2
+        str     w9, [fp, second_s]
+        ldr     w0, [fp, first_s]
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_marks_slots_that_share_bytes() {
+    assert_eq!(
+        frame_check(OVERLAPPING),
+        (1, 0, vec![row(OVERLAP, 22, "main", 32, &[("long_s", 16, 8), ("count_s", 20, 4)])])
+    );
+    assert_eq!(
+        frame_check(SAME_OFFSET),
+        (1, 0, vec![row(OVERLAP, 21, "main", 32, &[("first_s", 16, 4), ("second_s", 16, 4)])])
+    );
+}
+
+/// A 32-byte frame covers fp + 0 to 31: low_s (-8 to -1, line 21) is below
+/// it and high_s (32 to 39, line 20) past its end; sum_s (16 to 23) fits.
+const OUTSIDE_FRAME: &str = r#"
+// Stores one long below fp and one past the end of a 32-byte frame.
+
+define(fp, x29)
+define(lr, x30)
+
+low_s = -8
+sum_s = 16
+high_s = 32
+alloc = -(16 + 8) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        str     xzr, [fp, sum_s]
+        str     xzr, [fp, high_s]
+        str     xzr, [fp, low_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// last9 only reads ninth_s at fp + 16, past the end of its 16-byte frame:
+/// that is the caller's slot, where a ninth argument arrives, so it is not
+/// marked. main moves sp for that slot, so it is off the pattern.
+const STACK_ARGUMENT: &str = r#"
+// last9 returns its ninth argument, which arrives on the stack.
+
+define(fp, x29)
+define(lr, x30)
+
+ninth_s = 16
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 16
+        mov     x9, 9
+        str     x9, [sp]
+        bl      last9
+        add     sp, sp, 16
+        ldp     fp, lr, [sp], 16
+        ret
+
+// last9(x0 to x7, the ninth on the stack) -> x0 = the ninth
+last9:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, [fp, ninth_s]
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn the_frame_check_marks_slots_outside_the_frame() {
+    assert_eq!(frame_check(STACK_ARGUMENT), (1, 1, vec![]));
+    assert_eq!(
+        frame_check(OUTSIDE_FRAME),
+        (
+            1,
+            0,
+            vec![
+                row(OUTSIDE, 20, "main", 32, &[("high_s", 32, 8)]),
+                row(OUTSIDE, 21, "main", 32, &[("low_s", -8, 8)]),
+            ]
+        )
+    );
+}
+
+/// The saved fp is fp + 0 to 7 and the saved lr fp + 8 to 15: saved_s (0
+/// to 7, line 20) sits on the first and n_s (8 to 11, line 19) on the
+/// second.
+const ON_THE_RECORD: &str = r#"
+// Puts a local on the saved lr and another on the saved fp.
+
+define(fp, x29)
+define(lr, x30)
+
+saved_s = 0
+n_s = 8
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 5
+        str     w9, [fp, n_s]
+        str     x9, [fp, saved_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_marks_slots_on_the_saved_fp_and_lr() {
+    assert_eq!(
+        frame_check(ON_THE_RECORD),
+        (
+            1,
+            0,
+            vec![
+                row(ON_RECORD, 19, "main", 32, &[("n_s", 8, 4)]),
+                row(ON_RECORD, 20, "main", 32, &[("saved_s", 0, 8)]),
+            ]
+        )
+    );
+}
+
+/// alloc = -(16 + 12) & -16 = -32. total_s is 8 bytes at 20, and 20 is not
+/// a multiple of 8 (line 22); count_s (16 to 19) ends where it starts.
+const UNALIGNED_LONG: &str = r#"
+// Keeps a long right after an int, at an offset that is not a multiple
+// of 8.
+
+define(fp, x29)
+define(lr, x30)
+
+count_s = 16
+total_s = 20
+alloc = -(16 + 12) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 3
+        str     w9, [fp, count_s]
+        mov     x9, 1000
+        str     x9, [fp, total_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_marks_a_long_off_a_multiple_of_8() {
+    assert_eq!(frame_check(UNALIGNED_LONG), (1, 0, vec![row(UNALIGNED, 22, "main", 32, &[("total_s", 20, 8)])]));
+}
+
+/// alloc = -(16 + 8) = -24, never rounded: the push on line 15 leaves sp
+/// 24 bytes down, off a multiple of 16. value_s (16 to 23) fits.
+const ODD_SIZED: &str = r#"
+// Sizes the frame without rounding it up to a multiple of 16.
+
+define(fp, x29)
+define(lr, x30)
+
+value_s = 16
+alloc = -(16 + 8)
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        str     xzr, [fp, value_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_marks_a_frame_that_leaves_sp_off_16() {
+    assert_eq!(frame_check(ODD_SIZED), (1, 0, vec![row(ODD_FRAME, 15, "main", 24, &[])]));
+}
+
+/// main is on the pattern; grow moves sp again after its record (so its
+/// temp_s at fp - 4 is its own space) and bare pushes no record: both are
+/// left alone.
+const OFF_THE_PATTERN: &str = r#"
+// A frame on the pattern, one that grows the stack after its frame
+// record, and one with no frame record at all.
+
+define(fp, x29)
+define(lr, x30)
+
+temp_s = -4
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      grow
+        bl      bare
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+grow:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     sp, sp, 16
+        str     wzr, [fp, temp_s]
+        add     sp, sp, 16
+        ldp     fp, lr, [sp], 16
+        ret
+
+bare:
+        sub     sp, sp, 16
+        str     wzr, [sp, 12]
+        add     sp, sp, 16
+        ret
+"#;
+
+#[test]
+fn the_frame_check_leaves_functions_off_the_pattern_alone() {
+    assert_eq!(frame_check(OFF_THE_PATTERN), (1, 2, vec![]));
+}
+
+/// num_m is a .bss label, not an equate: the offset it gives is an address
+/// the frame check cannot place, so it names no slot.
+const LABEL_AS_OFFSET: &str = r#"
+// Reads a long through fp with a .bss label where an equate belongs.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_in:     .string "%ld"
+
+        .bss
+        .align 3
+num_m:      .skip   8
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =fmt_in
+        add     x1, fp, num_m
+        bl      scanf
+        ldr     x0, [fp, num_m]
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn the_frame_check_takes_only_equates_as_slot_offsets() {
+    assert_eq!(frame_check(LABEL_AS_OFFSET), (1, 0, vec![]));
+}
+
+/// main: a_s 16 to 19 and b_s 20 to 23 in 32 bytes; sum: x19_s 16 to 23
+/// and total_s 24 to 31 in 32 bytes. Nothing to mark.
+const WELL_LAID_OUT: &str = r#"
+// main keeps two ints in its frame; sum saves x19 and keeps a long.
+
+define(fp, x29)
+define(lr, x30)
+
+a_s = 16
+b_s = 20
+alloc = -(16 + 8) & -16
+dealloc = -alloc
+x19_s = 16
+total_s = 24
+sum_alloc = -(16 + 16) & -16
+sum_dealloc = -sum_alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 7
+        str     w9, [fp, a_s]
+        mov     w9, 4
+        str     w9, [fp, b_s]
+        ldr     w0, [fp, a_s]
+        ldr     w1, [fp, b_s]
+        bl      sum
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+// sum(w0 = a, w1 = b) -> x0 = a + b
+sum:
+        stp     fp, lr, [sp, sum_alloc]!
+        mov     fp, sp
+        str     x19, [fp, x19_s]
+        add     w19, w0, w1
+        sxtw    x19, w19
+        str     x19, [fp, total_s]
+        ldr     x0, [fp, total_s]
+        ldr     x19, [fp, x19_s]
+        ldp     fp, lr, [sp], sum_dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_is_silent_on_a_correct_frame() {
+    assert_eq!(frame_check(WELL_LAID_OUT), (2, 0, vec![]));
+}
+
+/// Precision over every program the site ships and the tests hold: each
+/// assembles, and no function on the pattern gets a mark.
+#[test]
+fn the_frame_check_marks_nothing_the_site_ships_or_the_c_corpus_at_o0() {
+    let root = repo_root();
+    let folder = |dir: &str, keep: fn(&str) -> bool| -> Vec<(String, String)> {
+        let mut files: Vec<(String, String)> = std::fs::read_dir(root.join(dir))
+            .expect(dir)
+            .filter_map(|e| e.ok()?.file_name().into_string().ok())
+            .filter(|f| f.ends_with(".s") && keep(f))
+            .map(|f| (f.clone(), read(&root.join(dir).join(&f))))
+            .collect();
+        files.sort();
+        files
+    };
+    let groups = [
+        ("shipped examples", shipped_examples()),
+        ("exercise reference programs", folder("web/lib/test/content/exercise-solutions", |_| true)),
+        ("C corpus at -O0", folder("emulator/tests/c-corpus", |f| !f.contains(".O2"))),
+    ];
+    let mut marks = Vec::new();
+    for (group, programs) in &groups {
+        let (mut checked, mut skipped) = (0, 0);
+        for (name, source) in programs {
+            let (check, _) = check_source(source, &Cpu::new().host);
+            assert!(check.checked + check.skipped > 0, "{name} did not assemble");
+            (checked, skipped) = (checked + check.checked, skipped + check.skipped);
+            marks.extend(check.findings.iter().map(|f| format!("{name}: {f:?}")));
+        }
+        println!("{group}: {} programs, {checked} functions on the pattern, {skipped} skipped", programs.len());
+    }
+    assert!(marks.is_empty(), "the frame check marked:\n  {}", marks.join("\n  "));
 }
