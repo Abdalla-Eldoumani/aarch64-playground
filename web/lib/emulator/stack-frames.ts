@@ -321,6 +321,12 @@ function littleEndian(bytes: Uint8Array): bigint {
   return value;
 }
 
+/** The 8-byte word at `addr` in the bytes read, or null outside them. */
+export function wordAt(memory: readonly StackBytes[], addr: number): bigint | null {
+  const bytes = bytesAt(memory, addr, 8);
+  return bytes ? littleEndian(bytes) : null;
+}
+
 const INT_KINDS: Record<number, string> = { 1: "char", 2: "short", 4: "int", 8: "long" };
 
 /** The C type a slot reads as and its value: an int as a signed decimal, a
@@ -468,11 +474,7 @@ export function drawFrames(input: DrawInput): DrawnStack {
       }
     } else {
       if (R > row.lo) boxes.push(box(row.lo, R - row.lo, base, "reserved", "reserved", plural(R - row.lo, "byte")));
-      const word = (at: number) => {
-        const bytes = bytesAt(memory, at, 8);
-        return bytes ? littleEndian(bytes) : null;
-      };
-      const savedFp = word(R);
+      const savedFp = wordAt(memory, R);
       const fpChanged = savedFp != null && savedFp !== BigInt(row.fpEntry);
       const fpText = fpChanged
         ? hex(savedFp)
@@ -481,7 +483,7 @@ export function drawFrames(input: DrawInput): DrawnStack {
           : `${frameName(row.fpEntry)}'s frame`;
       const fpHit = fpChanged ? row.fpHit : null;
       boxes.push(box(R, 8, base, "saved", "saved fp (x29)", fpHit ? `${fpText} · ${overwritten(fpHit)}` : fpText, !!fpHit));
-      const savedLr = word(R + 8);
+      const savedLr = wordAt(memory, R + 8);
       const lrChanged = savedLr != null && savedLr !== BigInt(row.retAddr);
       const lrLine = lrChanged ? lineOf(Number(savedLr)) : lineOf(row.retAddr);
       const lrText = lrChanged
