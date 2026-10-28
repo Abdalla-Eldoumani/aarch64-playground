@@ -91,7 +91,7 @@ describe("RegisterPanel", () => {
     expect(container.textContent).not.toMatch(note);
   });
 
-  // A frames header (view_numbers: 10 numbers, no frame rows here) and one
+  // A frames header (view_numbers: 17 numbers, no frame rows here) and one
   // leftover pair: x19, left changed by the ret at 0x400010.
   it("marks x19 while it holds what a returning call left, and no other row", () => {
     render(
@@ -101,7 +101,7 @@ describe("RegisterPanel", () => {
         sp="0x0000fffffffff000"
         pc={0x400000}
         nzcv={0}
-        frames={[9, 0, 0, 0, 1, 0, 0, 0, 0, 1, 19, 0x400010]}
+        frames={[9, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 19, 0x400010]}
       />,
     );
     const note = screen.getByText(/did not put it back/);
