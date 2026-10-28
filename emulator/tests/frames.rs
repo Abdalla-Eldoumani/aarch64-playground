@@ -11,8 +11,8 @@
 //! named save; overruns onto the nearest caller's and a grand-caller's
 //! saved fp and lr, through an array base and through a passed pointer,
 //! with the ring recording, paused, and stopped by its side budget; a
-//! callee leaving x19 changed; a call out before lr is saved; a qsort
-//! comparator; hostile programs (fp into .data, misaligned sp, a bl into a
+//! callee leaving x19 changed; a call out before lr is saved, and one
+//! after lr is saved with no fp set; a qsort comparator; hostile programs (fp into .data, misaligned sp, a bl into a
 //! function's middle, a computed blr, a return into a stub, an fp record
 //! pointing at itself); the frame check, one program per rule, a function
 //! off the pattern, a correct frame, and no mark on any shipped example,
@@ -27,8 +27,8 @@ use aarch64_emulator::cpu::{Cpu, MAX_SNAPSHOT_SIDE_BYTES};
 use aarch64_emulator::frames::check::{check_source, ODD_FRAME, ON_RECORD, OUTSIDE, OVERLAP, UNALIGNED};
 use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
 use aarch64_emulator::frames::{
-    frame_view, Activation, BadReturn, FrameView, Hit, COMPLETE, ENTERED, LEAF, LR_UNSAVED, MAX_ACTIVATIONS,
-    MAX_DRAWN, RESERVED, RUNTIME_CALL,
+    frame_view, view_numbers, Activation, BadReturn, FrameView, Hit, COMPLETE, ENTERED, LEAF, LR_STORED, LR_UNSAVED,
+    MAX_ACTIVATIONS, MAX_DRAWN, RESERVED, RUNTIME_CALL,
 };
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 use frame_walk::{walk, Tally};
@@ -898,6 +898,60 @@ fn a_call_out_before_lr_is_saved_is_flagged_and_its_return_goes_astray() {
     assert_eq!(acts[0].flags & LR_UNSAVED, 0, "main saved lr before its call");
     let bad = stack.bad_return();
     assert_eq!((bad.pc, bad.target), (ret, ret), "the ret jumps to itself");
+    // greet's last call is the bl printf on line 16, so it returns to the
+    // ret: the 19th number of greet's row, after main's row of 19.
+    assert_eq!(acts[1].last_ret, ret);
+    assert_eq!(view_numbers(&p.view())[10 + 19 + 18], ret as f64);
+}
+
+/// keep saves lr with its stp but never sets fp, and pushes x19 it never
+/// pops, so its ldp loads lr from x19's slot.
+const LR_SAVED_WITHOUT_FP: &str = r#"
+// keep saves fp and lr but never sets fp, and leaves x19 pushed.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "x19 = %ld\n"
+
+        .text
+// keep() prints x19 (bugs: fp is never set, and the push is never popped)
+        .balign 4
+        .global keep
+keep:
+        stp     fp, lr, [sp, -16]!
+        str     x19, [sp, -16]!         // push x19
+        ldr     x0, =fmt_out
+        mov     x1, x19
+        bl      printf
+        ldp     fp, lr, [sp], 16        // bug: x19's 16 bytes are still on top
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 3
+        bl      keep
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_call_out_after_lr_is_stored_is_not_flagged_whatever_the_frame_shape() {
+    let mut p = load(LR_SAVED_WITHOUT_FP);
+    p.run_to_line(15); // keep's stp
+    back_restores(&mut p, 1, "a store of lr");
+    let keep = p.cpu.call_stack().activations()[1];
+    assert_eq!((keep.flags & LR_STORED, keep.flags & LR_UNSAVED), (LR_STORED, 0));
+    p.run_to_line(19); // bl printf, with no frame record at fp or sp
+    back_restores(&mut p, 1, "a call after lr was stored");
+    let keep = p.cpu.call_stack().activations()[1];
+    assert_eq!(keep.flags & LR_UNSAVED, 0, "keep stored lr before its call");
+    assert_eq!(keep.last_ret, p.pc_of(20));
 }
 
 #[test]
