@@ -587,4 +587,25 @@ describe("the debug column while the stack tab shows the frames", () => {
       if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
     }
   });
+
+  // Leaving the frames (the bytes, or another tab) puts back the short
+  // window's own 73/27 and nothing else: never the frames' split, which
+  // the library would then report and the short key would keep.
+  it("goes straight back to the other tabs' split when the frames close", () => {
+    const tall = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.panel === "panel-regs" ? 203 : 0;
+      },
+    });
+    try {
+      const { rerender } = render(layout(true, "short"));
+      setLayoutCalls.length = 0;
+      rerender(layout(false, "short"));
+      expect(setLayoutCalls).toEqual([{ "panel-regs": 73, "panel-tabs": 27 }]);
+    } finally {
+      if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
+    }
+  });
 });
