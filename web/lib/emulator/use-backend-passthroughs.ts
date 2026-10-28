@@ -2,13 +2,13 @@
 
 import { useCallback, type RefObject } from "react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
-import type { AssemblyError } from "@/lib/emulator/emulator-state";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 
 export interface BackendPassthroughs {
   pushStdin: (s: string, interactive?: boolean) => void;
   closeStdin: () => void;
   setSnapshotsPaused: (paused: boolean) => void;
-  lint: (source: string) => Promise<AssemblyError[]>;
+  lint: (source: string) => Promise<LintWarning[]>;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   readVfsFile: (path: string) => Promise<Uint8Array>;
   readMemory: (addr: number, len: number) => Promise<Uint8Array>;
@@ -62,7 +62,7 @@ export function useBackendPassthroughs(
   );
 
   const lint = useCallback(
-    async (source: string): Promise<AssemblyError[]> => {
+    async (source: string): Promise<LintWarning[]> => {
       const backend = backendRef.current;
       if (!backend) return [];
       try {
