@@ -232,6 +232,9 @@ export interface StackBox {
   kind: BoxKind;
   /** "saved lr (x30)", "a_s = 7", "padding". */
   title: string;
+  /** What a pointer to the box's first byte is called ("a_s", "saved lr");
+   *  null where only the offset says it (padding, reserved space). */
+  name: string | null;
   /** "back to line 40", "int, 4 bytes", "12 bytes". */
   detail: string;
   /** A saved fp or lr that a write changed from what the call left there. */
@@ -251,7 +254,15 @@ export interface DrawnFrame {
   from: string | null;
   /** What an unfinished or unusual frame is doing, null for a complete one. */
   state: string | null;
+  /** Where its offsets count from: the frame record (fp), or sp before fp
+   *  points at it. */
+  base: Base;
   boxes: StackBox[];
+}
+
+interface Base {
+  at: number;
+  name: string;
 }
 
 export interface DrawnStack {
@@ -310,6 +321,12 @@ function hex(value: number | bigint): string {
 
 function plural(count: number, word: string): string {
   return `${COUNT.format(count)} ${word}${count === 1 ? "" : "s"}`;
+}
+
+/** "fp + 16", "sp + 8", "fp - 16": an address in the course's words. */
+function offsetText(addr: number, base: Base): string {
+  const delta = addr - base.at;
+  return `${base.name} ${delta < 0 ? "-" : "+"} ${Math.abs(delta)}`;
 }
 
 /** The stack ranges a drawing needs: the drawn frames' bytes, merged where
@@ -378,6 +395,8 @@ interface Item {
   width: number;
   float: boolean;
   label: string;
+  /** StackBox.name: the label, or null for a bare number or the folded rest. */
+  name: string | null;
   /** Set on the box that stands for the elements past MAX_ELEMENTS. */
   more?: { count: number; width: number };
 }
@@ -394,7 +413,8 @@ function itemsOf(fn: FunctionLayout | undefined, top: number): Item[] {
     const count = Math.max(0, Math.floor((end - array.offset) / array.width));
     const name = array.name ?? "array";
     for (let k = 0; k < Math.min(count, MAX_ELEMENTS); k++) {
-      items.push({ offset: array.offset + k * array.width, width: array.width, float: false, label: `${name}[${k}]` });
+      const label = `${name}[${k}]`;
+      items.push({ offset: array.offset + k * array.width, width: array.width, float: false, label, name: label });
     }
     if (count > MAX_ELEMENTS) {
       const rest = count - MAX_ELEMENTS;
@@ -403,13 +423,14 @@ function itemsOf(fn: FunctionLayout | undefined, top: number): Item[] {
         width: rest * array.width,
         float: false,
         label: `${name}[${MAX_ELEMENTS}] to ${name}[${count - 1}]`,
+        name: null,
         more: { count: rest, width: array.width },
       });
     }
   }
   for (const slot of fn.slots) {
     const label = slot.field ? `${slot.name ?? "?"}.${slot.field}` : (slot.name ?? `[fp, ${slot.offset}]`);
-    items.push({ offset: slot.offset, width: slot.width, float: slot.float, label });
+    items.push({ offset: slot.offset, width: slot.width, float: slot.float, label, name: slot.name && label });
   }
   // Stable, so an array's element keeps its place ahead of a slot at the same offset.
   items.sort((a, b) => a.offset - b.offset);
@@ -450,20 +471,21 @@ export function drawFrames(input: DrawInput): DrawnStack {
   const box = (
     addr: number,
     size: number,
-    base: { at: number; name: string },
+    base: Base,
     kind: BoxKind,
     title: string,
+    name: string | null,
     detail: string,
     overwritten = false,
   ): StackBox => {
-    const delta = addr - base.at;
     const inside = (reg: number) => reg >= addr && reg < addr + size;
     return {
       addr,
       size,
-      offset: `${base.name} ${delta < 0 ? "-" : "+"} ${Math.abs(delta)}`,
+      offset: offsetText(addr, base),
       kind,
       title,
+      name,
       detail,
       overwritten,
       wrote: written.some(([at, len]) => at < addr + size && addr < at + len),
@@ -491,10 +513,10 @@ export function drawFrames(input: DrawInput): DrawnStack {
     const boxes: StackBox[] = [];
     if (!hasRecord) {
       if (row.spEntry > row.lo) {
-        boxes.push(box(row.lo, row.spEntry - row.lo, base, "reserved", "reserved", plural(row.spEntry - row.lo, "byte")));
+        boxes.push(box(row.lo, row.spEntry - row.lo, base, "reserved", "reserved", null, plural(row.spEntry - row.lo, "byte")));
       }
     } else {
-      if (R > row.lo) boxes.push(box(row.lo, R - row.lo, base, "reserved", "reserved", plural(R - row.lo, "byte")));
+      if (R > row.lo) boxes.push(box(row.lo, R - row.lo, base, "reserved", "reserved", null, plural(R - row.lo, "byte")));
       const savedFp = wordAt(memory, R);
       const fpChanged = savedFp != null && savedFp !== BigInt(row.fpEntry);
       const fpText = fpChanged
@@ -503,7 +525,7 @@ export function drawFrames(input: DrawInput): DrawnStack {
           ? "0, no caller frame"
           : `${frameName(row.fpEntry)}'s frame`;
       const fpHit = fpChanged ? row.fpHit : null;
-      boxes.push(box(R, 8, base, "saved", "saved fp (x29)", fpHit ? `${fpText} · ${overwritten(fpHit)}` : fpText, !!fpHit));
+      boxes.push(box(R, 8, base, "saved", "saved fp (x29)", "saved fp", fpHit ? `${fpText} · ${overwritten(fpHit)}` : fpText, !!fpHit));
       const savedLr = wordAt(memory, R + 8);
       const lrChanged = savedLr != null && savedLr !== BigInt(row.retAddr);
       const lrLine = lrChanged ? lineOf(Number(savedLr)) : lineOf(row.retAddr);
@@ -513,23 +535,23 @@ export function drawFrames(input: DrawInput): DrawnStack {
           ? "back to qsort or bsearch"
           : `back to ${lrLine ?? "the C runtime"}`;
       const lrHit = lrChanged ? row.lrHit : null;
-      boxes.push(box(R + 8, 8, base, "saved", "saved lr (x30)", lrHit ? `${lrText} · ${overwritten(lrHit)}` : lrText, !!lrHit));
+      boxes.push(box(R + 8, 8, base, "saved", "saved lr (x30)", "saved lr", lrHit ? `${lrText} · ${overwritten(lrHit)}` : lrText, !!lrHit));
       const top = row.spEntry - R;
       let gap = 16;
       const padding = (to: number) => {
-        if (to > gap) boxes.push(box(R + gap, to - gap, base, "padding", "padding", plural(to - gap, "byte")));
+        if (to > gap) boxes.push(box(R + gap, to - gap, base, "padding", "padding", null, plural(to - gap, "byte")));
       };
       for (const item of itemsOf(fn, top)) {
         padding(item.offset);
         const at = R + item.offset;
         if (item.more) {
           const each = INT_KINDS[item.more.width] ?? "element";
-          boxes.push(box(at, item.width, base, "local", item.label, `${plural(item.more.count, `more ${each}`)}, ${plural(item.width, "byte")}`));
+          boxes.push(box(at, item.width, base, "local", item.label, item.name, `${plural(item.more.count, `more ${each}`)}, ${plural(item.width, "byte")}`));
         } else {
           const { kind, value } = typed(bytesAt(memory, at, item.width), item.width, item.float, regions);
           const title = value == null ? item.label : `${item.label} = ${value}`;
           const size = plural(item.width, "byte");
-          boxes.push(box(at, item.width, base, "local", title, kind ? `${kind}, ${size}` : size));
+          boxes.push(box(at, item.width, base, "local", title, item.name, kind ? `${kind}, ${size}` : size));
         }
         gap = item.offset + item.width;
       }
@@ -541,6 +563,7 @@ export function drawFrames(input: DrawInput): DrawnStack {
       bytes: row.spEntry - row.lo,
       from,
       state,
+      base,
       boxes: boxes.reverse(),
     };
   };
@@ -557,4 +580,19 @@ export function drawFrames(input: DrawInput): DrawnStack {
         : null,
     depth: rows.length + snapshot.hidden + snapshot.uncounted,
   };
+}
+
+/** Where `addr` lands in the drawn frames, in a pointer chip's words: the
+ *  box's name, plus how far in when it is not the first byte ("a_s",
+ *  "a_s + 3"), or the offset alone where the box has no name ("fp + 24");
+ *  and the function whose frame it is. Null outside every drawn frame. */
+export function slotAt(stack: DrawnStack, addr: number): { slot: string; owner: string } | null {
+  for (const frame of stack.frames) {
+    const box = frame.boxes.find((b) => addr >= b.addr && addr < b.addr + b.size);
+    if (!box) continue;
+    const into = addr - box.addr;
+    const slot = box.name == null ? offsetText(addr, frame.base) : into ? `${box.name} + ${into}` : box.name;
+    return { slot, owner: frame.name };
+  }
+  return null;
 }
