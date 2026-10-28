@@ -517,7 +517,9 @@ describe("Controls' step over, step out and run to cursor", () => {
     expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
     fireEvent.click(more);
     expect(more.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByRole("button", { name: "step over" })).toBeTruthy();
+    // The ellipsis names the row it opens.
+    const goals = document.getElementById(more.getAttribute("aria-controls") ?? "");
+    expect(goals?.contains(screen.getByRole("button", { name: "step over" }))).toBe(true);
   });
 
   it("says why the last one stopped, unless an error says more", () => {
