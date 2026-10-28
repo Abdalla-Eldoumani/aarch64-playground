@@ -5,11 +5,12 @@ import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
 import { at, clobberNoteTexts, place } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
-import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type {
   AssembleOutcome,
   AssemblyError,
   EmulatorState,
+  StepTarget,
 } from "@/lib/emulator/emulator-state";
 import {
   emptyLineMap,
@@ -29,7 +30,7 @@ import { formatSteps } from "@/lib/emulator/format-steps";
 import { parseArgs } from "@/lib/playground/args";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Workspace } from "@/lib/playground/file-map";
-import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
+import type { ExternalCall, RunGoal, StateSnapshot } from "@/lib/worker/protocol";
 
 // The hub is the import site every consumer already uses, so the contract
 // and the helpers it owns stay reachable from here.
@@ -52,6 +53,12 @@ const NO_LINES: number[] = [];
 function withoutCallScratch(snap: StateSnapshot): StateSnapshot {
   if (!snap.externalCall) return snap;
   return { ...snap, changedRegs: snap.changedRegs.filter((i) => i !== 16 && i !== 17) };
+}
+
+/** A goal run: where the machine stops, and what the student asked for. */
+interface Goal {
+  until: RunGoal;
+  target: StepTarget;
 }
 
 export function useEmulator(): EmulatorState {
@@ -92,6 +99,10 @@ export function useEmulator(): EmulatorState {
   // registers and memory, and the counter has to come back with them.
   const savedStepsRef = useRef<Map<string, number>>(new Map());
   const stepCountRef = useRef(0);
+  // The latest snapshot whole: a step over reads the call depth from it.
+  const snapRef = useRef<StateSnapshot | null>(null);
+  // The goal a stopped run had, so the console's answer resumes the same one.
+  const goalRef = useRef<Goal | null>(null);
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -110,6 +121,9 @@ export function useEmulator(): EmulatorState {
   const lastCallRef = useRef<ExternalCall | null>(null);
   const [frames, setFrames] = useState<number[] | null>(null);
   const [frameLayout, setFrameLayout] = useState<FrameLayoutPayload | null>(null);
+  const frameLayoutRef = useRef<FrameLayoutPayload | null>(null);
+  // Why the last goal run stopped, shown until the step count moves.
+  const [stop, setStop] = useState<{ text: string; at: number } | null>(null);
   const lineLabel = useCallback((addr: number) => {
     const line = pcToSourceLineFromMap(addr, lineMapRef.current);
     return line == null ? null : at(place(line, workspaceRef.current));
@@ -182,6 +196,7 @@ export function useEmulator(): EmulatorState {
     clearAllBreakpoints,
     setBreakpointAddress,
     clearBreakpointAddress,
+    resolveBreakpointAddr,
     rekeyAfterAssemble,
   } = useBreakpoints({ backendRef, lineMapRef, sourceRef, programLoadedRef, codeBase });
 
@@ -203,6 +218,7 @@ export function useEmulator(): EmulatorState {
   const stdinGiven = useCallback(() => stdinLogRef.current, []);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
+    snapRef.current = snap;
     if (snap.frame > frameRef.current) {
       frameRef.current = snap.frame;
       invalidateMemory();
@@ -384,7 +400,7 @@ export function useEmulator(): EmulatorState {
       // state, and is awaited so a caller's seeds land after the wipe.
       const fail = async (outcome: AssembleOutcome): Promise<AssembleOutcome> => {
         setInstructions([]);
-        setFrameLayout(null);
+        setFrameLayout((frameLayoutRef.current = null));
         await backend.reset().catch(() => {});
         return outcome;
       };
@@ -460,7 +476,7 @@ export function useEmulator(): EmulatorState {
             }),
           );
           const layout = await backend.frameLayout().catch(() => null);
-          setFrameLayout(layout);
+          setFrameLayout((frameLayoutRef.current = layout));
           markProgramLoaded(true);
           return { success: true, error: null, errorLine: null };
         })
@@ -589,29 +605,32 @@ export function useEmulator(): EmulatorState {
     });
   }, [markProgramLoaded, resetReplayHistory]);
 
-  const run = useCallback(() => {
+  // With a goal, a step over, step out or run to cursor: it resolves to the
+  // words for why it stopped, null for a plain run or nothing to say.
+  const run = useCallback((goal?: Goal | null): Promise<string | null> => {
     const backend = backendRef.current;
     // Guard through the refs, not state: callers that await an assemble
     // and then invoke a run captured earlier (the embed's Run, the
     // checker) must see the fresh post-assemble halt and loaded flags.
     // The in-flight guard stops a second concurrent loop (hold-F5, the
     // palette's Run) from stacking another 1M-step budget on the machine.
-    if (!backend || !programLoadedRef.current || haltedRef.current) return;
-    if (runningRef.current) return;
+    if (!backend || !programLoadedRef.current || haltedRef.current) return Promise.resolve(null);
+    if (runningRef.current) return Promise.resolve(null);
+    goalRef.current = goal ?? null;
     runBlockedRef.current = false;
     // The last stop's alert ("paused after 1,000,000 steps") describes a run
     // that is over; step clears it the same way.
     setError(null);
     setIsRunning(true);
     runningRef.current = true;
-    const drive = async (): Promise<void> => {
+    const drive = async (): Promise<string | null> => {
       let total = 0;
       for (;;) {
-        const { runResult } = await backend.runUntilBreak(1_000_000);
+        const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
         // A run cancelled by reset/assemble describes a machine that no
         // longer exists; acting on it painted `unknown instruction:
         // 0x00000000` right after the student pressed Reset.
-        if (runResult.cancelled) return;
+        if (runResult.cancelled) return null;
         total += runResult.steps_executed;
         // A pacing pause (nanosleep): honor it in real time and keep the
         // same run going, unless pause/reset stood the drive down while
@@ -620,7 +639,9 @@ export function useEmulator(): EmulatorState {
           runResult.sleep_ms != null &&
           !runResult.halted &&
           !runResult.error &&
-          !runResult.hit_breakpoint
+          !runResult.hit_breakpoint &&
+          !runResult.reached &&
+          !runResult.bad_return
         ) {
           const ms = Math.max(1, Math.min(runResult.sleep_ms, 2000));
           await new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -651,23 +672,52 @@ export function useEmulator(): EmulatorState {
           pushReplayFrame(next);
           return next;
         });
-        return;
+        if (!goal) return null;
+        // The count the setter above lands on; its effect has not run yet.
+        const at = stepCountRef.current + total;
+        // The words load only when a goal run first stops, so no page that
+        // never steps over ships them.
+        const { stopReason } = await import("@/lib/emulator/stop-reason");
+        const said = stopReason(goal.target, runResult, snapshot, frameLayoutRef.current, lineLabel);
+        if (said?.problem) setError(said.text);
+        else if (said) setStop({ text: said.text, at });
+        return said?.text ?? null;
       }
     };
-    drive()
+    return drive()
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
+        return null;
       })
       .finally(() => {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [markCurrentLine, pushReplayFrame, surfaceRuntimeError]);
+  }, [lineLabel, markCurrentLine, pushReplayFrame, surfaceRuntimeError]);
+
+  // Step over and step out aim at a call depth, run to cursor at the
+  // instruction the line stands for.
+  const runUntil = useCallback(
+    (target: StepTarget): Promise<string | null> => {
+      const snap = snapRef.current;
+      if (typeof target === "number") {
+        const pc = resolveBreakpointAddr(target);
+        if (pc != null) return run({ until: { pc }, target });
+        setStop({ text: `line ${target} has no instruction to stop at`, at: stepCountRef.current });
+        return Promise.resolve(null);
+      }
+      if (!snap?.frames) return Promise.resolve(null);
+      const depth = callDepth(snap.frames);
+      // Inside a library call, both finish the call.
+      return run({ until: { depth: target === "out" && !snap.externalCall ? depth - 1 : depth }, target });
+    },
+    [run, resolveBreakpointAddr],
+  );
 
   const resumeAfterInput = useCallback(() => {
     if (!runBlockedRef.current) return;
     runBlockedRef.current = false;
-    run();
+    void run(goalRef.current);
   }, [run]);
 
   const pause = useCallback(() => {
@@ -797,6 +847,8 @@ export function useEmulator(): EmulatorState {
       loadState,
       deleteState,
       run,
+      runUntil,
+      stopReason: stop && stop.at === stepCount && !isRunning ? stop.text : null,
       pause,
       reset,
       toggleBreakpoint,
@@ -838,7 +890,7 @@ export function useEmulator(): EmulatorState {
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
-      deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
+      deleteState, run, runUntil, stop, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
       pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
