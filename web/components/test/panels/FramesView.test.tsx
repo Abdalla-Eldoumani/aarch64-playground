@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { FramesView } from "@/components/panels/FramesView";
 import { PointerContext, type PointedSlot } from "@/components/panels/slot-pointer";
+import { FRAMES_HEADER } from "@/lib/emulator/frame-data";
 
 afterEach(() => {
   cleanup();
@@ -264,6 +265,28 @@ describe("FramesView", () => {
       expect(box.top).toBeLessThanOrEqual(110);
       rerender(pointed({ reg: 1, reveal: 1 }, { frames: frames(true, 8) }));
       expect(box.top + box.height).toBeGreaterThanOrEqual(300);
+    });
+
+    // The step wrote main's saved lr (170 to 200 px down); its card waits for
+    // the machine's word, which lands after the press. The card coming is not
+    // the machine moving, so a_s (110 to 155) stays in view.
+    it("keeps the pressed slot in view when the step's write card lands after the press", async () => {
+      const overLr = frames(true);
+      // main's lr hit (the step and the writer): 14 numbers into its row, past the header.
+      overLr.splice(FRAMES_HEADER + 14, 2, 7, ADD_ENTRY);
+      let land = () => {};
+      const landed = new Promise<void>((resolve) => (land = resolve)).then(() => new Uint8Array(8));
+      const step = { frames: overLr, dirtyAddrs: [[MAIN_RECORD + 8, 8]] as [number, number][], readMemory: () => landed };
+      const { rerender } = render(pointed({ reg: 1, reveal: 0 }, step));
+      const box = scrollBox(60);
+      place(call("main"), 0, 220);
+      place(slot("a_s = 7"), 110, 45);
+      place(slot("saved lr (x30)"), 170, 30);
+      rerender(pointed({ reg: 1, reveal: 1 }, step));
+      expect(box.top).toBe(95);
+      await act(async () => land());
+      expect(screen.getByRole("list", { name: "what went wrong" })).toBeTruthy();
+      expect(box.top).toBe(95);
     });
 
     it("takes the focus a press left behind, and leaves it where the chip still holds it", () => {
