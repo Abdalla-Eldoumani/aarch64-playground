@@ -1,11 +1,13 @@
 // Pins the frames view as a screen reader and a stepping student meet it:
 // a list of calls, main first, each a list of boxes high address first;
 // the amber bar on the last write; a call or a return said once after a
-// step and never during a run; and the words for an empty or older machine.
+// step and never during a run; the slot a pointer chip names, lit in cyan
+// and brought into view on a press; and the words for an empty or older machine.
 // The machine's numbers are written out by hand in frame-data's row layout.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { FramesView } from "@/components/panels/FramesView";
+import { PointerContext, type PointedSlot } from "@/components/panels/slot-pointer";
 
 afterEach(() => {
   cleanup();
@@ -210,6 +212,70 @@ describe("FramesView", () => {
       resized();
       expect(box.top).toBeLessThanOrEqual(260);
       expect(box.top + box.height).toBeGreaterThanOrEqual(300);
+    });
+  });
+
+  describe("a pointer chip's slot", () => {
+    // x1 holds a_s's address (fp + 16), x2 one in the padding (fp + 24).
+    const registers = Array(31).fill("0x0000000000000000") as string[];
+    registers[1] = `0x${(MAIN_RECORD + 16).toString(16)}`;
+    registers[2] = `0x${(MAIN_RECORD + 24).toString(16)}`;
+    registers[29] = `0x${MAIN_RECORD.toString(16)}`;
+    const pointed = (slot: PointedSlot | null, over: Partial<Parameters<typeof FramesView>[0]> = {}) => (
+      <PointerContext.Provider value={{ pointed: slot, point: vi.fn() }}>
+        <FramesView {...props({ registers, ...over })} />
+      </PointerContext.Provider>
+    );
+    const lit = () => Array.from(document.querySelectorAll("[data-lit]"));
+    const ring = (li: Element) => (li.children[1] as HTMLElement).style.boxShadow;
+
+    it("lights the box the register points into, in cyan, and names the register for a screen reader", () => {
+      const { rerender } = render(pointed({ reg: 1, reveal: 0 }));
+      expect(lit()).toEqual([slot("a_s = 7")]);
+      expect(ring(slot("a_s = 7"))).toBe("inset 0 0 0 2px var(--cyan)");
+      expect(slot("a_s = 7").textContent).toContain(", x1 points here");
+      rerender(pointed({ reg: 2, reveal: 0 }));
+      expect(lit()).toEqual([slot("padding")]);
+      rerender(pointed({ reg: 3, reveal: 0 }));
+      expect(lit()).toEqual([]);
+      rerender(pointed(null));
+      expect(lit()).toEqual([]);
+      expect(ring(slot("a_s = 7"))).toBe("");
+    });
+
+    it("draws the amber bar over the cyan ring on a slot the step also wrote", () => {
+      render(pointed({ reg: 1, reveal: 0 }, { dirtyAddrs: [[MAIN_RECORD + 16, 4]] }));
+      expect(ring(slot("a_s = 7"))).toBe("inset 3px 0 0 0 var(--amber), inset 0 0 0 2px var(--cyan)");
+    });
+
+    // main 0 to 220 px down the box, a_s 110 to 155, the leaf add_two 260 to 300.
+    it("brings the slot into view on a press and holds it there until the machine moves", () => {
+      vi.stubGlobal("ResizeObserver", StubResizeObserver);
+      const { rerender } = render(pointed({ reg: 1, reveal: 0 }, { frames: frames(true) }));
+      const box = scrollBox(100);
+      place(call("main"), 0, 220);
+      place(slot("a_s = 7"), 110, 45);
+      place(call("add_two"), 260, 40);
+      box.top = 200;
+      rerender(pointed({ reg: 1, reveal: 1 }, { frames: frames(true) }));
+      expect(box.top).toBeLessThanOrEqual(110);
+      expect(box.top + box.height).toBeGreaterThanOrEqual(155);
+      resized();
+      expect(box.top).toBeLessThanOrEqual(110);
+      rerender(pointed({ reg: 1, reveal: 1 }, { frames: frames(true, 8) }));
+      expect(box.top + box.height).toBeGreaterThanOrEqual(300);
+    });
+
+    it("takes the focus a press left behind, and leaves it where the chip still holds it", () => {
+      const { rerender } = render(pointed({ reg: 1, reveal: 0 }));
+      const view = screen.getByRole("group", { name: "stack frames" });
+      rerender(pointed({ reg: 1, reveal: 1 }));
+      expect(document.activeElement).toBe(view);
+      const chip = document.body.appendChild(document.createElement("button"));
+      chip.focus();
+      rerender(pointed({ reg: 1, reveal: 2 }));
+      expect(document.activeElement).toBe(chip);
+      chip.remove();
     });
   });
 
