@@ -476,3 +476,54 @@ describe("Controls while blocked on stdin", () => {
     expect(screen.getByRole("button", { name: "back" })).toHaveProperty("disabled", false);
   });
 });
+
+describe("Controls' step over, step out and run to cursor", () => {
+  const props = (over: Partial<Parameters<typeof Controls>[0]> = {}) => ({
+    ...allHandlers(),
+    onRunUntil: vi.fn(),
+    canStepBack: true,
+    isRunning: false,
+    isHalted: false,
+    programLoaded: true,
+    error: null,
+    ...over,
+  });
+
+  it("sends each goal and names its key", () => {
+    const p = props();
+    render(<Controls {...p} />);
+    fireEvent.click(screen.getByRole("button", { name: "step over" }));
+    fireEvent.click(screen.getByRole("button", { name: "step out" }));
+    fireEvent.click(screen.getByRole("button", { name: "run to cursor" }));
+    expect(vi.mocked(p.onRunUntil).mock.calls).toEqual([["over"], ["out"], ["cursor"]]);
+    expect(screen.getByRole("button", { name: "step out" }).getAttribute("aria-keyshortcuts")).toBe(
+      "Control+Shift+F10",
+    );
+  });
+
+  it("disables them where step is disabled", () => {
+    for (const over of [{ programLoaded: false }, { isRunning: true }, { isHalted: true }, { blocked: true }]) {
+      render(<Controls {...props(over)} />);
+      expect(screen.getByRole("button", { name: "step over" })).toHaveProperty("disabled", true);
+      cleanup();
+    }
+  });
+
+  it("keeps them behind more on a phone until it opens", () => {
+    window.localStorage.clear();
+    render(<Controls {...props({ compact: true })} />);
+    const more = screen.getByRole("button", { name: "more" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
+    fireEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("button", { name: "step over" })).toBeTruthy();
+  });
+
+  it("says why the last one stopped, unless an error says more", () => {
+    const { rerender } = render(<Controls {...props({ stopReason: "returned to main at line 21" })} />);
+    expect(screen.getByRole("status", { name: "" }).textContent).toBe("returned to main at line 21");
+    rerender(<Controls {...props({ stopReason: "returned to main at line 21", error: "memory fault" })} />);
+    expect(screen.queryByText("returned to main at line 21")).toBeNull();
+  });
+});
