@@ -134,7 +134,12 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
             runChunk: (steps) => {
               // wasm-bindgen hands back a plain record with bigint fields;
               // the protocol carries numbers.
-              const raw = emu.run_until_break(steps) as Record<string, unknown>;
+              const until = msg.until;
+              const raw = (
+                until
+                  ? emu.run_to(steps, until.depth ?? -1, until.pc ?? -1)
+                  : emu.run_until_break(steps)
+              ) as Record<string, unknown>;
               return {
                 pc: Number(raw.pc as bigint | number),
                 halted: Boolean(raw.halted),
@@ -143,6 +148,8 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
                 error: (raw.error as string | undefined) ?? null,
                 error_line: (raw.error_line as number | undefined) ?? null,
                 sleep_ms: (raw.sleep_ms as number | undefined) ?? null,
+                reached: raw.reached === true,
+                bad_return: raw.bad_return === true,
               };
             },
             isBlocked: () => emu.is_blocked(),
