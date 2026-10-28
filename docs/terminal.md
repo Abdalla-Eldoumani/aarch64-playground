@@ -115,9 +115,11 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 
 `ni`, `finish`, `bt` and `info frame` read the same call stack the stack
 tab's frames view draws. `ni` and `finish` stop early at a breakpoint, at a
-read waiting for input, at the step limit, when the program ends, or at a
-`ret` that does not go back to a caller (an overwritten saved lr), and
-print why they stopped.
+read waiting for input, when the program ends, or at a `ret` that does not
+go back to a caller (an overwritten saved lr), and print why they stopped.
+After 1,000,000 steps they pause and say so; the same command again goes on
+to the same place. With no frame left (the program has finished), `bt` and
+`info frame` say so.
 
 In real gdb, `n` and `s` step a whole source line. Here they step one
 instruction, as they always have, and keep doing so until after the
