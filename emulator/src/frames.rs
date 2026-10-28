@@ -127,7 +127,9 @@ pub struct CallStack {
 pub struct FrameUndo {
     len: usize,
     uncounted: u64,
-    bad_return: BadReturn,
+    /// The bad return a step replaced; copied only then, since it is wide
+    /// and almost no step touches it.
+    bad_return: Option<BadReturn>,
     removed: Vec<Activation>,
     marked: Vec<(usize, u64, u8, u64)>,
     hit: Vec<(usize, Hit, Hit)>,
@@ -211,7 +213,7 @@ impl CallStack {
     pub(crate) fn record_undo(&self, log: &mut FrameUndo) {
         log.len = self.acts.len();
         log.uncounted = self.uncounted;
-        log.bad_return = self.bad_return;
+        log.bad_return = None;
         log.removed.clear();
         log.marked.clear();
         log.hit.clear();
@@ -233,7 +235,9 @@ impl CallStack {
             }
         }
         self.uncounted = log.uncounted;
-        self.bad_return = log.bad_return;
+        if let Some(bad) = log.bad_return {
+            self.bad_return = bad;
+        }
     }
 
     /// A `bl` or `blr` at `pc` just sent the program to `target`. The
@@ -362,6 +366,9 @@ impl CallStack {
                 }
             }
             return 0;
+        }
+        if let Some(log) = log {
+            log.bad_return = Some(self.bad_return);
         }
         let call = self.acts.last().copied().unwrap_or_default();
         self.bad_return = BadReturn {
