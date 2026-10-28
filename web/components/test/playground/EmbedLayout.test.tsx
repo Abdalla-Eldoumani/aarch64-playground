@@ -235,13 +235,13 @@ describe("EmbedLayout's step over, step out and run to cursor", () => {
 
   test("a frame that cannot step (the landing demo) has none of them", () => {
     render(<EmbedLayout {...props({ showStep: false })} />);
-    expect(screen.queryByRole("button", { name: "more" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "more ways to step" })).toBeNull();
     expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
   });
 
-  test("more opens their row in a one-pane frame and is remembered", async () => {
+  test("the ellipsis opens their row in a one-pane frame and is remembered", async () => {
     render(<EmbedLayout {...props()} />);
-    const more = await screen.findByRole("button", { name: "more" });
+    const more = await screen.findByRole("button", { name: "more ways to step" });
     const row = document.getElementById(more.getAttribute("aria-controls")!)!;
     expect(more.getAttribute("aria-expanded")).toBe("false");
     expect(row.hasAttribute("data-open")).toBe(false);
