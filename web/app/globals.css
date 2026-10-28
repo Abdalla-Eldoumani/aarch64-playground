@@ -601,9 +601,12 @@ body:has(> .playground-shell) {
       gap: 0.5rem;
       order: 1;
     }
-    /* Sized by their labels, so "run to cursor" keeps to one line. */
+    /* Sized by their labels and set at the phone run row's 13px, so all
+       three keep to one line on a 375px phone. */
     .embed-goals[data-open] > button {
       flex: 1 1 auto;
+      padding-inline: 0.375rem;
+      font-size: 13px;
     }
   }
 }
