@@ -5,6 +5,7 @@ import {
   loadMemoryMap,
   type EmulatorInstance,
 } from "@/lib/emulator/emulator";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { runChunked } from "@/lib/emulator/run-loop";
@@ -49,7 +50,7 @@ export interface EmulatorBackend {
   /** Whether every page in the range is mapped (watch fault display). */
   isRangeMapped(addr: number, len: number): Promise<boolean>;
   /** Pre-assembly structural lint warnings (advisory, line + remedy). */
-  lint(source: string): Promise<Array<{ line: number; message: string }>>;
+  lint(source: string): Promise<LintWarning[]>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Remove every breakpoint at once (program switch / re-assemble). */
@@ -225,7 +226,7 @@ class MainThreadBackend implements EmulatorBackend {
     return this.requireEmu().isRangeMapped(addr, len);
   }
 
-  async lint(source: string): Promise<Array<{ line: number; message: string }>> {
+  async lint(source: string): Promise<LintWarning[]> {
     return this.requireEmu().lintSource(source);
   }
 
