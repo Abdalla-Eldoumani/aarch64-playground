@@ -54,9 +54,9 @@ const MAIN_RECORD = 0x7fffffe0;
 const ADD_ENTRY = 0x400040;
 
 /** One frame row: index, entry, call, return, entry sp, low end, fp at
- *  entry, record, state, flags, then two empty hits. */
+ *  entry, record, state, flags, two empty hits, and no call made yet. */
 function frameRow(index: number, entry: number, callPc: number, spEntry: number, lo: number, record: number, state: number) {
-  return [index, entry, callPc, callPc ? callPc + 4 : 0xffff0000, spEntry, lo, 0, record, state, 0, 0, 0, -1, -1, 0, 0, -1, -1];
+  return [index, entry, callPc, callPc ? callPc + 4 : 0xffff0000, spEntry, lo, 0, record, state, 0, 0, 0, -1, -1, 0, 0, -1, -1, 0];
 }
 
 /** main's 32-byte frame (record at its low end, a_s at fp + 16), and with
