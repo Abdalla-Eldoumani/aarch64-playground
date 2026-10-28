@@ -11,6 +11,15 @@ import type { ExternalCall } from "@/lib/worker/protocol";
  * test fake.
  */
 
+/** What a run with a goal runs until: "over" the call on this line (or
+ *  just this instruction), "out" of this function, or an editor line (run
+ *  to cursor). */
+export type StepTarget = "over" | "out" | number;
+
+/** The same three as the controls name them: run to cursor is the caret's
+ *  line in main.asm, which only the shell knows. */
+export type StepGoal = "over" | "out" | "cursor";
+
 /** A register file the registers panel can show: x0-x30, d0-d31, or v0-v31. */
 export type RegView = "x" | "d" | "v";
 
@@ -135,6 +144,13 @@ export interface EmulatorState {
   loadState: (name: string) => void;
   deleteState: (name: string) => void;
   run: () => void;
+  /** Step over, step out or run to cursor, at run speed. Resolves to the
+   *  words for why it stopped (also `stopReason`), null when there is
+   *  nothing to say; a stop that is the program's own bug lands in `error`. */
+  runUntil: (target: StepTarget) => Promise<string | null>;
+  /** Why the last step over, step out or run to cursor stopped, until the
+   *  machine moves again. */
+  stopReason: string | null;
   pause: () => void;
   reset: () => void;
   toggleBreakpoint: (line: number) => void;
