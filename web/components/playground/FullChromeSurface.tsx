@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
@@ -96,7 +97,7 @@ export interface FullChromeSurfaceProps {
   checks: ProgramCheck[];
   setChecks: React.Dispatch<React.SetStateAction<ProgramCheck[]>>;
   setCursor: (next: { line: number; column: number }) => void;
-  lintWarnings: Array<{ line: number; message: string }>;
+  lintWarnings: LintWarning[];
   errorFocus: { line: number; nonce: number } | null;
   /** The workspace as the machine last saw it; every combined-string line the
    *  machine reports is numbered against it. */
