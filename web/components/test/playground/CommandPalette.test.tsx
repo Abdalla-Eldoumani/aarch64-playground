@@ -126,6 +126,7 @@ describe("CommandPalette", () => {
         assemble: vi.fn(),
         step: vi.fn(),
         stepBack: vi.fn(),
+        runUntil: vi.fn(),
         run: vi.fn(),
         pause: vi.fn(),
         reset: vi.fn(),
