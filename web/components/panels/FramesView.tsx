@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { formatWord32 } from "@/lib/emulator/format-hex";
-import { calleeCards, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
+import { calleeCards, plain, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
 import {
   decodeFrameLayout,
   decodeFrames,
@@ -27,11 +27,18 @@ type FramesViewProps = Pick<
   | "lineLabel"
   | "programLoaded"
 > &
-  Partial<Pick<EmulatorState, "programLines" | "noteRows" | "readMemory">> & { running: boolean };
+  Partial<Pick<EmulatorState, "programLines" | "noteRows" | "readMemory" | "errorCard">> & { running: boolean };
 
 // The cards' inputs before a program has run: an embed's idle stack side.
 const NO_LINES: EmulatorState["programLines"] = { linePlace: () => null, lineAddr: () => null };
 const NO_ROWS: number[] = [];
+
+// The card events said, per program load, outside any one view, so a view
+// mounted again (the memory tab and back, a phone's chip press) or Back onto
+// a step says none of them twice. Every assemble hands the view a new layout
+// object, so a reset, an edit or a run from the start, each of which
+// assembles again, starts a new set.
+const saidPerLoad = new WeakMap<object, Set<string>>();
 
 // Saved registers sit on a raised surface in the approved look's purple (the
 // number ink: the register ink is pink in the dark themes and read as the
@@ -68,6 +75,7 @@ export function FramesView({
   programLines = NO_LINES,
   noteRows = NO_ROWS,
   readMemory,
+  errorCard = null,
   programLoaded,
   running,
 }: FramesViewProps) {
@@ -129,13 +137,10 @@ export function FramesView({
   const depth = stack?.depth ?? 0;
   const step = snapshot?.step ?? 0;
   const innermost = stack?.frames[stack.frames.length - 1]?.name ?? "";
-  const [seen, setSeen] = useState({ depth, innermost, running, step, byRun: false });
+  const [seen, setSeen] = useState({ depth, innermost, running, step });
   const [said, setSaid] = useState({ text: "", count: 0 });
-  const moved = seen.depth !== depth || seen.running !== running || seen.step !== step;
-  // A run brought the machine here: the run row says why it stopped.
-  const byRun = moved ? running || seen.running : seen.byRun;
-  if (moved) {
-    setSeen({ depth, innermost, running, step, byRun });
+  if (seen.depth !== depth || seen.running !== running || seen.step !== step) {
+    setSeen({ depth, innermost, running, step });
     const back = step === seen.step - 1;
     if (depth !== seen.depth && !running && !seen.running && depth > 0 && seen.depth > 0 && (back || step > seen.step)) {
       const text =
@@ -149,20 +154,28 @@ export function FramesView({
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
-  // A card is said once, when its event first shows, without the backticks
-  // that mark its code; not when a run brought it, as the call and return
-  // words are not, since the run row's alert says a run's stop.
-  const events = cards.map((card) => card.event);
-  const cardKey = events.join("\n");
-  const [heard, setHeard] = useState(events);
-  if (heard.join("\n") !== cardKey) {
-    setHeard(events);
-    const fresh = cards.filter((card) => !heard.includes(card.event));
-    if (fresh.length > 0 && !byRun) {
-      const text = fresh.map((card) => card.text).join(" ").replaceAll("`", "");
-      setSaid((prev) => ({ text, count: prev.count + 1 }));
-    }
+  // A card is said once per program load, without the backticks that mark
+  // its code, when its event first shows at a stop: after a step, and when a
+  // run stops however it stopped (a breakpoint, a goal, a pause, a fault);
+  // never while a run goes, and not when the run row's alert carries the
+  // same card. Its event counts as said either way, once the stop renders.
+  const cardKey = cards.map((card) => card.event).join("\n");
+  const [mountKey] = useState(() => ({}));
+  const loadKey = frameLayout ?? mountKey;
+  const unsaid = running ? [] : cards.filter((card) => !saidPerLoad.get(loadKey)?.has(card.event));
+  const unsaidKey = unsaid.map((card) => card.event).join("\n");
+  const [lastUnsaid, setLastUnsaid] = useState("");
+  if (unsaidKey !== lastUnsaid) {
+    setLastUnsaid(unsaidKey);
+    const spoken = unsaid.filter((card) => card.event !== errorCard?.event);
+    if (spoken.length > 0) setSaid((prev) => ({ text: spoken.map(plain).join(" "), count: prev.count + 1 }));
   }
+  useEffect(() => {
+    if (unsaid.length === 0) return;
+    let heard = saidPerLoad.get(loadKey);
+    if (!heard) saidPerLoad.set(loadKey, (heard = new Set()));
+    for (const card of unsaid) heard.add(card.event);
+  });
 
   // While stepping, what the step wrote stays in view (a write over a
   // caller's frame is the bug to see), with the rest of its call when that
