@@ -563,8 +563,8 @@ describe("the debug column while the stack tab shows the frames", () => {
     }
   });
 
-  // Under a finger the register header (44px targets, a wrapping gloss) reaches 288px on an iPad
-  // Mini, so three rows open on 360px: 360 / 495 of the same column.
+  // Under a finger an iPad Mini column needs 400px for three register rows,
+  // 400 / 495 of the same column.
   it("opens the registers taller under a coarse pointer", () => {
     const tall = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
     const fine = window.matchMedia;
@@ -581,7 +581,7 @@ describe("the debug column while the stack tab shows the frames", () => {
     try {
       render(layout(true));
       const opened = setLayoutCalls.find((l) => "panel-regs" in l);
-      expect(opened?.["panel-regs"]).toBeCloseTo((360 / (203 / 0.41)) * 100, 1);
+      expect(opened?.["panel-regs"]).toBeCloseTo((400 / (203 / 0.41)) * 100, 1);
     } finally {
       window.matchMedia = fine;
       if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
