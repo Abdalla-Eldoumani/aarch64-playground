@@ -1,15 +1,17 @@
 import { at } from "@/lib/emulator/clobber-note";
 import type { StepTarget } from "@/lib/emulator/emulator-state";
-import { cardContext, returnCard, type ProgramLines } from "@/lib/emulator/frame-cards";
+import { cardContext, returnCard, type ProgramLines, type ReturnCard } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { formatSteps } from "@/lib/emulator/format-steps";
 import type { RunResultPayload, StateSnapshot } from "@/lib/worker/protocol";
 
 /** Why a goal run stopped; `problem` goes in the error line, as a bug in the
- *  program or a long run's pause does. */
+ *  program or a long run's pause does, and a bad return brings its `card`
+ *  for the explainer. */
 export interface StopWords {
   text: string;
   problem: boolean;
+  card?: ReturnCard;
 }
 
 /**
@@ -40,7 +42,7 @@ export function stopReason(
   if (result.cancelled || result.error) return null;
   if (result.bad_return && ctx) {
     const card = returnCard(ctx, BigInt(snap.registers[30] ?? 0));
-    if (card) return said(card, true);
+    if (card) return { text: card.text, problem: true, card };
   }
   if (snap.blocked) return said("waiting for input");
   if (snap.halted) {
