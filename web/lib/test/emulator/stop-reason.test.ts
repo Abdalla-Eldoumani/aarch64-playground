@@ -2,6 +2,7 @@
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { ProgramLines } from "@/lib/emulator/frame-cards";
 import { callDepth } from "@/lib/emulator/frame-data";
 import { stopReason } from "@/lib/emulator/stop-reason";
 import type { StepTarget } from "@/lib/emulator/emulator-state";
@@ -185,15 +186,22 @@ function machine(source: string) {
     for (let i = 0; i + 1 < map.length; i += 2) if (map[i + 1] === line) return map[i];
     throw new Error(`no instruction on line ${line}`);
   };
-  const lineLabel = (addr: number) => {
-    const line = lineOf(addr);
-    return line == null ? null : `line ${line}`;
+  const text = source.split("\n");
+  const lines: ProgramLines = {
+    linePlace: (addr) => {
+      const line = lineOf(addr);
+      return line == null ? null : { file: null, line, text: text[line - 1] };
+    },
+    lineAddr: (line) => {
+      for (let i = 0; i + 1 < map.length; i += 2) if (map[i + 1] === line) return map[i];
+      return null;
+    },
   };
   const snapshot = (): StateSnapshot => {
     const exit = emu.get_exit_code();
     return {
       frame: 0,
-      registers: [],
+      registers: Array.from({ length: 31 }, (_, i) => `0x${BigInt(emu.get_register(i)).toString(16)}`),
       fpRegisters: [],
       vectorRegisters: [],
       sp: "0x0",
@@ -218,7 +226,7 @@ function machine(source: string) {
   const depth = () => callDepth(Array.from(emu.frames()));
   const run = (target: StepTarget, until: { depth?: number; pc?: number }) => {
     const result = emu.run_to(1_000_000, until.depth ?? -1, until.pc ?? -1) as RawRun;
-    return { result, said: stopReason(target, result, snapshot(), layout, lineLabel) };
+    return { result, said: stopReason(target, result, snapshot(), layout, lines) };
   };
   return {
     emu,
@@ -291,6 +299,9 @@ describe("step over, step out and run to cursor on the machine", () => {
     m.emu.free();
   });
 
+  // The words are the frames view's card for the same return. By hand: fill's
+  // loop stores arr[i] at step 12 + 4i (stp, mov, mov w0 and bl in main, then
+  // fill's stp, mov, add, mov and b, then cmp and b.lt), so arr[7] at step 40.
   it("names the store behind a ret through an overwritten lr", () => {
     const m = machine(OVERRUN);
     m.to(39);
@@ -300,20 +311,22 @@ describe("step over, step out and run to cursor on the machine", () => {
     expect(over.said).toEqual({
       text:
         "main's ret on line 39 jumped to 0x700000006 instead of going back to the C runtime, " +
-        "because line 22 overwrote the saved lr in main's frame",
+        "because line 22 in fill overwrote the saved lr in main's frame at step 40.",
       problem: true,
     });
     m.emu.free();
   });
 
+  // greet's ret goes to 0x400008, itself; main's mov after bl greet is line 25.
   it("names a call made before lr was saved", () => {
     const m = machine(LR_UNSAVED);
     m.to(17);
     const over = m.over();
     expect(over.result).toMatchObject({ bad_return: true, pc: 0x400008 });
     expect(over.said?.text).toBe(
-      "greet's ret on line 17 jumped to 0x400008 instead of going back to its caller, " +
-        "because greet made a call before saving lr",
+      "greet's ret on line 17 went back into greet instead of going back to main at line 25, " +
+        "because greet called out with `bl puts` on line 16 before saving lr, so lr still held " +
+        "that call's return address.",
     );
     m.emu.free();
   });
