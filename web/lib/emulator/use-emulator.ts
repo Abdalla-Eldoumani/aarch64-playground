@@ -5,7 +5,7 @@ import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
 import { at, clobberNoteTexts, place } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
-import type { ProgramLines } from "@/lib/emulator/frame-cards";
+import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
 import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type {
   AssembleOutcome,
@@ -133,6 +133,9 @@ export function useEmulator(): EmulatorState {
   const [canStepBack, setCanStepBack] = useState(false);
   const [stepCount, setStepCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // The frames' card an error carries, beside that error's text: any other
+  // error replaces the text, and the card no longer applies.
+  const [errorCard, setErrorCard] = useState<{ error: string; card: ReturnCard } | null>(null);
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
   const [droppedBreakpoints, setDroppedBreakpoints] = useState<number[]>(NO_LINES);
   const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
@@ -291,7 +294,7 @@ export function useEmulator(): EmulatorState {
       // worded in a chunk of their own.
       void loadFrameCards().then((m) => {
         const cards = m ? m.calleeCards(rows, programLines, frameLayoutRef.current) : [];
-        if (cards.length) appendNotes(cards);
+        if (cards.length) appendNotes(cards.map((c) => c.text));
       });
     }
     // An external call shows only while paused: a run passes through one on
@@ -565,14 +568,6 @@ export function useEmulator(): EmulatorState {
    * call site instead of at nothing.
    */
   const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true) => {
-    const show = (text: string) => {
-      if (line != null && line > 0) {
-        setError(`line ${line}: ${text}`);
-        setAssemblyErrors([{ line, message: text }]);
-      } else {
-        setError(text);
-      }
-    };
     // After a ret that went to no caller (frames header slot 5), the frame
     // may show the cause: then its card stands in for the crate's guess, in
     // the console too (not for a run's pause, which repeats every chunk).
@@ -581,8 +576,12 @@ export function useEmulator(): EmulatorState {
     const cards = snap?.frames?.[5] ? frameCards : null;
     const ctx = snap && cards?.cardContext(snap.frames ?? null, frameLayoutRef.current, programLines);
     const said = snap && ctx && cards?.faultText(message, ctx, BigInt(snap.registers[30] ?? 0), BigInt(snap.pc));
-    show(said ? said.error : message);
-    if (said && note) appendNotes([said.card]);
+    const text = said ? said.error : message;
+    const shown = line != null && line > 0 ? `line ${line}: ${text}` : text;
+    setError(shown);
+    if (line != null && line > 0) setAssemblyErrors([{ line, message: text, card: said ? said.card : undefined }]);
+    setErrorCard(said ? { error: shown, card: said.card } : null);
+    if (said && note) appendNotes([said.card.text]);
   }, [appendNotes, programLines]);
 
   const step = useCallback(() => {
@@ -746,7 +745,10 @@ export function useEmulator(): EmulatorState {
         // never steps over ships them.
         const { stopReason } = await import("@/lib/emulator/stop-reason");
         const said = stopReason(goal.target, runResult, snapshot, frameLayoutRef.current, programLines);
-        if (said?.problem) setError(said.text);
+        if (said?.problem) {
+          setError(said.text);
+          setErrorCard(said.card ? { error: said.text, card: said.card } : null);
+        }
         else if (said) setStop({ text: said.text, at });
         return said?.text ?? null;
       }
@@ -886,6 +888,7 @@ export function useEmulator(): EmulatorState {
       isHalted,
       programLoaded,
       error,
+      errorCard: errorCard?.error === error ? errorCard.card : null,
       assemblyErrors,
       breakpoints,
       droppedBreakpoints,
@@ -955,7 +958,7 @@ export function useEmulator(): EmulatorState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
-      isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
+      isRunning, isAssembling, isHalted, programLoaded, error, errorCard, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
       currentLine, externalCall, frames, frameLayout, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,
