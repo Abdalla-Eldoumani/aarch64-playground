@@ -193,7 +193,7 @@ export function Controls({
               onClick={() => setMore(!more)}
               aria-label="more ways to step"
               aria-expanded={more}
-              className={share("flex-[0.6]")}
+              className={`${share("flex-[0.6]")} !min-w-[2.75rem]`}
             >
               <span>…</span>
             </Button>
