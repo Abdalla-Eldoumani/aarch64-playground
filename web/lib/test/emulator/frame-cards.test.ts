@@ -327,7 +327,7 @@ describe("lr not saved before a call", () => {
   });
 
   // Steps 16, 17, 18: the same ret going back into show, one event.
-  it("is one event however many times the ret goes round", () => {
+  it("is one event however many times the ret loops back", () => {
     const m = load(LR_NOT_SAVED);
     m.step(16);
     const first = returnCard(m.context(), m.lr());
