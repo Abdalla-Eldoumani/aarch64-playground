@@ -102,6 +102,7 @@ export function Controls({
           key={goal}
           variant="secondary"
           onClick={() => onRunUntil(goal)}
+          aria-label={label}
           aria-keyshortcuts={keys.replace("Ctrl", "Control")}
           title={keys}
           className={share("flex-1")}
@@ -189,6 +190,7 @@ export function Controls({
             <Button
               variant="secondary"
               onClick={() => setMore(!more)}
+              aria-label="more"
               aria-expanded={more}
               className={share("flex-1")}
             >
