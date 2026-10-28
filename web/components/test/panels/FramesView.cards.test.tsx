@@ -6,7 +6,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { FramesView } from "@/components/panels/FramesView";
 import type { ProgramLines } from "@/lib/emulator/frame-cards";
 
@@ -56,6 +56,7 @@ function machine(source: string) {
       sp: hex(emu.get_sp()),
       pc: Number(emu.get_pc()),
       getMemory: (addr: number, len: number) => emu.get_memory_range(addr, len),
+      readMemory: (addr: number, len: number) => Promise.resolve(emu.get_memory_range(addr, len)),
       dirtyAddrs,
       memoryRegions: [],
       lineLabel: (addr: number) => (lineOf(addr) == null ? null : `line ${lineOf(addr)}`),
@@ -74,18 +75,30 @@ function machine(source: string) {
 
 const cards = () => screen.queryByRole("list", { name: "what went wrong" });
 const said = () => screen.getByRole("status").textContent?.trim();
+/** Every text the polite status takes from now on, a repeat included. */
+function listen() {
+  const heard: string[] = [];
+  new MutationObserver(() => heard.push(said() ?? "")).observe(screen.getByRole("status"), {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+  return heard;
+}
+// The panel cache before its read lands: zeros.
+const missed = (_addr: number, len: number) => new Uint8Array(len);
 
 // array-overrun.s stores arr[6] over main's saved lr at step 40 and main's
 // ret takes it at step 59 (frame-cards.test.ts counts them).
 describe("the cards under the frames", () => {
-  it("show a write at the step that made it, after the calls, and say it once", () => {
+  it("show a write at the step that made it, after the calls, and say it once", async () => {
     const m = machine(fixture("array-overrun.s"));
     m.step(39);
     const { rerender } = render(<FramesView {...m.props()} />);
     expect(cards()).toBeNull();
     m.step(1);
     rerender(<FramesView {...m.props()} />);
-    const list = cards()!;
+    const list = await screen.findByRole("list", { name: "what went wrong" });
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(1);
     expect(items[0].textContent).toMatch(/^Line 32 in helper \(str w10, \[x9, w10, sxtw 2\]\) wrote arr_s\[6\] over main's saved lr\./);
@@ -97,6 +110,29 @@ describe("the cards under the frames", () => {
     m.step(1);
     rerender(<FramesView {...m.props()} />);
     expect(cards()).toBeNull();
+    m.emu.free();
+  });
+
+  // The panel cache answers zeros until its read lands; worded from those,
+  // the card said "It now holds 0x0" and then "0x6", twice over.
+  it("word a write from the machine's bytes only, and say it once as the cache fills", async () => {
+    const m = machine(fixture("array-overrun.s"));
+    m.step(39);
+    const { rerender } = render(<FramesView {...m.props()} getMemory={missed} />);
+    const heard = listen();
+    m.step(1);
+    const at40 = m.props();
+    rerender(<FramesView {...at40} getMemory={missed} />);
+    expect(cards()).toBeNull();
+    const card = within(await screen.findByRole("list", { name: "what went wrong" })).getByRole("listitem");
+    const words =
+      "Line 32 in helper (str w10, [x9, w10, sxtw 2]) wrote arr_s[6] over main's saved lr. " +
+      "It now holds 0x6; it should send main back to the C runtime.";
+    expect(card.textContent).toBe(words);
+    // The cache's read lands: the same write, not said again.
+    rerender(<FramesView {...at40} />);
+    await waitFor(() => expect(heard).toEqual([words]));
+    expect(card.textContent).toBe(words);
     m.emu.free();
   });
 
@@ -113,6 +149,24 @@ describe("the cards under the frames", () => {
     expect(m.emu.is_halted()).toBe(true);
     expect(within(cards()!).getByRole("listitem").textContent).toBe(card);
     expect(said()).toBe("");
+    m.emu.free();
+  });
+
+  // The run row's alert says the fault with this card in it, so the frames
+  // view does not say it a second time.
+  it("leave a card a run brought to the run row", () => {
+    const m = machine(fixture("array-overrun.s"));
+    const { rerender } = render(<FramesView {...m.props()} />);
+    const heard = listen();
+    rerender(<FramesView {...m.props()} running />);
+    m.step(29);
+    rerender(<FramesView {...m.props()} running />);
+    m.step(31);
+    expect(m.emu.is_halted()).toBe(true);
+    rerender(<FramesView {...m.props()} />);
+    expect(within(cards()!).getByRole("listitem").textContent).toMatch(/^main's ret on line 21 jumped to 0x700000006 /);
+    expect(said()).toBe("");
+    expect(heard.filter(Boolean)).toEqual([]);
     m.emu.free();
   });
 
