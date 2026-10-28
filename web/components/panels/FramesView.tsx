@@ -79,15 +79,26 @@ export function FramesView({
     : null;
 
   // A call or a return is said once, after the step that made it; a run
-  // says nothing, and neither does its stop.
+  // says nothing, and neither does its stop. Back undoes one step, so it
+  // says the call or return it took back; a reset or a new program moves
+  // the machine further than that and says nothing.
   const depth = stack?.depth ?? 0;
+  const step = snapshot?.step ?? 0;
   const innermost = stack?.frames[stack.frames.length - 1]?.name ?? "";
-  const [seen, setSeen] = useState({ depth, innermost, running });
+  const [seen, setSeen] = useState({ depth, innermost, running, step });
   const [said, setSaid] = useState({ text: "", count: 0 });
-  if (seen.depth !== depth || seen.running !== running) {
-    setSeen({ depth, innermost, running });
-    if (!running && !seen.running && depth > 0 && seen.depth > 0) {
-      const text = depth > seen.depth ? `${innermost} called` : `${seen.innermost} returned`;
+  if (seen.depth !== depth || seen.running !== running || seen.step !== step) {
+    setSeen({ depth, innermost, running, step });
+    const back = step === seen.step - 1;
+    if (depth !== seen.depth && !running && !seen.running && depth > 0 && seen.depth > 0 && (back || step > seen.step)) {
+      const text =
+        depth > seen.depth
+          ? back
+            ? `back inside ${innermost}`
+            : `${innermost} called`
+          : back
+            ? `back before the call to ${seen.innermost}`
+            : `${seen.innermost} returned`;
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
