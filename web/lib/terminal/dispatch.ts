@@ -210,7 +210,7 @@ const GDB_HELP_LINES = [
   "gdb-lite commands:",
   "  gdb n | gdb s | gdb si            step one instruction",
   "  gdb ni                            step over: run the call on this line in one go",
-  "  gdb finish                        run until this function returns to its caller",
+  "  gdb finish                        step out: run until this function returns to its caller",
   "  gdb c                             continue until the program ends or hits a breakpoint",
   "  gdb b <label>                     set a breakpoint at a label",
   "  gdb p $xN                         print register N's value in hex",
@@ -222,6 +222,10 @@ const GDB_HELP_LINES = [
 ];
 
 const COUNT = new Intl.NumberFormat("en-US");
+
+// The machine drops the last frame only when the outermost function returns,
+// which ends the program (a `_start` that exits through svc keeps its own).
+const NO_FRAMES = "gdb: no frames: the program has finished";
 
 // More frames than this fold into one line, with main still shown last.
 const BT_SHOWN = 20;
@@ -448,6 +452,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "info" && args[1] === "frame") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: info frame needs an assembled program"] };
+    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: frameLines(view) };
   }
   if (sub === "info" && args[1] === "registers") {
@@ -463,6 +468,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "bt") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: bt needs an assembled program"] };
+    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: backtrace(view, ctx) };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };
