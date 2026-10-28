@@ -529,7 +529,7 @@ fn an_overflow_onto_mains_record_is_named_and_explains_the_bad_return() {
     assert_eq!(p.view().frames.len(), 1);
     p.step(1);
     let bad = p.cpu.call_stack().bad_return();
-    assert_eq!(bad, BadReturn { step: 55, pc: main_ret, target: 0x8_0000_0007 });
+    assert_eq!((bad.step, bad.pc, bad.target), (55, main_ret, 0x8_0000_0007));
     assert_eq!(p.view().frames.len(), 1, "a return to no caller leaves the stack as it was");
 }
 
@@ -597,7 +597,7 @@ fn a_library_calls_write_is_stamped_with_the_steps_taken_not_the_budget() {
     p.step(6);
     let main_ret = p.pc_of(MAIN_RET_AFTER_WIPE);
     let bad = p.cpu.call_stack().bad_return();
-    assert_eq!(bad, BadReturn { step: 17, pc: main_ret, target: 0x4141_4141_4141_4141 });
+    assert_eq!((bad.step, bad.pc, bad.target), (17, main_ret, 0x4141_4141_4141_4141));
 }
 
 const PASS_ARRAY: &str = r#"
@@ -668,7 +668,8 @@ fn assert_pass_array_end(p: &Loaded, mode: &str) {
     assert_eq!(main.fp_hit, Hit { step: 35, pc: store, fp_offset: 52 }, "{mode}: main's saved fp");
     assert_eq!(main.lr_hit, Hit { step: 43, pc: store, fp_offset: 60 }, "{mode}: main's saved lr");
     let main_ret = p.pc_of(PA_MAIN_RET);
-    assert_eq!(stack.bad_return(), BadReturn { step: 53, pc: main_ret, target: 0x7_0000_0006 }, "{mode}");
+    let bad = stack.bad_return();
+    assert_eq!((bad.step, bad.pc, bad.target), (53, main_ret, 0x7_0000_0006), "{mode}");
     // fill reached nums through a pointer, not through an array base of its
     // own, so no element is named.
     let v = p.view();
@@ -794,7 +795,7 @@ fn an_overrun_through_an_array_base_names_the_element_on_each_record_it_crosses(
     assert_eq!(main.activation.lr_hit, Hit { step: 58, pc: store, fp_offset: 60 });
     assert_eq!(named(main.lr_hit_element), Some((11, "marks_s".to_string())));
     let helper_ret = p.pc_of(TR_HELPER_RET);
-    assert_eq!(v.bad_return, BadReturn { step: 65, pc: helper_ret, target: 0x7_0000_0006 });
+    assert_eq!((v.bad_return.step, v.bad_return.pc, v.bad_return.target), (65, helper_ret, 0x7_0000_0006));
 }
 
 // ---------------------------------------------------------------------------
@@ -901,7 +902,7 @@ fn a_call_out_before_lr_is_saved_is_flagged_and_its_return_goes_astray() {
     // greet's last call is the bl printf on line 16, so it returns to the
     // ret: the 19th number of greet's row, after main's row of 19.
     assert_eq!(acts[1].last_ret, ret);
-    assert_eq!(view_numbers(&p.view())[10 + 19 + 18], ret as f64);
+    assert_eq!(view_numbers(&p.view())[17 + 19 + 18], ret as f64);
 }
 
 /// keep saves lr with its stp but never sets fp, and pushes x19 it never
@@ -952,6 +953,74 @@ fn a_call_out_after_lr_is_stored_is_not_flagged_whatever_the_frame_shape() {
     let keep = p.cpu.call_stack().activations()[1];
     assert_eq!(keep.flags & LR_UNSAVED, 0, "keep stored lr before its call");
     assert_eq!(keep.last_ret, p.pc_of(20));
+}
+
+/// twice keeps lr in x9 and calls add_one before it stores lr, so its
+/// first ret goes back after that call; the second time through it takes
+/// lr back from x9, and that ret pops it.
+const LR_IN_A_REGISTER: &str = r#"
+// twice calls add_one before saving lr, so its ret comes back into it.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// add_one(w0 = n) -> w0 = n + 1
+        .balign 4
+        .global add_one
+add_one:
+        add     w0, w0, 1
+        ret
+
+// twice(w0 = n) -> w0 = n + 1 (bug: lr is kept in x9, not stored, before the call)
+        .balign 4
+        .global twice
+twice:
+        mov     x9, lr                  // x9 = the way back to main
+        mov     w10, 0                  // times through
+        bl      add_one
+        add     w10, w10, 1
+        cmp     w10, 2
+        b.lt    twice_end               // first time: lr is add_one's way back
+        mov     lr, x9                  // second time: lr back from x9
+twice_end:
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 40
+        bl      twice
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_bad_return_keeps_the_call_it_came_from_after_a_later_return_pops_it() {
+    let mut p = load(LR_IN_A_REGISTER);
+    p.run_to_line(27); // twice's ret, the first time through
+    back_restores(&mut p, 1, "a return to no caller");
+    let twice = p.cpu.call_stack().activations()[1];
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.pc, bad.target), (p.pc_of(27), p.pc_of(22)));
+    assert_eq!(
+        (bad.index, bad.entry, bad.ret_addr, bad.flags, bad.last_ret, bad.lr_hit),
+        (1, twice.entry, twice.ret_addr, twice.flags, twice.last_ret, twice.lr_hit)
+    );
+    assert_eq!((bad.entry, bad.ret_addr, bad.last_ret), (p.pc_of(19), p.pc_of(36), p.pc_of(22)));
+    assert_ne!(bad.flags & LR_UNSAVED, 0, "twice called out before storing lr");
+    p.run_to_line(27); // the second time through, lr back from x9
+    back_restores(&mut p, 1, "the return that pops the call");
+    assert_eq!(p.cpu.call_stack().activations().len(), 1);
+    assert_eq!(p.cpu.call_stack().bad_return(), bad, "the pop leaves the bad return as it was");
+    // The header's last seven numbers are the call, which the web words the
+    // card from once the call is gone.
+    let n = view_numbers(&p.view());
+    let call = [1.0, bad.entry as f64, bad.ret_addr as f64, f64::from(bad.flags), bad.last_ret as f64, 0.0, 0.0];
+    assert_eq!(n[10..17], call);
 }
 
 #[test]
