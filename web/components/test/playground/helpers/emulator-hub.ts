@@ -27,6 +27,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     isHalted: false,
     programLoaded: false,
     error: null,
+    errorCard: null,
     assemblyErrors: [],
     breakpoints: new Set<number>(),
     droppedBreakpoints: [],
