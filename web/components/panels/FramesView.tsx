@@ -3,11 +3,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { formatWord32 } from "@/lib/emulator/format-hex";
+import { calleeCards, returnCard, writeCards } from "@/lib/emulator/frame-cards";
 import {
   decodeFrameLayout,
   decodeFrames,
   drawFrames,
   rangesToRead,
+  wordAt,
   type BoxKind,
 } from "@/lib/emulator/stack-frames";
 
@@ -23,7 +25,12 @@ type FramesViewProps = Pick<
   | "memoryRegions"
   | "lineLabel"
   | "programLoaded"
-> & { running: boolean };
+> &
+  Partial<Pick<EmulatorState, "programLines" | "noteRows">> & { running: boolean };
+
+// The cards' inputs before a program has run: an embed's idle stack side.
+const NO_LINES: EmulatorState["programLines"] = { linePlace: () => null, lineAddr: () => null };
+const NO_ROWS: number[] = [];
 
 // Saved registers sit on a raised surface in the approved look's purple (the
 // number ink: the register ink is pink in the dark themes and read as the
@@ -57,6 +64,8 @@ export function FramesView({
   dirtyAddrs,
   memoryRegions,
   lineLabel,
+  programLines = NO_LINES,
+  noteRows = NO_ROWS,
   programLoaded,
   running,
 }: FramesViewProps) {
@@ -64,6 +73,7 @@ export function FramesView({
   const layout = useMemo(() => (frameLayout ? decodeFrameLayout(frameLayout) : null), [frameLayout]);
   const spValue = parseInt(sp, 16) || 0;
   const fpValue = parseInt(registers[29] ?? "", 16) || 0;
+  const memory = snapshot ? rangesToRead(snapshot).map(([addr, len]) => ({ addr, bytes: getMemory(addr, len) })) : [];
   const stack = snapshot
     ? drawFrames({
         snapshot,
@@ -71,12 +81,23 @@ export function FramesView({
         sp: spValue,
         fp: fpValue,
         pc,
-        memory: rangesToRead(snapshot).map(([addr, len]) => ({ addr, bytes: getMemory(addr, len) })),
+        memory,
         written: dirtyAddrs,
         regions: memoryRegions,
         lineLabel,
       })
     : null;
+  // What went wrong, under the frames: a write over a caller's saved fp or
+  // lr at the step that made it, a ret that went to no caller from then on,
+  // and a caller reading x19 to x28 a call left changed at the step it read.
+  const context = snapshot && { ...programLines, snapshot, layout };
+  const cards = context
+    ? [
+        ...writeCards(context, (addr) => wordAt(memory, addr)),
+        returnCard(context, BigInt(registers[30] ?? 0)),
+        ...calleeCards(noteRows, programLines, frameLayout),
+      ].filter((card): card is string => card != null)
+    : [];
 
   // A call or a return is said once, after the step that made it; a run
   // says nothing, and neither does its stop. Back undoes one step, so it
@@ -102,6 +123,14 @@ export function FramesView({
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
+  // A card is said once, when it first shows; a run's stop says its own in
+  // the run row's alert.
+  const cardText = cards.join(" ");
+  const [seenCards, setSeenCards] = useState(cardText);
+  if (seenCards !== cardText) {
+    setSeenCards(cardText);
+    if (cardText && !running) setSaid((prev) => ({ text: cardText, count: prev.count + 1 }));
+  }
 
   // While stepping, what the step wrote stays in view (a write over a
   // caller's frame is the bug to see), with the rest of its call when that
@@ -122,9 +151,13 @@ export function FramesView({
       const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
       const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
       if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
-      if (calls.length === 0) return;
-      let [top, bottom] = span(calls);
-      if (wrote.length > 0 && bottom - top > box.clientHeight) [top, bottom] = span(wrote);
+      // The cards come along when they fit, and alone when nothing else does.
+      const cards = box.querySelector<HTMLElement>("[data-cards]");
+      const tries = [calls, wrote].filter((t) => t.length > 0).map((t) => (cards ? [...t, cards] : t));
+      if (cards) tries.push([cards]);
+      if (tries.length === 0) return;
+      const spans = tries.map(span);
+      const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
       if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
         box.scrollTop = bottom - box.clientHeight;
       } else if (top < box.scrollTop) box.scrollTop = top;
@@ -134,7 +167,7 @@ export function FramesView({
     const observer = new ResizeObserver(reveal);
     observer.observe(box);
     return () => observer.disconnect();
-  }, [frames, running]);
+  }, [frames, noteRows, running]);
 
   const idle = !programLoaded
     ? "Step through the program to watch each call's frame being built."
@@ -222,6 +255,29 @@ export function FramesView({
         </ol>
       )}
       {stack?.untracked && <p className="mt-3 text-[12px] text-[var(--text-secondary)]">{stack.untracked}</p>}
+      {cards.length > 0 && (
+        <ul data-cards="" aria-label="what went wrong" className="mt-3">
+          {cards.map((card, i) => (
+            <li key={i} className="mt-1.5 flex gap-1.5 text-[13px] leading-snug text-[var(--danger)] first:mt-0">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                className="mt-px h-4 w-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M8 1.75 15 14.25H1Z" strokeLinejoin="round" />
+                <path d="M8 6v4M8 11.75v.5" strokeLinecap="round" />
+              </svg>
+              {/* Backticks mark an instruction as written. */}
+              <span className="min-w-0 break-words">
+                {card.split("`").map((part, k) => (k % 2 ? <code key={k} className="font-mono text-[12px]">{part}</code> : part))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
       <p role="status" className="sr-only">
         {said.text}
         {said.count % 2 ? " " : ""}
