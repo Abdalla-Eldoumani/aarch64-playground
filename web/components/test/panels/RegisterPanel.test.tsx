@@ -91,6 +91,27 @@ describe("RegisterPanel", () => {
     expect(container.textContent).not.toMatch(note);
   });
 
+  // A frames header (view_numbers: 10 numbers, no frame rows here) and one
+  // leftover pair: x19, left changed by the ret at 0x400010.
+  it("marks x19 while it holds what a returning call left, and no other row", () => {
+    render(
+      <RegisterPanel
+        registers={registers}
+        changedRegs={new Set()}
+        sp="0x0000fffffffff000"
+        pc={0x400000}
+        nzcv={0}
+        frames={[9, 0, 0, 0, 1, 0, 0, 0, 0, 1, 19, 0x400010]}
+      />,
+    );
+    const note = screen.getByText(/did not put it back/);
+    const name = note.parentElement!;
+    expect(name.textContent).toBe("X19, a call changed it and did not put it back");
+    expect(name.title).toBe("a call changed it and did not put it back");
+    expect(name.className).toContain("decoration-dashed");
+    expect(screen.getByText("X20").className).not.toContain("decoration-dashed");
+  });
+
   it("shows each register's alias (arg0, fp, lr) beside its name", () => {
     renderPanel();
     expect(screen.getByText("arg0")).toBeTruthy();
