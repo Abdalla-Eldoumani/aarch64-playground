@@ -21,6 +21,7 @@ const DEPS: PaletteDeps = {
   assemble: noop,
   step: noop,
   stepBack: noop,
+  runUntil: noop,
   run: noop,
   pause: noop,
   reset: noop,
