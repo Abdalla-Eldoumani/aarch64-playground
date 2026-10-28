@@ -9,7 +9,7 @@
  */
 
 import type { Width } from "@/lib/asm/base-convert";
-import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { FRAME_ROW, FRAMES_HEADER, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { floatText, integerReading } from "@/lib/emulator/register-format";
 
@@ -98,22 +98,19 @@ export interface FramesSnapshot {
   leftovers: { register: number; retPc: number }[];
 }
 
-const HEADER = 17;
-const FRAME_ROW = 18;
-
 function hit(step: number, pc: number, element: number, name: number): FrameHit | null {
   if (step === 0) return null;
   return { step, pc, element: element < 0 ? null : element, arrayName: name < 0 ? null : name };
 }
 
 export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
-  if (n.length < HEADER) return null;
+  if (n.length < FRAMES_HEADER) return null;
   const count = n[8];
   const leftoverCount = n[9];
-  if (n.length !== HEADER + count * FRAME_ROW + leftoverCount * 2) return null;
+  if (n.length !== FRAMES_HEADER + count * FRAME_ROW + leftoverCount * 2) return null;
   const frames: FrameRow[] = [];
   for (let i = 0; i < count; i++) {
-    const r = HEADER + i * FRAME_ROW;
+    const r = FRAMES_HEADER + i * FRAME_ROW;
     frames.push({
       index: n[r],
       entry: n[r + 1],
@@ -130,7 +127,7 @@ export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
     });
   }
   const leftovers: FramesSnapshot["leftovers"] = [];
-  for (let i = HEADER + count * FRAME_ROW; i < n.length; i += 2) {
+  for (let i = FRAMES_HEADER + count * FRAME_ROW; i < n.length; i += 2) {
     leftovers.push({ register: n[i], retPc: n[i + 1] });
   }
   return {
