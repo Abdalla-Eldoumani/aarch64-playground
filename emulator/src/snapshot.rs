@@ -68,6 +68,10 @@ pub struct Snapshot<R, M, H, F> {
     /// note); these let the host trim its own transcript instead.
     pub stdout_seen: u64,
     pub stderr_seen: u64,
+    /// The step budget spent before the step. Step-back puts it back, a
+    /// bulk charge or sleep refund included; a named restore leaves the
+    /// budget alone (`Cpu::load_state`).
+    pub steps_total: u64,
     /// The calls the program is inside, behind the stack frames view.
     pub frames: F,
 }
@@ -181,6 +185,7 @@ mod tests {
             callbacks: Default::default(),
             stdout_seen: 0,
             stderr_seen: 0,
+            steps_total: 0,
             frames: F::default(),
         }
     }
