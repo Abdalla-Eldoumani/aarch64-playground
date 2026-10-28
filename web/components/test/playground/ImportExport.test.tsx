@@ -355,6 +355,7 @@ describe("ImportExport and the command palette", () => {
     assemble: noop,
     step: noop,
     stepBack: noop,
+    runUntil: noop,
     run: noop,
     pause: noop,
     reset: noop,
