@@ -14,7 +14,9 @@ export function StackTab({ frames, bytes }: { frames: ReactNode; bytes: ReactNod
   return (
     <div className="flex h-full flex-col">
       <PaneSwitch label="frames or bytes" names={["frames", "bytes"]} second={showBytes} onChange={setShowBytes} />
-      <div className="min-h-0 flex-1 overflow-auto">{showBytes ? bytes : frames}</div>
+      {/* A size container, so the frames can draw one line a box when the
+          pane is short. */}
+      <div className="min-h-0 flex-1 overflow-auto [container-type:size]">{showBytes ? bytes : frames}</div>
     </div>
   );
 }
