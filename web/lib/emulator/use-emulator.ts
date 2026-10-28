@@ -44,6 +44,17 @@ export {
   MAX_CONSOLE_CHARS,
 } from "@/lib/emulator/use-console-output";
 
+// The card words, kept once their chunk has come. A stop after a bad return
+// waits for them, so its alert lands in the render that ends the run: drawn
+// a frame later, the panes jumped up and back, and WebKit reported the
+// panel group's resize as a ResizeObserver loop.
+let frameCards: typeof import("@/lib/emulator/frame-cards") | null = null;
+const loadFrameCards = () =>
+  import("@/lib/emulator/frame-cards").then(
+    (m) => (frameCards = m),
+    () => null,
+  );
+
 // One frozen empty list, so an assemble that dropped nothing hands the shell
 // the same array and its drop notice does not re-fire.
 const NO_LINES: number[] = [];
@@ -278,8 +289,8 @@ export function useEmulator(): EmulatorState {
       appendNotes(clobberNoteTexts(rows, workspaceRef.current));
       // Rows for x19 to x28 are a caller reading what a call left changed,
       // worded in a chunk of their own.
-      void import("@/lib/emulator/frame-cards").then(({ calleeCards }) => {
-        const cards = calleeCards(rows, programLines, frameLayoutRef.current);
+      void loadFrameCards().then((m) => {
+        const cards = m ? m.calleeCards(rows, programLines, frameLayoutRef.current) : [];
         if (cards.length) appendNotes(cards);
       });
     }
@@ -565,16 +576,13 @@ export function useEmulator(): EmulatorState {
     // After a ret that went to no caller (frames header slot 5), the frame
     // may show the cause: then its card stands in for the crate's guess, in
     // the console too (not for a run's pause, which repeats every chunk).
-    // Said once, so the raw text waits for the words.
+    // The callers load the words first (loadFrameCards).
     const snap = snapRef.current;
-    if (!snap?.frames?.[5]) return show(message);
-    void import("@/lib/emulator/frame-cards").then(({ cardContext, faultText }) => {
-      if (snapRef.current !== snap) return;
-      const ctx = cardContext(snap.frames ?? null, frameLayoutRef.current, programLines);
-      const said = ctx && faultText(message, ctx, BigInt(snap.registers[30] ?? 0), BigInt(snap.pc));
-      show(said ? said.error : message);
-      if (said && note) appendNotes([said.card]);
-    });
+    const cards = snap?.frames?.[5] ? frameCards : null;
+    const ctx = snap && cards?.cardContext(snap.frames ?? null, frameLayoutRef.current, programLines);
+    const said = snap && ctx && cards?.faultText(message, ctx, BigInt(snap.registers[30] ?? 0), BigInt(snap.pc));
+    show(said ? said.error : message);
+    if (said && note) appendNotes([said.card]);
   }, [appendNotes, programLines]);
 
   const step = useCallback(() => {
@@ -589,7 +597,8 @@ export function useEmulator(): EmulatorState {
     setError(null);
     movingRef.current = backend
       .step()
-      .then(({ stepResult }) => {
+      .then(async ({ stepResult }) => {
+        if (stepResult.error && snapRef.current?.frames?.[5] && !frameCards) await loadFrameCards();
         if (stepResult.error) surfaceRuntimeError(stepResult.error, stepResult.error_line);
         setStepCount((c) => {
           const next = c + 1;
@@ -698,6 +707,7 @@ export function useEmulator(): EmulatorState {
         // The snapshot this result carries has already landed, so the ref
         // says whether the run stopped at a read rather than for good.
         runBlockedRef.current = blockedRef.current && !runResult.error;
+        if (snapshot.frames?.[5] && !frameCards) await loadFrameCards();
         // That snapshot hid any library call, since the run was still on. A
         // stop inside printf, or at a scanf's read, marks the `bl` line.
         const call = lastCallRef.current;
