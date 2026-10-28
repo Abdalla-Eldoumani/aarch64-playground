@@ -51,6 +51,20 @@ export function explainError(located: string): ErrorExplanation | null {
       styleSection: "general",
     };
   }
+  // A fault the frames view explained: the hub put its card ("main's ret on
+  // line 21 jumped to ...") where the crate guessed at a base register, so
+  // the card is the why. The step ceiling keeps its own explanation.
+  const card = /(?:^|\s)([^\s']+'s ret on .* instead of going back to [\s\S]*)$/.exec(message)?.[1];
+  if (card && !lower.includes("the playground's ceiling")) {
+    return {
+      what: "A function's `ret` sent the program somewhere other than the instruction after the `bl` that called it, so the next fetch found no instruction there.",
+      why: card,
+      fix: card.includes("before saving lr")
+        ? "Save lr before the function's first call: start it with `stp fp, lr, [sp, -16]!` and `mov fp, sp`, and end it with `ldp fp, lr, [sp], 16` right before `ret`."
+        : "Keep the write that line makes inside its own variable: a loop over an array must stop at the array's last element, and a buffer a library call fills must be big enough for what it writes. The frames view marks the overwritten box.",
+      styleSection: "general",
+    };
+  }
   if (lower.startsWith("unknown instruction")) {
     return {
       what: "The emulator's decoder did not recognize this 32-bit word as any AArch64 instruction it implements.",
