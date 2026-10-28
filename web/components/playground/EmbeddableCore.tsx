@@ -743,6 +743,7 @@ export function EmbeddableCore({
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}
+            frames={emu.frames}
             running={emu.isRunning}
             headingLevel={registerHeadingLevel}
             holdScroll={holdScroll}
@@ -759,6 +760,8 @@ export function EmbeddableCore({
             dirtyAddrs={emu.dirtyAddrs}
             memoryRegions={emu.memoryRegions}
             lineLabel={emu.lineLabel}
+            programLines={emu.programLines}
+            noteRows={emu.noteRows}
             programLoaded={emu.programLoaded}
             running={emu.isRunning}
           />
