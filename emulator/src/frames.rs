@@ -8,6 +8,7 @@
 //! Every value here is a number (an address, a step, a register mask); the
 //! web words them, because every string in the crate ships in the wasm.
 
+pub mod check;
 pub mod layout;
 
 use crate::cpu::{Cpu, STACK_BASE, STACK_FLOOR};
