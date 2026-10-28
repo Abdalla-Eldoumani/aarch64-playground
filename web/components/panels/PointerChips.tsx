@@ -40,12 +40,11 @@ export function pointerChips({ frames, frameLayout, registers, sp, pc, point }: 
   return registers.map((hex, reg) => {
     const target = reg === 29 ? null : slotAt(stack, parseInt(hex, 16));
     if (!target) return null;
-    // Under a coarse pointer the button reaches 44px down from its row's top
-    // through padding its negative margin gives back, so the row keeps its
-    // height and a chip in the list's first row is not cut by its top edge;
-    // the chip's face sits above a neighbour's reach, so a tap on it is its
-    // own. In a narrow column the owner goes first, so the slot's name stays
-    // whole.
+    // Under a coarse pointer the button is 44px tall through padding its
+    // negative margin gives back, so the row keeps its height; centred, so a
+    // click at its middle (a tap, a switch device) lands on its own face,
+    // which sits above a neighbour's reach. In a narrow column the owner goes
+    // first, so the slot's name stays whole.
     return (
       <button
         key={reg}
@@ -56,7 +55,7 @@ export function pointerChips({ frames, frameLayout, registers, sp, pc, point }: 
         onFocus={() => point(reg)}
         onBlur={() => point(null)}
         onClick={() => point(reg, true)}
-        className="group relative min-w-0 max-w-full focus:outline-none [@media(pointer:coarse)]:-mb-[calc(42px_-_1.25em)] [@media(pointer:coarse)]:-mt-[2px] [@media(pointer:coarse)]:min-w-[44px] [@media(pointer:coarse)]:pb-[calc(42px_-_1.25em)] [@media(pointer:coarse)]:pt-[2px]"
+        className="group relative min-w-0 max-w-full focus:outline-none [@media(pointer:coarse)]:my-[calc((1.25em_-_44px)/2)] [@media(pointer:coarse)]:min-w-[44px] [@media(pointer:coarse)]:py-[calc((44px_-_1.25em)/2)]"
       >
         <span className="relative block truncate px-[0.25ch] text-[var(--cyan)] [box-shadow:inset_0_0_0_1px_var(--cyan)] group-hover:bg-[var(--bg-elevated)] group-focus-visible:[box-shadow:inset_0_0_0_2px_var(--focus)] [@media(pointer:coarse)]:z-[1]">
           {target.slot}
