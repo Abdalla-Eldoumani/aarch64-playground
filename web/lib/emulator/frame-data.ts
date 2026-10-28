@@ -32,3 +32,10 @@ export function readFrameLayout(emu: FrameExports): FrameLayoutPayload | null {
   const names = emu.frame_names?.();
   return numbers && names ? { numbers: Array.from(numbers), names } : null;
 }
+
+/** How many calls deep the program is, main counted: the drawn frames, the
+ *  ones folded between main and them, and the ones past the machine's cap
+ *  (header slots 8, 2 and 1 of `view_numbers` in emulator/src/frames.rs). */
+export function callDepth(frames: readonly number[]): number {
+  return frames[8] + frames[2] + frames[1];
+}
