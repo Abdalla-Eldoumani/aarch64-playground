@@ -833,6 +833,29 @@ describe("useEmulator stepping and running", () => {
       "because line 10 in main overwrote the saved lr in main's frame at step 5.";
     await waitFor(() => expect(result.current.error).toBe(`${first} ${card}`));
     expect(result.current.notes).toEqual([card]);
+    expect(result.current.errorCard).toMatchObject({ text: card, cause: "overwritten" });
+  });
+
+  // The same return with nothing behind it in the frame (no store reached
+  // main's saved lr): the run row and the console say what the crate says.
+  it("keeps a fault's own words when the frame shows no cause", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0, 1, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 0, 0, -1, -1,
+    ];
+    const error = "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register does not hold an address";
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: { pc: 0, halted: true, steps_executed: 1, hit_breakpoint: false, error },
+      runSnapshot: { frames, pc: "0x0000000000000000", halted: true },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toBe(error));
+    expect(result.current.notes).toEqual([]);
+    expect(result.current.errorCard).toBeNull();
   });
 
   // The same return, met by a run that paused at its million steps: the card
