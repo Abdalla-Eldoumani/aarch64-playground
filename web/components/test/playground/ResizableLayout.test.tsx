@@ -543,11 +543,21 @@ describe("the debug column while the stack tab shows the frames", () => {
       render(layout(true, "short"));
       const opened = setLayoutCalls.find((l) => "panel-regs" in l);
       expect(opened?.["panel-regs"]).toBeCloseTo((270 / (203 / 0.41)) * 100, 1);
+      // The library reports that push back; it is not the reader's drag.
+      drag("panel-regs", opened!);
+      expect(window.localStorage.getItem(`${KEY}lg-frames-short`)).toBeNull();
+      drag("panel-regs", { "panel-regs": 30, "panel-tabs": 70 });
+      expect(window.localStorage.getItem(`${KEY}lg-frames-short`)).toBe("[30,70]");
       cleanup();
       setLayoutCalls.length = 0;
-      window.localStorage.setItem(`${KEY}lg-frames-short`, "[30,70]");
       render(layout(true, "short"));
       expect(setLayoutCalls).toContainEqual({ "panel-regs": 30, "panel-tabs": 70 });
+      // A double-click writes the default split back, which opens on the floor.
+      cleanup();
+      setLayoutCalls.length = 0;
+      window.localStorage.setItem(`${KEY}lg-frames-short`, "[41,59]");
+      render(layout(true, "short"));
+      expect(setLayoutCalls.find((l) => "panel-regs" in l)?.["panel-regs"]).toBeCloseTo(54.5, 1);
     } finally {
       if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
     }
