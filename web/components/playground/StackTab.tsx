@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { usePersistedFlag } from "@/components/panels/register-panel-settings";
 import { PaneSwitch } from "@/components/playground/PaneSwitch";
 
-const BYTES_KEY = "aarch64-playground:stack-bytes";
+export const BYTES_KEY = "aarch64-playground:stack-bytes";
 
 /** The playground's stack tab: the frames as the course draws them, or the
  *  raw bytes from sp, switched in the tab's header and kept per viewer.
