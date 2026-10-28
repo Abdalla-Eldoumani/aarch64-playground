@@ -252,10 +252,13 @@ fn flatten_line_map(pairs: &[(u64, u32)]) -> Vec<u32> {
     out
 }
 
+/// pc crosses as an f64 here and in the run results: serde refuses a u64
+/// above 2^53 (a `ret` to an lr a %s overrun filled with ASCII), and the
+/// `.unwrap()` then traps the wasm.
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct StepResultJs {
-    pc: u64,
+    pc: f64,
     halted: bool,
     error: Option<String>,
     /// Editor line of the instruction the error names, when the line map
@@ -270,7 +273,7 @@ struct StepResultJs {
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RunResultJs {
-    pc: u64,
+    pc: f64,
     halted: bool,
     steps_executed: u32,
     hit_breakpoint: bool,
@@ -283,8 +286,7 @@ struct RunResultJs {
     sleep_ms: Option<f64>,
 }
 
-/// `run_to`'s result: RunResultJs's fields plus the goal's two stops, with
-/// pc an f64 so a `ret` to a garbage address above 2^53 still serializes.
+/// `run_to`'s result: RunResultJs's fields plus the goal's two stops.
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RunToJs {
@@ -575,7 +577,7 @@ impl Emulator {
                     .as_ref()
                     .and_then(|_| self.error_line_for(result.pc));
                 serde_wasm_bindgen::to_value(&StepResultJs {
-                    pc: result.pc,
+                    pc: result.pc as f64,
                     halted: result.halted,
                     error: result.error,
                     error_line,
@@ -585,7 +587,7 @@ impl Emulator {
                 .unwrap()
             }
             Err(e) => serde_wasm_bindgen::to_value(&StepResultJs {
-                pc: self.cpu.regs.read_pc(),
+                pc: self.cpu.regs.read_pc() as f64,
                 halted: true,
                 error: Some(e.to_string()),
                 error_line: self.error_line_for(self.cpu.regs.read_pc()),
@@ -604,7 +606,7 @@ impl Emulator {
         let outcome = self.cpu.step_back();
         let (outcome_str, exit_code) = outcome_to_js(&outcome);
         serde_wasm_bindgen::to_value(&StepResultJs {
-            pc: self.cpu.regs.read_pc(),
+            pc: self.cpu.regs.read_pc() as f64,
             halted: self.cpu.is_halted(),
             error: None,
             error_line: None,
@@ -654,7 +656,7 @@ impl Emulator {
                     .take_pending_sleep_ns()
                     .map(|ns| ns as f64 / 1_000_000.0);
                 serde_wasm_bindgen::to_value(&RunResultJs {
-                    pc: result.pc,
+                    pc: result.pc as f64,
                     halted: result.halted,
                     steps_executed: result.steps_executed,
                     hit_breakpoint: result.hit_breakpoint,
@@ -664,7 +666,7 @@ impl Emulator {
                 }).unwrap()
             }
             Err(e) => serde_wasm_bindgen::to_value(&RunResultJs {
-                pc: self.cpu.regs.read_pc(),
+                pc: self.cpu.regs.read_pc() as f64,
                 halted: true,
                 steps_executed: 0,
                 hit_breakpoint: false,
