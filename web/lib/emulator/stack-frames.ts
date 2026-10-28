@@ -67,8 +67,6 @@ export interface FrameRow {
   flags: number;
   fpHit: FrameHit | null;
   lrHit: FrameHit | null;
-  /** The return address of the latest `bl`/`blr` it made, 0 before its first. */
-  lastRet: number;
 }
 
 export interface FramesSnapshot {
@@ -88,7 +86,10 @@ export interface FramesSnapshot {
     step: number;
     pc: number;
     target: number;
-    call: Pick<FrameRow, "index" | "entry" | "retAddr" | "flags" | "lastRet" | "lrHit">;
+    call: Pick<FrameRow, "index" | "entry" | "retAddr" | "flags" | "lrHit"> & {
+      /** The return address of the latest `bl`/`blr` it made, 0 before its first. */
+      lastRet: number;
+    };
   } | null;
   /** main, then the innermost calls, at most 64. */
   frames: FrameRow[];
@@ -98,7 +99,7 @@ export interface FramesSnapshot {
 }
 
 const HEADER = 17;
-const FRAME_ROW = 19;
+const FRAME_ROW = 18;
 
 function hit(step: number, pc: number, element: number, name: number): FrameHit | null {
   if (step === 0) return null;
@@ -126,7 +127,6 @@ export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
       flags: n[r + 9],
       fpHit: hit(n[r + 10], n[r + 11], n[r + 12], n[r + 13]),
       lrHit: hit(n[r + 14], n[r + 15], n[r + 16], n[r + 17]),
-      lastRet: n[r + 18],
     });
   }
   const leftovers: FramesSnapshot["leftovers"] = [];
