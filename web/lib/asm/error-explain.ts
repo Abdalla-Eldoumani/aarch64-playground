@@ -57,7 +57,7 @@ export function explainError(located: string): ErrorExplanation | null {
   const card = /(?:^|\s)([^\s']+'s ret on .* instead of going back to [\s\S]*)$/.exec(message)?.[1];
   if (card && !lower.includes("the playground's ceiling")) {
     return {
-      what: "A function's `ret` sent the program somewhere other than the instruction after the `bl` that called it, so the next fetch found no instruction there.",
+      what: "A function's `ret` sent the program somewhere other than the instruction after the `bl` that called it.",
       why: card,
       fix: card.includes("before saving lr")
         ? "Save lr before the function's first call: start it with `stp fp, lr, [sp, -16]!` and `mov fp, sp`, and end it with `ldp fp, lr, [sp], 16` right before `ret`."
