@@ -373,6 +373,73 @@ function toBadReturn(m: Loaded, limit = 200) {
   return m.context().snapshot.badReturn;
 }
 
+const WRONG_SLOT = `// outer loads lr back from the frame record inner left below it.
+define(fp, x29)
+define(lr, x30)
+.data
+fmt_out:    .string "inner\\n"
+.text
+// inner(): prints a line
+        .balign 4
+        .global inner
+inner:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =fmt_out
+        bl      printf
+        ldp     fp, lr, [sp], 16
+        ret
+// outer(): calls inner (bug: restores fp and lr from inner's old record)
+        .balign 4
+        .global outer
+outer:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      inner
+        ldp     fp, lr, [sp, -16]       // bug: inner's record, not outer's
+        add     sp, sp, 16
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      outer
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+const RECURSIVE_WRONG_SLOT = `// count calls itself down to 0, but loads lr from its callee's slot.
+define(fp, x29)
+define(lr, x30)
+.text
+// count(w0 = n): calls itself n times (bug: lr comes back from the wrong slot)
+        .balign 4
+        .global count
+count:
+        str     lr, [sp, -16]!          // save lr (fp is never set)
+        cbz     w0, count_base
+        sub     w0, w0, 1
+        bl      count
+        ldr     lr, [sp, -16]           // bug: the slot the call below used
+        add     sp, sp, 16
+        ret
+count_base:
+        ldr     lr, [sp], 16
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 2
+        bl      count
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
 // The card says lr went unsaved only when the function called out before
 // storing lr and its ret went right after its own last call. Each program
 // below breaks one half of that, so its fault and its pause keep the
@@ -458,42 +525,7 @@ main:
   // bl inner on line 23. outer's ret on line 26 goes there: right after its
   // own last call, but outer did save lr.
   it("gets no lr cause when lr came back from a callee's old slot", () => {
-    const m = load(`// outer loads lr back from the frame record inner left below it.
-define(fp, x29)
-define(lr, x30)
-.data
-fmt_out:    .string "inner\\n"
-.text
-// inner(): prints a line
-        .balign 4
-        .global inner
-inner:
-        stp     fp, lr, [sp, -16]!
-        mov     fp, sp
-        ldr     x0, =fmt_out
-        bl      printf
-        ldp     fp, lr, [sp], 16
-        ret
-// outer(): calls inner (bug: restores fp and lr from inner's old record)
-        .balign 4
-        .global outer
-outer:
-        stp     fp, lr, [sp, -16]!
-        mov     fp, sp
-        bl      inner
-        ldp     fp, lr, [sp, -16]       // bug: inner's record, not outer's
-        add     sp, sp, 16
-        ret
-        .balign 4
-        .global main
-main:
-        stp     fp, lr, [sp, -16]!
-        mov     fp, sp
-        bl      outer
-        mov     w0, 0
-        ldp     fp, lr, [sp], 16
-        ret
-`);
+    const m = load(WRONG_SLOT);
     expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(26), target: m.lines.lineAddr(24) });
     expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
     const { error } = m.run();
@@ -509,40 +541,128 @@ main:
   // count(2) gets count(1)'s, right after the bl count on line 12, not its
   // own, so count(2)'s ret on line 15 goes astray there.
   it("gets no lr cause in a recursive function that saved lr and loads it from the wrong slot", () => {
-    const m = load(`// count calls itself down to 0, but loads lr from its callee's slot.
+    const m = load(RECURSIVE_WRONG_SLOT);
+    expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(15), target: m.lines.lineAddr(13) });
+    expect(m.context().snapshot.frames).toHaveLength(2);
+    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
+    const { error } = m.run();
+    expect(faultText(error ?? "", m.context(), m.lr(), m.pc())).toBeNull();
+    m.emu.free();
+  });
+});
+
+// A bad return's card is about the call whose ret it was, as that call
+// stood at the ret, at every step after it, however many returns pop it.
+describe("a bad return after a later return pops its call", () => {
+  // Steps: main's stp, mov and bl outer 1 to 3; outer's stp, mov and bl
+  // inner 4 to 6; inner's stp, mov, ldr, bl printf, two trampoline words and
+  // printf 7 to 13, its ldp and ret 14 and 15; outer's ldp, add and ret 16
+  // to 18, the ret going to line 24. The ldp there loads outer's own record,
+  // so the ret at step 21 goes back to main and pops outer. main's mov is
+  // 22, and its ldp, reading above the stack, faults on step 23.
+  it("still names outer and its way back to main", () => {
+    const m = load(WRONG_SLOT);
+    const card = {
+      event: retEvent(m, 26, 21),
+      text: "outer's ret on line 26 went back into outer instead of going back to main at line 33.",
+      cause: null,
+    };
+    m.step(18);
+    expect(m.context().snapshot.badReturn?.step).toBe(18);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.step(3);
+    expect(m.context().snapshot.frames).toHaveLength(1);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    expect(m.run().error).toMatch(/^memory fault: the program tried to read 0x0000000080000000, /);
+    expect(m.context().snapshot.step).toBe(23);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.emu.free();
+  });
+
+  // Steps: main's stp, mov, mov and bl count 1 to 4; count(2)'s str, cbz,
+  // sub and bl 5 to 8, count(1)'s 9 to 12; count(0)'s str and cbz 13 and 14,
+  // its ldr and ret 15 and 16; count(1)'s ldr, add and ret 17 to 19, on its
+  // own return address; count(2)'s 20 to 22, its ret going to line 13. Then
+  // ldr, add and ret 23 to 25 take count(2)'s own lr back to main and pop
+  // it; main's mov is 26, and its ldp faults on step 27.
+  it("still names count in the recursive one", () => {
+    const m = load(RECURSIVE_WRONG_SLOT);
+    const card = {
+      event: retEvent(m, 15, 9),
+      text: "count's ret on line 15 went back into count instead of going back to main at line 26.",
+      cause: null,
+    };
+    m.step(22);
+    expect(m.context().snapshot.badReturn?.step).toBe(22);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.step(3);
+    expect(m.context().snapshot.frames).toHaveLength(1);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.run();
+    expect(m.context().snapshot.step).toBe(27);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.emu.free();
+  });
+
+  // twice keeps lr in x9 and calls add_one on line 17 before storing lr, so
+  // its ret on line 23 goes to line 18, right after that call. Steps: main's
+  // stp, mov, mov and bl twice 1 to 4; twice's mov, mov and bl 5 to 7;
+  // add_one's add and ret 8 and 9; twice's add, cmp, b.lt and ret 10 to 13.
+  // The second time through, add, cmp, b.lt, mov and ret 14 to 18 go back to
+  // main and pop twice; main's mov, ldp and ret 19 to 21 end the program.
+  it("keeps the cause when the call did call out before saving lr", () => {
+    const m = load(`// twice calls add_one before saving lr, so its ret comes back into it.
 define(fp, x29)
 define(lr, x30)
 .text
-// count(w0 = n): calls itself n times (bug: lr comes back from the wrong slot)
+// add_one(w0 = n) -> w0 = n + 1
         .balign 4
-        .global count
-count:
-        str     lr, [sp, -16]!          // save lr (fp is never set)
-        cbz     w0, count_base
-        sub     w0, w0, 1
-        bl      count
-        ldr     lr, [sp, -16]           // bug: the slot the call below used
-        add     sp, sp, 16
+        .global add_one
+add_one:
+        add     w0, w0, 1
         ret
-count_base:
-        ldr     lr, [sp], 16
+// twice(w0 = n) -> w0 = n + 1 (bug: lr is kept in x9, not stored, before the call)
+        .balign 4
+        .global twice
+twice:
+        mov     x9, lr                  // x9 = the way back to main
+        mov     w10, 0                  // times through
+        bl      add_one
+        add     w10, w10, 1
+        cmp     w10, 2
+        b.lt    twice_end               // first time: lr is add_one's way back
+        mov     lr, x9                  // second time: lr back from x9
+twice_end:
         ret
         .balign 4
         .global main
 main:
         stp     fp, lr, [sp, -16]!
         mov     fp, sp
-        mov     w0, 2
-        bl      count
+        mov     w0, 40
+        bl      twice
         mov     w0, 0
         ldp     fp, lr, [sp], 16
         ret
 `);
-    expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(15), target: m.lines.lineAddr(13) });
-    expect(m.context().snapshot.frames).toHaveLength(2);
-    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
-    const { error } = m.run();
-    expect(faultText(error ?? "", m.context(), m.lr(), m.pc())).toBeNull();
+    const card = {
+      event: retEvent(m, 23, 15),
+      text:
+        "twice's ret on line 23 went back into twice instead of going back to main at line 31, " +
+        "because twice called out with `bl add_one` on line 17 before saving lr, so lr still held " +
+        "that call's return address.",
+      cause: "unsaved",
+    };
+    m.step(13);
+    expect(m.context().snapshot.badReturn?.step).toBe(13);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.step(5);
+    expect(m.context().snapshot.frames).toHaveLength(1);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
+    m.run();
+    expect(m.emu.is_halted()).toBe(true);
+    expect(m.context().snapshot.frames).toHaveLength(0);
+    expect(returnCard(m.context(), m.lr())).toEqual(card);
     m.emu.free();
   });
 });
