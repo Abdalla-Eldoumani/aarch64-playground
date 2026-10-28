@@ -620,6 +620,7 @@ export function FullChromeSurface({
       programLoaded={emu.programLoaded}
       blocked={emu.blocked}
       error={controlsError}
+      errorCard={emu.errorCard}
       stepCount={emu.stepCount}
       compact={phone !== null}
       short={short}
