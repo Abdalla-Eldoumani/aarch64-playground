@@ -276,6 +276,37 @@ describe("Controls", () => {
     expect(text).toContain("mnemonic");
   });
 
+  // The fix line follows the card's cause, which the hub hands over beside
+  // the error; the card's words are never read for it. While a run goes,
+  // the held room keeps the same line.
+  it("takes the fix line from the card an error carries", () => {
+    const h = allHandlers();
+    const fault = "memory fault: the program tried to read 0x0000000000400010, which no section covers.";
+    const card = {
+      event: "ret at step 16",
+      text: "show's ret on line 29 went back into show instead of going back to main at line 38.",
+      cause: "unsaved" as const,
+    };
+    const at = (error: string | null, isRunning: boolean, errorCard: typeof card | null) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+        errorCard={errorCard}
+      />
+    );
+    const { rerender, container } = render(at(`${fault} ${card.text}`, false, card));
+    expect(screen.getByRole("alert").textContent).toContain("Save lr before the function's first call");
+    rerender(at(null, true, null));
+    expect(container.querySelector(".invisible")?.textContent).toContain("Save lr before the function's first call");
+    // The same words with no card are the crate's fault, and keep its fix.
+    rerender(at(`${fault} ${card.text}`, false, null));
+    expect(screen.getByRole("alert").textContent).toContain("Watch the base register");
+  });
+
   it("disables step and back until a program is loaded", () => {
     const h = allHandlers();
     render(
