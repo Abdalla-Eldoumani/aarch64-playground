@@ -1,4 +1,5 @@
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
+import type { ProgramLines } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
@@ -99,6 +100,14 @@ export interface EmulatorState {
   /** "line 16", or "ui.s line 269" in a helper file: the line holding the
    *  instruction at `addr` in the program last assembled, else null. */
   lineLabel: (addr: number) => string | null;
+  /** The same lines as places (file, line, text), and back from a line the
+   *  machine reported to its first instruction: the frames view's cards
+   *  quote the instruction and name its function. */
+  programLines: ProgramLines;
+  /** The clobber note rows the latest snapshot brought (`take_clobber_notes`
+   *  numbers), so the frames view can word a caller reading x19 to x28 at
+   *  the step that read it. */
+  noteRows: number[];
   instructions: DecodedInstruction[];
   codeBase: number;
   /**
