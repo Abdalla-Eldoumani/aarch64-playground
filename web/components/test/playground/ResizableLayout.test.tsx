@@ -81,14 +81,16 @@ vi.mock("react-resizable-panels", async () => {
       id,
       minSize,
       defaultSize,
+      elementRef,
       children,
     }: {
       id: string;
       minSize: number | string;
       defaultSize: string;
+      elementRef?: { current: HTMLDivElement | null };
       children?: ReactNode;
     }) => (
-      <div data-panel={id} data-min={minSize} data-size={defaultSize}>
+      <div ref={elementRef} data-panel={id} data-min={minSize} data-size={defaultSize}>
         {children}
       </div>
     ),
@@ -480,5 +482,74 @@ describe("ResizableLayout", () => {
     expect(window.localStorage.getItem(`${KEY}lg`)).toBeNull();
     expect(window.localStorage.getItem(`${KEY}lg-left`)).toBeNull();
     expect(window.localStorage.getItem(`${KEY}lg-right`)).toBeNull();
+  });
+});
+
+describe("the debug column while the stack tab shows the frames", () => {
+  const layout = (framesOpen: boolean, height: "short" | "regular" = "regular") => (
+    <ResizableLayout
+      breakpoint="lg"
+      height={height}
+      editor={<span>EDITOR</span>}
+      disassembly={<span>DISASM</span>}
+      registers={<span>REGS</span>}
+      rightTabs={<span>TABS</span>}
+      framesOpen={framesOpen}
+    />
+  );
+
+  // A split saved before the frames existed (2.8.0 saved only these keys)
+  // gave the tabs a quarter of the column; the frames open on their own.
+  it("opens on its own taller split, and keeps the earlier split for the other tabs", () => {
+    window.localStorage.setItem(`${KEY}lg`, "[52,48]");
+    window.localStorage.setItem(`${KEY}lg-left`, "[66,34]");
+    window.localStorage.setItem(`${KEY}lg-right`, "[75,25]");
+    const { rerender } = render(layout(true));
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("41%");
+    expect(panel("panel-tabs").getAttribute("data-size")).toBe("59%");
+    expect(setLayoutCalls).not.toContainEqual({ "panel-regs": 75, "panel-tabs": 25 });
+    expect(setLayoutCalls).toContainEqual({ "panel-left": 52, "panel-right": 48 });
+    expect(setLayoutCalls).toContainEqual({ "panel-editor": 66, "panel-disasm": 34 });
+    setLayoutCalls.length = 0;
+    rerender(layout(false));
+    expect(setLayoutCalls).toEqual([{ "panel-regs": 75, "panel-tabs": 25 }]);
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[75,25]");
+  });
+
+  it("keeps a dragged height under its own key, through a reload", () => {
+    window.localStorage.setItem(`${KEY}lg-right`, "[75,25]");
+    render(layout(true));
+    drag("panel-regs", { "panel-regs": 30, "panel-tabs": 70 });
+    expect(window.localStorage.getItem(`${KEY}lg-frames`)).toBe("[30,70]");
+    expect(window.localStorage.getItem(`${KEY}lg-right`)).toBe("[75,25]");
+    cleanup();
+    setLayoutCalls.length = 0;
+    render(layout(true));
+    expect(setLayoutCalls).toEqual([{ "panel-regs": 30, "panel-tabs": 70 }]);
+  });
+
+  // Three register rows mid-step: a 209px header and three 19px rows in a
+  // short window, 270px. A 203px pane at 41% puts the column at 495px, so
+  // the registers open on 270 / 495 of it.
+  it("opens the registers tall enough for three rows, but leaves a dragged split alone", () => {
+    const tall = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientHeight");
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.panel === "panel-regs" ? 203 : 0;
+      },
+    });
+    try {
+      render(layout(true, "short"));
+      const opened = setLayoutCalls.find((l) => "panel-regs" in l);
+      expect(opened?.["panel-regs"]).toBeCloseTo((270 / (203 / 0.41)) * 100, 1);
+      cleanup();
+      setLayoutCalls.length = 0;
+      window.localStorage.setItem(`${KEY}lg-frames-short`, "[30,70]");
+      render(layout(true, "short"));
+      expect(setLayoutCalls).toContainEqual({ "panel-regs": 30, "panel-tabs": 70 });
+    } finally {
+      if (tall) Object.defineProperty(HTMLElement.prototype, "clientHeight", tall);
+    }
   });
 });
