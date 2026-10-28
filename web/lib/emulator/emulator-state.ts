@@ -19,6 +19,19 @@ export interface AssemblyError {
   message: string;
 }
 
+/** A finding of the playground's own frame check as `lint_source` hands it
+ *  over: `check` is the rule, the frame's bytes, then each slot's offset and
+ *  width; `names` the function's and the slots' names as written. The editor
+ *  words it (lib/emulator/frame-check.ts). */
+export interface FrameCheckRow {
+  line: number;
+  check: number[];
+  names: string[];
+}
+
+/** One advisory lint row: a worded warning, or a frame check finding. */
+export type LintWarning = AssemblyError | FrameCheckRow;
+
 /** The direct verdict of one assemble attempt, returned to tool callers
  *  (the terminal's gcc) so they never read error state that has not
  *  flushed through React yet. */
@@ -163,8 +176,9 @@ export interface EmulatorState {
   deleteVfsFile: (path: string) => Promise<boolean>;
   resolveLabel: (name: string) => Promise<number | null>;
   /** Pre-assembly structural lint: advisory warnings with a line and a
-   *  one-line remedy. Empty on a wasm build that predates the export. */
-  lint: (source: string) => Promise<AssemblyError[]>;
+   *  one-line remedy, then the frame check's findings. Empty on a wasm
+   *  build that predates the export. */
+  lint: (source: string) => Promise<LintWarning[]>;
   /** Standalone m4 pass for the terminal; null when the WASM predates it. */
   m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   /** Address-based breakpoint setter, used by `gdb b <label>` once the
