@@ -689,6 +689,7 @@ impl Cpu {
                 callbacks,
                 stdout_seen,
                 stderr_seen,
+                steps_total,
                 frames,
             } = self.snapshots.push_slot();
             *halted = self.halted;
@@ -720,6 +721,7 @@ impl Cpu {
             }
             *stdout_seen = self.stdout_seen;
             *stderr_seen = self.stderr_seen;
+            *steps_total = self.steps_total;
             self.frames.record_undo(frames);
             // What the step overwrites lands in the frame's own log
             // buffers, lent out until `step` hands them back once the step
