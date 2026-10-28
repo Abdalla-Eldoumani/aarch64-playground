@@ -15,7 +15,12 @@ export interface RegisterRowProps {
   /** When true the row plays the write flash and tints the value with
    *  `--changed`; the parent sets it for the step in which the register wrote. */
   changed?: boolean;
+  /** A callee-saved register a returning call left changed: the quiet mark,
+   *  a dashed underline on the name. The words come when the caller reads it. */
+  notPutBack?: boolean;
 }
+
+const NOT_PUT_BACK = "a call changed it and did not put it back";
 
 /**
  * One register row. Sizes are em and ch so the panel's zoom scales it. A
@@ -29,6 +34,7 @@ export function RegisterRow({
   value,
   secondary,
   changed = false,
+  notPutBack = false,
 }: RegisterRowProps) {
   return (
     <div
@@ -41,7 +47,15 @@ export function RegisterRow({
           : ""
       }`}
     >
-      <span className="w-[3ch] shrink-0 text-[var(--text-secondary)]">{name}</span>
+      <span
+        className={`w-[3ch] shrink-0 text-[var(--text-secondary)] ${
+          notPutBack ? "underline decoration-[var(--warning)] decoration-dashed underline-offset-2" : ""
+        }`}
+        title={notPutBack ? NOT_PUT_BACK : undefined}
+      >
+        {name}
+        {notPutBack && <span className="sr-only">, {NOT_PUT_BACK}</span>}
+      </span>
       <span className="w-[4ch] shrink-0 text-left text-[var(--text-secondary)]">
         {alias ?? ""}
       </span>
