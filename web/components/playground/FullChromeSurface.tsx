@@ -26,6 +26,7 @@ import { Toolbar } from "@/components/playground/Toolbar";
 import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
 import { usePersistedFlag } from "@/components/panels/register-panel-settings";
 import { BYTES_KEY } from "@/components/playground/StackTab";
+import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
 import {
   MultiFileTabs,
   type SourceFile,
@@ -178,7 +179,7 @@ export function FullChromeSurface({
   const shownPane = phone ? phonePane : activeTab;
   // The stack tab's own copy of the bytes choice switches this one too, and
   // the frames open the debug column taller.
-  const [showBytes] = usePersistedFlag(BYTES_KEY);
+  const [showBytes, setShowBytes] = usePersistedFlag(BYTES_KEY);
   // Mirrors the palette's converter action into the phone layout, where the
   // desktop tab state has nothing to show.
   const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
@@ -188,6 +189,13 @@ export function FullChromeSurface({
     setActiveTab(pane);
     setPaneRequest({ pane, nonce: Date.now() });
   }, []);
+  // A pressed pointer chip opens the stack tab on its frames.
+  const pointer = useSlotPointer(
+    useCallback(() => {
+      requestPane("stack");
+      setShowBytes(false);
+    }, [requestPane, setShowBytes]),
+  );
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   // Counts program deliveries. The checks panel remounts on each, so the last
   // program's run report and note go with it.
@@ -512,6 +520,7 @@ export function FullChromeSurface({
             pc={emu.pc}
             nzcv={emu.nzcv}
             frames={emu.frames}
+            frameLayout={emu.frameLayout}
             running={emu.isRunning}
           />
         </div>
@@ -689,34 +698,36 @@ export function FullChromeSurface({
         </div>
       )}
 
-      <FullLayout
-        breakpoint={bp}
-        phone={phone}
-        height={height}
-        editor={editorBlock}
-        disassembly={disasmBlock}
-        registers={regsBlock}
-        rightTabs={rightTabs}
-        framesOpen={activeTab === "stack" && !showBytes}
-        panes={panes}
-        consoleBlocked={emu.blocked}
-        consoleUnread={consoleUnread}
-        paneRequest={paneRequest ?? undefined}
-        onPaneShown={setPhonePane}
-        runStatus={{
-          programLoaded: emu.programLoaded,
-          isRunning: emu.isRunning,
-          isHalted: emu.isHalted,
-          blocked: emu.blocked,
-          exitCode: emu.exitCode,
-          stepCount: emu.stepCount,
-          failed: controlsError != null,
-          registers: emu.registers,
-          sp: emu.sp,
-          changedRegs: emu.changedRegs,
-        }}
-        controls={controls}
-      />
+      <PointerContext.Provider value={pointer}>
+        <FullLayout
+          breakpoint={bp}
+          phone={phone}
+          height={height}
+          editor={editorBlock}
+          disassembly={disasmBlock}
+          registers={regsBlock}
+          rightTabs={rightTabs}
+          framesOpen={activeTab === "stack" && !showBytes}
+          panes={panes}
+          consoleBlocked={emu.blocked}
+          consoleUnread={consoleUnread}
+          paneRequest={paneRequest ?? undefined}
+          onPaneShown={setPhonePane}
+          runStatus={{
+            programLoaded: emu.programLoaded,
+            isRunning: emu.isRunning,
+            isHalted: emu.isHalted,
+            blocked: emu.blocked,
+            exitCode: emu.exitCode,
+            stepCount: emu.stepCount,
+            failed: controlsError != null,
+            registers: emu.registers,
+            sp: emu.sp,
+            changedRegs: emu.changedRegs,
+          }}
+          controls={controls}
+        />
+      </PointerContext.Provider>
 
       <TutorialRunner
         open={tutorialOpen}
