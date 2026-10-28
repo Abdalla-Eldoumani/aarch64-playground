@@ -900,9 +900,11 @@ fn a_call_out_before_lr_is_saved_is_flagged_and_its_return_goes_astray() {
     let bad = stack.bad_return();
     assert_eq!((bad.pc, bad.target), (ret, ret), "the ret jumps to itself");
     // greet's last call is the bl printf on line 16, so it returns to the
-    // ret: the 19th number of greet's row, after main's row of 19.
+    // ret: the header's bad-return call carries it as its 15th number, and
+    // main's row and greet's follow the header's 17, 18 numbers each.
     assert_eq!(acts[1].last_ret, ret);
-    assert_eq!(view_numbers(&p.view())[17 + 19 + 18], ret as f64);
+    let n = view_numbers(&p.view());
+    assert_eq!((n[14], n.len()), (ret as f64, 17 + 2 * 18));
 }
 
 /// keep saves lr with its stp but never sets fp, and pushes x19 it never
