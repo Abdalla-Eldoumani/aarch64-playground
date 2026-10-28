@@ -6,6 +6,7 @@
  */
 import { ARM64_MNEMONIC_NAMES } from "@/lib/asm/mnemonics";
 import { REPO_URL } from "@/lib/content/site";
+import type { ReturnCard } from "@/lib/emulator/frame-cards";
 
 export type StyleSection =
   | "m4 preprocessing"
@@ -35,7 +36,7 @@ export interface ErrorExplanation {
  * the same teaching block fires whether the error came from
  * assembler/parser/lexer/linker or m4.
  */
-export function explainError(located: string): ErrorExplanation | null {
+export function explainError(located: string, card?: ReturnCard | null): ErrorExplanation | null {
   // The run row leads with where the error is ("line 12: ", "cube.s line 3: "),
   // which the checks below would read as part of the message.
   const message = located.replace(/^(?:\S+ )?line \d+: /, "");
@@ -51,15 +52,14 @@ export function explainError(located: string): ErrorExplanation | null {
       styleSection: "general",
     };
   }
-  // A fault the frames view explained: the hub put its card ("main's ret on
-  // line 21 jumped to ...") where the crate guessed at a base register, so
-  // the card is the why. The step ceiling keeps its own explanation.
-  const card = /(?:^|\s)([^\s']+'s ret on .* instead of going back to [\s\S]*)$/.exec(message)?.[1];
-  if (card && !lower.includes("the playground's ceiling")) {
+  // A stop the frames explained: the hub hands over the card it put where
+  // the crate guessed at a base register (frame-cards.ts), with the cause
+  // the frame shows. The step ceiling keeps its own explanation.
+  if (card?.cause && !lower.includes("the playground's ceiling")) {
     return {
       what: "A function's `ret` sent the program somewhere other than the instruction after the `bl` that called it.",
-      why: card,
-      fix: card.includes("before saving lr")
+      why: card.text,
+      fix: card.cause === "unsaved"
         ? "Save lr before the function's first call: start it with `stp fp, lr, [sp, -16]!` and `mov fp, sp`, and end it with `ldp fp, lr, [sp], 16` right before `ret`."
         : "Keep the write that line makes inside its own variable: a loop over an array must stop at the array's last element, and a buffer a library call fills must be big enough for what it writes. The frames view marks the overwritten box.",
       styleSection: "general",
@@ -327,11 +327,11 @@ const STYLE_GUIDE_URL = `${REPO_URL}/blob/main/docs/cpsc355-style-guide.md`;
  * those backticks into the wrong code spans; its line breaks are kept so the
  * hover reads line for line like the alert under the editor.
  */
-export function errorHoverMarkdown(message: string): string {
+export function errorHoverMarkdown(message: string, card?: ReturnCard | null): string {
   // The four ranges are every ASCII punctuation mark, the set markdown lets a
   // backslash escape; a backslash before a line break keeps the break.
   const raw = message.replace(/[!-/:-@[-`{-~]/g, "\\$&").replace(/\n/g, "\\\n");
-  const explanation = explainError(message);
+  const explanation = explainError(message, card);
   if (!explanation) return raw;
   return [
     `**${raw}**`,
