@@ -35,6 +35,8 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     frames: null,
     frameLayout: null,
     lineLabel: () => null,
+    programLines: { linePlace: () => null, lineAddr: () => null },
+    noteRows: [],
     instructions: [],
     codeBase: 0x400000,
     memoryRegions: [],
