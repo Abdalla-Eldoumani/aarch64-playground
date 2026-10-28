@@ -18,6 +18,7 @@ import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { EmbedLayout } from "@/components/playground/EmbedLayout";
+import { FramesView } from "@/components/playground/lazy-frames";
 import type { SourceFile } from "@/components/playground/MultiFileTabs";
 import { EmbeddableCore, type FirstPress } from "@/components/playground/EmbeddableCore";
 
@@ -441,6 +442,23 @@ export const EmbeddablePlayground = forwardRef<
               pc={IDLE_CPU_VIEW.pc}
               nzcv={IDLE_CPU_VIEW.nzcv}
               headingLevel={registerHeadingLevel}
+            />
+          }
+          // A stack side chosen in another frame on the page shows here too,
+          // as it does in a frame that has engaged but not stepped.
+          stack={
+            <FramesView
+              frames={null}
+              frameLayout={null}
+              registers={IDLE_CPU_VIEW.registers}
+              sp={IDLE_CPU_VIEW.sp}
+              pc={IDLE_CPU_VIEW.pc}
+              getMemory={() => new Uint8Array()}
+              dirtyAddrs={[]}
+              memoryRegions={[]}
+              lineLabel={() => null}
+              programLoaded={false}
+              running={false}
             />
           }
           console={
