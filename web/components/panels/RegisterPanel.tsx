@@ -12,6 +12,7 @@ import {
 import { useZoom } from "@/lib/hooks/use-zoom";
 import { formatWord64 } from "@/lib/emulator/format-hex";
 import { CLOBBER_HEX, isCallLeftover } from "@/lib/emulator/clobber-note";
+import { calleeLeftovers } from "@/lib/emulator/frame-data";
 import type { RegView } from "@/lib/emulator/emulator-state";
 import {
   compactHex,
@@ -56,6 +57,9 @@ interface RegisterPanelProps {
   sp: string;
   pc: number;
   nzcv: number;
+  /** The hub's call stack numbers: x19 to x28 a returning call left changed
+   *  get the quiet mark. */
+  frames?: readonly number[] | null;
   /** Full source text and the line the CPU is on, read only to tell a write
    *  through a v/q spelling from one through a d/s spelling: the register file
    *  is the same, the reading the student asked for is not. `currentLine` is
@@ -184,6 +188,7 @@ export function RegisterPanel({
   sp,
   pc,
   nzcv,
+  frames = null,
   source,
   currentLine = null,
   running = false,
@@ -439,6 +444,8 @@ export function RegisterPanel({
   // N, Z and V come up set, which looks like a bug. The marker is the
   // emulator's stand-in for whatever the real library left there, so the
   // panel says so while any x register still holds it.
+  const leftovers = useMemo(() => calleeLeftovers(frames), [frames]);
+
   const callLeftover = registers
     .slice(0, CALLER_SAVED_X)
     .some((hex) => hex.slice(2).toLowerCase() === CLOBBER_HEX);
@@ -715,6 +722,7 @@ export function RegisterPanel({
                     secondary={dec?.unsigned ? `${dec.unsigned}u` : undefined}
                     alias={ABI_ALIAS[i]}
                     changed={changedRegs.has(i)}
+                    notPutBack={leftovers.includes(i)}
                   />
                 );
               })}
