@@ -92,13 +92,22 @@ pub struct Activation {
     pub lr_hit: Hit,
 }
 
-/// A `ret` that went to no caller's return address.
+/// A `ret` that went to no caller's return address, and the call it
+/// returned from as that call stood at the `ret`: a later return can pop
+/// the call before a snapshot shows the event.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BadReturn {
     /// 0 when no return has gone astray.
     pub step: u64,
     pub pc: u64,
     pub target: u64,
+    /// The call's place in the call stack, 0 for main.
+    pub index: u64,
+    pub entry: u64,
+    pub ret_addr: u64,
+    pub flags: u8,
+    pub last_ret: u64,
+    pub lr_hit: Hit,
 }
 
 /// The calls the program is inside, main first.
@@ -354,7 +363,18 @@ impl CallStack {
             }
             return 0;
         }
-        self.bad_return = BadReturn { step, pc, target };
+        let call = self.acts.last().copied().unwrap_or_default();
+        self.bad_return = BadReturn {
+            step,
+            pc,
+            target,
+            index: self.acts.len().saturating_sub(1) as u64,
+            entry: call.entry,
+            ret_addr: call.ret_addr,
+            flags: call.flags,
+            last_ret: call.last_ret,
+            lr_hit: call.lr_hit,
+        };
         0
     }
 
@@ -592,6 +612,13 @@ pub fn view_numbers(v: &FrameView) -> Vec<f64> {
         v.bad_return.target as f64,
         v.frames.len() as f64,
         v.leftovers.len() as f64,
+        v.bad_return.index as f64,
+        v.bad_return.entry as f64,
+        v.bad_return.ret_addr as f64,
+        f64::from(v.bad_return.flags),
+        v.bad_return.last_ret as f64,
+        v.bad_return.lr_hit.step as f64,
+        v.bad_return.lr_hit.pc as f64,
     ];
     let element = |e: Option<(i64, Option<u32>)>| match e {
         Some((index, name)) => [index as f64, name.map_or(-1.0, f64::from)],
