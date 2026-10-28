@@ -179,7 +179,7 @@ export function EmbedLayout({
           }}
         />
       </div>
-      <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {args && (
             // The next run assembles with whatever this holds, so a student
@@ -263,17 +263,19 @@ export function EmbedLayout({
         {/* A fault must be visible here too: full chrome surfaces the
             machine's error through Controls, and without this line an
             embedded run that faults just stops silently. It wraps rather
-            than ending in an ellipsis: a phone has no hover for a title. */}
+            than ending in an ellipsis: a phone has no hover for a title.
+            With under 12rem beside the buttons it drops below them instead
+            of wrapping a letter a line. */}
         {error && (
           <p
             role="alert"
-            className="min-w-0 flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
+            className="min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
           >
             {error}
           </p>
         )}
         {stopReason && !error && (
-          <p role="status" className="min-w-0 flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]">
+          <p role="status" className="min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]">
             {stopReason}
           </p>
         )}
