@@ -5,6 +5,7 @@ import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
 import { at, clobberNoteTexts, place } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
+import type { ProgramLines } from "@/lib/emulator/frame-cards";
 import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type {
   AssembleOutcome,
@@ -16,6 +17,7 @@ import {
   emptyLineMap,
   isEmptyLineMap,
   parseLineMap,
+  lineToAddrFromMap,
   pcToSourceLineFromMap,
   type LineMap,
 } from "@/lib/emulator/line-map";
@@ -131,10 +133,23 @@ export function useEmulator(): EmulatorState {
   const frameLayoutRef = useRef<FrameLayoutPayload | null>(null);
   // Why the last goal run stopped, shown until the step count moves.
   const [stop, setStop] = useState<{ text: string; at: number } | null>(null);
+  const programLines = useMemo<ProgramLines>(
+    () => ({
+      linePlace: (addr) => {
+        const line = pcToSourceLineFromMap(addr, lineMapRef.current);
+        return line == null ? null : place(line, workspaceRef.current);
+      },
+      lineAddr: (line) => lineToAddrFromMap(line, lineMapRef.current),
+    }),
+    [],
+  );
   const lineLabel = useCallback((addr: number) => {
-    const line = pcToSourceLineFromMap(addr, lineMapRef.current);
-    return line == null ? null : at(place(line, workspaceRef.current));
-  }, []);
+    const p = programLines.linePlace(addr);
+    return p && at(p);
+  }, [programLines]);
+  // The clobber note rows the latest snapshot brought: the frames view words
+  // a caller reading x19 to x28 at the step that read it.
+  const [noteRows, setNoteRows] = useState<number[]>(NO_LINES);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
@@ -257,8 +272,16 @@ export function useEmulator(): EmulatorState {
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
     setFrames(snap.frames ?? null);
     // Worded against the files just assembled, whose joined lines the rows name.
-    if (snap.clobberNotes?.length) {
-      appendNotes(clobberNoteTexts(snap.clobberNotes, workspaceRef.current));
+    const rows = snap.clobberNotes?.length ? snap.clobberNotes : NO_LINES;
+    setNoteRows(rows);
+    if (rows.length) {
+      appendNotes(clobberNoteTexts(rows, workspaceRef.current));
+      // Rows for x19 to x28 are a caller reading what a call left changed,
+      // worded in a chunk of their own.
+      void import("@/lib/emulator/frame-cards").then(({ calleeCards }) => {
+        const cards = calleeCards(rows, programLines, frameLayoutRef.current);
+        if (cards.length) appendNotes(cards);
+      });
     }
     // An external call shows only while paused: a run passes through one on
     // every printf, and showing it mid-run would flicker the card and drag
@@ -310,6 +333,7 @@ export function useEmulator(): EmulatorState {
     codeBase,
     invalidateMemory,
     markCurrentLine,
+    programLines,
     syncSeen,
   ]);
 
@@ -530,13 +554,27 @@ export function useEmulator(): EmulatorState {
    * call site instead of at nothing.
    */
   const surfaceRuntimeError = useCallback((message: string, line?: number | null) => {
-    if (line != null && line > 0) {
-      setError(`line ${line}: ${message}`);
-      setAssemblyErrors([{ line, message }]);
-    } else {
-      setError(message);
-    }
-  }, []);
+    const show = (text: string) => {
+      if (line != null && line > 0) {
+        setError(`line ${line}: ${text}`);
+        setAssemblyErrors([{ line, message: text }]);
+      } else {
+        setError(text);
+      }
+    };
+    // After a ret that went to no caller (frames header slot 5), the frame
+    // may show the cause: then its card stands in for the crate's guess, in
+    // the console too. Said once, so the raw text waits for the words.
+    const snap = snapRef.current;
+    if (!snap?.frames?.[5]) return show(message);
+    void import("@/lib/emulator/frame-cards").then(({ cardContext, faultText }) => {
+      if (snapRef.current !== snap) return;
+      const ctx = cardContext(snap.frames ?? null, frameLayoutRef.current, programLines);
+      const said = ctx && faultText(message, ctx, BigInt(snap.registers[30] ?? 0), BigInt(snap.pc));
+      show(said ? said.error : message);
+      if (said) appendNotes([said.card]);
+    });
+  }, [appendNotes, programLines]);
 
   const step = useCallback(() => {
     const backend = backendRef.current;
@@ -689,7 +727,7 @@ export function useEmulator(): EmulatorState {
         // The words load only when a goal run first stops, so no page that
         // never steps over ships them.
         const { stopReason } = await import("@/lib/emulator/stop-reason");
-        const said = stopReason(goal.target, runResult, snapshot, frameLayoutRef.current, lineLabel);
+        const said = stopReason(goal.target, runResult, snapshot, frameLayoutRef.current, programLines);
         if (said?.problem) setError(said.text);
         else if (said) setStop({ text: said.text, at });
         return said?.text ?? null;
@@ -704,7 +742,7 @@ export function useEmulator(): EmulatorState {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [lineLabel, markCurrentLine, pushReplayFrame, surfaceRuntimeError]);
+  }, [markCurrentLine, programLines, pushReplayFrame, surfaceRuntimeError]);
 
   // Step over and step out aim at a call depth, run to cursor at the
   // instruction the line stands for.
@@ -838,6 +876,8 @@ export function useEmulator(): EmulatorState {
       frames,
       frameLayout,
       lineLabel,
+      programLines,
+      noteRows,
       instructions,
       codeBase,
       memoryRegions,
@@ -899,7 +939,7 @@ export function useEmulator(): EmulatorState {
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
-      currentLine, externalCall, frames, frameLayout, lineLabel, instructions, codeBase, memoryRegions,
+      currentLine, externalCall, frames, frameLayout, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
