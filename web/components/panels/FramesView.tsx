@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { formatWord32 } from "@/lib/emulator/format-hex";
-import { calleeCards, returnCard, writeCards } from "@/lib/emulator/frame-cards";
+import { calleeCards, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
 import {
   decodeFrameLayout,
   decodeFrames,
@@ -11,6 +11,7 @@ import {
   rangesToRead,
   wordAt,
   type BoxKind,
+  type StackBytes,
 } from "@/lib/emulator/stack-frames";
 
 type FramesViewProps = Pick<
@@ -26,7 +27,7 @@ type FramesViewProps = Pick<
   | "lineLabel"
   | "programLoaded"
 > &
-  Partial<Pick<EmulatorState, "programLines" | "noteRows">> & { running: boolean };
+  Partial<Pick<EmulatorState, "programLines" | "noteRows" | "readMemory">> & { running: boolean };
 
 // The cards' inputs before a program has run: an embed's idle stack side.
 const NO_LINES: EmulatorState["programLines"] = { linePlace: () => null, lineAddr: () => null };
@@ -66,6 +67,7 @@ export function FramesView({
   lineLabel,
   programLines = NO_LINES,
   noteRows = NO_ROWS,
+  readMemory,
   programLoaded,
   running,
 }: FramesViewProps) {
@@ -87,16 +89,37 @@ export function FramesView({
         lineLabel,
       })
     : null;
+  // A write card quotes the slot's new word as the machine holds it: the
+  // bytes above come from the panel cache, which answers zeros until its own
+  // read lands, and a card worded from those was painted and said twice.
+  const [slotWords, setSlotWords] = useState<{ frames: readonly number[]; bytes: StackBytes[] } | null>(null);
+  useEffect(() => {
+    const slots = snapshot ? writtenSlots(snapshot) : [];
+    if (!frames || !readMemory || slots.length === 0) return;
+    let live = true;
+    Promise.all(slots.map(({ addr }) => readMemory(addr, 8))).then(
+      (read) => {
+        if (live) setSlotWords({ frames, bytes: slots.map(({ addr }, i) => ({ addr, bytes: read[i] })) });
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [frames, snapshot, readMemory]);
+  const written = slotWords?.frames === frames ? slotWords.bytes : [];
+
   // What went wrong, under the frames: a write over a caller's saved fp or
   // lr at the step that made it, a ret that went to no caller from then on,
   // and a caller reading x19 to x28 a call left changed at the step it read.
   const context = snapshot && { ...programLines, snapshot, layout };
-  const cards = context
+  const ret = context && returnCard(context, BigInt(registers[30] ?? 0));
+  const cards: Card[] = context
     ? [
-        ...writeCards(context, (addr) => wordAt(memory, addr)),
-        returnCard(context, BigInt(registers[30] ?? 0)),
+        ...writeCards(context, (addr) => wordAt(written, addr)),
+        ...(ret ? [ret] : []),
         ...calleeCards(noteRows, programLines, frameLayout),
-      ].filter((card): card is string => card != null)
+      ]
     : [];
 
   // A call or a return is said once, after the step that made it; a run
@@ -106,10 +129,13 @@ export function FramesView({
   const depth = stack?.depth ?? 0;
   const step = snapshot?.step ?? 0;
   const innermost = stack?.frames[stack.frames.length - 1]?.name ?? "";
-  const [seen, setSeen] = useState({ depth, innermost, running, step });
+  const [seen, setSeen] = useState({ depth, innermost, running, step, byRun: false });
   const [said, setSaid] = useState({ text: "", count: 0 });
-  if (seen.depth !== depth || seen.running !== running || seen.step !== step) {
-    setSeen({ depth, innermost, running, step });
+  const moved = seen.depth !== depth || seen.running !== running || seen.step !== step;
+  // A run brought the machine here: the run row says why it stopped.
+  const byRun = moved ? running || seen.running : seen.byRun;
+  if (moved) {
+    setSeen({ depth, innermost, running, step, byRun });
     const back = step === seen.step - 1;
     if (depth !== seen.depth && !running && !seen.running && depth > 0 && seen.depth > 0 && (back || step > seen.step)) {
       const text =
@@ -123,21 +149,28 @@ export function FramesView({
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
-  // A card is said once, when it first shows, without the backticks that
-  // mark its code; a run's stop says its own in the run row's alert.
-  const cardText = cards.join(" ");
-  const [seenCards, setSeenCards] = useState(cardText);
-  if (seenCards !== cardText) {
-    setSeenCards(cardText);
-    if (cardText && !running) setSaid((prev) => ({ text: cardText.replaceAll("`", ""), count: prev.count + 1 }));
+  // A card is said once, when its event first shows, without the backticks
+  // that mark its code; not when a run brought it, as the call and return
+  // words are not, since the run row's alert says a run's stop.
+  const events = cards.map((card) => card.event);
+  const cardKey = events.join("\n");
+  const [heard, setHeard] = useState(events);
+  if (heard.join("\n") !== cardKey) {
+    setHeard(events);
+    const fresh = cards.filter((card) => !heard.includes(card.event));
+    if (fresh.length > 0 && !byRun) {
+      const text = fresh.map((card) => card.text).join(" ").replaceAll("`", "");
+      setSaid((prev) => ({ text, count: prev.count + 1 }));
+    }
   }
 
   // While stepping, what the step wrote stays in view (a write over a
   // caller's frame is the bug to see), with the rest of its call when that
   // fits, else the innermost call: the nearest edge, or the low end, where
-  // sp is, of anything taller than the box. Written to this box alone, so
-  // the page never scrolls under the reader. A rotation or a resize of the
-  // window or the pane brings it back the same way.
+  // sp is, of anything taller than the box. The cards come along when they
+  // fit beside it, and stay a scroll away when not. Written to this box
+  // alone, so the page never scrolls under the reader. A rotation or a
+  // resize of the window or the pane brings it back the same way.
   const boxRef = useRef<HTMLDivElement>(null);
   const innermostRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -151,10 +184,11 @@ export function FramesView({
       const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
       const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
       if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
-      // The cards come along when they fit, and alone when nothing else does.
       const cards = box.querySelector<HTMLElement>("[data-cards]");
-      const tries = [calls, wrote].filter((t) => t.length > 0).map((t) => (cards ? [...t, cards] : t));
-      if (cards) tries.push([cards]);
+      const anchors = [calls, wrote].filter((t) => t.length > 0);
+      const tries = cards ? [...anchors.map((t) => [...t, cards]), ...anchors] : anchors;
+      // With no call drawn, the cards alone.
+      if (tries.length === 0 && cards) tries.push([cards]);
       if (tries.length === 0) return;
       const spans = tries.map(span);
       const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
@@ -167,7 +201,7 @@ export function FramesView({
     const observer = new ResizeObserver(reveal);
     observer.observe(box);
     return () => observer.disconnect();
-  }, [frames, noteRows, running]);
+  }, [frames, cardKey, running]);
 
   const idle = !programLoaded
     ? "Step through the program to watch each call's frame being built."
@@ -272,7 +306,7 @@ export function FramesView({
               </svg>
               {/* Backticks mark an instruction as written. */}
               <span className="min-w-0 break-words">
-                {card.split("`").map((part, k) => (k % 2 ? <code key={k} className="font-mono text-[12px]">{part}</code> : part))}
+                {card.text.split("`").map((part, k) => (k % 2 ? <code key={k} className="font-mono text-[12px]">{part}</code> : part))}
               </span>
             </li>
           ))}
