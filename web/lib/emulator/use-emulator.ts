@@ -600,6 +600,8 @@ export function useEmulator(): EmulatorState {
       .then(async ({ stepResult }) => {
         if (stepResult.error && snapRef.current?.frames?.[5] && !frameCards) await loadFrameCards();
         if (stepResult.error) surfaceRuntimeError(stepResult.error, stepResult.error_line);
+        // A goal sent in the same task counts on from here before this renders.
+        stepCountRef.current += 1;
         setStepCount((c) => {
           const next = c + 1;
           // currentLineRef + latestSnapRef are already updated because
@@ -624,7 +626,10 @@ export function useEmulator(): EmulatorState {
     setError(null);
     movingRef.current = backend
       .stepBack()
-      .then(() => setStepCount((c) => Math.max(0, c - 1)))
+      .then(() => {
+        stepCountRef.current = Math.max(0, stepCountRef.current - 1);
+        setStepCount((c) => Math.max(0, c - 1));
+      })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
       });
