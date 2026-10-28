@@ -1,9 +1,11 @@
 import type { StepTarget } from "@/lib/emulator/emulator-state";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { formatSteps } from "@/lib/emulator/format-steps";
 import { decodeFrameLayout, decodeFrames, LR_UNSAVED } from "@/lib/emulator/stack-frames";
 import type { RunResultPayload, StateSnapshot } from "@/lib/worker/protocol";
 
-/** Why a goal run stopped; `problem` is a bug in the program, said as an error. */
+/** Why a goal run stopped; `problem` goes in the error line, as a bug in the
+ *  program or a long run's pause does. */
 export interface StopWords {
   text: string;
   problem: boolean;
@@ -49,7 +51,14 @@ export function stopReason(
     return said(snap.exitCode == null ? "the program stopped" : `the program exited with code ${snap.exitCode}`);
   }
   if (result.hit_breakpoint) return said(`stopped at the breakpoint on ${here}`);
-  if (result.step_limit_reached) return said("hit the step limit");
+  if (result.step_limit_reached) {
+    const goal = typeof target === "number" ? "run to cursor" : target === "over" ? "step over" : "step out";
+    return said(
+      `paused after ${formatSteps(result.steps_executed)}, before the ${goal} finished. ${goal} again to go on, ` +
+        "or check for a loop whose exit condition never becomes true",
+      true,
+    );
+  }
   if (!result.reached) return said(`paused at ${here}`);
   if (target === "out") return said(`returned to ${name} at ${here}`);
   return result.steps_executed > 1 ? said(`reached ${here}`) : null;
