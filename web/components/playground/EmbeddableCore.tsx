@@ -763,6 +763,7 @@ export function EmbeddableCore({
             lineLabel={emu.lineLabel}
             programLines={emu.programLines}
             noteRows={emu.noteRows}
+            errorCard={emu.errorCard}
             programLoaded={emu.programLoaded}
             running={emu.isRunning}
           />
