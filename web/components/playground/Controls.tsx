@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { explainError } from "@/lib/asm/error-explain";
 import type { StepGoal } from "@/lib/emulator/emulator-state";
+import type { ReturnCard } from "@/lib/emulator/frame-cards";
 import { formatSteps } from "@/lib/emulator/format-steps";
 
 // The keys page.tsx binds: F10 is step, so its Ctrl forms run further.
@@ -44,6 +45,9 @@ interface ControlsProps {
    *  genuinely escape the wait by starting over. */
   blocked?: boolean;
   error: string | null;
+  /** The frames' card `error` carries (the hub's `errorCard`): the fix
+   *  line comes from its cause. */
+  errorCard?: ReturnCard | null;
   stepCount?: number;
   /** The phone row: five buttons sharing the width, no key chips, and no
    *  step counter or halted chip, which the phone's status line carries. The
@@ -73,6 +77,7 @@ export function Controls({
   programLoaded,
   blocked = false,
   error,
+  errorCard = null,
   stepCount,
   compact = false,
   short = false,
@@ -89,11 +94,11 @@ export function Controls({
   // While a run goes, the last stop's alert keeps its room, unseen, so the
   // panes below do not drop away and come back on each press: on an iPad,
   // WebKit then reports the panel group's resize as a ResizeObserver loop.
-  const [held, setHeld] = useState<string | null>(null);
-  if (error && error !== held) setHeld(error);
+  const [held, setHeld] = useState<{ error: string; card: ReturnCard | null } | null>(null);
+  if (error && error !== held?.error) setHeld({ error, card: errorCard });
   else if (!error && !isRunning && held) setHeld(null);
-  const shown = error ?? (isRunning ? held : null);
-  const explanation = shown ? explainError(shown) : null;
+  const shown = error ?? (isRunning && held ? held.error : null);
+  const explanation = shown ? explainError(shown, error ? errorCard : held?.card) : null;
 
   // On a phone the five buttons share the row, assemble a little wider for
   // its longer word, so all five fit a 320px screen with nothing to scroll.
