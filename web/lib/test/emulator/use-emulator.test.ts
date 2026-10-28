@@ -1320,6 +1320,24 @@ describe("useEmulator stepping and running", () => {
     expect(fake.calls.until).toEqual([{ depth: 3 }]);
   });
 
+  it("says why a step over sent right after a step stopped", async () => {
+    // Both sent in one task: the step's count has not rendered when the
+    // step over stops four steps on, at line 11.
+    const fake = makeBackend({
+      runResult: { pc: CODE_BASE + 8, halted: false, steps_executed: 4, hit_breakpoint: false, error: null, reached: true },
+      runSnapshot: { pc: toHex(CODE_BASE + 8), frames: THREE_DEEP },
+    });
+    const { result } = await mountAssembled(fake);
+    fake.backend.step = () =>
+      Promise.resolve({ stepResult: fake.cfg.stepResult, snapshot: fake.fire({ frames: THREE_DEEP }) });
+    await act(async () => {
+      result.current.step();
+      await result.current.runUntil("over");
+    });
+    expect(result.current.stepCount).toBe(5);
+    expect(result.current.stopReason).toBe("reached line 11");
+  });
+
   it("run sets the running flag until the backend resolves", async () => {
     const fake = makeBackend({ runDeferred: true });
     const { result } = await mountAssembled(fake);
