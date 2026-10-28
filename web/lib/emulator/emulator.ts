@@ -1,5 +1,6 @@
 import { formatWord64 } from "@/lib/emulator/format-hex";
 import { readFrameLayout, readFrames, type FrameExports, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -315,10 +316,10 @@ export class EmulatorInstance {
 
   /** Pre-assembly structural lint warnings; [] on a wasm build that
    *  predates the export (feature-detected, never throws). */
-  lintSource(source: string): Array<{ line: number; message: string }> {
+  lintSource(source: string): LintWarning[] {
     const probe = (this.inner as { lint_source?: (s: string) => unknown }).lint_source;
     if (typeof probe !== "function") return [];
-    return probe.call(this.inner, source) as Array<{ line: number; message: string }>;
+    return probe.call(this.inner, source) as LintWarning[];
   }
 
   /** Run the m4 pass alone (the terminal's `m4` command). Null when the
