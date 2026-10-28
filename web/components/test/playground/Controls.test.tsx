@@ -226,6 +226,38 @@ describe("Controls", () => {
     expect(second.className).toContain("anim-error-shake");
   });
 
+  it("keeps the last alert's room, unseen and unsaid, while a run goes", () => {
+    const h = allHandlers();
+    const at = (error: string | null, isRunning: boolean) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+      />
+    );
+    const pause = "paused after 1,000,000 steps without finishing.";
+    const { rerender, container } = render(at(pause, false));
+    const said = screen.getByRole("alert");
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    const held = container.querySelector('.invisible[aria-hidden="true"]');
+    expect(held?.textContent).toContain(pause);
+    // The same words at the next pause are a new alert, said and shaken again.
+    rerender(at(pause, false));
+    const again = screen.getByRole("alert");
+    expect(again).not.toBe(said);
+    expect(again.className).toContain("anim-error-shake");
+    expect(container.querySelector(".invisible")).toBeNull();
+    // A run that ends without a stop to say leaves no room behind.
+    rerender(at(null, true));
+    rerender(at(null, false));
+    expect(container.querySelector('[aria-hidden="true"].invisible')).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("surfaces a plain-language recovery hint for a recognized error", () => {
     const h = allHandlers();
     render(
