@@ -518,8 +518,8 @@ body:has(> .playground-shell) {
 .embed-status {
   display: none;
 }
-/* Step over, step out and run to cursor sit in the run row; "more" shows only
-   in the single-pane frame. */
+/* Step over, step out and run to cursor sit in the run row; the ellipsis that
+   hides them shows only in the single-pane frame. */
 .embed-more {
   display: none;
 }
@@ -587,8 +587,8 @@ body:has(> .playground-shell) {
     .embed-grid:not([data-pane="console"]) .embed-area-console {
       display: none;
     }
-    /* Step over, step out and run to cursor wait behind "more", a row of
-       their own once opened, so the run row stays one line on a phone. */
+    /* Step over, step out and run to cursor wait behind an ellipsis, a row
+       of their own once opened, so the run row stays one line on a phone. */
     .embed-more {
       display: block;
     }
@@ -600,6 +600,10 @@ body:has(> .playground-shell) {
       flex-basis: 100%;
       gap: 0.5rem;
       order: 1;
+    }
+    /* Sized by their labels, so "run to cursor" keeps to one line. */
+    .embed-goals[data-open] > button {
+      flex: 1 1 auto;
     }
   }
 }
