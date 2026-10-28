@@ -34,11 +34,11 @@ describe("wordLint", () => {
   it("says whether a slot sits on the saved fp, the saved lr, or both", () => {
     const on = (offset: number, width: number) => ({ line: 9, check: [2, 32, offset, width, 0, 0], names: ["sum", "x_s", ""] });
     expect(wordLint([on(0, 8), on(8, 4), on(4, 8)]).map((w) => w.message)).toEqual([
-      "frame check: x_s (8 bytes at 0 to 7) sits on the saved fp (bytes 0 to 7), which sum needs to return. Locals start at 16, above the saved fp and lr." +
+      "frame check: x_s (8 bytes at 0 to 7) sits on the saved fp (bytes 0 to 7), which the caller gets back when sum returns. Locals start at 16, above the saved fp and lr." +
         TAIL,
       "frame check: x_s (4 bytes at 8 to 11) sits on the saved lr (bytes 8 to 15), which sum needs to return. Locals start at 16, above the saved fp and lr." +
         TAIL,
-      "frame check: x_s (8 bytes at 4 to 11) sits on the saved fp and lr (bytes 0 to 15), which sum needs to return. Locals start at 16, above the saved fp and lr." +
+      "frame check: x_s (8 bytes at 4 to 11) sits on the saved fp and lr (bytes 0 to 15): sum needs lr to return, and the caller gets fp back when sum returns. Locals start at 16, above the saved fp and lr." +
         TAIL,
     ]);
   });
