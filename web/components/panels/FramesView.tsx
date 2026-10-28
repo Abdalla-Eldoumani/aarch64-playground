@@ -218,10 +218,14 @@ export function FramesView({
       box.scrollTop = bottom - box.clientHeight;
     } else if (top < box.scrollTop) box.scrollTop = top;
   });
+  // Only the machine moving lets a held slot go: a write card whose word
+  // lands after the press leaves it held.
+  useEffect(() => {
+    slotHeld.current = false;
+  }, [frames, running]);
   useEffect(() => {
     const box = boxRef.current;
     if (!box || running) return;
-    slotHeld.current = false;
     reveal();
     if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => reveal());
