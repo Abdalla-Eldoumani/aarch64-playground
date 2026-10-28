@@ -104,6 +104,8 @@ export function useDebugPanes({
             dirtyAddrs={emu.dirtyAddrs}
             memoryRegions={emu.memoryRegions}
             lineLabel={emu.lineLabel}
+            programLines={emu.programLines}
+            noteRows={emu.noteRows}
             programLoaded={emu.programLoaded}
             running={emu.isRunning}
           />
