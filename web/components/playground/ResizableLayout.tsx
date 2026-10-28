@@ -87,9 +87,9 @@ export const DEBUG_SPLIT: SplitSpec = {
 // a 48-byte frame of three locals shows whole: drawn in full at 1440x900,
 // a line a box in a short window (FramesView). The registers still open on
 // three rows: mid-step their header is 209px in a short window (the decode
-// strip's short form) and 227px otherwise, plus three 19px rows; under a
-// coarse pointer the 44px targets and a wrapping gloss make it 251 to 288px
-// on an iPad Mini.
+// strip's short form) and 227px otherwise, plus three 19px rows. Under a
+// coarse pointer (an iPad Mini) the decode strip's two-line gloss, the
+// replay bar and a three-row header leave three rows only from 400px.
 // Saved under a key of its own, so a split saved before the frames existed
 // never hides them.
 export const FRAMES_SPLIT: SplitSpec = {
@@ -97,7 +97,7 @@ export const FRAMES_SPLIT: SplitSpec = {
   defaults: [41, 59],
   byHeight: { tall: [44, 56] },
   openFloor: { short: 270, regular: 288 },
-  coarseOpenFloor: 360,
+  coarseOpenFloor: 400,
 };
 
 // A bare <Separator /> is a zero-width transparent div, so the band is drawn
