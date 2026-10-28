@@ -290,6 +290,26 @@ struct LintWarningJs {
     message: String,
 }
 
+/// One `frames::check` finding as `lint_source` hands it over: `check` is
+/// the rule, the frame's bytes, then each slot's offset and width (0 and 0
+/// for none); `names` the function's and the slots' names as written ("" for
+/// none).
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct FrameCheckJs<'a> {
+    line: u32,
+    check: [f64; 6],
+    names: [&'a str; 3],
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+#[serde(untagged)]
+enum LintJs<'a> {
+    Lint(LintWarningJs),
+    Frame(FrameCheckJs<'a>),
+}
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct M4ResultJs {
@@ -732,14 +752,27 @@ impl Emulator {
     }
 
     /// Pre-assembly structural lint: advisory warnings, each with a line
-    /// and a one-line remedy. Never blocks assembling; serialized as
-    /// `[{ line, message }, ...]`.
+    /// and a one-line remedy, as `{ line, message }`, then the playground's
+    /// own frame check (`frames::check`, on a copy assembled aside) as
+    /// `FrameCheckJs` rows for the web to word. Never blocks assembling and
+    /// touches no machine state.
     pub fn lint_source(&self, source: &str) -> JsValue {
-        let warnings: Vec<LintWarningJs> = frontend::lint::lint(source)
+        let (check, names) = frames::check::check_source(source, &self.cpu.host);
+        let name = |i: Option<u32>| i.and_then(|i| names.get(i as usize)).map_or("", String::as_str);
+        let slot = |s: Option<frames::layout::NamedSlot>| s.map_or([0.0; 2], |s| [s.offset as f64, f64::from(s.width)]);
+        let rows: Vec<LintJs> = frontend::lint::lint(source)
             .into_iter()
-            .map(|w| LintWarningJs { line: w.line, message: w.message })
+            .map(|w| LintJs::Lint(LintWarningJs { line: w.line, message: w.message }))
+            .chain(check.findings.into_iter().map(|f| {
+                let ([a, b], [c, d]) = (slot(f.first), slot(f.second));
+                LintJs::Frame(FrameCheckJs {
+                    line: f.line,
+                    check: [f64::from(f.rule), f.frame_bytes as f64, a, b, c, d],
+                    names: [name(f.function), name(f.first.map(|s| s.name)), name(f.second.map(|s| s.name))],
+                })
+            }))
             .collect();
-        serde_wasm_bindgen::to_value(&warnings).unwrap()
+        serde_wasm_bindgen::to_value(&rows).unwrap()
     }
 
     /// Run only the m4 pass, as `assemble_and_load` would, for the terminal's
