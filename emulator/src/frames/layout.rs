@@ -4,6 +4,8 @@
 //! text the student wrote (`a_s` in `str w9, [fp, a_s]`). The view places
 //! the slots under each activation's frame record.
 
+use std::collections::HashMap;
+
 use crate::decoder::{self, BrRegOp, DpOp, IndexMode, Instruction as I, LdStOffset, LdStOp, LdStPairOp, MemSize};
 use crate::frontend::lexer::{lex, TokenKind};
 use crate::frontend::lint::split_functions;
@@ -36,9 +38,17 @@ pub struct FunctionLayout {
     /// It stores x29 and x30 to the stack, so an activation that has not
     /// done so yet is just entered rather than a leaf.
     pub makes_record: bool,
+    /// It opens with the course's frame (`stp x29, x30, [sp, -N]!`, then
+    /// `mov x29, sp`) and changes sp and x29 nowhere else but in an
+    /// `ldp x29, x30, [sp], M`: the functions the frame check reads.
+    pub course_frame: bool,
     /// By offset.
     pub slots: Vec<Slot>,
     pub arrays: Vec<ArrayBase>,
+    /// Each x29 offset written as a name, once per name and offset: the
+    /// frame check's slots. Unlike `slots`, two names at one offset stay
+    /// two entries.
+    pub named: Vec<NamedSlot>,
     /// The register-offset accesses through an array base: the pc and the
     /// index of its base in `arrays`.
     elements: Vec<(u64, usize)>,
@@ -56,6 +66,20 @@ pub struct Slot {
     pub name: Option<u32>,
     /// `field` in that second form.
     pub field: Option<u32>,
+}
+
+/// An access through x29 at an offset the program wrote as a name (`a_s`
+/// in `str w9, [fp, a_s]`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NamedSlot {
+    pub offset: i64,
+    /// The widest access to it.
+    pub width: u8,
+    pub name: u32,
+    /// The first access at that width.
+    pub pc: u64,
+    /// Some access writes it.
+    pub stored: bool,
 }
 
 /// A register set by `add xN, x29, base` and indexed by a register
@@ -142,7 +166,7 @@ pub fn frame_layout(source: &str, image: &LinkedImage, mem: &Memory) -> FrameLay
             starts.insert(at, (main, "main".to_string()));
         }
     }
-    let scan = Scan { mem, lines: &image.line_map, source: source.lines().collect() };
+    let scan = Scan { mem, lines: &image.line_map, symbols: &image.symbols, source: source.lines().collect() };
     let mut names = Vec::new();
     let functions = (0..starts.len())
         .map(|i| {
@@ -167,16 +191,23 @@ struct Scan<'a> {
     mem: &'a Memory,
     /// `(pc, editor line)` in address order, as the linker emits it.
     lines: &'a [(u64, u32)],
+    /// Labels at their addresses and equates at their values.
+    symbols: &'a HashMap<String, u64>,
     source: Vec<&'a str>,
+}
+
+/// The editor line of the instruction at `pc` in the linker's line map, 0
+/// for none.
+pub fn line_at(lines: &[(u64, u32)], pc: u64) -> u32 {
+    match lines.get(lines.partition_point(|&(at, _)| at < pc)) {
+        Some(&(at, line)) if at == pc => line,
+        _ => 0,
+    }
 }
 
 impl Scan<'_> {
     fn text(&self, pc: u64) -> &str {
-        let i = self.lines.partition_point(|&(at, _)| at < pc);
-        let line = match self.lines.get(i) {
-            Some(&(at, line)) if at == pc => line as usize,
-            _ => 0,
-        };
+        let line = line_at(self.lines, pc) as usize;
         line.checked_sub(1).and_then(|l| self.source.get(l)).copied().unwrap_or("")
     }
 
@@ -186,16 +217,40 @@ impl Scan<'_> {
     fn function(&self, entry: u64, end: u64, name: Option<u32>, names: &mut Vec<String>) -> FunctionLayout {
         let mut f = FunctionLayout { entry, end, name, ..FunctionLayout::default() };
         let mut bases: [Option<(i64, Option<u32>)>; 31] = [None; 31];
+        let (mut opens, mut sets_fp, mut strays) = (false, false, false);
         let mut pc = entry;
         while pc < end {
             let at = pc;
             pc += 4;
             let Ok(instr) = self.mem.read_u32(at).and_then(decoder::decode) else { continue };
             let text = self.text(at);
+            let overwritten = written(&instr);
+            match at - entry {
+                0 => {
+                    opens = matches!(instr, I::LdStPair { op: LdStPairOp::Stp, rt: 29, rt2: 30, rn: 31, imm7, mode: IndexMode::PreIndex, .. } if imm7 < 0)
+                }
+                4 => sets_fp = instr == I::DpImm { op: DpOp::Add, sf: true, rd: 29, rn: 31, imm: 0, shift: 0 },
+                _ => {
+                    strays |= ((overwritten >> 29) & 1 != 0 || moves_sp(&instr))
+                        && !matches!(instr, I::LdStPair { op: LdStPairOp::Ldp, rt: 29, rt2: 30, rn: 31, mode: IndexMode::PostIndex, .. })
+                }
+            }
             let base = |rn: u8| bases.get(usize::from(rn)).copied().flatten();
             if f.slots.len() + f.arrays.len() + f.elements.len() < MAX_SLOTS {
                 if let Some((rn, off, size, float, pair)) = fixed_access(&instr) {
                     let width = size.bytes() as u8;
+                    let written_name = offset_name(text);
+                    // A label written there is an address, not an offset.
+                    if let Some(name) = written_name.as_deref().filter(|n| rn == 29 && self.symbols.get(*n).is_none_or(|&v| v as i64 == off)) {
+                        let stored = matches!(
+                            instr,
+                            I::LdSt { op: LdStOp::Str, .. }
+                                | I::FpLdSt { load: false, .. }
+                                | I::LdStPair { op: LdStPairOp::Stp, .. }
+                                | I::FpLdStPair { op: LdStPairOp::Stp, .. }
+                        );
+                        add_named(&mut f.named, names, NamedSlot { offset: off, width, name: 0, pc: at, stored }, name);
+                    }
                     // Through x29 the written offset names the slot; through
                     // an array base it names a field of the array's.
                     let placed = match (rn, base(rn)) {
@@ -205,7 +260,7 @@ impl Scan<'_> {
                     };
                     if let Some((offset, base_name, through_base)) = placed {
                         if !has_slot(&f.slots, offset) {
-                            let written = offset_name(text).map(|n| add_name(names, n));
+                            let written = written_name.map(|n| add_name(names, n));
                             let (name, field) = if through_base { (base_name, written) } else { (written, None) };
                             insert_slot(&mut f.slots, Slot { offset, width, float, name, field });
                         }
@@ -233,7 +288,6 @@ impl Scan<'_> {
                     f.frame_bytes = imm7.unsigned_abs().into();
                 }
             }
-            let overwritten = written(&instr);
             for (r, base) in bases.iter_mut().enumerate() {
                 if (overwritten >> r) & 1 != 0 {
                     *base = None;
@@ -245,7 +299,39 @@ impl Scan<'_> {
                 }
             }
         }
+        f.course_frame = opens && sets_fp && !strays;
         f
+    }
+}
+
+/// Note `access`, an x29 access written as `name`, in the entry the name
+/// already has at that offset, or as a new one (whose `name` index is set
+/// here).
+fn add_named(named: &mut Vec<NamedSlot>, names: &mut Vec<String>, access: NamedSlot, name: &str) {
+    if let Some(s) = named.iter_mut().find(|s| s.offset == access.offset && names[s.name as usize] == name) {
+        if s.width < access.width {
+            (s.width, s.pc) = (access.width, access.pc);
+        }
+        s.stored |= access.stored;
+    } else if named.len() < MAX_SLOTS {
+        named.push(NamedSlot { name: add_name(names, name.to_string()), ..access });
+    }
+}
+
+/// Whether an instruction changes sp: an add, sub or logical immediate into
+/// it, or a base written back to it.
+fn moves_sp(instr: &I) -> bool {
+    let to_sp = |rn: u8, mode: IndexMode| rn == 31 && mode != IndexMode::SignedOffset;
+    match *instr {
+        I::DpImm { op: DpOp::Add | DpOp::Sub, rd: 31, .. }
+        | I::DpRegExt { op: DpOp::Add | DpOp::Sub, rd: 31, .. }
+        | I::LogImm { rd: 31, set_flags: false, .. } => true,
+        I::LdSt { rn, mode, .. }
+        | I::LdrSignExtended { rn, mode, .. }
+        | I::FpLdSt { rn, mode, .. }
+        | I::LdStPair { rn, mode, .. }
+        | I::FpLdStPair { rn, mode, .. } => to_sp(rn, mode),
+        _ => false,
     }
 }
 
