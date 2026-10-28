@@ -103,6 +103,13 @@ export function useEmulator(): EmulatorState {
   const snapRef = useRef<StateSnapshot | null>(null);
   // The goal a stopped run had, so the console's answer resumes the same one.
   const goalRef = useRef<Goal | null>(null);
+  // The step count a goal run paused at on the 1,000,000-step run chunk: the
+  // same goal pressed there goes on to the same depth or line. A step or Back
+  // clears it at once, since the count it is checked against lags a render.
+  const pausedAtRef = useRef(-1);
+  // The step or Back still in flight. A goal waits for it, or it would aim
+  // from the snapshot before that step (the worker answers a task later).
+  const movingRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -539,8 +546,9 @@ export function useEmulator(): EmulatorState {
     // or capture a replay frame of a step that never happened.
     if (!backend || !programLoadedRef.current || haltedRef.current) return;
     runBlockedRef.current = false;
+    pausedAtRef.current = -1;
     setError(null);
-    backend
+    movingRef.current = backend
       .step()
       .then(({ stepResult }) => {
         if (stepResult.error) surfaceRuntimeError(stepResult.error, stepResult.error_line);
@@ -564,8 +572,9 @@ export function useEmulator(): EmulatorState {
     // must not move without it.
     if (!backend || !programLoadedRef.current || !canStepBackRef.current) return;
     runBlockedRef.current = false;
+    pausedAtRef.current = -1;
     setError(null);
-    backend
+    movingRef.current = backend
       .stepBack()
       .then(() => setStepCount((c) => Math.max(0, c - 1)))
       .catch((e: unknown) => {
@@ -660,7 +669,8 @@ export function useEmulator(): EmulatorState {
         setStepCount((c) => {
           const next = c + total;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
-          else if (runResult.step_limit_reached) {
+          // A goal's pause has its own words, from stopReason below.
+          else if (runResult.step_limit_reached && !goal) {
             setError(
               `paused after ${formatSteps(total)} without finishing. ` +
                 "press run to continue, or check for a loop whose exit condition never becomes true",
@@ -675,6 +685,7 @@ export function useEmulator(): EmulatorState {
         if (!goal) return null;
         // The count the setter above lands on; its effect has not run yet.
         const at = stepCountRef.current + total;
+        pausedAtRef.current = runResult.step_limit_reached ? at : -1;
         // The words load only when a goal run first stops, so no page that
         // never steps over ships them.
         const { stopReason } = await import("@/lib/emulator/stop-reason");
@@ -698,19 +709,22 @@ export function useEmulator(): EmulatorState {
   // Step over and step out aim at a call depth, run to cursor at the
   // instruction the line stands for.
   const runUntil = useCallback(
-    (target: StepTarget): Promise<string | null> => {
-      const snap = snapRef.current;
-      if (typeof target === "number") {
-        const pc = resolveBreakpointAddr(target);
-        if (pc != null) return run({ until: { pc }, target });
-        setStop({ text: `line ${target} has no instruction to stop at`, at: stepCountRef.current });
-        return Promise.resolve(null);
-      }
-      if (!snap?.frames) return Promise.resolve(null);
-      const depth = callDepth(snap.frames);
-      // Inside a library call, both finish the call.
-      return run({ until: { depth: target === "out" && !snap.externalCall ? depth - 1 : depth }, target });
-    },
+    (target: StepTarget): Promise<string | null> =>
+      movingRef.current.then(() => {
+        const paused = goalRef.current;
+        if (paused?.target === target && pausedAtRef.current === stepCountRef.current) return run(paused);
+        const snap = snapRef.current;
+        if (typeof target === "number") {
+          const pc = resolveBreakpointAddr(target);
+          if (pc != null) return run({ until: { pc }, target });
+          setStop({ text: `line ${target} has no instruction to stop at`, at: stepCountRef.current });
+          return null;
+        }
+        if (!snap?.frames) return null;
+        const depth = callDepth(snap.frames);
+        // Inside a library call, both finish the call.
+        return run({ until: { depth: target === "out" && !snap.externalCall ? depth - 1 : depth }, target });
+      }),
     [run, resolveBreakpointAddr],
   );
 
