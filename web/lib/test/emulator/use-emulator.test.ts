@@ -804,11 +804,12 @@ describe("useEmulator stepping and running", () => {
 
   // main's ret on line 13 took an lr the store on line 10 overwrote at step
   // 5, and the next fetch faulted there. The frames numbers: a header whose
-  // slots 5 to 7 hold that return, then main's one row with its lr hit.
+  // slots 5 to 7 hold that return, then main's one row with its lr hit and
+  // no call made.
   it("puts the frames' card in place of a fault's guess, in the run row and the console", async () => {
     const frames = [
       7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
-      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1, 0,
     ];
     const registers = Array<string>(31).fill("0x0000000000000000");
     registers[30] = "0x0000000700000006";
@@ -841,7 +842,7 @@ describe("useEmulator stepping and running", () => {
   it("keeps a fault's own words when the frame shows no cause", async () => {
     const frames = [
       7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0, 1, 0,
-      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 0, 0, -1, -1,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 0, 0, -1, -1, 0,
     ];
     const error = "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register does not hold an address";
     const fake = makeBackend({
@@ -863,7 +864,7 @@ describe("useEmulator stepping and running", () => {
   it("puts the card under a run's pause without a console note", async () => {
     const frames = [
       7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
-      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1, 0,
     ];
     const fake = makeBackend({
       frameLayout: MAIN_ONLY,
@@ -891,7 +892,7 @@ describe("useEmulator stepping and running", () => {
   it("ends a paused run and shows its card in one commit", async () => {
     const frames = [
       7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
-      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1, 0,
     ];
     const fake = makeBackend({
       frameLayout: MAIN_ONLY,
