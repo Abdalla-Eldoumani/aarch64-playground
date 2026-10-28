@@ -283,6 +283,22 @@ struct RunResultJs {
     sleep_ms: Option<f64>,
 }
 
+/// `run_to`'s result: RunResultJs's fields plus the goal's two stops, with
+/// pc an f64 so a `ret` to a garbage address above 2^53 still serializes.
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct RunToJs {
+    pc: f64,
+    halted: bool,
+    steps_executed: u32,
+    hit_breakpoint: bool,
+    error: Option<String>,
+    error_line: Option<u32>,
+    sleep_ms: Option<f64>,
+    reached: bool,
+    bad_return: bool,
+}
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct LintWarningJs {
@@ -657,6 +673,48 @@ impl Emulator {
                 sleep_ms: None,
             }).unwrap(),
         }
+    }
+
+    /// `run_until_break` with a goal: stop once the call stack is `depth`
+    /// deep or shallower back in the program's own code, or once the pc is
+    /// `pc`; a negative number leaves that half off.
+    pub fn run_to(&mut self, max_steps: u32, depth: f64, pc: f64) -> JsValue {
+        let until = cpu::Until {
+            depth: (depth >= 0.0).then_some(depth as u64),
+            pc: (pc >= 0.0).then_some(pc as u64),
+        };
+        let (result, error_line) = match self.cpu.run_until(max_steps, until) {
+            Ok(result) => {
+                let line = result.error.as_ref().and_then(|_| self.error_line_for(result.pc));
+                (result, line)
+            }
+            Err(e) => {
+                let pc = self.cpu.regs.read_pc();
+                let result = cpu::RunResult {
+                    pc,
+                    halted: true,
+                    steps_executed: 0,
+                    hit_breakpoint: false,
+                    error: Some(e.to_string()),
+                    reached: false,
+                    bad_return: false,
+                };
+                (result, self.error_line_for(pc))
+            }
+        };
+        let sleep_ms = self.cpu.take_pending_sleep_ns().map(|ns| ns as f64 / 1_000_000.0);
+        serde_wasm_bindgen::to_value(&RunToJs {
+            pc: result.pc as f64,
+            halted: result.halted,
+            steps_executed: result.steps_executed,
+            hit_breakpoint: result.hit_breakpoint,
+            error: result.error,
+            error_line,
+            sleep_ms,
+            reached: result.reached,
+            bad_return: result.bad_return,
+        })
+        .unwrap()
     }
 
     /// Reset CPU to initial state (keeps breakpoints).
