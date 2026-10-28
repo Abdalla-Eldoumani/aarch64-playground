@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
 import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
 import type { StepGoal } from "@/lib/emulator/emulator-state";
 import { PaneSwitch } from "@/components/playground/PaneSwitch";
 import { StepGoals } from "@/components/playground/lazy-step-goals";
@@ -110,6 +111,9 @@ export function EmbedLayout({
   // every lesson and exercise. Only a frame that can step offers it.
   const [stackSide, setStackSide] = usePersistedFlag(STACK_KEY);
   const showStack = showStep && stackSide;
+  // A pressed pointer chip shows the stack in the registers' place; a frame
+  // with no stack to offer (the landing's demo) gets no chips.
+  const pointer = useSlotPointer(useCallback(() => setStackSide(true), [setStackSide]));
   // A read that blocks, or a run that finishes having printed, brings the
   // console forward in a narrow frame, the way the phone playground does.
   const [seen, setSeen] = useState({ blocked: runStatus.blocked, running: isRunning });
@@ -163,7 +167,9 @@ export function EmbedLayout({
               />
             </div>
           )}
-          <div className="min-h-0 flex-1 overflow-auto">{showStack ? stack : registers}</div>
+          <div className="min-h-0 flex-1 overflow-auto">
+            <PointerContext.Provider value={showStep ? pointer : null}>{showStack ? stack : registers}</PointerContext.Provider>
+          </div>
         </div>
         <div className="embed-area-console min-h-0 min-w-0 overflow-hidden flex flex-col">
           {console}
