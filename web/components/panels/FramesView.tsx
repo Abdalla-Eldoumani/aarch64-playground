@@ -176,17 +176,21 @@ export function FramesView({
               {frame.state && <p className="text-[12px] text-[var(--warning)]">{frame.state}</p>}
               {frame.boxes.length > 0 && (
                 <ul aria-label={`${frame.name}'s frame, high address first`} className="mt-1">
+                  {/* In the playground's stack tab (a size container) under
+                      345px, too short for a 48-byte frame of three locals
+                      drawn in full, each box takes one line: the title and
+                      the detail side by side. */}
                   {frame.boxes.map((box) => (
                     <li
                       key={box.addr}
                       data-wrote={box.wrote || undefined}
-                      className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2"
+                      className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2 [@container(height<345px)]:mt-px"
                     >
                       <span className="text-right font-mono text-[12px] text-[var(--text-tertiary)]">
                         {box.offset}
                       </span>
                       <div
-                        className={`px-2 py-[3px] text-[13px] leading-snug ${
+                        className={`px-2 py-[3px] text-[13px] leading-snug [@container(height<345px)]:flex [@container(height<345px)]:flex-wrap [@container(height<345px)]:gap-x-2 [@container(height<345px)]:py-0 [@container(height<345px)]:leading-4 ${
                           box.overwritten ? OVERWRITTEN : KIND_STYLE[box.kind]
                         }`}
                         style={box.wrote ? { boxShadow: "inset 3px 0 0 0 var(--amber)" } : undefined}
