@@ -1,4 +1,6 @@
 import { formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
+import { parseAddress } from "@/lib/emulator/parse-address";
+import type { DrawnStack, FramesSnapshot, StackBytes } from "@/lib/emulator/stack-frames";
 import { parseArgsDetailed } from "@/lib/playground/args";
 
 /**
@@ -135,6 +137,14 @@ export interface DispatchContext {
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   step(): Promise<{ halted: boolean; line: number | null }>;
   runUntilBreak(): Promise<{ halted: boolean; hit_breakpoint: boolean }>;
+  /** `ni` (over the call on this line) and `finish` (out of this function),
+   *  at run speed: why it stopped, or null after one instruction. */
+  runUntil(target: "over" | "out"): Promise<string | null>;
+  /** The call stack as the frames view draws it, with the stack bytes it
+   *  read; null with no program loaded. */
+  frameStack(): Promise<FrameStack | null>;
+  /** "line 12", or "ui.s line 12" in a program of several files. */
+  lineLabel(addr: number): string | null;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Look up a label's runtime address. Returns null when unresolved. */
@@ -169,6 +179,13 @@ export interface DispatchContext {
   terminalIO?: TerminalProgramIO;
 }
 
+/** What `bt` and `info frame` read. */
+export interface FrameStack {
+  snapshot: FramesSnapshot;
+  stack: DrawnStack;
+  memory: StackBytes[];
+}
+
 const HELP_LINES = [
   "available commands:",
   "  m4 prog.asm > prog.s              expand m4 macros, exactly like the course toolchain",
@@ -191,14 +208,27 @@ const HELP_LINES = [
 
 const GDB_HELP_LINES = [
   "gdb-lite commands:",
-  "  gdb n | gdb s                     step one instruction",
+  "  gdb n | gdb s | gdb si            step one instruction",
+  "  gdb ni                            step over: run the call on this line in one go",
+  "  gdb finish                        run until this function returns to its caller",
   "  gdb c                             continue until the program ends or hits a breakpoint",
   "  gdb b <label>                     set a breakpoint at a label",
   "  gdb p $xN                         print register N's value in hex",
   "  gdb info registers                print every register",
   "  gdb x/Ni $pc                      show N instruction words in hex from the current PC",
-  "  gdb bt                            print a one-frame backtrace (current PC)",
+  "  gdb x/Ngx $sp                     show N 8-byte words in hex from $sp, $fp or an address",
+  "  gdb bt                            the call stack: this function, then each caller",
+  "  gdb info frame                    this function's frame: its bytes, saved fp and lr, locals",
 ];
+
+const COUNT = new Intl.NumberFormat("en-US");
+
+// More frames than this fold into one line, with main still shown last.
+const BT_SHOWN = 20;
+
+// The count is untrusted free text; an absurd one freezes the worker
+// building megabytes of hex lines.
+const MAX_EXAMINE_COUNT = 1024;
 
 export async function dispatchCommand(
   line: string,
@@ -387,9 +417,13 @@ export async function dispatchCommand(
 async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
   const sub = args[0];
   if (!sub || sub === "help") return { status: "ok", lines: GDB_HELP_LINES, table: true };
-  if (sub === "n" || sub === "s") {
+  if (sub === "n" || sub === "s" || sub === "si") {
     await ctx.step();
     return { status: "ok", lines: [] };
+  }
+  if (sub === "ni" || sub === "finish") {
+    const said = await ctx.runUntil(sub === "ni" ? "over" : "out");
+    return { status: "ok", lines: said ? [said] : [] };
   }
   if (sub === "c") {
     await ctx.runUntilBreak();
@@ -411,6 +445,11 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     if (v == null) return { status: "err", lines: [`gdb: unknown register ${operand}`] };
     return { status: "ok", lines: [`$${name} = ${formatWord64(v)}`] };
   }
+  if (sub === "info" && args[1] === "frame") {
+    const view = await ctx.frameStack();
+    if (!view) return { status: "err", lines: ["gdb: info frame needs an assembled program"] };
+    return { status: "ok", lines: frameLines(view) };
+  }
   if (sub === "info" && args[1] === "registers") {
     const regs = ctx.readRegisters();
     const lines = Object.entries(regs).map(
@@ -422,24 +461,83 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     return runGdbExamine(args, ctx);
   }
   if (sub === "bt") {
-    const pc = ctx.pcAddress();
-    return { status: "ok", lines: [`#0  ${formatWord64(pc)} in <current>`] };
+    const view = await ctx.frameStack();
+    if (!view) return { status: "err", lines: ["gdb: bt needs an assembled program"] };
+    return { status: "ok", lines: backtrace(view, ctx) };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };
 }
 
+/**
+ * Innermost first, as gdb prints it: #0 the function the pc is in and its
+ * line, then each caller at the line of its call. Past BT_SHOWN, the rest
+ * fold into one line with main last.
+ */
+function backtrace({ snapshot, stack }: FrameStack, ctx: DispatchContext): string[] {
+  const rows = snapshot.frames;
+  const entries = stack.frames.map((frame, k) => {
+    const deeper = rows[k + 1];
+    // A caller's line is the call it made; main's is unknown when the calls
+    // just above it are folded out of the snapshot.
+    const line =
+      k === rows.length - 1
+        ? snapshot.uncounted > 0
+          ? null
+          : ctx.lineLabel(ctx.pcAddress())
+        : deeper.index === rows[k].index + 1
+          ? ctx.lineLabel(deeper.callPc)
+          : null;
+    return { n: stack.depth - 1 - rows[k].index, text: `${frame.name}${line ? ` at ${line}` : ""}` };
+  });
+  const lines: string[] = [];
+  if (snapshot.uncounted > 0) {
+    lines.push(`(#0 to #${snapshot.uncounted - 1}: ${COUNT.format(snapshot.uncounted)} deeper calls, not tracked)`);
+  }
+  for (const { n, text } of entries.reverse()) {
+    if (n < BT_SHOWN || n === stack.depth - 1) {
+      if (n === stack.depth - 1 && stack.depth > BT_SHOWN + 1) {
+        lines.push(`... ${COUNT.format(stack.depth - BT_SHOWN - 1)} more calls ...`);
+      }
+      lines.push(`#${n}  ${text}`);
+    }
+  }
+  return lines;
+}
+
+/** The innermost frame's bounds and every box in it, high addresses first. */
+function frameLines({ snapshot, stack, memory }: FrameStack): string[] {
+  const row = snapshot.frames[snapshot.frames.length - 1];
+  const frame = stack.frames[stack.frames.length - 1];
+  const word = (addr: number): bigint | null => {
+    const span = memory.find((m) => addr >= m.addr && addr + 8 <= m.addr + m.bytes.length);
+    if (!span) return null;
+    const view = new DataView(span.bytes.buffer, span.bytes.byteOffset + addr - span.addr, 8);
+    return view.getBigUint64(0, true);
+  };
+  const lines = [
+    `${frame.name}: ${frame.bytes} bytes, ${formatWord64(row.lo)} up to ${formatWord64(row.spEntry)}` +
+      (frame.from ? `, ${frame.from}` : ""),
+  ];
+  if (frame.state) lines.push(`  ${frame.state}`);
+  for (const box of frame.boxes) {
+    const value = box.kind === "saved" ? word(box.addr) : null;
+    const detail = value != null && !box.detail.startsWith("0x") ? `${formatWord64(value)}, ${box.detail}` : box.detail;
+    lines.push(`  ${box.offset.padEnd(10)}${box.title.padEnd(20)}${detail}`);
+  }
+  return lines;
+}
+
 async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
-  // Accepts `x/Ni $pc` (N words at PC). An unrecognized format falls back to 4.
   const fmt = args[0];
   const target = args[1];
+  const giant = fmt.match(/^x\/(\d+)gx$/);
+  if (giant) return examineWords(Number(giant[1]), target, ctx);
+  // Accepts `x/Ni $pc` (N words at PC). An unrecognized format falls back to 4.
   if (!target || !target.startsWith("$")) {
     return { status: "err", lines: ["gdb: x needs an address, e.g. x/8i $pc"] };
   }
   const m = fmt.match(/^x\/(\d+)i$/);
   const count = m ? Number(m[1]) : 4;
-  // The count is untrusted free text; an absurd one freezes the worker
-  // building megabytes of hex lines.
-  const MAX_EXAMINE_COUNT = 1024;
   if (!Number.isFinite(count) || count > MAX_EXAMINE_COUNT) {
     return {
       status: "err",
@@ -459,6 +557,38 @@ async function runGdbExamine(args: string[], ctx: DispatchContext): Promise<Disp
       ((bytes[off + 3] ?? 0) << 24);
     const hex = formatWord32(word);
     lines.push(`${formatWord64(base + off)}  ${hex}`);
+  }
+  return { status: "ok", lines };
+}
+
+/** `x/Ngx`: N 8-byte words in hex, two a line, from $sp, $fp, any register
+ *  or an address. */
+async function examineWords(
+  count: number,
+  target: string | undefined,
+  ctx: DispatchContext,
+): Promise<DispatchResult> {
+  if (count > MAX_EXAMINE_COUNT) {
+    return { status: "err", lines: [`gdb: x/Ngx shows at most ${MAX_EXAMINE_COUNT} words at a time`] };
+  }
+  const name = target?.startsWith("$") ? target.slice(1).toLowerCase() : null;
+  const register = name === "fp" ? "x29" : name === "lr" ? "x30" : name;
+  const at =
+    register === null
+      ? parseAddress(target ?? "")
+      : register === "pc"
+        ? ctx.pcAddress()
+        : ctx.readRegister(register);
+  if (at == null) {
+    return { status: "err", lines: ["gdb: x/Ngx needs $sp, $fp, a register or an address, e.g. x/4gx $sp"] };
+  }
+  const base = Number(at);
+  const bytes = await ctx.readMemory(base, count * 8);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const word = (i: number) => formatWord64(i * 8 + 8 <= bytes.length ? view.getBigUint64(i * 8, true) : 0n);
+  const lines: string[] = [];
+  for (let i = 0; i < count; i += 2) {
+    lines.push(`${formatWord64(base + i * 8)}:  ${word(i)}${i + 1 < count ? `  ${word(i + 1)}` : ""}`);
   }
   return { status: "ok", lines };
 }
