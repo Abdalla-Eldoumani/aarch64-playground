@@ -10,6 +10,7 @@ import {
   drawFrames,
   FRAME_STATE,
   rangesToRead,
+  slotAt,
   type DrawnStack,
   type FramesSnapshot,
 } from "@/lib/emulator/stack-frames";
@@ -506,5 +507,72 @@ describe("rangesToRead", () => {
 
   it("caps a range at 16 KiB above its low end", () => {
     expect(rangesToRead(snapshot([frame(0x7ff00000, 0x80000000)]))).toEqual([[0x7ff00000, 16 * 1024]]);
+  });
+});
+
+describe("slotAt", () => {
+  /** What a pointer chip would say for `addr`, or null for no chip. */
+  const chip = (stack: DrawnStack, addr: number) => {
+    const at = slotAt(stack, addr);
+    return at && `${at.slot} · ${at.owner}`;
+  };
+
+  // The slides' frame again, at the scanf that fills it: a_s at fp + 16 to
+  // fp + 19, b_s at fp + 20 to fp + 23, padding at fp + 24 to fp + 31, the
+  // saved fp at fp + 0 and the saved lr at fp + 8. main's sp is its fp.
+  it("names locals.s's slots at their edges and nothing outside main's frame", () => {
+    const source = readFileSync(path.join(process.cwd(), "public/examples/cpsc355/locals.s"), "utf8");
+    const p = load(source, "7 4\n");
+    runTo(p, lineOf(source, "bl      scanf"));
+    const fp = Number(p.emu.get_register(29));
+    const stack = draw(p);
+    expect(Number(p.emu.get_register(1))).toBe(fp + 16);
+    expect(Number(p.emu.get_register(2))).toBe(fp + 20);
+    expect(chip(stack, fp + 16)).toBe("a_s · main");
+    expect(chip(stack, fp + 19)).toBe("a_s + 3 · main");
+    expect(chip(stack, fp + 15)).toBe("saved lr + 7 · main");
+    expect(chip(stack, fp + 20)).toBe("b_s · main");
+    expect(chip(stack, fp + 23)).toBe("b_s + 3 · main");
+    expect(chip(stack, fp + 24)).toBe("fp + 24 · main");
+    expect(chip(stack, fp + 0)).toBe("saved fp · main");
+    expect(chip(stack, fp + 8)).toBe("saved lr · main");
+    expect(chip(stack, fp + 31)).toBe("fp + 31 · main");
+    expect(chip(stack, fp + 32)).toBeNull();
+    expect(chip(stack, fp - 1)).toBeNull();
+    // x0 holds fmt_in's address in .data; the heap starts where the
+    // machine's map says; zero is no address at all.
+    const heap = normalizeMemoryMap(memoryMap()).find((r) => r.name === "heap")!;
+    expect(chip(stack, Number(p.emu.get_register(0)))).toBeNull();
+    expect(chip(stack, heap.start)).toBeNull();
+    expect(chip(stack, 0)).toBeNull();
+    p.emu.free();
+  });
+
+  // Two calls deep, inside square: fill's 32-byte frame sits right under
+  // main's, so fill's record F has main's at F + 32. fill holds dest_s at
+  // F + 16 to F + 23, i_s at F + 24 and sq_s at F + 28 to F + 31; main's
+  // array runs from F + 48 to F + 63. square is a leaf, so sp is still F.
+  it("tells two frames apart across the line between them", () => {
+    const source = readFileSync(path.join(process.cwd(), "lib/test/emulator/fixtures/fill-squares.s"), "utf8");
+    const p = load(source);
+    runTo(p, lineOf(source, "str     w9, [x0]"));
+    const F = Number(p.emu.get_register(29));
+    const M = F + 32;
+    const stack = draw(p);
+    expect(stack.frames.map((f) => f.name)).toEqual(["main", "fill", "square"]);
+    expect(Number(p.emu.get_sp())).toBe(F);
+    expect(chip(stack, Number(p.emu.get_register(0)))).toBe("sq_s · fill");
+    expect(chip(stack, F + 31)).toBe("sq_s + 3 · fill");
+    expect(chip(stack, F + 32)).toBe("saved fp · main");
+    expect(chip(stack, F)).toBe("saved fp · fill");
+    expect(chip(stack, F + 8)).toBe("saved lr · fill");
+    expect(chip(stack, F + 16)).toBe("dest_s · fill");
+    expect(chip(stack, F + 20)).toBe("dest_s + 4 · fill");
+    expect(chip(stack, F - 1)).toBeNull();
+    expect(chip(stack, M + 16)).toBe("arr_s[0] · main");
+    expect(chip(stack, M + 28)).toBe("arr_s[3] · main");
+    expect(chip(stack, M + 31)).toBe("arr_s[3] + 3 · main");
+    expect(chip(stack, M + 32)).toBeNull();
+    p.emu.free();
   });
 });
