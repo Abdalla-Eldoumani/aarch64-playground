@@ -367,6 +367,186 @@ describe("lr not saved before a call", () => {
   }, 60_000);
 });
 
+/** Steps `m` until a ret goes to no caller, at most `limit` steps. */
+function toBadReturn(m: Loaded, limit = 200) {
+  for (let i = 0; i < limit && !m.context().snapshot.badReturn; i++) m.step(1);
+  return m.context().snapshot.badReturn;
+}
+
+// The card says lr went unsaved only when the function called out before
+// storing lr and its ret went right after its own last call. Each program
+// below breaks one half of that, so its fault and its pause keep the
+// crate's words and the run row says what it said before the cards.
+describe("a ret that is not the call before saving lr", () => {
+  // keep stores lr with its stp but never sets fp, and leaves x19 pushed,
+  // so its ldp on line 16 takes lr from the zero above x19 and its ret on
+  // line 17 goes to 0.
+  it("gets no lr cause when the function saved lr without setting fp", () => {
+    const m = load(`// keep saves fp and lr but never sets fp, and leaves x19 pushed.
+define(fp, x29)
+define(lr, x30)
+.data
+fmt_out:    .string "x19 = %ld\\n"
+.text
+// keep() prints x19 (bugs: fp is never set, and the push is never popped)
+        .balign 4
+        .global keep
+keep:
+        stp     fp, lr, [sp, -16]!
+        str     x19, [sp, -16]!         // push x19
+        ldr     x0, =fmt_out
+        mov     x1, x19
+        bl      printf
+        ldp     fp, lr, [sp], 16        // bug: x19's 16 bytes are still on top
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 3
+        bl      keep
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(17), target: 0 });
+    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
+    const { error } = m.run();
+    expect(error).toMatch(/^memory fault: the program tried to read 0x0000000000000000, /);
+    expect(faultText(error!, m.context(), m.lr(), m.pc())).toBeNull();
+    m.emu.free();
+  });
+
+  // show calls printf on line 12 before saving lr, then sets lr to 0x40 by
+  // hand, so its ret on line 14 goes to 0x40, not past its call.
+  it("gets no lr cause when the ret did not go right after the function's last call", () => {
+    const m = load(`// show calls printf before saving lr, then sets lr by hand.
+define(fp, x29)
+define(lr, x30)
+.data
+fmt_out:    .string "hi\\n"
+.text
+// show(): prints hi (bug: no prologue, and lr is set by hand)
+        .balign 4
+        .global show
+show:
+        ldr     x0, =fmt_out
+        bl      printf                  // bug: lr was not saved first
+        mov     lr, 0x40                // bug: not a return address
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      show
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(14), target: 0x40 });
+    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
+    const { error } = m.run();
+    expect(error).toMatch(/^memory fault: the program tried to read 0x0000000000000040, /);
+    expect(faultText(error!, m.context(), m.lr(), m.pc())).toBeNull();
+    m.emu.free();
+  });
+
+  // outer saves lr, calls inner, then loads fp and lr from inner's old
+  // frame record on line 24, whose lr is the way back into outer after its
+  // bl inner on line 23. outer's ret on line 26 goes there: right after its
+  // own last call, but outer did save lr.
+  it("gets no lr cause when lr came back from a callee's old slot", () => {
+    const m = load(`// outer loads lr back from the frame record inner left below it.
+define(fp, x29)
+define(lr, x30)
+.data
+fmt_out:    .string "inner\\n"
+.text
+// inner(): prints a line
+        .balign 4
+        .global inner
+inner:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =fmt_out
+        bl      printf
+        ldp     fp, lr, [sp], 16
+        ret
+// outer(): calls inner (bug: restores fp and lr from inner's old record)
+        .balign 4
+        .global outer
+outer:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      inner
+        ldp     fp, lr, [sp, -16]       // bug: inner's record, not outer's
+        add     sp, sp, 16
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      outer
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(26), target: m.lines.lineAddr(24) });
+    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
+    const { error } = m.run();
+    expect(error).not.toBeUndefined();
+    expect(faultText(error ?? "", m.context(), m.lr(), m.pc())).toBeNull();
+    m.emu.free();
+  });
+
+  // count saves lr with a plain push and never sets fp. Called with 2, it
+  // calls itself with 1 and 0; count(0) returns through its own slot, but
+  // the others load lr on line 13 from the slot below sp, the one their
+  // callee used. count(1) gets its own return address back that way;
+  // count(2) gets count(1)'s, right after the bl count on line 12, not its
+  // own, so count(2)'s ret on line 15 goes astray there.
+  it("gets no lr cause in a recursive function that saved lr and loads it from the wrong slot", () => {
+    const m = load(`// count calls itself down to 0, but loads lr from its callee's slot.
+define(fp, x29)
+define(lr, x30)
+.text
+// count(w0 = n): calls itself n times (bug: lr comes back from the wrong slot)
+        .balign 4
+        .global count
+count:
+        str     lr, [sp, -16]!          // save lr (fp is never set)
+        cbz     w0, count_base
+        sub     w0, w0, 1
+        bl      count
+        ldr     lr, [sp, -16]           // bug: the slot the call below used
+        add     sp, sp, 16
+        ret
+count_base:
+        ldr     lr, [sp], 16
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 2
+        bl      count
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    expect(toBadReturn(m)).toMatchObject({ pc: m.lines.lineAddr(15), target: m.lines.lineAddr(13) });
+    expect(m.context().snapshot.frames).toHaveLength(2);
+    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
+    const { error } = m.run();
+    expect(faultText(error ?? "", m.context(), m.lr(), m.pc())).toBeNull();
+    m.emu.free();
+  });
+});
+
 // callee-saved.s: square (lines 17 to 20) writes x19; main's add on line 30
 // reads it. Steps: stp, mov, mov base_r, mov x0, bl square 1 to 5; square's
 // mov, mul and ret 6 to 8; main's add 9.
