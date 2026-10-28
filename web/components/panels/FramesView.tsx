@@ -104,19 +104,25 @@ export function FramesView({
   }
 
   // While stepping, what the step wrote stays in view (a write over a
-  // caller's frame is the bug to see), else the innermost call: the nearest
-  // edge, or the low end, where sp is, of anything taller than the box.
-  // Written to this box alone, so the page never scrolls under the reader.
+  // caller's frame is the bug to see), with the rest of its call when that
+  // fits, else the innermost call: the nearest edge, or the low end, where
+  // sp is, of anything taller than the box. Written to this box alone, so
+  // the page never scrolls under the reader.
   const boxRef = useRef<HTMLDivElement>(null);
   const innermostRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
     const box = boxRef.current;
     if (!box || running) return;
+    const span = (targets: HTMLElement[]) => [
+      Math.min(...targets.map((t) => t.offsetTop)),
+      Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight)),
+    ];
     const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
-    const targets = wrote.length > 0 ? wrote : innermostRef.current ? [innermostRef.current] : [];
-    if (targets.length === 0) return;
-    const top = Math.min(...targets.map((t) => t.offsetTop));
-    const bottom = Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight));
+    const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
+    if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
+    if (calls.length === 0) return;
+    let [top, bottom] = span(calls);
+    if (wrote.length > 0 && bottom - top > box.clientHeight) [top, bottom] = span(wrote);
     if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
       box.scrollTop = bottom - box.clientHeight;
     } else if (top < box.scrollTop) box.scrollTop = top;
@@ -149,6 +155,7 @@ export function FramesView({
             <li
               key={frame.index}
               ref={i === stack.frames.length - 1 ? innermostRef : undefined}
+              data-call=""
               className="mt-3 first:mt-0"
             >
               <p className="text-[13px]">
