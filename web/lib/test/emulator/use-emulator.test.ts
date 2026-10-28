@@ -1155,6 +1155,37 @@ describe("useEmulator stepping and running", () => {
     await waitFor(() => expect(fake.calls.until).toEqual([{ depth: 3 }, { depth: 3 }]));
   });
 
+  it("aims a step over pressed while a step is in flight from where that step lands", async () => {
+    // main and one call, both drawn: two deep. The step enters the bl's
+    // callee, three deep, so a step then a step over runs until three deep.
+    const TWO_DEEP = [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, ...Array(36).fill(0)];
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: TWO_DEEP });
+    });
+    // The worker answers the step a task after both presses were sent.
+    let land = () => {};
+    fake.backend.step = () =>
+      new Promise((resolve) => {
+        land = () => resolve({ stepResult: fake.cfg.stepResult, snapshot: fake.fire({ frames: THREE_DEEP }) });
+      });
+    let over: Promise<string | null> = Promise.resolve(null);
+    act(() => {
+      result.current.step();
+      over = result.current.runUntil("over");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fake.calls.until).toEqual([]);
+    await act(async () => {
+      land();
+      await over;
+    });
+    expect(fake.calls.until).toEqual([{ depth: 3 }]);
+  });
+
   it("run sets the running flag until the backend resolves", async () => {
     const fake = makeBackend({ runDeferred: true });
     const { result } = await mountAssembled(fake);
