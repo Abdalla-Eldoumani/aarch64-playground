@@ -70,7 +70,7 @@ const SHARE = "flex-1 min-w-[3.5rem] sm:flex-none";
 
 // One secondary-control string for step, back, and reset.
 const SECONDARY =
-  `${SHARE} min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
+  `${SHARE} min-h-[44px] px-2 sm:px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
 
 /**
  * The embedded frame: code, registers, console, and a few controls. The
