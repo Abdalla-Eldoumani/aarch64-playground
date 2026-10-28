@@ -738,12 +738,12 @@ describe("EmbeddablePlayground", () => {
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
     await fullChromeMounted();
-    for (const name of [/^step/, /^back/]) {
+    for (const name of [/^step$/, /^back$/, /^step over$/, /^step out$/, /^run to cursor$/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(true);
     }
-    for (const name of [/^run/, /^assemble/]) {
+    for (const name of [/^run$/, /^assemble/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(false);
@@ -754,7 +754,7 @@ describe("EmbeddablePlayground", () => {
       makeHub({ programLoaded: true, canStepBack: true }),
     );
     render(<EmbeddablePlayground chrome="full" />);
-    for (const name of [/^run/, /^step/, /^back/]) {
+    for (const name of [/^run$/, /^step$/, /^back$/, /^step over$/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(false);
