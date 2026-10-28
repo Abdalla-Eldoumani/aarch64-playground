@@ -294,8 +294,9 @@ export function useEmulator(): EmulatorState {
       // Rows for x19 to x28 are a caller reading what a call left changed,
       // worded in a chunk of their own.
       void loadFrameCards().then((m) => {
-        const cards = m ? m.calleeCards(rows, programLines, frameLayoutRef.current) : [];
-        if (cards.length) appendNotes(cards.map((c) => c.text));
+        if (!m) return;
+        const cards = m.calleeCards(rows, programLines, frameLayoutRef.current);
+        if (cards.length) appendNotes(cards.map(m.plain));
       });
     }
     // An external call shows only while paused: a run passes through one on
@@ -582,7 +583,7 @@ export function useEmulator(): EmulatorState {
     setError(shown);
     if (line != null && line > 0) setAssemblyErrors([{ line, message: text, card: said ? said.card : undefined }]);
     setErrorCard(said ? { error: shown, card: said.card } : null);
-    if (said && note) appendNotes([said.card.text]);
+    if (said && note && cards) appendNotes([cards.plain(said.card)]);
   }, [appendNotes, programLines]);
 
   const step = useCallback(() => {
