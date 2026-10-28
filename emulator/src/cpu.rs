@@ -333,6 +333,21 @@ pub struct RunResult {
     pub steps_executed: u32,
     pub hit_breakpoint: bool,
     pub error: Option<String>,
+    /// The run's `Until` goal was met.
+    pub reached: bool,
+    /// A `ret` went to no caller during a run with a goal.
+    pub bad_return: bool,
+}
+
+/// Where `run_until` stops besides a breakpoint, a halt, an input wait and
+/// a sleep. Neither set is a plain run.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Until {
+    /// Back in the program's own code with the call stack this deep or
+    /// shallower: step over passes the depth it has, step out one less.
+    pub depth: Option<u64>,
+    /// The pc reaches this address: run to cursor.
+    pub pc: Option<u64>,
 }
 
 /// Top-level CPU wrapping register file, memory, breakpoints, and the
