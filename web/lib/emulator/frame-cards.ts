@@ -62,6 +62,10 @@ export function cardContext(
 
 const hex = (value: number | bigint) => `0x${value.toString(16)}`;
 
+/** A card's words without the backticks that mark its code, as the status
+ *  says them and the console shows them. */
+export const plain = (card: Card) => card.text.replaceAll("`", "");
+
 /** The instruction as written on its line, past labels and the comment. */
 function code(p: Place): string {
   return p.text
