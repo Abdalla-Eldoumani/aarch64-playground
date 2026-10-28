@@ -107,7 +107,8 @@ export function FramesView({
   // caller's frame is the bug to see), with the rest of its call when that
   // fits, else the innermost call: the nearest edge, or the low end, where
   // sp is, of anything taller than the box. Written to this box alone, so
-  // the page never scrolls under the reader.
+  // the page never scrolls under the reader. A rotation or a resize of the
+  // window or the pane brings it back the same way.
   const boxRef = useRef<HTMLDivElement>(null);
   const innermostRef = useRef<HTMLLIElement>(null);
   useEffect(() => {
@@ -117,15 +118,22 @@ export function FramesView({
       Math.min(...targets.map((t) => t.offsetTop)),
       Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight)),
     ];
-    const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
-    const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
-    if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
-    if (calls.length === 0) return;
-    let [top, bottom] = span(calls);
-    if (wrote.length > 0 && bottom - top > box.clientHeight) [top, bottom] = span(wrote);
-    if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
-      box.scrollTop = bottom - box.clientHeight;
-    } else if (top < box.scrollTop) box.scrollTop = top;
+    const reveal = () => {
+      const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
+      const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
+      if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
+      if (calls.length === 0) return;
+      let [top, bottom] = span(calls);
+      if (wrote.length > 0 && bottom - top > box.clientHeight) [top, bottom] = span(wrote);
+      if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
+        box.scrollTop = bottom - box.clientHeight;
+      } else if (top < box.scrollTop) box.scrollTop = top;
+    };
+    reveal();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(reveal);
+    observer.observe(box);
+    return () => observer.disconnect();
   }, [frames, running]);
 
   const idle = !programLoaded
