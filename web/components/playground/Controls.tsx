@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { usePersistedFlag } from "@/components/panels/register-panel-settings";
 import { Button } from "@/components/ui/Button";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
@@ -86,7 +86,14 @@ export function Controls({
 
   // The explainer adds a cause and a fix beside the raw error string, so a
   // first failed program says what to do next.
-  const explanation = error ? explainError(error) : null;
+  // While a run goes, the last stop's alert keeps its room, unseen, so the
+  // panes below do not drop away and come back on each press: on an iPad,
+  // WebKit then reports the panel group's resize as a ResizeObserver loop.
+  const [held, setHeld] = useState<string | null>(null);
+  if (error && error !== held) setHeld(error);
+  else if (!error && !isRunning && held) setHeld(null);
+  const shown = error ?? (isRunning ? held : null);
+  const explanation = shown ? explainError(shown) : null;
 
   // On a phone the five buttons share the row, assemble a little wider for
   // its longer word, so all five fit a 320px screen with nothing to scroll.
@@ -252,19 +259,21 @@ export function Controls({
         </p>
       )}
 
-      {error && (
+      {shown && (
         <div
-          role="alert"
+          role={error ? "alert" : undefined}
+          aria-hidden={error ? undefined : true}
           // Keyed by the message so a NEW error replays the ~200ms decaying
           // shake; under prefers-reduced-motion the class is inert and the
-          // danger-colored text alone carries the state.
-          key={error}
+          // danger-colored text alone carries the state. The held box has a
+          // key of its own, so the next stop's alert mounts fresh and is said.
+          key={error ?? `held:${shown}`}
           // A readable box, not a truncated line: long messages wrap in
           // full view (scrolling only past ~4 lines) instead of hiding
           // behind a hover title. In a short window it takes a full-width
           // line of its own under the buttons, so the tools keep their place
           // beside them and the wider box needs fewer lines.
-          className={`anim-error-shake min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left ${
+          className={`${error ? "anim-error-shake" : "invisible"} min-w-0 max-w-md rounded border px-2.5 py-1.5 text-left ${
             short ? "sm:order-last sm:basis-full sm:max-w-none" : ""
           }`}
           style={{
@@ -273,7 +282,7 @@ export function Controls({
           }}
         >
           <p className="max-h-16 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-snug text-[var(--danger)]">
-            {error}
+            {shown}
           </p>
           {explanation && (
             <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-snug text-[var(--text-tertiary)] sm:block">
