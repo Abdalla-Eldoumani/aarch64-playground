@@ -239,7 +239,7 @@ export function Editor({
           isWholeLine: true,
           className: "error-line-highlight",
           glyphMarginClassName: "error-glyph",
-          hoverMessage: { value: errorHoverMarkdown(err.message), isTrusted: false },
+          hoverMessage: { value: errorHoverMarkdown(err.message, err.card), isTrusted: false },
         },
       });
     }
