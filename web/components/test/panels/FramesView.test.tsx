@@ -3,11 +3,52 @@
 // the amber bar on the last write; a call or a return said once after a
 // step and never during a run; and the words for an empty or older machine.
 // The machine's numbers are written out by hand in frame-data's row layout.
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { FramesView } from "@/components/panels/FramesView";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
+
+// jsdom has no layout and no ResizeObserver: the geometry tests place the
+// boxes by hand, and the stub reports only when a test says the box resized.
+let observing: StubResizeObserver[] = [];
+class StubResizeObserver {
+  constructor(readonly report: () => void) {}
+  observe() {
+    observing.push(this);
+  }
+  disconnect() {
+    observing = observing.filter((o) => o !== this);
+  }
+}
+const resized = () => act(() => [...observing].forEach((o) => o.report()));
+
+/** The frames box as a scroll box `height` px tall, scrolled by `scroll`. */
+function scrollBox(height: number) {
+  const box = screen.getByRole("group", { name: "stack frames" });
+  const state = { height, top: 0 };
+  Object.defineProperty(box, "clientHeight", { configurable: true, get: () => state.height });
+  Object.defineProperty(box, "scrollTop", {
+    configurable: true,
+    get: () => state.top,
+    set: (v: number) => {
+      state.top = v;
+    },
+  });
+  return state;
+}
+
+/** Puts an element `top` px down the box's content, `height` px tall. */
+function place(el: Element, top: number, height: number) {
+  Object.defineProperty(el, "offsetTop", { configurable: true, value: top });
+  Object.defineProperty(el, "offsetHeight", { configurable: true, value: height });
+}
+
+const call = (name: string) => screen.getByText(name, { selector: "span" }).closest("li")!;
+const slot = (text: string) => screen.getByText(text).closest("li")!;
 
 const MAIN_RECORD = 0x7fffffe0;
 const ADD_ENTRY = 0x400040;
@@ -128,6 +169,47 @@ describe("FramesView", () => {
     rerender(<FramesView {...props({ running: true, frames: frames(true) })} />);
     rerender(<FramesView {...props({ running: false, frames: frames(true) })} />);
     expect(said()).toBe("");
+  });
+
+  describe("keeping the step in view", () => {
+    const wroteA = { dirtyAddrs: [[MAIN_RECORD + 16, 4]] as [number, number][] };
+
+    // main's call 38 to 218 px down the box, a_s (just written) 110 to 155.
+    it("shows the whole call the step wrote into when it fits", () => {
+      const { rerender } = render(<FramesView {...props(wroteA)} />);
+      const box = scrollBox(200);
+      place(call("main"), 38, 180);
+      place(slot("a_s = 7"), 110, 45);
+      rerender(<FramesView {...props({ ...wroteA, frames: frames(false, 8) })} />);
+      expect(box.top).toBeLessThanOrEqual(38);
+      expect(box.top + box.height).toBeGreaterThanOrEqual(218);
+    });
+
+    it("brings the write back into view after a rotation", () => {
+      vi.stubGlobal("ResizeObserver", StubResizeObserver);
+      render(<FramesView {...props(wroteA)} />);
+      const box = scrollBox(300);
+      place(call("main"), 38, 180);
+      place(slot("a_s = 7"), 110, 45);
+      box.top = 180;
+      box.height = 120;
+      resized();
+      expect(box.top).toBeLessThanOrEqual(110);
+      expect(box.top + box.height).toBeGreaterThanOrEqual(155);
+    });
+
+    // add_two, a leaf with no boxes, sits 260 to 300 px down.
+    it("brings the innermost call back into view after a resize when the step wrote nothing", () => {
+      vi.stubGlobal("ResizeObserver", StubResizeObserver);
+      render(<FramesView {...props({ frames: frames(true) })} />);
+      const box = scrollBox(400);
+      place(call("main"), 0, 220);
+      place(call("add_two"), 260, 40);
+      box.height = 200;
+      resized();
+      expect(box.top).toBeLessThanOrEqual(260);
+      expect(box.top + box.height).toBeGreaterThanOrEqual(300);
+    });
   });
 
   it("asks for a step before a program is loaded", () => {
