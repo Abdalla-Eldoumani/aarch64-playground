@@ -7,7 +7,18 @@ use super::*;
 impl Cpu {
     /// Run until breakpoint, halt, error, or max_steps reached.
     pub fn run_until_break(&mut self, max_steps: u32) -> Result<RunResult, EmuError> {
+        self.run_until(max_steps, Until::default())
+    }
+
+    /// `run_until_break` that also stops when `until` is met, checked after
+    /// each step, and, with a goal set, after a `ret` that went to no
+    /// caller: a step over or out waiting for that call to return never
+    /// would. A host drives it in chunks, so the goal is absolute.
+    pub fn run_until(&mut self, max_steps: u32, until: Until) -> Result<RunResult, EmuError> {
+        let goal = until.depth.is_some() || until.pc.is_some();
+        let astray = self.frames.bad_return().step;
         let mut steps: u32 = 0;
+        let (mut reached, mut bad_return) = (false, false);
 
         while steps < max_steps && !self.halted && !self.blocked {
             let pc = self.regs.read_pc();
@@ -21,11 +32,26 @@ impl Cpu {
                     steps_executed: steps,
                     hit_breakpoint: true,
                     error: None,
+                    reached: false,
+                    bad_return: false,
                 });
             }
 
             let result = self.step()?;
             steps += 1;
+            // Before the sleep check: a goal met by the step that slept
+            // would otherwise be overshot when the runner resumes.
+            if goal && !self.halted {
+                let pc = self.regs.read_pc();
+                // A stray return that lands in the program is still the stop.
+                bad_return = self.frames.bad_return().step != astray;
+                reached = !bad_return
+                    && (until.pc == Some(pc)
+                        || until.depth.is_some_and(|d| self.frames.depth() <= d && self.in_program(pc)));
+                if reached || bad_return {
+                    break;
+                }
+            }
             // A nanosleep hands control back so a real-time runner can
             // honor the pause (it reads the duration with
             // `take_pending_sleep_ns`). Breaking on the OUTCOME rather
@@ -42,12 +68,14 @@ impl Cpu {
         // sitting exactly on a chunk boundary. If the budget (not a halt or
         // a stall) ended this call while PC rests on a breakpoint, report the
         // hit now, before the next chunk's first step would step past it.
-        let at_cap = steps >= max_steps && !self.halted && !self.blocked;
+        let at_cap = steps >= max_steps && !self.halted && !self.blocked && !reached && !bad_return;
         Ok(RunResult {
             pc,
             halted: self.halted,
             steps_executed: steps,
             hit_breakpoint: at_cap && self.breakpoints.contains(&pc),
+            reached,
+            bad_return,
             // Surface a bounds abort (step ceiling / memory cap) through
             // `error` so the UI shows the calm message. Gated on `halted` so
             // a run resumed from a restored save never re-reports the abort
