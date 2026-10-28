@@ -67,14 +67,16 @@ main:
         ret
 `;
 
-/** The terminal's context over `source` run to the first time `line` is next. */
-function stoppedAt(source: string, line: number, stdin?: string) {
+/** The terminal's context over `source` run to the first time `line` is
+ *  next, or to its end with no line. */
+function stoppedAt(source: string, line: number | null, stdin?: string) {
   const emu = new Emulator();
   emu.assemble_and_load(source);
   if (stdin) emu.push_stdin(stdin);
   const map = Array.from(emu.get_line_map());
   const pcOf = (l: number) => map[map.indexOf(l) - 1];
-  emu.run_to(1_000_000, -1, pcOf(line));
+  if (line == null) emu.run_until_break(1_000_000);
+  else emu.run_to(1_000_000, -1, pcOf(line));
   const regs = emu.get_all_registers() as { gpr: string[]; sp: string; pc: string };
   const lineOf = (addr: number) => {
     for (let i = 0; i + 1 < map.length; i += 2) if (map[i] === addr) return `line ${map[i + 1]}`;
@@ -175,6 +177,32 @@ describe("gdb-lite x/Ngx", () => {
       lines: ["gdb: x/Ngx needs $sp, $fp, a register or an address, e.g. x/4gx $sp"],
     });
     expect((await gdb("x/2000gx $sp", ctx)).status).toBe("err");
+  });
+});
+
+describe("gdb-lite bt and info frame with no frame", () => {
+  it("say the program has finished once main has returned", async () => {
+    const { ctx } = stoppedAt(fact(4), null);
+    for (const command of ["bt", "info frame"]) {
+      expect(await gdb(command, ctx)).toEqual({ status: "err", lines: ["gdb: no frames: the program has finished"] });
+    }
+  });
+
+  it("ask for a program before anything is loaded", async () => {
+    const ctx = createTerminalContext({
+      machine: { current: makeHub() },
+      workspace: () => ({ main: "", extras: [] }),
+      applySeeds: vi.fn(),
+      stageVfsFile: vi.fn(),
+      removeVfsFile: vi.fn(async () => true),
+      driveForeground: vi.fn(async () => 0),
+      executables: new Map(),
+    });
+    expect(await gdb("bt", ctx)).toEqual({ status: "err", lines: ["gdb: bt needs an assembled program"] });
+    expect(await gdb("info frame", ctx)).toEqual({
+      status: "err",
+      lines: ["gdb: info frame needs an assembled program"],
+    });
   });
 });
 
