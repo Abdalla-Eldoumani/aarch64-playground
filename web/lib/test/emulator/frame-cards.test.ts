@@ -10,6 +10,7 @@ import {
   faultText,
   returnCard,
   writeCards,
+  type Card,
   type CardContext,
   type ProgramLines,
 } from "@/lib/emulator/frame-cards";
@@ -91,6 +92,8 @@ function load(source: string, stdin?: string): Loaded {
 /** The layout as the hub keeps it, for calleeCards. */
 const layoutOf = (emu: Machine) => ({ numbers: Array.from(emu.frame_layout()), names: emu.frame_names() });
 
+const texts = (cards: Card[]) => cards.map((card) => card.text);
+
 // array-overrun.s: main is lines 14 to 21, helper 26 to 36, the store on 32.
 // Steps: main's stp, mov and bl helper are 1 to 3; helper's stp, mov, add
 // and mov 4 to 7; each pass of the loop is cmp, b.ge, str, add, b, so arr[i]
@@ -110,27 +113,37 @@ describe("a write over a caller's saved fp or lr", () => {
   it("is worded at the step that made it, and only then", () => {
     const m = load(OVERRUN);
     m.step(30);
-    expect(writeCards(m.context(), m.word)).toEqual([
+    expect(texts(writeCards(m.context(), m.word))).toEqual([
       `${STORE} wrote arr_s[4] over main's saved fp. It now holds 0x4; it should hold 0, since main has no caller frame.`,
     ]);
     m.step(1);
     expect(writeCards(m.context(), m.word)).toEqual([]);
     m.step(4);
-    expect(writeCards(m.context(), m.word)).toEqual([
+    expect(texts(writeCards(m.context(), m.word))).toEqual([
       `${STORE} wrote arr_s[5] over main's saved fp. It now holds 0x500000004; it should hold 0, since main has no caller frame.`,
     ]);
     m.step(5);
-    expect(writeCards(m.context(), m.word)).toEqual([
+    expect(texts(writeCards(m.context(), m.word))).toEqual([
       `${STORE} wrote arr_s[6] over main's saved lr. It now holds 0x6; it should send main back to the C runtime.`,
     ]);
     m.step(5);
-    expect(writeCards(m.context(), m.word)).toEqual([
+    expect(texts(writeCards(m.context(), m.word))).toEqual([
       `${STORE} wrote arr_s[7] over main's saved lr. It now holds 0x700000006; it should send main back to the C runtime.`,
     ]);
     // Back and forward again: the step it names is the one the counter shows.
     m.emu.step_back();
     m.step(1);
-    expect(writeCards(m.context(), m.word)[0]).toContain("arr_s[7]");
+    expect(writeCards(m.context(), m.word)[0].text).toContain("arr_s[7]");
+    m.emu.free();
+  });
+
+  // The stack starts at 0x80000000 and main's frame is 32 bytes, so its
+  // record is at 0x7fffffe0 and its saved lr 8 bytes above.
+  it("waits for the slot's word, and tells the slot and the step", () => {
+    const m = load(OVERRUN);
+    m.step(40);
+    expect(writeCards(m.context(), () => null)).toEqual([]);
+    expect(writeCards(m.context(), m.word).map((card) => card.event)).toEqual(["lr at 0x7fffffe8, step 40"]);
     m.emu.free();
   });
 });
@@ -141,7 +154,7 @@ describe("a ret through an overwritten lr", () => {
     m.step(58);
     expect(returnCard(m.context(), m.lr())).toBeNull();
     m.step(1);
-    expect(returnCard(m.context(), m.lr())).toBe(BAD_RETURN);
+    expect(returnCard(m.context(), m.lr())).toEqual({ event: "ret at step 59", text: BAD_RETURN, cause: "overwritten" });
     m.emu.free();
   });
 
@@ -160,9 +173,9 @@ describe("a ret through an overwritten lr", () => {
     const said = faultText(error!, m.context(), m.lr(), m.pc());
     expect(said).toEqual({
       error: `memory fault: the program tried to read 0x0000000700000006, which no section covers. ${BAD_RETURN}`,
-      card: BAD_RETURN,
+      card: { event: "ret at step 59", text: BAD_RETURN, cause: "overwritten" },
     });
-    const explained = explainError(said!.error)!;
+    const explained = explainError(said!.error, said!.card)!;
     expect(explained.why).toBe(BAD_RETURN);
     expect(explained.fix).not.toContain("=");
     // A fault with no bad return behind it keeps the old explanation.
@@ -214,7 +227,73 @@ main:
     const card =
       "main's ret on line 34 jumped to 0x4141414141414141 instead of going back to the C runtime, " +
       "because line 19 in fill_words overwrote the saved lr in main's frame at step 24.";
-    expect(faultText(error!, m.context(), m.lr(), m.pc())?.card).toBe(card);
+    expect(faultText(error!, m.context(), m.lr(), m.pc())?.card.text).toBe(card);
+    m.emu.free();
+  });
+});
+
+// A bad return the frame shows no cause for: the run row and the console say
+// what the crate says, word for word, and the explainer keeps its guess.
+describe("a ret the frame shows no cause for", () => {
+  const GUESS =
+    "The base register (the first one inside the brackets, or a pointer passed to a call) does not hold " +
+    "an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or " +
+    "a `mov` was written where `ldr xN, =label` was meant";
+
+  // main pushes x19 and never pops it, so its ldp on line 13 takes fp and lr
+  // from x19's 16 bytes (5, then 0) and its ret on line 14 goes to 0. Steps:
+  // stp, mov, mov, str, mov, ldp, ret, and the fetch at 0 faults on step 8.
+  it("keeps the fault as it is when no store reached the saved lr", () => {
+    const m = load(`// main pushes x19 and never pops it.
+define(fp, x29)
+define(lr, x30)
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 5
+        str     x19, [sp, -16]!         // push x19
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16        // bug: x19's 16 bytes are still on top
+        ret
+`);
+    const { error, steps } = m.run();
+    expect(steps).toBe(8);
+    expect(error).toBe(`memory fault: the program tried to read 0x0000000000000000, which no section covers. ${GUESS}`);
+    const card = returnCard(m.context(), m.lr());
+    expect(card).toEqual({
+      event: "ret at step 7",
+      text: "main's ret on line 14 jumped to 0x0 instead of going back to the C runtime.",
+      cause: null,
+    });
+    expect(faultText(error!, m.context(), m.lr(), m.pc())).toBeNull();
+    expect(explainError(error!, card)!.why).toContain("`ldr xN, label` written without its `=`");
+    m.emu.free();
+  });
+
+  // lr loaded by hand on line 11; main's ret on line 12 goes there at step
+  // 5, and the fetch faults on step 6.
+  it("keeps the fault as it is when lr was loaded by hand", () => {
+    const m = load(`// main returns through an lr it loaded itself.
+define(fp, x29)
+define(lr, x30)
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldp     fp, lr, [sp], 16
+        ldr     lr, =0x4141414141414141 // bug: lr no longer goes back
+        ret
+`);
+    const { error, steps } = m.run();
+    expect(steps).toBe(6);
+    expect(error).toBe(`memory fault: the program tried to read 0x4141414141414141, which no section covers. ${GUESS}`);
+    expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
+    expect(faultText(error!, m.context(), m.lr(), m.pc())).toBeNull();
     m.emu.free();
   });
 });
@@ -238,7 +317,7 @@ describe("lr not saved before a call", () => {
     m.step(15);
     expect(returnCard(m.context(), m.lr())).toBeNull();
     m.step(1);
-    expect(returnCard(m.context(), m.lr())).toBe(MISSING_LR);
+    expect(returnCard(m.context(), m.lr())).toEqual({ event: "ret at step 16", text: MISSING_LR, cause: "unsaved" });
     m.emu.free();
   });
 
@@ -251,8 +330,9 @@ describe("lr not saved before a call", () => {
       "paused after 1,000,000 steps without finishing. press run to continue, or check for a loop " +
       "whose exit condition never becomes true";
     const said = faultText(paused, m.context(), m.lr(), m.pc());
-    expect(said).toEqual({ error: `${paused}\n${MISSING_LR}`, card: MISSING_LR });
-    expect(explainError(said!.error)!.fix).toMatch(/^Save lr before the function's first call/);
+    expect(said?.error).toBe(`${paused}\n${MISSING_LR}`);
+    expect(said?.card).toMatchObject({ text: MISSING_LR, cause: "unsaved" });
+    expect(explainError(said!.error, said!.card)!.fix).toMatch(/^Save lr before the function's first call/);
     m.emu.free();
   });
 
@@ -261,9 +341,11 @@ describe("lr not saved before a call", () => {
     const { error } = m.run();
     expect(m.emu.take_stdout()).toBe("n = 7\n");
     expect(error).toMatch(/^stopped after 10 million steps, which is the playground's ceiling\. /);
-    expect(faultText(error!, m.context(), m.lr(), m.pc())).toEqual({ error: `${error}\n${MISSING_LR}`, card: MISSING_LR });
+    const said = faultText(error!, m.context(), m.lr(), m.pc());
+    expect(said?.error).toBe(`${error}\n${MISSING_LR}`);
+    expect(said?.card.text).toBe(MISSING_LR);
     // The ceiling keeps its own explanation.
-    expect(explainError(`${error}\n${MISSING_LR}`)!.what).toContain("ten-million-instruction ceiling");
+    expect(explainError(said!.error, said!.card)!.what).toContain("ten-million-instruction ceiling");
     m.emu.free();
   });
 });
@@ -286,7 +368,9 @@ describe("a callee-saved register a call did not put back", () => {
     expect(calleeLeftovers(Array.from(m.emu.frames()))).toEqual([19]);
     expect(calleeCards(Array.from(m.emu.take_clobber_notes()), m.lines, layoutOf(m.emu))).toEqual([]);
     m.step(1);
-    expect(calleeCards(Array.from(m.emu.take_clobber_notes()), m.lines, layoutOf(m.emu))).toEqual([CALLEE_CARD]);
+    expect(calleeCards(Array.from(m.emu.take_clobber_notes()), m.lines, layoutOf(m.emu))).toEqual([
+      { event: "x19 read on line 30", text: CALLEE_CARD },
+    ]);
     m.run();
     expect(m.emu.take_stdout()).toBe("20\n");
     m.emu.free();
@@ -301,7 +385,7 @@ describe("a callee-saved register a call did not put back", () => {
     const m = load(exercise.starter, exercise.stdin);
     m.run();
     expect(m.emu.take_stdout()).toBe("total = 80\n");
-    expect(calleeCards(Array.from(m.emu.take_clobber_notes()), m.lines, layoutOf(m.emu))).toEqual([
+    expect(texts(calleeCards(Array.from(m.emu.take_clobber_notes()), m.lines, layoutOf(m.emu)))).toEqual([
       "Line 43 in main reads x19, but double_it changed it and its ret on line 25 did not put it back. " +
         "x19 to x28 are callee-saved: a function that uses one must save it first and put it back " +
         "before it returns. Do scratch work in x9 to x15, or save x19 on the stack and restore it before ret.",
