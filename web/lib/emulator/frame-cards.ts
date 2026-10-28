@@ -92,7 +92,11 @@ function words(ctx: ProgramLines & { layout: FrameLayout | null }) {
 const capital = (s: string) => (s.startsWith("line ") ? `L${s.slice(1)}` : s);
 
 /** Where a call's saved lr should send it: "the C runtime", "main at line 17". */
-function backTo(row: FrameRow, ctx: ProgramLines, fnName: (addr: number) => string): string {
+function backTo(
+  row: Pick<FrameRow, "index" | "flags" | "retAddr">,
+  ctx: ProgramLines,
+  fnName: (addr: number) => string,
+): string {
   if (row.flags & RUNTIME_CALL) return "qsort or bsearch";
   const p = row.index === 0 ? null : ctx.linePlace(row.retAddr);
   return p ? `${fnName(row.retAddr)} at ${at(p)}` : "the C runtime";
@@ -154,8 +158,9 @@ export function writeCards(ctx: CardContext, readWord: (addr: number) => bigint 
  */
 export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | null {
   const bad = ctx.snapshot.badReturn;
-  const row = ctx.snapshot.frames.at(-1);
-  if (!bad || !row) return null;
+  if (!bad) return null;
+  // The call as it stood at the ret: a later return may have popped it.
+  const row = bad.call;
   const { fnAt, fnName, line } = words(ctx);
   const name = fnName(row.entry);
   const ret = ctx.linePlace(bad.pc);
