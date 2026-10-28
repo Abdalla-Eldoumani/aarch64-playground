@@ -19,11 +19,12 @@ function frameRow(index: number, entry: number, callPc: number, spEntry: number,
 }
 
 /** main's 32-byte frame (record at its low end, a_s at fp + 16), and with
- *  `called`, a leaf add_two entered from 0x400010. */
-function frames(called: boolean): number[] {
+ *  `called`, a leaf add_two entered from 0x400010; `step` is the machine's
+ *  step count. */
+function frames(called: boolean, step = 7): number[] {
   const rows = [frameRow(0, 0x400000, 0, MAIN_RECORD + 32, MAIN_RECORD, MAIN_RECORD, 0)];
   if (called) rows.push(frameRow(1, ADD_ENTRY, 0x400010, MAIN_RECORD, MAIN_RECORD, 0, 3));
-  return [7, 0, 0, 0, 1, 0, 0, 0, rows.length, 0, ...rows.flat()];
+  return [step, 0, 0, 0, 1, 0, 0, 0, rows.length, 0, ...rows.flat()];
 }
 
 // main and add_two, main with one int slot a_s at fp + 16.
@@ -93,12 +94,33 @@ describe("FramesView", () => {
   });
 
   it("says a call and a return once each, after the step that made it", () => {
-    const { rerender } = render(<FramesView {...props()} />);
+    const { rerender } = render(<FramesView {...props({ frames: frames(false, 7) })} />);
     expect(said()).toBe("");
-    rerender(<FramesView {...props({ frames: frames(true) })} />);
+    rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
     expect(said()).toBe("add_two called");
-    rerender(<FramesView {...props({ frames: frames(false) })} />);
+    rerender(<FramesView {...props({ frames: frames(false, 9) })} />);
     expect(said()).toBe("add_two returned");
+  });
+
+  // Back over a bl leaves the call unmade; Back over a ret puts the reader
+  // inside the call again. Neither is the call returning.
+  it("says what Back takes back, never a return", () => {
+    const { rerender } = render(<FramesView {...props({ frames: frames(false, 7) })} />);
+    rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
+    rerender(<FramesView {...props({ frames: frames(false, 7) })} />);
+    expect(said()).toBe("back before the call to add_two");
+    rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
+    expect(said()).toBe("add_two called");
+    rerender(<FramesView {...props({ frames: frames(false, 9) })} />);
+    rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
+    expect(said()).toBe("back inside add_two");
+  });
+
+  it("says nothing when a reset or a new program leaves the call", () => {
+    const { rerender } = render(<FramesView {...props({ frames: frames(false, 7) })} />);
+    rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
+    rerender(<FramesView {...props({ frames: frames(false, 0) })} />);
+    expect(said()).toBe("add_two called");
   });
 
   it("says nothing about the calls a run makes, or about where it stops", () => {
