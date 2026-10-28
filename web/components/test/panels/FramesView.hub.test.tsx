@@ -113,10 +113,13 @@ async function mounted() {
         await expect(get().assemble(source)).resolves.toBe(true);
       });
     },
-    press: async (target: StepTarget) => {
-      await act(async () => {
-        await get().runUntil(target);
+    /** A goal pressed as a button does it, so the view renders the run
+     *  going and then its stop at `steps`. */
+    press: async (target: StepTarget, steps: number) => {
+      act(() => {
+        void get().runUntil(target);
       });
+      await waitFor(() => expect([get().isRunning, get().stepCount]).toEqual([false, steps]));
     },
     run: async (steps: number) => {
       act(() => {
@@ -174,12 +177,10 @@ describe("the frames view on the hub", () => {
     await m.load(OVERRUN);
     // Run to cursor on line 33 stops at 10, 15, 20, 25, then 30 on the write
     // over main's saved fp.
-    for (let i = 0; i < 5; i++) await m.press(33);
-    expect(m.hub().stepCount).toBe(30);
+    for (const steps of [10, 15, 20, 25, 30]) await m.press(33, steps);
     const at30 = await card();
     // Step over the add, b, cmp and b.ge (31 to 34), then the store at 35.
-    for (let i = 0; i < 5; i++) await m.press("over");
-    expect(m.hub().stepCount).toBe(35);
+    for (const steps of [31, 32, 33, 34, 35]) await m.press("over", steps);
     const at35 = await card();
     await heardSoFar();
     expect(cardsSaid(m.heard)).toEqual([at30, at35]);
@@ -242,14 +243,13 @@ main:
     });
     for (let i = 0; i < 8; i++) {
       act(() => {
-      m.hub().step();
-    });
+        m.hub().step();
+      });
       await waitFor(() => expect(m.hub().stepCount).toBe(i + 1));
     }
     await heardSoFar();
     m.heard.length = 0;
-    await m.press("out");
-    expect(m.hub().stepCount).toBe(11);
+    await m.press("out", 11);
     const both = await card();
     expect(both).toMatch(/over main's saved fp\. .* over main's saved lr\. /);
     await heardSoFar();
@@ -263,7 +263,7 @@ main:
   it("says a card once per load of the program", async () => {
     const m = await mounted();
     const to30 = async () => {
-      for (let i = 0; i < 5; i++) await m.press(33);
+      for (const steps of [10, 15, 20, 25, 30]) await m.press(33, steps);
       return card();
     };
     await m.load(OVERRUN);
