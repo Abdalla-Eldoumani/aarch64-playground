@@ -82,8 +82,14 @@ export interface FramesSnapshot {
   hiddenEntry: number;
   /** The x29 chain in memory matches the call stack. */
   chainOk: boolean;
-  /** The last `ret` that went to no caller, or null. */
-  badReturn: { step: number; pc: number; target: number } | null;
+  /** The last `ret` that went to no caller, with the call it returned from
+   *  as that call stood at the `ret` (a later return can pop it), or null. */
+  badReturn: {
+    step: number;
+    pc: number;
+    target: number;
+    call: Pick<FrameRow, "index" | "entry" | "retAddr" | "flags" | "lastRet" | "lrHit">;
+  } | null;
   /** main, then the innermost calls, at most 64. */
   frames: FrameRow[];
   /** Registers holding what a returning call left in a callee-saved
@@ -91,7 +97,7 @@ export interface FramesSnapshot {
   leftovers: { register: number; retPc: number }[];
 }
 
-const HEADER = 10;
+const HEADER = 17;
 const FRAME_ROW = 19;
 
 function hit(step: number, pc: number, element: number, name: number): FrameHit | null {
@@ -133,7 +139,22 @@ export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
     hidden: n[2],
     hiddenEntry: n[3],
     chainOk: n[4] === 1,
-    badReturn: n[5] === 0 ? null : { step: n[5], pc: n[6], target: n[7] },
+    badReturn:
+      n[5] === 0
+        ? null
+        : {
+            step: n[5],
+            pc: n[6],
+            target: n[7],
+            call: {
+              index: n[10],
+              entry: n[11],
+              retAddr: n[12],
+              flags: n[13],
+              lastRet: n[14],
+              lrHit: hit(n[15], n[16], -1, -1),
+            },
+          },
     frames,
     leftovers,
   };
