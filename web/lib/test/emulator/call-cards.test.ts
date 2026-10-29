@@ -352,6 +352,34 @@ main:
     expect(texts(card)).toEqual(["%d stored 5 at n_s in main's frame, the address in x1"]);
   });
 
+  it("calls a slot with no name by its offset, once", () => {
+    const unnamed = `// Reads a number into main's frame at fp + 16, a slot with no name.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_in:     .string "%d"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_in
+        add     x1, fp, 16                  // no name for this slot
+        bl      scanf
+
+        ldr     w0, [fp, 16]                // main returns the number
+        ldp     fp, lr, [sp], 32
+        ret
+`;
+    const card = after(load(unnamed, "42\n"), 18);
+    expect(texts(card)).toEqual(["%d stored 42 at fp + 16, the address in x1"]);
+  });
+
   it("counts the conversions past the ones the card keeps", () => {
     const fmt = "%%".repeat(40);
     const source = `.data\nfmt_out:    .string "${fmt}"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        ldr     x0, =fmt_out\n        bl      printf\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n`;
