@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
 import { stripEscapeSequences } from "@/lib/terminal/input-state";
@@ -11,6 +11,8 @@ interface ConsolePanelProps {
   stderr: string;
   /** The machine's plain-language notes about the run, under the output. */
   notes?: string[];
+  /** What the printf or scanf call the last step ran did, last in the box. */
+  call?: ReactNode;
   blocked: boolean;
   /** A terminal program owns the pane's input: its reads are answered by
    *  keystrokes in the terminal, so this console's stdin box would send
@@ -61,6 +63,7 @@ export function ConsolePanel({
   stdout,
   stderr,
   notes = NO_NOTES,
+  call,
   blocked,
   exitCode,
   vfsFiles,
@@ -271,6 +274,7 @@ export function ConsolePanel({
             </p>
           </div>
         )}
+        {call}
       </div>
       {vfsFiles.length > 0 && (
         <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[12px] text-[var(--text-secondary)]">
