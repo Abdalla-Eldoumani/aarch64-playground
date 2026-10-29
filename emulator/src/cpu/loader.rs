@@ -28,6 +28,7 @@ impl Cpu {
         // The writes above ran outside any step, so no frame's undo log
         // holds them: frames left from before the load cannot undo it.
         self.snapshots.clear();
+        self.last_call = CallRecord::default();
         self.text_end = Some(CODE_BASE + (code.len() as u64) * 4);
         // The bare-metal path has no host calls; drop any trampolines a
         // previously loaded hosted image left behind.
@@ -77,6 +78,7 @@ impl Cpu {
         // The image is written outside any step, so no frame's undo log
         // will hold it: frames left from before the load cannot undo it.
         self.snapshots.clear();
+        self.last_call = CallRecord::default();
         self.clobber_notes.clear();
         self.clobber_noted = 0;
         for (addr, bytes) in &image.writes {
