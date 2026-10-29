@@ -234,6 +234,7 @@ impl Cpu {
             steps_total: self.steps_total,
             steps_taken: self.steps_taken,
             frames: self.frames.clone(),
+            last_program_pc: self.last_program_pc,
             call: Some(self.last_call.clone()),
         };
         self.snapshots.save_named(name, snap);
@@ -263,6 +264,7 @@ impl Cpu {
         self.stdout_seen = snap.stdout_seen;
         self.stderr_seen = snap.stderr_seen;
         self.steps_taken = snap.steps_taken;
+        self.last_program_pc = snap.last_program_pc;
         if let Some(call) = snap.call {
             self.last_call = call;
         }
