@@ -13,6 +13,9 @@ const h = vi.hoisted(() => ({
   // The call stack numbers the fake wrapper reports; null is the older-wasm
   // answer.
   frames: null as number[] | null,
+  // The last call's card numbers; null when the step ran no printf or
+  // scanf, and from an older wasm build.
+  callCard: null as number[] | null,
 }));
 
 vi.mock("@/lib/worker/client", () => ({
@@ -46,6 +49,7 @@ function fakeEmu() {
     stderrSeen: () => h.seen.stderr,
     takeClobberNotes: () => h.notes,
     frames: () => h.frames,
+    callCard: () => h.callCard,
     listVfsFiles: () => [],
     listStates: () => [],
     takeDirtyAddrs: () => [],
@@ -193,5 +197,17 @@ describe("MainThreadBackend frames", () => {
     h.frames = null;
     const without = await pickBackend()!.init();
     expect("frames" in without).toBe(false);
+  });
+});
+
+describe("MainThreadBackend call card", () => {
+  test("the snapshot carries the last call's numbers, and no key when there are none", async () => {
+    setPref("main");
+    h.callCard = [1, 3, 0x400010, 2, 0, 0, 0, 0, 0, 0, 0];
+    const withCard = await pickBackend()!.init();
+    expect(withCard.callCard).toEqual([1, 3, 0x400010, 2, 0, 0, 0, 0, 0, 0, 0]);
+    h.callCard = null;
+    const without = await pickBackend()!.init();
+    expect("callCard" in without).toBe(false);
   });
 });
