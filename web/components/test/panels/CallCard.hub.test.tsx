@@ -152,7 +152,7 @@ describe("the call card on the hub", () => {
     await m.stepTo(25);
     await settled();
     expect(m.heard.at(-1)).toBe(
-      'printf("Sum = %d, Product = %d\\n") on line 47 printed "Sum = 11, Product = 28\\n". ' +
+      'printf("Sum = %d, Product = %d new line ") on line 47 printed "Sum = 11, Product = 28 new line ". ' +
         "%d printed 11, the value in w1. %d printed 28, the value in w2.",
     );
     // A new load is a new program: its calls are said again.
