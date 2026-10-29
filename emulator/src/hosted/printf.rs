@@ -112,7 +112,7 @@ pub(crate) fn format_into(
                 code: if done.is_ok() { CALL_OK } else { CALL_STOPPED },
                 ..Conversion::default()
             });
-            if done.is_err() {
+            if done.is_err() || out.len() > MAX_PRINTF_CALL_BYTES {
                 // Nothing reaches stdout, but the rows' places stay in range.
                 call.set_text(&out);
             }
