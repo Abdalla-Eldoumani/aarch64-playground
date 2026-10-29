@@ -1,5 +1,6 @@
 import { formatWord64 } from "@/lib/emulator/format-hex";
 import { readFrameLayout, readFrames, type FrameExports, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { readCallCard, type CallCardExports } from "@/lib/emulator/call-data";
 import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ExternalCall, RunGoal } from "@/lib/worker/protocol";
@@ -182,6 +183,12 @@ export class EmulatorInstance {
   /** The last assemble's frame layout; null on an older wasm build. */
   frameLayout(): FrameLayoutPayload | null {
     return readFrameLayout(this.inner);
+  }
+
+  /** The printf or scanf call the last step ran; null when it ran neither
+   *  and on a wasm build that predates the call card. */
+  callCard(): number[] | null {
+    return readCallCard(this.inner);
   }
 
   isBlocked(): boolean {
@@ -400,7 +407,7 @@ interface RawRunResult {
 }
 
 // the WASM module's Emulator instance shape
-interface WasmEmulatorInstance extends FrameExports {
+interface WasmEmulatorInstance extends FrameExports, CallCardExports {
   assemble_and_load(source: string): unknown;
   assemble_and_load_with_args(source: string, args: string[]): unknown;
   step(): unknown;
