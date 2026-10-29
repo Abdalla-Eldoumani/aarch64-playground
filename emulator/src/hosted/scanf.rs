@@ -54,8 +54,11 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let mut matched: i64 = 0;
 
     let fmt_chars: Vec<char> = fmt.chars().collect();
-    // Where char `f` starts in the format's bytes, for the call card.
-    let at = |f: usize| fmt_chars[..f].iter().map(|c| c.len_utf8()).sum::<usize>();
+    // Where char `f` starts in the format's bytes, for the call card, found
+    // once: summing from the start per conversion made a long format's call
+    // take time in the square of its length.
+    let starts: Vec<usize> = fmt.char_indices().map(|(i, _)| i).chain([fmt.len()]).collect();
+    let at = |f: usize| starts[f];
     let mut f = 0;
     while f < fmt_chars.len() {
         let c = fmt_chars[f];
