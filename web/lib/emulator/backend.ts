@@ -324,6 +324,7 @@ class MainThreadBackend implements EmulatorBackend {
     const stderrSeen = this.emu.stderrSeen();
     const clobberNotes = this.emu.takeClobberNotes();
     const frames = this.emu.frames();
+    const callCard = this.emu.callCard();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -344,6 +345,7 @@ class MainThreadBackend implements EmulatorBackend {
       ...(stderrSeen != null ? { stderrSeen } : {}),
       ...(clobberNotes.length ? { clobberNotes } : {}),
       ...(frames ? { frames } : {}),
+      ...(callCard ? { callCard } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),
