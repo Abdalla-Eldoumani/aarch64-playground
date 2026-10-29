@@ -10,10 +10,12 @@
 
 pub mod check;
 pub mod layout;
+pub mod tree;
 
 use crate::cpu::{Cpu, STACK_BASE, STACK_FLOOR};
 use crate::memory::Memory;
 use layout::FrameLayout;
+use tree::{CallTree, TreeUndo};
 
 /// Most activations recorded. The C corpus recurses 7,945 deep; past this
 /// the tracker counts calls without recording them.
@@ -117,6 +119,8 @@ pub struct CallStack {
     /// Calls past `MAX_ACTIVATIONS` not yet returned from.
     uncounted: u64,
     bad_return: BadReturn,
+    /// The calls made so far, returned ones included.
+    tree: CallTree,
 }
 
 /// What one step changed in the call stack, for its step-back frame: the
@@ -133,6 +137,7 @@ pub struct FrameUndo {
     removed: Vec<Activation>,
     marked: Vec<(usize, u64, u8, u64)>,
     hit: Vec<(usize, Hit, Hit)>,
+    tree: TreeUndo,
 }
 
 /// How the innermost activation's frame stands.
@@ -184,6 +189,10 @@ impl CallStack {
         self.bad_return
     }
 
+    pub fn tree(&self) -> &CallTree {
+        &self.tree
+    }
+
     /// How many calls deep the program is, counted or not.
     pub fn depth(&self) -> u64 {
         self.acts.len() as u64 + self.uncounted
@@ -193,6 +202,7 @@ impl CallStack {
         self.acts.clear();
         self.uncounted = 0;
         self.bad_return = BadReturn::default();
+        self.tree.clear();
     }
 
     /// A fresh program: its first function, entered at `entry` with the
@@ -207,6 +217,7 @@ impl CallStack {
             saved: callee_saved(regs),
             ..Activation::default()
         });
+        self.tree.start(entry, regs[0]);
     }
 
     /// Open `log` for the step about to run.
@@ -217,6 +228,7 @@ impl CallStack {
         log.removed.clear();
         log.marked.clear();
         log.hit.clear();
+        CallTree::record_undo(&mut log.tree);
     }
 
     /// Put back what the step `log` recorded changed. A step either pushed
@@ -238,6 +250,7 @@ impl CallStack {
         if let Some(bad) = log.bad_return {
             self.bad_return = bad;
         }
+        self.tree.undo(log.tree);
     }
 
     /// A `bl` or `blr` at `pc` just sent the program to `target`. The
@@ -252,7 +265,7 @@ impl CallStack {
         into_program: bool,
         regs: &[u64; 32],
         mem: &Memory,
-        log: Option<&mut FrameUndo>,
+        mut log: Option<&mut FrameUndo>,
     ) {
         let (sp, fp) = (regs[31], regs[29]);
         // Past the cap the real caller is one the stack never recorded.
@@ -268,14 +281,14 @@ impl CallStack {
             let flags = if caller.flags & LR_STORED == 0 { caller.flags | LR_UNSAVED } else { caller.flags };
             let last_ret = pc.wrapping_add(4);
             if (record, flags, last_ret) != (caller.record, caller.flags, caller.last_ret) {
-                if let Some(log) = log {
+                if let Some(log) = log.as_deref_mut() {
                     log.marked.push((top, caller.record, caller.flags, caller.last_ret));
                 }
                 (caller.record, caller.flags, caller.last_ret) = (record, flags, last_ret);
             }
         }
         if into_program {
-            self.push(Activation {
+            let callee = Activation {
                 entry: target,
                 call_pc: pc,
                 ret_addr: pc.wrapping_add(4),
@@ -283,7 +296,8 @@ impl CallStack {
                 fp_entry: fp,
                 saved: callee_saved(regs),
                 ..Activation::default()
-            });
+            };
+            self.push(callee, regs[0], log);
         }
     }
 
@@ -304,8 +318,8 @@ impl CallStack {
 
     /// qsort or bsearch at `stub_pc` just sent the program to its
     /// comparator at `target`, with lr set to come back to the stub.
-    pub(crate) fn on_runtime_call(&mut self, stub_pc: u64, target: u64, regs: &[u64; 32]) {
-        self.push(Activation {
+    pub(crate) fn on_runtime_call(&mut self, stub_pc: u64, target: u64, regs: &[u64; 32], log: Option<&mut FrameUndo>) {
+        let callee = Activation {
             entry: target,
             call_pc: stub_pc,
             ret_addr: regs[30],
@@ -314,10 +328,12 @@ impl CallStack {
             saved: callee_saved(regs),
             flags: RUNTIME_CALL,
             ..Activation::default()
-        });
+        };
+        self.push(callee, regs[0], log);
     }
 
-    fn push(&mut self, mut a: Activation) {
+    /// Push `a`, called with `x0`, onto the stack and into the call tree.
+    fn push(&mut self, mut a: Activation, x0: u64, log: Option<&mut FrameUndo>) {
         if self.acts.len() >= MAX_ACTIVATIONS {
             self.uncounted += 1;
             return;
@@ -326,6 +342,7 @@ impl CallStack {
             a.watch = if caller.record != 0 { self.acts.len() } else { caller.watch };
         }
         self.acts.push(a);
+        self.tree.enter(a.entry, x0, log.map(|log| &mut log.tree));
     }
 
     /// A `ret` (or `br x30`) at `pc`, step `step`, just sent the program to
@@ -347,6 +364,7 @@ impl CallStack {
         }
         if self.acts.last().is_some_and(|a| a.ret_addr == target) {
             let Some(top) = self.acts.pop() else { return 0 };
+            self.tree.leave(regs[0], log.as_deref_mut().map(|log| &mut log.tree));
             if let Some(log) = log {
                 log.removed.push(top);
             }
@@ -364,6 +382,7 @@ impl CallStack {
                 if let Some(log) = log.as_deref_mut() {
                     log.removed.push(a);
                 }
+                self.tree.leave(regs[0], log.as_deref_mut().map(|log| &mut log.tree));
             }
             return 0;
         }
@@ -492,6 +511,10 @@ pub struct FrameView {
     /// Registers holding what a returning call left in a callee-saved
     /// register: (register, the `ret` that left it).
     pub leftovers: Vec<(u8, u64)>,
+    /// The calls made so far, and per node the width its function reads
+    /// x0 at, from the layout (0 when it does not).
+    pub tree: CallTree,
+    pub arg_widths: Vec<u8>,
 }
 
 /// The call stack as the program stands, for one snapshot. The chain walk
@@ -563,6 +586,13 @@ pub fn frame_view(cpu: &Cpu, layout: &FrameLayout) -> FrameView {
         bad_return: stack.bad_return,
         frames,
         leftovers: cpu.regs.callee_leftovers(),
+        tree: stack.tree.clone(),
+        arg_widths: stack
+            .tree
+            .nodes()
+            .iter()
+            .map(|n| layout.function_at(n.entry).filter(|f| f.entry == n.entry).map_or(0, |f| f.arg_width))
+            .collect(),
     }
 }
 
@@ -602,7 +632,8 @@ fn chain_matches(stack: &CallStack, regs: &[u64; 32], mem: &Memory) -> bool {
 }
 
 /// The view as the flat numbers the wasm hands the web: a header, a row per
-/// drawn frame, then a pair per leftover. Every value fits an f64 exactly
+/// drawn frame, a pair per leftover, then the call tree
+/// (`CallTree::numbers`). Every value fits an f64 exactly
 /// below 2^53, which covers every address a course program reaches.
 ///
 /// shortcut: a garbage 64-bit value (a return to 0xdeadbeefdeadbeef) loses
@@ -654,5 +685,6 @@ pub fn view_numbers(v: &FrameView) -> Vec<f64> {
     for &(register, ret_pc) in &v.leftovers {
         out.extend([f64::from(register), ret_pc as f64]);
     }
+    v.tree.numbers(&v.arg_widths, &mut out);
     out
 }
