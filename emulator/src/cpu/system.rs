@@ -260,6 +260,7 @@ impl Cpu {
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
             callbacks: &mut self.callbacks,
+            call: None,
         };
         let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
         match outcome {
@@ -304,6 +305,26 @@ impl Cpu {
         self.pending_sleep_ns.take()
     }
 
+    /// Make the printf or scanf call this step ran the last call, stamped
+    /// with the step and its `bl`. The step's frame keeps the one it
+    /// replaced, so Back brings that card back.
+    fn keep_call(&mut self, kind: u8, failed: bool) {
+        // From a copy: the accessors would count these reads as the
+        // program using a register an earlier call overwrote.
+        let regs = self.regs.snapshot();
+        let call = &mut self.call_scratch;
+        call.kind = kind;
+        call.step = self.steps_taken;
+        call.call_pc = regs[30].wrapping_sub(4);
+        call.result = regs[0];
+        call.failed = failed;
+        let old = std::mem::replace(&mut self.last_call, std::mem::take(&mut self.call_scratch));
+        match self.snapshots.newest_mut() {
+            Some(frame) => frame.call = Some(old),
+            None => self.call_scratch = old,
+        }
+    }
+
     /// Dispatch a host-stub entry point at `pc`. Splits the mutable borrow
     /// of `self` so the stub can touch registers, memory, and console
     /// buffers without racing the `HostTable` itself (which is only read).
@@ -316,6 +337,13 @@ impl Cpu {
         // temporarily taking the entries, dispatching, then restoring.
         // qsort's comparator returns to the stub it was called from.
         self.callbacks.stub_pc = pc;
+        // Only printf and scanf get a call card.
+        let kind = match self.host.name_for_address(pc) {
+            Some("printf") => CALL_PRINTF,
+            Some("scanf" | "__isoc99_scanf") => CALL_SCANF,
+            _ => 0,
+        };
+        self.call_scratch.began = false;
         let table = std::mem::take(&mut self.host);
         let mut ctx = HostContext {
             regs: &mut self.regs,
@@ -332,11 +360,16 @@ impl Cpu {
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
             callbacks: &mut self.callbacks,
+            call: (kind != 0).then_some(&mut self.call_scratch),
         };
         let outcome = table
             .dispatch(pc, &mut ctx)
             .expect("dispatch_host_stub called with non-host pc");
         self.host = table;
+        // A call waiting on input runs again from the start once it comes.
+        if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
+            self.keep_call(kind, outcome.is_err());
+        }
         let host_outcome = outcome?;
 
         match host_outcome {
