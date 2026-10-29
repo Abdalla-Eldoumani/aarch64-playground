@@ -385,6 +385,73 @@ fn a_named_save_keeps_the_card_it_was_taken_with() {
     assert_eq!(card(&p.cpu), Some(scanf));
 }
 
+const TAIL_CALL: &str = r#"// say() prints its number with a tail call: it takes its frame down and
+// branches to printf, so printf returns straight to main.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "hi %d\n"
+
+.text
+
+// say(w0 = n): prints n
+        .balign 4
+        .global say
+say:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        ldp     fp, lr, [sp], 16
+        b       printf                      // printf returns to say's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 5
+        bl      say
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_tail_called_printf_is_named_by_its_b_also_after_back_and_a_restore() {
+    let mut p = load(TAIL_CALL);
+    let (b_printf, stub) = (p.pc_of(22), p.cpu.host.lookup("printf").expect("printf"));
+    // At printf itself, past the b and the trampoline it goes through.
+    p.cpu.set_breakpoint(stub);
+    p.cpu.run_until_break(1_000_000).expect("run");
+    p.cpu.clear_breakpoint(stub);
+    assert_eq!(p.cpu.regs.read_pc(), stub);
+    p.cpu.save_state("in printf");
+    let named = |cpu: &Cpu| card(cpu).map(|c| (c.call_pc, c.text));
+    let want = Some((b_printf, "hi 5\n".to_string()));
+    p.cpu.step().expect("printf");
+    // lr still holds main's way back from bl say: lr - 4 would name line 31.
+    assert_eq!(named(&p.cpu), want);
+    // main's next two steps move the last instruction run on; Back puts it back.
+    for _ in 0..2 {
+        p.cpu.step().expect("main");
+    }
+    for _ in 0..3 {
+        p.cpu.step_back();
+    }
+    p.cpu.step().expect("printf again");
+    assert_eq!(named(&p.cpu), want, "after Back");
+    p.cpu.run_until_break(1_000_000).expect("to the end");
+    assert!(p.cpu.load_state("in printf"));
+    p.cpu.step().expect("printf from the save");
+    assert_eq!(named(&p.cpu), want, "after a restore");
+}
+
 #[test]
 fn a_new_program_starts_with_no_card() {
     let mut p = load(&read("web/public/examples/cpsc355/locals.s"));
