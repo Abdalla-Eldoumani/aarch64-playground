@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { callCard, spokenCard } from "@/lib/emulator/call-cards";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
-import { frameBoxes } from "@/lib/emulator/stack-frames";
+import { frameBoxes } from "@/lib/emulator/frame-boxes";
 
 export type CallCardProps = Pick<
   EmulatorState,
