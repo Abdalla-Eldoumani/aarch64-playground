@@ -119,6 +119,18 @@ describe("the locals example (stdin 7 4)", () => {
         "%d stored 7 at a_s (fp + 16), the address in x1. %d stored 4 at b_s (fp + 20), the address in x2.",
     );
   });
+
+  it("says a \\n in words, where the card shows it as code", () => {
+    const p = load(LOCALS, "7 4\n");
+    after(p, 31);
+    const sums = after(p, 47);
+    expect(sums.outcome).toBe('printed "Sum = 11, Product = 28\\n"');
+    // The spaces around the words are not heard.
+    expect(spokenCard(sums)).toBe(
+      'printf("Sum = %d, Product = %d new line ") on line 47 printed "Sum = 11, Product = 28 new line ". ' +
+        "%d printed 11, the value in w1. %d printed 28, the value in w2.",
+    );
+  });
 });
 
 describe("printf, family by family (call-printf.s)", () => {
