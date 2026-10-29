@@ -156,7 +156,8 @@ pub struct CallRecord {
     pub kind: u8,
     /// The stub read its format and began recording.
     pub began: bool,
-    /// The step that ran the call, and the `bl` that made it.
+    /// The step that ran the call, and the branch that made it: a `bl`, or
+    /// a tail call's `b`.
     pub step: u64,
     pub call_pc: u64,
     /// x0 as the call left it, and whether the call stopped the program.
