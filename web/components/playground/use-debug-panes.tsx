@@ -111,6 +111,7 @@ export function useDebugPanes({
             errorCard={emu.errorCard}
             programLoaded={emu.programLoaded}
             running={emu.isRunning}
+            calls
           />
         }
         bytes={
