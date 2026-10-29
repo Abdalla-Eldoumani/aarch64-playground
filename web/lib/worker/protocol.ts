@@ -249,6 +249,12 @@ export interface StateSnapshot {
    */
   frames?: number[];
   /**
+   * The printf or scanf call the last step ran, as the numbers `call_card`
+   * (emulator/src/lib.rs) lays out and lib/emulator/call-cards words. Absent
+   * when the step ran neither, and on wasm builds that predate the call card.
+   */
+  callCard?: number[];
+  /**
    * `(addr, len)` pairs of memory ranges written since the previous
    * snapshot. Drives memory-cell diff highlighting in the replay scrubber.
    * Flat array of `[addr, len, addr, len, ...]`.

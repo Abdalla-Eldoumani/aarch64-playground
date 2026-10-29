@@ -99,6 +99,110 @@ pub struct HostContext<'a> {
     /// qsort and bsearch calls waiting on a comparator. On the `Cpu` and
     /// in every snapshot, like `strtok_save`.
     pub callbacks: &'a mut crate::hosted::callback::CallbackState,
+    /// What printf or scanf does, conversion by conversion, for the call
+    /// card; `None` for every other stub.
+    pub call: Option<&'a mut CallRecord>,
+}
+
+/// `CallRecord::kind`: which call the record is of (0: none).
+pub const CALL_PRINTF: u8 = 1;
+pub const CALL_SCANF: u8 = 2;
+
+/// `Conversion::code`, what went wrong there: the call stopped the program
+/// at this conversion (printf's %s with no string at its address), the
+/// input did not fit it, or the input ended before it (scanf). The web
+/// words them.
+pub const CALL_OK: u8 = 0;
+pub const CALL_STOPPED: u8 = 1;
+pub const CALL_NO_MATCH: u8 = 2;
+pub const CALL_NO_INPUT: u8 = 3;
+
+/// `Conversion::source` of a conversion that read no argument (`%%`).
+pub const ARG_NONE: i64 = -1;
+
+/// A record keeps this many conversions and this many bytes of the format
+/// and of the text, and counts the rest, so a hostile format cannot grow it.
+pub const MAX_CALL_ROWS: usize = 32;
+pub const MAX_CALL_BYTES: usize = 256;
+
+/// One conversion as the call ran it.
+#[derive(Clone, Copy, Default)]
+pub struct Conversion {
+    /// Byte offsets in the format, from the `%` to just past its letter.
+    pub fmt_start: usize,
+    pub fmt_end: usize,
+    /// Where its argument came from: xN as N, dN as 32 + N, the stack as
+    /// 64 + its 8-byte slot above sp, or `ARG_NONE`.
+    pub source: i64,
+    /// The argument: printf's value (a double's bits), scanf's pointer.
+    pub arg: u64,
+    /// scanf: the first 8 bytes it stored at `arg`, little-endian, and how
+    /// many bytes it stored in all.
+    pub stored: u64,
+    pub size: u64,
+    /// Byte offsets in the call's text: what this conversion printed, or
+    /// the input it read.
+    pub text_start: usize,
+    pub text_end: usize,
+    pub code: u8,
+}
+
+/// A printf or scanf call, conversion by conversion: numbers and the
+/// program's own bytes, which the web words as the call card. The stub
+/// fills it; the `Cpu` stamps it and keeps the last one (`Cpu::last_call`).
+#[derive(Clone, Default)]
+pub struct CallRecord {
+    /// `CALL_PRINTF` or `CALL_SCANF`, 0 for no call.
+    pub kind: u8,
+    /// The stub read its format and began recording.
+    pub began: bool,
+    /// The step that ran the call, and the branch that made it: a `bl`, or
+    /// a tail call's `b`.
+    pub step: u64,
+    pub call_pc: u64,
+    /// x0 as the call left it, and whether the call stopped the program.
+    pub result: u64,
+    pub failed: bool,
+    /// The format's first `MAX_CALL_BYTES`, and its whole length.
+    pub fmt: Vec<u8>,
+    pub fmt_len: usize,
+    /// What printf printed or scanf read, kept and whole as the format is.
+    pub text: Vec<u8>,
+    pub text_len: usize,
+    /// The first `MAX_CALL_ROWS` conversions, and how many there were.
+    pub rows: Vec<Conversion>,
+    pub conversions: usize,
+}
+
+impl CallRecord {
+    /// Start over for a call whose format is `fmt`.
+    pub(crate) fn begin(&mut self, fmt: &[u8]) {
+        self.began = true;
+        self.fmt.clear();
+        self.fmt.extend_from_slice(&fmt[..fmt.len().min(MAX_CALL_BYTES)]);
+        self.fmt_len = fmt.len();
+        self.set_text(&[]);
+        self.rows.clear();
+        self.conversions = 0;
+    }
+
+    pub(crate) fn set_text(&mut self, text: &[u8]) {
+        self.text.clear();
+        self.text.extend_from_slice(&text[..text.len().min(MAX_CALL_BYTES)]);
+        self.text_len = text.len();
+    }
+
+    pub(crate) fn push(&mut self, row: Conversion) {
+        self.conversions += 1;
+        if self.rows.len() < MAX_CALL_ROWS {
+            self.rows.push(row);
+        }
+    }
+
+    /// The conversion pushed last, when it was kept.
+    pub(crate) fn current(&mut self) -> Option<&mut Conversion> {
+        if self.rows.len() == self.conversions { self.rows.last_mut() } else { None }
+    }
 }
 
 /// AAPCS64 vararg cursor, shared by printf and scanf: both walk the same
@@ -114,33 +218,46 @@ pub(crate) struct VarargWalker {
     /// Bytes above SP-at-call-site for the next spilled arg. Shared
     /// between int and float spills per AAPCS64.
     pub(crate) stack_off: u64,
+    /// The last argument read, as (`Conversion::source`, its bits).
+    pub(crate) last: (i64, u64),
 }
 
 impl VarargWalker {
+    pub(crate) fn new(first_gp: u8) -> Self {
+        VarargWalker { gp_idx: first_gp, fp_idx: 0, stack_off: 0, last: (ARG_NONE, 0) }
+    }
+
     pub(crate) fn next_int(&mut self, ctx: &mut HostContext<'_>) -> u64 {
-        if self.gp_idx <= 7 {
+        let v = if self.gp_idx <= 7 {
             let v = ctx.regs.read_gpr(self.gp_idx, true);
+            self.last.0 = self.gp_idx.into();
             self.gp_idx = self.gp_idx.saturating_add(1);
             v
         } else {
-            let sp = ctx.regs.read_sp();
-            let addr = sp.wrapping_add(self.stack_off);
-            self.stack_off = self.stack_off.wrapping_add(8);
-            ctx.mem.read_u64(addr).unwrap_or(0)
-        }
+            self.next_spill(ctx)
+        };
+        self.last.1 = v;
+        v
     }
 
     pub(crate) fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
-        if self.fp_idx <= 7 {
-            let v = ctx.regs.read_fpr_f64(self.fp_idx);
+        let bits = if self.fp_idx <= 7 {
+            let v = ctx.regs.read_fpr_bits(self.fp_idx);
+            self.last.0 = 32 + i64::from(self.fp_idx);
             self.fp_idx = self.fp_idx.saturating_add(1);
             v
         } else {
-            let sp = ctx.regs.read_sp();
-            let addr = sp.wrapping_add(self.stack_off);
-            self.stack_off = self.stack_off.wrapping_add(8);
-            ctx.mem.read_u64(addr).map(f64::from_bits).unwrap_or(0.0)
-        }
+            self.next_spill(ctx)
+        };
+        self.last.1 = bits;
+        f64::from_bits(bits)
+    }
+
+    fn next_spill(&mut self, ctx: &mut HostContext<'_>) -> u64 {
+        let addr = ctx.regs.read_sp().wrapping_add(self.stack_off);
+        self.last.0 = 64 + (self.stack_off / 8) as i64;
+        self.stack_off = self.stack_off.wrapping_add(8);
+        ctx.mem.read_u64(addr).unwrap_or(0)
     }
 }
 
@@ -263,6 +380,7 @@ mod tests {
             heap,
             strtok_save,
             callbacks,
+            call: None,
         }
     }
 

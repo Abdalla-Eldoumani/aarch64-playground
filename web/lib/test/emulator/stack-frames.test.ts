@@ -537,6 +537,8 @@ describe("slotAt", () => {
     expect(chip(stack, fp + 0)).toBe("saved fp · main");
     expect(chip(stack, fp + 8)).toBe("saved lr · main");
     expect(chip(stack, fp + 31)).toBe("fp + 31 · main");
+    // The call card names a slot with its offset, and its frame by place.
+    expect(slotAt(stack, fp + 19)).toEqual({ slot: "a_s + 3", owner: "main", index: 0, offset: "fp + 19" });
     expect(chip(stack, fp + 32)).toBeNull();
     expect(chip(stack, fp - 1)).toBeNull();
     // x0 holds fmt_in's address in .data; the heap starts where the

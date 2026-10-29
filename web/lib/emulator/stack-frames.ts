@@ -585,14 +585,20 @@ export function drawFrames(input: DrawInput): DrawnStack {
 /** Where `addr` lands in the drawn frames, in a pointer chip's words: the
  *  box's name, plus how far in when it is not the first byte ("a_s",
  *  "a_s + 3"), or the offset alone where the box has no name ("fp + 24");
- *  and the function whose frame it is. Null outside every drawn frame. */
-export function slotAt(stack: DrawnStack, addr: number): { slot: string; owner: string } | null {
+ *  the function whose frame it is, that frame's place in the call stack,
+ *  and the address as an offset in it ("fp + 16"). Null outside every
+ *  drawn frame. */
+export function slotAt(
+  stack: DrawnStack,
+  addr: number,
+): { slot: string; owner: string; index: number; offset: string } | null {
   for (const frame of stack.frames) {
     const box = frame.boxes.find((b) => addr >= b.addr && addr < b.addr + b.size);
     if (!box) continue;
     const into = addr - box.addr;
-    const slot = box.name == null ? offsetText(addr, frame.base) : into ? `${box.name} + ${into}` : box.name;
-    return { slot, owner: frame.name };
+    const offset = offsetText(addr, frame.base);
+    const slot = box.name == null ? offset : into ? `${box.name} + ${into}` : box.name;
+    return { slot, owner: frame.name, index: frame.index, offset };
   }
   return null;
 }

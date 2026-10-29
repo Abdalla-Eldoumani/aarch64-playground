@@ -22,6 +22,7 @@ import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/lazy-editor";
 import { FramesView } from "@/components/playground/lazy-frames";
+import { CallCard } from "@/components/playground/lazy-call-card";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
@@ -774,6 +775,7 @@ export function EmbeddableCore({
             stdout={emu.stdout}
             stderr={emu.stderr}
             notes={emu.notes}
+            call={emu.hostedMode && <CallCard {...emu} />}
             blocked={emu.blocked}
             exitCode={emu.exitCode}
             vfsFiles={emu.vfsFiles}

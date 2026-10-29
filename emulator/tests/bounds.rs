@@ -358,3 +358,37 @@ main:   stp     x29, x30, [sp, -16]!
     assert_eq!(view.hidden_entry, image.symbols["main"]);
     assert_eq!(view.uncounted, stack.uncounted());
 }
+
+/// One scanf call reading 100,000 `%*c` conversions from 100,000 bytes.
+const LONG_SCANF: &str = r#"
+        .bss
+fmt_m:  .skip 300016
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        ldr     x0, =fmt_m
+        bl      scanf
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+
+// A wall-clock bound, so ignored like the walls above and run with
+// --release. Each conversion once summed the format up to itself for the
+// call card, so this call took tens of seconds where it now takes well
+// under one.
+#[test]
+#[ignore = "times one long scanf call; run with --ignored --release"]
+fn a_long_scanf_format_costs_time_in_line_with_its_length() {
+    const COUNT: usize = 100_000;
+    let mut cpu = load(LONG_SCANF);
+    let fmt = cpu.resolve_label("fmt_m").expect("fmt_m");
+    cpu.mem.write_bytes(fmt, &b"%*c".repeat(COUNT)).expect("format");
+    cpu.push_stdin(&vec![b'a'; COUNT]);
+    cpu.close_stdin();
+    let start = std::time::Instant::now();
+    let r = cpu.run_until_break(1_000).expect("run");
+    let took = start.elapsed();
+    assert!(r.halted && r.error.is_none(), "the program ends on its own: {:?}", r.error);
+    assert!(took < std::time::Duration::from_secs(2), "one scanf call took {took:?}");
+}

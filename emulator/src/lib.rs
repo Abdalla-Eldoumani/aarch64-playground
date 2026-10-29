@@ -209,6 +209,80 @@ pub fn clobber_note_lines(rows: &mut [u32], line_map: &[u32]) {
     }
 }
 
+/// `call_card`'s header length, and its numbers per conversion: the
+/// conversion's place in the format, where its argument came from, what
+/// went wrong, the argument and what scanf stored there (each as low and
+/// high 32 bits), how many bytes it stored, its place in the text, and the
+/// length of the data label the argument falls in (0 for none) with how far
+/// into it.
+pub const CALL_HEADER: usize = 11;
+pub const CALL_ROW: usize = 13;
+
+/// The printf or scanf call the last step ran, as the call card's numbers:
+/// a header (kind, step, the branch that made the call, x0 as a signed
+/// number, whether the call stopped the program, rows, conversions, format
+/// bytes kept and in all, text bytes kept and in all), `CALL_ROW` numbers
+/// per row, then the format's bytes, the text's, and the rows' label names
+/// one after another.
+/// Empty when the last step ran neither.
+pub fn call_card(cpu: &Cpu) -> Vec<f64> {
+    let call = cpu.last_call();
+    if call.kind == 0 || call.step != cpu.steps_taken() {
+        return Vec::new();
+    }
+    let mut out = vec![
+        call.kind.into(),
+        call.step as f64,
+        call.call_pc as f64,
+        call.result as i64 as f64,
+        u8::from(call.failed).into(),
+        call.rows.len() as f64,
+        call.conversions as f64,
+        call.fmt.len() as f64,
+        call.fmt_len as f64,
+        call.text.len() as f64,
+        call.text_len as f64,
+    ];
+    let mut labels = Vec::new();
+    for row in &call.rows {
+        let (label, into) = data_label(&cpu.symbols, row.arg).unwrap_or(("", 0));
+        labels.extend_from_slice(label.as_bytes());
+        out.extend_from_slice(&[
+            row.fmt_start as f64,
+            row.fmt_end as f64,
+            row.source as f64,
+            row.code.into(),
+            f64::from(row.arg as u32),
+            f64::from((row.arg >> 32) as u32),
+            f64::from(row.stored as u32),
+            f64::from((row.stored >> 32) as u32),
+            row.size as f64,
+            row.text_start as f64,
+            row.text_end as f64,
+            label.len() as f64,
+            into as f64,
+        ]);
+    }
+    for &b in call.fmt.iter().chain(&call.text).chain(&labels) {
+        out.push(b.into());
+    }
+    out
+}
+
+/// The label in .rodata, .data or .bss at or below `addr` in its section,
+/// and how far past it `addr` is. Of two labels at one address, the one
+/// first in the alphabet, so the answer does not hang on hash order.
+fn data_label(symbols: &std::collections::HashMap<String, u64>, addr: u64) -> Option<(&str, u64)> {
+    let base = [cpu::RODATA_BASE, cpu::DATA_BASE, cpu::BSS_BASE]
+        .into_iter()
+        .find(|base| (*base..base + cpu::SECTION_WINDOW).contains(&addr))?;
+    symbols
+        .iter()
+        .filter(|&(_, &at)| (base..=addr).contains(&at))
+        .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))
+        .map(|(name, &at)| (name.as_str(), addr - at))
+}
+
 #[cfg(target_arch = "wasm32")]
 fn outcome_to_js(outcome: &StepOutcome) -> (&'static str, Option<i64>) {
     match outcome {
@@ -920,6 +994,12 @@ impl Emulator {
         let mut rows = self.cpu.take_clobber_notes();
         clobber_note_lines(&mut rows, &self.line_map);
         rows
+    }
+
+    /// The printf or scanf call the last step ran, as the numbers
+    /// `call_card` lays out; empty when it ran neither.
+    pub fn last_call(&self) -> Vec<f64> {
+        call_card(&self.cpu)
     }
 
     /// The call stack as the program stands, as the flat numbers
