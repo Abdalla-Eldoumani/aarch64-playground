@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { callCard, spokenCard } from "@/lib/emulator/call-cards";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { frameBoxes } from "@/lib/emulator/frame-boxes";
@@ -43,21 +43,10 @@ export function CallCard({ callCard: numbers, frames, frameLayout, registers, sp
     heard.add(unsaid.event);
   });
 
-  // The console follows its output while the reader is at the bottom, and
-  // a card that lands under it counts as output.
-  const ref = useRef<HTMLDivElement>(null);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    const box = el?.parentElement;
-    if (!el || !box) return;
-    if (box.scrollHeight - box.scrollTop - box.clientHeight - el.offsetHeight < 4) box.scrollTop = box.scrollHeight;
-  }, [card?.event]);
-
   return (
     <>
       {card && (
         <div
-          ref={ref}
           role="group"
           aria-label={`what ${card.name} did`}
           className="mt-1 flex flex-col gap-1 rounded-[var(--radius-control)] border border-[var(--amber)] px-2 py-1.5 font-mono text-[12px] leading-[1.6] whitespace-normal break-words"
