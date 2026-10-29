@@ -329,6 +329,10 @@ fn input_that_does_not_fit_stops_scanf_at_that_conversion() {
     let c = p.after_call(36);
     assert_eq!((c.result, c.conversions), (0, 1));
     assert_eq!(c.rows, [Row { code: CALL_NO_MATCH, ..printed("%d", -1, 0, "x") }]);
+    // %d skips the spaces before a field, so the word it met starts after them.
+    let mut p = load(&read("web/public/examples/cpsc355/locals.s"));
+    p.cpu.push_stdin(b"  x 4\n");
+    assert_eq!(p.after_call(36).rows, [Row { code: CALL_NO_MATCH, ..printed("%d", -1, 0, "x") }]);
 }
 
 #[test]
