@@ -18,6 +18,7 @@ use std::collections::{HashMap, VecDeque};
 
 use crate::cpu::{OpenFile, StdinSegment};
 use crate::frames::{CallStack, FrameUndo};
+use crate::hosted::CallRecord;
 use crate::hosted::heap::{HeapState, HeapUndo};
 use crate::memory::{MemUndo, Memory};
 use crate::registers::{RegUndo, RegisterFile};
@@ -77,6 +78,9 @@ pub struct Snapshot<R, M, H, F> {
     pub steps_taken: u64,
     /// The calls the program is inside, behind the stack frames view.
     pub frames: F,
+    /// The last printf or scanf call, behind the call card: a named save
+    /// holds it, a step-back frame only when its step replaced it.
+    pub call: Option<CallRecord>,
 }
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
@@ -191,6 +195,7 @@ mod tests {
             steps_total: 0,
             steps_taken: 0,
             frames: F::default(),
+            call: None,
         }
     }
 
