@@ -2,6 +2,7 @@
 
 import { useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
+import { drawCalls, returnedText } from "@/lib/emulator/call-tree";
 import { formatWord32 } from "@/lib/emulator/format-hex";
 import { calleeCards, plain, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
 import {
@@ -13,6 +14,7 @@ import {
   type BoxKind,
   type StackBytes,
 } from "@/lib/emulator/stack-frames";
+import { CallTree } from "@/components/panels/CallTree";
 import { PointerContext } from "@/components/panels/slot-pointer";
 
 type FramesViewProps = Pick<
@@ -28,7 +30,11 @@ type FramesViewProps = Pick<
   | "lineLabel"
   | "programLoaded"
 > &
-  Partial<Pick<EmulatorState, "programLines" | "noteRows" | "readMemory" | "errorCard">> & { running: boolean };
+  Partial<Pick<EmulatorState, "programLines" | "noteRows" | "readMemory" | "errorCard">> & {
+    running: boolean;
+    /** List the calls made so far above the frames, where the pane has room. */
+    calls?: boolean;
+  };
 
 // The cards' inputs before a program has run: an embed's idle stack side.
 const NO_LINES: EmulatorState["programLines"] = { linePlace: () => null, lineAddr: () => null };
@@ -79,6 +85,7 @@ export function FramesView({
   errorCard = null,
   programLoaded,
   running,
+  calls = false,
 }: FramesViewProps) {
   const snapshot = useMemo(() => (frames ? decodeFrames(frames) : null), [frames]);
   const layout = useMemo(() => (frameLayout ? decodeFrameLayout(frameLayout) : null), [frameLayout]);
@@ -98,6 +105,10 @@ export function FramesView({
         lineLabel,
       })
     : null;
+  const tree = useMemo(
+    () => (calls && frames ? drawCalls(frames, layout, memoryRegions) : null),
+    [calls, frames, layout, memoryRegions],
+  );
   // A write card quotes the slot's new word as the machine holds it: the
   // bytes above come from the panel cache, which answers zeros until its own
   // read lands, and a card worded from those was painted and said twice.
@@ -155,7 +166,8 @@ export function FramesView({
             : `${innermost} called`
           : back
             ? `back before the call to ${seen.innermost}`
-            : `${seen.innermost} returned`;
+            : // With the calls listed, the value the call left in w0 or x0.
+              `${seen.innermost} returned${tree ? ` ${returnedText(BigInt(registers[0] || 0), memoryRegions)}` : ""}`;
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
@@ -265,6 +277,8 @@ export function FramesView({
       <p className="mb-2 font-mono text-[12px] text-[var(--text-secondary)]">
         sp {formatWord32(spValue)} · fp {formatWord32(fpValue)}
       </p>
+      {/* Still there once main has returned and no frame is left. */}
+      {programLoaded && tree && <CallTree calls={tree} />}
       {idle || !stack ? (
         <p className="text-[13px] text-[var(--text-secondary)]">{idle}</p>
       ) : (
