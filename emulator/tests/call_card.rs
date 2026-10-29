@@ -357,6 +357,18 @@ fn a_percent_s_with_no_string_address_stops_there_and_keeps_the_fault_text() {
 }
 
 #[test]
+fn printf_stopped_by_its_one_call_limit_keeps_the_text_its_rows_made() {
+    // "7 " and a field 1 MiB + 1 wide: over the most one printf may make.
+    let src = ".data\nfmt_out:    .string \"%d %1048577d\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        ldr     x0, =fmt_out\n        mov     w1, 7\n        mov     w2, 8\n        bl      printf\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n";
+    let mut p = load(src);
+    let r = p.cpu.run_until_break(1_000_000).expect("run");
+    assert!(r.halted && p.cpu.take_stdout().is_empty(), "stopped before printing: {r:?}");
+    let c = card(&p.cpu).expect("the stopping step made the call");
+    assert!(c.failed);
+    assert_eq!((c.text_len, c.rows[0].text.as_str(), c.rows[1].text.len()), (1_048_579, "7", 254));
+}
+
+#[test]
 fn a_scanf_handed_a_value_stores_at_that_value() {
     let mut p = load(&fixture("scanf-value.s"));
     p.cpu.push_stdin(b"7\n");
