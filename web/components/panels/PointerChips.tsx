@@ -2,7 +2,8 @@
 
 import type { ReactNode } from "react";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
-import { frameBoxes, slotAt } from "@/lib/emulator/stack-frames";
+import { frameBoxes } from "@/lib/emulator/frame-boxes";
+import { slotAt } from "@/lib/emulator/stack-frames";
 import type { SlotPointer } from "@/components/panels/slot-pointer";
 
 interface ChipsInput {
