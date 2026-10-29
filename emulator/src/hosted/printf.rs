@@ -5,7 +5,9 @@
 //! and double arguments share one cursor in the order they appear.
 
 use crate::errors::EmuError;
-use crate::hosted::{HostContext, HostOutcome, VarargWalker};
+use crate::hosted::{
+    ARG_NONE, CALL_OK, CALL_STOPPED, Conversion, HostContext, HostOutcome, VarargWalker,
+};
 
 pub fn printf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
@@ -71,9 +73,12 @@ pub(crate) fn format_into(
     // Bytes, not text: glibc copies a format's bytes through untouched,
     // whether or not they spell UTF-8.
     let fmt = read_c_string(ctx.mem, fmt_ptr, what)?;
+    if let Some(call) = ctx.call.as_deref_mut() {
+        call.begin(&fmt);
+    }
 
     // d0..d7 are all available for vararg doubles.
-    let mut walker = VarargWalker { gp_idx: first_gp, fp_idx: 0, stack_off: 0 };
+    let mut walker = VarargWalker::new(first_gp);
     let mut out: Vec<u8> = Vec::new();
 
     let mut i = 0;
@@ -84,6 +89,7 @@ pub(crate) fn format_into(
             out.push(c);
             continue;
         }
+        let fmt_start = i - 1;
         let spec = parse_spec(&fmt, &mut i, ctx, &mut walker);
         let Some(&conv) = fmt.get(i) else {
             // Trailing '%' with nothing after it; emit literally.
@@ -91,7 +97,27 @@ pub(crate) fn format_into(
             break;
         };
         i += 1;
-        format_conversion(&spec, conv, ctx, &mut walker, &mut out)?;
+        // A `*` width's argument is not the conversion's.
+        walker.last = (ARG_NONE, 0);
+        let text_start = out.len();
+        let done = format_conversion(&spec, conv, ctx, &mut walker, &mut out);
+        if let Some(call) = ctx.call.as_deref_mut() {
+            call.push(Conversion {
+                fmt_start,
+                fmt_end: i,
+                source: walker.last.0,
+                arg: walker.last.1,
+                text_start,
+                text_end: out.len(),
+                code: if done.is_ok() { CALL_OK } else { CALL_STOPPED },
+                ..Conversion::default()
+            });
+            if done.is_err() {
+                // Nothing reaches stdout, but the rows' places stay in range.
+                call.set_text(&out);
+            }
+        }
+        done?;
         // Per-call transient bound: MAX_FIELD_WIDTH clamps ONE conversion,
         // but a 64 KiB format stuffed with wide conversions could still
         // stage tens of megabytes here before the cumulative output wall
@@ -107,6 +133,9 @@ pub(crate) fn format_into(
         }
     }
 
+    if let Some(call) = ctx.call.as_deref_mut() {
+        call.set_text(&out);
+    }
     Ok(out)
 }
 
@@ -577,6 +606,7 @@ mod tests {
             heap: &mut heap,
             strtok_save: &mut strtok_save,
             callbacks: &mut Default::default(),
+            call: None,
         };
         printf(&mut ctx)?;
         let written = ctx.regs.read_gpr(0, true) as usize;
@@ -637,6 +667,7 @@ mod tests {
             heap: &mut heap,
             strtok_save: &mut strtok_save,
             callbacks: &mut Default::default(),
+            call: None,
         };
         stub(&mut ctx).unwrap();
         let returned = ctx.regs.read_gpr(0, true);
