@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { callCard, spokenCard } from "@/lib/emulator/call-cards";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
-import { decodeFrameLayout, decodeFrames, drawFrames } from "@/lib/emulator/stack-frames";
+import { frameBoxes } from "@/lib/emulator/stack-frames";
 
 export type CallCardProps = Pick<
   EmulatorState,
@@ -25,21 +25,7 @@ const saidPerLoad = new WeakMap<object, Set<string>>();
 export function CallCard({ callCard: numbers, frames, frameLayout, registers, sp, pc, memoryRegions, lineLabel, isRunning }: CallCardProps) {
   const card = useMemo(() => {
     if (!numbers || isRunning) return null;
-    const snapshot = frames && decodeFrames(frames);
-    // Only where the boxes sit matters to a name, so the drawing reads no bytes.
-    const stack = snapshot
-      ? drawFrames({
-          snapshot,
-          layout: frameLayout && decodeFrameLayout(frameLayout),
-          sp: parseInt(sp, 16) || 0,
-          fp: parseInt(registers[29] ?? "", 16) || 0,
-          pc,
-          memory: [],
-          written: [],
-          regions: [],
-          lineLabel: () => null,
-        })
-      : null;
+    const stack = frameBoxes(frames, frameLayout, registers, sp, pc);
     return callCard(numbers, { stack, regions: memoryRegions, lineLabel });
   }, [numbers, isRunning, frames, frameLayout, registers, sp, pc, memoryRegions, lineLabel]);
 
