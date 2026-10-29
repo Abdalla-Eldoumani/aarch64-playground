@@ -25,8 +25,10 @@ const RULES = [
 // hashes the same files.
 const WASM_INPUTS = /^emulator\/(src\/|Cargo\.toml$|Cargo\.lock$)/;
 
-// Files outside emulator/ that the Rust tests read.
-const READ_BY_RUST = /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/)/;
+// Files outside emulator/ that the Rust tests read; the web tests' programs
+// are shared with the call card's.
+const READ_BY_RUST =
+  /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/|web\/lib\/test\/emulator\/fixtures\/)/;
 
 // Emulator test data the web tests read: error-explain's server transcripts
 // and the dense -O2 program share.test measures a link with.
