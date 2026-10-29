@@ -144,6 +144,7 @@ export function useEmulator(): EmulatorState {
   // snapshot lands before the run is over, so the stop shows it from here.
   const lastCallRef = useRef<ExternalCall | null>(null);
   const [frames, setFrames] = useState<number[] | null>(null);
+  const [callCard, setCallCard] = useState<number[] | null>(null);
   const [frameLayout, setFrameLayout] = useState<FrameLayoutPayload | null>(null);
   const frameLayoutRef = useRef<FrameLayoutPayload | null>(null);
   // Why the last goal run stopped, shown until the step count moves.
@@ -286,6 +287,7 @@ export function useEmulator(): EmulatorState {
     if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
     setFrames(snap.frames ?? null);
+    setCallCard(snap.callCard ?? null);
     // Worded against the files just assembled, whose joined lines the rows name.
     const rows = snap.clobberNotes?.length ? snap.clobberNotes : NO_LINES;
     setNoteRows(rows);
@@ -898,6 +900,7 @@ export function useEmulator(): EmulatorState {
       externalCall,
       frames,
       frameLayout,
+      callCard,
       lineLabel,
       programLines,
       noteRows,
@@ -962,7 +965,7 @@ export function useEmulator(): EmulatorState {
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, errorCard, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
-      currentLine, externalCall, frames, frameLayout, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
+      currentLine, externalCall, frames, frameLayout, callCard, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
