@@ -113,7 +113,9 @@ function placeOf(addr: bigint, label: string | null, input: CallCardInput): stri
   const slot = input.stack && slotAt(input.stack, at);
   if (slot) {
     const innermost = input.stack!.frames[input.stack!.frames.length - 1];
-    return slot.index === innermost.index ? `${slot.slot} (${slot.offset})` : `${slot.slot} in ${slot.owner}'s frame`;
+    if (slot.index !== innermost.index) return `${slot.slot} in ${slot.owner}'s frame`;
+    // A slot with no name is already called by its offset.
+    return slot.slot === slot.offset ? slot.slot : `${slot.slot} (${slot.offset})`;
   }
   const region = addr <= BigInt(Number.MAX_SAFE_INTEGER) ? regionFor(at, input.regions)?.name : null;
   if (region === "stack") return `${hex(addr)} on the stack`;
