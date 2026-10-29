@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 
-use crate::decoder::{self, BrRegOp, DpOp, IndexMode, Instruction as I, LdStOffset, LdStOp, LdStPairOp, MemSize};
+use crate::decoder::{self, BrRegOp, DpOp, IndexMode, Instruction as I, LdStOffset, LdStOp, LdStPairOp, MemSize, MoveWideOp};
 use crate::frontend::lexer::{lex, TokenKind};
 use crate::frontend::lint::split_functions;
 use crate::frontend::m4;
@@ -42,6 +42,10 @@ pub struct FunctionLayout {
     /// `mov x29, sp`) and changes sp and x29 nowhere else but in an
     /// `ldp x29, x30, [sp], M`: the functions the frame check reads.
     pub course_frame: bool,
+    /// The width its first use of x0 reads it at, before any branch or
+    /// write of x0 (4 for w0, 8 for x0, a store's own width): the
+    /// argument the call tree shows. 0 when no such read comes first.
+    pub arg_width: u8,
     /// By offset.
     pub slots: Vec<Slot>,
     pub arrays: Vec<ArrayBase>,
@@ -218,11 +222,18 @@ impl Scan<'_> {
         let mut f = FunctionLayout { entry, end, name, ..FunctionLayout::default() };
         let mut bases: [Option<(i64, Option<u32>)>; 31] = [None; 31];
         let (mut opens, mut sets_fp, mut strays) = (false, false, false);
+        let mut arg = None;
         let mut pc = entry;
         while pc < end {
             let at = pc;
             pc += 4;
-            let Ok(instr) = self.mem.read_u32(at).and_then(decoder::decode) else { continue };
+            let Ok(instr) = self.mem.read_u32(at).and_then(decoder::decode) else {
+                arg.get_or_insert(0);
+                continue;
+            };
+            if arg.is_none() {
+                arg = x0_use(&instr);
+            }
             let text = self.text(at);
             let overwritten = written(&instr);
             match at - entry {
@@ -300,6 +311,7 @@ impl Scan<'_> {
             }
         }
         f.course_frame = opens && sets_fp && !strays;
+        f.arg_width = arg.unwrap_or(0);
         f
     }
 }
@@ -399,6 +411,43 @@ fn written(instr: &I) -> u32 {
         // x0 to x18
         I::BrImm { link: true, .. } | I::BrReg { op: BrRegOp::Blr, .. } => 0x7_FFFF,
         _ => 0,
+    }
+}
+
+/// What an instruction does with x0, for the argument scan: the width it
+/// reads x0 at, None when it leaves x0 alone, and 0 when it writes x0
+/// first or is one the scan does not follow (a branch, a call, an index
+/// register), which ends the scan.
+fn x0_use(instr: &I) -> Option<u8> {
+    let width = |sf: bool| if sf { 8 } else { 4 };
+    // An instruction reads its sources before it writes its result.
+    let reg = |sources: &[u8], rd: u8, sf: bool| {
+        if sources.contains(&0) {
+            Some(width(sf))
+        } else {
+            (rd == 0).then_some(0)
+        }
+    };
+    let base = |rn: u8| (rn == 0).then_some(8);
+    match *instr {
+        I::LdSt { offset: LdStOffset::Register { rm: 0, .. }, .. }
+        | I::LdrSignExtended { offset: LdStOffset::Register { rm: 0, .. }, .. }
+        | I::FpLdSt { offset: LdStOffset::Register { rm: 0, .. }, .. } => Some(0),
+        I::DpImm { sf, rd, rn, .. } | I::LogImm { sf, rd, rn, .. } => reg(&[rn], rd, sf),
+        I::DpReg { sf, rd, rn, rm, .. }
+        | I::LogReg { sf, rd, rn, rm, .. }
+        | I::MulDiv { sf, rd, rn, rm, .. }
+        | I::CondSel { sf, rd, rn, rm, .. } => reg(&[rn, rm], rd, sf),
+        I::MulAccumulate { sf, rd, rn, rm, ra, .. } => reg(&[rn, rm, ra], rd, sf),
+        I::MoveWide { op, rd, .. } if op != MoveWideOp::Movk => reg(&[], rd, true),
+        I::LdSt { op: LdStOp::Str, rt, rn, size, .. } => base(rn).or((rt == 0).then(|| size.bytes() as u8)),
+        I::LdStPair { op: LdStPairOp::Stp, sf, rt, rt2, rn, .. } => {
+            base(rn).or((rt == 0 || rt2 == 0).then(|| width(sf)))
+        }
+        I::LdSt { rt, rn, .. } | I::LdrSignExtended { rt, rn, .. } => base(rn).or((rt == 0).then_some(0)),
+        I::LdStPair { rt, rt2, rn, .. } => base(rn).or((rt == 0 || rt2 == 0).then_some(0)),
+        I::FpLdSt { rn, .. } | I::FpLdStPair { rn, .. } => base(rn),
+        _ => Some(0),
     }
 }
 
