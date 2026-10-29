@@ -306,8 +306,8 @@ impl Cpu {
     }
 
     /// Make the printf or scanf call this step ran the last call, stamped
-    /// with the step and its `bl`. The step's frame keeps the one it
-    /// replaced, so Back brings that card back.
+    /// with the step and the branch that reached it. The step's frame keeps
+    /// the one it replaced, so Back brings that card back.
     fn keep_call(&mut self, kind: u8, failed: bool) {
         // From a copy: the accessors would count these reads as the
         // program using a register an earlier call overwrote.
@@ -315,7 +315,7 @@ impl Cpu {
         let call = &mut self.call_scratch;
         call.kind = kind;
         call.step = self.steps_taken;
-        call.call_pc = regs[30].wrapping_sub(4);
+        call.call_pc = self.last_program_pc;
         call.result = regs[0];
         call.failed = failed;
         let old = std::mem::replace(&mut self.last_call, std::mem::take(&mut self.call_scratch));
