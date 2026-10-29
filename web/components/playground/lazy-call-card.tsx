@@ -3,11 +3,11 @@
 import dynamic from "next/dynamic";
 
 /**
- * The call card behind its own chunk: only a program that calls printf or
- * scanf needs its words, so the landing page and a frame that never loads
- * one do not ship them. Named so the bundle budget in package.json can glob
- * it (lazy-panels.tsx says why). Module scope, because a dynamic() call per
- * render remounts the card.
+ * The call card behind its own chunk, so no page's own scripts carry its
+ * words: the browser fetches it when a console first shows a program in
+ * hosted mode, as the landing page's hero does once it assembles. Named so
+ * the bundle budget in package.json can glob it (lazy-panels.tsx says why).
+ * Module scope, because a dynamic() call per render remounts the card.
  */
 export const CallCard = dynamic(
   () =>
