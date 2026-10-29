@@ -392,6 +392,48 @@ main:
     expect(texts(card)).toEqual(["%d stored 42 at fp + 16, the address in x1"]);
   });
 
+  it("names the b of a tail-called printf, not the bl that called its caller", () => {
+    const tail = `// say() prints its number with a tail call: it takes its frame down and
+// branches to printf, so printf returns straight to main.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "hi %d\\n"
+
+.text
+
+// say(w0 = n): prints n
+        .balign 4
+        .global say
+say:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        ldp     fp, lr, [sp], 16
+        b       printf                      // printf returns to say's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     w0, 5
+        bl      say
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+    // printf returns to main, after the bl say on line 31.
+    const card = after(load(tail), 31);
+    expect([card.line, card.outcome]).toEqual(["line 22", 'printed "hi 5\\n"']);
+  });
+
   it("counts the conversions past the ones the card keeps", () => {
     const fmt = "%%".repeat(40);
     const source = `.data\nfmt_out:    .string "${fmt}"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        ldr     x0, =fmt_out\n        bl      printf\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n`;
