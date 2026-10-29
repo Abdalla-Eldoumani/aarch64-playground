@@ -160,6 +160,7 @@ impl Cpu {
         self.clobber_notes.clear();
         self.clobber_noted = 0;
         self.frames.clear();
+        self.last_program_pc = 0;
         self.last_call = CallRecord::default();
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
