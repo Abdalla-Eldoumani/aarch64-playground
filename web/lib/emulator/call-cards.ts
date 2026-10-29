@@ -9,7 +9,10 @@
  * that calls printf or scanf is loaded.
  */
 
+import type { Width } from "@/lib/asm/base-convert";
+import type { FloatWidth } from "@/lib/asm/ieee754";
 import { regionFor, type MemoryRegion } from "@/lib/emulator/memory-map";
+import { floatText, integerReading } from "@/lib/emulator/register-format";
 import { slotAt, type DrawnStack } from "@/lib/emulator/stack-frames";
 
 /** `call_card`'s layout and codes (emulator/src/lib.rs, hosted/mod.rs). */
@@ -90,24 +93,14 @@ function letterOf(conv: string): { letter: string; wide: boolean } {
   return { letter: conv[conv.length - 1], wide: /[lzjt]/.test(conv) };
 }
 
-/** A number scanf stored, as its conversion reads it. */
+/** A number scanf stored, as its conversion reads it, in the register
+ *  panel's number format. */
 function numberText(letter: string, value: bigint, bytes: number): string {
-  const bits = bytes * 8;
-  if (letter === "x" || letter === "X") return hex(BigInt.asUintN(bits, value));
-  if (letter === "u") return BigInt.asUintN(bits, value).toString();
-  if (FLOATS.includes(letter)) return floatText(value, bytes);
-  return BigInt.asIntN(bits, value).toString();
-}
-
-/** A float's or a double's bits as the shortest decimal that reads back the same. */
-function floatText(bits: bigint, bytes: number): string {
-  if (bytes === 8) return String(new Float64Array(new BigUint64Array([bits]).buffer)[0]);
-  const value = new Float32Array(new Uint32Array([Number(bits & 0xffff_ffffn)]).buffer)[0];
-  for (let digits = 1; digits < 9; digits++) {
-    const text = String(Number(value.toPrecision(digits)));
-    if (Math.fround(Number(text)) === value) return text;
-  }
-  return String(value);
+  const width = (bytes * 8) as Width;
+  if (letter === "x" || letter === "X") return hex(BigInt.asUintN(width, value));
+  if (FLOATS.includes(letter)) return floatText(value, width as FloatWidth);
+  const reading = integerReading(value, width);
+  return letter === "u" ? (reading.unsigned ?? reading.signed) : reading.signed;
 }
 
 /** Where an address is, in the words the rest of the playground uses: a
