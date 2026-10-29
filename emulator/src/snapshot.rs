@@ -78,6 +78,9 @@ pub struct Snapshot<R, M, H, F> {
     pub steps_taken: u64,
     /// The calls the program is inside, behind the stack frames view.
     pub frames: F,
+    /// Where the program's own last instruction before the step was
+    /// (`Cpu::last_program_pc`).
+    pub last_program_pc: u64,
     /// The last printf or scanf call, behind the call card: a named save
     /// holds it, a step-back frame only when its step replaced it.
     pub call: Option<CallRecord>,
@@ -195,6 +198,7 @@ mod tests {
             steps_total: 0,
             steps_taken: 0,
             frames: F::default(),
+            last_program_pc: 0,
             call: None,
         }
     }
