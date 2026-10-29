@@ -53,6 +53,7 @@ repository root.
 | Save states and bookmarks | `web/components/panels/SavesPanel.tsx`, `web/lib/playground/named-saves.ts`, `web/lib/hooks/use-named-saves.ts` |
 | Diagnostic bundle (a report and a link to reopen the run) | `web/components/playground/DiagnosticBundle.tsx`, `web/lib/playground/diagnostic-bundle.ts`, `bundle-markdown.ts` |
 | Stepping through a library call (names the call, keeps the `bl` line marked) | `host_call_context` in `emulator/src/lib.rs`, `web/components/panels/DecodeStrip.tsx` |
+| What a printf or scanf call just did, under the console's output in the playground and in lesson and exercise editors: the format as written, then each conversion with its register and value and the text it printed, or the value it stored and where (a stack slot as `a_s (fp + 16)`, a `.data` or `.bss` label), and what went wrong (no argument register left, a `%s` with no string address, a scanf given a value instead of an address, input that does not fit or ends first) | `call_card` in `emulator/src/lib.rs`, `CallRecord` in `emulator/src/hosted/mod.rs`, `web/lib/emulator/call-cards.ts`, `web/components/panels/CallCard.tsx` |
 | Note when a program reads a register a library call overwrote | `clobber_caller_saved` in `emulator/src/registers.rs`, `web/lib/emulator/clobber-note.ts` |
 | Interface walkthrough (`?walkthrough`) | `web/components/playground/InterfaceWalkthrough.tsx`, `web/lib/playground/walkthrough.ts` |
 | Tutorials | `web/components/playground/TutorialRunner.tsx`, `web/lib/content/tutorials.ts` |
