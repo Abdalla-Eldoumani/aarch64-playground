@@ -160,6 +160,7 @@ impl Cpu {
         self.clobber_notes.clear();
         self.clobber_noted = 0;
         self.frames.clear();
+        self.last_call = CallRecord::default();
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
@@ -192,6 +193,12 @@ impl Cpu {
     /// The calls the program is inside, main first.
     pub fn call_stack(&self) -> &crate::frames::CallStack {
         &self.frames
+    }
+
+    /// The last printf or scanf call; its `step` says whether the last
+    /// step made it.
+    pub fn last_call(&self) -> &CallRecord {
+        &self.last_call
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether
@@ -227,6 +234,7 @@ impl Cpu {
             steps_total: self.steps_total,
             steps_taken: self.steps_taken,
             frames: self.frames.clone(),
+            call: Some(self.last_call.clone()),
         };
         self.snapshots.save_named(name, snap);
     }
@@ -255,6 +263,9 @@ impl Cpu {
         self.stdout_seen = snap.stdout_seen;
         self.stderr_seen = snap.stderr_seen;
         self.steps_taken = snap.steps_taken;
+        if let Some(call) = snap.call {
+            self.last_call = call;
+        }
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
