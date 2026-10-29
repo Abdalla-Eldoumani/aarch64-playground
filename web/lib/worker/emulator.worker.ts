@@ -7,6 +7,7 @@
 
 import init, { Emulator, memoryMap } from "@/lib/wasm/aarch64_emulator";
 import { readFrameLayout, readFrames, type FrameExports } from "@/lib/emulator/frame-data";
+import { readCallCard, type CallCardExports } from "@/lib/emulator/call-data";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
 import { runChunked } from "@/lib/emulator/run-loop";
 import { isDeadInstance } from "@/lib/worker/dead-instance";
@@ -499,6 +500,7 @@ function snapshot(): StateSnapshot {
   // Worked out per snapshot (the chain walk grows with depth); absent on
   // an older cached WASM.
   const frames = readFrames(emulator as unknown as FrameExports);
+  const callCard = readCallCard(emulator as unknown as CallCardExports);
   const exit = emulator.get_exit_code();
   return {
     frame,
@@ -520,6 +522,7 @@ function snapshot(): StateSnapshot {
     ...(stderrSeen != null ? { stderrSeen } : {}),
     ...(clobberNotes?.length ? { clobberNotes: Array.from(clobberNotes) } : {}),
     ...(frames ? { frames } : {}),
+    ...(callCard ? { callCard } : {}),
     vfsFiles: emulator.list_vfs_files(),
     savedStates: emulator.list_states(),
     wantsTerminal,
