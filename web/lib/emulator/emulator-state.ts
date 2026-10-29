@@ -103,6 +103,9 @@ export interface EmulatorState {
   /** The last assemble's frame layout for `decodeFrameLayout`; null
    *  beside a failed assemble and on a wasm build without it. */
   frameLayout: FrameLayoutPayload | null;
+  /** The printf or scanf call the last snapshot's step ran, raw for the
+   *  call card's own chunk; null when it ran neither. */
+  callCard: number[] | null;
   /** "line 16", or "ui.s line 269" in a helper file: the line holding the
    *  instruction at `addr` in the program last assembled, else null. */
   lineLabel: (addr: number) => string | null;
