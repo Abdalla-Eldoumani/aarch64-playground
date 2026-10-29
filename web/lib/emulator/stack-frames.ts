@@ -106,8 +106,9 @@ function hit(step: number, pc: number, element: number, name: number): FrameHit 
 export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
   if (n.length < FRAMES_HEADER) return null;
   const count = n[8];
-  const leftoverCount = n[9];
-  if (n.length !== FRAMES_HEADER + count * FRAME_ROW + leftoverCount * 2) return null;
+  // The call tree's numbers follow the leftovers (call-tree.ts reads them).
+  const end = FRAMES_HEADER + count * FRAME_ROW + n[9] * 2;
+  if (n.length < end) return null;
   const frames: FrameRow[] = [];
   for (let i = 0; i < count; i++) {
     const r = FRAMES_HEADER + i * FRAME_ROW;
@@ -127,7 +128,7 @@ export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
     });
   }
   const leftovers: FramesSnapshot["leftovers"] = [];
-  for (let i = FRAMES_HEADER + count * FRAME_ROW; i < n.length; i += 2) {
+  for (let i = FRAMES_HEADER + count * FRAME_ROW; i < end; i += 2) {
     leftovers.push({ register: n[i], retPc: n[i + 1] });
   }
   return {
