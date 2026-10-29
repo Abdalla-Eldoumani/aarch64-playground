@@ -401,7 +401,8 @@ impl Cpu {
             HostOutcome::Call(target) => {
                 self.regs.write_pc(target);
                 if self.in_program(target) {
-                    self.frames.on_runtime_call(pc, target, &self.regs.snapshot());
+                    let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                    self.frames.on_runtime_call(pc, target, &self.regs.snapshot(), log);
                 }
             }
         }
