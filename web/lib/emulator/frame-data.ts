@@ -47,10 +47,11 @@ export function callDepth(frames: readonly number[]): number {
 }
 
 /** The x19 to x28 a returning call left changed and nothing has written
- *  since: the register of each pair after the header and the frame rows. */
+ *  since: the register of each pair after the header and the frame rows
+ *  (header slot 9 counts them; the call tree follows them). */
 export function calleeLeftovers(frames: readonly number[] | null): number[] {
   if (!frames) return [];
   const out: number[] = [];
-  for (let i = FRAMES_HEADER + frames[8] * FRAME_ROW; i < frames.length; i += 2) out.push(frames[i]);
+  for (let k = 0; k < frames[9]; k++) out.push(frames[FRAMES_HEADER + frames[8] * FRAME_ROW + k * 2]);
   return out;
 }
