@@ -219,10 +219,11 @@ pub const CALL_HEADER: usize = 11;
 pub const CALL_ROW: usize = 13;
 
 /// The printf or scanf call the last step ran, as the call card's numbers:
-/// a header (kind, step, the `bl`, x0 as a signed number, whether the call
-/// stopped the program, rows, conversions, format bytes kept and in all,
-/// text bytes kept and in all), `CALL_ROW` numbers per row, then the
-/// format's bytes, the text's, and the rows' label names one after another.
+/// a header (kind, step, the branch that made the call, x0 as a signed
+/// number, whether the call stopped the program, rows, conversions, format
+/// bytes kept and in all, text bytes kept and in all), `CALL_ROW` numbers
+/// per row, then the format's bytes, the text's, and the rows' label names
+/// one after another.
 /// Empty when the last step ran neither.
 pub fn call_card(cpu: &Cpu) -> Vec<f64> {
     let call = cpu.last_call();
