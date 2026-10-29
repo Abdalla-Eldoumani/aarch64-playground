@@ -227,6 +227,59 @@ describe("what goes wrong", () => {
     ]);
   });
 
+  it("rows before a stop say what printf read, since nothing was printed", () => {
+    const p = load(`// Prints a percentage and a name, but x2 holds a number where the
+// name's address belongs.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "%d%% of %s\\n"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_out
+        mov     w1, 50
+        mov     x2, 0x5678
+        movk    x2, 0x1234, lsl 16          // a number, not an address
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    p.emu.run_until_break(1_000_000);
+    expect(p.emu.take_stdout()).toBe("");
+    const card = cardNow(p)!;
+    expect(texts(card)).toEqual([
+      "%d read 50, the value in w1",
+      '%% stands for "%"',
+      "%s stopped printf: the value in x2 is 0x12345678",
+    ]);
+    expect(card.outcome).toBe("stopped the program, so nothing was printed");
+  });
+
+  it("a printf stopped by its one-call limit says what its rows read, not what they printed", () => {
+    // "7 " and a field 1 MiB + 1 wide: over the most one printf may make.
+    const source = `.data\nfmt_out:    .string "%d %1048577d\\n"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        ldr     x0, =fmt_out\n        mov     w1, 7\n        mov     w2, 8\n        bl      printf\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n`;
+    const p = load(source);
+    p.emu.run_until_break(1_000_000);
+    expect(p.emu.take_stdout()).toBe("");
+    const card = cardNow(p)!;
+    expect(texts(card)).toEqual([
+      "%d read 7, the value in w1",
+      // The card keeps the text's first 256 bytes: "7 " and 254 of the spaces.
+      `%1048577d read "${" ".repeat(254)}…", the value in w2`,
+    ]);
+    expect(card.outcome).toBe("stopped the program, so nothing was printed");
+  });
+
   it("a scanf handed a value where an address belongs stores at that value", () => {
     const card = after(load(fixture("scanf-value.s"), "7\n"), 24);
     expect(card.rows).toEqual([
