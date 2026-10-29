@@ -10,6 +10,7 @@ import type { createTerminalContext } from "@/lib/playground/terminal-context";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import type { DebugPanes } from "@/components/playground/RightTabs";
 import { FramesView } from "@/components/playground/lazy-frames";
+import { CallCard } from "@/components/playground/lazy-call-card";
 import { StackTab } from "@/components/playground/StackTab";
 import {
   BaseConverter,
@@ -123,14 +124,18 @@ export function useDebugPanes({
       />
     </ErrorBoundary>
   );
+  const ownedByTerminal = foregroundLive || launchMode === "terminal";
   const consoleBlock = (
     <ErrorBoundary label="console">
       <ConsolePanel
         stdout={emu.stdout}
         stderr={emu.stderr}
         notes={emu.notes}
+        // A terminal session's calls happen in the terminal pane, which this
+        // console's card would describe from the wrong place.
+        call={emu.hostedMode && !ownedByTerminal && <CallCard {...emu} />}
         blocked={emu.blocked}
-        ownedByTerminal={foregroundLive || launchMode === "terminal"}
+        ownedByTerminal={ownedByTerminal}
         terminalOwnedFrom={terminalOwnedFrom}
         exitCode={emu.exitCode}
         vfsFiles={emu.vfsFiles}
