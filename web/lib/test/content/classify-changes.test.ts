@@ -51,6 +51,7 @@ describe("the path filter", () => {
   it("adds the Rust jobs when content the Rust tests read changes", () => {
     expect(classify(["docs/instruction-reference.md"]).rust).toBe(true);
     expect(classify(["web/public/examples/cpsc355/hello.s"]).rust).toBe(true);
+    expect(classify(["web/lib/test/emulator/fixtures/call-printf.s"]).rust).toBe(true);
     expect(classify(["web/content/exercises/sum.json"]).rust).toBe(false);
   });
 
