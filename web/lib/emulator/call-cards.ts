@@ -5,8 +5,7 @@
  * the format, the register its argument came from, the value, the text it
  * printed or the address it stored to, and a code for what went wrong. A
  * stack address is named the way the pointer chips name it (`slotAt`).
- * Only the call card imports this, so no page ships it until a program
- * that calls printf or scanf is loaded.
+ * Only the call card imports this, so it arrives in the call card's chunk.
  */
 
 import type { Width } from "@/lib/asm/base-convert";
