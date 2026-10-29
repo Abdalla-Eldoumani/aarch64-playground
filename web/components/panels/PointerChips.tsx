@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
-import { decodeFrameLayout, decodeFrames, drawFrames, slotAt } from "@/lib/emulator/stack-frames";
+import { frameBoxes, slotAt } from "@/lib/emulator/stack-frames";
 import type { SlotPointer } from "@/components/panels/slot-pointer";
 
 interface ChipsInput {
@@ -23,20 +23,8 @@ interface ChipsInput {
  * never ships these words.
  */
 export function pointerChips({ frames, frameLayout, registers, sp, pc, point }: ChipsInput): ReactNode[] {
-  const snapshot = decodeFrames(frames);
-  if (!snapshot) return [];
-  // Only where the boxes sit matters to a chip, so the drawing reads no bytes.
-  const stack = drawFrames({
-    snapshot,
-    layout: frameLayout && decodeFrameLayout(frameLayout),
-    sp: parseInt(sp, 16) || 0,
-    fp: parseInt(registers[29] ?? "", 16) || 0,
-    pc,
-    memory: [],
-    written: [],
-    regions: [],
-    lineLabel: () => null,
-  });
+  const stack = frameBoxes(frames, frameLayout, registers, sp, pc);
+  if (!stack) return [];
   return registers.map((hex, reg) => {
     const target = reg === 29 ? null : slotAt(stack, parseInt(hex, 16));
     if (!target) return null;
