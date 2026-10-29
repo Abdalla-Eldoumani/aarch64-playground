@@ -145,7 +145,7 @@ export function callCard(numbers: readonly number[], input: CallCardInput): Call
     rows.push(
       kind === SCANF
         ? scanfRow(conv, { source, code, arg, stored: BigInt(storedLo) | (BigInt(storedHi) << 32n), size, word, label: labelled }, input)
-        : printfRow(conv, { source, code, arg, word, printed: UTF8.decode(Uint8Array.from(shown)), label: labelled }, input),
+        : printfRow(conv, { source, code, arg, word, printed: UTF8.decode(Uint8Array.from(shown)), label: labelled }, failed !== 0, input),
     );
   }
   if (conversions > rowCount) rows.push({ text: `and ${conversions - rowCount} more conversions`, problem: null });
@@ -175,9 +175,12 @@ interface PrintfArg {
   label: string | null;
 }
 
-function printfRow(conv: string, a: PrintfArg, input: CallCardInput): CallRow {
+/** A row of a printf that `stopped` the program says what printf read, since
+ *  none of it was printed. */
+function printfRow(conv: string, a: PrintfArg, stopped: boolean, input: CallCardInput): CallRow {
   const { letter, wide } = letterOf(conv);
-  if (a.source < 0) return { text: `${conv} printed ${a.word}`, problem: null };
+  if (a.source < 0) return { text: `${conv} ${stopped ? "stands for" : "printed"} ${a.word}`, problem: null };
+  const verb = stopped ? "read" : "printed";
   const pointer = letter === "s" || letter === "p";
   // printf reads a whole double for %f, and a whole address for %s and %p.
   const bytes = pointer || wide || FLOATS.includes(letter) ? 8 : 4;
@@ -194,13 +197,13 @@ function printfRow(conv: string, a: PrintfArg, input: CallCardInput): CallRow {
       : null;
   if (letter === "s") {
     const place = placeOf(a.arg, a.label, input) ?? hex(a.arg);
-    return { text: `${conv} printed ${a.word} from ${place}, the address ${from}`, problem: stack };
+    return { text: `${conv} ${verb} ${a.word} from ${place}, the address ${from}`, problem: stack };
   }
   // A number reads plainly; a character, spaces or nothing reads quoted.
   const shown = /^\S+$/.test(a.printed) && letter !== "c" ? a.printed : a.word;
   // Hex and characters say the number in decimal too.
   const also = "xXco".includes(letter) ? ` (${BigInt.asUintN(bytes * 8, a.arg)})` : "";
-  return { text: `${conv} printed ${shown}, the value ${from}${also}`, problem: stack };
+  return { text: `${conv} ${verb} ${shown}, the value ${from}${also}`, problem: stack };
 }
 
 interface ScanfArg {
