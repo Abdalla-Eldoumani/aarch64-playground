@@ -359,6 +359,7 @@ mod tests {
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
                 callbacks: &mut self.callbacks,
+                call: None,
             }
         }
         /// Call a stub with x0/x1 set and hand back x0.
