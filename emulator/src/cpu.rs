@@ -491,6 +491,10 @@ pub struct Cpu {
     /// The calls the program is inside (frames.rs). Machine state: in every
     /// snapshot, and every change a step makes is in that step's frame.
     frames: CallStack,
+    /// Where the program's own last instruction was: at a library call, the
+    /// branch that reached it, a tail call's `b printf` as well as a
+    /// `bl printf`, whose lr says nothing about a `b`. In every snapshot.
+    last_program_pc: u64,
     /// The last printf or scanf call, for the call card. In every snapshot
     /// like `frames`; a step's frame holds it only when the step replaced it.
     last_call: CallRecord,
@@ -544,6 +548,7 @@ impl Cpu {
             clobber_notes: Vec::new(),
             clobber_noted: 0,
             frames: CallStack::default(),
+            last_program_pc: 0,
             last_call: CallRecord::default(),
             call_scratch: CallRecord::default(),
         };
@@ -709,6 +714,7 @@ impl Cpu {
                 steps_total,
                 steps_taken,
                 frames,
+                last_program_pc,
                 call,
             } = self.snapshots.push_slot();
             *halted = self.halted;
@@ -742,6 +748,7 @@ impl Cpu {
             *stderr_seen = self.stderr_seen;
             *steps_total = self.steps_total;
             *steps_taken = self.steps_taken;
+            *last_program_pc = self.last_program_pc;
             // Filled by `keep_call` only on a step that calls printf or scanf.
             *call = None;
             self.frames.record_undo(frames);
@@ -984,6 +991,10 @@ impl Cpu {
             });
         }
 
+        // Not the trampoline past the text that a library call goes through.
+        if self.in_program(pc) {
+            self.last_program_pc = pc;
+        }
         let snapshot = self.regs.snapshot();
         let fpr_snapshot = self.regs.snapshot_fpr();
         let word = match self.mem.read_u32(pc) {
