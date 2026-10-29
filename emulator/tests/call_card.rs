@@ -293,6 +293,52 @@ fn an_eighth_conversion_has_no_register_left_and_reads_the_stack() {
     assert_eq!(c.rows, want);
 }
 
+/// Nine numbers: x1 to x7 carry seven, the stack the eighth and ninth.
+const STACK_ARGS: &str = r#"// Prints nine numbers with one printf: x1 to x7 carry seven, and the
+// eighth and ninth wait on the stack at sp + 0 and sp + 8.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "%d %d %d %d %d %d %d %d %d\n"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x9, 8
+        mov     x10, 9
+        stp     x9, x10, [sp, -16]!         // the eighth and ninth values
+        ldr     x0, =fmt_out
+        mov     w1, 1
+        mov     w2, 2
+        mov     w3, 3
+        mov     w4, 4
+        mov     w5, 5
+        mov     w6, 6
+        mov     w7, 7
+        bl      printf
+        add     sp, sp, 16                  // drop them
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ninth_conversion_reads_the_next_stack_slot() {
+    let mut p = load(STACK_ARGS);
+    let c = p.after_call(28);
+    assert_eq!(c.text, "1 2 3 4 5 6 7 8 9\n");
+    let mut want: Vec<Row> = (1..=7).map(|n| printed("%d", n, n as u64, &n.to_string())).collect();
+    want.extend([printed("%d", 64, 8, "8"), printed("%d", 65, 9, "9")]);
+    assert_eq!(c.rows, want);
+}
+
 #[test]
 fn a_percent_s_with_no_string_address_stops_there_and_keeps_the_fault_text() {
     let mut p = load(&fixture("not-a-string.s"));
