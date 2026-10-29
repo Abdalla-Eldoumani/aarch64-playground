@@ -568,6 +568,7 @@ mod tests {
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
                 callbacks: &mut self.callbacks,
+                call: None,
             }
         }
     }
