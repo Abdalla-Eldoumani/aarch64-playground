@@ -238,8 +238,13 @@ function scanfRow(conv: string, a: ScanfArg, input: CallCardInput): CallRow {
   };
 }
 
+/** The escapes `literal` writes, in the words a screen reader says them in. */
+const ALOUD: Record<string, string> = { n: "new line", t: "tab", r: "carriage return", "\\": "backslash", '"': "quote mark" };
+
 /** The card as a screen reader says it, once. */
 export function spokenCard(card: CallCard): string {
   const rows = card.rows.map((row) => (row.problem ? `${row.text}. ${row.problem}` : `${row.text}.`));
-  return [`${card.title}${card.line ? ` on ${card.line}` : ""} ${card.outcome}.`, ...rows].join(" ");
+  return [`${card.title}${card.line ? ` on ${card.line}` : ""} ${card.outcome}.`, ...rows]
+    .join(" ")
+    .replace(/\\(x[0-9a-f]{2}|.)/g, (_, c: string) => ` ${ALOUD[c] ?? `byte 0${c}`} `);
 }
