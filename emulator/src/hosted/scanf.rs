@@ -12,7 +12,10 @@ use std::cell::Cell;
 
 use crate::errors::EmuError;
 use crate::hosted::printf::read_c_string;
-use crate::hosted::{HostContext, HostOutcome, VarargWalker};
+use crate::hosted::{
+    ARG_NONE, CALL_NO_INPUT, CALL_NO_MATCH, CALL_OK, CALL_STOPPED, CallRecord, Conversion,
+    HostContext, HostOutcome, VarargWalker,
+};
 
 /// C's isspace in the default locale: space, \t, \n, \v, \f, \r. Byte-level
 /// on purpose: Rust's Unicode `char::is_whitespace` on a raw byte treated
@@ -22,19 +25,37 @@ fn is_c_space(b: u8) -> bool {
     b.is_ascii_whitespace() || b == 0x0B
 }
 
+/// The first byte at or after `from` that is not C whitespace.
+fn skip_space(input: &[u8], from: usize) -> usize {
+    (from..input.len()).find(|&i| !is_c_space(input[i])).unwrap_or(input.len().max(from))
+}
+
+/// The first 8 of the `size` bytes a conversion stored at `addr`, as a
+/// little-endian number, for the call card.
+fn stored_at(mem: &crate::memory::Memory, addr: u64, size: u64) -> u64 {
+    (0..size.min(8)).fold(0, |value, i| {
+        value | u64::from(mem.read_u8(addr.wrapping_add(i)).unwrap_or(0)) << (8 * i)
+    })
+}
+
 pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fmt_ptr = ctx.regs.read_gpr(0, true);
     let fmt_bytes = read_c_string(ctx.mem, fmt_ptr, "scanf's format string")?;
     let fmt = String::from_utf8_lossy(&fmt_bytes).into_owned();
+    if let Some(call) = ctx.call.as_deref_mut() {
+        call.begin(fmt.as_bytes());
+    }
 
     // Bytes read so far. Nothing leaves stdin until the call finishes, so
     // a stall mid-field re-reads from the start once input arrives.
     let mut in_pos: usize = 0;
     // Pointer args follow AAPCS64 varargs: x1..x7 then the stack spill.
-    let mut walker = VarargWalker { gp_idx: 1, fp_idx: 0, stack_off: 0 };
+    let mut walker = VarargWalker::new(1);
     let mut matched: i64 = 0;
 
     let fmt_chars: Vec<char> = fmt.chars().collect();
+    // Where char `f` starts in the format's bytes, for the call card.
+    let at = |f: usize| fmt_chars[..f].iter().map(|c| c.len_utf8()).sum::<usize>();
     let mut f = 0;
     while f < fmt_chars.len() {
         let c = fmt_chars[f];
@@ -60,6 +81,7 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             f += 1;
             continue;
         }
+        let fmt_start = at(f);
         f += 1;
         // Optional suppression flag `*` (skip the field).
         let suppress = f < fmt_chars.len() && fmt_chars[f] == '*';
@@ -92,6 +114,22 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         }
         let conv = fmt_chars[f];
         f += 1;
+
+        // Pushed as a field that did not match: each way out of the match
+        // below that is not one says so instead.
+        if let Some(call) = ctx.call.as_deref_mut() {
+            call.push(Conversion {
+                fmt_start,
+                fmt_end: at(f),
+                source: ARG_NONE,
+                text_start: in_pos,
+                text_end: in_pos,
+                code: CALL_NO_MATCH,
+                ..Conversion::default()
+            });
+        }
+        walker.last = (ARG_NONE, 0);
+        let (field_from, written) = (in_pos, ctx.mem.bytes_written());
 
         match conv {
             '%' => {
@@ -279,10 +317,36 @@ pub fn scanf(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
                     matched += 1;
                 }
             }
-            _ => break,
+            _ => {
+                if let Some(row) = ctx.call.as_deref_mut().and_then(CallRecord::current) {
+                    row.code = CALL_STOPPED;
+                }
+                break;
+            }
+        }
+        if let Some(row) = ctx.call.as_deref_mut().and_then(CallRecord::current) {
+            row.code = CALL_OK;
+            (row.source, row.arg) = walker.last;
+            row.size = ctx.mem.bytes_written() - written;
+            row.stored = stored_at(ctx.mem, row.arg, row.size);
+            // Every conversion but %c and %% skips the whitespace before it.
+            row.text_start =
+                if matches!(conv, 'c' | '%') { field_from } else { skip_space(ctx.stdin, field_from) };
+            row.text_end = in_pos;
         }
     }
 
+    if let Some(call) = ctx.call.as_deref_mut() {
+        // A field that did not match: the input word it met instead.
+        if let Some(row) = call.current().filter(|row| row.code == CALL_NO_MATCH) {
+            let start = skip_space(ctx.stdin, row.text_start);
+            let limit = ctx.stdin.len().min(start + 32);
+            row.text_start = start;
+            row.text_end = (start..limit).find(|&i| is_c_space(ctx.stdin[i])).unwrap_or(limit);
+        }
+        let read = call.rows.iter().map(|row| row.text_end).fold(in_pos, usize::max);
+        call.set_text(&ctx.stdin[..read]);
+    }
     // Commit: drop the bytes we consumed.
     ctx.stdin.drain(..in_pos);
     ctx.regs.write_gpr(0, true, matched as u64);
@@ -298,6 +362,12 @@ fn stall(
     // with the fields that matched, or C's EOF (-1) when none did, and
     // keep what was read (the whitespace before EOF stays read in glibc).
     if ctx.stdin_closed {
+        if let Some(call) = ctx.call.as_deref_mut() {
+            if let Some(row) = call.current().filter(|row| row.code == CALL_NO_MATCH) {
+                row.code = CALL_NO_INPUT;
+            }
+            call.set_text(&ctx.stdin[..in_pos]);
+        }
         ctx.stdin.drain(..in_pos);
         let ret = if matched > 0 { matched } else { -1 };
         ctx.regs.write_gpr(0, true, ret as u64);
@@ -613,6 +683,7 @@ mod tests {
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
                 callbacks: &mut self.callbacks,
+                call: None,
             }
         }
         fn place_fmt(&mut self, fmt: &str) {
