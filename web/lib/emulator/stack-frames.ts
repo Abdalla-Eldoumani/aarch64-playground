@@ -582,6 +582,30 @@ export function drawFrames(input: DrawInput): DrawnStack {
   };
 }
 
+/** The frames drawn with no bytes read: where each box sits, all `slotAt`
+ *  needs (the pointer chips, the call card). Null without a call stack. */
+export function frameBoxes(
+  frames: readonly number[] | null,
+  layout: FrameLayoutPayload | null,
+  registers: readonly string[],
+  sp: string,
+  pc: number,
+): DrawnStack | null {
+  const snapshot = frames && decodeFrames(frames);
+  if (!snapshot) return null;
+  return drawFrames({
+    snapshot,
+    layout: layout && decodeFrameLayout(layout),
+    sp: parseInt(sp, 16) || 0,
+    fp: parseInt(registers[29] ?? "", 16) || 0,
+    pc,
+    memory: [],
+    written: [],
+    regions: [],
+    lineLabel: () => null,
+  });
+}
+
 /** Where `addr` lands in the drawn frames, in a pointer chip's words: the
  *  box's name, plus how far in when it is not the first byte ("a_s",
  *  "a_s + 3"), or the offset alone where the box has no name ("fp + 24");
