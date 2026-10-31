@@ -84,18 +84,26 @@ describe("seeded exercises validate", () => {
     expect(theory.length).toBe(coding.length);
   });
 
+  // The frame drawings are a third side, outside the count the two above keep equal.
+  it("put every draw-the-frame exercise on the frame side, and nothing else there", () => {
+    const frameSide = exercises.filter((exercise) => practiceSide(exercise) === "frame");
+    expect(frameSide.length).toBeGreaterThan(0);
+    expect(frameSide).toEqual(exercises.filter((exercise) => exercise.variant === "frame"));
+  });
+
   it("ship write and identify-bug exercises, with structural checks among them", () => {
     expect(coding.some((exercise) => exercise.variant === "write")).toBe(true);
     expect(coding.some((exercise) => exercise.variant === "identify-bug")).toBe(true);
     expect(coding.some((exercise) => (exercise.acceptance.structural?.length ?? 0) > 0)).toBe(true);
   });
 
-  // A coding exercise is graded by running the student's program, so its file
-  // never needs a stored solution. Quiz, prediction, and blanks files carry
-  // their answers on purpose: the browser grades against them.
-  it("coding exercises carry no reference-solution or answer key", () => {
-    const solutionKey = /"solution"|"answer"|"reference/i;
-    for (const exercise of coding) {
+  // A coding exercise is graded by running the student's program, and a frame
+  // drawing against the frame the emulator draws, so neither file needs a
+  // stored answer. Quiz, prediction, and blanks files carry their answers on
+  // purpose: the browser grades against them.
+  it("coding and frame exercises carry no reference-solution or answer key", () => {
+    const solutionKey = /"solution"|"answer"|"reference|"offset"/i;
+    for (const exercise of [...coding, ...exercises.filter((entry) => entry.variant === "frame")]) {
       const raw = fs.readFileSync(path.join(DIR, `${exercise.slug}.json`), "utf8");
       expect(solutionKey.test(raw), `${exercise.slug} carries a solution/answer key`).toBe(false);
     }
@@ -214,6 +222,9 @@ describe("every emulator-graded exercise is solvable and does not ship already s
     async (slug, exercise) => {
       const solved = await grade(exercise, solutionFor(slug));
       expect(solved.pass, `${slug} solution: ${solved.why}`).toBe(true);
+      // Clean of frame notes too, so turning FRAME_NOTES_COUNT on fails no
+      // reference program.
+      expect(solved.frameNotes, `${slug} solution's calls`).toEqual([]);
       // Failing somewhere is not enough: a starter that clears every visible
       // check, or every hidden input, tells the student that part is done
       // before they have written anything. A starter that faults counts as a
