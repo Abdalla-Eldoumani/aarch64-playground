@@ -18,7 +18,8 @@ use layout::FrameLayout;
 use tree::{CallTree, TreeUndo};
 
 /// Most activations recorded. The C corpus recurses 7,945 deep; past this
-/// the tracker counts calls without recording them.
+/// the tracker counts calls without recording them, and the call tree,
+/// which has caps of its own, still takes each one.
 pub const MAX_ACTIVATIONS: usize = 16_384;
 
 /// Most activations a view draws: main, then the innermost 63.
@@ -332,8 +333,9 @@ impl CallStack {
         self.push(callee, regs[0], log);
     }
 
-    /// Push `a`, called with `x0`, onto the stack and into the call tree.
+    /// Push `a`, called with `x0`, into the call tree and onto the stack.
     fn push(&mut self, mut a: Activation, x0: u64, log: Option<&mut FrameUndo>) {
+        self.tree.enter(a.entry, x0, log.map(|log| &mut log.tree));
         if self.acts.len() >= MAX_ACTIVATIONS {
             self.uncounted += 1;
             return;
@@ -342,7 +344,6 @@ impl CallStack {
             a.watch = if caller.record != 0 { self.acts.len() } else { caller.watch };
         }
         self.acts.push(a);
-        self.tree.enter(a.entry, x0, log.map(|log| &mut log.tree));
     }
 
     /// A `ret` (or `br x30`) at `pc`, step `step`, just sent the program to
@@ -360,6 +361,7 @@ impl CallStack {
     ) -> u32 {
         if self.uncounted > 0 {
             self.uncounted -= 1;
+            self.tree.leave(regs[0], log.map(|log| &mut log.tree));
             return 0;
         }
         if self.acts.last().is_some_and(|a| a.ret_addr == target) {
