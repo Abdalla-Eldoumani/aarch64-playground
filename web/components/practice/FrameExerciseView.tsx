@@ -197,7 +197,9 @@ export function FrameExerciseView({
   /** One box of the frame, its offset field on the left as the frames view puts fp + N. */
   const box = (key: string, label: string, title: string, kind: "saved" | "local", value: string, set: (v: string) => void) => (
     <li key={key} className="mt-[3px]">
-      <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2">
+      {/* The mark's column is as wide before a check as after, and the same on
+          every row, so the boxes line up and nothing moves when the marks come. */}
+      <div className="grid grid-cols-[auto_minmax(0,1fr)_0.875rem] items-center gap-2 sm:grid-cols-[auto_minmax(0,1fr)_7rem]">
         <span className="flex items-center gap-1.5 font-mono text-[12px] text-[var(--text-tertiary)]">
           <span aria-hidden="true">fp +</span>
           <NumberField id={`${baseId}-${key}`} label={label} value={value} mark={field(key).mark} onChange={set} />
