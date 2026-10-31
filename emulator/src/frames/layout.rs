@@ -42,9 +42,10 @@ pub struct FunctionLayout {
     /// `mov x29, sp`) and changes sp and x29 nowhere else but in an
     /// `ldp x29, x30, [sp], M`: the functions the frame check reads.
     pub course_frame: bool,
-    /// The width its first use of x0 reads it at, before any branch or
-    /// write of x0 (4 for w0, 8 for x0, a store's own width): the
-    /// argument the call tree shows. 0 when no such read comes first.
+    /// The width its first use of x0 reads it at, before any other branch
+    /// or write of x0 (4 for w0, 8 for x0, a store's own width; a cbz,
+    /// cbnz, tbz or tbnz on x0 is a read): the argument the call tree
+    /// shows. 0 when no such read comes first.
     pub arg_width: u8,
     /// By offset.
     pub slots: Vec<Slot>,
@@ -416,8 +417,9 @@ fn written(instr: &I) -> u32 {
 
 /// What an instruction does with x0, for the argument scan: the width it
 /// reads x0 at, None when it leaves x0 alone, and 0 when it writes x0
-/// first or is one the scan does not follow (a branch, a call, an index
-/// register), which ends the scan.
+/// first or is one the scan does not follow (a branch other than a cbz,
+/// cbnz, tbz or tbnz on x0, a call, an index register), which ends the
+/// scan.
 fn x0_use(instr: &I) -> Option<u8> {
     let width = |sf: bool| if sf { 8 } else { 4 };
     // An instruction reads its sources before it writes its result.
@@ -447,6 +449,10 @@ fn x0_use(instr: &I) -> Option<u8> {
         I::LdSt { rt, rn, .. } | I::LdrSignExtended { rt, rn, .. } => base(rn).or((rt == 0).then_some(0)),
         I::LdStPair { rt, rt2, rn, .. } => base(rn).or((rt == 0 || rt2 == 0).then_some(0)),
         I::FpLdSt { rn, .. } | I::FpLdStPair { rn, .. } => base(rn),
+        // The course's null check, `cbz x0`, reads the argument it tests.
+        // A tbz names x0 only for bits 32 to 63, as its encoding does.
+        I::CompareBranch { sf, rt: 0, .. } => Some(width(sf)),
+        I::TestBranch { rt: 0, bit_pos, .. } => Some(width(bit_pos >= 32)),
         _ => Some(0),
     }
 }
