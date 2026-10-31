@@ -209,16 +209,18 @@ function enumerateExercises() {
   for (const file of fs.readdirSync(dir).sort()) {
     if (!file.endsWith(".json")) continue;
     const doc = JSON.parse(fs.readFileSync(path.join(dir, file), "utf8"));
-    if (doc.variant !== "write" && doc.variant !== "identify-bug") continue;
+    // A frame exercise runs its program, which takes no input; a coding one its starter.
+    const frame = doc.variant === "frame";
+    if (!frame && doc.variant !== "write" && doc.variant !== "identify-bug") continue;
     out.push({
       id: `exercise-${doc.slug}`,
       source: "exercises",
       kind: "console",
-      program: doc.starter,
+      program: frame ? doc.program : doc.starter,
       args: doc.args ? parseArgsLine(String(doc.args)) : [],
       stdin: typeof doc.stdin === "string" ? doc.stdin : "",
       vfs: {},
-      note: `${doc.variant} starter`,
+      note: frame ? "frame program" : `${doc.variant} starter`,
     });
   }
   return out;
