@@ -270,6 +270,9 @@ pub struct RegisterFile {
     /// Per register (`FLAGS_CODE` numbering), where the leftovers in it
     /// came from; meaningful while its `clobbered` bit is set.
     clobber_origins: [ClobberOrigin; 64],
+    /// Bit N set while xN's latest write was a 32-bit one (to wN), so a
+    /// call's result can be read the way it was written: w0 or x0.
+    narrow: u32,
     /// While `recording`, what the running step overwrote, so its
     /// step-back frame can put it back; between steps a spare buffer (see
     /// `record_undo`).
@@ -296,6 +299,7 @@ pub struct RegUndo {
     nzcv: NzcvFlags,
     clobbered: RegMask,
     clobbered_reads: RegMask,
+    narrow: u32,
     edits: Vec<RegEdit>,
 }
 
@@ -312,6 +316,7 @@ impl Clone for RegisterFile {
             clobbered: self.clobbered,
             clobbered_reads: self.clobbered_reads.clone(),
             clobber_origins: self.clobber_origins,
+            narrow: self.narrow,
             undo: RegUndo::default(),
             recording: false,
         }
@@ -330,6 +335,7 @@ impl RegisterFile {
             clobbered: RegMask::default(),
             clobbered_reads: Cell::new(RegMask::default()),
             clobber_origins: [ClobberOrigin::default(); 64],
+            narrow: 0,
             undo: RegUndo::default(),
             recording: false,
         }
@@ -346,6 +352,7 @@ impl RegisterFile {
         log.nzcv = self.nzcv;
         log.clobbered = self.clobbered;
         log.clobbered_reads = self.clobbered_reads.get();
+        log.narrow = self.narrow;
         log.edits.clear();
         self.recording = true;
     }
@@ -378,6 +385,7 @@ impl RegisterFile {
         self.nzcv = log.nzcv;
         self.clobbered = log.clobbered;
         self.clobbered_reads.set(log.clobbered_reads);
+        self.narrow = log.narrow;
     }
 
     fn log(&mut self, edit: RegEdit) {
@@ -429,6 +437,7 @@ impl RegisterFile {
         let x = (0x7_FFFF & !u32::from(keep_x0)) | FLAGS_BIT; // x0-x18, flags
         self.clobbered.x |= x;
         self.clobbered.d |= d;
+        self.narrow &= !x; // the pattern fills all 64 bits
         let fresh = u64::from(x) | (u64::from(d) << 32);
         for (code, origin) in self.clobber_origins.iter_mut().enumerate() {
             if (fresh >> code) & 1 != 0 {
@@ -563,8 +572,14 @@ impl RegisterFile {
             return;
         }
         self.clobbered.x &= !(1 << index);
+        self.narrow = (self.narrow & !(1 << index)) | (u32::from(!sf) << index);
         self.log(RegEdit::Gpr(index, self.gpr[index as usize]));
         self.gpr[index as usize] = if sf { value } else { value & 0xFFFF_FFFF };
+    }
+
+    /// The width xN's latest write had: 4 after a write to wN, else 8.
+    pub fn write_width(&self, index: u8) -> u8 {
+        if (self.narrow >> (index & 31)) & 1 != 0 { 4 } else { 8 }
     }
 
     /// Read the stack pointer.
