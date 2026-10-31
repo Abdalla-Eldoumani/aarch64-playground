@@ -12,10 +12,10 @@ import {
   rangesToRead,
   typed,
   wordAt,
-  type BoxKind,
   type StackBytes,
 } from "@/lib/emulator/stack-frames";
 import { CallTree } from "@/components/panels/CallTree";
+import { KIND_STYLE, OVERWRITTEN } from "@/components/panels/frame-styles";
 import { PointerContext } from "@/components/panels/slot-pointer";
 
 type FramesViewProps = Pick<
@@ -47,21 +47,6 @@ const NO_ROWS: number[] = [];
 // object, so a reset, an edit or a run from the start, each of which
 // assembles again, starts a new set.
 const saidPerLoad = new WeakMap<object, Set<string>>();
-
-// Saved registers sit on a raised surface in the approved look's purple (the
-// number ink: the register ink is pink in the dark themes and read as the
-// danger red beside it), locals on a faint success tint, and the gaps are
-// dashed outlines; a changed saved register takes the danger style instead.
-// Every tint mixes over --bg-base, so its text contrast is the one the theme
-// tests hold for 15% fills.
-const KIND_STYLE: Record<BoxKind, string> = {
-  saved: "border border-[var(--border-strong)] bg-[var(--bg-elevated)] text-[var(--syntax-number)]",
-  local: "border border-[var(--border)] bg-[color-mix(in_srgb,var(--success)_10%,var(--bg-base))] text-[var(--success)]",
-  padding: "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)]",
-  reserved: "border border-dashed border-[var(--border-strong)] text-[var(--text-secondary)]",
-};
-const OVERWRITTEN =
-  "border border-[var(--danger)] bg-[color-mix(in_srgb,var(--danger)_10%,var(--bg-base))] text-[var(--danger)]";
 
 /**
  * Each call's frame as the course draws it, main first and the innermost
