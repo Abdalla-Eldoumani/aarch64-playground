@@ -349,6 +349,7 @@ impl CallStack {
     /// A `ret` (or `br x30`) at `pc`, step `step`, just sent the program to
     /// `target`. Pops the call it returns from (unwinding any it skipped);
     /// a return to no caller is recorded and leaves the stack alone.
+    /// `x0_width` is the width of x0's latest write, for the call tree.
     /// Returns the callee-saved registers the returning call left changed
     /// (bit N for xN); main's are its own to keep.
     pub(crate) fn on_return(
@@ -357,16 +358,17 @@ impl CallStack {
         target: u64,
         step: u64,
         regs: &[u64; 32],
+        x0_width: u8,
         mut log: Option<&mut FrameUndo>,
     ) -> u32 {
         if self.uncounted > 0 {
             self.uncounted -= 1;
-            self.tree.leave(regs[0], log.map(|log| &mut log.tree));
+            self.tree.leave(regs[0], x0_width, log.map(|log| &mut log.tree));
             return 0;
         }
         if self.acts.last().is_some_and(|a| a.ret_addr == target) {
             let Some(top) = self.acts.pop() else { return 0 };
-            self.tree.leave(regs[0], log.as_deref_mut().map(|log| &mut log.tree));
+            self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
             if let Some(log) = log {
                 log.removed.push(top);
             }
@@ -384,7 +386,7 @@ impl CallStack {
                 if let Some(log) = log.as_deref_mut() {
                     log.removed.push(a);
                 }
-                self.tree.leave(regs[0], log.as_deref_mut().map(|log| &mut log.tree));
+                self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
             }
             return 0;
         }
@@ -517,6 +519,8 @@ pub struct FrameView {
     /// x0 at, from the layout (0 when it does not).
     pub tree: CallTree,
     pub arg_widths: Vec<u8>,
+    /// The width of x0's latest write, 4 or 8: how a return just made reads.
+    pub x0_width: u8,
 }
 
 /// The call stack as the program stands, for one snapshot. The chain walk
@@ -595,6 +599,7 @@ pub fn frame_view(cpu: &Cpu, layout: &FrameLayout) -> FrameView {
             .iter()
             .map(|n| layout.function_at(n.entry).filter(|f| f.entry == n.entry).map_or(0, |f| f.arg_width))
             .collect(),
+        x0_width: cpu.regs.write_width(0),
     }
 }
 
@@ -687,6 +692,6 @@ pub fn view_numbers(v: &FrameView) -> Vec<f64> {
     for &(register, ret_pc) in &v.leftovers {
         out.extend([f64::from(register), ret_pc as f64]);
     }
-    v.tree.numbers(&v.arg_widths, &mut out);
+    v.tree.numbers(&v.arg_widths, v.x0_width, &mut out);
     out
 }
