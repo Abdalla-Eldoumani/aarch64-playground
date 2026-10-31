@@ -3,8 +3,9 @@
  * conversion by conversion. The machine sends numbers and the program's own
  * bytes (`call_card` in emulator/src/lib.rs): where each conversion sits in
  * the format, the register its argument came from, the value, the text it
- * printed or the address it stored to, and a code for what went wrong. A
- * stack address is named the way the pointer chips name it (`slotAt`).
+ * printed or the address it stored to, the bytes a %s read, and a code for
+ * what went wrong. A stack address is named the way the pointer chips name
+ * it (`slotAt`).
  * Only the call card imports this, so it arrives in the call card's chunk.
  */
 
@@ -17,6 +18,8 @@ import { slotAt, type DrawnStack } from "@/lib/emulator/stack-frames";
 /** `call_card`'s layout and codes (emulator/src/lib.rs, hosted/mod.rs). */
 const HEADER = 11;
 const ROW = 13;
+/** The most bytes a record keeps of a format, a text or a string. */
+const KEPT = 256;
 const SCANF = 2;
 const STOPPED = 1;
 const NO_MATCH = 2;
@@ -138,6 +141,8 @@ export function callCard(numbers: readonly number[], input: CallCardInput): Call
     const r = numbers.slice(HEADER + i * ROW, HEADER + (i + 1) * ROW);
     const [from, to, source, code, argLo, argHi, storedLo, storedHi, size, textFrom, textTo, labelLen, into] = r;
     const label = labelLen ? UTF8.decode(Uint8Array.from(numbers.slice(names, (names += labelLen)))) : null;
+    // A printf row's size is how many bytes its %s read; they follow its label.
+    const read = kind === SCANF ? [] : numbers.slice(names, (names += Math.min(size, KEPT)));
     const conv = UTF8.decode(Uint8Array.from(piece(fmt, from, to)));
     const arg = BigInt(argLo) | (BigInt(argHi) << 32n);
     const shown = piece(text, textFrom, textTo);
@@ -146,7 +151,21 @@ export function callCard(numbers: readonly number[], input: CallCardInput): Call
     rows.push(
       kind === SCANF
         ? scanfRow(conv, { source, code, arg, stored: BigInt(storedLo) | (BigInt(storedHi) << 32n), size, word, label: labelled }, input)
-        : printfRow(conv, { source, code, arg, word, printed: UTF8.decode(Uint8Array.from(shown)), label: labelled }, failed !== 0, input),
+        : printfRow(
+            conv,
+            {
+              source,
+              code,
+              arg,
+              word,
+              printed: UTF8.decode(Uint8Array.from(shown)),
+              length: textTo > text.length ? textTo - textFrom : null,
+              read: literal(read, size > KEPT),
+              label: labelled,
+            },
+            failed !== 0,
+            input,
+          ),
     );
   }
   if (conversions > rowCount) rows.push({ text: `and ${conversions - rowCount} more conversions`, problem: null });
@@ -173,15 +192,32 @@ interface PrintfArg {
   /** What the conversion printed, as a string literal, and as plain text. */
   word: string;
   printed: string;
+  /** How many characters it printed when the card keeps only some of them. */
+  length: number | null;
+  /** %s: the bytes it read, as a string literal. */
+  read: string;
   label: string | null;
 }
 
+/** The value a conversion read, as the register held it, in its own kind. */
+function valueText(letter: string, arg: bigint, bytes: number): string {
+  if (letter === "c") return literal([Number(arg & 0xffn)], false);
+  if (letter === "p") return hex(arg);
+  return numberText(letter, arg, bytes);
+}
+
 /** A row of a printf that `stopped` the program says what printf read, since
- *  none of it was printed. */
+ *  none of it was printed. That row, and one whose text the card cut, names
+ *  the value, which a wide field's padding would otherwise stand in for. */
 function printfRow(conv: string, a: PrintfArg, stopped: boolean, input: CallCardInput): CallRow {
   const { letter, wide } = letterOf(conv);
   if (a.source < 0) return { text: `${conv} ${stopped ? "stands for" : "printed"} ${a.word}`, problem: null };
-  const verb = stopped ? "read" : "printed";
+  const named = stopped || a.length !== null;
+  const verb = stopped
+    ? "read"
+    : a.length !== null
+      ? `printed ${a.length} character${a.length === 1 ? "" : "s"} for`
+      : "printed";
   const pointer = letter === "s" || letter === "p";
   // printf reads a whole double for %f, and a whole address for %s and %p.
   const bytes = pointer || wide || FLOATS.includes(letter) ? 8 : 4;
@@ -198,10 +234,14 @@ function printfRow(conv: string, a: PrintfArg, stopped: boolean, input: CallCard
       : null;
   if (letter === "s") {
     const place = placeOf(a.arg, a.label, input) ?? hex(a.arg);
-    return { text: `${conv} ${verb} ${a.word} from ${place}, the address ${from}`, problem: stack };
+    return { text: `${conv} ${verb} ${named ? a.read : a.word} from ${place}, the address ${from}`, problem: stack };
   }
   // A number reads plainly; a character, spaces or nothing reads quoted.
-  const shown = /^\S+$/.test(a.printed) && letter !== "c" ? a.printed : a.word;
+  const shown = named
+    ? valueText(letter, a.arg, bytes)
+    : /^\S+$/.test(a.printed) && letter !== "c"
+      ? a.printed
+      : a.word;
   // Hex and characters say the number in decimal too.
   const also = "xXco".includes(letter) ? ` (${BigInt.asUintN(bytes * 8, a.arg)})` : "";
   return { text: `${conv} ${verb} ${shown}, the value ${from}${also}`, problem: stack };
