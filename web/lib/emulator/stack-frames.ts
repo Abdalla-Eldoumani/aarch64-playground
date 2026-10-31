@@ -579,7 +579,7 @@ export function drawFrames(input: DrawInput): DrawnStack {
         : null,
     untracked:
       snapshot.uncounted > 0
-        ? `${plural(snapshot.uncounted, "deeper call")} not shown: the playground stops keeping track this deep`
+        ? `${plural(snapshot.uncounted, "deeper frame")} not recorded: the playground records frames only this deep`
         : null,
     depth: rows.length + snapshot.hidden + snapshot.uncounted,
   };
