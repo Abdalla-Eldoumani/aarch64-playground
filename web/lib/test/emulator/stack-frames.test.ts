@@ -383,7 +383,7 @@ describe("drawFrames", () => {
 
   // fact(17000) is 17,001 calls deep with main; the machine records 16,384
   // of them, so 617 go unrecorded and 16,384 - 64 = 16,320 are folded.
-  it("says how many calls run deeper than the machine keeps track of", () => {
+  it("says how many frames run deeper than the machine records", () => {
     const p = load(FACTORIAL.replace("mov     w0, 4", "mov     w0, 17000"));
     const ret = p.pcOfLine(lineOf(FACTORIAL, "ldp     fp, lr, [sp], dealloc") + 1);
     p.emu.set_breakpoint(ret);
@@ -391,7 +391,7 @@ describe("drawFrames", () => {
     expect(Number(p.emu.get_pc())).toBe(ret);
     const stack = draw(p);
     expect(stack.folded).toBe("16,320 more calls of fact");
-    expect(stack.untracked).toBe("617 deeper calls not shown: the playground stops keeping track this deep");
+    expect(stack.untracked).toBe("617 deeper frames not recorded: the playground records frames only this deep");
     expect(stack.depth).toBe(17_001);
     p.emu.free();
   });
