@@ -8,8 +8,9 @@
 //! counted with every call made inside it, never kept.
 //!
 //! Driven by the call stack's own pushes and pops (frames.rs), so a run
-//! records every call a single step would, and kept in step-back frames
-//! and named saves with the rest of the call stack.
+//! records every call a single step would, deeper than the call stack
+//! records included, and kept in step-back frames and named saves with the
+//! rest of the call stack.
 
 /// Most nodes kept: the most the view draws.
 pub const MAX_TREE_NODES: usize = 200;
@@ -40,6 +41,9 @@ pub struct CallNode {
     /// x0 when its first call began, and when its latest return came.
     pub arg: u64,
     pub ret: u64,
+    /// The width of x0's latest write before that return: 4 for w0, 8 for
+    /// x0, 0 before any return.
+    pub ret_width: u8,
 }
 
 impl CallNode {
@@ -174,12 +178,14 @@ impl CallTree {
             open: 1,
             arg: x0,
             ret: 0,
+            ret_width: 0,
         });
         self.current = self.nodes.len();
     }
 
-    /// The innermost call just returned `x0`.
-    pub(super) fn leave(&mut self, x0: u64, mut log: Option<&mut TreeUndo>) {
+    /// The innermost call just returned `x0`, last written `x0_width`
+    /// bytes wide.
+    pub(super) fn leave(&mut self, x0: u64, x0_width: u8, mut log: Option<&mut TreeUndo>) {
         if self.outside > 0 {
             self.log(&mut log, None);
             self.outside -= 1;
@@ -189,20 +195,27 @@ impl CallTree {
         self.log(&mut log, Some(c));
         let node = &mut self.nodes[c];
         node.open = node.open.saturating_sub(1);
-        node.ret = x0;
+        (node.ret, node.ret_width) = (x0, x0_width);
         if node.open == 0 {
             self.current = node.parent;
         }
     }
 
     /// The tree as the flat numbers the frames export ends with: the node
-    /// count, `current`, `outside` and `dropped`, then per node its caller
-    /// (one more than its index, 0 for none), entry, calls, open calls, the
-    /// width its function reads x0 at (`widths`, 0 when it does not), and
-    /// x0 at its first call and at its latest return, each as its high and
-    /// low 32 bits, so a 64-bit value stays exact.
-    pub fn numbers(&self, widths: &[u8], out: &mut Vec<f64>) {
-        out.extend([self.nodes.len() as f64, self.current as f64, f64::from(self.outside), self.dropped as f64]);
+    /// count, `current`, `outside`, `dropped` and the width of x0's latest
+    /// write (`x0_width`, for a return said as it happens), then per node
+    /// its caller (one more than its index, 0 for none), entry, calls, open
+    /// calls, the width its function reads x0 at (`widths`, 0 when it does
+    /// not), x0 at its first call and at its latest return, each as its
+    /// high and low 32 bits so a 64-bit value stays exact, and `ret_width`.
+    pub fn numbers(&self, widths: &[u8], x0_width: u8, out: &mut Vec<f64>) {
+        out.extend([
+            self.nodes.len() as f64,
+            self.current as f64,
+            f64::from(self.outside),
+            self.dropped as f64,
+            f64::from(x0_width),
+        ]);
         for (n, &width) in self.nodes.iter().zip(widths) {
             out.extend([
                 n.parent as f64,
@@ -214,6 +227,7 @@ impl CallTree {
                 f64::from(n.arg as u32),
                 (n.ret >> 32) as f64,
                 f64::from(n.ret as u32),
+                f64::from(n.ret_width),
             ]);
         }
     }
