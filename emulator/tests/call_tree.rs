@@ -74,8 +74,9 @@ impl Loaded {
 
     /// The tree as lines: two spaces a level, `name(arg)` where the
     /// function reads x0 (`name × count` for a fold), then `-> value` once
-    /// every call it stands for returned, `*` on the current call and
-    /// `...` on one still waiting for a callee.
+    /// every call it stands for returned (as w0 after a 32-bit write of x0,
+    /// else as x0), `*` on the current call and `...` on one still waiting
+    /// for a callee.
     fn outline(&self) -> Vec<String> {
         let tree = self.tree();
         let nodes = tree.nodes();
@@ -98,6 +99,7 @@ impl Loaded {
                 let state = match () {
                     _ if tree.current() == Some(i) => " *".to_string(),
                     _ if n.open > 0 => " ...".to_string(),
+                    _ if n.ret_width == 4 => format!(" -> {}", n.ret as u32 as i32),
                     _ => format!(" -> {}", n.ret as i64),
                 };
                 format!("{}{call}{state}", "  ".repeat(depth[i]))
@@ -505,6 +507,46 @@ main:
         ["compares", "copies", "stores_byte", "loads_through", "sets", "branches", "indexes", "main"].map(width),
         [4, 8, 1, 8, 0, 0, 0, 0]
     );
+}
+
+const RETURNS: &str = "web/lib/test/emulator/fixtures/call-returns.s";
+
+#[test]
+fn a_returned_value_keeps_the_width_x0_was_last_written_at() {
+    let mut p = load(&read(RETURNS));
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "2147483648 -2147483648 hi\n");
+    // as_long's last write is lsl x0 and as_int's lsl w0: the same bits
+    // 0x80000000 as a long 2^31 and as an int with its sign bit set.
+    // greeting loads x0 with msg's address; main ends on mov w0, 0.
+    let msg = p.label("msg");
+    let returned: Vec<_> = p.tree().nodes().iter().map(|n| (n.ret, n.ret_width)).collect();
+    assert_eq!(returned, [(0, 4), (0x8000_0000, 8), (0x8000_0000, 4), (msg, 8)]);
+    assert_eq!(&p.outline()[1..3], ["  as_long -> 2147483648", "  as_int -> -2147483648"]);
+}
+
+#[test]
+fn back_and_a_named_save_keep_the_width_x0_was_last_written_at() {
+    let mut p = load(&read(RETURNS));
+    let x0_width = |p: &Loaded| frame_view(&p.cpu, &p.layout).x0_width;
+    // as_int: mov x0, 1, then lsl w0, w0, 31, then ret.
+    let lsl = p.label("as_int") + 4;
+    p.run_to(lsl, 1);
+    assert_eq!(x0_width(&p), 8, "mov x0, 1 wrote x0");
+    p.cpu.step().expect("lsl");
+    assert_eq!(x0_width(&p), 4, "lsl w0 wrote w0");
+    p.cpu.save_state("at the ret");
+    p.cpu.step_back();
+    assert_eq!(x0_width(&p), 8, "Back puts mov x0's width back");
+    assert!(p.cpu.load_state("at the ret"));
+    assert_eq!(x0_width(&p), 4, "the save keeps lsl w0's width");
+    p.cpu.step().expect("ret");
+    assert_eq!(p.tree().nodes()[2].ret_width, 4);
+    // Every step from main's first call to printf's, back and forth.
+    let mut p = load(&read(RETURNS));
+    let as_long = p.label("as_long");
+    p.run_to(as_long, 1);
+    back_retraces(&mut p, 16, "the three returns");
 }
 
 /// Every step's frames view, the tree in it, for `steps` steps.
