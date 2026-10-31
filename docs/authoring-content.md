@@ -233,9 +233,11 @@ frame drawing counts on neither side.
 
 `/practice` sends the browser one short row per exercise: the title, slug,
 order, topic, difficulty, variant, and that summary. `npm run size` fails
-once those rows pass 16 kB, and 139 exercises measured 15.62 kB, so keep a
-prompt's first line short. If a new exercise still pushes the rows over the
-limit, say so in the pull request instead of raising the limit.
+once those rows pass 16 kB. With 139 exercises they measure 15.6 to 15.7 kB:
+the payload carries the build's random id, which moves the compressed size
+a little from one build to the next. So keep a prompt's first line short. If
+a new exercise still pushes the rows over the limit, say so in the pull
+request instead of raising the limit.
 
 The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
