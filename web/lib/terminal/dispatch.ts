@@ -227,7 +227,7 @@ const COUNT = new Intl.NumberFormat("en-US");
 // which ends the program (a `_start` that exits through svc keeps its own).
 const NO_FRAMES = "gdb: no frames: the program has finished";
 
-// More frames than this fold into one line, with main still shown last.
+// More recorded frames than this fold into one line, with main still shown last.
 const BT_SHOWN = 20;
 
 // The count is untrusted free text; an absurd one freezes the worker
@@ -476,8 +476,9 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
 
 /**
  * Innermost first, as gdb prints it: #0 the function the pc is in and its
- * line, then each caller at the line of its call. Past BT_SHOWN, the rest
- * fold into one line with main last.
+ * line, then each caller at the line of its call. Frames deeper than the
+ * record share one line first; past BT_SHOWN recorded frames, the rest fold
+ * into one line with main last.
  */
 function backtrace({ snapshot, stack }: FrameStack, ctx: DispatchContext): string[] {
   const rows = snapshot.frames;
@@ -499,10 +500,12 @@ function backtrace({ snapshot, stack }: FrameStack, ctx: DispatchContext): strin
   if (snapshot.uncounted > 0) {
     lines.push(`(#0 to #${snapshot.uncounted - 1}: ${COUNT.format(snapshot.uncounted)} deeper frames, not recorded)`);
   }
+  // #0 to #uncounted - 1 are all on the first line.
+  const shown = snapshot.uncounted + BT_SHOWN;
   for (const { n, text } of entries.reverse()) {
-    if (n < BT_SHOWN || n === stack.depth - 1) {
-      if (n === stack.depth - 1 && stack.depth > BT_SHOWN + 1) {
-        lines.push(`... ${COUNT.format(stack.depth - BT_SHOWN - 1)} more calls ...`);
+    if (n < shown || n === stack.depth - 1) {
+      if (n === stack.depth - 1 && stack.depth > shown + 1) {
+        lines.push(`... ${COUNT.format(stack.depth - shown - 1)} more calls ...`);
       }
       lines.push(`#${n}  ${text}`);
     }
