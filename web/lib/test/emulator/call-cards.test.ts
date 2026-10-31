@@ -284,12 +284,149 @@ main:
     p.emu.run_until_break(1_000_000);
     expect(p.emu.take_stdout()).toBe("");
     const card = cardNow(p)!;
+    expect(texts(card)).toEqual(["%d read 7, the value in w1", "%1048577d read 8, the value in w2"]);
+    expect(card.outcome).toBe("stopped the program, so nothing was printed");
+  });
+
+  it("a stopped row names the value it read, never its field's padding", () => {
+    const p = load(`// Prints a padded number, a hex word, a padded character and a padded
+// name, then a %s whose register holds a small number, not an address.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+name_m:     .string "Ada"
+fmt_out:    .string "[%5d] %x %3c %10s %s\\n"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_out
+        mov     w1, -42
+        mov     w2, 0xff
+        mov     w3, 66                      // 'B'
+        ldr     x4, =name_m
+        mov     x5, 0x99                    // a number, not an address
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    p.emu.run_until_break(1_000_000);
+    expect(p.emu.take_stdout()).toBe("");
+    const card = cardNow(p)!;
     expect(texts(card)).toEqual([
-      "%d read 7, the value in w1",
-      // The card keeps the text's first 256 bytes: "7 " and 254 of the spaces.
-      `%1048577d read "${" ".repeat(254)}…", the value in w2`,
+      "%5d read -42, the value in w1",
+      "%x read 0xff, the value in w2 (255)",
+      '%3c read "B", the value in w3 (66)',
+      '%10s read "Ada" from name_m, the address in x4',
+      "%s stopped printf: the value in x5 is 0x99",
     ]);
     expect(card.outcome).toBe("stopped the program, so nothing was printed");
+    expect(spokenCard(card)).toContain(
+      '%5d read -42, the value in w1. %x read 0xff, the value in w2 (255). %3c read "B", the value in w3 (66).',
+    );
+  });
+
+  it("a stopped row reads a double, an address, a string up to its precision and 64-bit values as they were", () => {
+    const p = load(`// Prints a double in a field, a pointer, a left-justified word and two of
+// its letters, a 64-bit hex, an unsigned and a long, then a %s whose
+// register holds 7, not an address.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+word_m:     .string "data"
+fmt_out:    .string "%8.3f %p %-6s %.2s %lx %u %ld %s\\n"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_out
+        fmov    d0, 2.125
+        mov     x1, 0x1234
+        ldr     x2, =word_m
+        ldr     x3, =word_m
+        mov     x4, -1
+        mov     w5, -2                      // 0xfffffffe, x5's top half clear
+        mov     x6, -7
+        mov     x7, 7                       // a number, not an address
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    p.emu.run_until_break(1_000_000);
+    expect(p.emu.take_stdout()).toBe("");
+    expect(texts(cardNow(p)!)).toEqual([
+      "%8.3f read 2.125, the value in d0",
+      "%p read 0x1234, the value in x1",
+      '%-6s read "data" from word_m, the address in x2',
+      '%.2s read "da" from word_m, the address in x3',
+      "%lx read 0xffffffffffffffff, the value in x4 (18446744073709551615)",
+      "%u read 4294967294, the value in w5",
+      "%ld read -7, the value in x6",
+      "%s stopped printf: the value in x7 is 0x7",
+    ]);
+  });
+
+  it("a row whose text the card cut names the value and how many characters it printed", () => {
+    const p = load(`// Prints -42 in a field of 300, then six more values, all past the 256
+// bytes of text the card keeps.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+word_m:     .string "data"
+fmt_out:    .string "%300d %d %3c %x %f %s %p\\n"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_out
+        mov     w1, -42
+        mov     w2, 5
+        mov     w3, 0x271                   // 'q' in its low byte
+        mov     w4, 0xff
+        fmov    d0, 0.5
+        ldr     x5, =word_m
+        mov     x6, 0x1234
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    const card = after(p, 26);
+    expect(p.emu.take_stdout()).toBe(`${" ".repeat(297)}-42 5   q ff 0.500000 data 0x1234\n`);
+    expect(texts(card)).toEqual([
+      "%300d printed 300 characters for -42, the value in w1",
+      "%d printed 1 character for 5, the value in w2",
+      '%3c printed 3 characters for "q", the value in w3 (625)',
+      "%x printed 2 characters for 0xff, the value in w4 (255)",
+      "%f printed 8 characters for 0.5, the value in d0",
+      '%s printed 4 characters for "data" from word_m, the address in x5',
+      "%p printed 6 characters for 0x1234, the value in x6",
+    ]);
+    // The outcome keeps the text's first 256 bytes, all of them padding.
+    expect(card.outcome).toBe(`printed "${" ".repeat(256)}…"`);
   });
 
   it("a scanf handed a value where an address belongs stores at that value", () => {
