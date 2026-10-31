@@ -132,6 +132,13 @@ describe("gdb-lite bt", () => {
       "#30  main at line 39",
     ]);
   });
+
+  it("says how many frames run deeper than the playground records", async () => {
+    // fact(17000) is 17,001 frames deep with main; 16,384 are recorded, so
+    // the innermost 617, #0 to #616, are not.
+    const { ctx } = stoppedAt(fact(17000), 29);
+    expect((await gdb("bt", ctx)).lines[0]).toBe("(#0 to #616: 617 deeper frames, not recorded)");
+  });
 });
 
 // locals.s with "7 4", stopped on line 38 once scanf has stored both: the
