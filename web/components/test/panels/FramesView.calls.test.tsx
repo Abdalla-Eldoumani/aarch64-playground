@@ -21,10 +21,11 @@ function frameRow(index: number, entry: number, callPc: number, spEntry: number,
 }
 
 /** One call tree node: caller (one more than its index, 0 for none),
- *  entry, calls, open calls, x0's width, x0 at the call and at the
- *  return, each as high and low halves. */
-function node(parent: number, entry: number, calls: number, open: number, width: number, arg: number, ret: number) {
-  return [parent, entry, calls, open, width, 0, arg, 0, ret];
+ *  entry, calls, open calls, the width the function reads x0 at, x0 at the
+ *  call and at the return, each as high and low halves, and the width of
+ *  x0's last write before that return. */
+function node(parent: number, entry: number, calls: number, open: number, width: number, arg: number, ret: number, retWidth: number) {
+  return [parent, entry, calls, open, width, 0, arg, 0, ret, retWidth];
 }
 
 /** main's frame and, with `called`, a leaf add_two entered from 0x400010;
@@ -35,9 +36,10 @@ function frames(called: boolean, step: number, tree: number[] | null): number[] 
   return [step, 0, 0, 0, 1, 0, 0, 0, rows.length, 0, ...Array(7).fill(0), ...rows.flat(), ...(tree ?? [])];
 }
 
-// main, which reads no argument, calls add_two(5), which returns 7.
-const IN_ADD_TWO = [2, 2, 0, 0, ...node(0, MAIN, 1, 1, 0, 1, 0), ...node(1, ADD_TWO, 1, 1, 4, 5, 0)];
-const BACK_IN_MAIN = [2, 1, 0, 0, ...node(0, MAIN, 1, 1, 0, 1, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 7)];
+// main, which reads no argument, calls add_two(5), which returns 7 in w0.
+// The tree's header ends with the width of x0's last write.
+const IN_ADD_TWO = [2, 2, 0, 0, 4, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 1, 4, 5, 0, 0)];
+const BACK_IN_MAIN = [2, 1, 0, 0, 4, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 7, 4)];
 
 const LAYOUT = {
   numbers: [2, MAIN, ADD_TWO, 0, 32, 1, 0, 0, ADD_TWO, 0x400048, 1, 0, 0, 0, 0],
@@ -97,10 +99,10 @@ describe("FramesView's list of calls", () => {
     // main, rec(0), then 7,940 more rec calls folded, the current one among
     // them; three calls past the list's end.
     const tree = [
-      3, 3, 1, 3,
-      ...node(0, MAIN, 1, 1, 0, 1, 0),
-      ...node(1, ADD_TWO, 1, 1, 8, 0, 0),
-      ...node(2, ADD_TWO, 7940, 7940, 8, 1, 0),
+      3, 3, 1, 3, 8,
+      ...node(0, MAIN, 1, 1, 0, 1, 0, 0),
+      ...node(1, ADD_TWO, 1, 1, 8, 0, 0, 0),
+      ...node(2, ADD_TWO, 7940, 7940, 8, 1, 0, 0),
     ];
     render(<FramesView {...props({ frames: frames(true, 8, tree) })} />);
     const fold = row("add_two × 7,940");
@@ -117,6 +119,25 @@ describe("FramesView's list of calls", () => {
     registers[0] = "0x0000000000000007";
     rerender(<FramesView {...props({ frames: frames(false, 9, BACK_IN_MAIN), registers })} />);
     expect(said()).toBe("add_two returned 7");
+  });
+
+  it("reads a return the way x0 was last written: as x0 after a 64-bit write, as w0 after a 32-bit one", () => {
+    // add_two left the bits 0x80000000: a long 2^31, or an int whose sign
+    // bit is set.
+    const registers = props().registers.slice();
+    registers[0] = "0x0000000080000000";
+    const reads = [
+      [8, "2147483648"],
+      [4, "-2147483648"],
+    ] as const;
+    for (const [width, value] of reads) {
+      const back = [2, 1, 0, 0, width, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 0x8000_0000, width)];
+      const { rerender, unmount } = render(<FramesView {...props()} />);
+      rerender(<FramesView {...props({ frames: frames(false, 9, back), registers })} />);
+      expect(said()).toBe(`add_two returned ${value}`);
+      expect(row("add_two(5)").textContent).toBe(`add_two(5)add_two(5) · returned ${value}`);
+      unmount();
+    }
   });
 
   it("is not there without the calls switch, and a return is said without its value", () => {
