@@ -2,7 +2,7 @@
 
 import { useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
-import { drawCalls, returnedText } from "@/lib/emulator/call-tree";
+import { drawCalls } from "@/lib/emulator/call-tree";
 import { formatWord32 } from "@/lib/emulator/format-hex";
 import { calleeCards, plain, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
 import {
@@ -10,6 +10,7 @@ import {
   decodeFrames,
   drawFrames,
   rangesToRead,
+  typed,
   wordAt,
   type BoxKind,
   type StackBytes,
@@ -166,8 +167,9 @@ export function FramesView({
             : `${innermost} called`
           : back
             ? `back before the call to ${seen.innermost}`
-            : // With the calls listed, the value the call left in w0 or x0.
-              `${seen.innermost} returned${tree ? ` ${returnedText(BigInt(registers[0] || 0), memoryRegions)}` : ""}`;
+            : // With the calls listed, the value the call left, read as w0
+              // or x0 the way it was last written, as the list reads it.
+              `${seen.innermost} returned${tree ? ` ${typed(BigInt(registers[0] || 0), tree.x0Width, false, memoryRegions).value}` : ""}`;
       setSaid((prev) => ({ text, count: prev.count + 1 }));
     }
   }
