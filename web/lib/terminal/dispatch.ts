@@ -497,7 +497,7 @@ function backtrace({ snapshot, stack }: FrameStack, ctx: DispatchContext): strin
   });
   const lines: string[] = [];
   if (snapshot.uncounted > 0) {
-    lines.push(`(#0 to #${snapshot.uncounted - 1}: ${COUNT.format(snapshot.uncounted)} deeper calls, not tracked)`);
+    lines.push(`(#0 to #${snapshot.uncounted - 1}: ${COUNT.format(snapshot.uncounted)} deeper frames, not recorded)`);
   }
   for (const { n, text } of entries.reverse()) {
     if (n < BT_SHOWN || n === stack.depth - 1) {
