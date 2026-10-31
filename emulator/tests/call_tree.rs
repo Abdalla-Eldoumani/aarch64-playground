@@ -526,6 +526,44 @@ fn a_returned_value_keeps_the_width_x0_was_last_written_at() {
 }
 
 #[test]
+fn an_int_loaded_into_w0_returns_as_an_int() {
+    let source = "\
+define(fp, x29)
+define(lr, x30)
+
+.data
+neg_five:   .word -5
+
+.text
+// loaded() -> w0 = -5, read from memory
+// Leaf function: no frame of its own
+        .balign 4
+        .global loaded
+loaded:
+        ldr     x9, =neg_five
+        ldr     w0, [x9]
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      loaded
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+    let mut p = load(source);
+    p.run_to_end();
+    // ldr w0 writes w0, so the word -5 comes back as the int -5, not as
+    // the long 4294967291 its zero-extended bits would read as in x0.
+    let loaded = p.tree().nodes()[1];
+    assert_eq!((loaded.ret, loaded.ret_width), (0xFFFF_FFFB, 4));
+    assert_eq!(p.outline()[1], "  loaded -> -5");
+}
+
+#[test]
 fn back_and_a_named_save_keep_the_width_x0_was_last_written_at() {
     let mut p = load(&read(RETURNS));
     let x0_width = |p: &Loaded| frame_view(&p.cpu, &p.layout).x0_width;
