@@ -2,11 +2,15 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this and the playground runs its checks on it.
+ * this and the playground runs its checks on it. A run also notes each call
+ * that broke a stack rule, and `runToPause` stops a frame exercise's program
+ * where its frame is to be drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
-import type { HiddenRunOutcome } from "@/lib/content/exercise-checker";
+import type { FrameNote, HiddenRunOutcome } from "@/lib/content/exercise-checker";
+import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { decodeFrameLayout, decodeFrames, type FrameLayout } from "@/lib/emulator/stack-frames";
 
 /** The machine methods a headless run needs; EmulatorInstance has them all. */
 export type HeadlessMachine = Pick<
@@ -23,6 +27,11 @@ export type HeadlessMachine = Pick<
   | "getPc"
   | "getRegister"
   | "getMemoryRange"
+  | "frames"
+  | "frameLayout"
+  | "getLineMap"
+  | "setBreakpoint"
+  | "clearAllBreakpoints"
 >;
 
 /**
@@ -80,6 +89,79 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
+ * Stops one run makes at calls and returns to read the call stack; past
+ * them the rest of the run goes straight through.
+ *
+ * shortcut: a program making more than about 1,000 calls is checked on its
+ * first ones only; raise this if an exercise ever needs more.
+ */
+const MAX_FRAME_STOPS = 2_000;
+
+/** Notes one run keeps, so a call broken inside a loop cannot flood the result. */
+const MAX_FRAME_NOTES = 8;
+
+/** The last assemble's line map, address to source line. */
+function sourceLines(machine: HeadlessMachine): Map<number, number> {
+  const flat = machine.getLineMap();
+  const lines = new Map<number, number>();
+  for (let i = 0; i + 1 < flat.length; i += 2) lines.set(flat[i], flat[i + 1]);
+  return lines;
+}
+
+/**
+ * The per-call frame checks, read from the machine's own call tracking. The
+ * run stops at every call (a breakpoint on each function's first
+ * instruction) and every return (a goal one call shallower than the program
+ * stands), and each stop reads the call stack the frames view draws. Null on
+ * a wasm build without the frames exports.
+ */
+function watchFrames(machine: HeadlessMachine) {
+  const start = machine.frames();
+  const payload = machine.frameLayout();
+  const layout: FrameLayout | null = payload && decodeFrameLayout(payload);
+  if (!start || !layout) return null;
+  const lines = sourceLines(machine);
+  const lineOf = (pc: number) => lines.get(pc) ?? null;
+  const nameAt = (pc: number) =>
+    layout.functions.find((fn) => pc >= fn.entry && pc < fn.end)?.name ?? `0x${pc.toString(16)}`;
+  for (const fn of layout.functions) machine.setBreakpoint(fn.entry);
+
+  const notes = new Map<string, FrameNote>();
+  const add = (note: FrameNote) => {
+    const key = `${note.kind} ${note.fn} ${note.line} ${note.register}`;
+    if (notes.size < MAX_FRAME_NOTES && !notes.has(key)) notes.set(key, note);
+  };
+  let depth = callDepth(start);
+  let stops = 0;
+  return {
+    goal: () => (stops < MAX_FRAME_STOPS ? { depth: depth - 1 } : undefined),
+    read() {
+      if (stops === MAX_FRAME_STOPS) return;
+      stops += 1;
+      if (stops === MAX_FRAME_STOPS) machine.clearAllBreakpoints();
+      const numbers = machine.frames();
+      const snapshot = numbers && decodeFrames(numbers);
+      if (!numbers || !snapshot) return;
+      depth = callDepth(numbers);
+      for (const row of snapshot.frames) {
+        const fn = nameAt(row.entry);
+        // main starts where the loader left sp; every other row is a call.
+        if (row.index > 0 && row.spEntry % 16 !== 0) add({ kind: "sp", fn, line: lineOf(row.callPc) });
+        if (row.fpHit) add({ kind: "fp", fn, line: lineOf(row.fpHit.pc) });
+        if (row.lrHit) add({ kind: "lr", fn, line: lineOf(row.lrHit.pc) });
+      }
+      const astray = snapshot.badReturn;
+      if (astray) add({ kind: "return", fn: nameAt(astray.call.entry), line: lineOf(astray.pc) });
+      // The machine records these at every ret but main's.
+      for (const { register, retPc } of snapshot.leftovers) {
+        add({ kind: "callee", fn: nameAt(retPc), line: lineOf(retPc), register });
+      }
+    },
+    notes: () => [...notes.values()],
+  };
+}
+
+/**
  * `files` (name to text) go into the file system after the load, as a normal
  * run's seed files do.
  */
@@ -101,6 +183,7 @@ export async function runHeadless(
       exitCode: null,
       stackBalanced: null,
       frameIntact: true,
+      frameNotes: [],
     };
   }
   // The load emptied the file system.
@@ -119,15 +202,29 @@ export async function runHeadless(
   let error: string | null = null;
   let errorLine: number | null = null;
   let steps = 0;
-  while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
-    const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
-    error = slice.error;
-    errorLine = slice.error_line;
-    // A slice that made no progress without halting cannot make any later
-    // either, so it ends the run rather than spinning until the budget.
-    if (slice.steps_executed === 0 && !slice.halted) break;
-    steps += slice.steps_executed;
-    if (!machine.isHalted() && error === null) await nextTask();
+  let sinceYield = 0;
+  const watch = watchFrames(machine);
+  try {
+    while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
+      const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps), watch?.goal());
+      error = slice.error;
+      errorLine = slice.error_line;
+      watch?.read();
+      // A slice that made no progress without halting cannot make any later
+      // either, so it ends the run rather than spinning until the budget.
+      if (slice.steps_executed === 0 && !slice.halted) break;
+      steps += slice.steps_executed;
+      sinceYield += slice.steps_executed;
+      // A stop at a call or a return is not a slice of its own: the page
+      // still gets its turn once per SLICE_STEPS.
+      const frameStop = slice.hit_breakpoint || slice.reached || slice.bad_return;
+      if (!machine.isHalted() && error === null && (!frameStop || sinceYield >= SLICE_STEPS)) {
+        sinceYield = 0;
+        await nextTask();
+      }
+    }
+  } finally {
+    machine.clearAllBreakpoints();
   }
 
   const finished = machine.isHalted();
@@ -141,5 +238,53 @@ export async function runHeadless(
     exitCode: machine.getExitCode(),
     stackBalanced: returnedFromMain ? BigInt(machine.getSp()) === entrySp : null,
     frameIntact: sameBytes(guardBefore, machine.getMemoryRange(guardAddress, FRAME_GUARD_BYTES)),
+    frameNotes: watch?.notes() ?? [],
   };
+}
+
+/** What the frames view draws from, read at a frame exercise's pause. */
+export interface PausedMachine {
+  frames: number[];
+  layout: FrameLayoutPayload;
+  sp: number;
+  fp: number;
+  pc: number;
+}
+
+/**
+ * Run `source` until it is about to run line `pause.line` for the
+ * `pause.hit`th time, and read the call stack there. Null when the program
+ * does not assemble, never gets there, or the wasm build cannot draw frames.
+ */
+export async function runToPause(
+  machine: HeadlessMachine,
+  source: string,
+  pause: { line: number; hit: number },
+): Promise<PausedMachine | null> {
+  if (!machine.assembleAndLoadWithArgs(source, []).success) return null;
+  machine.closeStdin();
+  const addresses = [...sourceLines(machine)].filter(([, line]) => line === pause.line).map(([addr]) => addr);
+  if (addresses.length === 0) return null;
+  const at = Math.min(...addresses);
+  machine.setBreakpoint(at);
+  try {
+    let hits = 0;
+    let steps = 0;
+    while (!machine.isHalted() && steps < HEADLESS_STEP_BUDGET) {
+      const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
+      if (slice.error !== null || slice.steps_executed === 0) return null;
+      steps += slice.steps_executed;
+      if (slice.hit_breakpoint && slice.pc === at && ++hits === pause.hit) {
+        const frames = machine.frames();
+        const layout = machine.frameLayout();
+        if (!frames || !layout) return null;
+        const [sp, fp] = [machine.getSp(), machine.getRegister(29)].map(Number);
+        return { frames, layout, sp, fp, pc: machine.getPc() };
+      }
+      if (!slice.hit_breakpoint) await nextTask();
+    }
+    return null;
+  } finally {
+    machine.clearAllBreakpoints();
+  }
 }
