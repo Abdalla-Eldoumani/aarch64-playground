@@ -136,6 +136,7 @@ describe("gradeCheck", () => {
       exitCode: 0,
       stackBalanced: true,
       frameIntact: true,
+      frameNotes: [],
       ...over,
     };
   }
