@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use aarch64_emulator::cpu::{Cpu, STACK_FLOOR};
 use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
 use aarch64_emulator::frames::tree::{CallTree, MAX_TREE_DEPTH, MAX_TREE_NODES, RUN_SHOWN};
-use aarch64_emulator::frames::{frame_view, FrameView, RUNTIME_CALL};
+use aarch64_emulator::frames::{frame_view, FrameView, MAX_ACTIVATIONS, RUNTIME_CALL};
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 
 fn repo_root() -> PathBuf {
@@ -185,6 +185,64 @@ fn the_deepest_c_recursion_folds_into_one_node_that_counts_every_call_past_the_f
     assert_eq!((fold.calls, fold.open), (7_940, 7_940), "every folded call is still open at the fault");
     // The call stack, kept apart from the tree, agrees: main and every rec.
     assert_eq!(p.cpu.call_stack().activations().len() as u64, 1 + entered);
+}
+
+const SUMTO: &str = "web/lib/test/emulator/fixtures/sumto.s";
+const NO_BASE_CASE: &str = "web/lib/test/emulator/fixtures/no-base-case.s";
+
+#[test]
+fn a_recursion_deeper_than_the_call_stack_keeps_counting_every_call_in_its_fold() {
+    let mut p = load(&read(SUMTO));
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 200010000\n");
+    // sumto(n) = n * (n + 1) / 2, so sumto(20000) = 200,010,000. Its
+    // 20,001 calls run sumto(20000) down to sumto(0): four with a node of
+    // their own, then sumto(19996) to sumto(0), 19,997 calls, in the fold,
+    // whose outermost call returns 19996 * 19997 / 2.
+    assert_eq!(
+        p.outline(),
+        [
+            "main -> 0",
+            "  sumto(20000) -> 200010000",
+            "    sumto(19999) -> 199990000",
+            "      sumto(19998) -> 199970001",
+            "        sumto(19997) -> 199950003",
+            "          sumto × 19997 -> 199930006",
+        ]
+    );
+    assert_eq!((p.tree().dropped(), p.tree().outside()), (0, 0));
+}
+
+#[test]
+fn a_recursion_with_no_base_case_counts_every_call_up_to_the_overflow() {
+    let mut p = load(&read(NO_BASE_CASE));
+    // Each count call pushes 16 bytes as its first instruction, so the
+    // calls whose record fits at or above the stack's floor run, and the
+    // one after them faults on that push, after its `bl` entered it.
+    let count = p.label("count");
+    p.run_to(count, 1);
+    let main_sp = p.cpu.regs.snapshot()[31];
+    let entered = (main_sp - STACK_FLOOR) / 16 + 1;
+    p.run_to_end();
+    assert_eq!(entered, 524_288, "the stack's arithmetic: 8 MiB of 16-byte records");
+    let folded = entered - u64::from(RUN_SHOWN);
+    assert_eq!(
+        p.outline(),
+        [
+            "main ...".to_string(),
+            "  count(0) ...".into(),
+            "    count(1) ...".into(),
+            "      count(2) ...".into(),
+            "        count(3) ...".into(),
+            format!("          count × {folded} *"),
+        ]
+    );
+    // The frames view agrees: the calls it records and the deeper ones it
+    // only counts ("507,905 deeper calls not shown") add up to the same.
+    let view = frame_view(&p.cpu, &p.layout);
+    let recorded = p.cpu.call_stack().activations().len() as u64 - 1;
+    assert_eq!((recorded, view.uncounted), (MAX_ACTIVATIONS as u64 - 1, 507_905));
+    assert_eq!(recorded + view.uncounted, entered);
 }
 
 #[test]
@@ -525,6 +583,28 @@ fn back_restores_the_tree_exactly_across_calls_returns_folds_and_the_caps() {
         p.cpu.step_back();
     }
     back_retraces(&mut p, 10, "a comparator qsort calls");
+}
+
+#[test]
+fn back_restores_the_tree_exactly_past_the_call_stacks_cap() {
+    let mut p = load(&read(SUMTO));
+    let stack = |p: &Loaded| (p.cpu.call_stack().activations().len(), p.cpu.call_stack().uncounted());
+    // From the last call the stack records into calls it only counts.
+    while stack(&p).0 < MAX_ACTIVATIONS {
+        p.cpu.step().expect("step");
+    }
+    back_retraces(&mut p, 40, "into the cap");
+    assert!(stack(&p).1 > 0, "the window went past the cap");
+    // sumto(0)'s return and those after it, every one past the cap.
+    let base = p.label("sumto_base");
+    p.run_to(base, 1);
+    back_retraces(&mut p, 40, "returns past the cap");
+    // The last counted call's return, then recorded ones again.
+    while stack(&p).1 > 1 {
+        p.cpu.step().expect("step");
+    }
+    back_retraces(&mut p, 40, "out of the cap");
+    assert_eq!(stack(&p).1, 0, "the window came back under the cap");
 }
 
 #[test]
