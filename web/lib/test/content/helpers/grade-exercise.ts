@@ -11,6 +11,7 @@ import {
   checkExercise,
   checkHiddenCase,
   type CheckerSnapshot,
+  type FrameNote,
   type HiddenMiss,
 } from "@/lib/content/exercise-checker";
 import { EmulatorInstance } from "@/lib/emulator/emulator";
@@ -84,6 +85,8 @@ export interface Grade {
   why: string;
   /** Set when the visible run passed and a hidden input did not. */
   hiddenMiss?: HiddenMiss;
+  /** Set when every check passed: the frame notes the hidden runs made. */
+  frameNotes?: FrameNote[];
 }
 
 /** Grade one program on an exercise: the visible checks, then every hidden input. */
@@ -95,10 +98,12 @@ export async function grade(exercise: WriteExercise, source: string, maxSteps?: 
   );
   if (!visible.pass) return { pass: false, why: `visible run: ${visible.summary}` };
   const emu = new Emulator();
+  const frameNotes: FrameNote[] = [];
   try {
     const machine = new EmulatorInstance(emu);
     for (const [index, testCase] of (exercise.hiddenCases ?? []).entries()) {
       const outcome = await runHeadless(machine, source, parseArgs(testCase.args ?? ""), testCase.stdin);
+      frameNotes.push(...outcome.frameNotes);
       const check = checkHiddenCase(testCase, outcome);
       if (check.miss !== null) {
         return {
@@ -111,7 +116,7 @@ export async function grade(exercise: WriteExercise, source: string, maxSteps?: 
   } finally {
     emu.free();
   }
-  return { pass: true, why: "" };
+  return { pass: true, why: "", frameNotes };
 }
 
 /**
