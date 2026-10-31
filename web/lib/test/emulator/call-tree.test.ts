@@ -162,7 +162,7 @@ describe("the list of calls", () => {
       "          count × 524,284 *",
     ]);
     // The frames: main and 16,383 count calls recorded, 507,905 deeper ones
-    // counted ("507,905 deeper calls not shown").
+    // counted ("507,905 deeper frames not recorded").
     const snapshot = decodeFrames(Array.from(emu.frames()))!;
     expect([snapshot.hidden + snapshot.frames.length - 1, snapshot.uncounted]).toEqual([16_383, 507_905]);
   });
