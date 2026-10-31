@@ -75,7 +75,7 @@ function stoppedAt(source: string, line: number | null, stdin?: string) {
   if (stdin) emu.push_stdin(stdin);
   const map = Array.from(emu.get_line_map());
   const pcOf = (l: number) => map[map.indexOf(l) - 1];
-  if (line == null) emu.run_until_break(1_000_000);
+  if (line == null) emu.run_until_break(10_000_000);
   else emu.run_to(1_000_000, -1, pcOf(line));
   const regs = emu.get_all_registers() as { gpr: string[]; sp: string; pc: string };
   const lineOf = (addr: number) => {
@@ -108,17 +108,28 @@ function stoppedAt(source: string, line: number | null, stdin?: string) {
 const gdb = async (command: string, ctx: ReturnType<typeof stoppedAt>["ctx"]) =>
   dispatchCommand(`gdb ${command}`, ctx);
 
+/** The frames bt's lines stand for: k + 1 for "(#0 to #k: ...)", K for
+ *  "... K more calls ...", one for each other line. */
+const framesIn = (lines: string[]) =>
+  lines.reduce((sum, line) => {
+    const unrecorded = /^\(#0 to #(\d+):/.exec(line);
+    const folded = /^\.\.\. ([\d,]+) more calls \.\.\.$/.exec(line);
+    return sum + (unrecorded ? Number(unrecorded[1]) + 1 : folded ? Number(folded[1].replace(/,/g, "")) : 1);
+  }, 0);
+
 describe("gdb-lite bt", () => {
   it("lists the current function and line, then each caller at its call", async () => {
     // fact(1) reaches fact_done first: main, then fact(4) to fact(1).
     const { ctx } = stoppedAt(fact(4), 29);
-    expect((await gdb("bt", ctx)).lines).toEqual([
+    const { lines } = await gdb("bt", ctx);
+    expect(lines).toEqual([
       "#0  fact at line 29",
       "#1  fact at line 26",
       "#2  fact at line 26",
       "#3  fact at line 26",
       "#4  main at line 39",
     ]);
+    expect(framesIn(lines)).toBe(5);
   });
 
   it("folds past 20 frames and still ends on main", async () => {
@@ -131,13 +142,43 @@ describe("gdb-lite bt", () => {
       "... 10 more calls ...",
       "#30  main at line 39",
     ]);
+    expect(framesIn(lines)).toBe(31);
   });
 
-  it("says how many frames run deeper than the playground records", async () => {
-    // fact(17000) is 17,001 frames deep with main; 16,384 are recorded, so
-    // the innermost 617, #0 to #616, are not.
+  it("names the frames deeper than the record, then 20 recorded ones, the fold and main", async () => {
+    // fact(17000) is 17,001 frames deep with main; 16,384 are recorded
+    // (main and 16,383 calls), so the innermost 617, #0 to #616, are not.
+    // #617, whose call into #616 is not recorded, has no line; #618 to #636
+    // are at their bl; the other 16,363 recorded calls fold:
+    // 617 + 20 + 16,363 + main = 17,001.
     const { ctx } = stoppedAt(fact(17000), 29);
-    expect((await gdb("bt", ctx)).lines[0]).toBe("(#0 to #616: 617 deeper frames, not recorded)");
+    const { lines } = await gdb("bt", ctx);
+    expect(lines).toEqual([
+      "(#0 to #616: 617 deeper frames, not recorded)",
+      "#617  fact",
+      ...Array.from({ length: 19 }, (_, k) => `#${618 + k}  fact at line 26`),
+      "... 16,363 more calls ...",
+      "#17000  main",
+    ]);
+    expect(framesIn(lines)).toBe(17_001);
+  });
+
+  it("adds up to the whole stack at a recursion's overflow", async () => {
+    // count pushes 16 bytes a call until the push of call 524,288 faults:
+    // 524,289 frames with main (call-tree.test.ts works the depth out from
+    // sp). 507,905 run deeper than the record, then 16,363 recorded calls
+    // fold under the 20 shown: 507,905 + 20 + 16,363 + main = 524,289.
+    const source = readFileSync(path.join(process.cwd(), "lib/test/emulator/fixtures/no-base-case.s"), "utf8");
+    const { ctx } = stoppedAt(source, null);
+    const { lines } = await gdb("bt", ctx);
+    expect(lines).toEqual([
+      "(#0 to #507904: 507,905 deeper frames, not recorded)",
+      "#507905  count",
+      ...Array.from({ length: 19 }, (_, k) => `#${507_906 + k}  count at line 15`),
+      "... 16,363 more calls ...",
+      "#524288  main",
+    ]);
+    expect(framesIn(lines)).toBe(524_289);
   });
 });
 
