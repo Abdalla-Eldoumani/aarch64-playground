@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 use aarch64_emulator::hosted::{
-    CALL_NO_INPUT, CALL_NO_MATCH, CALL_OK, CALL_PRINTF, CALL_SCANF, CALL_STOPPED,
+    CALL_NO_INPUT, CALL_NO_MATCH, CALL_OK, CALL_PRINTF, CALL_SCANF, CALL_STOPPED, MAX_CALL_BYTES,
 };
 use aarch64_emulator::{call_card, CALL_HEADER, CALL_ROW};
 
@@ -41,6 +41,8 @@ struct Row {
     size: u64,
     text: String,
     label: Option<(String, u64)>,
+    /// printf's %s: the bytes it read, as many as the card keeps.
+    read: String,
 }
 
 #[derive(Debug, PartialEq)]
@@ -73,7 +75,8 @@ fn card(cpu: &Cpu) -> Option<Card> {
     let cut = |b: &[u8], from: f64, to: f64| {
         String::from_utf8_lossy(&b[(from as usize).min(b.len())..(to as usize).min(b.len())]).into_owned()
     };
-    // The label names follow the text, one per row that has one.
+    // The label names follow the text, one per row that has one, each
+    // printf row's string bytes after its label.
     let mut names = body + fmt_kept + text_kept;
     let rows = (0..rows)
         .map(|i| {
@@ -83,6 +86,9 @@ fn card(cpu: &Cpu) -> Option<Card> {
                 names += r[11] as usize;
                 (name, r[12] as u64)
             });
+            let kept = if n[0] as u8 == CALL_PRINTF { (r[8] as usize).min(MAX_CALL_BYTES) } else { 0 };
+            let read = String::from_utf8_lossy(&bytes(names, kept)).into_owned();
+            names += kept;
             Row {
                 conv: cut(&fmt, r[0], r[1]),
                 source: r[2] as i64,
@@ -92,10 +98,11 @@ fn card(cpu: &Cpu) -> Option<Card> {
                 size: r[8] as u64,
                 text: cut(&text, r[9], r[10]),
                 label,
+                read,
             }
         })
         .collect();
-    assert_eq!(names, n.len(), "the numbers end with the label names");
+    assert_eq!(names, n.len(), "the numbers end with the label names and the strings");
     Some(Card {
         kind: n[0] as u8,
         step: n[1] as u64,
@@ -113,12 +120,12 @@ fn card(cpu: &Cpu) -> Option<Card> {
 
 /// A printf row: no store, no label unless the value is a data address.
 fn printed(conv: &str, source: i64, arg: u64, text: &str) -> Row {
-    Row { conv: conv.into(), source, code: CALL_OK, arg, stored: 0, size: 0, text: text.into(), label: None }
+    Row { conv: conv.into(), source, code: CALL_OK, arg, stored: 0, size: 0, text: text.into(), label: None, read: String::new() }
 }
 
 /// A scanf row that stored `size` bytes through the pointer in `source`.
 fn stored(conv: &str, source: i64, arg: u64, stored: u64, size: u64, text: &str) -> Row {
-    Row { conv: conv.into(), source, code: CALL_OK, arg, stored, size, text: text.into(), label: None }
+    Row { conv: conv.into(), source, code: CALL_OK, arg, stored, size, text: text.into(), label: None, read: String::new() }
 }
 
 struct Loaded {
@@ -221,7 +228,7 @@ fn every_printf_family_names_its_register_value_and_text() {
         text.rows,
         [
             printed("%c", 1, 65, "A"),
-            labelled(printed("%s", 2, word, "hi"), "word_m"),
+            Row { size: 2, read: "hi".into(), ..labelled(printed("%s", 2, word, "hi"), "word_m") },
             printed("%%", -1, 0, "%"),
         ]
     );
@@ -366,6 +373,31 @@ fn printf_stopped_by_its_one_call_limit_keeps_the_text_its_rows_made() {
     let c = card(&p.cpu).expect("the stopping step made the call");
     assert!(c.failed);
     assert_eq!((c.text_len, c.rows[0].text.as_str(), c.rows[1].text.len()), (1_048_579, "7", 254));
+}
+
+#[test]
+fn a_percent_s_keeps_the_bytes_it_read_apart_from_its_padding_and_past_the_text_kept() {
+    let long = "a".repeat(300);
+    let src = format!(
+        ".data\nword_m:     .string \"data\"\nhi_m:       .string \"hi\"\nlong_m:     .string \"{long}\"\nfmt_out:    .string \"%-6s|%300s|%.2s|%s\\n\"\n\n.text\n        .balign 4\n        .global main\nmain:\n        stp     x29, x30, [sp, -16]!\n        ldr     x0, =fmt_out\n        ldr     x1, =word_m\n        ldr     x2, =hi_m\n        ldr     x3, =word_m\n        ldr     x4, =long_m\n        bl      printf\n        mov     w0, 0\n        ldp     x29, x30, [sp], 16\n        ret\n"
+    );
+    let mut p = load(&src);
+    let c = p.after_call(17);
+    let (word, hi, long_at) = (p.label("word_m"), p.label("hi_m"), p.label("long_m"));
+    // "data  |", 298 spaces and "hi", "|da|", 300 a's, "\n"; the card keeps
+    // 256 bytes, so the "%300s" row keeps 249 of its spaces and the last two
+    // rows none of their text. Each row's own bytes stay, past the padding
+    // and past the cut, the long one to 256.
+    assert_eq!(c.text_len, 7 + 300 + 4 + 300 + 1);
+    assert_eq!(
+        c.rows,
+        [
+            Row { size: 4, read: "data".into(), ..labelled(printed("%-6s", 1, word, "data  "), "word_m") },
+            Row { size: 2, read: "hi".into(), ..labelled(printed("%300s", 2, hi, &" ".repeat(249)), "hi_m") },
+            Row { size: 2, read: "da".into(), ..labelled(printed("%.2s", 3, word, ""), "word_m") },
+            Row { size: 300, read: "a".repeat(256), ..labelled(printed("%s", 4, long_at, ""), "long_m") },
+        ]
+    );
 }
 
 #[test]
