@@ -275,6 +275,31 @@ function evaluateStructural(assertion: StructuralAssertion, strippedSource: stri
 }
 
 /**
+ * One call that broke a stack rule during a hidden run, from the machine's
+ * own call tracking (lib/emulator/headless-run reads it at every call and
+ * return). `sp`: the call went out with sp off a multiple of 16. `fp` and
+ * `lr`: a write changed the saved fp or lr in `fn`'s frame. `return`: `fn`'s
+ * ret went somewhere other than back to its caller. `callee`: `fn` returned
+ * with `register` (19 to 28) changed; main is never named for that one.
+ */
+export interface FrameNote {
+  kind: "sp" | "fp" | "lr" | "return" | "callee";
+  /** The function called, whose frame was written, or that returned. */
+  fn: string;
+  /** The line of the call, the write or the ret, in the run's source. */
+  line: number | null;
+  register?: number;
+}
+
+/**
+ * Whether a frame note fails a hidden case. Off until after the CPSC 355
+ * final on 2026-12-16: during the term the checker's pass and fail stay as
+ * students know them, so the notes only advise. Turning it on is the one
+ * change that makes them count.
+ */
+export const FRAME_NOTES_COUNT = false;
+
+/**
  * What one run of the student's program on a hidden case produced
  * (lib/emulator/headless-run fills it in).
  */
@@ -294,10 +319,12 @@ export interface HiddenRunOutcome {
   stackBalanced: boolean | null;
   /** False when the program wrote above main's entry sp, into its caller's frame. */
   frameIntact: boolean;
+  /** Each stack rule a call broke, once. */
+  frameNotes: FrameNote[];
 }
 
 /** Why a hidden case failed, first cause first. */
-export type HiddenMiss = "assemble" | "fault" | "unfinished" | "stdout" | "exit" | "stack" | "frame";
+export type HiddenMiss = "assemble" | "fault" | "unfinished" | "stdout" | "exit" | "stack" | "frame" | "calls";
 
 /**
  * One graded hidden case. `detail` carries only what the student's own run
@@ -313,8 +340,14 @@ export interface HiddenCaseCheck {
  * Grade one hidden case. Beyond output and exit status, it fails an unbalanced
  * stack or a write into the caller's frame: real hardware punishes both later
  * (a misaligned sp at the next call, the caller's saved registers overwritten).
+ * The frame notes fail it only once `notesCount` is on (FRAME_NOTES_COUNT;
+ * the parameter lets a test see that switch thrown).
  */
-export function checkHiddenCase(testCase: HiddenCase, outcome: HiddenRunOutcome): HiddenCaseCheck {
+export function checkHiddenCase(
+  testCase: HiddenCase,
+  outcome: HiddenRunOutcome,
+  notesCount: boolean = FRAME_NOTES_COUNT,
+): HiddenCaseCheck {
   const missed = (miss: HiddenMiss, detail = ""): HiddenCaseCheck => ({ pass: false, miss, detail });
   if (outcome.assembleError !== null) return missed("assemble", outcome.assembleError);
   if (outcome.error !== null) return missed("fault", outcome.error);
@@ -325,6 +358,7 @@ export function checkHiddenCase(testCase: HiddenCase, outcome: HiddenRunOutcome)
   }
   if (outcome.stackBalanced === false) return missed("stack");
   if (!outcome.frameIntact) return missed("frame");
+  if (notesCount && outcome.frameNotes.length > 0) return missed("calls");
   return { pass: true, miss: null, detail: "" };
 }
 
