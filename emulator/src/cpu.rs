@@ -832,7 +832,8 @@ impl Cpu {
             I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
                 let regs = self.regs.snapshot();
                 let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
-                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, log);
+                let x0_width = self.regs.write_width(0);
+                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, x0_width, log);
                 if changed != 0 {
                     self.regs.mark_callee_saved(changed, pc);
                 }
