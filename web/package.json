@@ -67,7 +67,7 @@
       "limit": "4.3 KB"
     },
     {
-      "name": "lazy call card (loaded with the first program that calls printf or scanf; carries the frame drawing it names stack slots by)",
+      "name": "lazy call card (loaded when a console first shows a program in hosted mode, the landing hero's included; carries the frame drawing it names stack slots by)",
       "path": ".next/static/chunks/call-cards.*.js",
       "limit": "5.5 KB"
     },
