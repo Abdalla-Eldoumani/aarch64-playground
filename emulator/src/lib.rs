@@ -212,9 +212,9 @@ pub fn clobber_note_lines(rows: &mut [u32], line_map: &[u32]) {
 /// `call_card`'s header length, and its numbers per conversion: the
 /// conversion's place in the format, where its argument came from, what
 /// went wrong, the argument and what scanf stored there (each as low and
-/// high 32 bits), how many bytes it stored, its place in the text, and the
-/// length of the data label the argument falls in (0 for none) with how far
-/// into it.
+/// high 32 bits), how many bytes it stored or its %s read, its place in the
+/// text, and the length of the data label the argument falls in (0 for
+/// none) with how far into it.
 pub const CALL_HEADER: usize = 11;
 pub const CALL_ROW: usize = 13;
 
@@ -222,8 +222,9 @@ pub const CALL_ROW: usize = 13;
 /// a header (kind, step, the branch that made the call, x0 as a signed
 /// number, whether the call stopped the program, rows, conversions, format
 /// bytes kept and in all, text bytes kept and in all), `CALL_ROW` numbers
-/// per row, then the format's bytes, the text's, and the rows' label names
-/// one after another.
+/// per row, then the format's bytes, the text's, and each row's label name
+/// followed, on a printf row, by the first `MAX_CALL_BYTES` its %s read
+/// (its `size` says how many it read).
 /// Empty when the last step ran neither.
 pub fn call_card(cpu: &Cpu) -> Vec<f64> {
     let call = cpu.last_call();
@@ -243,10 +244,16 @@ pub fn call_card(cpu: &Cpu) -> Vec<f64> {
         call.text.len() as f64,
         call.text_len as f64,
     ];
-    let mut labels = Vec::new();
+    let mut row_bytes = Vec::new();
+    let mut strings = call.strings.as_slice();
     for row in &call.rows {
         let (label, into) = data_label(&cpu.symbols, row.arg).unwrap_or(("", 0));
-        labels.extend_from_slice(label.as_bytes());
+        row_bytes.extend_from_slice(label.as_bytes());
+        if call.kind == hosted::CALL_PRINTF {
+            let (read, rest) = strings.split_at((row.size as usize).min(hosted::MAX_CALL_BYTES));
+            row_bytes.extend_from_slice(read);
+            strings = rest;
+        }
         out.extend_from_slice(&[
             row.fmt_start as f64,
             row.fmt_end as f64,
@@ -263,7 +270,7 @@ pub fn call_card(cpu: &Cpu) -> Vec<f64> {
             into as f64,
         ]);
     }
-    for &b in call.fmt.iter().chain(&call.text).chain(&labels) {
+    for &b in call.fmt.iter().chain(&call.text).chain(&row_bytes) {
         out.push(b.into());
     }
     out
