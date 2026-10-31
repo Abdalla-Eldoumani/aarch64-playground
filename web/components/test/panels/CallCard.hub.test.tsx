@@ -50,6 +50,30 @@ const LOCALS = readFileSync(path.join(process.cwd(), "public/examples/cpsc355/lo
   /\r\n/g,
   "\n",
 );
+const PADDED = `// Prints 2.125 in a field of 8 and -42 in a field of 5, two spaces apart.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "%8.3f  [%5d]\\n"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_out
+        fmov    d0, 2.125
+        mov     w1, -42
+        bl      printf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
 const SCANF_SAID =
   'scanf("%d %d") on line 36 returned 2 in w0. ' +
   "%d stored 7 at a_s (fp + 16), the address in x1. %d stored 4 at b_s (fp + 20), the address in x2.";
@@ -92,9 +116,9 @@ async function mounted() {
     }
   }).observe(document.body, { subtree: true, childList: true, characterData: true });
   const get = () => hub!;
-  const load = async () => {
+  const load = async (source = LOCALS) => {
     await act(async () => {
-      await expect(get().assemble(LOCALS)).resolves.toBe(true);
+      await expect(get().assemble(source)).resolves.toBe(true);
     });
     act(() => get().pushStdin("7 4\n"));
   };
@@ -160,6 +184,29 @@ describe("the call card on the hub", () => {
     await m.stepTo(14);
     await settled();
     expect(m.heard.filter((text) => text === SCANF_SAID)).toHaveLength(2);
+  });
+
+  it("keeps the runs of spaces printf printed, as the console above it does", async () => {
+    const m = await mounted();
+    await m.load(PADDED);
+    // stp, mov, ldr, fmov, mov, then bl printf, its trampoline's ldr and br,
+    // and printf.
+    await m.stepTo(9);
+    const group = card()!;
+    const title = group.firstElementChild!.firstElementChild!;
+    const rows = [...group.querySelectorAll("li")];
+    const outcome = group.lastElementChild!;
+    expect([title, ...rows, outcome].map((node) => node.textContent)).toEqual([
+      'printf("%8.3f  [%5d]\\n")',
+      '%8.3f printed "   2.125", the value in d0',
+      '%5d printed "  -42", the value in w1',
+      'printed "   2.125  [  -42]\\n"',
+    ]);
+    // jsdom applies no stylesheet, so the class that keeps the spaces is
+    // checked by name: no class nearer the text may collapse them.
+    for (const node of [title, ...rows, outcome]) {
+      expect(node.closest('[class*="whitespace-"]')?.classList.contains("whitespace-pre-wrap")).toBe(true);
+    }
   });
 
   it("is hidden while a run goes", async () => {
