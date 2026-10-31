@@ -324,4 +324,19 @@ describe("an argument", () => {
     const arr = Number(emu.get_register(29)) + 16;
     expect(lines(calls(emu))).toEqual(["main ...", `  fill(0x${arr.toString(16).padStart(8, "0")}) *`]);
   });
+
+  it("is the value a function first tests with cbz or tbnz, a pointer in hex", () => {
+    // first_byte opens with cbz x0 (a pointer), not_zero with cbz w0 and
+    // is_odd with tbnz w0 (ints). main passes &msg, -3 and 7; "hi" starts
+    // with 'h', 104.
+    const emu = load(read("lib/test/emulator/fixtures/branch-args.s"));
+    finish(emu);
+    const msg = Number(emu.resolve_label("msg"));
+    expect(lines(calls(emu))).toEqual([
+      "main · returned 0",
+      `  first_byte(0x${msg.toString(16).padStart(8, "0")}) · returned 104`,
+      "  not_zero(-3) · returned 1",
+      "  is_odd(7) · returned 1",
+    ]);
+  });
 });
