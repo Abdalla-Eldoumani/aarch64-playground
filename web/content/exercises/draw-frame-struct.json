@@ -1,0 +1,38 @@
+{
+  "title": "Draw the frame: a struct on the stack",
+  "slug": "draw-frame-struct",
+  "order": 140,
+  "lastUpdated": "2026-10-31",
+  "topic": "arrays",
+  "difficulty": "core",
+  "variant": "frame",
+  "prompt": "The program is paused inside `scaled_rect`, which keeps an int and a `rect` record in its frame. Fill in where each field sits.\n\nThe record's fields are equates counted from the start of the record (`rect_width`, `rect_height`, `rect_area`), and `rect_s` is where the record starts in the frame, so a field's offset from fp is `rect_s` plus the field's own offset. The frames view names each field after the record: `rect_s.rect_width` is the width field.\n\n## What is checked\n\n- the frame's size in bytes\n- the offsets from fp of `scale_s`, `rect_s.rect_width`, `rect_s.rect_height` and `rect_s.rect_area`\n- the offsets from fp of the saved fp and the saved lr\n\nCheck runs the program to the pause and compares each number with the frame the emulator draws there. A wrong number shows a hint, never the answer.",
+  "program": "// Build a rectangle record on the stack, scaled up, and print it.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\n// struct rect { int width; int height; long area; }\nrect_width = 0                                  // 4 bytes\nrect_height = 4                                 // 4 bytes\nrect_area = 8                                   // a long starts on a multiple of 8\nrect_size = 16\n\nscale_size = 4                                  // int\n\nscale_s = 16\nrect_s = (scale_s + scale_size + 7) & -8        // the record holds a long, so it starts on a multiple of 8\nalloc = -(rect_s + rect_size) & -16\ndealloc = -alloc\n\n.data\nfmt_out:    .string \"%d by %d, area %ld\\n\"\n\n.text\n\n// scaled_rect(w0 = width, w1 = height, w2 = scale): prints the rectangle scaled up\n        .balign 4\n        .global scaled_rect\nscaled_rect:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        str     w2, [fp, scale_s]               // keep the scale\n        add     x9, fp, rect_s                  // x9 = &rect\n        mul     w10, w0, w2\n        str     w10, [x9, rect_width]           // rect.width = width * scale\n        mul     w11, w1, w2\n        str     w11, [x9, rect_height]          // rect.height = height * scale\n        sxtw    x12, w10                        // widen before the multiply\n        sxtw    x13, w11\n        mul     x12, x12, x13\n        str     x12, [x9, rect_area]            // rect.area = rect.width * rect.height\n\n        ldr     x0, =fmt_out\n        ldr     w1, [x9, rect_width]\n        ldr     w2, [x9, rect_height]\n        ldr     x3, [x9, rect_area]\n        bl      printf\n\n        ldp     fp, lr, [sp], dealloc\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     w0, 3                           // a 3 by 4 rectangle\n        mov     w1, 4\n        mov     w2, 5                           // scaled up 5 times\n        bl      scaled_rect\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "pause": {
+    "line": 42,
+    "hit": 1
+  },
+  "slots": [
+    {
+      "name": "scale_s",
+      "hint": "scale_s is given as a plain number in the program."
+    },
+    {
+      "name": "rect_s.rect_width",
+      "hint": "Work out rect_s first: (scale_s + scale_size + 7) & -8 rounds the end of scale_s up to a multiple of 8. The width field is at offset 0 in the record."
+    },
+    {
+      "name": "rect_s.rect_height",
+      "hint": "rect_height is 4 bytes into the record, so its offset from fp is rect_s + 4."
+    },
+    {
+      "name": "rect_s.rect_area",
+      "hint": "rect_area is 8 bytes into the record, so its offset from fp is rect_s + 8."
+    }
+  ],
+  "hints": {
+    "size": "The frame holds everything up to the end of the record, rect_s + rect_size, rounded up to the next multiple of 16.",
+    "savedFp": "stp fp, lr, [sp, alloc]! stores fp first, at the new sp, and mov fp, sp then points fp at that same address.",
+    "savedLr": "lr is the second of the two registers the stp stores, in the bytes right after the saved fp."
+  }
+}
