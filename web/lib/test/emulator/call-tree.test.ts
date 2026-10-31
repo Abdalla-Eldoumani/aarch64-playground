@@ -264,6 +264,46 @@ describe("the list of calls", () => {
   });
 });
 
+describe("a returned value", () => {
+  const RETURNS = read("lib/test/emulator/fixtures/call-returns.s");
+
+  it("reads as x0 after a 64-bit write, as w0 after a 32-bit one, and an address in hex", () => {
+    const emu = load(RETURNS);
+    finish(emu);
+    // Both functions leave the bits 0x80000000: a long 2^31 from as_long's
+    // lsl x0, an int whose sign bit is set from as_int's lsl w0. printf
+    // reads them the same way with %ld and %d.
+    expect(emu.take_stdout()).toBe("2147483648 -2147483648 hi\n");
+    const msg = Number(emu.resolve_label("msg"));
+    expect(lines(calls(emu))).toEqual([
+      "main · returned 0",
+      "  as_long · returned 2147483648",
+      "  as_int · returned -2147483648",
+      `  greeting · returned 0x${msg.toString(16).padStart(8, "0")}`,
+    ]);
+  });
+
+  it("keeps the reading of the write before the ret across Back and a named save", () => {
+    const emu = load(RETURNS);
+    const asInt = labelPc(emu, RETURNS, "as_int");
+    // as_int's lsl w0, then its ret.
+    runTo(emu, asInt + 4);
+    emu.step();
+    emu.save_state("at the ret");
+    emu.step();
+    const asIntRow = () => calls(emu).rows[0].children[1];
+    expect(asIntRow().result).toBe("returned -2147483648");
+    // Back over the ret and the lsl, to x0 as mov x0, 1 left it; the save
+    // brings back the w0 the lsl wrote.
+    emu.step_back();
+    emu.step_back();
+    expect(asIntRow().state).toBe("current");
+    expect(emu.load_state("at the ret")).toBe(true);
+    emu.step();
+    expect(asIntRow().result).toBe("returned -2147483648");
+  });
+});
+
 describe("an argument", () => {
   it("is an address in hex where the function uses x0 as one", () => {
     // fill(x0 = arr base): main passes &arr[0], fp + 16 in its frame, and
