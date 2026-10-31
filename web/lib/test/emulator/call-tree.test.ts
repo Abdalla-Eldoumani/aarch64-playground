@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { drawCalls, returnedText, type CallRow, type DrawnCalls } from "@/lib/emulator/call-tree";
+import { drawCalls, type CallRow, type DrawnCalls } from "@/lib/emulator/call-tree";
 import { calleeLeftovers, FRAME_ROW, FRAMES_HEADER } from "@/lib/emulator/frame-data";
 import { normalizeMemoryMap } from "@/lib/emulator/memory-map";
 import { decodeFrameLayout, decodeFrames } from "@/lib/emulator/stack-frames";
@@ -127,6 +127,46 @@ describe("the list of calls", () => {
     ]);
   });
 
+  it("counts all 20,001 calls of sumto(20000), deeper than the frames keep: sumto × 19,997", () => {
+    const emu = load(read("lib/test/emulator/fixtures/sumto.s"));
+    finish(emu);
+    expect(emu.take_stdout()).toBe("sum = 200010000\n");
+    // sumto(n) = n * (n + 1) / 2; sumto(19996) down to sumto(0) fold.
+    expect(lines(calls(emu))).toEqual([
+      "main · returned 0",
+      "  sumto(20000) · returned 200010000",
+      "    sumto(19999) · returned 199990000",
+      "      sumto(19998) · returned 199970001",
+      "        sumto(19997) · returned 199950003",
+      "          sumto × 19,997 · all returned",
+    ]);
+  });
+
+  it("counts every call of a recursion with no base case up to the overflow, as the frames below do", () => {
+    const source = read("lib/test/emulator/fixtures/no-base-case.s");
+    const emu = load(source);
+    // count pushes 16 bytes a call: the calls whose push fits above the
+    // stack's floor (8 MiB below 0x80000000, the servers' ulimit -s), and
+    // the one whose push faults.
+    runTo(emu, labelPc(emu, source, "count"));
+    const floor = 0x8000_0000 - 8 * 1024 * 1024;
+    const entered = (Number(emu.get_sp()) - floor) / 16 + 1;
+    expect(entered).toBe(524_288);
+    finish(emu);
+    expect(lines(calls(emu))).toEqual([
+      "main ...",
+      "  count(0) ...",
+      "    count(1) ...",
+      "      count(2) ...",
+      "        count(3) ...",
+      "          count × 524,284 *",
+    ]);
+    // The frames: main and 16,383 count calls recorded, 507,905 deeper ones
+    // counted ("507,905 deeper calls not shown").
+    const snapshot = decodeFrames(Array.from(emu.frames()))!;
+    expect([snapshot.hidden + snapshot.frames.length - 1, snapshot.uncounted]).toEqual([16_383, 507_905]);
+  });
+
   it("folds each of 51_deep_frames' three recursions and dims them once returned", () => {
     const emu = load(read("../emulator/tests/c-corpus/51_deep_frames.s"));
     finish(emu);
@@ -222,16 +262,6 @@ describe("the list of calls", () => {
     expect(decodeFrames(before)).toEqual(decodeFrames(numbers));
     expect(calleeLeftovers(numbers)).toEqual(calleeLeftovers(before));
   });
-});
-
-describe("a returned value", () => {
-  it("reads w0 when x0's high half is clear and all of x0 when not", () => {
-    // mov w0, -1 leaves x0 = 0xffffffff: an int -1. mov x0, -1: a long -1.
-    expect(returnedText(0xffffffffn, REGIONS)).toBe("-1");
-    expect(returnedText(0xffffffffffffffffn, REGIONS)).toBe("-1");
-    expect(returnedText(1n << 40n, REGIONS)).toBe("1099511627776");
-  });
-
 });
 
 describe("an argument", () => {
