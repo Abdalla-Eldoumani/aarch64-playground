@@ -313,14 +313,14 @@ const MAX_ELEMENTS = 32;
  *  program ever keeps that much on the stack. */
 const MAX_READ = 16 * 1024;
 
-const COUNT = new Intl.NumberFormat("en-US");
+export const COUNT = new Intl.NumberFormat("en-US");
 
 /** formatWord32's form, for a 64-bit word too: at least 8 digits. */
-function hex(value: number | bigint): string {
+export function hex(value: number | bigint): string {
   return `0x${BigInt(value).toString(16).padStart(8, "0")}`;
 }
 
-function plural(count: number, word: string): string {
+export function plural(count: number, word: string): string {
   return `${COUNT.format(count)} ${word}${count === 1 ? "" : "s"}`;
 }
 
@@ -368,16 +368,17 @@ export function wordAt(memory: readonly StackBytes[], addr: number): bigint | nu
 
 const INT_KINDS: Record<number, string> = { 1: "char", 2: "short", 4: "int", 8: "long" };
 
-/** The C type a slot reads as and its value: an int as a signed decimal, a
- *  long as a decimal, a pointer (a value inside one of the machine's
- *  regions) in hex. */
-function typed(
-  bytes: Uint8Array | null,
-  width: number,
-  float: boolean,
-  regions: readonly MemoryRegion[],
-): { kind: string | null; value: string | null } {
-  const bits = bytes ? littleEndian(bytes) : null;
+interface Typed {
+  kind: string | null;
+  value: string | null;
+}
+
+/** The C type `width` bytes read as and their value: an int as a signed
+ *  decimal, a long as a decimal, a pointer (a value inside one of the
+ *  machine's regions) in hex. Bits not read (null) have no value. */
+export function typed(bits: bigint, width: number, float: boolean, regions: readonly MemoryRegion[]): Typed & { value: string };
+export function typed(bits: bigint | null, width: number, float: boolean, regions: readonly MemoryRegion[]): Typed;
+export function typed(bits: bigint | null, width: number, float: boolean, regions: readonly MemoryRegion[]): Typed {
   if (float && (width === 4 || width === 8)) {
     const fw = width === 4 ? 32 : 64;
     return { kind: width === 4 ? "float" : "double", value: bits == null ? null : floatText(bits, fw) };
@@ -549,7 +550,8 @@ export function drawFrames(input: DrawInput): DrawnStack {
           const each = INT_KINDS[item.more.width] ?? "element";
           boxes.push(box(at, item.width, base, "local", item.label, item.name, `${plural(item.more.count, `more ${each}`)}, ${plural(item.width, "byte")}`));
         } else {
-          const { kind, value } = typed(bytesAt(memory, at, item.width), item.width, item.float, regions);
+          const bytes = bytesAt(memory, at, item.width);
+          const { kind, value } = typed(bytes && littleEndian(bytes), item.width, item.float, regions);
           const title = value == null ? item.label : `${item.label} = ${value}`;
           const size = plural(item.width, "byte");
           boxes.push(box(at, item.width, base, "local", title, item.name, kind ? `${kind}, ${size}` : size));
