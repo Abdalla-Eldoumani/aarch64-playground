@@ -10,6 +10,7 @@ use aarch64_emulator::cpu::{
     step_ceiling_message, Cpu, MAX_SNAPSHOT_SIDE_BYTES, MAX_TOTAL_STEPS, MEMORY_CAP_MESSAGE,
 };
 use aarch64_emulator::frames::layout::frame_layout;
+use aarch64_emulator::frames::tree::MAX_TREE_NODES;
 use aarch64_emulator::frames::{frame_view, MAX_ACTIVATIONS, MAX_DRAWN};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 use aarch64_emulator::hosted::syscalls::MAX_OPEN_FILES;
@@ -323,8 +324,9 @@ main:   stp     x29, x30, [sp, -16]!
 
 /// Recursion with 16-byte frames goes about 524,000 calls deep before the
 /// stack floor: far past the call stack's cap. The stack keeps its cap and
-/// counts the rest, the view still draws main and the innermost frames,
-/// and the floor, the step ceiling and the page cap hold as before.
+/// counts the rest, the call tree, which takes every one of those calls,
+/// keeps its own, the view still draws main and the innermost frames, and
+/// the floor, the step ceiling and the page cap hold as before.
 #[test]
 fn recursion_past_the_call_stack_cap_stays_within_it() {
     let src = "
@@ -340,6 +342,7 @@ main:   stp     x29, x30, [sp, -16]!
     let error = loop {
         let r = cpu.run_until_break(1_000_000).expect("run");
         assert!(cpu.call_stack().activations().len() <= MAX_ACTIVATIONS);
+        assert!(cpu.call_stack().tree().nodes().len() <= MAX_TREE_NODES);
         if r.halted {
             break r.error;
         }
