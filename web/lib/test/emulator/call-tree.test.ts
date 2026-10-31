@@ -262,6 +262,16 @@ describe("the list of calls", () => {
     expect(decodeFrames(before)).toEqual(decodeFrames(numbers));
     expect(calleeLeftovers(numbers)).toEqual(calleeLeftovers(before));
   });
+
+  it("names a call the layout does not know by its address, as the frames head an unnamed frame", () => {
+    const emu = load(FIXTURE);
+    runTo(emu, labelPc(emu, FIXTURE, "cube"), 1);
+    const drawn = drawCalls(Array.from(emu.frames()), null, REGIONS)!;
+    // At least 8 hex digits, the frames view's form for an address; cube
+    // still shows the 1 it reads from w0.
+    const at = (label: string) => `0x${Number(emu.resolve_label(label)).toString(16).padStart(8, "0")}`;
+    expect([drawn.rows[0].call, drawn.rows[0].children.at(-1)!.call]).toEqual([at("main"), `${at("cube")}(1)`]);
+  });
 });
 
 describe("a returned value", () => {
