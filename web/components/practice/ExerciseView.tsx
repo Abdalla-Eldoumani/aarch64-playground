@@ -20,6 +20,7 @@ import {
   checkExercise,
   checkHiddenCase,
   type CheckResult,
+  type FrameNote,
   type HiddenCaseCheck,
   type StructuralCheck,
 } from "@/lib/content/exercise-checker";
@@ -191,10 +192,33 @@ function hiddenMiss(check: HiddenCaseCheck): string {
       return "main returns with sp moved: take the frame down by exactly what you put up";
     case "frame":
       return "it writes above main's frame, over values its caller saved there";
+    case "calls":
+      return "a call in it breaks a stack rule: the notes below say which";
     case null:
       return "";
     default: {
       const exhaustive: never = check.miss;
+      return exhaustive;
+    }
+  }
+}
+
+/** A stack rule one of the program's calls broke, in words. */
+function frameNoteText(note: FrameNote): string {
+  const at = note.line === null ? "a line" : `line ${note.line}`;
+  switch (note.kind) {
+    case "sp":
+      return `${at} calls ${note.fn} with sp not a multiple of 16`;
+    case "fp":
+      return `${at} writes over the saved fp in ${note.fn}'s frame`;
+    case "lr":
+      return `${at} writes over the saved lr in ${note.fn}'s frame`;
+    case "return":
+      return `${note.fn}'s ret on ${at} does not go back to its caller`;
+    case "callee":
+      return `${note.fn} returns on ${at} with x${note.register} changed: a function must hand x19 to x28 back as it found them`;
+    default: {
+      const exhaustive: never = note.kind;
       return exhaustive;
     }
   }
@@ -206,17 +230,23 @@ type HiddenState =
   | { status: "waiting" }
   | { status: "running" }
   | { status: "failed" }
-  | { status: "done"; checks: HiddenCaseCheck[] };
+  | { status: "done"; checks: HiddenCaseCheck[]; notes: string[] };
 
-async function runHiddenCases(source: string, cases: HiddenCase[]): Promise<HiddenCaseCheck[]> {
+/** Every hidden case graded, and each frame note any of them made, once. */
+async function runHiddenCases(
+  source: string,
+  cases: HiddenCase[],
+): Promise<{ checks: HiddenCaseCheck[]; notes: string[] }> {
   const { runHeadless, withHeadlessMachine } = await import("@/lib/emulator/headless-run");
   return withHeadlessMachine(async (machine) => {
     const checks: HiddenCaseCheck[] = [];
+    const notes = new Set<string>();
     for (const testCase of cases) {
       const outcome = await runHeadless(machine, source, parseArgs(testCase.args ?? ""), testCase.stdin);
       checks.push(checkHiddenCase(testCase, outcome));
+      for (const note of outcome.frameNotes) notes.add(frameNoteText(note));
     }
-    return checks;
+    return { checks, notes: [...notes] };
   });
 }
 
@@ -334,8 +364,8 @@ export function ExerciseView({
     hiddenBusyRef.current = true;
     setHidden({ status: "running" });
     runHiddenCases(source, hiddenCases)
-      .then((checks) => {
-        setHidden({ status: "done", checks });
+      .then(({ checks, notes }) => {
+        setHidden({ status: "done", checks, notes });
         setCheckCount((n) => n + 1);
         if (checks.every((check) => check.pass)) markSolved(exercise.slug);
       })
@@ -354,6 +384,7 @@ export function ExerciseView({
   }, [checkCount]);
 
   const hiddenChecks = hidden.status === "done" ? hidden.checks : [];
+  const frameNotes = hidden.status === "done" ? hidden.notes : [];
   const allChecks = result ? [...result.results, ...result.structural, ...hiddenChecks] : [];
   const passingCount = allChecks.filter((check) => check.pass).length;
   const allPass =
@@ -523,6 +554,20 @@ export function ExerciseView({
                   </span>
                 </div>
               ))}
+              {frameNotes.length > 0 && (
+                <div className="border-b border-[var(--border)] px-4 py-2.5 last:border-b-0">
+                  <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
+                    notes on the calls · they do not change the result
+                  </p>
+                  <ul className="mt-1.5 space-y-1.5">
+                    {frameNotes.map((text) => (
+                      <li key={text} className="break-words font-mono text-[13px] leading-snug text-[var(--text-primary)]">
+                        {text}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {allPass && (
                 <div className="flex items-center gap-3 px-4 py-2.5">
                   <CheckSquare pass />
