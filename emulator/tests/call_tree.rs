@@ -509,6 +509,62 @@ main:
     );
 }
 
+#[test]
+fn a_cbz_or_tbz_on_x0_reads_the_argument_it_tests() {
+    let source = "\
+.text
+        .balign 4
+        .global null_check
+null_check:
+        cbz     x0, null_check_done
+        ldr     x0, [x0]
+null_check_done:
+        ret
+        .balign 4
+        .global zero_check
+zero_check:
+        cbnz    w0, zero_check_done
+        mov     w0, 1
+zero_check_done:
+        ret
+        .balign 4
+        .global odd_check
+odd_check:
+        tbnz    w0, 0, odd_check_done
+        add     w0, w0, 1
+odd_check_done:
+        ret
+        .balign 4
+        .global sign_check
+sign_check:
+        tbz     x0, 63, sign_check_done
+        neg     x0, x0
+sign_check_done:
+        ret
+        .balign 4
+        .global other_check
+other_check:
+        cbz     x1, other_check_done
+        add     w0, w0, 1
+other_check_done:
+        ret
+        .balign 4
+        .global main
+main:
+        mov     w0, 0
+        ret
+";
+    let p = load(source);
+    let width = |name: &str| {
+        let f = p.layout.functions.iter().find(|f| p.layout.names[f.name.unwrap() as usize] == name).expect(name);
+        f.arg_width
+    };
+    // cbz x0 reads a long or a pointer, cbnz w0 and tbnz w0 an int, and
+    // tbz on bit 63 names x0; a cbz on another register is a branch like
+    // any other and leaves no argument to show.
+    assert_eq!(["null_check", "zero_check", "odd_check", "sign_check", "other_check"].map(width), [8, 4, 4, 8, 0]);
+}
+
 const RETURNS: &str = "web/lib/test/emulator/fixtures/call-returns.s";
 
 #[test]
