@@ -49,7 +49,7 @@ export function CallCard({ callCard: numbers, frames, frameLayout, registers, sp
         <div
           role="group"
           aria-label={`what ${card.name} did`}
-          className="mt-1 flex flex-col gap-1 rounded-[var(--radius-control)] border border-[var(--amber)] px-2 py-1.5 font-mono text-[12px] leading-[1.6] whitespace-normal break-words"
+          className="mt-1 flex flex-col gap-1 rounded-[var(--radius-control)] border border-[var(--amber)] px-2 py-1.5 font-mono text-[12px] leading-[1.6] whitespace-pre-wrap break-words"
           style={{ backgroundColor: "color-mix(in srgb, var(--amber) 8%, transparent)" }}
         >
           <div className="flex flex-wrap items-baseline justify-between gap-x-3">
