@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  FRAME_NOTES_COUNT,
   checkExercise,
   checkHiddenCase,
   type CheckerSnapshot,
@@ -437,6 +438,7 @@ describe("checkHiddenCase", () => {
       exitCode: 0,
       stackBalanced: true,
       frameIntact: true,
+      frameNotes: [],
       ...over,
     };
   }
@@ -460,5 +462,19 @@ describe("checkHiddenCase", () => {
     expect(checkHiddenCase(testCase, run({ exitCode: 3 })).detail).toBe("3");
     expect(checkHiddenCase(testCase, run({ stackBalanced: false })).miss).toBe("stack");
     expect(checkHiddenCase(testCase, run({ frameIntact: false })).miss).toBe("frame");
+  });
+
+  // A call that left x20 changed, the note the run makes for it.
+  const noted = run({ frameNotes: [{ kind: "callee", fn: "bump", line: 24, register: 20 }] });
+
+  it("leaves the frame notes out of pass and fail until the switch is turned on", () => {
+    expect(FRAME_NOTES_COUNT).toBe(false);
+    expect(checkHiddenCase(testCase, noted)).toEqual({ pass: true, miss: null, detail: "" });
+  });
+
+  it("fails a case for its frame notes once the switch is on, after every other cause", () => {
+    expect(checkHiddenCase(testCase, noted, true)).toEqual({ pass: false, miss: "calls", detail: "" });
+    expect(checkHiddenCase(testCase, run(), true).pass).toBe(true);
+    expect(checkHiddenCase(testCase, { ...noted, frameIntact: false }, true).miss).toBe("frame");
   });
 });
