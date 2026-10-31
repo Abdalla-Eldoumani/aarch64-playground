@@ -240,7 +240,7 @@ fn a_recursion_with_no_base_case_counts_every_call_up_to_the_overflow() {
         ]
     );
     // The frames view agrees: the calls it records and the deeper ones it
-    // only counts ("507,905 deeper calls not shown") add up to the same.
+    // only counts ("507,905 deeper frames not recorded") add up to the same.
     let view = frame_view(&p.cpu, &p.layout);
     let recorded = p.cpu.call_stack().activations().len() as u64 - 1;
     assert_eq!((recorded, view.uncounted), (MAX_ACTIVATIONS as u64 - 1, 507_905));
