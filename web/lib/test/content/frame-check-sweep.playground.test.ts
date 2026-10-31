@@ -21,6 +21,7 @@ function programs(): Array<[string, string]> {
   const out: Array<[string, string]> = [];
   for (const exercise of loadAllExercises()) {
     if (exercise.variant === "write" || exercise.variant === "identify-bug") out.push([exercise.slug, exercise.starter]);
+    if (exercise.variant === "frame") out.push([exercise.slug, exercise.program]);
     if (exercise.variant === "prediction") {
       exercise.predictions.forEach((p, i) => out.push([`${exercise.slug} prediction ${i}`, p.code]));
     }
