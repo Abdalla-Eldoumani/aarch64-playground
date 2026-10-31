@@ -13,8 +13,8 @@ import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { COUNT, hex, plural, typed, type FrameLayout } from "@/lib/emulator/stack-frames";
 
 /** The tree's header, then the numbers per node. */
-const HEAD = 4;
-const NODE = 9;
+const HEAD = 5;
+const NODE = 10;
 
 export interface CallRow {
   /** "fact(4)", or for a fold "rec × 7,940". */
@@ -33,12 +33,8 @@ export interface DrawnCalls {
   rows: CallRow[];
   /** The calls kept out of the list, in words, or null. */
   hidden: string | null;
-}
-
-/** What a call returned: w0 when x0's high half is clear (a 32-bit result
- *  leaves it so), else all of x0. */
-export function returnedText(x0: bigint, regions: readonly MemoryRegion[]): string {
-  return typed(x0, x0 >> 32n ? 8 : 4, false, regions).value;
+  /** The width of x0's latest write, 4 or 8: how a return just made reads. */
+  x0Width: number;
 }
 
 /** The tree at the end of the frames numbers, worded, or null when the
@@ -51,28 +47,26 @@ export function drawCalls(
   const at = FRAMES_HEADER + n[8] * FRAME_ROW + n[9] * 2;
   const count = n[at];
   if (count == null || n.length !== at + HEAD + count * NODE) return null;
-  const [current, outside, dropped] = [n[at + 1], n[at + 2], n[at + 3]];
-  const halves = (hi: number, lo: number) => (BigInt(hi) << 32n) | BigInt(lo);
+  const [current, outside, dropped, x0Width] = n.slice(at + 1, at + HEAD);
+  // x0 comes as its high and low 32 bits, read at the width it was written.
+  const value = (hi: number, lo: number, width: number) =>
+    typed((BigInt(hi) << 32n) | BigInt(lo), width, false, regions).value;
   const rows: CallRow[] = [];
   const all: CallRow[] = [];
   for (let i = 0; i < count; i++) {
-    const [parent, entry, calls, open, width, argHi, argLo, retHi, retLo] = n.slice(
+    const [parent, entry, calls, open, width, argHi, argLo, retHi, retLo, retWidth] = n.slice(
       at + HEAD + i * NODE,
       at + HEAD + (i + 1) * NODE,
     );
     const name = layout?.functions.find((f) => f.entry === entry)?.name ?? hex(entry);
     // A fold holding one call so far reads as that call.
     const fold = calls > 1;
-    const call = fold
-      ? `${name} × ${COUNT.format(calls)}`
-      : width
-        ? `${name}(${typed(halves(argHi, argLo), width, false, regions).value})`
-        : name;
+    const call = fold ? `${name} × ${COUNT.format(calls)}` : width ? `${name}(${value(argHi, argLo, width)})` : name;
     const state = i + 1 === current ? "current" : open > 0 ? "running" : "returned";
     const row: CallRow = {
       call,
       said: fold ? `${plural(calls, "call")} of ${name}` : call,
-      result: state !== "returned" ? null : fold ? "all returned" : `returned ${returnedText(halves(retHi, retLo), regions)}`,
+      result: state !== "returned" ? null : fold ? "all returned" : `returned ${value(retHi, retLo, retWidth)}`,
       state,
       children: [],
     };
@@ -82,5 +76,5 @@ export function drawCalls(
   const hidden = dropped
     ? `${plural(dropped, "more call")} not shown${outside ? ", the current one among them" : ""}`
     : null;
-  return { rows, hidden };
+  return { rows, hidden, x0Width };
 }
