@@ -137,7 +137,8 @@ pub struct Conversion {
     /// The argument: printf's value (a double's bits), scanf's pointer.
     pub arg: u64,
     /// scanf: the first 8 bytes it stored at `arg`, little-endian, and how
-    /// many bytes it stored in all.
+    /// many bytes it stored in all. printf's %s: how many bytes it read
+    /// from `arg` (`CallRecord::strings` keeps them).
     pub stored: u64,
     pub size: u64,
     /// Byte offsets in the call's text: what this conversion printed, or
@@ -169,6 +170,9 @@ pub struct CallRecord {
     /// What printf printed or scanf read, kept and whole as the format is.
     pub text: Vec<u8>,
     pub text_len: usize,
+    /// The first `MAX_CALL_BYTES` each kept printf %s read, one row after
+    /// another: a padded or cut row's text may not hold them.
+    pub strings: Vec<u8>,
     /// The first `MAX_CALL_ROWS` conversions, and how many there were.
     pub rows: Vec<Conversion>,
     pub conversions: usize,
@@ -182,6 +186,7 @@ impl CallRecord {
         self.fmt.extend_from_slice(&fmt[..fmt.len().min(MAX_CALL_BYTES)]);
         self.fmt_len = fmt.len();
         self.set_text(&[]);
+        self.strings.clear();
         self.rows.clear();
         self.conversions = 0;
     }
@@ -196,6 +201,14 @@ impl CallRecord {
         self.conversions += 1;
         if self.rows.len() < MAX_CALL_ROWS {
             self.rows.push(row);
+        }
+    }
+
+    /// printf's %s being formatted read `bytes`.
+    pub(crate) fn read_string(&mut self, bytes: &[u8]) {
+        if let Some(row) = self.current() {
+            row.size = bytes.len() as u64;
+            self.strings.extend_from_slice(&bytes[..bytes.len().min(MAX_CALL_BYTES)]);
         }
     }
 
