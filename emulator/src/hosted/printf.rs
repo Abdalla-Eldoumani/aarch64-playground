@@ -100,18 +100,17 @@ pub(crate) fn format_into(
         // A `*` width's argument is not the conversion's.
         walker.last = (ARG_NONE, 0);
         let text_start = out.len();
+        // Pushed first, so a %s can tell its row what it read.
+        if let Some(call) = ctx.call.as_deref_mut() {
+            call.push(Conversion { fmt_start, fmt_end: i, text_start, ..Conversion::default() });
+        }
         let done = format_conversion(&spec, conv, ctx, &mut walker, &mut out);
         if let Some(call) = ctx.call.as_deref_mut() {
-            call.push(Conversion {
-                fmt_start,
-                fmt_end: i,
-                source: walker.last.0,
-                arg: walker.last.1,
-                text_start,
-                text_end: out.len(),
-                code: if done.is_ok() { CALL_OK } else { CALL_STOPPED },
-                ..Conversion::default()
-            });
+            if let Some(row) = call.current() {
+                (row.source, row.arg) = walker.last;
+                row.text_end = out.len();
+                row.code = if done.is_ok() { CALL_OK } else { CALL_STOPPED };
+            }
             if done.is_err() || out.len() > MAX_PRINTF_CALL_BYTES {
                 // Nothing reaches stdout, but the rows' places stay in range.
                 call.set_text(&out);
@@ -382,6 +381,9 @@ fn format_conversion(
                 },
                 other => other,
             })?;
+            if let Some(call) = ctx.call.as_deref_mut() {
+                call.read_string(&bytes);
+            }
             emit_field(b"", &bytes, spec, false, out);
         }
         b'f' | b'F' | b'e' | b'E' | b'g' | b'G' => {
