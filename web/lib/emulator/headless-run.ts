@@ -160,8 +160,7 @@ function watchFrames(machine: HeadlessMachine) {
       depth = callDepth(numbers);
       for (const row of snapshot.frames) {
         const fn = nameAt(row.entry);
-        // main starts where the loader left sp; every other row is a call.
-        if (row.index > 0 && row.spEntry % 16 !== 0) add({ kind: "sp", fn, line: lineOf(row.callPc) });
+        if (row.spEntry % 16 !== 0) add({ kind: "sp", fn, line: lineOf(row.callPc) });
         if (row.fpHit) add({ kind: "fp", fn, line: lineOf(row.fpHit.pc) });
         if (row.lrHit) add({ kind: "lr", fn, line: lineOf(row.lrHit.pc) });
       }
