@@ -33,7 +33,6 @@ function outcome(over: Partial<HiddenRunOutcome> = {}): HiddenRunOutcome {
     exitCode: 0,
     stackBalanced: true,
     frameIntact: true,
-    frameNotes: [],
     ...over,
   };
 }
