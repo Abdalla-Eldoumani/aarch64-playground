@@ -507,8 +507,7 @@ export function EmbeddableCore({
   // Check grades a run of the current source, never what a stale run left
   // behind, which could pass code the student already changed. It uses the
   // authored args, not the box's: the expected output was written for them.
-  // The emulator bounds the run; the 10 s poll reads emuRef, since the hub is
-  // a new object every render, and is only a safety net.
+  // The emulator bounds the run; the 10 s cap on the poll is only a safety net.
   const checkKey = `${startArgs ?? ""}\n${source}`;
   const checkEmbed = useCallback(async () => {
     // A run that stopped short of its end (parked on a read, paused, faulted)
@@ -534,9 +533,14 @@ export function EmbeddableCore({
       emu.closeStdin();
       emu.run();
       const startedAt = Date.now();
+      // emuRef (the hub is a new object every render) shows the run a render
+      // late: with no step taken and no error it is still the unrun machine.
       do {
         await new Promise<void>((resolve) => setTimeout(resolve, 16));
-      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
+      } while (
+        (emuRef.current.isRunning || (emuRef.current.stepCount === 0 && emuRef.current.error == null)) &&
+        Date.now() - startedAt < 10_000
+      );
     }
     onCheck?.(currentState());
   }, [emu, source, startArgs, checkKey, onCheck, currentState, applySeeds]);
