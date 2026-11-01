@@ -241,8 +241,9 @@ request open runs no tests.
   the Chromium smoke script, the noise filter the two smoke tests share, the
   share encoder, the locals example, or the stack frames view (its decode in
   `web/lib/emulator/frame-data.ts` and `stack-frames.ts`, `FramesView.tsx`,
-  `lazy-frames.tsx`, and the stack tab's `StackTab.tsx`) change (not for a
-  change to the rest of the site's code alone), `npm run build`,
+  its rows' `FrameRow.tsx`, `lazy-frames.tsx`, and the stack tab's
+  `StackTab.tsx`) change (not for a change to the rest of the site's code
+  alone), `npm run build`,
   `next start`, and `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
