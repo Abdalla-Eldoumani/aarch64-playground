@@ -103,6 +103,7 @@ describe("the path filter", () => {
     for (const file of [
       "web/lib/emulator/frame-data.ts",
       "web/lib/emulator/stack-frames.ts",
+      "web/components/panels/FrameRow.tsx",
       "web/components/playground/lazy-frames.tsx",
       "web/components/playground/StackTab.tsx",
       "emulator/src/frames.rs",
