@@ -1,10 +1,9 @@
 /**
  * Grades a draw-the-frame exercise: each number the student typed against
  * the frame the emulator draws at the exercise's pause. The right numbers
- * exist only while a check runs, read from the machine, never from the
- * exercise file, and nothing here hands them back: a field is marked right
- * or wrong, no more. Imported on the first check, so the page's own chunk
- * never carries the frame decoding.
+ * are read from the machine, never from the exercise file, and never reach
+ * the page: a field is marked right or wrong, no more. Imported on the
+ * first check, so the page's own chunk never carries the frame decoding.
  */
 
 import type { FrameExercise } from "@/lib/content/exercise-schema";
