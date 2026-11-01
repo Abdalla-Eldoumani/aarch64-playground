@@ -2,7 +2,7 @@
   "title": "Draw the frame: a recursive call",
   "slug": "draw-frame-recursion",
   "order": 141,
-  "lastUpdated": "2026-10-31",
+  "lastUpdated": "2026-11-01",
   "topic": "functions",
   "difficulty": "challenge",
   "variant": "frame",
@@ -23,7 +23,7 @@
     }
   ],
   "hints": {
-    "size": "Every call to sum_to makes the same frame. Add up to the end of part_s (part_s + part_size), then round up to the next multiple of 16.",
+    "size": "Every call to sum_to makes the same frame. Add up to the end of part_s (part_s + part_size), then round up to a multiple of 16.",
     "savedFp": "The running call's stp put its caller's fp at its own new sp, and mov fp, sp points fp there.",
     "savedLr": "In every call's frame the saved lr comes right after the saved fp, as the stp stores them."
   }
