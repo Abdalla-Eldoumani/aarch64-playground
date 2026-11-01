@@ -1,8 +1,7 @@
 /**
  * Grades a draw-the-frame exercise: each number the student typed against
  * the frame the emulator draws at the exercise's pause. The right numbers
- * are read from the machine, never from the exercise file, and never reach
- * the page: a field is marked right or wrong, no more. Imported on the
+ * are read from the machine, never from the exercise file. Imported on the
  * first check, so the page's own chunk never carries the frame decoding.
  */
 
