@@ -2,7 +2,7 @@
   "title": "Debugging in the playground",
   "slug": "debugging-in-the-playground",
   "order": 18.5,
-  "lastUpdated": "2026-10-01",
+  "lastUpdated": "2026-11-01",
   "summary": "Stop a program at a breakpoint, step it one instruction at a time, and read its registers, watches, stack and memory to find out why it prints the wrong answer.",
   "tags": [
     "loops",
@@ -37,7 +37,7 @@
     },
     {
       "type": "prose",
-      "markdown": "The sum is 5 too high. The rest of this lesson tracks down where the extra 5 comes from.\n\nThe editor above has run, step, back and reset. The watches, the stack and the memory view are in the full playground. Open the program there in a new tab, so this page stays open beside it: Ctrl+click the Open in playground link under the editor (Cmd+click on a Mac), or on a phone, press and hold the link and choose to open it in a new tab. A plain click opens the playground in place of this page. On a phone, the playground keeps those views under more."
+      "markdown": "The sum is 5 too high. The rest of this lesson tracks down where the extra 5 comes from.\n\nThe editor above has run, step, back and reset. Pressing stack beside registers shows the program's stack frames in the editor itself; the watches and the memory view are in the full playground. Open the program there in a new tab, so this page stays open beside it: Ctrl+click the Open in playground link under the editor (Cmd+click on a Mac), or on a phone, press and hold the link and choose to open it in a new tab. A plain click opens the playground in place of this page. On a phone, the playground keeps those views under more."
     },
     {
       "type": "prose",
