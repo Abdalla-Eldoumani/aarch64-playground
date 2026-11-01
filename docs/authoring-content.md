@@ -199,13 +199,13 @@ Fields every variant carries:
   while the heading on the page stays bare. Keep that composed title under
   60 characters.
 - `slug`: url-safe kebab-case, matching the file name.
-- `order`: the index sorts by this; a number or string. The sheet runs
-  every coding exercise first, then every theory set and then the frame
-  drawings, each side grouped
-  by topic in course order, and the number is the exercise's position on
-  that sheet. A new coding exercise goes where its topic and lesson put it,
-  and every exercise after it moves down one. Nothing checks that two files
-  share a number, so look before you pick.
+- `order`: a number or string. Every exercise is sorted by it (two numbers
+  by value, anything else as text, a tie by file name), and an exercise's
+  sheet number, `5.N` on its page and its `/practice` row, is its place `N`
+  in that list, so a new exercise moves the number of every exercise sorted
+  after it up by one. `/practice` groups the rows by side (see `variant`)
+  and then by `topic`, keeping `order` within a topic. Nothing checks that
+  two files share a number, so look before you pick.
 - `topic`: optional string; the practice page groups exercises under it.
   The sixteen topics, their order on the page, and their printed labels
   live in `web/lib/content/practice-topics.ts`; a topic missing from that
