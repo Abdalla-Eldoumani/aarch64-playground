@@ -15,8 +15,10 @@ bookmark JSON), and it runs programs written by anyone.
 
 1. An attacker cannot store anything on the site. The only saved data lives in
    the visitor's own browser: localStorage keys starting with
-   `aarch64-playground:`, and the playground's files in the
-   `aarch64-playground` IndexedDB database.
+   `aarch64-playground:`, the playground's files in the `aarch64-playground`
+   IndexedDB database, and the service worker's Cache Storage. Its one cache
+   per build, `aarch64-playground-<build id>`, holds the site's own pages and
+   files for offline use.
 2. An attacker can send a link or a file. Opening it must not crash the tab,
    hang it, or run anything but the emulated program.
 
@@ -96,9 +98,10 @@ the call, with a plain message instead of a crash:
 
 The stack view caps its own records, so a deep recursion cannot use up memory
 through them either. It records at most 16,384 calls
-(`frames::MAX_ACTIVATIONS`) and draws at most 64 frames, and the call tree
-keeps at most 200 calls. Calls past those are counted, not stored, and the
-program runs on.
+(`frames::MAX_ACTIVATIONS`), and the call tree keeps at most 200 entries.
+Calls past either cap are counted, not stored. The view draws at most 64
+frames. Past 64, the frames between main and the newest 63 fold into one line
+that counts them. None of the three caps stops the program.
 
 `emulator/tests/bounds.rs` and the unit tests for the library calls test each
 limit.
