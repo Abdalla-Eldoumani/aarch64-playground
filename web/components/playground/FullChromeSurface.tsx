@@ -195,6 +195,7 @@ export function FullChromeSurface({
       requestPane("stack");
       setShowBytes(false);
     }, [requestPane, setShowBytes]),
+    emu.isRunning,
   );
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   // Counts program deliveries. The checks panel remounts on each, so the last
