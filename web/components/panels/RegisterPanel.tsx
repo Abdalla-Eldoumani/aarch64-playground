@@ -476,11 +476,6 @@ export function RegisterPanel({
         : null,
     [chips, point, frames, frameLayout, registers, sp, pc, running],
   );
-  // A chip that goes with the run fires no blur or leave, so its slot would
-  // stay lit through the run and after it.
-  useEffect(() => {
-    if (running) point?.(null);
-  }, [running, point]);
 
   const callLeftover = registers
     .slice(0, CALLER_SAVED_X)
