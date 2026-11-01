@@ -555,9 +555,11 @@ body:has(> .playground-shell) {
   }
 }
 /* One pane at a time on a phone or touch screen, where the stacked console was
-   too short for its 44px input row. The editor is hidden, not removed, so its
-   caret and undo survive a switch. Placed after the bands so it wins. */
-@media (max-width: 639.98px), (pointer: coarse) {
+   too short for its 44px input row, and in a window under 500px tall (a laptop
+   zoomed to 200%), where the three stacked panes cut standard input and send
+   under a mouse too. The editor is hidden, not removed, so its caret and undo
+   survive a switch. Placed after the bands so it wins. */
+@media (max-width: 639.98px), (pointer: coarse), (max-height: 499.98px) {
   @container (max-width: 55.98rem) {
     .embed-view {
       display: flex;
