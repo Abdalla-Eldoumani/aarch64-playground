@@ -69,7 +69,14 @@ const FP_FIX = EXERCISE.starter
   .replace("mov     x19, x0", "mov     x29, x0")
   .replace("add     x19, x19, x19", "add     x29, x29, x29")
   .replace("mov     x0, x19", "mov     x0, x29");
-const FP_NOTE = "double_it returns on line 25 with fp changed: a function must hand fp back as it found it";
+
+// The reference fix, but main calls double_it with sp 8 bytes off a
+// multiple of 16; double_it never touches the stack, so it still passes.
+const SP_FIX = solutionFor("the-forgetful-helper")
+  .replace("        bl      double_it", "        sub     sp, sp, 8\n        bl      double_it")
+  .replace("        add     total_r, total_r, x0", "        add     sp, sp, 8\n        add     total_r, total_r, x0");
+// The bl is line 43 once the sub sits above it.
+const SP_NOTE = "line 43 calls double_it with sp not a multiple of 16";
 
 afterEach(() => {
   cleanup();
@@ -96,21 +103,28 @@ describe("the forgetful helper's frame notes", () => {
     expect(isSolved(EXERCISE.slug)).toBe(true);
   });
 
-  it("names fp when a passing fix leaves it changed, and the result still passes", async () => {
+  it("shows no note for a passing fix that leaves fp changed", async () => {
     expect(FP_FIX).not.toContain("x19, x0");
     await checkWith(FP_FIX);
+    expect(screen.queryByText(/notes on the calls/)).toBeNull();
+    expect(screen.queryByText(/fp changed/)).toBeNull();
+    expect(screen.getByText("all checks passed")).toBeTruthy();
+  });
+
+  it("names a call made with sp off a multiple of 16, and the result still passes", async () => {
+    expect(SP_FIX).toContain("sub     sp, sp, 8");
+    await checkWith(SP_FIX);
     expect(screen.getByText("notes on the calls · they do not change the result")).toBeTruthy();
-    // double_it's ret is line 25 of the starter, so of the fix too.
-    expect(screen.getByText(FP_NOTE)).toBeTruthy();
+    expect(screen.getByText(SP_NOTE)).toBeTruthy();
     expect(screen.getByText("all checks passed")).toBeTruthy();
   });
 
   it("heads the notes as counting once the switch makes them count", async () => {
     SWITCH.on = true;
-    ANSWER.source = FP_FIX;
+    ANSWER.source = SP_FIX;
     render(<ExerciseView exercise={EXERCISE} />);
     fireEvent.click(screen.getByRole("button", { name: "check" }));
-    await waitFor(() => expect(screen.getByText(FP_NOTE)).toBeTruthy(), { timeout: 4_000 });
+    await waitFor(() => expect(screen.getByText(SP_NOTE)).toBeTruthy(), { timeout: 4_000 });
     expect(screen.queryByText(/they do not change the result/)).toBeNull();
     expect(screen.getByText("notes on the calls")).toBeTruthy();
     expect(screen.getAllByText(/a call in it breaks a stack rule/).length).toBeGreaterThan(0);
