@@ -21,6 +21,7 @@ const STATUS: EmbedLayoutProps["runStatus"] = {
   exitCode: null,
   stepCount: 2,
   failed: false,
+  paused: false,
   registers: ["0x0", "0x0", "0x5"],
   sp: "0x0",
   changedRegs: new Set([2]),
