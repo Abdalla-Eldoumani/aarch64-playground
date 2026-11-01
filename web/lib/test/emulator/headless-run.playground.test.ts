@@ -84,6 +84,14 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  it("note a stray ret in a recursion, and no fp change at the outer call's ret", async () => {
+    const { noted, plain } = await bothRuns(fixture("astray-in-recursion.s"));
+    // The base case's ret is line 28; the outer call's ldp hands fp back.
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "count_down", line: 28 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   it("make no note for a tail call, whose ret goes back to its caller's caller", async () => {
     const { noted, plain } = await bothRuns(fixture("tail-call.s"));
     expect(noted.frameNotes).toEqual([]);
