@@ -92,6 +92,12 @@ describe("the lesson frame on a short screen", () => {
     );
   });
 
+  it("shows one pane at a time under 500px tall, under a mouse too, so standard input and send stay whole", () => {
+    const onePane = blocks("@media (max-width: 639.98px), (pointer: coarse), (max-height: 499.98px)").join("\n");
+    expect(onePane).toMatch(/@container \(max-width: 55\.98rem\)/);
+    expect(onePane).toMatch(/\.embed-grid\s*\{\s*grid-template-areas: "pane";/);
+  });
+
   it("keeps the portrait phone rule as it was", () => {
     const phone = blocks("@media (max-width: 639.98px) {").join("\n");
     expect(phone).toMatch(
