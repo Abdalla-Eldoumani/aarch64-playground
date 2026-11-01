@@ -29,11 +29,12 @@ files behind every feature.
 
 ### The emulator
 
-The four largest modules are a parent file plus a folder of the same name:
+Five modules are a parent file plus a folder of the same name:
 `decoder.rs` and `decoder/`, `executor.rs` and `executor/`, `assembler.rs`
-and `assembler/`, `cpu.rs` and `cpu/`. The parent holds the shared types and
-the dispatch, and each file in the folder holds one kind of instruction or
-one job. All paths below are under `emulator/src/`.
+and `assembler/`, `cpu.rs` and `cpu/`, `frames.rs` and `frames/`. The parent
+holds the shared types and the dispatch, and each file in the folder holds
+one kind of instruction or one job. All paths below are under
+`emulator/src/`.
 
 | To change | Edit |
 | --- | --- |
@@ -45,8 +46,9 @@ one job. All paths below are under `emulator/src/`.
 | m4, labels, directives, and linking | `frontend/`: `m4.rs`, `lexer.rs`, `parser.rs`, `expr.rs`, `sections.rs`, `pipeline.rs` |
 | A library function such as `printf` or `malloc` | `hosted/`, one file per family: `printf.rs`, `scanf.rs`, `libc.rs`, `stdio.rs`, `heap.rs`, `math.rs`, `ctype.rs`, `callback.rs` |
 | A system call or the virtual files | `hosted/syscalls.rs` |
-| The step loop and the memory layout | `cpu.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints and step back in `cpu/control.rs` |
+| The step loop and the memory layout | `cpu.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints, step back, and the runs behind step over, step out, and run to cursor (`run_until`) in `cpu/control.rs` |
 | Registers or memory pages | `registers.rs`, `memory.rs` |
+| The call stack behind the stack frames view | `frames.rs`; each function's slots in `frames/layout.rs`, the frame check in `frames/check.rs`, the call tree in `frames/tree.rs` (see [The stack frames view](#the-stack-frames-view)) |
 | What the site can call | `lib.rs` |
 
 ### Lessons, exercises, and pitfalls
@@ -225,8 +227,8 @@ lists them all.
 </picture>
 
 Each step records a frame in a ring of the last 128 steps: what the step
-changed in the registers, memory, and the heap, and the state of input and
-files. **back** undoes the newest frame. The ring stops recording, and clears,
+changed in the registers, memory, the heap, and the call stack, and the state
+of input and files. **back** undoes the newest frame. The ring stops recording, and clears,
 while a terminal program has the keyboard in raw mode or runs live in the
 terminal pane, and once a frame's input and file state passes 4 KiB, so step
 back never jumps over steps it did not record. The output is never rolled
@@ -241,8 +243,9 @@ stepping never pushes one out.
 the registers and which of them changed, the floating-point and vector
 registers, new output, the exit code, whether the program is waiting for
 input, the library call a paused program is inside, the memory ranges written,
-the files, and a frame counter. The register panel works out which vector
-lanes changed by comparing two snapshots itself.
+the files, the call stack as numbers (`frames`), the `printf` or `scanf` call
+the last step ran (`callCard`), and a frame counter. The register panel works
+out which vector lanes changed by comparing two snapshots itself.
 
 Panels read memory through `getMemory(addr, len)`. A cached range answers at
 once; a miss fetches the bytes and redraws when they arrive. The cache clears
@@ -264,6 +267,75 @@ between chunks. Snapshots during the run keep the panels live. The worker
 sends one at most every 50 ms, because each is a `postMessage` and too many
 flood the page. The main-thread backend calls its listeners directly, so it
 sends one after every chunk.
+
+## The stack frames view
+
+The stack tab's frames, the stack view in lesson and exercise editors, the
+terminal's `bt` and `info frame`, and the frame drawing exercises all read one
+call stack, which the emulator keeps while the program runs. Three parts meet
+in the picture a student sees:
+
+- The call stack (`emulator/src/frames.rs`): one record per call the program
+  is inside, pushed by a `bl` or `blr` into the program's own code and popped
+  by the `ret` that comes back. It skips calls to library functions.
+- The frame chain: the saved `fp` values in memory, walked from `x29` once per
+  snapshot and checked against the records.
+- The static layout (`emulator/src/frames/layout.rs`): for each function, the
+  stack slots its code reaches through `x29`, worked out once per assemble
+  from the decoded instructions and named from the operands the student
+  wrote (`a_s` in `str w9, [fp, a_s]`).
+
+### Where the call stack hooks in
+
+`Cpu::step` (`cpu.rs`) passes each instruction it runs to
+`track_call_or_return`:
+
+- A `bl` or `blr` calls `CallStack::on_call`. It notes where the caller's
+  frame record sits and whether `lr` went out unsaved, then pushes the callee
+  if the target is the program's own code.
+- A `ret` or `br x30` calls `on_return`, which pops the call it returns from.
+  A return to no caller's return address is recorded and leaves the stack
+  alone.
+- A store of `x30` (`str` or `stp`) calls `on_lr_store`.
+
+Every other instruction passes straight through. `watch_frame_records` then
+checks the step's memory writes against each caller's saved `fp` and `lr` and
+keeps the latest write that changed one, with its step and its instruction.
+When `qsort` or `bsearch` calls the program's comparator, `cpu/system.rs`
+pushes a record too. A reset clears the call stack, and loading a program
+(`cpu/loader.rs`) starts it again with one record for the entry point.
+
+The crate holds numbers only (addresses, steps, register masks). The web
+turns them into words, because every string in the crate ships in the wasm.
+
+### What a snapshot carries
+
+`frames()` in `emulator/src/lib.rs` runs once per snapshot. Its `frame_view`
+walks the chain, places the layout's slots under each call's frame record,
+and flattens the result into numbers (`view_numbers`). A header comes first:
+the step count, the calls past the record's cap, and any return to no caller.
+Then come one row per drawn frame (`main` and the innermost 63), the
+callee-saved registers a returning call left changed, and the call tree. The
+backend puts these numbers in the `StateSnapshot`'s `frames` field.
+`frame_layout()` and `frame_names()` cross once per assemble.
+
+`web/lib/emulator/frame-data.ts` reads these exports and passes the numbers
+on raw. `stack-frames.ts` decodes them, together with the stack's bytes read
+through `getMemory`, into the boxes `FramesView.tsx` draws. Only the frames
+view imports the decoder, so it loads in its own chunk
+(`web/components/playground/lazy-frames.tsx`), and a page that never shows the
+stack never downloads it.
+
+### How Back restores it
+
+The call stack is machine state, so step back covers it like the registers.
+Before each step, `CallStack::record_undo` opens a `FrameUndo` in that step's
+ring frame. The step's call, return, or write fills it with what it changed:
+the stack's depth, each record it removed, and the old values of each record
+it changed. **back** hands the frame to `CallStack::undo`, which puts those
+back, the call tree included. A named save holds a whole copy of the call
+stack, and loading one restores that copy. After either, the next snapshot
+draws the frames as they stood at that step.
 
 ## Where errors show
 
