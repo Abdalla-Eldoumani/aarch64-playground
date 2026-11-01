@@ -441,6 +441,14 @@ body:has(> .playground-shell) {
     min-height: 44px;
     min-width: 44px;
   }
+  /* A pointer chip's 44px reach rises 12.5px above its 19px register row, so
+     the list's edge cut a first-row chip to 32px. RegisterPanel's list pads its
+     top by more than that, and its three-row floor grows by the same.
+     Doubled for the same reason as above (Tailwind's min-h-[4.75em]). */
+  .register-list.register-list {
+    padding-top: 14px;
+    min-height: calc(4.75em + 14px);
+  }
   /* iOS zooms the page into any field whose text is under 16px when it takes
      focus, and leaves it zoomed. */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
