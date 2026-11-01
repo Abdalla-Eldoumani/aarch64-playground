@@ -214,12 +214,8 @@ function frameNoteText(note: FrameNote): string {
       return `${at} writes over the saved fp in ${note.fn}'s frame`;
     case "lr":
       return `${at} writes over the saved lr in ${note.fn}'s frame`;
-    case "return":
-      return `${note.fn}'s ret on ${at} does not go back to its caller`;
     case "fpChanged":
       return `${note.fn} returns on ${at} with fp changed: a function must hand fp back as it found it`;
-    case "callee":
-      return `${note.fn} returns on ${at} with x${note.register} changed: a function must hand x19 to x28 back as it found them`;
     default: {
       const exhaustive: never = note.kind;
       return exhaustive;
