@@ -11,7 +11,7 @@
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
 import type { FrameNote, HiddenRunOutcome } from "@/lib/content/exercise-checker";
-import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { parseLineMap, pcToSourceLineFromMap } from "@/lib/emulator/line-map";
 import { decodeFrameLayout, decodeFrames, type FrameLayout } from "@/lib/emulator/stack-frames";
 
@@ -92,19 +92,15 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Stops one run reads the call stack at: calls, rets and returns, a branch or
- * fall-through onto a function's first instruction, a ret that goes astray,
- * and also slice ends, sleeps, the fault that ends a run and the halt, since
- * the run reads it after every slice.
+ * Stops one run reads the call stack at: a function's first instruction (a
+ * call, or a branch or fall-through onto it), and also slice ends, sleeps,
+ * the fault that ends a run and the halt, since the run reads it after every
+ * slice.
  *
  * shortcut: a long run is checked only in part: past these stops the rest of
  * the run goes unchecked; raise this if an exercise ever needs more.
  */
 const MAX_FRAME_STOPS = 2_000;
-
-/** A `ret` through any register: the register sits in bits 5 to 9. */
-const RET = 0xd65f0000;
-const RET_MASK = 0xfffffc1f;
 
 /**
  * Notes one run keeps. Their key (kind, function, line) already
@@ -114,13 +110,11 @@ const RET_MASK = 0xfffffc1f;
 const MAX_FRAME_NOTES = 8;
 
 /**
- * The per-call frame checks, read from the machine's own call tracking. The
- * run stops at every call (a breakpoint on each function's first
- * instruction), every ret (a breakpoint on each one in a function) and every
- * return (a goal one call shallower than the program stands) until the stops
- * run out or a ret returns to no call made with bl or blr, and each stop
- * reads the call stack the frames view draws. Null on a wasm build without
- * the frames exports.
+ * The sp check at each call, read from the machine's own call tracking. The
+ * run stops at each of the program's functions' first instruction (a
+ * breakpoint on each) until the stops run out, and each stop reads the call
+ * stack the frames view draws. Null on a wasm build without the frames
+ * exports.
  */
 function watchFrames(machine: HeadlessMachine) {
   const start = machine.frames();
@@ -131,29 +125,15 @@ function watchFrames(machine: HeadlessMachine) {
   const lineOf = (pc: number) => pcToSourceLineFromMap(pc, lines);
   const nameAt = (pc: number) =>
     layout.functions.find((fn) => pc >= fn.entry && pc < fn.end)?.name ?? `0x${pc.toString(16)}`;
-  // Each ret's address, and the register it returns through.
-  const rets = new Map<number, number>();
-  for (const fn of layout.functions) {
-    machine.setBreakpoint(fn.entry);
-    const code = machine.getMemoryRange(fn.entry, fn.end - fn.entry);
-    const words = new DataView(code.buffer, code.byteOffset, code.byteLength);
-    for (let at = 0; at + 4 <= code.byteLength; at += 4) {
-      const word = words.getUint32(at, true);
-      if (((word & RET_MASK) >>> 0) !== RET) continue;
-      rets.set(fn.entry + at, (word >>> 5) & 31);
-      machine.setBreakpoint(fn.entry + at);
-    }
-  }
+  for (const fn of layout.functions) machine.setBreakpoint(fn.entry);
 
   const notes = new Map<string, FrameNote>();
   const add = (note: FrameNote) => {
     const key = `${note.kind} ${note.fn} ${note.line}`;
     if (notes.size < MAX_FRAME_NOTES && !notes.has(key)) notes.set(key, note);
   };
-  let depth = callDepth(start);
   let stops = 0;
   return {
-    goal: () => (stops < MAX_FRAME_STOPS ? { depth: depth - 1 } : undefined),
     read() {
       if (stops === MAX_FRAME_STOPS) return;
       stops += 1;
@@ -161,37 +141,10 @@ function watchFrames(machine: HeadlessMachine) {
       const numbers = machine.frames();
       const snapshot = numbers && decodeFrames(numbers);
       if (!numbers || !snapshot) return;
-      depth = callDepth(numbers);
-      if (snapshot.badReturn) {
-        // A ret that returned to no call made with bl or blr leaves the call
-        // stack stale, so the run notes nothing more and goes straight
-        // through, as at the stop cap.
-        stops = MAX_FRAME_STOPS;
-        machine.clearAllBreakpoints();
-        return;
-      }
+      // A row's sp and call site are recorded at its bl or blr, so even a row
+      // a stray ret left behind still names its call truly.
       for (const row of snapshot.frames) {
-        const fn = nameAt(row.entry);
-        if (row.spEntry % 16 !== 0) add({ kind: "sp", fn, line: lineOf(row.callPc) });
-        if (row.fpHit) add({ kind: "fp", fn, line: lineOf(row.fpHit.pc) });
-        if (row.lrHit) add({ kind: "lr", fn, line: lineOf(row.lrHit.pc) });
-      }
-      // A ret hands the caller fp as it is now; main's own ret is left out. A
-      // ret is checked only when sp is back at the innermost call's entry value
-      // and its register holds that call's return address, so a ret that goes
-      // astray or skips past its caller is not.
-      const pc = machine.getPc();
-      const through = rets.get(pc);
-      const call = snapshot.frames.at(-1);
-      if (
-        through !== undefined &&
-        call &&
-        call.index > 0 &&
-        Number(machine.getSp()) === call.spEntry &&
-        Number(machine.getRegister(through)) === call.retAddr &&
-        Number(machine.getRegister(29)) !== call.fpEntry
-      ) {
-        add({ kind: "fpChanged", fn: nameAt(pc), line: lineOf(pc) });
+        if (row.spEntry % 16 !== 0) add({ kind: "sp", fn: nameAt(row.entry), line: lineOf(row.callPc) });
       }
     },
     notes: () => [...notes.values()],
@@ -243,7 +196,7 @@ export async function runHeadless(
   const watch = watchFrames(machine);
   try {
     while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
-      const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps), watch?.goal());
+      const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
       error = slice.error;
       errorLine = slice.error_line;
       watch?.read();
@@ -252,10 +205,9 @@ export async function runHeadless(
       if (slice.steps_executed === 0 && !slice.halted) break;
       steps += slice.steps_executed;
       sinceYield += slice.steps_executed;
-      // A stop at a call or a return is not a slice of its own: the page
-      // still gets its turn once per SLICE_STEPS.
-      const frameStop = slice.hit_breakpoint || slice.reached || slice.bad_return;
-      if (!machine.isHalted() && error === null && (!frameStop || sinceYield >= SLICE_STEPS)) {
+      // A stop at a call is not a slice of its own: the page still gets its
+      // turn once per SLICE_STEPS.
+      if (!machine.isHalted() && error === null && (!slice.hit_breakpoint || sinceYield >= SLICE_STEPS)) {
         sinceYield = 0;
         await nextTask();
       }
