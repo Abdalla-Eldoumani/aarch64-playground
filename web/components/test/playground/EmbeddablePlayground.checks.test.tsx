@@ -116,7 +116,6 @@ describe("checks in the full playground", () => {
           exitCode: 0,
           stackBalanced: true,
           frameIntact: true,
-          frameNotes: [],
         },
       ],
     });
