@@ -508,8 +508,9 @@ export function FullChromeSurface({
         {/* A short pane (a phone on its side, a pane dragged to its floor, an
             iPad's tall touch strip) squeezed the list to nothing under the
             strips. The list keeps its header and three rows (13rem for 44px
-            cells) and the pane scrolls as one box, the box the follow moves. */}
-        <div className="flex-1 min-h-[7.25rem] [@media(pointer:coarse)]:min-h-[13rem]">
+            cells, and on a phone, whose view holds nothing else) and the pane
+            scrolls as one box, the box the follow moves. */}
+        <div className={`flex-1 ${phone ? "min-h-[13rem]" : "min-h-[7.25rem] [@media(pointer:coarse)]:min-h-[13rem]"}`}>
           <RegisterPanel
             registers={emu.registers}
             changedRegs={emu.changedRegs}
