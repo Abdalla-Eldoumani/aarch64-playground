@@ -110,7 +110,7 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `gdb info registers` | Print every register. |
 | `gdb x/Ni $pc` | Show N words of memory at the PC, or at the address in a register (`$x0`). N is at most 1024. |
 | `gdb x/Ngx $sp` | Show N 8-byte words in hex, two to a line, from `$sp`, `$fp`, any register, or an address (`0x7ffffff0`). N is at most 1024. |
-| `gdb bt` | The call stack: `#0` is the function the program is in and its line, `#1` its caller at the line of the call, and so on down to `main`. Past 20 frames the middle ones fold into one line. |
+| `gdb bt` | The call stack: `#0` is the function the program is in and its line, `#1` its caller at the line of the call, and so on down to `main`. Past 20 frames the rest, apart from `main`, fold into one line (`... 3 more calls ...`). A program deeper than the 16,384 calls the playground records starts with one line for the calls it did not record (`(#0 to #4: 5 deeper frames, not recorded)`). |
 | `gdb info frame` | This function's frame: its size and the addresses it spans, who called it, then each box from the top down (locals by name with their values, padding, the saved lr and what it returns to, the saved fp and whose frame it points at). |
 
 `ni`, `finish`, `bt` and `info frame` read the same call stack the stack
