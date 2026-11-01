@@ -2,9 +2,10 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this and the playground runs its checks on it. A run also notes each call
- * that broke a stack rule, and `runToPause` stops a frame exercise's program
- * where its frame is to be drawn.
+ * this and the playground runs its checks on it. A run also notes the calls
+ * it checks that broke a stack rule, up to eight notes a run, and
+ * `runToPause` stops a frame exercise's program where its frame is to be
+ * drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
@@ -90,8 +91,9 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Stops one run reads the call stack at: calls, rets and returns, and also
- * slice ends, sleeps and the halt, since the run reads it after every slice.
+ * Stops one run reads the call stack at: calls, rets and returns, a branch or
+ * fall-through onto a function's first instruction, and also slice ends,
+ * sleeps and the halt, since the run reads it after every slice.
  *
  * shortcut: a long run is checked only in part: past these stops the rest of
  * the run goes unchecked; raise this if an exercise ever needs more.
