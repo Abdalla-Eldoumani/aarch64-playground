@@ -101,7 +101,11 @@ const MAX_FRAME_STOPS = 2_000;
 const RET = 0xd65f0000;
 const RET_MASK = 0xfffffc1f;
 
-/** Notes one run keeps, so a call broken inside a loop cannot flood the result. */
+/**
+ * Notes one run keeps. Their key (kind, function, line, register) already
+ * makes a call broken inside a loop one note, so this bounds the list for a
+ * program that breaks the rules in many places.
+ */
 const MAX_FRAME_NOTES = 8;
 
 /**
