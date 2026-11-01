@@ -100,6 +100,26 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  // Each base case's ret goes astray and every call puts x19 to x28 back, so
+  // only the stray ret is noted: the run notes nothing after it.
+  it.each([2, 4])("note only the stray ret when count_down(%i) saves x19", async (n) => {
+    const source = fixture("astray-x19-recursion.s").replace("mov     x0, 2", `mov     x0, ${n}`);
+    const { noted, plain } = await bothRuns(source);
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "count_down", line: 37 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
+  it.each([
+    ["astray-fib.s", "fib", 47, "3\n"],
+    ["astray-two-step-recursion.s", "count_down", 36, "7\n"],
+  ])("note only the stray ret in %s", async (name, fn, line, stdout) => {
+    const { noted, plain } = await bothRuns(fixture(name));
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn, line }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout, exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   // In each, main's call comes back with fp changed by a function reached by b.
   it.each([
     ["tail-fp-scratch.s", "set_fp", 18],
