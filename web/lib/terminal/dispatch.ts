@@ -1,6 +1,6 @@
 import { formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
 import { parseAddress } from "@/lib/emulator/parse-address";
-import type { DrawnStack, FramesSnapshot, StackBytes } from "@/lib/emulator/stack-frames";
+import { plural, type DrawnStack, type FramesSnapshot, type StackBytes } from "@/lib/emulator/stack-frames";
 import { parseArgsDetailed } from "@/lib/playground/args";
 
 /**
@@ -220,8 +220,6 @@ const GDB_HELP_LINES = [
   "  gdb bt                            the call stack: this function, then each caller",
   "  gdb info frame                    this function's frame: its bytes, saved fp and lr, locals",
 ];
-
-const COUNT = new Intl.NumberFormat("en-US");
 
 // The machine drops the last frame only when the outermost function returns,
 // which ends the program (a `_start` that exits through svc keeps its own).
@@ -498,14 +496,14 @@ function backtrace({ snapshot, stack }: FrameStack, ctx: DispatchContext): strin
   });
   const lines: string[] = [];
   if (snapshot.uncounted > 0) {
-    lines.push(`(#0 to #${snapshot.uncounted - 1}: ${COUNT.format(snapshot.uncounted)} deeper frames, not recorded)`);
+    lines.push(`(#0 to #${snapshot.uncounted - 1}: ${plural(snapshot.uncounted, "deeper frame")}, not recorded)`);
   }
   // #0 to #uncounted - 1 are all on the first line.
   const shown = snapshot.uncounted + BT_SHOWN;
   for (const { n, text } of entries.reverse()) {
     if (n < shown || n === stack.depth - 1) {
       if (n === stack.depth - 1 && stack.depth > shown + 1) {
-        lines.push(`... ${COUNT.format(stack.depth - shown - 1)} more calls ...`);
+        lines.push(`... ${plural(stack.depth - shown - 1, "more call")} ...`);
       }
       lines.push(`#${n}  ${text}`);
     }
