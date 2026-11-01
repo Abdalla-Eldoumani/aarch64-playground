@@ -162,7 +162,8 @@ function watchFrames(machine: HeadlessMachine) {
         if (row.lrHit) add({ kind: "lr", fn, line: lineOf(row.lrHit.pc) });
       }
       const astray = snapshot.badReturn;
-      if (astray) add({ kind: "return", fn: nameAt(astray.call.entry), line: lineOf(astray.pc) });
+      // Named for the code that holds the ret: a function reached by b is not on the stack.
+      if (astray) add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
       // A ret hands the caller fp as it is now; main's own ret is left out. Only
       // a ret in the innermost call's own function is checked: a call whose ret
       // went astray stays on the stack, and its stray ret is already noted.
