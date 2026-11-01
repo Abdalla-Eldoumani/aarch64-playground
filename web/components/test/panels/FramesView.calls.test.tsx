@@ -140,6 +140,36 @@ describe("FramesView's list of calls", () => {
     }
   });
 
+  it("scrolls on its own and keeps the call the machine is in at its nearest edge once the machine stops", () => {
+    // Drawn mid-run, when nothing follows, so the list can be sized first: a
+    // 40px box over 18px rows, main 10px down its content, add_two(5) 100px.
+    const { rerender } = render(<FramesView {...props({ running: true })} />);
+    const box = list();
+    const scroll = { top: 0 };
+    Object.defineProperty(box, "clientHeight", { configurable: true, value: 40 });
+    Object.defineProperty(box, "scrollTop", {
+      configurable: true,
+      get: () => scroll.top,
+      set: (v: number) => {
+        scroll.top = v;
+      },
+    });
+    for (const [call, top] of [["main", 10], ["add_two(5)", 100]] as const) {
+      Object.defineProperty(row(call), "offsetTop", { configurable: true, value: top });
+      Object.defineProperty(row(call), "offsetHeight", { configurable: true, value: 18 });
+    }
+    rerender(<FramesView {...props()} />);
+    // add_two(5)'s bottom edge meets the box's: 100 + 18 - 40.
+    expect(scroll.top).toBe(78);
+    // Back in main, above the view: its top edge meets the box's.
+    rerender(<FramesView {...props({ frames: frames(false, 9, BACK_IN_MAIN), pc: 0x400014 })} />);
+    expect(scroll.top).toBe(10);
+    // Already in view, nothing moves.
+    rerender(<FramesView {...props({ frames: frames(false, 10, BACK_IN_MAIN), pc: 0x400018 })} />);
+    expect(scroll.top).toBe(10);
+    expect(box.tabIndex).toBe(0);
+  });
+
   it("is not there without the calls switch, and a return is said without its value", () => {
     const { rerender } = render(<FramesView {...props({ calls: false, frames: frames(true, 8, IN_ADD_TWO) })} />);
     expect(screen.queryByRole("list", { name: "calls so far" })).toBeNull();
