@@ -1,0 +1,137 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="1008" viewBox="0 0 800 1008" role="img" aria-labelledby="title" font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13">
+<title id="title">How the frames view is built: the call stack, which a bl or blr pushes and its ret pops, the frame chain walked from x29, and each function's static layout cross to the page as frames and frameLayout, and stack-frames.ts reads the stack's bytes and draws each call's frame, shown here as minmax stores into main's frame</title>
+<defs>
+<marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" markerUnits="userSpaceOnUse" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#A5ACB6"/></marker>
+</defs>
+<rect width="800" height="1008" fill="#0B0C10"/>
+
+<rect x="24" y="24" width="240" height="152" rx="4" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="144" y="52" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Call stack</text>
+<text x="144" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">frames.rs</text>
+<text x="144" y="96" text-anchor="middle" fill="#A5ACB6">one record per call:</text>
+<text x="144" y="114" text-anchor="middle" fill="#A5ACB6">a bl or blr into your code</text>
+<text x="144" y="132" text-anchor="middle" fill="#A5ACB6">pushes it, its ret pops it,</text>
+<text x="144" y="150" text-anchor="middle" fill="#A5ACB6">checked on every step</text>
+
+<rect x="280" y="24" width="240" height="152" rx="4" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="400" y="52" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Frame chain</text>
+<text x="400" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">chain_matches</text>
+<text x="400" y="96" text-anchor="middle" fill="#A5ACB6">from x29, each saved fp</text>
+<text x="400" y="114" text-anchor="middle" fill="#A5ACB6">leads to the caller's record;</text>
+<text x="400" y="132" text-anchor="middle" fill="#A5ACB6">the saved lrs are checked</text>
+<text x="400" y="150" text-anchor="middle" fill="#A5ACB6">against the call stack</text>
+
+<rect x="536" y="24" width="240" height="152" rx="4" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="656" y="52" text-anchor="middle" font-size="14" font-weight="600" fill="#EDEEF1">Static layout</text>
+<text x="656" y="72" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">frames/layout.rs</text>
+<text x="656" y="96" text-anchor="middle" fill="#A5ACB6">each function's slots off x29,</text>
+<text x="656" y="114" text-anchor="middle" fill="#A5ACB6">named from your operands:</text>
+<text x="656" y="132" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">str w9, [fp, a_s]</text>
+<text x="656" y="150" text-anchor="middle" fill="#A5ACB6">worked out once per assemble</text>
+
+<path d="M144 176V224" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="152" y="204" fill="#A5ACB6">the calls</text>
+
+<path d="M400 176V224" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="408" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">chainOk</text>
+
+<path d="M656 176V224" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="664" y="204" fill="#A5ACB6">the slots</text>
+
+<rect x="24" y="224" width="496" height="64" rx="4" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="272" y="251" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#EDEEF1">frames()</text>
+<text x="272" y="271" text-anchor="middle" fill="#A5ACB6"><tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">frame_view</tspan> lays out the drawn calls as numbers, once per snapshot</text>
+
+<rect x="536" y="224" width="240" height="64" rx="4" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="656" y="251" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#EDEEF1">frame_layout()</text>
+<text x="656" y="271" text-anchor="middle" fill="#A5ACB6">and <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">frame_names()</tspan></text>
+
+<path d="M272 288V336" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="280" y="316" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">frames</text>
+
+<path d="M656 288V336" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="664" y="316" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">frameLayout</text>
+
+<rect x="24" y="336" width="752" height="40" rx="4" fill="#14171D" stroke="#B49BFF" stroke-width="2"/>
+<text x="400" y="361" text-anchor="middle" fill="#A5ACB6">the worker passes both on raw: <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">frames</tspan> in each <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">StateSnapshot</tspan>, <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">frameLayout</tspan> once per assemble</text>
+
+<path d="M400 376V424" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="408" y="404" fill="#A5ACB6">both, raw</text>
+
+<rect x="24" y="424" width="752" height="88" rx="4" fill="#14171D" stroke="#6E7582" stroke-width="2"/>
+<text x="400" y="451" text-anchor="middle" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="14" font-weight="600" fill="#EDEEF1">stack-frames.ts</text>
+<text x="400" y="471" text-anchor="middle" fill="#A5ACB6">decodes both, reads the drawn frames' bytes through <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">getMemory</tspan> and the step's</text>
+<text x="400" y="489" text-anchor="middle" fill="#A5ACB6">writes from <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">dirtyAddrs</tspan>, and hands <tspan font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">FramesView.tsx</tspan> one box per saved register, slot and gap</text>
+
+<path d="M400 512V552" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="408" y="536" fill="#A5ACB6">draws</text>
+
+<rect x="24" y="552" width="752" height="400" rx="4" fill="none" stroke="#6E7582" stroke-width="1"/>
+<text x="40" y="576" font-weight="600" fill="#A5ACB6">the picture students see, as minmax stores the lowest value</text>
+
+<text x="48" y="616" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">main</tspan> · 32 bytes</text>
+
+<text x="96" y="649" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 24</text>
+<rect x="104" y="632" width="288" height="24" fill="none" stroke="#3A414C" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="112" y="649" fill="#A5ACB6"><tspan font-weight="600">padding</tspan><tspan dx="8">8 bytes</tspan></text>
+
+<text x="96" y="681" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 20</text>
+<rect x="104" y="664" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="681" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">hi_s = 0</tspan><tspan dx="8">int, 4 bytes</tspan></text>
+
+<text x="96" y="713" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 16</text>
+<rect x="104" y="696" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<rect x="104" y="696" width="3" height="24" fill="#FFB224"/>
+<text x="112" y="713" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">lo_s = -3</tspan><tspan dx="8">int, 4 bytes</tspan></text>
+
+<text x="96" y="745" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 8</text>
+<rect x="104" y="728" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="745" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">saved lr (x30)</tspan><tspan dx="8">back to the C runtime</tspan></text>
+
+<text x="96" y="777" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 0</text>
+<rect x="104" y="760" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="777" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">saved fp (x29)</tspan><tspan dx="8">0, no caller frame</tspan></text>
+
+<text x="48" y="804" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">minmax</tspan> · 32 bytes · called from line 72</text>
+
+<text x="96" y="833" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 24</text>
+<rect x="104" y="816" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="833" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">[fp, 24] = 0</tspan><tspan dx="8">long, 8 bytes</tspan></text>
+
+<text x="96" y="865" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 16</text>
+<rect x="104" y="848" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="865" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">mm_save = 0</tspan><tspan dx="8">long, 8 bytes</tspan></text>
+
+<text x="96" y="897" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 8</text>
+<rect x="104" y="880" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="897" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">saved lr (x30)</tspan><tspan dx="8">back to line 74</tspan></text>
+
+<text x="96" y="929" text-anchor="end" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">fp + 0</text>
+<rect x="104" y="912" width="288" height="24" fill="#14171D" stroke="#3A414C" stroke-width="1"/>
+<text x="112" y="929" fill="#A5ACB6"><tspan font-weight="600" fill="#EDEEF1">saved fp (x29)</tspan><tspan dx="8">main's frame</tspan></text>
+<text x="400" y="929" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" fill="#A5ACB6">← sp, fp</text>
+
+<path d="M472 676H392" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="480" y="672" fill="#A5ACB6">names, sizes and the gaps between:</text>
+<text x="480" y="690" fill="#A5ACB6">the static layout; values: the stack's bytes</text>
+
+<path d="M472 708H392" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="480" y="716" fill="#A5ACB6">the amber bar: what the last step wrote,</text>
+<text x="480" y="734" fill="#A5ACB6">here minmax's str through x2</text>
+
+<path d="M472 800H280" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="480" y="804" fill="#A5ACB6">one frame per call, main first, with its</text>
+<text x="480" y="822" fill="#A5ACB6">size and caller: the call stack</text>
+
+<path d="M472 892H392" fill="none" stroke="#A5ACB6" stroke-width="1.5" marker-end="url(#arrow)"/>
+<text x="480" y="888" fill="#A5ACB6">the record's words, which the chain walk</text>
+<text x="480" y="906" fill="#A5ACB6">follows: named when they still hold</text>
+<text x="480" y="924" fill="#A5ACB6">what the call left there</text>
+
+<rect x="32" y="976" width="16" height="12" rx="2" fill="#14171D" stroke="#6E7582" stroke-width="2"/>
+<text x="56" y="987" fill="#A5ACB6">page code</text>
+<rect x="152" y="976" width="16" height="12" rx="2" fill="#14171D" stroke="#B49BFF" stroke-width="2"/>
+<text x="176" y="987" fill="#A5ACB6">worker</text>
+<rect x="256" y="976" width="16" height="12" rx="2" fill="#14171D" stroke="#FFB224" stroke-width="2"/>
+<text x="280" y="987" fill="#A5ACB6">Rust interpreter</text>
+</svg>
