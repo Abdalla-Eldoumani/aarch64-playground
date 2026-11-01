@@ -267,9 +267,9 @@ broken program the reader fixes) add:
   A failing case shows the reader its input and their own output, never
   the expected text.
 
-Every hidden run also checks each call the program makes to one of its own
-functions: `sp` is a multiple of 16 at the call, nothing writes over the
-saved `fp` or `lr` in a caller's frame, every `ret` goes back to its
+Every hidden run also checks the first 660 or more calls the program makes
+to its own functions: `sp` is a multiple of 16 at the call, nothing writes
+over the saved `fp` or `lr` in a caller's frame, every `ret` goes back to its
 caller, and a function hands `fp` and `x19` to `x28` back as it found
 them (`main` is left out of that one, since course programs keep their own
 values in `x19` to `x28` there). What a run finds shows under the results
