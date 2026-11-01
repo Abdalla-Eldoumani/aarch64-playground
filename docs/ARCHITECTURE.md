@@ -316,8 +316,12 @@ turns them into words, because every string in the crate ships in the wasm.
 ### What a snapshot carries
 
 `frames()` in `emulator/src/lib.rs` runs once per snapshot. Its `frame_view`
-walks the chain, places the layout's slots under each call's frame record,
-and flattens the result into numbers (`view_numbers`). A header comes first:
+walks the chain and flattens each drawn frame into numbers (`view_numbers`):
+its entry, the call and return addresses, `sp` and `fp` at entry, its low end,
+its record, its state, its flags, and the latest writes that changed its saved
+`fp` and `lr`. It uses the layout only to tell a just-entered call from a leaf
+and to name the array element such a write reached; `stack-frames.ts` on the
+page places the layout's slots in each frame. A header comes first:
 the step count, the calls past the record's cap, and any return to no caller.
 Then come one row per drawn frame (`main` and the innermost 63), the
 callee-saved registers a returning call left changed, and the call tree. The
