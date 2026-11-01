@@ -126,14 +126,16 @@ function watchFrames(machine: HeadlessMachine) {
   const lineOf = (pc: number) => pcToSourceLineFromMap(pc, lines);
   const fnAt = (pc: number) => layout.functions.find((fn) => pc >= fn.entry && pc < fn.end);
   const nameAt = (pc: number) => fnAt(pc)?.name ?? `0x${pc.toString(16)}`;
-  const rets = new Set<number>();
+  // Each ret's address, and the register it returns through.
+  const rets = new Map<number, number>();
   for (const fn of layout.functions) {
     machine.setBreakpoint(fn.entry);
     const code = machine.getMemoryRange(fn.entry, fn.end - fn.entry);
     const words = new DataView(code.buffer, code.byteOffset, code.byteLength);
     for (let at = 0; at + 4 <= code.byteLength; at += 4) {
-      if (((words.getUint32(at, true) & RET_MASK) >>> 0) !== RET) continue;
-      rets.add(fn.entry + at);
+      const word = words.getUint32(at, true);
+      if (((word & RET_MASK) >>> 0) !== RET) continue;
+      rets.set(fn.entry + at, (word >>> 5) & 31);
       machine.setBreakpoint(fn.entry + at);
     }
   }
@@ -165,15 +167,18 @@ function watchFrames(machine: HeadlessMachine) {
       // Named for the code that holds the ret: a function reached by b is not on the stack.
       if (astray) add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
       // A ret hands the caller fp as it is now; main's own ret is left out. Only
-      // a ret in the innermost call's own function is checked: a call whose ret
-      // went astray stays on the stack, and its stray ret is already noted.
+      // a ret in the innermost call's own function that returns that call is
+      // checked: a call whose ret went astray stays on the stack, a recursion's
+      // outer call shares its function, and the stray ret is already noted.
       const pc = machine.getPc();
+      const through = rets.get(pc);
       const call = snapshot.frames.at(-1);
       if (
-        rets.has(pc) &&
+        through !== undefined &&
         call &&
         call.index > 0 &&
         fnAt(pc) === fnAt(call.entry) &&
+        Number(machine.getRegister(through)) === call.retAddr &&
         Number(machine.getRegister(29)) !== call.fpEntry
       ) {
         add({ kind: "fpChanged", fn: nameAt(pc), line: lineOf(pc) });
