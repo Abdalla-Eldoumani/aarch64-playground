@@ -268,8 +268,10 @@ broken program the reader fixes) add:
   the expected text.
 
 Every hidden run also checks the first 660 or more calls the program makes
-to its own functions: `sp` is a multiple of 16 at the call, nothing writes
-over the saved `fp` or `lr` in a caller's frame, every `ret` goes back to its
+to its own functions (fewer when a `ret` goes astray, the program sleeps, or
+a branch or fall-through reaches a function's first instruction): `sp` is a
+multiple of 16 at the call, nothing writes over the saved `fp` or `lr` in a
+caller's frame, every `ret` goes back to its
 caller, and a function hands `fp` and `x19` to `x28` back as it found
 them (`main` is left out of that one, since course programs keep their own
 values in `x19` to `x28` there). What a run finds shows under the results
