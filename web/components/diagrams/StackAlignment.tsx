@@ -8,6 +8,8 @@
  */
 
 import { useState, type JSX } from "react";
+import { FrameRow } from "@/components/panels/FrameRow";
+import { KIND_STYLE, WHOLE_FRAME } from "@/components/panels/frame-styles";
 import { Button } from "@/components/ui/Button";
 
 // The 16-byte-aligned row the emulator's stack band starts a frame on.
@@ -30,12 +32,6 @@ const PRESETS: Preset[] = [
 ];
 
 const hex = (value: number): string => `0x${value.toString(16)}`;
-
-/** Amber: where the machine's pointer sits now, the FrameWalk treatment. */
-const SP_MARKER_STYLE = {
-  borderColor: "var(--amber)",
-  backgroundColor: "color-mix(in srgb, var(--amber) 12%, transparent)",
-} as const;
 
 const ALIGNED_STYLE = {
   borderColor: "var(--success)",
@@ -125,53 +121,25 @@ export function StackAlignment({
             the stack grows downward
           </span>
         </div>
-        <ul aria-label="stack cells, 8 bytes each" className="flex flex-col gap-1.5">
-          <li
+        {/* The frames view's rows, with no offset column: a cell's address
+            is all it holds, so it is the box's title. */}
+        <ul aria-label="stack cells, 8 bytes each">
+          <FrameRow
             aria-label={`caller's frame${sp === START_SP ? ", sp rests at its bottom edge" : ""}`}
-            className="flex min-h-[36px] items-center justify-between gap-3 rounded-[var(--radius-control)] border border-[var(--border)] bg-[var(--bg-raised)] px-3 py-1.5"
-          >
-            <span className="font-mono text-[12px] text-[var(--text-secondary)]">
-              caller&apos;s frame
-            </span>
-            {sp === START_SP && (
-              <span
-                className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
-                style={SP_MARKER_STYLE}
-              >
-                {"<- sp"}
-              </span>
-            )}
-          </li>
+            box={WHOLE_FRAME}
+            title="caller's frame"
+            marker={sp === START_SP ? "sp" : ""}
+          />
           {bases.map((base) => {
             const taken = base >= sp;
             return (
-              <li
+              <FrameRow
                 key={base}
                 aria-label={`${hex(base)}, ${taken ? "inside the new frame" : "free"}`}
-                className={`flex min-h-[36px] items-center justify-between gap-3 rounded-[var(--radius-control)] border px-3 py-1.5 ${
-                  taken
-                    ? "border-[var(--border)] bg-[var(--bg-raised)]"
-                    : "border-dashed border-[var(--border)]"
-                }`}
-              >
-                <span
-                  className={`font-mono text-[12px] ${
-                    taken
-                      ? "text-[var(--text-primary)]"
-                      : "text-[var(--text-tertiary)]"
-                  }`}
-                >
-                  {hex(base)}
-                </span>
-                {base === sp && (
-                  <span
-                    className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
-                    style={SP_MARKER_STYLE}
-                  >
-                    {"<- sp"}
-                  </span>
-                )}
-              </li>
+                box={taken ? WHOLE_FRAME : KIND_STYLE.padding}
+                title={hex(base)}
+                marker={base === sp ? "sp" : ""}
+              />
             );
           })}
         </ul>
