@@ -276,14 +276,15 @@ function evaluateStructural(assertion: StructuralAssertion, strippedSource: stri
 
 /**
  * One call that broke a stack rule during a hidden run, from the machine's
- * own call tracking (lib/emulator/headless-run reads it at every call and
- * return). `sp`: the call went out with sp off a multiple of 16. `fp` and
+ * own call tracking (lib/emulator/headless-run reads it at every call, ret
+ * and return). `sp`: the call went out with sp off a multiple of 16. `fp` and
  * `lr`: a write changed the saved fp or lr in `fn`'s frame. `return`: `fn`'s
- * ret went somewhere other than back to its caller. `callee`: `fn` returned
- * with `register` (19 to 28) changed; main is never named for that one.
+ * ret went somewhere other than back to its caller. `fpChanged`: `fn`
+ * returned with fp not as the call found it. `callee`: `fn` returned with
+ * `register` (19 to 28) changed. main is never named for the last two.
  */
 export interface FrameNote {
-  kind: "sp" | "fp" | "lr" | "return" | "callee";
+  kind: "sp" | "fp" | "lr" | "return" | "fpChanged" | "callee";
   /** The function called, whose frame was written, or that returned. */
   fn: string;
   /** The line of the call, the write or the ret, in the run's source. */
