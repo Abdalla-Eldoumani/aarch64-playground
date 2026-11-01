@@ -2,10 +2,11 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this and the playground runs its checks on it. A run also notes the calls
- * it checks that broke a stack rule, up to eight notes a run and none after
- * a ret that goes astray; `runToPause` stops a frame exercise's program where
- * its frame is to be drawn.
+ * this and the playground runs its checks on it. A run also notes where the
+ * calls it checks broke a stack rule (sp at a call, a write over a saved fp
+ * or lr, fp not handed back), up to eight notes a run and none after a ret
+ * that returns to no call made with bl or blr; `runToPause` stops a frame
+ * exercise's program where its frame is to be drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
@@ -117,9 +118,9 @@ const MAX_FRAME_NOTES = 8;
  * run stops at every call (a breakpoint on each function's first
  * instruction), every ret (a breakpoint on each one in a function) and every
  * return (a goal one call shallower than the program stands) until the stops
- * run out or a ret goes astray, and each stop reads the call stack the frames
- * view draws; the stray ret is the last thing a run notes. Null on a wasm
- * build without the frames exports.
+ * run out or a ret returns to no call made with bl or blr, and each stop
+ * reads the call stack the frames view draws. Null on a wasm build without
+ * the frames exports.
  */
 function watchFrames(machine: HeadlessMachine) {
   const start = machine.frames();
