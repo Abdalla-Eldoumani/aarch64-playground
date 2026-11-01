@@ -210,12 +210,6 @@ function frameNoteText(note: FrameNote): string {
   switch (note.kind) {
     case "sp":
       return `${at} calls ${note.fn} with sp not a multiple of 16`;
-    case "fp":
-      return `${at} writes over the saved fp in ${note.fn}'s frame`;
-    case "lr":
-      return `${at} writes over the saved lr in ${note.fn}'s frame`;
-    case "fpChanged":
-      return `${note.fn} returns on ${at} with fp changed: a function must hand fp back as it found it`;
     default: {
       const exhaustive: never = note.kind;
       return exhaustive;
