@@ -114,7 +114,7 @@ describe("FrameExerciseView", () => {
     fill({ ...RIGHT, size: "9".repeat(100_000), sum: "0x18", last: "" });
     expect(await checked()).toBe("3 of 6 right");
     const section = frameSection();
-    expect(within(section).getAllByText("Type a whole number of bytes, digits only, like 16.")).toHaveLength(2);
+    expect(within(section).getAllByText("Type a whole number of bytes, digits only.")).toHaveLength(2);
     expect(within(section).getByText("Type a number of bytes here.")).toBeTruthy();
     expect(within(section).getAllByText("not a number")).toHaveLength(2);
   });
