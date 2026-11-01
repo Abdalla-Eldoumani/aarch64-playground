@@ -409,7 +409,6 @@ describe("ExerciseView hidden inputs", () => {
     exitCode: 0,
     stackBalanced: true,
     frameIntact: true,
-    frameNotes: [],
   };
 
   it("names how many hidden inputs there are and never what they are", () => {
