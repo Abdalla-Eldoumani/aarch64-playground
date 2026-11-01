@@ -42,28 +42,23 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a write over a caller's saved fp, and the program still passes as before", async () => {
+  it("make no note for a write over a caller's saved fp, and the program still passes as before", async () => {
     const { noted, plain } = await bothRuns(fixture("fp-overwrite.s"));
-    expect(noted.frameNotes).toEqual([{ kind: "fp", fn: "main", line: 28 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "done\n", exitCode: 0, frameIntact: true });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a function that writes over its own saved fp and returns with fp changed", async () => {
+  it("make no note for a function that writes over its own saved fp and returns with fp changed", async () => {
     const { noted, plain } = await bothRuns(fixture("own-saved-fp.s"));
-    // keep's ret is line 28.
-    expect(noted.frameNotes).toEqual([{ kind: "fpChanged", fn: "keep", line: 28 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a write over a caller's saved lr and nothing for the ret it sends astray, with the fault unchanged", async () => {
+  it("make no note for a write over a caller's saved fp and lr, with the fault unchanged", async () => {
     const { noted, plain } = await bothRuns(fixture("lr-overwrite.s"));
-    // fill's writes 4 to 7 cover main's saved fp (4, 5) and saved lr (6, 7).
-    expect(noted.frameNotes).toEqual([
-      { kind: "fp", fn: "main", line: 27 },
-      { kind: "lr", fn: "main", line: 27 },
-    ]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted.error).not.toBeNull();
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
@@ -121,12 +116,12 @@ describe("the per-call frame notes", () => {
 
   // In each, main's call comes back with fp changed by a function reached by b.
   it.each([
-    ["tail-fp-scratch.s", "set_fp", 18],
-    ["tail-own-saved-fp.s", "keep", 27],
-    ["tail-after-epilogue.s", "keep", 27],
-  ])("note fp changed by a function reached by b (%s)", async (name, fn, line) => {
+    ["tail-fp-scratch.s"],
+    ["tail-own-saved-fp.s"],
+    ["tail-after-epilogue.s"],
+  ])("make no note for fp changed by a function reached by b (%s)", async (name) => {
     const { noted, plain } = await bothRuns(fixture(name));
-    expect(noted.frameNotes).toEqual([{ kind: "fpChanged", fn, line }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
@@ -157,6 +152,18 @@ describe("the per-call frame notes", () => {
     expect(noted.frameNotes).toEqual([]);
     expect(noted).toEqual(plain);
     expect(noted.stdout).toBe("total = 140\n");
+  });
+
+  it("note a forgetful helper fix that calls double_it with sp off a multiple of 16", async () => {
+    const offSp = solutionFor("the-forgetful-helper")
+      .replace("        bl      double_it", "        sub     sp, sp, 8\n        bl      double_it")
+      .replace("        add     total_r, total_r, x0", "        add     sp, sp, 8\n        add     total_r, total_r, x0");
+    expect(offSp).toContain("sub     sp, sp, 8");
+    const { noted, plain } = await bothRuns(offSp, "100 20\n");
+    // The bl is line 43 once the sub sits above it.
+    expect(noted.frameNotes).toEqual([{ kind: "sp", fn: "double_it", line: 43 }]);
+    expect(noted.stdout).toBe("total = 140\n");
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
   it("make no note for the forgetful helper's starter, which leaves x19 changed", async () => {
@@ -228,27 +235,20 @@ describe("the per-call frame notes", () => {
   });
 });
 
-// main calls count(1) to count(1000), after `spin` turns of a three-step loop
-// with no call. count leaves fp changed once its argument reaches `from`, so
-// a note means call number `from` was checked.
+// main calls count(1) to count(3000), after `spin` turns of a three-step loop
+// with no call. From call number `from` on it makes the call with sp 8 bytes
+// off, so a note means call number `from` was checked.
 const manyCalls = (from: number, spin = 0) => `define(fp, x29)
 define(lr, x30)
 define(i_r, x19)
+define(from_r, x20)
 
 .text
 
-// count(x0 = i): leaves fp changed once i reaches ${from} (bug: fp is the caller's)
+// count(x0 = i) -> x0 = i, a leaf that never touches the stack
         .balign 4
         .global count
 count:
-        stp     fp, lr, [sp, -16]!
-        mov     fp, sp
-        ldr     x9, =${from}
-        cmp     x0, x9
-        ldp     fp, lr, [sp], 16
-        b.lt    count_done
-        mov     fp, x0
-count_done:
         ret
 
         .balign 4
@@ -264,11 +264,20 @@ spin:
         b       spin
 spun:
         mov     i_r, 1
+        ldr     from_r, =${from}
 call_next:
         mov     x0, i_r
+        cmp     i_r, from_r
+        b.ge    call_off
         bl      count
+        b       called
+call_off:
+        sub     sp, sp, 8                   // bug: 8 bytes leaves sp misaligned
+        bl      count
+        add     sp, sp, 8
+called:
         add     i_r, i_r, 1
-        cmp     i_r, 1000
+        cmp     i_r, 3000
         b.le    call_next
 
         mov     w0, 0
@@ -277,21 +286,20 @@ call_next:
 `;
 
 describe("how many calls a run checks", () => {
-  // A call takes three of the run's 2,000 stops: its entry, its ret and its
-  // return. fp is checked at the ret, so call 667's ret is stop 2,000.
-  it("check the first 667 calls of a run that makes them straight away, and no later one", async () => {
-    // count's ret is line 19.
-    const checked = await runHeadless(machine, manyCalls(667), [], undefined);
-    expect(checked.frameNotes).toEqual([{ kind: "fpChanged", fn: "count", line: 19 }]);
-    expect((await runHeadless(machine, manyCalls(668), [], undefined)).frameNotes).toEqual([]);
+  // A call takes one of the run's 2,000 stops: its entry.
+  it("check the first 2,000 calls of a run that makes them straight away, and no later one", async () => {
+    // The call made with sp off is line 36.
+    const checked = await runHeadless(machine, manyCalls(2000), [], undefined);
+    expect(checked.frameNotes).toEqual([{ kind: "sp", fn: "count", line: 36 }]);
+    expect((await runHeadless(machine, manyCalls(2001), [], undefined)).frameNotes).toEqual([]);
   });
 
   // Every 250,000 steps with no stop also take a stop. A run that finishes
-  // within the 5,000,000-step budget spends at most 19 that way, leaving 660.
-  it("check the first 660 calls after 4,752,000 steps with no call", { timeout: 30_000 }, async () => {
-    const checked = await runHeadless(machine, manyCalls(660, 1_584_000), [], undefined);
+  // within the 5,000,000-step budget spends at most 19 that way, leaving 1,981.
+  it("check the first 1,981 calls after 4,752,000 steps with no call", { timeout: 30_000 }, async () => {
+    const checked = await runHeadless(machine, manyCalls(1981, 1_584_000), [], undefined);
     expect(checked).toMatchObject({ finished: true, exitCode: 0 });
     expect(checked.frameNotes).toHaveLength(1);
-    expect((await runHeadless(machine, manyCalls(661, 1_584_000), [], undefined)).frameNotes).toEqual([]);
+    expect((await runHeadless(machine, manyCalls(1982, 1_584_000), [], undefined)).frameNotes).toEqual([]);
   });
 });
