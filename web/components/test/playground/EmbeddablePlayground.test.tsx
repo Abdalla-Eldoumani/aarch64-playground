@@ -367,7 +367,7 @@ describe("EmbeddablePlayground", () => {
   });
 
   it("checker Check runs the current source to completion, then reports the state after the run", async () => {
-    const hub: Hub = makeHub({ exitCode: 7 });
+    const hub: Hub = makeHub({ exitCode: 7, isHalted: true, stepCount: 2 });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
@@ -385,6 +385,48 @@ describe("EmbeddablePlayground", () => {
       vi.mocked(hub.run).mock.invocationCallOrder[0],
     );
     expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
+  });
+
+  it("checker Check waits for a late render of the run instead of grading the unrun machine", async () => {
+    // As in the real useEmulator, the hub shows the run only after a render.
+    // On a slow device that render came after the poll's first read, and Check
+    // graded the machine the assemble left: nothing printed, nothing finished.
+    let ran = false;
+    const assemble = vi.fn(async () => true);
+    const run = vi.fn();
+    useEmulatorMock.mockImplementation(() => ({
+      ...makeHub(),
+      assemble,
+      run,
+      isHalted: ran,
+      stepCount: ran ? 12 : 0,
+      stdout: ran ? "total = 80\n" : "",
+      exitCode: ran ? 0 : null,
+    }));
+    const onCheck = vi.fn();
+    const view = () => <EmbeddablePlayground chrome="checker" startSource="ret" onCheck={onCheck} />;
+    const { container, rerender } = render(view());
+    engage(container);
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByLabelText("check"));
+      // Three polls with the run started but not yet rendered.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(48);
+      });
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(onCheck).not.toHaveBeenCalled();
+
+      ran = true;
+      rerender(view());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(16);
+      });
+      expect(onCheck).toHaveBeenCalledTimes(1);
+      expect(onCheck.mock.calls[0][0]).toMatchObject({ stdout: "total = 80\n", exitCode: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("checker Check never grades a program that failed to assemble", async () => {
@@ -412,6 +454,7 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
       isHalted: true,
+      stepCount: 1,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -452,9 +495,11 @@ describe("EmbeddablePlayground", () => {
   it("checker Check feeds the exercise's input, then closes it, and reruns a run that stopped short", async () => {
     // Loaded but not halted: a Run that stopped at a read. Grading that
     // half-finished state would fail a correct program, so Check starts over.
+    // Its steps also tell Check the stopped run is the one it started.
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "svc" }],
       isHalted: false,
+      stepCount: 3,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -513,6 +558,7 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
       isHalted: true,
+      stepCount: 1,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -683,7 +729,7 @@ describe("EmbeddablePlayground", () => {
   });
 
   it("checker Check sends the preset stdin again after its assemble", async () => {
-    const hub: Hub = makeHub();
+    const hub: Hub = makeHub({ isHalted: true, stepCount: 1 });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
