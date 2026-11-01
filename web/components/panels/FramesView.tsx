@@ -136,12 +136,15 @@ export function FramesView({
   // A call or a return is said once, after the step that made it; a run
   // says nothing, and neither does its stop. Back undoes one step, so it
   // says the call or return it took back; a reset or a new program moves
-  // the machine further than that and says nothing.
+  // the machine further than that and says nothing. What was said belongs to
+  // the load it was said on: after a new one, or a reset, the words go.
+  const [mountKey] = useState(() => ({}));
+  const loadKey = frameLayout ?? mountKey;
   const depth = stack?.depth ?? 0;
   const step = snapshot?.step ?? 0;
   const innermost = stack?.frames[stack.frames.length - 1]?.name ?? "";
   const [seen, setSeen] = useState({ depth, innermost, running, step });
-  const [said, setSaid] = useState({ text: "", count: 0 });
+  const [said, setSaid] = useState({ text: "", count: 0, load: loadKey });
   if (seen.depth !== depth || seen.running !== running || seen.step !== step) {
     setSeen({ depth, innermost, running, step });
     const back = step === seen.step - 1;
@@ -156,7 +159,7 @@ export function FramesView({
             : // With the calls listed, the value the call left, read as w0
               // or x0 the way it was last written, as the list reads it.
               `${seen.innermost} returned${tree ? ` ${typed(BigInt(registers[0] || 0), tree.x0Width, false, memoryRegions).value}` : ""}`;
-      setSaid((prev) => ({ text, count: prev.count + 1 }));
+      setSaid((prev) => ({ text, count: prev.count + 1, load: loadKey }));
     }
   }
   // A card is said once per program load, without the backticks that mark
@@ -165,15 +168,13 @@ export function FramesView({
   // never while a run goes, and not when the run row's alert carries the
   // same card. Its event counts as said either way, once the stop renders.
   const cardKey = cards.map((card) => card.event).join("\n");
-  const [mountKey] = useState(() => ({}));
-  const loadKey = frameLayout ?? mountKey;
   const unsaid = running ? [] : cards.filter((card) => !saidPerLoad.get(loadKey)?.has(card.event));
   const unsaidKey = unsaid.map((card) => card.event).join("\n");
   const [lastUnsaid, setLastUnsaid] = useState("");
   if (unsaidKey !== lastUnsaid) {
     setLastUnsaid(unsaidKey);
     const spoken = unsaid.filter((card) => card.event !== errorCard?.event);
-    if (spoken.length > 0) setSaid((prev) => ({ text: spoken.map(plain).join(" "), count: prev.count + 1 }));
+    if (spoken.length > 0) setSaid((prev) => ({ text: spoken.map(plain).join(" "), count: prev.count + 1, load: loadKey }));
   }
   useEffect(() => {
     if (unsaid.length === 0) return;
@@ -340,7 +341,7 @@ export function FramesView({
         </ul>
       )}
       <p role="status" className="sr-only">
-        {said.text}
+        {said.load === loadKey && programLoaded ? said.text : ""}
         {said.count % 2 ? " " : ""}
       </p>
     </div>
