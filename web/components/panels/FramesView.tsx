@@ -15,6 +15,7 @@ import {
   type StackBytes,
 } from "@/lib/emulator/stack-frames";
 import { CallTree } from "@/components/panels/CallTree";
+import { FrameRow } from "@/components/panels/FrameRow";
 import { KIND_STYLE, OVERWRITTEN } from "@/components/panels/frame-styles";
 import { PointerContext } from "@/components/panels/slot-pointer";
 
@@ -287,49 +288,22 @@ export function FramesView({
               {frame.state && <p className="text-[12px] text-[var(--warning)]">{frame.state}</p>}
               {frame.boxes.length > 0 && (
                 <ul aria-label={`${frame.name}'s frame, high address first`} className="mt-1">
-                  {/* In the playground's stack tab (a size container) under
-                      345px, too short for a 48-byte frame of three locals
-                      drawn in full, each box takes one line: the title and
-                      the detail side by side. */}
                   {frame.boxes.map((box) => {
                     const lit = litAt >= box.addr && litAt < box.addr + box.size;
-                    // The amber bar is listed first, so it draws over the cyan ring.
-                    const marks = [box.wrote && "inset 3px 0 0 0 var(--amber)", lit && "inset 0 0 0 2px var(--cyan)"]
-                      .filter(Boolean)
-                      .join(", ");
                     return (
-                      <li
+                      <FrameRow
                         key={box.addr}
                         data-wrote={box.wrote || undefined}
                         data-lit={lit || undefined}
-                        className="mt-[3px] grid grid-cols-[4.5rem_minmax(0,1fr)_4.5rem] items-center gap-2 [@container(height<345px)]:mt-px"
-                      >
-                        <span className="text-right font-mono text-[12px] text-[var(--text-tertiary)]">
-                          {box.offset}
-                        </span>
-                        <div
-                          className={`px-2 py-[3px] text-[13px] leading-snug [@container(height<345px)]:flex [@container(height<345px)]:flex-wrap [@container(height<345px)]:gap-x-2 [@container(height<345px)]:py-0 [@container(height<345px)]:leading-4 ${
-                            box.overwritten ? OVERWRITTEN : KIND_STYLE[box.kind]
-                          }`}
-                          style={marks ? { boxShadow: marks } : undefined}
-                        >
-                          <div className="break-words font-medium">{box.title}</div>
-                          <div className="break-words text-[12px] text-[var(--text-secondary)]">
-                            {box.detail}
-                            {box.wrote && <span className="sr-only">, just written</span>}
-                            {lit && <span className="sr-only">, x{pointed?.reg} points here</span>}
-                          </div>
-                        </div>
-                        <span className="whitespace-nowrap font-mono text-[12px] text-[var(--text-secondary)]">
-                          {box.marker && (
-                            <>
-                              <span aria-hidden="true">← </span>
-                              {box.marker}
-                              <span className="sr-only"> points here</span>
-                            </>
-                          )}
-                        </span>
-                      </li>
+                        offset={box.offset}
+                        box={box.overwritten ? OVERWRITTEN : KIND_STYLE[box.kind]}
+                        title={box.title}
+                        detail={box.detail}
+                        marker={box.marker}
+                        wrote={box.wrote}
+                        ring={lit}
+                        note={lit ? `, x${pointed?.reg} points here` : ""}
+                      />
                     );
                   })}
                 </ul>
