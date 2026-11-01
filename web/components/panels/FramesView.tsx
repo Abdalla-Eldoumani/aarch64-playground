@@ -270,7 +270,9 @@ export function FramesView({
       {idle || !stack ? (
         <p className="text-[13px] text-[var(--text-secondary)]">{idle}</p>
       ) : (
-        <ol aria-label="calls, main first">
+        // A wide pane only stretched the boxes (2,010px at 2560) and moved the
+        // `← sp` marker far from their words; 40rem leaves a box 30rem.
+        <ol aria-label="calls, main first" className="max-w-[40rem]">
           {stack.frames.map((frame, i) => (
             <li
               key={frame.index}
