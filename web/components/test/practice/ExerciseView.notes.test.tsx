@@ -63,6 +63,14 @@ const X20_FIX = EXERCISE.starter
   .replace("add     x19, x19, x19", "add     x20, x20, x20")
   .replace("mov     x0, x19", "mov     x0, x20");
 
+// A fix that passes every check but takes x29 as double_it's scratch
+// register, so main gets fp back changed.
+const FP_FIX = EXERCISE.starter
+  .replace("mov     x19, x0", "mov     x29, x0")
+  .replace("add     x19, x19, x19", "add     x29, x29, x29")
+  .replace("mov     x0, x19", "mov     x0, x29");
+const FP_NOTE = "double_it returns on line 25 with fp changed: a function must hand fp back as it found it";
+
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
@@ -79,39 +87,30 @@ async function checkWith(source: string) {
 }
 
 describe("the forgetful helper's frame notes", () => {
-  it("names the callee-saved register a passing fix leaves changed, and the result still passes", async () => {
+  it("shows no note for a passing fix that leaves a callee-saved register changed", async () => {
     expect(X20_FIX).not.toContain("x19, x0");
     await checkWith(X20_FIX);
-    expect(screen.getByText("notes on the calls · they do not change the result")).toBeTruthy();
-    // double_it's ret is line 25 of the starter, so of the fix too.
-    expect(
-      screen.getByText("double_it returns on line 25 with x20 changed: a function must hand x19 to x28 back as it found them"),
-    ).toBeTruthy();
+    expect(screen.queryByText(/notes on the calls/)).toBeNull();
+    expect(screen.queryByText(/x20 changed/)).toBeNull();
     expect(screen.getByText("all checks passed")).toBeTruthy();
     expect(isSolved(EXERCISE.slug)).toBe(true);
   });
 
-  it("names fp when a passing fix leaves it changed", async () => {
-    // double_it takes x29 as its scratch register, so main gets fp back changed.
-    const fpFix = EXERCISE.starter
-      .replace("mov     x19, x0", "mov     x29, x0")
-      .replace("add     x19, x19, x19", "add     x29, x29, x29")
-      .replace("mov     x0, x19", "mov     x0, x29");
-    expect(fpFix).not.toContain("x19, x0");
-    await checkWith(fpFix);
-    expect(
-      screen.getByText("double_it returns on line 25 with fp changed: a function must hand fp back as it found it"),
-    ).toBeTruthy();
+  it("names fp when a passing fix leaves it changed, and the result still passes", async () => {
+    expect(FP_FIX).not.toContain("x19, x0");
+    await checkWith(FP_FIX);
+    expect(screen.getByText("notes on the calls · they do not change the result")).toBeTruthy();
+    // double_it's ret is line 25 of the starter, so of the fix too.
+    expect(screen.getByText(FP_NOTE)).toBeTruthy();
     expect(screen.getByText("all checks passed")).toBeTruthy();
   });
 
   it("heads the notes as counting once the switch makes them count", async () => {
     SWITCH.on = true;
-    ANSWER.source = X20_FIX;
+    ANSWER.source = FP_FIX;
     render(<ExerciseView exercise={EXERCISE} />);
     fireEvent.click(screen.getByRole("button", { name: "check" }));
-    const note = "double_it returns on line 25 with x20 changed: a function must hand x19 to x28 back as it found them";
-    await waitFor(() => expect(screen.getByText(note)).toBeTruthy(), { timeout: 4_000 });
+    await waitFor(() => expect(screen.getByText(FP_NOTE)).toBeTruthy(), { timeout: 4_000 });
     expect(screen.queryByText(/they do not change the result/)).toBeNull();
     expect(screen.getByText("notes on the calls")).toBeTruthy();
     expect(screen.getAllByText(/a call in it breaks a stack rule/).length).toBeGreaterThan(0);
