@@ -78,8 +78,14 @@ describe("the draw-the-frame exercises", () => {
     "%s: the whole program runs clean, keeps every stack rule, and prints what was worked out",
     async (slug, exercise) => {
       const outcome = await runHeadless(machine, exercise.program, [], undefined);
-      expect(outcome).toMatchObject({ error: null, finished: true, exitCode: 0, stdout: BY_HAND[slug].stdout });
-      expect(outcome.frameNotes).toEqual([]);
+      expect(outcome).toMatchObject({
+        error: null,
+        finished: true,
+        exitCode: 0,
+        stdout: BY_HAND[slug].stdout,
+        stackBalanced: true,
+        frameIntact: true,
+      });
     },
   );
 
