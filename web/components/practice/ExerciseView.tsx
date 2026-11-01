@@ -19,6 +19,7 @@ import type {
 import {
   checkExercise,
   checkHiddenCase,
+  FRAME_NOTES_COUNT,
   type CheckResult,
   type FrameNote,
   type HiddenCaseCheck,
@@ -559,7 +560,7 @@ export function ExerciseView({
               {frameNotes.length > 0 && (
                 <div className="border-b border-[var(--border)] px-4 py-2.5 last:border-b-0">
                   <p className="font-mono text-[12px] uppercase tracking-[0.1em] text-[var(--text-tertiary)]">
-                    notes on the calls · they do not change the result
+                    {FRAME_NOTES_COUNT ? "notes on the calls" : "notes on the calls · they do not change the result"}
                   </p>
                   <ul className="mt-1.5 space-y-1.5">
                     {frameNotes.map((text) => (
