@@ -684,14 +684,13 @@ export function RegisterPanel({
           instead. A named group rather than a region: a lesson holds several
           embeds, and identical region landmarks cannot be told apart. The
           focus outline sits inside the box, where the pane cannot clip it.
-          Under a coarse pointer its top pads 14px: a first-row chip's 44px
-          reach rises 12.5px above the row, and the box's edge cut it to 30. */}
+          `register-list` pads its top under a coarse pointer (globals.css). */}
       <div
         ref={bodyRef}
         role="group"
         aria-label="register values"
         tabIndex={0}
-        className="inner-scroll min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] [@media(pointer:coarse)]:min-h-[calc(4.75em+14px)] [@media(pointer:coarse)]:pt-[14px] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+        className="inner-scroll register-list min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
         onWheel={(e) => {
           if (!e.ctrlKey) markUserScroll();
         }}
