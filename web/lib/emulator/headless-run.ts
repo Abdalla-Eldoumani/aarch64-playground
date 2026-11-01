@@ -10,6 +10,7 @@
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
 import type { FrameNote, HiddenRunOutcome } from "@/lib/content/exercise-checker";
 import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { parseLineMap, pcToSourceLineFromMap } from "@/lib/emulator/line-map";
 import { decodeFrameLayout, decodeFrames, type FrameLayout } from "@/lib/emulator/stack-frames";
 
 /** The machine methods a headless run needs; EmulatorInstance has them all. */
@@ -104,14 +105,6 @@ const RET_MASK = 0xfffffc1f;
 /** Notes one run keeps, so a call broken inside a loop cannot flood the result. */
 const MAX_FRAME_NOTES = 8;
 
-/** The last assemble's line map, address to source line. */
-function sourceLines(machine: HeadlessMachine): Map<number, number> {
-  const flat = machine.getLineMap();
-  const lines = new Map<number, number>();
-  for (let i = 0; i + 1 < flat.length; i += 2) lines.set(flat[i], flat[i + 1]);
-  return lines;
-}
-
 /**
  * The per-call frame checks, read from the machine's own call tracking. The
  * run stops at every call (a breakpoint on each function's first
@@ -125,8 +118,8 @@ function watchFrames(machine: HeadlessMachine) {
   const payload = machine.frameLayout();
   const layout: FrameLayout | null = payload && decodeFrameLayout(payload);
   if (!start || !layout) return null;
-  const lines = sourceLines(machine);
-  const lineOf = (pc: number) => lines.get(pc) ?? null;
+  const lines = parseLineMap(machine.getLineMap());
+  const lineOf = (pc: number) => pcToSourceLineFromMap(pc, lines);
   const nameAt = (pc: number) =>
     layout.functions.find((fn) => pc >= fn.entry && pc < fn.end)?.name ?? `0x${pc.toString(16)}`;
   const rets = new Set<number>();
@@ -283,9 +276,8 @@ export async function runToPause(
 ): Promise<PausedMachine | null> {
   if (!machine.assembleAndLoadWithArgs(source, []).success) return null;
   machine.closeStdin();
-  const addresses = [...sourceLines(machine)].filter(([, line]) => line === pause.line).map(([addr]) => addr);
-  if (addresses.length === 0) return null;
-  const at = Math.min(...addresses);
+  const at = parseLineMap(machine.getLineMap()).lineToAddr.get(pause.line);
+  if (at === undefined) return null;
   machine.setBreakpoint(at);
   try {
     let hits = 0;
