@@ -115,8 +115,8 @@ const MAX_FRAME_NOTES = 8;
  * The per-call frame checks, read from the machine's own call tracking. The
  * run stops at every call (a breakpoint on each function's first
  * instruction), every ret (a breakpoint on each one in a function) and every
- * return (a goal one call shallower than the program stands), and each stop
- * reads the call stack the frames view draws. Null on a wasm build without
+ * return (a goal one call shallower than the program stands) until the stops
+ * run out, and each stop reads the call stack the frames view draws. Null on a wasm build without
  * the frames exports.
  */
 function watchFrames(machine: HeadlessMachine) {
