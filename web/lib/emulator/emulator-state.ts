@@ -79,6 +79,9 @@ export interface EmulatorState {
    *  one; reset and a failed assemble drop the flag. */
   programLoaded: boolean;
   error: string | null;
+  /** `error` is a long run's pause (Run's, or a step over's, step out's or
+   *  run to cursor's after 1,000,000 steps), not a fault. */
+  paused: boolean;
   /** The frames' card `error` carries in place of the crate's guess, or a
    *  goal's stop on a bad return: the explainer picks its fix from the
    *  card's cause. Null for any other error. */
