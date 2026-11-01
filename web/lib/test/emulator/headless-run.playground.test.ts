@@ -57,65 +57,64 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a write over a caller's saved lr and the ret it sends astray, with the fault unchanged", async () => {
+  it("note a write over a caller's saved lr and nothing for the ret it sends astray, with the fault unchanged", async () => {
     const { noted, plain } = await bothRuns(fixture("lr-overwrite.s"));
     // fill's writes 4 to 7 cover main's saved fp (4, 5) and saved lr (6, 7).
     expect(noted.frameNotes).toEqual([
       { kind: "fp", fn: "main", line: 27 },
       { kind: "lr", fn: "main", line: 27 },
-      { kind: "return", fn: "main", line: 50 },
     ]);
     expect(noted.error).not.toBeNull();
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  // In both, skip_next's ret is line 18, and every later ret hands fp back.
-  it("note a stray ret, and no fp change at main's ret after it", async () => {
+  // In both, skip_next's ret goes astray, and every later ret hands fp back.
+  it("make no note for a stray ret or for main's ret after it", async () => {
     const { noted, plain } = await bothRuns(fixture("astray-then-main.s"));
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "skip_next", line: 18 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a stray ret, and no fp change at its caller's ret after it", async () => {
+  it("make no note for a stray ret or for its caller's ret after it", async () => {
     const { noted, plain } = await bothRuns(fixture("astray-deep.s"));
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "skip_next", line: 18 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a stray ret in a recursion, and no fp change at the outer call's ret", async () => {
+  it("make no note for a stray ret in a recursion or for the outer call's ret", async () => {
     const { noted, plain } = await bothRuns(fixture("astray-in-recursion.s"));
-    // The base case's ret is line 28; the outer call's ldp hands fp back.
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "count_down", line: 28 }]);
+    // The base case's ret goes astray; the outer call's ldp hands fp back.
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note a stray ret three calls deep in a recursion, and no fp change at the outer calls' rets", async () => {
+  it("make no note for a stray ret three calls deep in a recursion or for the outer calls' rets", async () => {
     const { noted, plain } = await bothRuns(fixture("astray-deep-recursion.s"));
-    // The base case's ret is line 28; both outer calls' ldp hand fp back.
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "count_down", line: 28 }]);
+    // The base case's ret goes astray; both outer calls' ldp hand fp back.
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  // Each base case's ret goes astray and every call puts x19 to x28 back, so
-  // only the stray ret is noted: the run notes nothing after it.
-  it.each([2, 4])("note only the stray ret when count_down(%i) saves x19", async (n) => {
+  // Each base case's ret goes astray and every call puts x19 to x28 back:
+  // the run notes nothing for the stray ret and nothing after it.
+  it.each([2, 4])("make no note when count_down(%i), which saves x19, returns astray", async (n) => {
     const source = fixture("astray-x19-recursion.s").replace("mov     x0, 2", `mov     x0, ${n}`);
     const { noted, plain } = await bothRuns(source);
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "count_down", line: 37 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
   it.each([
-    ["astray-fib.s", "fib", 47, "3\n"],
-    ["astray-two-step-recursion.s", "count_down", 36, "7\n"],
-  ])("note only the stray ret in %s", async (name, fn, line, stdout) => {
+    ["astray-fib.s", "3\n"],
+    ["astray-two-step-recursion.s", "7\n"],
+  ])("make no note for the stray ret in %s or after it", async (name, stdout) => {
     const { noted, plain } = await bothRuns(fixture(name));
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn, line }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout, exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
@@ -139,18 +138,16 @@ describe("the per-call frame notes", () => {
     expect(noted.stdout).toBe("7\n");
   });
 
-  it("name a stray ret after the function whose code holds it, reached by b", async () => {
+  it("make no note for a stray ret in a function reached by b", async () => {
     const { noted, plain } = await bothRuns(fixture("branch-astray.s"));
-    // finish's ret is line 17.
-    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "finish", line: 17 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
-  it("note x19 to x28 left changed by a call, but never by main", async () => {
+  it("make no note for x19 to x28 left changed by a call", async () => {
     const { noted, plain } = await bothRuns(fixture("x20-left-changed.s"));
-    // main sets x19 and never puts it back, as course programs do.
-    expect(noted.frameNotes).toEqual([{ kind: "callee", fn: "bump", line: 24, register: 20 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted.stdout).toBe("42\n");
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
@@ -162,11 +159,10 @@ describe("the per-call frame notes", () => {
     expect(noted.stdout).toBe("total = 140\n");
   });
 
-  it("note the forgetful helper's x19 on its starter", async () => {
+  it("make no note for the forgetful helper's starter, which leaves x19 changed", async () => {
     const { starter } = codingExercise("the-forgetful-helper");
     const { noted, plain } = await bothRuns(starter, "100 20\n");
-    // double_it's ret is line 25 of the starter.
-    expect(noted.frameNotes).toEqual([{ kind: "callee", fn: "double_it", line: 25, register: 19 }]);
+    expect(noted.frameNotes).toEqual([]);
     expect(noted.stdout).toBe("total = 80\n");
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
@@ -205,7 +201,7 @@ describe("the per-call frame notes", () => {
     // show calls out before saving lr, so every ret it makes goes astray.
     const { noted, plain } = await bothRuns(fixture("lr-not-saved.s"));
     expect(noted.finished).toBe(false);
-    expect(noted.frameNotes).toContainEqual({ kind: "return", fn: "show", line: 29 });
+    expect(noted.frameNotes).toEqual([]);
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
@@ -219,7 +215,7 @@ describe("the per-call frame notes", () => {
 });
 
 // main calls count(1) to count(1000), after `spin` turns of a three-step loop
-// with no call. count leaves x21 changed once its argument reaches `from`, so
+// with no call. count leaves fp changed once its argument reaches `from`, so
 // a note means call number `from` was checked.
 const manyCalls = (from: number, spin = 0) => `define(fp, x29)
 define(lr, x30)
@@ -227,7 +223,7 @@ define(i_r, x19)
 
 .text
 
-// count(x0 = i): leaves x21 changed once i reaches ${from} (bug: x21 is callee-saved)
+// count(x0 = i): leaves fp changed once i reaches ${from} (bug: fp is the caller's)
         .balign 4
         .global count
 count:
@@ -235,10 +231,10 @@ count:
         mov     fp, sp
         ldr     x9, =${from}
         cmp     x0, x9
-        b.lt    count_done
-        mov     x21, x0
-count_done:
         ldp     fp, lr, [sp], 16
+        b.lt    count_done
+        mov     fp, x0
+count_done:
         ret
 
         .balign 4
@@ -267,12 +263,13 @@ call_next:
 `;
 
 describe("how many calls a run checks", () => {
-  // A call takes three of the run's 2,000 stops: its entry, its ret and its return.
-  it("check the first 666 calls of a run that makes them straight away, and no later one", async () => {
+  // A call takes three of the run's 2,000 stops: its entry, its ret and its
+  // return. fp is checked at the ret, so call 667's ret is stop 2,000.
+  it("check the first 667 calls of a run that makes them straight away, and no later one", async () => {
     // count's ret is line 19.
-    const checked = await runHeadless(machine, manyCalls(666), [], undefined);
-    expect(checked.frameNotes).toEqual([{ kind: "callee", fn: "count", line: 19, register: 21 }]);
-    expect((await runHeadless(machine, manyCalls(667), [], undefined)).frameNotes).toEqual([]);
+    const checked = await runHeadless(machine, manyCalls(667), [], undefined);
+    expect(checked.frameNotes).toEqual([{ kind: "fpChanged", fn: "count", line: 19 }]);
+    expect((await runHeadless(machine, manyCalls(668), [], undefined)).frameNotes).toEqual([]);
   });
 
   // Every 250,000 steps with no stop also take a stop. A run that finishes
