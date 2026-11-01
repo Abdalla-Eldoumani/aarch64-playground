@@ -94,7 +94,8 @@ Blocks render top to bottom. Every lesson after the first two opens with a
 each with one line on what it practises. The site reads these links too:
 every `[text](/practice/<slug>)` link in a lesson's prose or callouts (code
 blocks are skipped) becomes a card in the list at the foot of the page, with
-coding exercises and theory sets apart. Tests hold the links to four rules:
+coding exercises, theory sets and frame drawings apart. Tests hold the links
+to four rules:
 
 - A link to an exercise that does not exist fails the build.
 - The link text is the exercise's `title`, the title with its difficulty in
