@@ -81,7 +81,7 @@ describe("the DOMPurify version check", () => {
     ]);
   });
 
-  it("skips a version that is not DOMPurify's", () => {
+  it("skips a version that is not DOMPurify's, and one whose quote marks do not match", () => {
     expect(dompurifyVersions('e.version="19.3.1",e.render=[]')).toEqual([]);
     expect(dompurifyVersions("t.version=\"3.4.8`,t.removed=[]")).toEqual([]);
   });
