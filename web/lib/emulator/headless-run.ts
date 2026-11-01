@@ -117,8 +117,8 @@ const MAX_FRAME_NOTES = 8;
  * run stops at every call (a breakpoint on each function's first
  * instruction), every ret (a breakpoint on each one in a function) and every
  * return (a goal one call shallower than the program stands) until the stops
- * run out, and each stop reads the call stack the frames view draws. Null on a wasm build without
- * the frames exports.
+ * run out, and each stop reads the call stack the frames view draws. Null on
+ * a wasm build without the frames exports.
  */
 function watchFrames(machine: HeadlessMachine) {
   const start = machine.frames();
@@ -167,7 +167,8 @@ function watchFrames(machine: HeadlessMachine) {
         if (row.lrHit) add({ kind: "lr", fn, line: lineOf(row.lrHit.pc) });
       }
       const astray = snapshot.badReturn;
-      // Named for the code that holds the ret: a function reached by b is not on the stack.
+      // Named for the code that holds the ret: a function reached by b is not
+      // on the stack.
       if (astray) add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
       // A ret hands the caller fp as it is now; main's own ret is left out. A
       // ret is checked only when sp is back at the innermost call's entry value
