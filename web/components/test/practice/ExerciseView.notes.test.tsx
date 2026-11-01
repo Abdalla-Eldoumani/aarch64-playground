@@ -77,6 +77,20 @@ describe("the forgetful helper's frame notes", () => {
     expect(isSolved(EXERCISE.slug)).toBe(true);
   });
 
+  it("names fp when a passing fix leaves it changed", async () => {
+    // double_it takes x29 as its scratch register, so main gets fp back changed.
+    const fpFix = EXERCISE.starter
+      .replace("mov     x19, x0", "mov     x29, x0")
+      .replace("add     x19, x19, x19", "add     x29, x29, x29")
+      .replace("mov     x0, x19", "mov     x0, x29");
+    expect(fpFix).not.toContain("x19, x0");
+    await checkWith(fpFix);
+    expect(
+      screen.getByText("double_it returns on line 25 with fp changed: a function must hand fp back as it found it"),
+    ).toBeTruthy();
+    expect(screen.getByText("all checks passed")).toBeTruthy();
+  });
+
   it("shows no notes for the reference fix, which uses a scratch register", async () => {
     await checkWith(solutionFor("the-forgetful-helper"));
     expect(screen.queryByText(/notes on the calls/)).toBeNull();
