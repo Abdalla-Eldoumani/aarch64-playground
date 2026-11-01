@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
-import { PointerContext, type SlotPointer } from "@/components/panels/slot-pointer";
+import { PointerContext, useSlotPointer, type SlotPointer } from "@/components/panels/slot-pointer";
 import { nodeMachine } from "@/components/test/playground/helpers/node-machine";
 
 afterEach(() => {
@@ -26,6 +26,18 @@ const host = (point: SlotPointer["point"]) =>
   function Host({ children }: { children: ReactNode }) {
     return <PointerContext.Provider value={{ pointed: null, point }}>{children}</PointerContext.Provider>;
   };
+
+/** The real provider, and the register whose slot it would light. */
+const openStack = () => {};
+function LiveHost({ children }: { children: ReactNode }) {
+  const pointer = useSlotPointer(openStack);
+  return (
+    <PointerContext.Provider value={pointer}>
+      {children}
+      <output aria-label="lit slot">{pointer.pointed ? `x${pointer.pointed.reg}` : "none"}</output>
+    </PointerContext.Provider>
+  );
+}
 
 const chipsShown = () => screen.queryAllByRole("button", { name: / points to / });
 /** The row of register `name` ("X1"). */
@@ -90,6 +102,24 @@ describe("pointer chips", () => {
     fireEvent.blur(x2);
     fireEvent.click(x2);
     expect(point.mock.calls).toEqual([[2], [null], [2], [null], [2, true]]);
+    m.emu.free();
+  });
+
+  it("lets go of a focused chip's slot when a run starts, since the chip leaves with no blur", async () => {
+    const m = machine("public/examples/cpsc355/locals.s", "7 4\n");
+    m.runTo("bl      scanf");
+    const { rerender } = render(<RegisterPanel {...m.props()} />, { wrapper: LiveHost });
+    fireEvent.focus(await screen.findByRole("button", { name: /^x2 / }));
+    const lit = screen.getByRole("status", { name: "lit slot" });
+    expect(lit.textContent).toBe("x2");
+
+    rerender(<RegisterPanel {...m.props()} running />);
+    expect(chipsShown()).toHaveLength(0);
+    expect(lit.textContent).toBe("none");
+    // The run stops with focus on no chip: the chips return and none is lit.
+    rerender(<RegisterPanel {...m.props()} />);
+    expect(await screen.findAllByRole("button", { name: / points to / })).toHaveLength(2);
+    expect(lit.textContent).toBe("none");
     m.emu.free();
   });
 
