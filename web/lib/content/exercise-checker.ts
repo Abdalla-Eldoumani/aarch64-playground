@@ -277,20 +277,19 @@ function evaluateStructural(assertion: StructuralAssertion, strippedSource: stri
 /**
  * One call that broke a stack rule during a hidden run, from the machine's
  * own call tracking (lib/emulator/headless-run reads it at every call, ret
- * and return until the stops run out or a ret goes astray, the last thing a
- * run notes). `sp`: the call went out with sp off a multiple of 16. `fp` and
- * `lr`: a write changed the saved fp or lr in `fn`'s frame. `return`: `fn`'s
- * ret went somewhere other than into a call still running. `fpChanged`: `fn`
- * returned with fp not as the call found it. `callee`: `fn` returned with
- * `register` (19 to 28) changed. main is never named for the last two.
+ * and return until the stops run out or a ret returns to no call made with
+ * bl or blr, after which a run notes nothing). `sp`: the call went out with
+ * sp off a multiple of 16. `fp` and `lr`: a write changed the saved fp or lr
+ * in `fn`'s frame. `fpChanged`: `fn` returned with fp not as the call found
+ * it, checked only at a ret that finds sp where the call began and returns
+ * to that call; main is never named for it.
  */
 export interface FrameNote {
-  kind: "sp" | "fp" | "lr" | "return" | "fpChanged" | "callee";
+  kind: "sp" | "fp" | "lr" | "fpChanged";
   /** The function called, whose frame was written, or that returned. */
   fn: string;
   /** The line of the call, the write or the ret, in the run's source. */
   line: number | null;
-  register?: number;
 }
 
 /**
@@ -322,7 +321,7 @@ export interface HiddenRunOutcome {
   /** False when the program wrote above main's entry sp, into its caller's frame. */
   frameIntact: boolean;
   /** Each stack rule a checked call broke, once, up to eight a run and none
-   *  after a stray ret. */
+   *  after a ret to no call made with bl or blr. */
   frameNotes: FrameNote[];
 }
 
