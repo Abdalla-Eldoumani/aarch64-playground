@@ -9,7 +9,7 @@ changes, [CONTRIBUTING.md](CONTRIBUTING.md) has the folder layout, and
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/system-map-dark.svg">
-  <img src="diagrams/system-map-light.svg" alt="System map. On the page's main thread, the editor sends the source and the args box sends the program arguments to the useEmulator hub. The hub calls assemble, step, and runUntilBreak on WorkerClient, or on MainThreadBackend when no Worker can start, and passes each StateSnapshot to the panels. WorkerClient sends requests to emulator.worker.ts in a Web Worker, which calls step and run_until_break on the Rust emulator compiled to wasm and sends a StateSnapshot back.">
+  <img src="diagrams/system-map-light.svg" alt="System map. On the page's main thread, the editor sends the source and the args box sends the program arguments to the useEmulator hub. The hub calls assemble, step, runUntilBreak, and frameLayout on WorkerClient, or on MainThreadBackend when no Worker can start, passes each StateSnapshot to the panels, and passes the snapshot's frames and the frameLayout to the frames view, whose stack-frames.ts also reads the stack's bytes. WorkerClient sends requests to emulator.worker.ts in a Web Worker, which calls step and run_until_break on the Rust emulator compiled to wasm, calls frames() for each snapshot and frame_layout() after each assemble, and sends a StateSnapshot back.">
 </picture>
 
 ## Two halves
@@ -221,7 +221,7 @@ lists them all.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/step-back-dark.svg">
-  <img src="diagrams/step-back-light.svg" alt="Step back. Each step pushes a frame that holds what the step overwrote onto a ring of the last 128 steps, and back undoes the newest frame. Named saves are whole copies kept beside the ring, and loading one clears the ring.">
+  <img src="diagrams/step-back-light.svg" alt="Step back. Each step pushes a frame that holds what the step overwrote onto a ring of the last 128 steps, and back undoes the newest frame. The call stack's part of each frame is a FrameUndo: the depth before the step, each record the step popped, and the old fields of each record a call, a return, or a write changed. Back hands it to CallStack::undo, which puts them back, the list of calls so far included. Named saves are whole copies kept beside the ring, the call stack too, and loading one clears the ring.">
 </picture>
 
 Each step records a frame in a ring of the last 128 steps: what the step
@@ -250,7 +250,7 @@ on every new frame.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="diagrams/run-loop-dark.svg">
-  <img src="diagrams/run-loop-light.svg" alt="Run sequence. Pressing run sends runUntilBreak to the worker with a budget of 1,000,000 steps. The worker loops in run-loop.ts: the emulator runs 10,000 steps and returns a RunResult, the worker yields and stops if the run was paused or reset, and it sends a StateSnapshot at most every 50 ms, which updates the panels and the console during the run. The loop ends on a halt, an error, a breakpoint, a read with no input, a sleep, or the budget. The final reply redraws the panels. If the run stopped to wait for input, sending a line pushes it to stdin and starts the run again.">
+  <img src="diagrams/run-loop-light.svg" alt="Run sequence. Pressing run sends runUntilBreak to the worker with a budget of 1,000,000 steps. The worker loops in run-loop.ts: the emulator runs 10,000 steps, each of which updates the call stack through track_call_or_return and watch_frame_records, and returns a RunResult. The worker yields and stops if the run was paused or reset, asks the emulator for frames(), the call stack as numbers, and sends a StateSnapshot at most every 50 ms, which updates the panels and the console during the run. The loop ends on a halt, an error, a breakpoint, a read with no input, a sleep, or the budget. The final reply redraws the panels. If the run stopped to wait for input, sending a line pushes it to stdin and starts the run again.">
 </picture>
 
 The emulator runs in a Web Worker so a long run cannot freeze the page.
