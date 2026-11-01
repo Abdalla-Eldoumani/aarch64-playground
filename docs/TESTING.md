@@ -69,8 +69,9 @@ A few suites are worth knowing by name:
   with the server's own line and add one line saying what to change.
 - `reference_consistency`: [instruction-reference.md](instruction-reference.md)
   must list exactly the mnemonics the assembler accepts.
-- `bounds`: the limits that stop a runaway program. Its two slowest tests
-  are ignored on pull requests and run weekly in release mode.
+- `bounds`: the limits that stop a runaway program, and the caps on the
+  stack view's records. Its three slowest tests are ignored on pull requests
+  and run weekly in release mode.
 
 On Windows, if a debug test build fails with
 `LNK1104: cannot open file ... build_script_build-*.exe`, antivirus is
@@ -143,8 +144,9 @@ npm run size
 ```
 
 It checks each budget in the `size-limit` list in `web/package.json` (the
-route chunks, the lazy editor and terminal, the emulator's `.wasm`, the
-stylesheets, and two index payloads), then runs `scripts/bundle-budget.js` for
+route chunks, the lazy editor and terminal, the lazy stack frames view, frame
+cards, and call card, the emulator's `.wasm`, the stylesheets, and two index
+payloads), then runs `scripts/bundle-budget.js` for
 the shared chunks the home page and the playground load. That script also
 fails when any copy of DOMPurify in the built chunks is older than the version
 `overrides` pins in `web/package.json` (docs/security.md, "Dependencies").
@@ -178,7 +180,8 @@ instructions and reads two registers, runs it to its console output, and opens
 a share link with two checks, one right and one wrong, expecting one pass and
 one fail. Then it checks the stack frames: it opens the locals example
 (`web/public/examples/cpsc355/locals.s`) from a share link, steps to its
-`scanf`, types `7 4` into the console, steps back into `main`, and reads the
+`scanf`, types `7 4` into the console, takes one more step, which returns
+from `scanf` into `main`, and reads the
 stack tab's frames, expecting `a_s = 7` in the box at `fp + 16` and `b_s = 4`
 in the box at `fp + 20`, where the course's slides put them. It builds every
 link with the site's own share encoder (`web/lib/playground/share.ts`), so a
@@ -186,10 +189,11 @@ change to the link format reaches the test. It also fails on any console or
 page error except the analytics errors above and a missing favicon, the same
 filter the Firefox test uses (`scripts/smoke-noise.mjs`). It reads `SITE` the
 same way. With the maintainer's bypass value in the `PROBE_TOKEN` environment
-variable, every request to the site carries it in the `x-playground-probe`
-header, so the same test can run against <https://aarch64-playground.com>,
-whose firewall answers scripts with a challenge; the test never prints the
-value. Run `npx playwright install chromium` first, or set `CHROMIUM_PATH` to
+variable, every request the page makes to the site carries it in the
+`x-playground-probe` header. The browser's own check for a new service worker
+goes without it. So the same test can run against
+<https://aarch64-playground.com>, whose firewall answers scripts with a
+challenge. The test never prints the value. Run `npx playwright install chromium` first, or set `CHROMIUM_PATH` to
 an installed Chromium:
 
 ```bash
@@ -233,7 +237,8 @@ request open runs no tests.
   `security.txt` is at least 30 days from its expiry date, `npm run lint`, and
   `npm run typecheck`.
 - `web-build`: `npm run build`, a check that the lazy chunks the size budgets
-  name (Monaco, its worker, the terminal, and xterm) exist, since a budget
+  name (Monaco, its worker, the terminal, xterm, the frames view, the frame
+  cards, and the call card) exist, since a budget
   whose files match nothing passes, and `npm run size`.
 - `web-test`: `npm test` split into six shards.
 - `browser`: when `emulator/src/`, the Cargo files, the package manifests, the
