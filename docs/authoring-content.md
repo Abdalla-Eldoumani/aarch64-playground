@@ -267,13 +267,9 @@ broken program the reader fixes) add:
   A failing case shows the reader its input and their own output, never
   the expected text.
 
-Every hidden run also checks the calls the program makes to its own
-functions: `sp` is a multiple of 16 at the call, nothing writes over the
-saved `fp` or `lr` in a caller's frame, and a function hands `fp` back as
-it found it (`main` is left out of that one). The `fp` check is made only
-at a `ret` that finds `sp` where its call began and returns to that call.
-After a `ret` that returns to no call made with `bl` or `blr`, the run
-notes nothing more. A long run is checked only in part. What a run finds
+Every hidden run also checks that `sp` is a multiple of 16 at each call
+the program makes with `bl` or `blr` to one of its own functions. A long
+run is checked only in part. What a run finds
 shows under the results as notes, once each and up to eight from each run,
 and does not change pass or fail. That stays so until the CPSC 355 final on
 December 16, 2026. After it, the notes start to count by one change: set
