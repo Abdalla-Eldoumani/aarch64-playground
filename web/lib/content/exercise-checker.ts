@@ -277,7 +277,7 @@ function evaluateStructural(assertion: StructuralAssertion, strippedSource: stri
 /**
  * One call that broke a stack rule during a hidden run, from the machine's
  * own call tracking (lib/emulator/headless-run reads it at every call, ret
- * and return). `sp`: the call went out with sp off a multiple of 16. `fp` and
+ * and return until the stops run out). `sp`: the call went out with sp off a multiple of 16. `fp` and
  * `lr`: a write changed the saved fp or lr in `fn`'s frame. `return`: `fn`'s
  * ret went somewhere other than back to its caller. `fpChanged`: `fn`
  * returned with fp not as the call found it. `callee`: `fn` returned with
@@ -320,7 +320,7 @@ export interface HiddenRunOutcome {
   stackBalanced: boolean | null;
   /** False when the program wrote above main's entry sp, into its caller's frame. */
   frameIntact: boolean;
-  /** Each stack rule a call broke, once. */
+  /** Each stack rule a checked call broke, once, up to eight a run. */
   frameNotes: FrameNote[];
 }
 
