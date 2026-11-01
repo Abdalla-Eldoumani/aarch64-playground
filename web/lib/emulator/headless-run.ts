@@ -89,13 +89,17 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Stops one run makes at calls and returns to read the call stack; past
- * them the rest of the run goes straight through.
+ * Stops one run makes at calls, rets and returns to read the call stack;
+ * past them the rest of the run goes straight through.
  *
- * shortcut: a program making more than about 1,000 calls is checked on its
+ * shortcut: a program making more than about 650 calls is checked on its
  * first ones only; raise this if an exercise ever needs more.
  */
 const MAX_FRAME_STOPS = 2_000;
+
+/** A `ret` through any register: the register sits in bits 5 to 9. */
+const RET = 0xd65f0000;
+const RET_MASK = 0xfffffc1f;
 
 /** Notes one run keeps, so a call broken inside a loop cannot flood the result. */
 const MAX_FRAME_NOTES = 8;
@@ -111,9 +115,10 @@ function sourceLines(machine: HeadlessMachine): Map<number, number> {
 /**
  * The per-call frame checks, read from the machine's own call tracking. The
  * run stops at every call (a breakpoint on each function's first
- * instruction) and every return (a goal one call shallower than the program
- * stands), and each stop reads the call stack the frames view draws. Null on
- * a wasm build without the frames exports.
+ * instruction), every ret (a breakpoint on each one in a function) and every
+ * return (a goal one call shallower than the program stands), and each stop
+ * reads the call stack the frames view draws. Null on a wasm build without
+ * the frames exports.
  */
 function watchFrames(machine: HeadlessMachine) {
   const start = machine.frames();
@@ -124,7 +129,17 @@ function watchFrames(machine: HeadlessMachine) {
   const lineOf = (pc: number) => lines.get(pc) ?? null;
   const nameAt = (pc: number) =>
     layout.functions.find((fn) => pc >= fn.entry && pc < fn.end)?.name ?? `0x${pc.toString(16)}`;
-  for (const fn of layout.functions) machine.setBreakpoint(fn.entry);
+  const rets = new Set<number>();
+  for (const fn of layout.functions) {
+    machine.setBreakpoint(fn.entry);
+    const code = machine.getMemoryRange(fn.entry, fn.end - fn.entry);
+    const words = new DataView(code.buffer, code.byteOffset, code.byteLength);
+    for (let at = 0; at + 4 <= code.byteLength; at += 4) {
+      if (((words.getUint32(at, true) & RET_MASK) >>> 0) !== RET) continue;
+      rets.add(fn.entry + at);
+      machine.setBreakpoint(fn.entry + at);
+    }
+  }
 
   const notes = new Map<string, FrameNote>();
   const add = (note: FrameNote) => {
@@ -152,6 +167,12 @@ function watchFrames(machine: HeadlessMachine) {
       }
       const astray = snapshot.badReturn;
       if (astray) add({ kind: "return", fn: nameAt(astray.call.entry), line: lineOf(astray.pc) });
+      // A ret hands the caller fp as it is now; main's own ret is left out.
+      const pc = machine.getPc();
+      const call = snapshot.frames.at(-1);
+      if (rets.has(pc) && call && call.index > 0 && Number(machine.getRegister(29)) !== call.fpEntry) {
+        add({ kind: "fpChanged", fn: nameAt(pc), line: lineOf(pc) });
+      }
       // The machine records these at every ret but main's.
       for (const { register, retPc } of snapshot.leftovers) {
         add({ kind: "callee", fn: nameAt(retPc), line: lineOf(retPc), register });
