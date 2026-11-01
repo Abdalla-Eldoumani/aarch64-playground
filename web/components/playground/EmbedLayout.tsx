@@ -113,7 +113,7 @@ export function EmbedLayout({
   const showStack = showStep && stackSide;
   // A pressed pointer chip shows the stack in the registers' place; a frame
   // with no stack to offer (the landing's demo) gets no chips.
-  const pointer = useSlotPointer(useCallback(() => setStackSide(true), [setStackSide]));
+  const pointer = useSlotPointer(useCallback(() => setStackSide(true), [setStackSide]), isRunning);
   // A read that blocks, or a run that finishes having printed, brings the
   // console forward in a narrow frame, the way the phone playground does.
   const [seen, setSeen] = useState({ blocked: runStatus.blocked, running: isRunning });
