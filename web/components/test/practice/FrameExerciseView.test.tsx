@@ -135,9 +135,6 @@ describe("FrameExerciseView", () => {
   // On a slow phone the server's fields take numbers before the page's script
   // runs; hydration keeps the text but no change for it reaches the sheet.
   it("grades and keeps the numbers typed before the page's script ran", async () => {
-    const container = document.createElement("div");
-    document.body.appendChild(container);
-    container.innerHTML = renderToString(<FrameExerciseView exercise={LOCALS} />);
     const typed: [string, string][] = [
       ["frame size in bytes", RIGHT.size],
       ["offset of count_s from fp, in bytes", RIGHT.count],
@@ -146,15 +143,23 @@ describe("FrameExerciseView", () => {
       ["offset of the saved fp from fp, in bytes", RIGHT.fp],
       ["offset of the saved lr from fp, in bytes", RIGHT.lr],
     ];
-    for (const [label, value] of typed) (within(container).getByLabelText(label) as HTMLInputElement).value = value;
+    const container = document.createElement("div");
+    document.body.appendChild(container);
     let root: ReturnType<typeof hydrateRoot> | undefined;
-    await act(async () => {
-      root = hydrateRoot(container, <FrameExerciseView exercise={LOCALS} />);
-    });
-    expect(await checked()).toBe("all 6 right");
-    expect(typed.map(([label]) => (screen.getByLabelText(label) as HTMLInputElement).value)).toEqual(typed.map(([, v]) => v));
-    act(() => root?.unmount());
-    container.remove();
+    // cleanup() knows nothing of this root: a failure here must not leave a
+    // second sheet in the page for the next case to trip over.
+    try {
+      container.innerHTML = renderToString(<FrameExerciseView exercise={LOCALS} />);
+      for (const [label, value] of typed) (within(container).getByLabelText(label) as HTMLInputElement).value = value;
+      await act(async () => {
+        root = hydrateRoot(container, <FrameExerciseView exercise={LOCALS} />);
+      });
+      expect(await checked()).toBe("all 6 right");
+      expect(typed.map(([label]) => (screen.getByLabelText(label) as HTMLInputElement).value)).toEqual(typed.map(([, v]) => v));
+    } finally {
+      act(() => root?.unmount());
+      container.remove();
+    }
   });
 
   it("says so when the program never reaches its pause", async () => {
