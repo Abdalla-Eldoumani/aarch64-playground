@@ -475,7 +475,7 @@ export function FullChromeSurface({
 
   const regsBlock = (
     <ErrorBoundary label="registers">
-      <div className="h-full flex flex-col" data-walkthrough="registers">
+      <div className="h-full flex flex-col overflow-y-auto" data-walkthrough="registers">
         {/* The always-on decode strip heads the registers column: the
             plain-language gloss plus the live bit-field view of the word under
             the program counter. */}
@@ -505,9 +505,11 @@ export function FullChromeSurface({
           currentStep={emu.stepCount}
           onSeek={emu.seekReplay}
         />
-        {/* A phone on its side left the list no height under the decode
-            strip; the floor makes the phone's view scroll to it instead. */}
-        <div className={`flex-1 overflow-auto ${phone ? "min-h-[13rem]" : "min-h-0"}`}>
+        {/* A short pane (a phone on its side, a pane dragged to its floor, an
+            iPad's tall touch strip) squeezed the list to nothing under the
+            strips. The list keeps its header and three rows (13rem for 44px
+            cells) and the pane scrolls as one box, the box the follow moves. */}
+        <div className="flex-1 min-h-[7.25rem] [@media(pointer:coarse)]:min-h-[13rem]">
           <RegisterPanel
             registers={emu.registers}
             changedRegs={emu.changedRegs}
