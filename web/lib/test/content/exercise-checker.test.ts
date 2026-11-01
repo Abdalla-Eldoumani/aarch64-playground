@@ -464,8 +464,8 @@ describe("checkHiddenCase", () => {
     expect(checkHiddenCase(testCase, run({ frameIntact: false })).miss).toBe("frame");
   });
 
-  // A call that left fp changed, the note the run makes for it.
-  const noted = run({ frameNotes: [{ kind: "fpChanged", fn: "bump", line: 24 }] });
+  // A call made with sp off a multiple of 16, the note the run makes for it.
+  const noted = run({ frameNotes: [{ kind: "sp", fn: "bump", line: 24 }] });
 
   it("leaves the frame notes out of pass and fail until the switch is turned on", () => {
     expect(FRAME_NOTES_COUNT).toBe(false);
