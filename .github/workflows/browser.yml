@@ -55,7 +55,7 @@ jobs:
 
       - name: install wasm-pack
         if: steps.bundles.outputs.hit == 'false'
-        uses: taiki-e/install-action@e407f7bafb71fd004bc5c2da3032e5470cbb6ef0 # v2.87.24
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         with:
           tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
 
