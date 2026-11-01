@@ -3,10 +3,13 @@
 // forward, and the status line's peek at the last write. The switch is shown
 // only by a container query, which jsdom cannot evaluate, so the tests read
 // the grid's data-pane instead of what is painted. Also the registers or
-// stack choice a frame that steps offers, and that it is remembered.
+// stack choice a frame that steps offers, and that it is remembered; and the
+// slot a pointer chip lights, let go when a run starts.
+import { useContext } from "react";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { EmbedLayout, type EmbedLayoutProps } from "@/components/playground/EmbedLayout";
+import { PointerContext } from "@/components/panels/slot-pointer";
 
 afterEach(() => {
   cleanup();
@@ -261,5 +264,62 @@ describe("EmbedLayout's step over, step out and run to cursor", () => {
     expect(screen.getByText("stopped at the breakpoint on line 30").getAttribute("role")).toBe("status");
     rerender(<EmbedLayout {...props({ stopReason: "stopped at the breakpoint on line 30", error: "memory fault" })} />);
     expect(screen.queryByText("stopped at the breakpoint on line 30")).toBeNull();
+  });
+});
+
+describe("a pointer chip's slot", () => {
+  // Stand-ins for the register panel's chip and the frames view's lit slot,
+  // each reading the frame's own pointer as the real ones do.
+  function Chip() {
+    const point = useContext(PointerContext)?.point;
+    return (
+      <button type="button" onFocus={() => point?.(2)} onClick={() => point?.(2, true)}>
+        x2 chip
+      </button>
+    );
+  }
+  function Lit() {
+    const pointed = useContext(PointerContext)?.pointed;
+    return <output aria-label="lit slot">{pointed ? `x${pointed.reg}` : "none"}</output>;
+  }
+  const frame = (isRunning: boolean) => (
+    <EmbedLayout
+      {...props({
+        registers: (
+          <>
+            <Chip />
+            <Lit />
+          </>
+        ),
+        stack: <Lit />,
+        isRunning,
+        runStatus: { ...STATUS, isRunning },
+      })}
+    />
+  );
+  const lit = () => screen.getByRole("status", { name: "lit slot" }).textContent;
+
+  // A run unmounts the chips, and no blur or leave tells the frame.
+  test("lets go of a focused chip's slot when a run starts", () => {
+    const { rerender } = render(frame(false));
+    fireEvent.focus(screen.getByRole("button", { name: "x2 chip" }));
+    expect(lit()).toBe("x2");
+    rerender(frame(true));
+    expect(lit()).toBe("none");
+    rerender(frame(false));
+    expect(lit()).toBe("none");
+  });
+
+  // The press swaps the registers, chip and all, for the stack, so nothing
+  // in the register panel is left to see the run start.
+  test("lets go of a pressed chip's slot when a run starts from the stack it opened", () => {
+    const { rerender } = render(frame(false));
+    fireEvent.click(screen.getByRole("button", { name: "x2 chip" }));
+    expect(screen.queryByRole("button", { name: "x2 chip" })).toBeNull();
+    expect(lit()).toBe("x2");
+    rerender(frame(true));
+    expect(lit()).toBe("none");
+    rerender(frame(false));
+    expect(lit()).toBe("none");
   });
 });
