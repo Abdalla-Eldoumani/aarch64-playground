@@ -100,13 +100,15 @@ function measure(route) {
   return { files: files.length, total };
 }
 
-// Minified, DOMPurify reads `n.version="3.4.17",n.removed=[]`; React and xterm
-// also assign a bare `version`, so the `removed` after it marks DOMPurify.
-const DOMPURIFY_VERSION = /\.version="(\d+)\.(\d+)\.(\d+)",[\w$]+\.removed=\[\]/g;
+// Minified, DOMPurify reads `n.version="3.4.17",n.removed=[]`; its own
+// purify.min.js quotes the version in backticks, so any quote mark counts.
+// React and xterm also assign a bare `version`, so the `removed` after it
+// marks DOMPurify.
+const DOMPURIFY_VERSION = /\.version=(["'`])(\d+)\.(\d+)\.(\d+)\1,[\w$]+\.removed=\[\]/g;
 
 /** Every DOMPurify version a built chunk states, each as [major, minor, patch]. */
 function dompurifyVersions(text) {
-  return [...text.matchAll(DOMPURIFY_VERSION)].map((match) => match.slice(1, 4).map(Number));
+  return [...text.matchAll(DOMPURIFY_VERSION)].map((match) => match.slice(2, 5).map(Number));
 }
 
 /** True when `version` ([major, minor, patch]) comes before `pin`. */
