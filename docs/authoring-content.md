@@ -269,15 +269,17 @@ broken program the reader fixes) add:
 
 Every hidden run also checks the calls the program makes to its own
 functions: `sp` is a multiple of 16 at the call, nothing writes over the
-saved `fp` or `lr` in a caller's frame, every `ret` goes back to its
-caller, and a function hands `fp` and `x19` to `x28` back as it found
-them (`main` is left out of that one, since course programs keep their own
-values in `x19` to `x28` there). A function whose `ret` finds sp off from
-where its call began is not checked for fp. A long run is checked only in
-part. What a run finds shows under the results as notes, once each and up
-to eight from each run, and does not change pass or fail. That stays
-so until the CPSC 355 final on December 16, 2026. After it, the notes start
-to count by one change: set `FRAME_NOTES_COUNT` in
+saved `fp` or `lr` in a caller's frame, every `ret` goes back into a call
+still running, and a function hands `fp` and `x19` to `x28` back as it
+found them (`main` is left out of that one, since course programs keep
+their own values in `x19` to `x28` there). A function whose `ret` finds
+`sp` off from where its call began is not checked for `fp`, and one whose
+`ret` skips past its caller is not checked for `fp` or `x19` to `x28`.
+After a `ret` that goes astray, the run notes nothing more. A long run is
+checked only in part. What a run finds shows under the results as notes,
+once each and up to eight from each run, and does not change pass or fail.
+That stays so until the CPSC 355 final on December 16, 2026. After it, the
+notes start to count by one change: set `FRAME_NOTES_COUNT` in
 `web/lib/content/exercise-checker.ts` to `true`, and a case with a note
 fails, after every other check it already makes. A content test holds every
 reference solution to no notes at all, so the switch fails none of them.
