@@ -51,6 +51,12 @@ a pull request tests the compiler that ships. A Rust bump changes the script
 and all four workflows together; a wasm-pack bump changes the script,
 `check.yml`, and `browser.yml`.
 
+Every job in `.github/workflows/` runs on `ubuntu-24.04`, not
+`ubuntu-latest`. `ubuntu-latest` now means Ubuntu 26.04, where the pinned
+Playwright cannot install its browsers, so the smoke tests would fail there.
+`check-pins.js` does not check the runner, so a new job copies the pin by
+hand.
+
 ## Addresses
 
 `vercel.json` sends every request to one of Vercel's production addresses
@@ -74,9 +80,11 @@ one is there, are in [security.md](security.md).
 The GitHub star count in the site's menu is read once per build, so every page
 stays a static file. `.github/workflows/refresh-stars.yml` starts a new
 production build through a Vercel deploy hook each time the repository gets a
-star, and weekly to catch removed stars. The hook's address is a repository
-secret named `VERCEL_DEPLOY_HOOK_URL`; without it the workflow fails and the
-count stays as it was.
+star, every Monday at 07:17 UTC to catch removed stars, and when it is run by
+hand. The hook's address is a repository secret named `VERCEL_DEPLOY_HOOK_URL`; without
+it the workflow fails and the count stays as it was. Each of these builds
+becomes the newest production deployment, which matters for rollback (see
+[Releasing](#releasing)).
 
 ## When a deploy goes wrong
 
@@ -102,5 +110,56 @@ node scripts/audit-deps.js --omit=dev
 ```
 
 It fails on any advisory of moderate severity or higher; CI runs the same
-check on every pull request. After the merge, tag the commit `v<version>` and
-publish the GitHub release.
+check on every pull request. Check the release before it goes live (below),
+then tag the merged commit `v<version>` and publish the GitHub release.
+
+### Check a release before it goes live
+
+Vercel's steps below come from its docs on
+[promoting deployments](https://vercel.com/docs/deployments/promoting-a-deployment)
+and [Instant Rollback](https://vercel.com/docs/instant-rollback).
+
+1. Check the preview. The release pull request gets a preview deployment,
+   built by the same `scripts/vercel-build.sh`. Open it from the pull
+   request's Vercel check and try what the release changes.
+2. Stage the production build. By default, a merge into `main` goes live as
+   soon as it builds. To check it first, turn off **Auto-assign Custom
+   Production Domains** before the merge. The toggle is in the project's
+   **Settings**, under **Environments**, **Production**, **Branch Tracking**.
+   The merge then builds a staged production deployment. It has its own URL,
+   and <https://aarch64-playground.com> still serves the previous release.
+3. Check the staged deployment at its URL, from the project's
+   **Deployments** list. Vercel Authentication guards every deployment URL
+   except the custom domains, so use a browser signed in to Vercel, or
+   `vercel curl / --deployment <url>`.
+4. Promote it:
+
+   ```bash
+   vercel promote <deployment-url>
+   ```
+
+   The **Promote** item in the deployment's menu does the same. Promoting
+   does not rebuild, so production serves the bytes you checked.
+5. If something is wrong, roll back:
+
+   ```bash
+   vercel rollback
+   vercel rollback status
+   ```
+
+   **Instant Rollback** on the production deployment's tile does the same.
+   On the Hobby plan, a rollback reaches only the production deployment that
+   served just before the current one. Naming an older one fails. A rollback
+   turns off the auto-assignment of production domains, so later builds of
+   `main` stay staged until you promote one with `vercel promote`, which turns
+   it back on.
+
+The star count limits how far back a rollback reaches. With auto-assignment
+on, every build `refresh-stars.yml` starts (a new star, or Monday at
+07:17 UTC) goes live and becomes the current deployment. After the first
+such build, the deployment before it is the new release itself, so the
+previous release is out of a rollback's reach. From then on, the way back is
+a pull request that reverts the release on `main`. With auto-assignment off,
+those builds stay staged and the star count changes only when one is
+promoted. A staged build never served production, so it is not a rollback
+target, and the previous release stays one until the next promote.

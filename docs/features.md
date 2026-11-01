@@ -41,6 +41,8 @@ repository root.
 | The one emulator component used on every page | `web/components/playground/EmbeddablePlayground.tsx`, `EmbeddableCore.tsx` (owns the emulator hook), `use-embeddable-state.ts` |
 | The full debugger's panels and dialogs, loaded only on `/playground` | `web/components/playground/FullChromeSurface.tsx`, `lazy-full-chrome.tsx`, `use-workspace-import.ts`, `use-full-chrome-run.ts`, `use-active-file.ts`, `use-debug-panes.tsx` |
 | Lesson and exercise editors (run, step, back, reset, check, and step over, step out and run to cursor, behind an ellipsis button, **…**, on a phone) | `web/components/playground/EmbedLayout.tsx`, `StepGoals.tsx` |
+| The registers or stack switch above a lesson or exercise editor's registers (on a phone a fourth view: code, registers, stack, console). Registers come first; the choice is kept in this browser and reaches every editor on the page | `web/components/playground/EmbedLayout.tsx`, `PaneSwitch.tsx` |
+| The playground's stack tab: the frames view first, the raw bytes from `sp` one switch away, the choice kept in this browser | `web/components/playground/StackTab.tsx`, `PaneSwitch.tsx` |
 | Editor (Monaco), loaded on demand | `web/components/playground/Editor.tsx`, `monaco-setup.ts`, `lazy-editor.tsx` |
 | Editor on touch screens | `web/components/playground/TouchEditor.tsx` |
 | Completion, hover cards, and error explanations | `web/lib/asm/asm-completion.ts`, `instruction-docs.ts`, `error-explain.ts` |
@@ -73,7 +75,11 @@ repository root.
 | Encoding strip for the current instruction | `web/components/panels/DecodeStrip.tsx`, `web/lib/emulator/decode-fields.ts`, `web/lib/asm/explain-line.ts` |
 | Disassembly | `web/components/panels/InstructionView.tsx` |
 | Memory, with labels from the emulator's address map | `web/components/panels/MemoryPanel.tsx`, `web/lib/emulator/memory-map.ts` |
-| Stack and frame labels | `web/components/panels/StackPanel.tsx`, `web/lib/emulator/frame-labels.ts` |
+| The stack tab's bytes view, with frame labels | `web/components/panels/StackPanel.tsx`, `web/lib/emulator/frame-labels.ts` |
+| The stack frames view: one frame per call the program is inside, main at the top, each headed by its name, its size, and the line that called it. Each saved `fp`, saved `lr`, local, array element, and gap is a box, high addresses first, at its offset from `fp` (or from `sp` before `fp` is set), with `sp` and `fp` marked on the right. The last step's write carries the amber bar. It loads in its own chunk, only where the stack can show | `emulator/src/frames.rs` (the call stack, followed through each `bl`, `blr`, and `ret`), `emulator/src/frames/layout.rs` (each function's slots, named from the source), `web/lib/emulator/frame-data.ts`, `stack-frames.ts`, `web/components/panels/FramesView.tsx`, `frame-styles.ts`, `web/components/playground/lazy-frames.tsx` |
+| The stack explanations under the frames, naming the line and the step: a write over a caller's saved `fp` or `lr`, a `ret` that went to no caller, and a caller reading `x19` to `x28` after a call left one changed. When a fault follows such a `ret`, or step over, step out, or run to cursor stops at one, the error line says the same | `web/lib/emulator/frame-cards.ts`, `web/components/panels/FramesView.tsx`, `surfaceRuntimeError` in `web/lib/emulator/use-emulator.ts` |
+| Pointer chips: an `x` register that points into a drawn frame names the slot and whose frame it is (`a_s · main`); pressing the chip opens the stack and brings the slot into view | `web/components/panels/PointerChips.tsx`, `slot-pointer.ts`, `web/lib/emulator/frame-boxes.ts` |
+| The frame check before a run, as warnings in the editor: in a function on the course's frame pattern, named slots that overlap, a store outside the frame, a slot on the saved `fp` or `lr`, an 8-byte slot off a multiple of 8, and a frame size that leaves `sp` off a multiple of 16 | `emulator/src/frames/check.rs`, `web/lib/emulator/frame-check.ts`, `web/components/playground/Editor.tsx` |
 | The calls made so far, above the frames in the playground's stack tab: main first with each call's own calls under it, the current call marked, a returned call dimmed with the value it returned (read as w0 when the last write to x0 before the `ret` was a 32-bit one, as x0 when it was a 64-bit one, and in hex when that is an address), `fact(4)` when the list can tell from the function's opening instructions that it reads its argument from w0 or x0, and the name alone when it can't, a run of one function folded after its first four calls with a count of every call in it, however deep the recursion goes (`rec × 7,940`), and past 200 rows or 12 levels the rest counted in words | `emulator/src/frames/tree.rs`, `web/lib/emulator/call-tree.ts`, `web/components/panels/CallTree.tsx` |
 | Console, with input for `scanf` and `read` | `web/components/panels/ConsolePanel.tsx` |
 | Terminal, with gdb-lite (`ni`, `si`, `finish`, `bt`, `info frame`, `x/Ngx`) | `web/components/panels/TerminalPane.tsx`, `web/lib/terminal/`, `web/lib/playground/terminal-context.ts` ([terminal.md](terminal.md)) |
@@ -121,6 +127,7 @@ repository root.
 | What each instruction does, in the decoder's classes | `emulator/src/executor.rs`, `emulator/src/executor/`, `fpu.rs` |
 | Registers, memory, and the run loop | `emulator/src/registers.rs`, `memory.rs`, `cpu.rs`, `emulator/src/cpu/` |
 | Library calls and system calls | `emulator/src/hosted/` |
+| The call stack, each function's frame layout, the frame check, and the call tree behind the stack tab | `emulator/src/frames.rs`, `emulator/src/frames/` |
 | The functions the site calls | `emulator/src/lib.rs` |
 | The web side of the emulator (backend, worker) | `web/lib/emulator/backend.ts`, `web/lib/worker/` |
 | Response headers | `web/next.config.mjs`, `vercel.json` |

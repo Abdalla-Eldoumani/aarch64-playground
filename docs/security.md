@@ -118,10 +118,14 @@ limit.
   outside script host is trusted at run time.
 - The site does not use `SharedArrayBuffer`, so it needs no cross-origin
   isolation headers. The worker copies bytes through `postMessage`.
-- Vercel's firewall sits in front of the site. Clients that are not browsers
-  get a JavaScript challenge; known search engines and link previews pass.
-- Vercel Analytics and Speed Insights set no cookies and run only on the
-  production site.
+- Vercel's firewall sits in front of the deployed site. Its rules live in the
+  Vercel project's settings, not in this repository. With the current rules,
+  clients that are not browsers get a JavaScript challenge, and known search
+  engines and link previews pass.
+- Vercel Analytics and Speed Insights set no cookies. `web/app/layout.tsx`
+  adds both to every page of every build, so they load on preview
+  deployments as well as production. A local server has no analytics
+  scripts to serve, so there they only log errors, as the README says.
 
 ## What you can safely open
 

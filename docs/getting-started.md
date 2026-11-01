@@ -7,7 +7,8 @@ and then points at the rest of the site. The site has five parts:
 - `/playground`: the full emulator and debugger.
 - `/learn`: lessons, each with programs you can run beside the text.
 - `/practice`: coding exercises checked by running your program, plus quizzes,
-  fill-in-the-blank sets, and prediction sets graded on the page.
+  fill-in-the-blank sets, and prediction sets graded on the page. Frame
+  drawings ask you to fill in a paused function's stack frame.
 - `/reference`: every supported instruction, the calling convention, and a
   catalog of common mistakes.
 
@@ -66,13 +67,21 @@ program has finished, or when you changed the code, the files, or the args.
 
 1. Press **assemble** again.
 2. Press **step** (`F10`) to run one instruction. The registers it changed are
-   marked, the current line is highlighted, and the stack panel follows the
-   prologue as it builds the frame.
-3. Press **back** (`Shift+F10`) to undo the last instruction. Step back
+   marked and the current line is highlighted.
+3. Open the **stack** tab. It draws `main`'s frame the way the course does:
+   high addresses at the top, one box per saved register and local with its
+   offset from `fp` on the left, and `sp` and `fp` marked on the right. Step
+   through the prologue and watch the frame fill in. The **bytes** switch in
+   the tab's header shows the raw stack instead.
+4. Press **back** (`Shift+F10`) to undo the last instruction. Step back
    reaches the last 128 instructions.
-4. Click the margin to the left of a line number to set a breakpoint there,
+5. Click the margin to the left of a line number to set a breakpoint there,
    or put the caret on the line and press `F9`. **run** stops when it reaches
    that line.
+6. On a `bl` line, **step over** (`Ctrl+F10`) runs the whole call and stops
+   on the next line. **step out** (`Ctrl+Shift+F10`) runs until the current
+   function returns, and **run to cursor** (`Ctrl+F9`) runs until the line
+   the caret is on.
 
 The **next instruction** strip above the registers shows the instruction the
 next step runs: its encoding, field by field, and a plain-English reading of
@@ -164,6 +173,9 @@ and memory, and copies it or a link that reopens the program.
 | `F5` | Run or pause |
 | `F10` | Step |
 | `Shift+F10` | Step back |
+| `Ctrl+F10` | Step over: run the call on this line in one go |
+| `Ctrl+Shift+F10` | Step out: run until this function returns |
+| `Ctrl+F9` | Run to the caret's line |
 | `Shift+F5` | Reset |
 | `F9` | Set or clear a breakpoint on the caret's line |
 | `Ctrl+K` | Command palette, from anywhere on the page |
@@ -174,11 +186,17 @@ and memory, and copies it or a link that reopens the program.
 
 - **Learn**: each lesson has editors with **run**, **step**, **back**, and
   **reset** under them, so you can change an example and run it in place.
+  Step over, step out, and run to cursor sit beside them, behind the **…**
+  button on a phone. A **registers** or **stack** switch above the registers
+  shows the frames view in their place.
 - **Practice**: a coding exercise gives you a starter program and a **check**
   button. Check runs your program on the visible input and on hidden ones and
   compares the output; it never looks at a stored answer, so any correct
-  approach passes. Your progress and answers stay in this browser; the
-  **progress** row exports them to a file and imports them on another device.
+  approach passes. A frame drawing pauses a program inside one function and
+  asks for its frame: the size, each named slot's offset from `fp`, and where the
+  saved `fp` and `lr` sit. Check runs the program to the pause and marks each
+  field. Your progress and answers stay in this browser; the **progress** row
+  exports them to a file and imports them on another device.
 - **Reference**: the list starts with the instructions the course uses, and
   a button above it shows all of them. Type a mnemonic or plain words in the
   box (`/` jumps to it): `multiply`, `load a byte`, and `x * y` all work, and
