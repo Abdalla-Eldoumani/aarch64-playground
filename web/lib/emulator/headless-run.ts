@@ -126,8 +126,8 @@ function watchFrames(machine: HeadlessMachine) {
   if (!start || !layout) return null;
   const lines = parseLineMap(machine.getLineMap());
   const lineOf = (pc: number) => pcToSourceLineFromMap(pc, lines);
-  const fnAt = (pc: number) => layout.functions.find((fn) => pc >= fn.entry && pc < fn.end);
-  const nameAt = (pc: number) => fnAt(pc)?.name ?? `0x${pc.toString(16)}`;
+  const nameAt = (pc: number) =>
+    layout.functions.find((fn) => pc >= fn.entry && pc < fn.end)?.name ?? `0x${pc.toString(16)}`;
   // Each ret's address, and the register it returns through.
   const rets = new Map<number, number>();
   for (const fn of layout.functions) {
@@ -168,10 +168,10 @@ function watchFrames(machine: HeadlessMachine) {
       const astray = snapshot.badReturn;
       // Named for the code that holds the ret: a function reached by b is not on the stack.
       if (astray) add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
-      // A ret hands the caller fp as it is now; main's own ret is left out. Only
-      // a ret in the innermost call's own function that returns that call is
-      // checked: a call whose ret went astray stays on the stack, a recursion's
-      // outer call shares its function, and the stray ret is already noted.
+      // A ret hands the caller fp as it is now; main's own ret is left out. A
+      // ret is checked only when sp is back at the innermost call's entry value
+      // and its register holds that call's return address: a call whose ret
+      // went astray stays on the stack, and the stray ret is already noted.
       const pc = machine.getPc();
       const through = rets.get(pc);
       const call = snapshot.frames.at(-1);
@@ -179,7 +179,7 @@ function watchFrames(machine: HeadlessMachine) {
         through !== undefined &&
         call &&
         call.index > 0 &&
-        fnAt(pc) === fnAt(call.entry) &&
+        Number(machine.getSp()) === call.spEntry &&
         Number(machine.getRegister(through)) === call.retAddr &&
         Number(machine.getRegister(29)) !== call.fpEntry
       ) {
