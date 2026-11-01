@@ -265,6 +265,11 @@ sends one at most every 50 ms, because each is a `postMessage` and too many
 flood the page. The main-thread backend calls its listeners directly, so it
 sends one after every chunk.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="diagrams/frames-view-dark.svg">
+  <img src="diagrams/frames-view-light.svg" alt="How the frames view is built. In the Rust interpreter, the call stack in frames.rs keeps one record per call: a bl or blr into the program's own code pushes it and its ret pops it, checked on every step. The frame chain (chain_matches) follows each saved fp from x29 to the caller's record and checks the saved lrs against the call stack. The static layout in frames/layout.rs names each function's slots off x29 from the operands the student wrote, once per assemble. frames() runs frame_view once per snapshot and lays out the drawn calls as numbers, chainOk among them; frame_layout() and frame_names() carry the layout. The worker passes both on raw, frames in each StateSnapshot and frameLayout once per assemble. stack-frames.ts decodes them, reads the drawn frames' bytes through getMemory and the step's writes from dirtyAddrs, and hands FramesView.tsx one box per saved register, slot, and gap. The picture students see, as minmax stores the lowest value: main, 32 bytes, with padding at fp + 24, hi_s = 0 at fp + 20, lo_s = -3 at fp + 16 with the amber bar of the step's write, the saved lr at fp + 8 and the saved fp at fp + 0; then minmax, 32 bytes, called from line 72, with [fp, 24] = 0, mm_save = 0, a saved lr going back to line 74, and a saved fp naming main's frame, where sp and fp point. The names, sizes, and gaps come from the static layout, the values from the stack's bytes, the frames with their sizes and callers from the call stack, and the record's words are the links the chain walk follows.">
+</picture>
+
 ## Where errors show
 
 - An assembly error marks the line in the editor and appears under the
