@@ -171,6 +171,34 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  it("make no note for a forgetful helper fix whose main copies x20 into x21", async () => {
+    const { starter } = codingExercise("the-forgetful-helper");
+    const copied = starter
+      .replace("mov     x19, x0", "mov     x20, x0")
+      .replace("add     x19, x19, x19", "add     x20, x20, x20")
+      .replace("mov     x0, x19", "mov     x0, x20")
+      .replace("add     total_r, total_r, x0", "mov     x21, x20\n        add     total_r, total_r, x21");
+    expect(copied).toContain("mov     x21, x20");
+    const { noted, plain } = await bothRuns(copied, "100 20\n");
+    expect(noted.frameNotes).toEqual([]);
+    expect(noted.stdout).toBe("total = 140\n");
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
+  it("make no note for a ret that skips its caller three calls deep in a recursion", async () => {
+    const { noted, plain } = await bothRuns(fixture("skip-caller-recursion.s"));
+    expect(noted.frameNotes).toEqual([]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "99\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
+  it("make no note for a call made by hand with adr and b", async () => {
+    const { noted, plain } = await bothRuns(fixture("call-by-hand.s"));
+    expect(noted.frameNotes).toEqual([]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "3\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   // Each run takes the whole 5,000,000-step budget, about 2.5 s on this
   // machine with or without the notes, so the pair needs more than 5 s.
   it("still end a ret that loops back into its own function at the step budget", { timeout: 30_000 }, async () => {
