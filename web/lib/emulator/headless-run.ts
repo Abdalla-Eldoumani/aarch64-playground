@@ -160,16 +160,22 @@ function watchFrames(machine: HeadlessMachine) {
       const snapshot = numbers && decodeFrames(numbers);
       if (!numbers || !snapshot) return;
       depth = callDepth(numbers);
+      const astray = snapshot.badReturn;
+      if (astray) {
+        // Named for the code that holds the ret: a function reached by b is not
+        // on the stack. Past a stray ret the call stack is stale, so the run
+        // notes nothing more and goes straight through, as at the stop cap.
+        add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
+        stops = MAX_FRAME_STOPS;
+        machine.clearAllBreakpoints();
+        return;
+      }
       for (const row of snapshot.frames) {
         const fn = nameAt(row.entry);
         if (row.spEntry % 16 !== 0) add({ kind: "sp", fn, line: lineOf(row.callPc) });
         if (row.fpHit) add({ kind: "fp", fn, line: lineOf(row.fpHit.pc) });
         if (row.lrHit) add({ kind: "lr", fn, line: lineOf(row.lrHit.pc) });
       }
-      const astray = snapshot.badReturn;
-      // Named for the code that holds the ret: a function reached by b is not
-      // on the stack.
-      if (astray) add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
       // A ret hands the caller fp as it is now; main's own ret is left out. A
       // ret is checked only when sp is back at the innermost call's entry value
       // and its register holds that call's return address: a call whose ret
