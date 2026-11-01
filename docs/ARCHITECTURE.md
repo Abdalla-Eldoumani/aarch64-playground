@@ -330,10 +330,10 @@ backend puts these numbers in the `StateSnapshot`'s `frames` field.
 
 `web/lib/emulator/frame-data.ts` reads these exports and passes the numbers
 on raw. `stack-frames.ts` decodes them, together with the stack's bytes read
-through `getMemory`, into the boxes `FramesView.tsx` draws. Only the frames
-view imports the decoder, so it loads in its own chunk
-(`web/components/playground/lazy-frames.tsx`), and a page that never shows the
-stack never downloads it.
+through `getMemory`, into the boxes `FramesView.tsx` draws. Only code that
+loads on demand imports the decoder (the frames view, the frame cards, the
+call card, the terminal, and the frame drawing check), so none of a page's
+own scripts carries it.
 
 ### How Back restores it
 
