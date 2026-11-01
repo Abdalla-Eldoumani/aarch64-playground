@@ -106,7 +106,7 @@ const RET = 0xd65f0000;
 const RET_MASK = 0xfffffc1f;
 
 /**
- * Notes one run keeps. Their key (kind, function, line, register) already
+ * Notes one run keeps. Their key (kind, function, line) already
  * makes a call broken inside a loop one note, so this bounds the list for a
  * program that breaks the rules in many places.
  */
@@ -146,7 +146,7 @@ function watchFrames(machine: HeadlessMachine) {
 
   const notes = new Map<string, FrameNote>();
   const add = (note: FrameNote) => {
-    const key = `${note.kind} ${note.fn} ${note.line} ${note.register}`;
+    const key = `${note.kind} ${note.fn} ${note.line}`;
     if (notes.size < MAX_FRAME_NOTES && !notes.has(key)) notes.set(key, note);
   };
   let depth = callDepth(start);
@@ -161,12 +161,10 @@ function watchFrames(machine: HeadlessMachine) {
       const snapshot = numbers && decodeFrames(numbers);
       if (!numbers || !snapshot) return;
       depth = callDepth(numbers);
-      const astray = snapshot.badReturn;
-      if (astray) {
-        // Named for the code that holds the ret: a function reached by b is not
-        // on the stack. Past a stray ret the call stack is stale, so the run
-        // notes nothing more and goes straight through, as at the stop cap.
-        add({ kind: "return", fn: nameAt(astray.pc), line: lineOf(astray.pc) });
+      if (snapshot.badReturn) {
+        // A ret that returned to no call made with bl or blr leaves the call
+        // stack stale, so the run notes nothing more and goes straight
+        // through, as at the stop cap.
         stops = MAX_FRAME_STOPS;
         machine.clearAllBreakpoints();
         return;
@@ -193,10 +191,6 @@ function watchFrames(machine: HeadlessMachine) {
         Number(machine.getRegister(29)) !== call.fpEntry
       ) {
         add({ kind: "fpChanged", fn: nameAt(pc), line: lineOf(pc) });
-      }
-      // The machine records these at every ret but main's.
-      for (const { register, retPc } of snapshot.leftovers) {
-        add({ kind: "callee", fn: nameAt(retPc), line: lineOf(retPc), register });
       }
     },
     notes: () => [...notes.values()],
