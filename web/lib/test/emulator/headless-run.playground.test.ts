@@ -111,3 +111,70 @@ describe("the per-call frame notes", () => {
     expect(slice.halted).toBe(true);
   });
 });
+
+// main calls count(1) to count(1000), after `spin` turns of a three-step loop
+// with no call. count leaves x21 changed once its argument reaches `from`, so
+// a note means call number `from` was checked.
+const manyCalls = (from: number, spin = 0) => `define(fp, x29)
+define(lr, x30)
+define(i_r, x19)
+
+.text
+
+// count(x0 = i): leaves x21 changed once i reaches ${from} (bug: x21 is callee-saved)
+        .balign 4
+        .global count
+count:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x9, =${from}
+        cmp     x0, x9
+        b.lt    count_done
+        mov     x21, x0
+count_done:
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x10, =${spin}
+spin:
+        cbz     x10, spun
+        sub     x10, x10, 1
+        b       spin
+spun:
+        mov     i_r, 1
+call_next:
+        mov     x0, i_r
+        bl      count
+        add     i_r, i_r, 1
+        cmp     i_r, 1000
+        b.le    call_next
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+describe("how many calls a run checks", () => {
+  // A call takes three of the run's 2,000 stops: its entry, its ret and its return.
+  it("check the first 666 calls of a run that makes them straight away, and no later one", async () => {
+    // count's ret is line 19.
+    const checked = await runHeadless(machine, manyCalls(666), [], undefined);
+    expect(checked.frameNotes).toEqual([{ kind: "callee", fn: "count", line: 19, register: 21 }]);
+    expect((await runHeadless(machine, manyCalls(667), [], undefined)).frameNotes).toEqual([]);
+  });
+
+  // Every 250,000 steps with no stop also take a stop. A run that finishes
+  // within the 5,000,000-step budget spends at most 19 that way, leaving 660.
+  it("check the first 660 calls after 4,752,000 steps with no call", { timeout: 30_000 }, async () => {
+    const checked = await runHeadless(machine, manyCalls(660, 1_584_000), [], undefined);
+    expect(checked).toMatchObject({ finished: true, exitCode: 0 });
+    expect(checked.frameNotes).toHaveLength(1);
+    expect((await runHeadless(machine, manyCalls(661, 1_584_000), [], undefined)).frameNotes).toEqual([]);
+  });
+});
