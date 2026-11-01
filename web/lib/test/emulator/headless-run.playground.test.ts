@@ -92,6 +92,26 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  it("note a stray ret three calls deep in a recursion, and no fp change at the outer calls' rets", async () => {
+    const { noted, plain } = await bothRuns(fixture("astray-deep-recursion.s"));
+    // The base case's ret is line 28; both outer calls' ldp hand fp back.
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "count_down", line: 28 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
+  // In each, main's call comes back with fp changed by a function reached by b.
+  it.each([
+    ["tail-fp-scratch.s", "set_fp", 18],
+    ["tail-own-saved-fp.s", "keep", 27],
+    ["tail-after-epilogue.s", "keep", 27],
+  ])("note fp changed by a function reached by b (%s)", async (name, fn, line) => {
+    const { noted, plain } = await bothRuns(fixture(name));
+    expect(noted.frameNotes).toEqual([{ kind: "fpChanged", fn, line }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   it("make no note for a tail call, whose ret goes back to its caller's caller", async () => {
     const { noted, plain } = await bothRuns(fixture("tail-call.s"));
     expect(noted.frameNotes).toEqual([]);
