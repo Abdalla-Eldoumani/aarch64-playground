@@ -41,9 +41,10 @@ const BUILD_CONFIG =
   /^(web\/(package(-lock)?\.json|next\.config\.mjs|tsconfig\.json|tailwind\.config\.ts|postcss\.config\.js|lib\/playground\/share\.ts|public\/examples\/cpsc355\/locals\.s)$|vercel\.json$|package\.json$|scripts\/(write-precache-list\.js|browser-smoke\.mjs|smoke-noise\.mjs)$)/;
 
 // The stack frames view the browser smoke reads, from the frames exports'
-// decode to the stack tab's switch. Lessons' EmbedLayout is not on its page.
+// decode to the stack tab's switch, its rows (FrameRow) included. Lessons'
+// EmbedLayout is not on its page.
 const FRAMES_VIEW =
-  /^web\/(lib\/emulator\/(frame-data|stack-frames)\.ts|components\/(panels\/FramesView|playground\/(lazy-frames|StackTab))\.tsx)$/;
+  /^web\/(lib\/emulator\/(frame-data|stack-frames)\.ts|components\/(panels\/(FramesView|FrameRow)|playground\/(lazy-frames|StackTab))\.tsx)$/;
 
 function classOf(file) {
   const rule = RULES.find(([, pattern]) => pattern.test(file));
