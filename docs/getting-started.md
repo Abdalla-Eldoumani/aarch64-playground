@@ -115,9 +115,8 @@ and memory, and copies it or a link that reopens the program.
   focus, so press `Ctrl+M`, then `Tab`, to move out of it. See
   [terminal.md](terminal.md).
 - The **watches** tab evaluates expressions such as `x0`, `*x0`, and
-  `[fp, score1_s]` each time the program stops. A stack offset also takes an
-  index: `score1_s[1]` reads the 8 bytes at `fp + score1_s + 8`. A `.data`
-  label takes one too, when a `.byte`, `.hword`, `.word`, or `.dword` line
+  `[fp, score1_s]` each time the program stops. A `.data` label takes an
+  index when a `.byte`, `.hword`, `.word`, or `.dword` line
   (or another spelling of one of those sizes, such as `.quad`) follows it: `nums[2]` reads the third element, 1, 2, 4, or 8 bytes wide to
   match. A label with no such line, or with mixed sizes, is refused rather
   than guessed. Name registers directly (`w19`); an m4 alias such as
