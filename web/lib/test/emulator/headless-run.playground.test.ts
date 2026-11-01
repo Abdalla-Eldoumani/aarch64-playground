@@ -49,6 +49,14 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  it("note a function that writes over its own saved fp and returns with fp changed", async () => {
+    const { noted, plain } = await bothRuns(fixture("own-saved-fp.s"));
+    // keep's ret is line 28.
+    expect(noted.frameNotes).toEqual([{ kind: "fpChanged", fn: "keep", line: 28 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   it("note a write over a caller's saved lr and the ret it sends astray, with the fault unchanged", async () => {
     const { noted, plain } = await bothRuns(fixture("lr-overwrite.s"));
     // fill's writes 4 to 7 cover main's saved fp (4, 5) and saved lr (6, 7).
