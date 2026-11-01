@@ -94,6 +94,12 @@ the call, with a plain message instead of a crash:
   library call while `sp` is not a multiple of 16, stops the program, as a
   segmentation fault or bus error would on the course server.
 
+The stack view caps its own records, so a deep recursion cannot use up memory
+through them either. It records at most 16,384 calls
+(`frames::MAX_ACTIVATIONS`) and draws at most 64 frames, and the call tree
+keeps at most 200 calls. Calls past those are counted, not stored, and the
+program runs on.
+
 `emulator/tests/bounds.rs` and the unit tests for the library calls test each
 limit.
 
@@ -144,10 +150,10 @@ override for the copy of Next.js that Vercel installs there.
 
 monaco-editor also bundles its own, older copy of DOMPurify, a file inside
 its package that `overrides` cannot change. The editor uses it to clean the
-text of its hover cards before showing them. Those cards never hold HTML from
-a link or a file, so the old copy was hard to reach. It still had known flaws,
-so the build swaps it out: `web/next.config.mjs` tells webpack to load the
-installed `dompurify` package
+Markdown it shows, such as its hover cards, and the labels of its buttons.
+None of that holds HTML from a link or a file, so the old copy was hard to
+reach. It still had known flaws, so the build swaps it out.
+`web/next.config.mjs` tells webpack to load the installed `dompurify` package
 wherever the editor asks for its own copy, so the editor runs the patched
 version. `npm run size` then reads the version each copy of DOMPurify in the
 built JavaScript states and fails if any is older than the one in
