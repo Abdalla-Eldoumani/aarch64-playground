@@ -69,6 +69,36 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  // In both, skip_next's ret is line 18, and every later ret hands fp back.
+  it("note a stray ret, and no fp change at main's ret after it", async () => {
+    const { noted, plain } = await bothRuns(fixture("astray-then-main.s"));
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "skip_next", line: 18 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
+  it("note a stray ret, and no fp change at its caller's ret after it", async () => {
+    const { noted, plain } = await bothRuns(fixture("astray-deep.s"));
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "skip_next", line: 18 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
+  it("make no note for a tail call, whose ret goes back to its caller's caller", async () => {
+    const { noted, plain } = await bothRuns(fixture("tail-call.s"));
+    expect(noted.frameNotes).toEqual([]);
+    expect(noted).toEqual(plain);
+    expect(noted.stdout).toBe("7\n");
+  });
+
+  it("name a stray ret after the function whose code holds it, reached by b", async () => {
+    const { noted, plain } = await bothRuns(fixture("branch-astray.s"));
+    // finish's ret is line 17.
+    expect(noted.frameNotes).toEqual([{ kind: "return", fn: "finish", line: 17 }]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout: "7\n", exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   it("note x19 to x28 left changed by a call, but never by main", async () => {
     const { noted, plain } = await bothRuns(fixture("x20-left-changed.s"));
     // main sets x19 and never puts it back, as course programs do.
