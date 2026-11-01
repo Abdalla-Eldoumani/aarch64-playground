@@ -57,7 +57,7 @@ const HINT_CLASS = "mt-1 text-[13px] leading-snug text-[var(--text-secondary)]";
 function hintFor(mark: FieldMark | null, hint: string): string | null {
   if (mark === "wrong") return hint;
   if (mark === "empty") return "Type a number of bytes here.";
-  if (mark === "invalid") return "Type a whole number of bytes, digits only, like 16.";
+  if (mark === "invalid") return "Type a whole number of bytes, digits only.";
   return null;
 }
 
