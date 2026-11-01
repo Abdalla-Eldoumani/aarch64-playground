@@ -2,11 +2,10 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this and the playground runs its checks on it. A run also notes where the
- * calls it checks broke a stack rule (sp at a call, a write over a saved fp
- * or lr, fp not handed back), up to eight notes a run and none after a ret
- * that returns to no call made with bl or blr; `runToPause` stops a frame
- * exercise's program where its frame is to be drawn.
+ * this and the playground runs its checks on it. A run also notes the calls
+ * it checks that were made with sp off a multiple of 16, up to eight notes a
+ * run; `runToPause` stops a frame exercise's program where its frame is to be
+ * drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
