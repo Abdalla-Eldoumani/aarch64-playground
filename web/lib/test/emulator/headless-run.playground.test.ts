@@ -195,6 +195,20 @@ describe("the per-call frame notes", () => {
     expect({ ...noted, frameNotes: [] }).toEqual(plain);
   });
 
+  // A b chain, a fall-through, and a ret that skips its caller: shapes where
+  // an fp or write-over note would name the wrong function or frame.
+  it.each([
+    ["tail-caller-fp-scratch.s", "7\n"],
+    ["fall-through-fp-scratch.s", "7\n"],
+    ["skip-recursion-alloc-fill.s", "99\n"],
+    ["tail-then-callee-writes.s", "7\n"],
+  ])("make no note for %s", async (name, stdout) => {
+    const { noted, plain } = await bothRuns(fixture(name));
+    expect(noted.frameNotes).toEqual([]);
+    expect(noted).toMatchObject({ error: null, finished: true, stdout, exitCode: 0 });
+    expect({ ...noted, frameNotes: [] }).toEqual(plain);
+  });
+
   // Each run takes the whole 5,000,000-step budget, about 2.5 s on this
   // machine with or without the notes, so the pair needs more than 5 s.
   it("still end a ret that loops back into its own function at the step budget", { timeout: 30_000 }, async () => {
