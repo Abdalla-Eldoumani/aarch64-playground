@@ -274,10 +274,10 @@ caller, and a function hands `fp` and `x19` to `x28` back as it found
 them (`main` is left out of that one, since course programs keep their own
 values in `x19` to `x28` there). A long run is checked only in part: once it
 has stopped 2,000 times at calls, `ret`s and returns, the rest of the run
-goes unchecked. What a run finds shows under the results
-as notes, once each, and does not change pass or fail. That stays so until
-the CPSC 355 final on December 16, 2026. After it, the notes start to count
-by one change: set `FRAME_NOTES_COUNT` in
+goes unchecked. What a run finds shows under the results as notes, once each
+and up to eight from each run, and does not change pass or fail. That stays
+so until the CPSC 355 final on December 16, 2026. After it, the notes start
+to count by one change: set `FRAME_NOTES_COUNT` in
 `web/lib/content/exercise-checker.ts` to `true`, and a case with a note
 fails, after every other check it already makes. A content test holds every
 reference solution to no notes at all, so the switch fails none of them.
