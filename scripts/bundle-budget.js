@@ -100,9 +100,16 @@ function measure(route) {
   return { files: files.length, total };
 }
 
-// Minified, DOMPurify reads `n.version="3.4.17",n.removed=[]`; React and xterm
-// also assign a bare `version`, so the `removed` after it marks DOMPurify.
-const DOMPURIFY_VERSION = /\.version="(\d+)\.(\d+)\.(\d+)",[\w$]+\.removed=\[\]/g;
+// Minified, DOMPurify reads `n.version="3.4.17",n.removed=[]`; its own
+// purify.min.js quotes the version in backticks, so any quote mark counts.
+// React and xterm also assign a bare `version`, so the `removed` after it
+// marks DOMPurify.
+const DOMPURIFY_VERSION = /\.version=(["'`])(\d+)\.(\d+)\.(\d+)\1,[\w$]+\.removed=\[\]/g;
+
+/** Every DOMPurify version a built chunk states, each as [major, minor, patch]. */
+function dompurifyVersions(text) {
+  return [...text.matchAll(DOMPURIFY_VERSION)].map((match) => match.slice(2, 5).map(Number));
+}
 
 /** True when `version` ([major, minor, patch]) comes before `pin`. */
 function isOlder(version, pin) {
@@ -129,9 +136,7 @@ function checkDompurify() {
   for (const file of fs.readdirSync(chunksDir, { recursive: true })) {
     if (!file.endsWith(".js")) continue;
     const text = fs.readFileSync(path.join(chunksDir, file), "utf8");
-    for (const match of text.matchAll(DOMPURIFY_VERSION)) {
-      copies.push({ file, version: match.slice(1, 4).map(Number) });
-    }
+    for (const version of dompurifyVersions(text)) copies.push({ file, version });
   }
 
   console.log("  dompurify in the built chunks");
@@ -187,9 +192,13 @@ function main() {
   if (failed || dompurify.length > 0) process.exit(1);
 }
 
-try {
-  main();
-} catch (err) {
-  console.error(`bundle-budget: ${err instanceof Error ? err.message : String(err)}`);
-  process.exit(1);
+if (require.main === module) {
+  try {
+    main();
+  } catch (err) {
+    console.error(`bundle-budget: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(1);
+  }
 }
+
+module.exports = { dompurifyVersions };
