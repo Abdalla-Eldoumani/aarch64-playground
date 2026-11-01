@@ -93,8 +93,10 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
  * Stops one run makes at calls, rets and returns to read the call stack;
  * past them the rest of the run goes straight through.
  *
- * shortcut: a program making more than about 650 calls is checked on its
- * first ones only; raise this if an exercise ever needs more.
+ * shortcut: a long run is checked in part. A call takes three stops, so about
+ * the first 660 calls are checked whole when each returns before the next
+ * starts, and a call still running when the stops run out is checked at its
+ * call but not at its ret; raise this if an exercise ever needs more.
  */
 const MAX_FRAME_STOPS = 2_000;
 
