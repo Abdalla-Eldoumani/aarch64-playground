@@ -113,7 +113,7 @@ const gdb = async (command: string, ctx: ReturnType<typeof stoppedAt>["ctx"]) =>
 const framesIn = (lines: string[]) =>
   lines.reduce((sum, line) => {
     const unrecorded = /^\(#0 to #(\d+):/.exec(line);
-    const folded = /^\.\.\. ([\d,]+) more calls \.\.\.$/.exec(line);
+    const folded = /^\.\.\. ([\d,]+) more calls? \.\.\.$/.exec(line);
     return sum + (unrecorded ? Number(unrecorded[1]) + 1 : folded ? Number(folded[1].replace(/,/g, "")) : 1);
   }, 0);
 
@@ -143,6 +143,35 @@ describe("gdb-lite bt", () => {
       "#30  main at line 39",
     ]);
     expect(framesIn(lines)).toBe(31);
+  });
+
+  it("says one folded call in the singular", async () => {
+    // main and 21 calls of fact: #0 to #19, one folded, main #21.
+    const { ctx } = stoppedAt(fact(21), 29);
+    const { lines } = await gdb("bt", ctx);
+    expect(lines).toEqual([
+      "#0  fact at line 29",
+      ...Array.from({ length: 19 }, (_, k) => `#${k + 1}  fact at line 26`),
+      "... 1 more call ...",
+      "#21  main at line 39",
+    ]);
+    expect(framesIn(lines)).toBe(22);
+  });
+
+  it("says one frame deeper than the record in the singular", async () => {
+    // fact(16384) is 16,385 frames deep with main, one past the 16,384
+    // recorded: #0 is not, #1 to #20 show, 16,363 fold:
+    // 1 + 20 + 16,363 + main = 16,385.
+    const { ctx } = stoppedAt(fact(16384), 29);
+    const { lines } = await gdb("bt", ctx);
+    expect(lines).toEqual([
+      "(#0 to #0: 1 deeper frame, not recorded)",
+      "#1  fact",
+      ...Array.from({ length: 19 }, (_, k) => `#${k + 2}  fact at line 26`),
+      "... 16,363 more calls ...",
+      "#16384  main",
+    ]);
+    expect(framesIn(lines)).toBe(16_385);
   });
 
   it("names the frames deeper than the record, then 20 recorded ones, the fold and main", async () => {
