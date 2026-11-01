@@ -2,17 +2,14 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this and the playground runs its checks on it. A run also notes the calls
- * it checks that were made with sp off a multiple of 16, up to eight notes a
- * run; `runToPause` stops a frame exercise's program where its frame is to be
- * drawn.
+ * this and the playground runs its checks on it. `runToPause` stops a frame
+ * exercise's program where its frame is to be drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
-import type { FrameNote, HiddenRunOutcome } from "@/lib/content/exercise-checker";
+import type { HiddenRunOutcome } from "@/lib/content/exercise-checker";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
-import { parseLineMap, pcToSourceLineFromMap } from "@/lib/emulator/line-map";
-import { decodeFrameLayout, decodeFrames, type FrameLayout } from "@/lib/emulator/stack-frames";
+import { parseLineMap } from "@/lib/emulator/line-map";
 
 /** The machine methods a headless run needs; EmulatorInstance has them all. */
 export type HeadlessMachine = Pick<
@@ -91,66 +88,6 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 }
 
 /**
- * Stops one run reads the call stack at: a function's first instruction (a
- * call, or a branch or fall-through onto it), and also slice ends, sleeps,
- * the fault that ends a run and the halt, since the run reads it after every
- * slice.
- *
- * shortcut: a long run is checked only in part: past these stops the rest of
- * the run goes unchecked; raise this if an exercise ever needs more.
- */
-const MAX_FRAME_STOPS = 2_000;
-
-/**
- * Notes one run keeps. Their key (kind, function, line) already
- * makes a call broken inside a loop one note, so this bounds the list for a
- * program that breaks the rules in many places.
- */
-const MAX_FRAME_NOTES = 8;
-
-/**
- * The sp check at each call, read from the machine's own call tracking. The
- * run stops at each of the program's functions' first instruction (a
- * breakpoint on each) until the stops run out, and each stop reads the call
- * stack the frames view draws. Null on a wasm build without the frames
- * exports.
- */
-function watchFrames(machine: HeadlessMachine) {
-  const start = machine.frames();
-  const payload = machine.frameLayout();
-  const layout: FrameLayout | null = payload && decodeFrameLayout(payload);
-  if (!start || !layout) return null;
-  const lines = parseLineMap(machine.getLineMap());
-  const lineOf = (pc: number) => pcToSourceLineFromMap(pc, lines);
-  const nameAt = (pc: number) =>
-    layout.functions.find((fn) => pc >= fn.entry && pc < fn.end)?.name ?? `0x${pc.toString(16)}`;
-  for (const fn of layout.functions) machine.setBreakpoint(fn.entry);
-
-  const notes = new Map<string, FrameNote>();
-  const add = (note: FrameNote) => {
-    const key = `${note.kind} ${note.fn} ${note.line}`;
-    if (notes.size < MAX_FRAME_NOTES && !notes.has(key)) notes.set(key, note);
-  };
-  let stops = 0;
-  return {
-    read() {
-      if (stops === MAX_FRAME_STOPS) return;
-      stops += 1;
-      if (stops === MAX_FRAME_STOPS) machine.clearAllBreakpoints();
-      const numbers = machine.frames();
-      const snapshot = numbers && decodeFrames(numbers);
-      if (!numbers || !snapshot) return;
-      // A row's sp and call site are recorded at its bl or blr, so even a row
-      // a stray ret left behind still names its call truly.
-      for (const row of snapshot.frames) {
-        if (row.spEntry % 16 !== 0) add({ kind: "sp", fn: nameAt(row.entry), line: lineOf(row.callPc) });
-      }
-    },
-    notes: () => [...notes.values()],
-  };
-}
-
-/**
  * `files` (name to text) go into the file system after the load, as a normal
  * run's seed files do.
  */
@@ -172,7 +109,6 @@ export async function runHeadless(
       exitCode: null,
       stackBalanced: null,
       frameIntact: true,
-      frameNotes: [],
     };
   }
   // The load emptied the file system.
@@ -191,28 +127,15 @@ export async function runHeadless(
   let error: string | null = null;
   let errorLine: number | null = null;
   let steps = 0;
-  let sinceYield = 0;
-  const watch = watchFrames(machine);
-  try {
-    while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
-      const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
-      error = slice.error;
-      errorLine = slice.error_line;
-      watch?.read();
-      // A slice that made no progress without halting cannot make any later
-      // either, so it ends the run rather than spinning until the budget.
-      if (slice.steps_executed === 0 && !slice.halted) break;
-      steps += slice.steps_executed;
-      sinceYield += slice.steps_executed;
-      // A stop at a call is not a slice of its own: the page still gets its
-      // turn once per SLICE_STEPS.
-      if (!machine.isHalted() && error === null && (!slice.hit_breakpoint || sinceYield >= SLICE_STEPS)) {
-        sinceYield = 0;
-        await nextTask();
-      }
-    }
-  } finally {
-    machine.clearAllBreakpoints();
+  while (!machine.isHalted() && error === null && steps < HEADLESS_STEP_BUDGET) {
+    const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
+    error = slice.error;
+    errorLine = slice.error_line;
+    // A slice that made no progress without halting cannot make any later
+    // either, so it ends the run rather than spinning until the budget.
+    if (slice.steps_executed === 0 && !slice.halted) break;
+    steps += slice.steps_executed;
+    if (!machine.isHalted() && error === null) await nextTask();
   }
 
   const finished = machine.isHalted();
@@ -226,7 +149,6 @@ export async function runHeadless(
     exitCode: machine.getExitCode(),
     stackBalanced: returnedFromMain ? BigInt(machine.getSp()) === entrySp : null,
     frameIntact: sameBytes(guardBefore, machine.getMemoryRange(guardAddress, FRAME_GUARD_BYTES)),
-    frameNotes: watch?.notes() ?? [],
   };
 }
 
