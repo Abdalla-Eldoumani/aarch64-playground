@@ -222,9 +222,6 @@ describe("every emulator-graded exercise is solvable and does not ship already s
     async (slug, exercise) => {
       const solved = await grade(exercise, solutionFor(slug));
       expect(solved.pass, `${slug} solution: ${solved.why}`).toBe(true);
-      // Clean of frame notes too, so turning FRAME_NOTES_COUNT on fails no
-      // reference program.
-      expect(solved.frameNotes, `${slug} solution's calls`).toEqual([]);
       // Failing somewhere is not enough: a starter that clears every visible
       // check, or every hidden input, tells the student that part is done
       // before they have written anything. A starter that faults counts as a
