@@ -267,17 +267,6 @@ broken program the reader fixes) add:
   A failing case shows the reader its input and their own output, never
   the expected text.
 
-Every hidden run also checks that `sp` is a multiple of 16 at each call
-the program makes with `bl` or `blr` to one of its own functions. A long
-run is checked only in part. What a run finds
-shows under the results as notes, once each and up to eight from each run,
-and does not change pass or fail. That stays so until the CPSC 355 final on
-December 16, 2026. After it, the notes start to count by one change: set
-`FRAME_NOTES_COUNT` in `web/lib/content/exercise-checker.ts` to `true`, and
-a case with a note fails, after every other check it already makes. A
-content test holds every reference solution to no notes at all, so the
-switch fails none of them.
-
 `acceptance.results` is a non-empty list of checks against the run:
 
 - `{ "kind": "register", "reg": "x0", "equals": 5 }`: a register holds a value
