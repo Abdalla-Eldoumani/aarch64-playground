@@ -81,7 +81,7 @@ describe("DirectivesAndDebugger", () => {
   });
 
   it("lists only watches the watch grammar reads", () => {
-    expect(WATCH_FORMS.map((w) => w.form)).toEqual(["w19", "[fp, 16]", "[fp, sum_s]", "sum_s[1]", "nums[2]", "*x21"]);
+    expect(WATCH_FORMS.map((w) => w.form)).toEqual(["w19", "[fp, 16]", "[fp, sum_s]", "nums[2]", "*x21"]);
     for (const { form } of WATCH_FORMS) {
       expect(evaluateWatch(form, CTX), form).not.toHaveProperty("error");
     }
