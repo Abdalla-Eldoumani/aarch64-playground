@@ -92,8 +92,9 @@ function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
 
 /**
  * Stops one run reads the call stack at: calls, rets and returns, a branch or
- * fall-through onto a function's first instruction, and also slice ends,
- * sleeps and the halt, since the run reads it after every slice.
+ * fall-through onto a function's first instruction, a ret that goes astray,
+ * and also slice ends, sleeps, the fault that ends a run and the halt, since
+ * the run reads it after every slice.
  *
  * shortcut: a long run is checked only in part: past these stops the rest of
  * the run goes unchecked; raise this if an exercise ever needs more.
