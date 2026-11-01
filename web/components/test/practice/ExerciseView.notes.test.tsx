@@ -23,7 +23,20 @@ vi.mock("@/lib/emulator/emulator", async (importOriginal) => ({
   loadEmulator: async () => machine,
 }));
 
-const { ANSWER } = vi.hoisted(() => ({ ANSWER: { source: "" } }));
+const { ANSWER, SWITCH } = vi.hoisted(() => ({ ANSWER: { source: "" }, SWITCH: { on: false } }));
+
+// FRAME_NOTES_COUNT as the test sets it, read live, and the grader honouring it.
+vi.mock("@/lib/content/exercise-checker", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/content/exercise-checker")>();
+  return {
+    ...real,
+    get FRAME_NOTES_COUNT() {
+      return SWITCH.on;
+    },
+    checkHiddenCase: (...args: Parameters<typeof real.checkHiddenCase>) =>
+      real.checkHiddenCase(args[0], args[1], SWITCH.on),
+  };
+});
 
 vi.mock("@/components/playground/EmbeddablePlayground", () => ({
   EmbeddablePlayground: forwardRef(function MockEmbed(
@@ -53,6 +66,7 @@ const X20_FIX = EXERCISE.starter
 afterEach(() => {
   cleanup();
   window.localStorage.clear();
+  SWITCH.on = false;
 });
 
 async function checkWith(source: string) {
@@ -89,6 +103,18 @@ describe("the forgetful helper's frame notes", () => {
       screen.getByText("double_it returns on line 25 with fp changed: a function must hand fp back as it found it"),
     ).toBeTruthy();
     expect(screen.getByText("all checks passed")).toBeTruthy();
+  });
+
+  it("heads the notes as counting once the switch makes them count", async () => {
+    SWITCH.on = true;
+    ANSWER.source = X20_FIX;
+    render(<ExerciseView exercise={EXERCISE} />);
+    fireEvent.click(screen.getByRole("button", { name: "check" }));
+    const note = "double_it returns on line 25 with x20 changed: a function must hand x19 to x28 back as it found them";
+    await waitFor(() => expect(screen.getByText(note)).toBeTruthy(), { timeout: 4_000 });
+    expect(screen.queryByText(/they do not change the result/)).toBeNull();
+    expect(screen.getByText("notes on the calls")).toBeTruthy();
+    expect(screen.getAllByText(/a call in it breaks a stack rule/).length).toBeGreaterThan(0);
   });
 
   it("shows no notes for the reference fix, which uses a scratch register", async () => {
