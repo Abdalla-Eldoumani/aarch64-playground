@@ -3,9 +3,9 @@
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
  * this and the playground runs its checks on it. A run also notes the calls
- * it checks that broke a stack rule, up to eight notes a run, and
- * `runToPause` stops a frame exercise's program where its frame is to be
- * drawn.
+ * it checks that broke a stack rule, up to eight notes a run and none after
+ * a ret that goes astray; `runToPause` stops a frame exercise's program where
+ * its frame is to be drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
@@ -117,8 +117,9 @@ const MAX_FRAME_NOTES = 8;
  * run stops at every call (a breakpoint on each function's first
  * instruction), every ret (a breakpoint on each one in a function) and every
  * return (a goal one call shallower than the program stands) until the stops
- * run out, and each stop reads the call stack the frames view draws. Null on
- * a wasm build without the frames exports.
+ * run out or a ret goes astray, and each stop reads the call stack the frames
+ * view draws; the stray ret is the last thing a run notes. Null on a wasm
+ * build without the frames exports.
  */
 function watchFrames(machine: HeadlessMachine) {
   const start = machine.frames();
@@ -178,8 +179,8 @@ function watchFrames(machine: HeadlessMachine) {
       }
       // A ret hands the caller fp as it is now; main's own ret is left out. A
       // ret is checked only when sp is back at the innermost call's entry value
-      // and its register holds that call's return address: a call whose ret
-      // went astray stays on the stack, and the stray ret is already noted.
+      // and its register holds that call's return address, so a ret that goes
+      // astray or skips past its caller is not.
       const pc = machine.getPc();
       const through = rets.get(pc);
       const call = snapshot.frames.at(-1);
