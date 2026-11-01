@@ -49,6 +49,14 @@ const NO_ROWS: number[] = [];
 // assembles again, starts a new set.
 const saidPerLoad = new WeakMap<object, Set<string>>();
 
+/** Scrolls `box` the least that shows its content from `top` to `bottom`,
+ *  or that span's low end when it is taller than the box. */
+function showSpan(box: HTMLElement, top: number, bottom: number) {
+  if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
+    box.scrollTop = bottom - box.clientHeight;
+  } else if (top < box.scrollTop) box.scrollTop = top;
+}
+
 /**
  * Each call's frame as the course draws it, main first and the innermost
  * call last: offsets from fp on the left, a box per saved register, local
@@ -197,6 +205,10 @@ export function FramesView({
   const reveal = useEffectEvent(() => {
     const box = boxRef.current;
     if (!box) return;
+    // The list of calls scrolls on its own, its current call kept in sight.
+    const list = box.querySelector<HTMLElement>("[data-calls]");
+    const current = list?.querySelector<HTMLElement>("[data-current]");
+    if (list && current) showSpan(list, current.offsetTop, current.offsetTop + current.offsetHeight);
     const span = (targets: HTMLElement[]) => [
       Math.min(...targets.map((t) => t.offsetTop)),
       Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight)),
@@ -214,9 +226,7 @@ export function FramesView({
     if (tries.length === 0) return;
     const spans = tries.map(span);
     const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
-    if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
-      box.scrollTop = bottom - box.clientHeight;
-    } else if (top < box.scrollTop) box.scrollTop = top;
+    showSpan(box, top, bottom);
   });
   // Only the machine moving lets a held slot go: a write card whose word
   // lands after the press leaves it held.
