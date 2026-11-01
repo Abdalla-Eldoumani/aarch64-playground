@@ -319,10 +319,14 @@ turns them into words, because every string in the crate ships in the wasm.
 walks the chain and flattens each drawn frame into numbers (`view_numbers`):
 its entry, the call and return addresses, `sp` and `fp` at entry, its low end,
 its record, its state, its flags, and the latest writes that changed its saved
-`fp` and `lr`. It uses the layout only to tell a just-entered call from a leaf
-and to name the array element such a write reached; `stack-frames.ts` on the
-page places the layout's slots in each frame. A header comes first:
-the step count, the calls past the record's cap, and any return to no caller.
+`fp` and `lr`. It uses the layout only to tell a just-entered call from a leaf,
+to name the array element such a write reached, and to read how wide each
+call's argument is for the call tree (`w0` or `x0`); `stack-frames.ts` on the
+page places the layout's slots in each frame. A header comes first: the step
+count, the calls past the record's cap, the calls folded between `main` and
+the innermost 63 (with their function when they share one), whether the frame
+chain matched (`chainOk`), any return to no caller, and how many frame rows
+and leftover registers follow.
 Then come one row per drawn frame (`main` and the innermost 63), the
 callee-saved registers a returning call left changed, and the call tree. The
 backend puts these numbers in the `StateSnapshot`'s `frames` field.
