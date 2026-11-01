@@ -551,6 +551,25 @@ describe("EmbeddablePlayground", () => {
     expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, 1", ["5", "6"]);
   });
 
+  it("embed status line calls a long run's pause a pause, and a fault an error", () => {
+    const pause =
+      "paused after 1,000,000 steps without finishing. " +
+      "press run to continue, or check for a loop whose exit condition never becomes true";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_004, error: pause, paused: true }));
+    const view = () => <EmbeddablePlayground chrome="embed" startSource="b ." />;
+    const { container, rerender } = render(view());
+    engage(container);
+    const line = () => container.querySelector('.embed-status [role="status"]')!;
+    expect(line().textContent).toBe("paused · 1,000,004 steps");
+    expect(line().className).toContain("text-[var(--text-secondary)]");
+
+    const fault = "line 7: stopped: tried to read from address 0x0, which is not part of any program section";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 2, error: fault, paused: false }));
+    rerender(view());
+    expect(line().textContent).toBe("stopped on an error");
+    expect(line().className).toContain("text-[var(--danger)]");
+  });
+
   it("embed consoles point at the step and run buttons, not at keys only the playground binds", () => {
     useEmulatorMock.mockReturnValue(makeHub());
     const { container } = render(<EmbeddablePlayground chrome="embed" startSource="mov x0, 1" />);
