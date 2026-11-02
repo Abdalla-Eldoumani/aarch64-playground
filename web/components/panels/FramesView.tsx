@@ -211,7 +211,12 @@ export function FramesView({
     // list that needs them and a list that flows adds no empty stop.
     const list = box.querySelector<HTMLElement>("[data-calls]");
     if (list && list.scrollHeight > list.clientHeight) list.tabIndex = 0;
-    else list?.removeAttribute("tabindex");
+    else if (list) {
+      // A list that stops scrolling under the keyboard (a zoom, a rotation)
+      // hands its focus to the frames box, or the focus falls to the page.
+      if (document.activeElement === list) box.focus({ preventScroll: true });
+      list.removeAttribute("tabindex");
+    }
     const current = list?.querySelector<HTMLElement>("[data-current]");
     if (list && current) showSpan(list, current.offsetTop, current.offsetTop + current.offsetHeight);
     const span = (targets: HTMLElement[]) => [
