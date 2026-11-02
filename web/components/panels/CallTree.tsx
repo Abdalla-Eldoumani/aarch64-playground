@@ -49,14 +49,15 @@ export function CallTree({ calls }: { calls: DrawnCalls }) {
         calls so far
       </p>
       {/* Its own scroll box, at most 40% of the stack tab (a size container):
-          200 calls pushed the frames 4,000px down the tab. FramesView keeps
+          200 calls pushed the frames 4,000px down the tab. Only from a 110px
+          tab, where that box is a 44px target: a phone held sideways has a
+          48px tab, and there the list flows with the frames. FramesView keeps
           the current call in sight in it, by offsets counted from this
-          `relative` box; focusable, so keys can scroll it. */}
+          `relative` box, and makes it a tab stop while it scrolls. */}
       <ol
         aria-labelledby={label}
         data-calls=""
-        tabIndex={0}
-        className="inner-scroll relative max-h-[40cqh] overflow-y-auto overscroll-contain focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+        className="inner-scroll relative overscroll-contain [@container(height>=110px)]:max-h-[40cqh] [@container(height>=110px)]:overflow-y-auto focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
       >
         <Rows rows={calls.rows} />
       </ol>
