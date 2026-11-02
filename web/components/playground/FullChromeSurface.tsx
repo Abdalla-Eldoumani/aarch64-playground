@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
+import type { LintWarning, StepGoal } from "@/lib/emulator/emulator-state";
 import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
 import type { useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
@@ -23,6 +24,9 @@ import { FullLayout } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
 import { Toolbar } from "@/components/playground/Toolbar";
 import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
+import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { BYTES_KEY } from "@/components/playground/StackTab";
+import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
 import {
   MultiFileTabs,
   type SourceFile,
@@ -94,7 +98,7 @@ export interface FullChromeSurfaceProps {
   checks: ProgramCheck[];
   setChecks: React.Dispatch<React.SetStateAction<ProgramCheck[]>>;
   setCursor: (next: { line: number; column: number }) => void;
-  lintWarnings: Array<{ line: number; message: string }>;
+  lintWarnings: LintWarning[];
   errorFocus: { line: number; nonce: number } | null;
   /** The workspace as the machine last saw it; every combined-string line the
    *  machine reports is numbered against it. */
@@ -114,6 +118,8 @@ export interface FullChromeSurfaceProps {
   onOpenShareDialog?: () => void;
   /** Published on mount, cleared on unmount. */
   registerBridge: (bridge: FullChromeBridge | null) => void;
+  /** The shell's step over, step out and run to cursor (it knows the caret). */
+  onRunUntil: (goal: StepGoal) => void;
 }
 
 /**
@@ -154,6 +160,7 @@ export function FullChromeSurface({
   onOpenShortcutsHelp,
   onOpenShareDialog,
   registerBridge,
+  onRunUntil,
 }: FullChromeSurfaceProps) {
   const toast = useToast();
   const bp = useBreakpoint();
@@ -170,6 +177,9 @@ export function FullChromeSurface({
   // says nothing about a phone.
   const [phonePane, setPhonePane] = useState("code");
   const shownPane = phone ? phonePane : activeTab;
+  // The stack tab's own copy of the bytes choice switches this one too, and
+  // the frames open the debug column taller.
+  const [showBytes, setShowBytes] = usePersistedFlag(BYTES_KEY);
   // Mirrors the palette's converter action into the phone layout, where the
   // desktop tab state has nothing to show.
   const [paneRequest, setPaneRequest] = useState<{ pane: string; nonce: number } | null>(null);
@@ -179,6 +189,14 @@ export function FullChromeSurface({
     setActiveTab(pane);
     setPaneRequest({ pane, nonce: Date.now() });
   }, []);
+  // A pressed pointer chip opens the stack tab on its frames.
+  const pointer = useSlotPointer(
+    useCallback(() => {
+      requestPane("stack");
+      setShowBytes(false);
+    }, [requestPane, setShowBytes]),
+    emu.isRunning,
+  );
   const [shareBanner, setShareBanner] = useState(Boolean(fromShare));
   // Counts program deliveries. The checks panel remounts on each, so the last
   // program's run report and note go with it.
@@ -458,7 +476,7 @@ export function FullChromeSurface({
 
   const regsBlock = (
     <ErrorBoundary label="registers">
-      <div className="h-full flex flex-col" data-walkthrough="registers">
+      <div className="h-full flex flex-col overflow-y-auto" data-walkthrough="registers">
         {/* The always-on decode strip heads the registers column: the
             plain-language gloss plus the live bit-field view of the word under
             the program counter. */}
@@ -488,9 +506,12 @@ export function FullChromeSurface({
           currentStep={emu.stepCount}
           onSeek={emu.seekReplay}
         />
-        {/* A phone on its side left the list no height under the decode
-            strip; the floor makes the phone's view scroll to it instead. */}
-        <div className={`flex-1 overflow-auto ${phone ? "min-h-[13rem]" : "min-h-0"}`}>
+        {/* A short pane (a phone on its side, a pane dragged to its floor, an
+            iPad's tall touch strip) squeezed the list to nothing under the
+            strips. The list keeps its header and three rows (13rem for 44px
+            cells, and on a phone, whose view holds nothing else) and the pane
+            scrolls as one box, the box the follow moves. */}
+        <div className={`flex-1 ${phone ? "min-h-[13rem]" : "min-h-[7.25rem] [@media(pointer:coarse)]:min-h-[13rem]"}`}>
           <RegisterPanel
             registers={emu.registers}
             changedRegs={emu.changedRegs}
@@ -502,6 +523,8 @@ export function FullChromeSurface({
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}
+            frames={emu.frames}
+            frameLayout={emu.frameLayout}
             running={emu.isRunning}
           />
         </div>
@@ -599,6 +622,8 @@ export function FullChromeSurface({
       onStep={emu.step}
       onStepBack={emu.stepBack}
       canStepBack={emu.canStepBack}
+      onRunUntil={onRunUntil}
+      stopReason={emu.stopReason}
       onRun={handleRun}
       onPause={emu.pause}
       onReset={restartProgram}
@@ -608,6 +633,7 @@ export function FullChromeSurface({
       programLoaded={emu.programLoaded}
       blocked={emu.blocked}
       error={controlsError}
+      errorCard={emu.errorCard}
       stepCount={emu.stepCount}
       compact={phone !== null}
       short={short}
@@ -676,33 +702,37 @@ export function FullChromeSurface({
         </div>
       )}
 
-      <FullLayout
-        breakpoint={bp}
-        phone={phone}
-        height={height}
-        editor={editorBlock}
-        disassembly={disasmBlock}
-        registers={regsBlock}
-        rightTabs={rightTabs}
-        panes={panes}
-        consoleBlocked={emu.blocked}
-        consoleUnread={consoleUnread}
-        paneRequest={paneRequest ?? undefined}
-        onPaneShown={setPhonePane}
-        runStatus={{
-          programLoaded: emu.programLoaded,
-          isRunning: emu.isRunning,
-          isHalted: emu.isHalted,
-          blocked: emu.blocked,
-          exitCode: emu.exitCode,
-          stepCount: emu.stepCount,
-          failed: controlsError != null,
-          registers: emu.registers,
-          sp: emu.sp,
-          changedRegs: emu.changedRegs,
-        }}
-        controls={controls}
-      />
+      <PointerContext.Provider value={pointer}>
+        <FullLayout
+          breakpoint={bp}
+          phone={phone}
+          height={height}
+          editor={editorBlock}
+          disassembly={disasmBlock}
+          registers={regsBlock}
+          rightTabs={rightTabs}
+          framesOpen={activeTab === "stack" && !showBytes}
+          panes={panes}
+          consoleBlocked={emu.blocked}
+          consoleUnread={consoleUnread}
+          paneRequest={paneRequest ?? undefined}
+          onPaneShown={setPhonePane}
+          runStatus={{
+            programLoaded: emu.programLoaded,
+            isRunning: emu.isRunning,
+            isHalted: emu.isHalted,
+            blocked: emu.blocked,
+            exitCode: emu.exitCode,
+            stepCount: emu.stepCount,
+            failed: controlsError != null && !emu.paused,
+            paused: emu.paused,
+            registers: emu.registers,
+            sp: emu.sp,
+            changedRegs: emu.changedRegs,
+          }}
+          controls={controls}
+        />
+      </PointerContext.Provider>
 
       <TutorialRunner
         open={tutorialOpen}

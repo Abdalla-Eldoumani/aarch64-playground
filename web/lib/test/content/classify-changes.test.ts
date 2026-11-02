@@ -51,6 +51,7 @@ describe("the path filter", () => {
   it("adds the Rust jobs when content the Rust tests read changes", () => {
     expect(classify(["docs/instruction-reference.md"]).rust).toBe(true);
     expect(classify(["web/public/examples/cpsc355/hello.s"]).rust).toBe(true);
+    expect(classify(["web/lib/test/emulator/fixtures/call-printf.s"]).rust).toBe(true);
     expect(classify(["web/content/exercises/sum.json"]).rust).toBe(false);
   });
 
@@ -87,6 +88,46 @@ describe("the path filter", () => {
       expect(classify([file]).browser, file).toBe(true);
     }
     for (const file of ["web/components/ui/Button.tsx", "emulator/tests/simd.rs", "docs/DEPLOY.md"]) {
+      expect(classify([file]).browser, file).toBe(false);
+    }
+  });
+
+  it("runs the browser test for a change to the stack frames view or the frame tracker", () => {
+    expect(classify(["web/components/panels/FramesView.tsx"])).toEqual({
+      classes: ["web"],
+      ...NOTHING,
+      static: true,
+      web: true,
+      browser: true,
+    });
+    for (const file of [
+      "web/lib/emulator/frame-data.ts",
+      "web/lib/emulator/stack-frames.ts",
+      "web/components/panels/FrameRow.tsx",
+      "web/components/playground/lazy-frames.tsx",
+      "web/components/playground/StackTab.tsx",
+      "emulator/src/frames.rs",
+      "emulator/src/frames/layout.rs",
+    ]) {
+      expect(classify([file]).browser, file).toBe(true);
+    }
+    expect(classify(["emulator/src/frames/layout.rs"]).rust).toBe(true);
+    // The bytes view's slot labels, the lessons' layout, and the frames' tests.
+    for (const file of [
+      "web/lib/emulator/frame-labels.ts",
+      "web/components/playground/EmbedLayout.tsx",
+      "web/components/test/panels/FramesView.test.tsx",
+      "emulator/tests/frames.rs",
+    ]) {
+      expect(classify([file]).browser, file).toBe(false);
+    }
+  });
+
+  it("runs the browser test when the share encoder or the example the smoke loads changes", () => {
+    for (const file of ["web/lib/playground/share.ts", "web/public/examples/cpsc355/locals.s"]) {
+      expect(classify([file]).browser, file).toBe(true);
+    }
+    for (const file of ["web/lib/playground/upload-guard.ts", "web/public/examples/cpsc355/hello.s"]) {
       expect(classify([file]).browser, file).toBe(false);
     }
   });

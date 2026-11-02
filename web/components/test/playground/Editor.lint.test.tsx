@@ -132,6 +132,23 @@ describe("Editor lint markers", () => {
       ]),
     );
   });
+
+  it("words a frame check finding into a warning on its line", async () => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, writable: true, value: 1440 });
+    // total_s: 8 bytes at fp + 20 in main's 32-byte frame (rule 3, off a multiple of 8).
+    const finding = { line: 3, check: [3, 32, 20, 8, 0, 0], names: ["main", "total_s", ""] };
+    render(<Editor {...base} lintWarnings={[{ line: 2, message: "x0 is never read" }, finding]} />);
+    await waitFor(() =>
+      expect(fake.monaco.editor.setModelMarkers).toHaveBeenLastCalledWith(fake.model, "lint", [
+        expect.objectContaining({ startLineNumber: 2, message: "x0 is never read" }),
+        expect.objectContaining({
+          severity: fake.monaco.MarkerSeverity.Warning,
+          startLineNumber: 3,
+          message: expect.stringMatching(/^frame check: total_s holds 8 bytes at 20, .* such as 24\. \(The playground checks this; gcc on the server does not\.\)$/),
+        }),
+      ]),
+    );
+  });
 });
 
 describe("Editor line wrap", () => {

@@ -108,6 +108,7 @@ const RUN_STATUS = {
   exitCode: null,
   stepCount: 0,
   failed: false,
+  paused: false,
   registers: [],
   sp: "0x0",
   changedRegs: new Set<number>(),
@@ -215,6 +216,16 @@ describe("FullLayout", () => {
     expect(window.localStorage.getItem(`${KEY}md-right`)).toBe("[30,70]");
     expect(window.localStorage.getItem(`${KEY}lg-left`)).toBeNull();
     expect(window.localStorage.getItem(`${KEY}lg-right`)).toBeNull();
+  });
+
+  it("opens the tablet's debug column on the frames' own split while they show", () => {
+    window.localStorage.setItem(`${KEY}md-right`, "[75,25]");
+    render(<FullLayout {...layout("md").props} framesOpen />);
+    expect(panel("panel-regs").getAttribute("data-size")).toBe("41%");
+    expect(setLayoutCalls).not.toContainEqual({ "panel-regs": 75, "panel-tabs": 25 });
+    drag("panel-regs", { "panel-regs": 35, "panel-tabs": 65 });
+    expect(window.localStorage.getItem(`${KEY}md-frames`)).toBe("[35,65]");
+    expect(window.localStorage.getItem(`${KEY}md-right`)).toBe("[75,25]");
   });
 
   it("reopens the tablet on the sizes a previous visit stored", () => {

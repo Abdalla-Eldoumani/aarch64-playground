@@ -9,8 +9,12 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use crate::decoder;
 use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
+use crate::frames::CallStack;
 use crate::frontend::sections::{align_padding, Item, Program};
-use crate::hosted::{HostContext, HostOutcome, HostTable, RETURNS_IN_D0, RETURNS_NOTHING};
+use crate::hosted::{
+    CALL_PRINTF, CALL_SCANF, CallRecord, HostContext, HostOutcome, HostTable, RETURNS_IN_D0,
+    RETURNS_NOTHING,
+};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 use crate::snapshot::{SavedState, Snapshot, SnapshotRing};
@@ -332,6 +336,21 @@ pub struct RunResult {
     pub steps_executed: u32,
     pub hit_breakpoint: bool,
     pub error: Option<String>,
+    /// The run's `Until` goal was met.
+    pub reached: bool,
+    /// A `ret` went to no caller during a run with a goal.
+    pub bad_return: bool,
+}
+
+/// Where `run_until` stops besides a breakpoint, a halt, an input wait and
+/// a sleep. Neither set is a plain run.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Until {
+    /// Back in the program's own code with the call stack this deep or
+    /// shallower: step over passes the depth it has, step out one less.
+    pub depth: Option<u64>,
+    /// The pc reaches this address: run to cursor.
+    pub pc: Option<u64>,
 }
 
 /// Top-level CPU wrapping register file, memory, breakpoints, and the
@@ -425,6 +444,11 @@ pub struct Cpu {
     /// the `MAX_TOTAL_STEPS` runaway-loop wall; persistent across repeated
     /// `run_until_break` calls so chunked running still reaches the ceiling.
     steps_total: u64,
+    /// Steps taken since the last load/reset, one each: the count the web
+    /// shows, and the clock the call stack stamps its events with, so a
+    /// card's "step 45" is the step the student can go back to. Unlike
+    /// `steps_total` it charges no bulk work and refunds no sleep.
+    steps_taken: u64,
     /// The runaway-loop wall itself, `MAX_TOTAL_STEPS` unless a native
     /// harness raises it (the C corpus has legitimate programs the browser
     /// budget was never sized for). The wasm surface never touches this,
@@ -464,6 +488,19 @@ pub struct Cpu {
     /// notes sit beside.
     clobber_notes: Vec<u32>,
     clobber_noted: u64,
+    /// The calls the program is inside (frames.rs). Machine state: in every
+    /// snapshot, and every change a step makes is in that step's frame.
+    frames: CallStack,
+    /// Where the program's own last instruction was: at a library call, the
+    /// branch that reached it, a tail call's `b printf` as well as a
+    /// `bl printf`, whose lr says nothing about a `b`. In every snapshot.
+    last_program_pc: u64,
+    /// The last printf or scanf call, for the call card. In every snapshot
+    /// like `frames`; a step's frame holds it only when the step replaced it.
+    last_call: CallRecord,
+    /// The record the running printf or scanf fills, kept between calls
+    /// only to reuse its buffers.
+    call_scratch: CallRecord,
 }
 
 impl Cpu {
@@ -499,6 +536,7 @@ impl Cpu {
             snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
             symbols: HashMap::new(),
             steps_total: 0,
+            steps_taken: 0,
             max_total_steps: MAX_TOTAL_STEPS,
             output_total: 0,
             stdout_seen: 0,
@@ -509,6 +547,10 @@ impl Cpu {
             trampoline_names: Vec::new(),
             clobber_notes: Vec::new(),
             clobber_noted: 0,
+            frames: CallStack::default(),
+            last_program_pc: 0,
+            last_call: CallRecord::default(),
+            call_scratch: CallRecord::default(),
         };
         // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
         // corpus reaches for. Doing it here means the frontend linker can
@@ -669,6 +711,11 @@ impl Cpu {
                 callbacks,
                 stdout_seen,
                 stderr_seen,
+                steps_total,
+                steps_taken,
+                frames,
+                last_program_pc,
+                call,
             } = self.snapshots.push_slot();
             *halted = self.halted;
             *blocked = self.blocked;
@@ -699,6 +746,12 @@ impl Cpu {
             }
             *stdout_seen = self.stdout_seen;
             *stderr_seen = self.stderr_seen;
+            *steps_total = self.steps_total;
+            *steps_taken = self.steps_taken;
+            *last_program_pc = self.last_program_pc;
+            // Filled by `keep_call` only on a step that calls printf or scanf.
+            *call = None;
+            self.frames.record_undo(frames);
             // What the step overwrites lands in the frame's own log
             // buffers, lent out until `step` hands them back once the step
             // is over.
@@ -758,14 +811,70 @@ impl Cpu {
         }
     }
 
+    /// Whether `addr` is one of the program's own instructions.
+    fn in_program(&self, addr: u64) -> bool {
+        self.text_end.is_some_and(|end| (CODE_BASE..end).contains(&addr))
+    }
+
+    /// Keep the call stack in step with a call or a return the instruction
+    /// at `pc` just made, or a store of lr. Every other instruction passes
+    /// straight through.
+    fn track_call_or_return(&mut self, pc: u64, instr: &decoder::Instruction) {
+        use decoder::{BrRegOp, Instruction as I, LdStOp, LdStPairOp, MemSize};
+        match *instr {
+            I::BrImm { link: true, .. } | I::BrReg { op: BrRegOp::Blr, .. } => {
+                let target = self.regs.read_pc();
+                let into_program = self.in_program(target);
+                let regs = self.regs.snapshot();
+                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                self.frames.on_call(pc, target, into_program, &regs, &self.mem, log);
+            }
+            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
+                let regs = self.regs.snapshot();
+                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                let x0_width = self.regs.write_width(0);
+                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, x0_width, log);
+                if changed != 0 {
+                    self.regs.mark_callee_saved(changed, pc);
+                }
+            }
+            I::LdSt { op: LdStOp::Str, rt: 30, size: MemSize::X, .. }
+            | I::LdStPair { op: LdStPairOp::Stp, sf: true, rt: 30, .. }
+            | I::LdStPair { op: LdStPairOp::Stp, sf: true, rt2: 30, .. } => {
+                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+                self.frames.on_lr_store(log);
+            }
+            _ => {}
+        }
+    }
+
+    /// Check the step's writes against every caller's frame record, in
+    /// every mode the ring has. Most steps write nothing, and most writes
+    /// land below the nearest record.
+    fn watch_frame_records(&mut self, pc: u64, lr: u64) {
+        let writes = self.mem.step_writes();
+        if writes.is_empty() {
+            return;
+        }
+        // A library call's write names the `bl` that made the call.
+        let writer = || {
+            let at = if self.host.contains_address(pc) { lr.wrapping_sub(4) } else { pc };
+            (at, self.regs.snapshot()[29])
+        };
+        let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+        self.frames.watch_writes(writes, self.steps_taken, &self.mem, writer, log);
+    }
+
     /// Execute one instruction at the current PC.
     pub fn step(&mut self) -> Result<StepResult, EmuError> {
         let pc = self.regs.read_pc();
         let lr = self.regs.read_gpr(30, true);
-        // Reads made between steps (the register panel, the lr above) are
-        // not the program's.
+        // Reads made between steps (the register panel, the lr above) and
+        // writes (the loader, a step back) are not the program's.
         self.regs.take_clobbered_reads();
+        self.mem.start_step();
         let result = self.execute_step();
+        self.watch_frame_records(pc, lr);
         self.note_clobbered_reads(pc, lr);
         // After the clobber notes, which can carry a register's origin to
         // another: that change belongs to this step's frame too.
@@ -817,6 +926,7 @@ impl Cpu {
         // Count this executed step against the cumulative ceiling. Done
         // before the host-stub dispatch so synthetic libc calls count too.
         self.steps_total += 1;
+        self.steps_taken += 1;
 
         // If PC landed on a host-stub address (reached via `bl printf` or
         // similar), dispatch to Rust instead of fetching an instruction,
@@ -882,6 +992,10 @@ impl Cpu {
             });
         }
 
+        // Not the trampoline past the text that a library call goes through.
+        if self.in_program(pc) {
+            self.last_program_pc = pc;
+        }
         let snapshot = self.regs.snapshot();
         let fpr_snapshot = self.regs.snapshot_fpr();
         let word = match self.mem.read_u32(pc) {
@@ -909,6 +1023,7 @@ impl Cpu {
         if result == ExecResult::Advance {
             self.regs.write_pc(pc + 4);
         }
+        self.track_call_or_return(pc, &instr);
 
         if result == ExecResult::Halted {
             self.halted = true;

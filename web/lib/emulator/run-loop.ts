@@ -85,7 +85,7 @@ export async function runChunked(
     totalSteps += chunk.steps_executed;
     result = chunk;
     host.onChunk();
-    if (chunk.error || chunk.halted || chunk.hit_breakpoint) break;
+    if (chunk.error || chunk.halted || chunk.hit_breakpoint || chunk.reached || chunk.bad_return) break;
     // A nanosleep pause belongs to the driver: hand the result up so it can
     // wait the requested time in real time, then run again.
     if (chunk.sleep_ms != null) break;
@@ -124,6 +124,8 @@ export async function runChunked(
       !host.isPauseRequested() &&
       !result.halted &&
       !result.hit_breakpoint &&
+      !result.reached &&
+      !result.bad_return &&
       !result.error &&
       result.sleep_ms == null &&
       !host.isBlocked(),

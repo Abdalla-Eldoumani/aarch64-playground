@@ -3,9 +3,9 @@ import { Band, StackColumn, type BandProps } from "@/components/diagrams/FrameWa
 
 /**
  * A still picture of the stack at one moment, frame by frame, drawn with the
- * frame walk's bands so the two read alike. Cyan bands hold passed values,
- * amber bands hold saved registers, and the cyan chips are where a register
- * points.
+ * frame walk's bands, which are the frames view's rows: each band's offset
+ * on the left, a saved fp or lr in the saved colour, a slot the code names
+ * in the local colour, and where sp and fp point on the right.
  */
 
 export interface StackFrame {
@@ -35,9 +35,10 @@ export function StackDiagram({
             <h3 className="text-[12px] uppercase tracking-wider text-[var(--text-secondary)]">
               {frame.title}
             </h3>
-            <ul aria-label={frame.title} className="flex flex-col gap-2">
+            <ul aria-label={frame.title}>
+              {/* Every band keeps the offset column, so the boxes line up. */}
               {frame.bands.map((band) => (
-                <Band key={band.label} {...band} />
+                <Band key={band.label} offset="" {...band} />
               ))}
             </ul>
           </div>

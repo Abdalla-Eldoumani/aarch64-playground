@@ -94,7 +94,8 @@ Blocks render top to bottom. Every lesson after the first two opens with a
 each with one line on what it practises. The site reads these links too:
 every `[text](/practice/<slug>)` link in a lesson's prose or callouts (code
 blocks are skipped) becomes a card in the list at the foot of the page, with
-coding exercises and theory sets apart. Tests hold the links to four rules:
+coding exercises, theory sets and frame drawings apart. Tests hold the links
+to four rules:
 
 - A link to an exercise that does not exist fails the build.
 - The link text is the exercise's `title`, the title with its difficulty in
@@ -184,9 +185,10 @@ short. A shipped lesson needs them.
 
 ## exercises
 
-An exercise is either a coding sheet (a prompt, starter source, and
-acceptance criteria checked by running the reader's program) or an
-interactive question set graded in the page.
+An exercise is a coding sheet (a prompt, starter source, and acceptance
+criteria checked by running the reader's program), an interactive question
+set graded in the page, or a frame drawing (a program paused inside one
+function, whose frame the reader fills in).
 
 Fields every variant carries:
 
@@ -198,12 +200,13 @@ Fields every variant carries:
   while the heading on the page stays bare. Keep that composed title under
   60 characters.
 - `slug`: url-safe kebab-case, matching the file name.
-- `order`: the index sorts by this; a number or string. The sheet runs
-  every coding exercise first and then every theory set, each side grouped
-  by topic in course order, and the number is the exercise's position on
-  that sheet. A new coding exercise goes where its topic and lesson put it,
-  and every exercise after it moves down one. Nothing checks that two files
-  share a number, so look before you pick.
+- `order`: a number or string. Every exercise is sorted by it (two numbers
+  by value, anything else as text, a tie by file name), and an exercise's
+  sheet number, `5.N` on its page and its `/practice` row, is its place `N`
+  in that list, so a new exercise moves the number of every exercise sorted
+  after it up by one. `/practice` groups the rows by side (see `variant`)
+  and then by `topic`, keeping `order` within a topic. Nothing checks that
+  two files share a number, so look before you pick.
 - `topic`: optional string; the practice page groups exercises under it.
   The sixteen topics, their order on the page, and their printed labels
   live in `web/lib/content/practice-topics.ts`; a topic missing from that
@@ -219,19 +222,23 @@ Fields every variant carries:
   code, become the page's search-result snippet, and its first line,
   clipped at 140 characters, is the exercise's summary on `/practice`.
 - `variant`: `write` (the default), `identify-bug`, `quiz`, `prediction`,
-  or `blanks`. The variant decides where the exercise appears: `write` and
-  `identify-bug` sit in the coding column of the practice page, the other
-  three in the theory column.
+  `blanks`, or `frame`. The variant decides where the exercise appears:
+  `write` and `identify-bug` sit with the coding exercises on the practice
+  page, `quiz`, `prediction` and `blanks` with the theory sets, and `frame`
+  under frame drawings, a side of its own.
 
-The two columns stay the same length. A test fails unless there are exactly
-as many theory sets as coding exercises, so a new coding exercise ships with
-a new theory set in the same change, and the other way round.
+The coding and theory sides stay the same length. A test fails unless there
+are exactly as many theory sets as coding exercises, so a new coding exercise
+ships with a new theory set in the same change, and the other way round. A
+frame drawing counts on neither side.
 
 `/practice` sends the browser one short row per exercise: the title, slug,
 order, topic, difficulty, variant, and that summary. `npm run size` fails
-once those rows pass 16 kB, and 136 exercises measured 15.2 kB, so keep a
-prompt's first line short. If a new exercise still pushes the rows over the
-limit, say so in the pull request instead of raising the limit.
+once those rows pass 16 kB. With 139 exercises they measure about 15.7 kB:
+the payload carries the build's random id, which moves the compressed size
+a little from one build to the next. So keep a prompt's first line short. If
+a new exercise still pushes the rows over the limit, say so in the pull
+request instead of raising the limit.
 
 The coding variants (`write`, and `identify-bug`, where the starter is a
 broken program the reader fixes) add:
@@ -336,6 +343,38 @@ the explanation renders only after a correct one. Unlike the exercise
 `explanation`, `hint`, and a blank's `prompt`) render as plain text, so
 write mnemonics and registers bare there; a backtick would show up as a
 literal character.
+
+### draw the frame
+
+A `frame` exercise shows a program and pauses it inside one function. The
+reader fills in that function's frame at the pause: its size, each named
+slot's offset from `fp`, and where the saved `fp` and `lr` sit. Check runs
+the program in the emulator to the pause and marks each field right or
+wrong against the frame the emulator draws there, so the file stores no
+answer. It carries, in place of `starter`/`acceptance`:
+
+- `program`: the whole program, shown with line numbers and run as it is.
+  It reads no input and must run to its end and exit 0, since it is also
+  run on the course server before a release.
+- `pause`: `{ "line": 31, "hit": 2 }`. The program stops just before line
+  `line` of `program` runs for the `hit`th time (1 for the first), which is
+  how a recursive call is caught a few calls deep. Pause after the
+  function's `mov fp, sp`, so its offsets count from `fp`.
+- `slots`: the named slots the reader places, each
+  `{ "name": "sum_s", "hint": "..." }`, lowest offset first, as the
+  program lays them out. A name is the one the stack tab's frames view
+  shows: the equate written as the offset (`sum_s` in `[fp, sum_s]`), a
+  record's field after its base (`rect_s.rect_width` for
+  `[x9, rect_width]` with `x9 = fp + rect_s`), or an array element
+  (`arr_s[2]`). At most 16, each named once.
+- `hints`: `{ "size": "...", "savedFp": "...", "savedLr": "..." }`.
+
+Every hint is what a wrong field shows, so none may hold the number its
+field wants: a content test checks that. Write each one as a step toward
+the number instead ("work out (count_s + count_size + 7) & -8"). The hints
+render as plain text, like the question fields above. A content test runs
+every frame exercise to its pause and compares the frame with one worked
+out by hand in the test; a new exercise adds its row there.
 
 ### a worked exercise
 

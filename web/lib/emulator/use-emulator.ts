@@ -2,18 +2,22 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pickBackend, type EmulatorBackend } from "@/lib/emulator/backend";
-import { clobberNoteTexts } from "@/lib/emulator/clobber-note";
+import { at, clobberNoteTexts, place } from "@/lib/emulator/clobber-note";
 import { buildDisassembly, listingLength, type DecodedInstruction } from "@/lib/emulator/disassembly";
 import { detectHostedMode } from "@/lib/emulator/emulator";
+import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
+import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type {
   AssembleOutcome,
   AssemblyError,
   EmulatorState,
+  StepTarget,
 } from "@/lib/emulator/emulator-state";
 import {
   emptyLineMap,
   isEmptyLineMap,
   parseLineMap,
+  lineToAddrFromMap,
   pcToSourceLineFromMap,
   type LineMap,
 } from "@/lib/emulator/line-map";
@@ -28,7 +32,7 @@ import { formatSteps } from "@/lib/emulator/format-steps";
 import { parseArgs } from "@/lib/playground/args";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Workspace } from "@/lib/playground/file-map";
-import type { ExternalCall, StateSnapshot } from "@/lib/worker/protocol";
+import type { ExternalCall, RunGoal, StateSnapshot } from "@/lib/worker/protocol";
 
 // The hub is the import site every consumer already uses, so the contract
 // and the helpers it owns stay reachable from here.
@@ -39,6 +43,18 @@ export {
   CONSOLE_TRIM_MARKER,
   MAX_CONSOLE_CHARS,
 } from "@/lib/emulator/use-console-output";
+
+// The card words, kept once their chunk has come. A stop after a bad return
+// waits for them, so its alert lands in the render that ends the run: drawn
+// a frame later, the panes jumped up and back, and WebKit reported the
+// panel group's resize as a ResizeObserver loop. The chunk is named so its
+// bundle budget can glob it; the frames chunk loads it too.
+let frameCards: typeof import("@/lib/emulator/frame-cards") | null = null;
+const loadFrameCards = () =>
+  import(/* webpackChunkName: "frame-cards" */ "@/lib/emulator/frame-cards").then(
+    (m) => (frameCards = m),
+    () => null,
+  );
 
 // One frozen empty list, so an assemble that dropped nothing hands the shell
 // the same array and its drop notice does not re-fire.
@@ -51,6 +67,12 @@ const NO_LINES: number[] = [];
 function withoutCallScratch(snap: StateSnapshot): StateSnapshot {
   if (!snap.externalCall) return snap;
   return { ...snap, changedRegs: snap.changedRegs.filter((i) => i !== 16 && i !== 17) };
+}
+
+/** A goal run: where the machine stops, and what the student asked for. */
+interface Goal {
+  until: RunGoal;
+  target: StepTarget;
 }
 
 export function useEmulator(): EmulatorState {
@@ -91,6 +113,17 @@ export function useEmulator(): EmulatorState {
   // registers and memory, and the counter has to come back with them.
   const savedStepsRef = useRef<Map<string, number>>(new Map());
   const stepCountRef = useRef(0);
+  // The latest snapshot whole: a step over reads the call depth from it.
+  const snapRef = useRef<StateSnapshot | null>(null);
+  // The goal a stopped run had, so the console's answer resumes the same one.
+  const goalRef = useRef<Goal | null>(null);
+  // The step count a goal run paused at on the 1,000,000-step run chunk: the
+  // same goal pressed there goes on to the same depth or line. A step or Back
+  // clears it at once, since the count it is checked against lags a render.
+  const pausedAtRef = useRef(-1);
+  // The step or Back still in flight. A goal waits for it, or it would aim
+  // from the snapshot before that step (the worker answers a task later).
+  const movingRef = useRef<Promise<unknown>>(Promise.resolve());
 
   const [isLoaded, setIsLoaded] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -101,12 +134,41 @@ export function useEmulator(): EmulatorState {
   const [canStepBack, setCanStepBack] = useState(false);
   const [stepCount, setStepCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // The frames' card an error carries, beside that error's text: any other
+  // error replaces the text, and the card no longer applies.
+  const [errorCard, setErrorCard] = useState<{ error: string; card: ReturnCard } | null>(null);
+  // The error line's words for a long run's pause, so the status can tell
+  // a pause from a fault; any later error or clear replaces the text.
+  const [pauseText, setPauseText] = useState<string | null>(null);
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
   const [droppedBreakpoints, setDroppedBreakpoints] = useState<number[]>(NO_LINES);
   const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
   // The last snapshot's call, kept while a run hides it: a run's final
   // snapshot lands before the run is over, so the stop shows it from here.
   const lastCallRef = useRef<ExternalCall | null>(null);
+  const [frames, setFrames] = useState<number[] | null>(null);
+  const [callCard, setCallCard] = useState<number[] | null>(null);
+  const [frameLayout, setFrameLayout] = useState<FrameLayoutPayload | null>(null);
+  const frameLayoutRef = useRef<FrameLayoutPayload | null>(null);
+  // Why the last goal run stopped, shown until the step count moves.
+  const [stop, setStop] = useState<{ text: string; at: number } | null>(null);
+  const programLines = useMemo<ProgramLines>(
+    () => ({
+      linePlace: (addr) => {
+        const line = pcToSourceLineFromMap(addr, lineMapRef.current);
+        return line == null ? null : place(line, workspaceRef.current);
+      },
+      lineAddr: (line) => lineToAddrFromMap(line, lineMapRef.current),
+    }),
+    [],
+  );
+  const lineLabel = useCallback((addr: number) => {
+    const p = programLines.linePlace(addr);
+    return p && at(p);
+  }, [programLines]);
+  // The clobber note rows the latest snapshot brought: the frames view words
+  // a caller reading x19 to x28 at the step that read it.
+  const [noteRows, setNoteRows] = useState<number[]>(NO_LINES);
   const [instructions, setInstructions] = useState<DecodedInstruction[]>([]);
   const [codeBase, setCodeBase] = useState(0x400000);
   const [memoryRegions, setMemoryRegions] = useState<MemoryRegion[]>([]);
@@ -175,6 +237,7 @@ export function useEmulator(): EmulatorState {
     clearAllBreakpoints,
     setBreakpointAddress,
     clearBreakpointAddress,
+    resolveBreakpointAddr,
     rekeyAfterAssemble,
   } = useBreakpoints({ backendRef, lineMapRef, sourceRef, programLoadedRef, codeBase });
 
@@ -196,6 +259,7 @@ export function useEmulator(): EmulatorState {
   const stdinGiven = useCallback(() => stdinLogRef.current, []);
 
   const applySnapshot = useCallback((snap: StateSnapshot) => {
+    snapRef.current = snap;
     if (snap.frame > frameRef.current) {
       frameRef.current = snap.frame;
       invalidateMemory();
@@ -225,9 +289,20 @@ export function useEmulator(): EmulatorState {
     // sends neither, and the scrollback stays append-only as before.
     if (snap.stdoutSeen != null) syncSeen("stdout", snap.stdoutSeen);
     if (snap.stderrSeen != null) syncSeen("stderr", snap.stderrSeen);
+    setFrames(snap.frames ?? null);
+    setCallCard(snap.callCard ?? null);
     // Worded against the files just assembled, whose joined lines the rows name.
-    if (snap.clobberNotes?.length) {
-      appendNotes(clobberNoteTexts(snap.clobberNotes, workspaceRef.current));
+    const rows = snap.clobberNotes?.length ? snap.clobberNotes : NO_LINES;
+    setNoteRows(rows);
+    if (rows.length) {
+      appendNotes(clobberNoteTexts(rows, workspaceRef.current));
+      // Rows for x19 to x28 are a caller reading what a call left changed,
+      // worded in a chunk of their own.
+      void loadFrameCards().then((m) => {
+        if (!m) return;
+        const cards = m.calleeCards(rows, programLines, frameLayoutRef.current);
+        if (cards.length) appendNotes(cards.map(m.plain));
+      });
     }
     // An external call shows only while paused: a run passes through one on
     // every printf, and showing it mid-run would flicker the card and drag
@@ -279,6 +354,7 @@ export function useEmulator(): EmulatorState {
     codeBase,
     invalidateMemory,
     markCurrentLine,
+    programLines,
     syncSeen,
   ]);
 
@@ -376,6 +452,7 @@ export function useEmulator(): EmulatorState {
       // state, and is awaited so a caller's seeds land after the wipe.
       const fail = async (outcome: AssembleOutcome): Promise<AssembleOutcome> => {
         setInstructions([]);
+        setFrameLayout((frameLayoutRef.current = null));
         await backend.reset().catch(() => {});
         return outcome;
       };
@@ -450,6 +527,8 @@ export function useEmulator(): EmulatorState {
               map,
             }),
           );
+          const layout = await backend.frameLayout().catch(() => null);
+          setFrameLayout((frameLayoutRef.current = layout));
           markProgramLoaded(true);
           return { success: true, error: null, errorLine: null };
         })
@@ -493,16 +572,25 @@ export function useEmulator(): EmulatorState {
    * Surface a runtime stop with its editor line when the wasm side could
    * resolve one: the banner carries "line N" and the editor gets a line
    * marker, so a fault raised inside printf or a syscall points at the
-   * call site instead of at nothing.
+   * call site instead of at nothing. Returns the words the error line shows.
    */
-  const surfaceRuntimeError = useCallback((message: string, line?: number | null) => {
-    if (line != null && line > 0) {
-      setError(`line ${line}: ${message}`);
-      setAssemblyErrors([{ line, message }]);
-    } else {
-      setError(message);
-    }
-  }, []);
+  const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true): string => {
+    // After a ret that went to no caller (frames header slot 5), the frame
+    // may show the cause: then its card stands in for the crate's guess, in
+    // the console too (not for a run's pause, which repeats every chunk).
+    // The callers load the words first (loadFrameCards).
+    const snap = snapRef.current;
+    const cards = snap?.frames?.[5] ? frameCards : null;
+    const ctx = snap && cards?.cardContext(snap.frames ?? null, frameLayoutRef.current, programLines);
+    const said = snap && ctx && cards?.faultText(message, ctx, BigInt(snap.registers[30] ?? 0), BigInt(snap.pc));
+    const text = said ? said.error : message;
+    const shown = line != null && line > 0 ? `line ${line}: ${text}` : text;
+    setError(shown);
+    if (line != null && line > 0) setAssemblyErrors([{ line, message: text, card: said ? said.card : undefined }]);
+    setErrorCard(said ? { error: shown, card: said.card } : null);
+    if (said && note && cards) appendNotes([cards.plain(said.card)]);
+    return shown;
+  }, [appendNotes, programLines]);
 
   const step = useCallback(() => {
     const backend = backendRef.current;
@@ -512,11 +600,15 @@ export function useEmulator(): EmulatorState {
     // or capture a replay frame of a step that never happened.
     if (!backend || !programLoadedRef.current || haltedRef.current) return;
     runBlockedRef.current = false;
+    pausedAtRef.current = -1;
     setError(null);
-    backend
+    movingRef.current = backend
       .step()
-      .then(({ stepResult }) => {
+      .then(async ({ stepResult }) => {
+        if (stepResult.error && snapRef.current?.frames?.[5] && !frameCards) await loadFrameCards();
         if (stepResult.error) surfaceRuntimeError(stepResult.error, stepResult.error_line);
+        // A goal sent in the same task counts on from here before this renders.
+        stepCountRef.current += 1;
         setStepCount((c) => {
           const next = c + 1;
           // currentLineRef + latestSnapRef are already updated because
@@ -537,10 +629,14 @@ export function useEmulator(): EmulatorState {
     // must not move without it.
     if (!backend || !programLoadedRef.current || !canStepBackRef.current) return;
     runBlockedRef.current = false;
+    pausedAtRef.current = -1;
     setError(null);
-    backend
+    movingRef.current = backend
       .stepBack()
-      .then(() => setStepCount((c) => Math.max(0, c - 1)))
+      .then(() => {
+        stepCountRef.current = Math.max(0, stepCountRef.current - 1);
+        setStepCount((c) => Math.max(0, c - 1));
+      })
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
       });
@@ -578,29 +674,32 @@ export function useEmulator(): EmulatorState {
     });
   }, [markProgramLoaded, resetReplayHistory]);
 
-  const run = useCallback(() => {
+  // With a goal, a step over, step out or run to cursor: it resolves to the
+  // words for why it stopped, null for a plain run or nothing to say.
+  const run = useCallback((goal?: Goal | null): Promise<string | null> => {
     const backend = backendRef.current;
     // Guard through the refs, not state: callers that await an assemble
     // and then invoke a run captured earlier (the embed's Run, the
     // checker) must see the fresh post-assemble halt and loaded flags.
     // The in-flight guard stops a second concurrent loop (hold-F5, the
     // palette's Run) from stacking another 1M-step budget on the machine.
-    if (!backend || !programLoadedRef.current || haltedRef.current) return;
-    if (runningRef.current) return;
+    if (!backend || !programLoadedRef.current || haltedRef.current) return Promise.resolve(null);
+    if (runningRef.current) return Promise.resolve(null);
+    goalRef.current = goal ?? null;
     runBlockedRef.current = false;
     // The last stop's alert ("paused after 1,000,000 steps") describes a run
     // that is over; step clears it the same way.
     setError(null);
     setIsRunning(true);
     runningRef.current = true;
-    const drive = async (): Promise<void> => {
+    const drive = async (): Promise<string | null> => {
       let total = 0;
       for (;;) {
-        const { runResult } = await backend.runUntilBreak(1_000_000);
+        const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
         // A run cancelled by reset/assemble describes a machine that no
         // longer exists; acting on it painted `unknown instruction:
         // 0x00000000` right after the student pressed Reset.
-        if (runResult.cancelled) return;
+        if (runResult.cancelled) return null;
         total += runResult.steps_executed;
         // A pacing pause (nanosleep): honor it in real time and keep the
         // same run going, unless pause/reset stood the drive down while
@@ -609,7 +708,9 @@ export function useEmulator(): EmulatorState {
           runResult.sleep_ms != null &&
           !runResult.halted &&
           !runResult.error &&
-          !runResult.hit_breakpoint
+          !runResult.hit_breakpoint &&
+          !runResult.reached &&
+          !runResult.bad_return
         ) {
           const ms = Math.max(1, Math.min(runResult.sleep_ms, 2000));
           await new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -618,6 +719,7 @@ export function useEmulator(): EmulatorState {
         // The snapshot this result carries has already landed, so the ref
         // says whether the run stopped at a read rather than for good.
         runBlockedRef.current = blockedRef.current && !runResult.error;
+        if (snapshot.frames?.[5] && !frameCards) await loadFrameCards();
         // That snapshot hid any library call, since the run was still on. A
         // stop inside printf, or at a scanf's read, marks the `bl` line.
         const call = lastCallRef.current;
@@ -628,10 +730,15 @@ export function useEmulator(): EmulatorState {
         setStepCount((c) => {
           const next = c + total;
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
-          else if (runResult.step_limit_reached) {
-            setError(
-              `paused after ${formatSteps(total)} without finishing. ` +
-                "press run to continue, or check for a loop whose exit condition never becomes true",
+          // A goal's pause has its own words, from stopReason below.
+          else if (runResult.step_limit_reached && !goal) {
+            setPauseText(
+              surfaceRuntimeError(
+                `paused after ${formatSteps(total)} without finishing. ` +
+                  "press run to continue, or check for a loop whose exit condition never becomes true",
+                null,
+                false,
+              ),
             );
           }
           // Approximate replay capture: only the final frame of the run
@@ -640,23 +747,61 @@ export function useEmulator(): EmulatorState {
           pushReplayFrame(next);
           return next;
         });
-        return;
+        if (!goal) return null;
+        // The count the setter above lands on; its effect has not run yet.
+        const at = stepCountRef.current + total;
+        pausedAtRef.current = runResult.step_limit_reached ? at : -1;
+        // The words load only when a goal run first stops, so no page that
+        // never steps over ships them.
+        const { stopReason } = await import("@/lib/emulator/stop-reason");
+        const said = stopReason(goal.target, runResult, snapshot, frameLayoutRef.current, programLines);
+        if (said?.problem) {
+          setError(said.text);
+          setErrorCard(said.card ? { error: said.text, card: said.card } : null);
+          // The budget's pause, not a bad return (that one brings its card).
+          if (runResult.step_limit_reached && !said.card) setPauseText(said.text);
+        }
+        else if (said) setStop({ text: said.text, at });
+        return said?.text ?? null;
       }
     };
-    drive()
+    return drive()
       .catch((e: unknown) => {
         setError(e instanceof Error ? e.message : String(e));
+        return null;
       })
       .finally(() => {
         setIsRunning(false);
         runningRef.current = false;
       });
-  }, [markCurrentLine, pushReplayFrame, surfaceRuntimeError]);
+  }, [markCurrentLine, programLines, pushReplayFrame, surfaceRuntimeError]);
+
+  // Step over and step out aim at a call depth, run to cursor at the
+  // instruction the line stands for.
+  const runUntil = useCallback(
+    (target: StepTarget): Promise<string | null> =>
+      movingRef.current.then(() => {
+        const paused = goalRef.current;
+        if (paused?.target === target && pausedAtRef.current === stepCountRef.current) return run(paused);
+        const snap = snapRef.current;
+        if (typeof target === "number") {
+          const pc = resolveBreakpointAddr(target);
+          if (pc != null) return run({ until: { pc }, target });
+          setStop({ text: `line ${target} has no instruction to stop at`, at: stepCountRef.current });
+          return null;
+        }
+        if (!snap?.frames) return null;
+        const depth = callDepth(snap.frames);
+        // Inside a library call, both finish the call.
+        return run({ until: { depth: target === "out" && !snap.externalCall ? depth - 1 : depth }, target });
+      }),
+    [run, resolveBreakpointAddr],
+  );
 
   const resumeAfterInput = useCallback(() => {
     if (!runBlockedRef.current) return;
     runBlockedRef.current = false;
-    run();
+    void run(goalRef.current);
   }, [run]);
 
   const pause = useCallback(() => {
@@ -755,11 +900,19 @@ export function useEmulator(): EmulatorState {
       isHalted,
       programLoaded,
       error,
+      paused: error != null && error === pauseText,
+      errorCard: errorCard?.error === error ? errorCard.card : null,
       assemblyErrors,
       breakpoints,
       droppedBreakpoints,
       currentLine,
       externalCall,
+      frames,
+      frameLayout,
+      callCard,
+      lineLabel,
+      programLines,
+      noteRows,
       instructions,
       codeBase,
       memoryRegions,
@@ -783,6 +936,8 @@ export function useEmulator(): EmulatorState {
       loadState,
       deleteState,
       run,
+      runUntil,
+      stopReason: stop && stop.at === stepCount && !isRunning ? stop.text : null,
       pause,
       reset,
       toggleBreakpoint,
@@ -817,14 +972,14 @@ export function useEmulator(): EmulatorState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
-      isRunning, isAssembling, isHalted, programLoaded, error, assemblyErrors, breakpoints,
+      isRunning, isAssembling, isHalted, programLoaded, error, pauseText, errorCard, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
-      currentLine, externalCall, instructions, codeBase, memoryRegions,
+      currentLine, externalCall, frames, frameLayout, callCard, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
-      deleteState, run, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
+      deleteState, run, runUntil, stop, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
       pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,

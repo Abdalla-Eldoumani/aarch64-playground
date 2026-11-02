@@ -5,6 +5,7 @@ pub mod decoder;
 pub mod errors;
 pub mod executor;
 pub mod fpu;
+pub mod frames;
 pub mod frontend;
 pub mod hosted;
 pub mod memory;
@@ -192,7 +193,9 @@ pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext>
 fn line_at(line_map: &[u32], pc: u64) -> Option<u32> {
     let target = pc as u32;
     line_map
-        .chunks_exact(2)
+        .as_chunks::<2>()
+        .0
+        .iter()
         .find(|pair| pair[0] == target)
         .map(|pair| pair[1])
 }
@@ -200,10 +203,91 @@ fn line_at(line_map: &[u32], pc: u64) -> Option<u32> {
 /// Turn the two pcs of each `Cpu::take_clobber_notes` row into the editor
 /// lines the web words the note from, 0 where the map has none.
 pub fn clobber_note_lines(rows: &mut [u32], line_map: &[u32]) {
-    for row in rows.chunks_exact_mut(4) {
+    for row in rows.as_chunks_mut::<4>().0 {
         row[2] = line_at(line_map, u64::from(row[2])).unwrap_or(0);
         row[3] = line_at(line_map, u64::from(row[3])).unwrap_or(0);
     }
+}
+
+/// `call_card`'s header length, and its numbers per conversion: the
+/// conversion's place in the format, where its argument came from, what
+/// went wrong, the argument and what scanf stored there (each as low and
+/// high 32 bits), how many bytes it stored or its %s read, its place in the
+/// text, and the length of the data label the argument falls in (0 for
+/// none) with how far into it.
+pub const CALL_HEADER: usize = 11;
+pub const CALL_ROW: usize = 13;
+
+/// The printf or scanf call the last step ran, as the call card's numbers:
+/// a header (kind, step, the branch that made the call, x0 as a signed
+/// number, whether the call stopped the program, rows, conversions, format
+/// bytes kept and in all, text bytes kept and in all), `CALL_ROW` numbers
+/// per row, then the format's bytes, the text's, and each row's label name
+/// followed, on a printf row, by the first `MAX_CALL_BYTES` its %s read
+/// (its `size` says how many it read).
+/// Empty when the last step ran neither.
+pub fn call_card(cpu: &Cpu) -> Vec<f64> {
+    let call = cpu.last_call();
+    if call.kind == 0 || call.step != cpu.steps_taken() {
+        return Vec::new();
+    }
+    let mut out = vec![
+        call.kind.into(),
+        call.step as f64,
+        call.call_pc as f64,
+        call.result as i64 as f64,
+        u8::from(call.failed).into(),
+        call.rows.len() as f64,
+        call.conversions as f64,
+        call.fmt.len() as f64,
+        call.fmt_len as f64,
+        call.text.len() as f64,
+        call.text_len as f64,
+    ];
+    let mut row_bytes = Vec::new();
+    let mut strings = call.strings.as_slice();
+    for row in &call.rows {
+        let (label, into) = data_label(&cpu.symbols, row.arg).unwrap_or(("", 0));
+        row_bytes.extend_from_slice(label.as_bytes());
+        if call.kind == hosted::CALL_PRINTF {
+            let (read, rest) = strings.split_at((row.size as usize).min(hosted::MAX_CALL_BYTES));
+            row_bytes.extend_from_slice(read);
+            strings = rest;
+        }
+        out.extend_from_slice(&[
+            row.fmt_start as f64,
+            row.fmt_end as f64,
+            row.source as f64,
+            row.code.into(),
+            f64::from(row.arg as u32),
+            f64::from((row.arg >> 32) as u32),
+            f64::from(row.stored as u32),
+            f64::from((row.stored >> 32) as u32),
+            row.size as f64,
+            row.text_start as f64,
+            row.text_end as f64,
+            label.len() as f64,
+            into as f64,
+        ]);
+    }
+    for &b in call.fmt.iter().chain(&call.text).chain(&row_bytes) {
+        out.push(b.into());
+    }
+    out
+}
+
+/// The label in .rodata, .data or .bss at or below `addr` in its section,
+/// and how far past it `addr` is. Of two labels at one address, the one
+/// first in the alphabet, so the answer does not hang on hash order.
+fn data_label(symbols: &std::collections::HashMap<String, u64>, addr: u64) -> Option<(&str, u64)> {
+    let base = [cpu::RODATA_BASE, cpu::DATA_BASE, cpu::BSS_BASE]
+        .into_iter()
+        .find(|base| (*base..base + cpu::SECTION_WINDOW).contains(&addr))?;
+    symbols
+        .iter()
+        .filter(|&(_, &at)| (base..=addr).contains(&at))
+        .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))
+        .map(|(name, &at)| (name.as_str(), addr - at))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -229,6 +313,10 @@ pub struct Emulator {
     /// instead. Kept here rather than on `cpu` because it is not execution
     /// state.
     line_map: Vec<u32>,
+    /// The slots each function names, from the same assemble: what the
+    /// frames view draws inside each activation. Empty beside an empty
+    /// line map.
+    frame_layout: frames::layout::FrameLayout,
 }
 
 /// Flatten the linker's `(addr, line)` pairs into the flat `[addr, line,
@@ -245,10 +333,13 @@ fn flatten_line_map(pairs: &[(u64, u32)]) -> Vec<u32> {
     out
 }
 
+/// pc crosses as an f64 here and in the run results: serde refuses a u64
+/// above 2^53 (a `ret` to an lr a %s overrun filled with ASCII), and the
+/// `.unwrap()` then traps the wasm.
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct StepResultJs {
-    pc: u64,
+    pc: f64,
     halted: bool,
     error: Option<String>,
     /// Editor line of the instruction the error names, when the line map
@@ -263,7 +354,7 @@ struct StepResultJs {
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct RunResultJs {
-    pc: u64,
+    pc: f64,
     halted: bool,
     steps_executed: u32,
     hit_breakpoint: bool,
@@ -276,11 +367,46 @@ struct RunResultJs {
     sleep_ms: Option<f64>,
 }
 
+/// `run_to`'s result: RunResultJs's fields plus the goal's two stops.
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct RunToJs {
+    pc: f64,
+    halted: bool,
+    steps_executed: u32,
+    hit_breakpoint: bool,
+    error: Option<String>,
+    error_line: Option<u32>,
+    sleep_ms: Option<f64>,
+    reached: bool,
+    bad_return: bool,
+}
+
 #[cfg(target_arch = "wasm32")]
 #[derive(Serialize)]
 struct LintWarningJs {
     line: usize,
     message: String,
+}
+
+/// One `frames::check` finding as `lint_source` hands it over: `check` is
+/// the rule, the frame's bytes, then each slot's offset and width (0 and 0
+/// for none); `names` the function's and the slots' names as written ("" for
+/// none).
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+struct FrameCheckJs<'a> {
+    line: u32,
+    check: [f64; 6],
+    names: [&'a str; 3],
+}
+
+#[cfg(target_arch = "wasm32")]
+#[derive(Serialize)]
+#[serde(untagged)]
+enum LintJs<'a> {
+    Lint(LintWarningJs),
+    Frame(FrameCheckJs<'a>),
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -346,7 +472,7 @@ impl Emulator {
     pub fn new() -> Self {
         // install panic hook so Rust panics surface as readable JS errors
         console_error_panic_hook::set_once();
-        Self { cpu: Cpu::new(), line_map: Vec::new() }
+        Self { cpu: Cpu::new(), line_map: Vec::new(), frame_layout: Default::default() }
     }
 
     /// Assemble source text and load the resulting program. Sources that
@@ -359,6 +485,7 @@ impl Emulator {
         // failed assemble or the bare-metal path leaves it empty and the
         // web layer falls back to the legacy line-count heuristic.
         self.line_map.clear();
+        self.frame_layout = Default::default();
         if detect_hosted_mode(source) {
             self.cpu.reset();
             match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
@@ -366,13 +493,16 @@ impl Emulator {
                     let count = image.instruction_count;
                     self.line_map = flatten_line_map(&image.line_map);
                     match self.cpu.load_linked_image(&image) {
-                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
-                            success: true,
-                            error: None,
-                            error_line: None,
-                            instruction_count: count,
-                        })
-                        .unwrap(),
+                        Ok(()) => {
+                            self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
+                            serde_wasm_bindgen::to_value(&AssembleResultJs {
+                                success: true,
+                                error: None,
+                                error_line: None,
+                                instruction_count: count,
+                            })
+                            .unwrap()
+                        }
                         Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
                             success: false,
                             error: Some(e.to_string()),
@@ -443,6 +573,7 @@ impl Emulator {
     ) -> JsValue {
         // Clear the map up front for the same reason as assemble_and_load.
         self.line_map.clear();
+        self.frame_layout = Default::default();
         if detect_hosted_mode(source) {
             self.cpu.reset();
             let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
@@ -451,13 +582,16 @@ impl Emulator {
                     let count = image.instruction_count;
                     self.line_map = flatten_line_map(&image.line_map);
                     match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
-                        Ok(()) => serde_wasm_bindgen::to_value(&AssembleResultJs {
-                            success: true,
-                            error: None,
-                            error_line: None,
-                            instruction_count: count,
-                        })
-                        .unwrap(),
+                        Ok(()) => {
+                            self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
+                            serde_wasm_bindgen::to_value(&AssembleResultJs {
+                                success: true,
+                                error: None,
+                                error_line: None,
+                                instruction_count: count,
+                            })
+                            .unwrap()
+                        }
                         Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
                             success: false,
                             error: Some(e.to_string()),
@@ -524,7 +658,7 @@ impl Emulator {
                     .as_ref()
                     .and_then(|_| self.error_line_for(result.pc));
                 serde_wasm_bindgen::to_value(&StepResultJs {
-                    pc: result.pc,
+                    pc: result.pc as f64,
                     halted: result.halted,
                     error: result.error,
                     error_line,
@@ -534,7 +668,7 @@ impl Emulator {
                 .unwrap()
             }
             Err(e) => serde_wasm_bindgen::to_value(&StepResultJs {
-                pc: self.cpu.regs.read_pc(),
+                pc: self.cpu.regs.read_pc() as f64,
                 halted: true,
                 error: Some(e.to_string()),
                 error_line: self.error_line_for(self.cpu.regs.read_pc()),
@@ -553,7 +687,7 @@ impl Emulator {
         let outcome = self.cpu.step_back();
         let (outcome_str, exit_code) = outcome_to_js(&outcome);
         serde_wasm_bindgen::to_value(&StepResultJs {
-            pc: self.cpu.regs.read_pc(),
+            pc: self.cpu.regs.read_pc() as f64,
             halted: self.cpu.is_halted(),
             error: None,
             error_line: None,
@@ -603,7 +737,7 @@ impl Emulator {
                     .take_pending_sleep_ns()
                     .map(|ns| ns as f64 / 1_000_000.0);
                 serde_wasm_bindgen::to_value(&RunResultJs {
-                    pc: result.pc,
+                    pc: result.pc as f64,
                     halted: result.halted,
                     steps_executed: result.steps_executed,
                     hit_breakpoint: result.hit_breakpoint,
@@ -613,7 +747,7 @@ impl Emulator {
                 }).unwrap()
             }
             Err(e) => serde_wasm_bindgen::to_value(&RunResultJs {
-                pc: self.cpu.regs.read_pc(),
+                pc: self.cpu.regs.read_pc() as f64,
                 halted: true,
                 steps_executed: 0,
                 hit_breakpoint: false,
@@ -622,6 +756,48 @@ impl Emulator {
                 sleep_ms: None,
             }).unwrap(),
         }
+    }
+
+    /// `run_until_break` with a goal: stop once the call stack is `depth`
+    /// deep or shallower back in the program's own code, or once the pc is
+    /// `pc`; a negative number leaves that half off.
+    pub fn run_to(&mut self, max_steps: u32, depth: f64, pc: f64) -> JsValue {
+        let until = cpu::Until {
+            depth: (depth >= 0.0).then_some(depth as u64),
+            pc: (pc >= 0.0).then_some(pc as u64),
+        };
+        let (result, error_line) = match self.cpu.run_until(max_steps, until) {
+            Ok(result) => {
+                let line = result.error.as_ref().and_then(|_| self.error_line_for(result.pc));
+                (result, line)
+            }
+            Err(e) => {
+                let pc = self.cpu.regs.read_pc();
+                let result = cpu::RunResult {
+                    pc,
+                    halted: true,
+                    steps_executed: 0,
+                    hit_breakpoint: false,
+                    error: Some(e.to_string()),
+                    reached: false,
+                    bad_return: false,
+                };
+                (result, self.error_line_for(pc))
+            }
+        };
+        let sleep_ms = self.cpu.take_pending_sleep_ns().map(|ns| ns as f64 / 1_000_000.0);
+        serde_wasm_bindgen::to_value(&RunToJs {
+            pc: result.pc as f64,
+            halted: result.halted,
+            steps_executed: result.steps_executed,
+            hit_breakpoint: result.hit_breakpoint,
+            error: result.error,
+            error_line,
+            sleep_ms,
+            reached: result.reached,
+            bad_return: result.bad_return,
+        })
+        .unwrap()
     }
 
     /// Reset CPU to initial state (keeps breakpoints).
@@ -717,14 +893,27 @@ impl Emulator {
     }
 
     /// Pre-assembly structural lint: advisory warnings, each with a line
-    /// and a one-line remedy. Never blocks assembling; serialized as
-    /// `[{ line, message }, ...]`.
+    /// and a one-line remedy, as `{ line, message }`, then the playground's
+    /// own frame check (`frames::check`, on a copy assembled aside) as
+    /// `FrameCheckJs` rows for the web to word. Never blocks assembling and
+    /// touches no machine state.
     pub fn lint_source(&self, source: &str) -> JsValue {
-        let warnings: Vec<LintWarningJs> = frontend::lint::lint(source)
+        let (check, names) = frames::check::check_source(source, &self.cpu.host);
+        let name = |i: Option<u32>| i.and_then(|i| names.get(i as usize)).map_or("", String::as_str);
+        let slot = |s: Option<frames::layout::NamedSlot>| s.map_or([0.0; 2], |s| [s.offset as f64, f64::from(s.width)]);
+        let rows: Vec<LintJs> = frontend::lint::lint(source)
             .into_iter()
-            .map(|w| LintWarningJs { line: w.line, message: w.message })
+            .map(|w| LintJs::Lint(LintWarningJs { line: w.line, message: w.message }))
+            .chain(check.findings.into_iter().map(|f| {
+                let ([a, b], [c, d]) = (slot(f.first), slot(f.second));
+                LintJs::Frame(FrameCheckJs {
+                    line: f.line,
+                    check: [f64::from(f.rule), f.frame_bytes as f64, a, b, c, d],
+                    names: [name(f.function), name(f.first.map(|s| s.name)), name(f.second.map(|s| s.name))],
+                })
+            }))
             .collect();
-        serde_wasm_bindgen::to_value(&warnings).unwrap()
+        serde_wasm_bindgen::to_value(&rows).unwrap()
     }
 
     /// Run only the m4 pass, as `assemble_and_load` would, for the terminal's
@@ -812,6 +1001,30 @@ impl Emulator {
         let mut rows = self.cpu.take_clobber_notes();
         clobber_note_lines(&mut rows, &self.line_map);
         rows
+    }
+
+    /// The printf or scanf call the last step ran, as the numbers
+    /// `call_card` lays out; empty when it ran neither.
+    pub fn last_call(&self) -> Vec<f64> {
+        call_card(&self.cpu)
+    }
+
+    /// The call stack as the program stands, as the flat numbers
+    /// `frames::view_numbers` lays out; worked out on each call, so the
+    /// web asks once per snapshot.
+    pub fn frames(&self) -> Vec<f64> {
+        frames::view_numbers(&frames::frame_view(&self.cpu, &self.frame_layout))
+    }
+
+    /// The last assemble's frame layout as the flat numbers
+    /// `FrameLayout::numbers` lays out. Changes only on assemble.
+    pub fn frame_layout(&self) -> Vec<f64> {
+        self.frame_layout.numbers()
+    }
+
+    /// The program's own names the layout refers to by index.
+    pub fn frame_names(&self) -> Vec<String> {
+        self.frame_layout.names.clone()
     }
 
     // -- hosted runtime --

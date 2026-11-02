@@ -127,13 +127,14 @@ const STATES: FactState[] = [
   },
 ];
 
+// Each band is a whole frame, so the stack has no offset column.
 function bands(state: FactState, opened: boolean): BandProps[] {
-  const top = ["<- sp", "<- fp"];
+  const top = "sp, fp";
   return [
     {
       label: "main's frame",
       detail: `at ${address(0)}: main's saved fp and lr`,
-      markers: state.depth === 0 ? top : [],
+      marker: state.depth === 0 ? top : "",
     },
     ...[4, 3, 2, 1].map((n, i) => {
       const depth = i + 1;
@@ -145,7 +146,7 @@ function bands(state: FactState, opened: boolean): BandProps[] {
           : "free: below sp",
         ghost: !open,
         changed: opened && depth === state.depth,
-        markers: depth === state.depth ? top : [],
+        marker: depth === state.depth ? top : "",
       };
     }),
   ];

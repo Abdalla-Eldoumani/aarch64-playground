@@ -18,7 +18,7 @@ function openFrames(): string[] {
   const bands = screen.getByRole("list", { name: "stack bands" });
   return within(bands)
     .getAllByRole("listitem")
-    .filter((li) => !li.className.includes("border-dashed"))
+    .filter((li) => !li.querySelector(".border-dashed"))
     .map((li) => li.textContent?.match(/^(main|fact\(\d\))'s frame/)?.[1] ?? "");
 }
 
@@ -42,6 +42,12 @@ describe("FactorialWalk", () => {
     expect(screen.getByText("fact(1): b.le fact_done")).toBeTruthy();
     expect(openFrames()).toEqual(["main", "fact(4)", "fact(3)", "fact(2)", "fact(1)"]);
     expect(screen.getByLabelText("x19: 1, changed this step")).toBeTruthy();
+    // sp and fp both point into the innermost frame, which this step opened.
+    // A whole frame has no offset of its own: a box and a marker, no column.
+    const innermost = screen.getByText("sp, fp").closest("li")!;
+    expect(innermost.children).toHaveLength(2);
+    expect(innermost.textContent).toMatch(/^fact\(1\)'s frame/);
+    expect(within(innermost).getByText("fact(1)'s frame").parentElement?.style.boxShadow).toContain("var(--amber)");
   });
 
   it("closes them in reverse order and returns 24 to main", () => {

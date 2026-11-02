@@ -2,11 +2,14 @@
  * Run one program to its end the way the server runs `./program args < input`:
  * the input is queued and then closed, so a read past it sees end of input
  * instead of waiting for a key. The practice checker grades hidden cases on
- * this and the playground runs its checks on it.
+ * this and the playground runs its checks on it. `runToPause` stops a frame
+ * exercise's program where its frame is to be drawn.
  */
 
 import type { EmulatorInstance } from "@/lib/emulator/emulator";
 import type { HiddenRunOutcome } from "@/lib/content/exercise-checker";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { parseLineMap } from "@/lib/emulator/line-map";
 
 /** The machine methods a headless run needs; EmulatorInstance has them all. */
 export type HeadlessMachine = Pick<
@@ -23,6 +26,11 @@ export type HeadlessMachine = Pick<
   | "getPc"
   | "getRegister"
   | "getMemoryRange"
+  | "frames"
+  | "frameLayout"
+  | "getLineMap"
+  | "setBreakpoint"
+  | "clearAllBreakpoints"
 >;
 
 /**
@@ -142,4 +150,50 @@ export async function runHeadless(
     stackBalanced: returnedFromMain ? BigInt(machine.getSp()) === entrySp : null,
     frameIntact: sameBytes(guardBefore, machine.getMemoryRange(guardAddress, FRAME_GUARD_BYTES)),
   };
+}
+
+/** What the frames view draws from, read at a frame exercise's pause. */
+export interface PausedMachine {
+  frames: number[];
+  layout: FrameLayoutPayload;
+  sp: number;
+  fp: number;
+  pc: number;
+}
+
+/**
+ * Run `source` until it is about to run line `pause.line` for the
+ * `pause.hit`th time, and read the call stack there. Null when the program
+ * does not assemble, never gets there, or the wasm build cannot draw frames.
+ */
+export async function runToPause(
+  machine: HeadlessMachine,
+  source: string,
+  pause: { line: number; hit: number },
+): Promise<PausedMachine | null> {
+  if (!machine.assembleAndLoadWithArgs(source, []).success) return null;
+  machine.closeStdin();
+  const at = parseLineMap(machine.getLineMap()).lineToAddr.get(pause.line);
+  if (at === undefined) return null;
+  machine.setBreakpoint(at);
+  try {
+    let hits = 0;
+    let steps = 0;
+    while (!machine.isHalted() && steps < HEADLESS_STEP_BUDGET) {
+      const slice = machine.runUntilBreak(Math.min(SLICE_STEPS, HEADLESS_STEP_BUDGET - steps));
+      if (slice.error !== null || slice.steps_executed === 0) return null;
+      steps += slice.steps_executed;
+      if (slice.hit_breakpoint && slice.pc === at && ++hits === pause.hit) {
+        const frames = machine.frames();
+        const layout = machine.frameLayout();
+        if (!frames || !layout) return null;
+        const [sp, fp] = [machine.getSp(), machine.getRegister(29)].map(Number);
+        return { frames, layout, sp, fp, pc: machine.getPc() };
+      }
+      if (!slice.hit_breakpoint) await nextTask();
+    }
+    return null;
+  } finally {
+    machine.clearAllBreakpoints();
+  }
 }

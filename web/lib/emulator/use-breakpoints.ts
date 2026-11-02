@@ -13,6 +13,9 @@ export interface Breakpoints {
   clearAllBreakpoints: () => void;
   setBreakpointAddress: (addr: number) => Promise<void>;
   clearBreakpointAddress: (addr: number) => Promise<void>;
+  /** The instruction a line stands for: its own, or the next one after a
+   *  label, blank or comment line; null past the last. */
+  resolveBreakpointAddr: (line: number) => number | null;
   /**
    * Re-key the gutter dots through a fresh assembly's line map. The CPU
    * deliberately keeps its address set across an assemble, but those
@@ -208,6 +211,7 @@ export function useBreakpoints({
     clearAllBreakpoints,
     setBreakpointAddress,
     clearBreakpointAddress,
+    resolveBreakpointAddr,
     rekeyAfterAssemble,
   };
 }

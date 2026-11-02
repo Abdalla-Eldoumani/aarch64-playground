@@ -226,6 +226,38 @@ describe("Controls", () => {
     expect(second.className).toContain("anim-error-shake");
   });
 
+  it("keeps the last alert's room, unseen and unsaid, while a run goes", () => {
+    const h = allHandlers();
+    const at = (error: string | null, isRunning: boolean) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+      />
+    );
+    const pause = "paused after 1,000,000 steps without finishing.";
+    const { rerender, container } = render(at(pause, false));
+    const said = screen.getByRole("alert");
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    const held = container.querySelector('.invisible[aria-hidden="true"]');
+    expect(held?.textContent).toContain(pause);
+    // The same words at the next pause are a new alert, said and shaken again.
+    rerender(at(pause, false));
+    const again = screen.getByRole("alert");
+    expect(again).not.toBe(said);
+    expect(again.className).toContain("anim-error-shake");
+    expect(container.querySelector(".invisible")).toBeNull();
+    // A run that ends without a stop to say leaves no room behind.
+    rerender(at(null, true));
+    rerender(at(null, false));
+    expect(container.querySelector('[aria-hidden="true"].invisible')).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("surfaces a plain-language recovery hint for a recognized error", () => {
     const h = allHandlers();
     render(
@@ -242,6 +274,37 @@ describe("Controls", () => {
     const text = alert.textContent?.toLowerCase() ?? "";
     expect(text).toContain("unknown instruction");
     expect(text).toContain("mnemonic");
+  });
+
+  // The fix line follows the card's cause, which the hub hands over beside
+  // the error; the card's words are never read for it. While a run goes,
+  // the held room keeps the same line.
+  it("takes the fix line from the card an error carries", () => {
+    const h = allHandlers();
+    const fault = "memory fault: the program tried to read 0x0000000000400010, which no section covers.";
+    const card = {
+      event: "ret at step 16",
+      text: "show's ret on line 29 went back into show instead of going back to main at line 38.",
+      cause: "unsaved" as const,
+    };
+    const at = (error: string | null, isRunning: boolean, errorCard: typeof card | null) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+        errorCard={errorCard}
+      />
+    );
+    const { rerender, container } = render(at(`${fault} ${card.text}`, false, card));
+    expect(screen.getByRole("alert").textContent).toContain("Save lr before the function's first call");
+    rerender(at(null, true, null));
+    expect(container.querySelector(".invisible")?.textContent).toContain("Save lr before the function's first call");
+    // The same words with no card are the crate's fault, and keep its fix.
+    rerender(at(`${fault} ${card.text}`, false, null));
+    expect(screen.getByRole("alert").textContent).toContain("Watch the base register");
   });
 
   it("disables step and back until a program is loaded", () => {
@@ -474,5 +537,58 @@ describe("Controls while blocked on stdin", () => {
     expect(screen.getByRole("button", { name: "run" })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: "step" })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: "back" })).toHaveProperty("disabled", false);
+  });
+});
+
+describe("Controls' step over, step out and run to cursor", () => {
+  const props = (over: Partial<Parameters<typeof Controls>[0]> = {}) => ({
+    ...allHandlers(),
+    onRunUntil: vi.fn(),
+    canStepBack: true,
+    isRunning: false,
+    isHalted: false,
+    programLoaded: true,
+    error: null,
+    ...over,
+  });
+
+  it("sends each goal and names its key", () => {
+    const p = props();
+    render(<Controls {...p} />);
+    fireEvent.click(screen.getByRole("button", { name: "step over" }));
+    fireEvent.click(screen.getByRole("button", { name: "step out" }));
+    fireEvent.click(screen.getByRole("button", { name: "run to cursor" }));
+    expect(vi.mocked(p.onRunUntil).mock.calls).toEqual([["over"], ["out"], ["cursor"]]);
+    expect(screen.getByRole("button", { name: "step out" }).getAttribute("aria-keyshortcuts")).toBe(
+      "Control+Shift+F10",
+    );
+  });
+
+  it("disables them where step is disabled", () => {
+    for (const over of [{ programLoaded: false }, { isRunning: true }, { isHalted: true }, { blocked: true }]) {
+      render(<Controls {...props(over)} />);
+      expect(screen.getByRole("button", { name: "step over" })).toHaveProperty("disabled", true);
+      cleanup();
+    }
+  });
+
+  it("keeps them behind an ellipsis on a phone until it opens", () => {
+    window.localStorage.clear();
+    render(<Controls {...props({ compact: true })} />);
+    const more = screen.getByRole("button", { name: "more ways to step" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
+    fireEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    // The ellipsis names the row it opens.
+    const goals = document.getElementById(more.getAttribute("aria-controls") ?? "");
+    expect(goals?.contains(screen.getByRole("button", { name: "step over" }))).toBe(true);
+  });
+
+  it("says why the last one stopped, unless an error says more", () => {
+    const { rerender } = render(<Controls {...props({ stopReason: "returned to main at line 21" })} />);
+    expect(screen.getByRole("status", { name: "" }).textContent).toBe("returned to main at line 21");
+    rerender(<Controls {...props({ stopReason: "returned to main at line 21", error: "memory fault" })} />);
+    expect(screen.queryByText("returned to main at line 21")).toBeNull();
   });
 });

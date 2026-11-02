@@ -12,6 +12,7 @@ const handle = vi.hoisted(() => ({
   pause: vi.fn(),
   step: vi.fn(),
   stepBack: vi.fn(),
+  runUntil: vi.fn(),
   reset: vi.fn(),
   loadSource: vi.fn(),
   loadProgram: vi.fn(),
@@ -113,6 +114,18 @@ describe("page keyboard ownership", () => {
     fireEvent.keyDown(window, { key: "Enter", ctrlKey: true });
     expect(handle.assembleAndRun).toHaveBeenCalledTimes(1);
     expect(handle.assemble).not.toHaveBeenCalled();
+  });
+
+  it("routes Ctrl+F10, Ctrl+Shift+F10 and Ctrl+F9 to step over, step out and run to cursor", () => {
+    render(<Home />);
+    fireEvent.keyDown(window, { key: "F10", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "F10", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "F9", ctrlKey: true });
+    expect(handle.runUntil.mock.calls).toEqual([["over"], ["out"], ["cursor"]]);
+    // None of them reaches the plain keys' actions.
+    expect(handle.step).not.toHaveBeenCalled();
+    expect(handle.stepBack).not.toHaveBeenCalled();
+    expect(handle.toggleBreakpoint).not.toHaveBeenCalled();
   });
 
   it("routes F9 and Ctrl+F8 to the caret-line breakpoint, and F8 alone nowhere", () => {

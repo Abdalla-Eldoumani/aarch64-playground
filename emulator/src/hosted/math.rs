@@ -142,6 +142,7 @@ mod tests {
             heap: &mut heap,
             strtok_save: &mut strtok_save,
             callbacks: &mut Default::default(),
+            call: None,
         };
         f(&mut ctx).unwrap();
         ctx.regs.read_fpr_f64(0)

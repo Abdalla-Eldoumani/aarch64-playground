@@ -1,6 +1,9 @@
 import { formatWord64 } from "@/lib/emulator/format-hex";
+import { readFrameLayout, readFrames, type FrameExports, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { readCallCard, type CallCardExports } from "@/lib/emulator/call-data";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { normalizeMemoryMap, type MemoryRegion } from "@/lib/emulator/memory-map";
-import type { ExternalCall } from "@/lib/worker/protocol";
+import type { ExternalCall, RunGoal } from "@/lib/worker/protocol";
 
 export interface AssembleResult {
   success: boolean;
@@ -41,6 +44,9 @@ export interface RunResult {
   /** Pause the last nanosleep asked for, in ms; null when the run
    *  stopped for any other reason (or the wasm predates pacing). */
   sleep_ms: number | null;
+  /** A run with a goal met it, or stopped at a return to no caller. */
+  reached: boolean;
+  bad_return: boolean;
 }
 
 export interface RegisterState {
@@ -168,6 +174,23 @@ export class EmulatorInstance {
     return Array.from(this.inner.take_clobber_notes?.() ?? []);
   }
 
+  /** The call stack numbers lib/emulator/frame-data decodes; null on a
+   *  wasm build that predates them. */
+  frames(): number[] | null {
+    return readFrames(this.inner);
+  }
+
+  /** The last assemble's frame layout; null on an older wasm build. */
+  frameLayout(): FrameLayoutPayload | null {
+    return readFrameLayout(this.inner);
+  }
+
+  /** The printf or scanf call the last step ran; null when it ran neither
+   *  and on a wasm build that predates the call card. */
+  callCard(): number[] | null {
+    return readCallCard(this.inner);
+  }
+
   isBlocked(): boolean {
     return this.inner.is_blocked();
   }
@@ -230,8 +253,12 @@ export class EmulatorInstance {
     };
   }
 
-  runUntilBreak(maxSteps: number): RunResult {
-    const raw = this.inner.run_until_break(maxSteps) as RawRunResult;
+  runUntilBreak(maxSteps: number, until?: RunGoal): RunResult {
+    const raw = (
+      until
+        ? this.inner.run_to(maxSteps, until.depth ?? -1, until.pc ?? -1)
+        : this.inner.run_until_break(maxSteps)
+    ) as RawRunResult;
     return {
       pc: Number(raw.pc),
       halted: raw.halted,
@@ -240,6 +267,8 @@ export class EmulatorInstance {
       error: raw.error ?? null,
       error_line: raw.error_line ?? null,
       sleep_ms: raw.sleep_ms ?? null,
+      reached: raw.reached === true,
+      bad_return: raw.bad_return === true,
     };
   }
 
@@ -303,10 +332,10 @@ export class EmulatorInstance {
 
   /** Pre-assembly structural lint warnings; [] on a wasm build that
    *  predates the export (feature-detected, never throws). */
-  lintSource(source: string): Array<{ line: number; message: string }> {
+  lintSource(source: string): LintWarning[] {
     const probe = (this.inner as { lint_source?: (s: string) => unknown }).lint_source;
     if (typeof probe !== "function") return [];
-    return probe.call(this.inner, source) as Array<{ line: number; message: string }>;
+    return probe.call(this.inner, source) as LintWarning[];
   }
 
   /** Run the m4 pass alone (the terminal's `m4` command). Null when the
@@ -373,10 +402,12 @@ interface RawRunResult {
   error?: string;
   error_line?: number | null;
   sleep_ms?: number | null;
+  reached?: boolean;
+  bad_return?: boolean;
 }
 
 // the WASM module's Emulator instance shape
-interface WasmEmulatorInstance {
+interface WasmEmulatorInstance extends FrameExports, CallCardExports {
   assemble_and_load(source: string): unknown;
   assemble_and_load_with_args(source: string, args: string[]): unknown;
   step(): unknown;
@@ -387,6 +418,7 @@ interface WasmEmulatorInstance {
   delete_state(name: string): boolean;
   list_states(): string[];
   run_until_break(max_steps: number): unknown;
+  run_to(max_steps: number, depth: number, pc: number): unknown;
   reset(): void;
   get_pc(): bigint;
   get_register(index: number): bigint;

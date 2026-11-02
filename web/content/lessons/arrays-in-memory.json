@@ -2,7 +2,7 @@
   "title": "Arrays in memory, in one and two dimensions",
   "slug": "arrays-in-memory",
   "order": 19,
-  "lastUpdated": "2026-09-30",
+  "lastUpdated": "2026-11-01",
   "summary": "Reserve an array in the frame or in .bss and reach any element, in one or two dimensions, as base plus index times size.",
   "tags": [
     "arrays",
@@ -33,7 +33,7 @@
     },
     {
       "type": "prose",
-      "markdown": "The program below fills the array with the squares of 0 to 7 in one loop and prints it in a second. It prints eight lines, from `sq[0] = 0` to `sq[7] = 49`. Step through the fill loop and watch `x9` take each square just before the `str` puts it in the array."
+      "markdown": "The program below fills the array with the squares of 0 to 7 in one loop and prints it in a second. It prints eight lines, from `sq[0] = 0` to `sq[7] = 49`. Step through the fill loop and watch `x9` take each square just before the `str` puts it in the array. With stack picked beside registers, the frame shows the array as `sq_s[0]` to `sq_s[7]`, one box per element from `fp + 16` up, and each `str` puts an amber bar on the element it filled."
     },
     {
       "type": "editor",

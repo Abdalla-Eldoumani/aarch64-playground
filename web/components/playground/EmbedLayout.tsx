@@ -1,13 +1,21 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
+import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
+import type { StepGoal } from "@/lib/emulator/emulator-state";
+import { PaneSwitch } from "@/components/playground/PaneSwitch";
+import { StepGoals } from "@/components/playground/lazy-step-goals";
 import { RunStatus, type RunStatusProps } from "@/components/playground/RunStatus";
 
 export interface EmbedLayoutProps {
   editor: ReactNode;
   registers: ReactNode;
+  /** The stack frames view, which a frame that can step offers in the
+   *  registers' place; the frame before it engages has none to show yet. */
+  stack?: ReactNode;
   console: ReactNode;
   showRun: boolean;
   showReset: boolean;
@@ -31,6 +39,10 @@ export interface EmbedLayoutProps {
   onReset: () => void;
   onStep: () => void;
   onStepBack: () => void;
+  /** Step over, step out, run to cursor: offered wherever step is. */
+  onRunUntil: (goal: StepGoal) => void;
+  /** Why the last of those stopped, until the machine moves again. */
+  stopReason: string | null;
   onCheck: () => void;
   /** What the status line under a narrow frame's code reports. */
   runStatus: Omit<RunStatusProps, "showPeek" | "onOpenRegisters">;
@@ -41,11 +53,16 @@ export interface EmbedLayoutProps {
 
 type Pane = "editor" | "registers" | "console";
 
-const PANES: { id: Pane; label: string }[] = [
-  { id: "editor", label: "code" },
-  { id: "registers", label: "registers" },
-  { id: "console", label: "console" },
+// The stack shares the registers' area, so its view is that pane with the
+// stored side flipped.
+const VIEWS: { label: string; pane: Pane; stack?: boolean }[] = [
+  { label: "code", pane: "editor" },
+  { label: "registers", pane: "registers", stack: false },
+  { label: "stack", pane: "registers", stack: true },
+  { label: "console", pane: "console" },
 ];
+
+const STACK_KEY = "aarch64-playground:embed-stack";
 
 // On a phone the run buttons share the frame's width and wrap to a second
 // row rather than scroll: the old single scrolling strip put check, the one
@@ -54,7 +71,7 @@ const SHARE = "flex-1 min-w-[3.5rem] sm:flex-none";
 
 // One secondary-control string for step, back, and reset.
 const SECONDARY =
-  `${SHARE} min-h-[44px] px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
+  `${SHARE} min-h-[44px] px-2 sm:px-4 rounded border border-[var(--border)] text-[var(--text-primary)] text-sm disabled:text-[var(--text-tertiary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--cyan)]`;
 
 /**
  * The embedded frame: code, registers, console, and a few controls. The
@@ -67,6 +84,7 @@ const SECONDARY =
 export function EmbedLayout({
   editor,
   registers,
+  stack,
   console,
   showRun,
   showReset,
@@ -82,11 +100,20 @@ export function EmbedLayout({
   onReset,
   onStep,
   onStepBack,
+  onRunUntil,
+  stopReason,
   onCheck,
   runStatus,
   hasOutput,
 }: EmbedLayoutProps) {
   const [pane, setPane] = useState<Pane>("editor");
+  // Registers first, as before; a student who picks the stack keeps it on
+  // every lesson and exercise. Only a frame that can step offers it.
+  const [stackSide, setStackSide] = usePersistedFlag(STACK_KEY);
+  const showStack = showStep && stackSide;
+  // A pressed pointer chip shows the stack in the registers' place; a frame
+  // with no stack to offer (the landing's demo) gets no chips.
+  const pointer = useSlotPointer(useCallback(() => setStackSide(true), [setStackSide]), isRunning);
   // A read that blocks, or a run that finishes having printed, brings the
   // console forward in a narrow frame, the way the phone playground does.
   const [seen, setSeen] = useState({ blocked: runStatus.blocked, running: isRunning });
@@ -104,26 +131,45 @@ export function EmbedLayout({
         aria-label="view"
         className="embed-view border-b border-[var(--border)] bg-[var(--bg-sunken)]"
       >
-        {PANES.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            aria-pressed={pane === p.id}
-            onClick={() => setPane(p.id)}
-            className={`h-11 flex-1 font-sans text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--cyan)] ${
-              pane === p.id
-                ? "text-[var(--cyan)] [box-shadow:inset_0_-2px_0_0_var(--cyan)]"
-                : "text-[var(--text-secondary)]"
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
+        {VIEWS.filter((v) => showStep || v.stack !== true).map((v) => {
+          const on = pane === v.pane && (v.stack === undefined || v.stack === showStack);
+          return (
+            <button
+              key={v.label}
+              type="button"
+              aria-pressed={on}
+              onClick={() => {
+                setPane(v.pane);
+                if (v.stack !== undefined) setStackSide(v.stack);
+              }}
+              className={`h-11 flex-1 font-sans text-[13px] font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--cyan)] ${
+                on
+                  ? "text-[var(--cyan)] [box-shadow:inset_0_-2px_0_0_var(--cyan)]"
+                  : "text-[var(--text-secondary)]"
+              }`}
+            >
+              {v.label}
+            </button>
+          );
+        })}
       </div>
       <div className="flex-1 min-h-0 embed-grid" data-pane={pane}>
         <div className="embed-area-editor min-h-0 min-w-0 flex flex-col">{editor}</div>
-        <div className="embed-area-registers min-h-0 min-w-0 overflow-auto">
-          {registers}
+        <div className="embed-area-registers min-h-0 min-w-0 flex flex-col">
+          {showStep && (
+            // The single-pane switch above carries the same choice there.
+            <div className="embed-side">
+              <PaneSwitch
+                label="registers or stack"
+                names={["registers", "stack"]}
+                second={stackSide}
+                onChange={setStackSide}
+              />
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-auto">
+            <PointerContext.Provider value={showStep ? pointer : null}>{showStack ? stack : registers}</PointerContext.Provider>
+          </div>
         </div>
         <div className="embed-area-console min-h-0 min-w-0 overflow-hidden flex flex-col">
           {console}
@@ -132,11 +178,14 @@ export function EmbedLayout({
       <div className="embed-status">
         <RunStatus
           {...runStatus}
-          showPeek={pane !== "registers"}
-          onOpenRegisters={() => setPane("registers")}
+          showPeek={pane !== "registers" || showStack}
+          onOpenRegisters={() => {
+            setPane("registers");
+            setStackSide(false);
+          }}
         />
       </div>
-      <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-2 px-3 py-2 border-t border-[var(--border)] bg-[var(--bg-sunken)] sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           {args && (
             // The next run assembles with whatever this holds, so a student
@@ -195,6 +244,7 @@ export function EmbedLayout({
               back
             </button>
           )}
+          {showStep && <StepGoals onRunUntil={onRunUntil} disabled={!canStep} className={SECONDARY} />}
           {showReset && (
             <button
               type="button"
@@ -219,13 +269,20 @@ export function EmbedLayout({
         {/* A fault must be visible here too: full chrome surfaces the
             machine's error through Controls, and without this line an
             embedded run that faults just stops silently. It wraps rather
-            than ending in an ellipsis: a phone has no hover for a title. */}
+            than ending in an ellipsis: a phone has no hover for a title.
+            With under 12rem beside the buttons it drops below them instead
+            of wrapping a letter a line. */}
         {error && (
           <p
             role="alert"
-            className="min-w-0 flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
+            className="min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
           >
             {error}
+          </p>
+        )}
+        {stopReason && !error && (
+          <p role="status" className="min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]">
+            {stopReason}
           </p>
         )}
       </div>

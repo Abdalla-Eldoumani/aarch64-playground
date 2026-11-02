@@ -153,6 +153,32 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
       } while (machine.current.isRunning && Date.now() - startedAt < 10_000);
       return { halted: machine.current.isHalted, hit_breakpoint: false };
     },
+    runUntil: (target: "over" | "out") => machine.current.runUntil(target),
+    frameStack: async () => {
+      const e = machine.current;
+      // The frames view's drawing, loaded only when bt or info frame asks.
+      const { decodeFrameLayout, decodeFrames, drawFrames, rangesToRead } = await import(
+        "@/lib/emulator/stack-frames"
+      );
+      const snapshot = e.programLoaded && e.frames ? decodeFrames(e.frames) : null;
+      if (!snapshot) return null;
+      const memory = await Promise.all(
+        rangesToRead(snapshot).map(async ([addr, len]) => ({ addr, bytes: await e.readMemory(addr, len) })),
+      );
+      const stack = drawFrames({
+        snapshot,
+        layout: e.frameLayout && decodeFrameLayout(e.frameLayout),
+        sp: Number(BigInt(e.sp)),
+        fp: Number(BigInt(e.registers[29] ?? "0")),
+        pc: e.pc,
+        memory,
+        written: [],
+        regions: e.memoryRegions,
+        lineLabel: e.lineLabel,
+      });
+      return { snapshot, stack, memory };
+    },
+    lineLabel: (addr: number) => machine.current.lineLabel(addr),
     setBreakpoint: async (addr: number) => machine.current.setBreakpointAddress(addr),
     clearBreakpoint: async (addr: number) => machine.current.clearBreakpointAddress(addr),
     resolveLabel: async (name: string) => machine.current.resolveLabel(name),
@@ -200,7 +226,8 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
       out.pc = BigInt(e.pc);
       return out;
     },
-    readMemory: async (addr: number, len: number) => machine.current.getMemory(addr, len),
+    // From the machine itself: the panels' cache answers zeros until a read lands.
+    readMemory: (addr: number, len: number) => machine.current.readMemory(addr, len),
     pcAddress: () => machine.current.pc,
     reset: async () => machine.current.reset(),
   };

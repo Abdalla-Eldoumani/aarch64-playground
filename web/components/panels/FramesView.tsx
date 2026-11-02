@@ -1,0 +1,361 @@
+"use client";
+
+import { useContext, useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import type { EmulatorState } from "@/lib/emulator/emulator-state";
+import { drawCalls } from "@/lib/emulator/call-tree";
+import { formatWord32 } from "@/lib/emulator/format-hex";
+import { calleeCards, plain, returnCard, writeCards, writtenSlots, type Card } from "@/lib/emulator/frame-cards";
+import {
+  decodeFrameLayout,
+  decodeFrames,
+  drawFrames,
+  rangesToRead,
+  typed,
+  wordAt,
+  type StackBytes,
+} from "@/lib/emulator/stack-frames";
+import { CallTree } from "@/components/panels/CallTree";
+import { FrameRow } from "@/components/panels/FrameRow";
+import { KIND_STYLE, OVERWRITTEN } from "@/components/panels/frame-styles";
+import { PointerContext } from "@/components/panels/slot-pointer";
+
+type FramesViewProps = Pick<
+  EmulatorState,
+  | "frames"
+  | "frameLayout"
+  | "registers"
+  | "sp"
+  | "pc"
+  | "getMemory"
+  | "dirtyAddrs"
+  | "memoryRegions"
+  | "lineLabel"
+  | "programLoaded"
+> &
+  Partial<Pick<EmulatorState, "programLines" | "noteRows" | "readMemory" | "errorCard">> & {
+    running: boolean;
+    /** List the calls made so far above the frames, where the pane has room. */
+    calls?: boolean;
+  };
+
+// The cards' inputs before a program has run: an embed's idle stack side.
+const NO_LINES: EmulatorState["programLines"] = { linePlace: () => null, lineAddr: () => null };
+const NO_ROWS: number[] = [];
+
+// The card events said, per program load, outside any one view, so a view
+// mounted again (the memory tab and back, a phone's chip press) or Back onto
+// a step says none of them twice. Every assemble hands the view a new layout
+// object, so a reset, an edit or a run from the start, each of which
+// assembles again, starts a new set.
+const saidPerLoad = new WeakMap<object, Set<string>>();
+
+/** Scrolls `box` the least that shows its content from `top` to `bottom`,
+ *  or that span's low end when it is taller than the box. */
+function showSpan(box: HTMLElement, top: number, bottom: number) {
+  if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
+    box.scrollTop = bottom - box.clientHeight;
+  } else if (top < box.scrollTop) box.scrollTop = top;
+}
+
+/**
+ * Each call's frame as the course draws it, main first and the innermost
+ * call last: offsets from fp on the left, a box per saved register, local
+ * and gap, and where sp and fp point on the right. The last step's write
+ * carries the amber bar. Nothing moves while a program steps: growth is new
+ * boxes, the markers moving, and the bar.
+ */
+export function FramesView({
+  frames,
+  frameLayout,
+  registers,
+  sp,
+  pc,
+  getMemory,
+  dirtyAddrs,
+  memoryRegions,
+  lineLabel,
+  programLines = NO_LINES,
+  noteRows = NO_ROWS,
+  readMemory,
+  errorCard = null,
+  programLoaded,
+  running,
+  calls = false,
+}: FramesViewProps) {
+  const snapshot = useMemo(() => (frames ? decodeFrames(frames) : null), [frames]);
+  const layout = useMemo(() => (frameLayout ? decodeFrameLayout(frameLayout) : null), [frameLayout]);
+  const spValue = parseInt(sp, 16) || 0;
+  const fpValue = parseInt(registers[29] ?? "", 16) || 0;
+  const memory = snapshot ? rangesToRead(snapshot).map(([addr, len]) => ({ addr, bytes: getMemory(addr, len) })) : [];
+  const stack = snapshot
+    ? drawFrames({
+        snapshot,
+        layout,
+        sp: spValue,
+        fp: fpValue,
+        pc,
+        memory,
+        written: dirtyAddrs,
+        regions: memoryRegions,
+        lineLabel,
+      })
+    : null;
+  const tree = useMemo(
+    () => (calls && frames ? drawCalls(frames, layout, memoryRegions) : null),
+    [calls, frames, layout, memoryRegions],
+  );
+  // A write card quotes the slot's new word as the machine holds it: the
+  // bytes above come from the panel cache, which answers zeros until its own
+  // read lands, and a card worded from those was painted and said twice.
+  const [slotWords, setSlotWords] = useState<{ frames: readonly number[]; bytes: StackBytes[] } | null>(null);
+  useEffect(() => {
+    const slots = snapshot ? writtenSlots(snapshot) : [];
+    if (!frames || !readMemory || slots.length === 0) return;
+    let live = true;
+    Promise.all(slots.map(({ addr }) => readMemory(addr, 8))).then(
+      (read) => {
+        if (live) setSlotWords({ frames, bytes: slots.map(({ addr }, i) => ({ addr, bytes: read[i] })) });
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [frames, snapshot, readMemory]);
+  const written = slotWords?.frames === frames ? slotWords.bytes : [];
+
+  // The slot a register's pointer chip names, lit in cyan, the reader's
+  // colour, while the chip is under the mouse or focus or after a press.
+  const pointed = useContext(PointerContext)?.pointed ?? null;
+  const litAt = pointed ? parseInt(registers[pointed.reg] ?? "", 16) : NaN;
+  // What went wrong, under the frames: a write over a caller's saved fp or
+  // lr at the step that made it, a ret that went to no caller from then on,
+  // and a caller reading x19 to x28 a call left changed at the step it read.
+  const context = snapshot && { ...programLines, snapshot, layout };
+  const ret = context && returnCard(context, BigInt(registers[30] ?? 0));
+  const cards: Card[] = context
+    ? [
+        ...writeCards(context, (addr) => wordAt(written, addr)),
+        ...(ret ? [ret] : []),
+        ...calleeCards(noteRows, programLines, frameLayout),
+      ]
+    : [];
+
+  // A call or a return is said once, after the step that made it; a run
+  // says nothing, and neither does its stop. Back undoes one step, so it
+  // says the call or return it took back; a reset or a new program moves
+  // the machine further than that and says nothing. What was said belongs to
+  // the load it was said on: after a new one, or a reset, the words go.
+  const [mountKey] = useState(() => ({}));
+  const loadKey = frameLayout ?? mountKey;
+  const depth = stack?.depth ?? 0;
+  const step = snapshot?.step ?? 0;
+  const innermost = stack?.frames[stack.frames.length - 1]?.name ?? "";
+  const [seen, setSeen] = useState({ depth, innermost, running, step });
+  const [said, setSaid] = useState({ text: "", count: 0, load: loadKey });
+  if (seen.depth !== depth || seen.running !== running || seen.step !== step) {
+    setSeen({ depth, innermost, running, step });
+    const back = step === seen.step - 1;
+    if (depth !== seen.depth && !running && !seen.running && depth > 0 && seen.depth > 0 && (back || step > seen.step)) {
+      const text =
+        depth > seen.depth
+          ? back
+            ? `back inside ${innermost}`
+            : `${innermost} called`
+          : back
+            ? `back before the call to ${seen.innermost}`
+            : // With the calls listed, the value the call left, read as w0
+              // or x0 the way it was last written, as the list reads it.
+              `${seen.innermost} returned${tree ? ` ${typed(BigInt(registers[0] || 0), tree.x0Width, false, memoryRegions).value}` : ""}`;
+      setSaid((prev) => ({ text, count: prev.count + 1, load: loadKey }));
+    }
+  }
+  // A card is said once per program load, without the backticks that mark
+  // its code, when its event first shows at a stop: after a step, and when a
+  // run stops however it stopped (a breakpoint, a goal, a pause, a fault);
+  // never while a run goes, and not when the run row's alert carries the
+  // same card. Its event counts as said either way, once the stop renders.
+  const cardKey = cards.map((card) => card.event).join("\n");
+  const unsaid = running ? [] : cards.filter((card) => !saidPerLoad.get(loadKey)?.has(card.event));
+  const unsaidKey = unsaid.map((card) => card.event).join("\n");
+  const [lastUnsaid, setLastUnsaid] = useState("");
+  if (unsaidKey !== lastUnsaid) {
+    setLastUnsaid(unsaidKey);
+    const spoken = unsaid.filter((card) => card.event !== errorCard?.event);
+    if (spoken.length > 0) setSaid((prev) => ({ text: spoken.map(plain).join(" "), count: prev.count + 1, load: loadKey }));
+  }
+  useEffect(() => {
+    if (unsaid.length === 0) return;
+    let heard = saidPerLoad.get(loadKey);
+    if (!heard) saidPerLoad.set(loadKey, (heard = new Set()));
+    for (const card of unsaid) heard.add(card.event);
+  });
+
+  // While stepping, what the step wrote stays in view (a write over a
+  // caller's frame is the bug to see), with the rest of its call when that
+  // fits, else the innermost call: the nearest edge, or the low end, where
+  // sp is, of anything taller than the box. The cards come along when they
+  // fit beside it, and stay a scroll away when not. Written to this box
+  // alone, so the page never scrolls under the reader. A rotation or a
+  // resize of the window or the pane brings it back the same way.
+  // A pressed pointer chip's slot holds the view instead, until the machine
+  // next moves.
+  const boxRef = useRef<HTMLDivElement>(null);
+  const innermostRef = useRef<HTMLLIElement>(null);
+  const slotHeld = useRef(false);
+  const reveal = useEffectEvent(() => {
+    const box = boxRef.current;
+    if (!box) return;
+    // The list of calls scrolls on its own, its current call kept in sight.
+    const list = box.querySelector<HTMLElement>("[data-calls]");
+    const current = list?.querySelector<HTMLElement>("[data-current]");
+    if (list && current) showSpan(list, current.offsetTop, current.offsetTop + current.offsetHeight);
+    const span = (targets: HTMLElement[]) => [
+      Math.min(...targets.map((t) => t.offsetTop)),
+      Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight)),
+    ];
+    const lit = slotHeld.current ? box.querySelector<HTMLElement>("[data-lit]") : null;
+    const wrote = Array.from(box.querySelectorAll<HTMLElement>("[data-wrote]"));
+    const calls = wrote.map((w) => w.closest<HTMLElement>("[data-call]") ?? w);
+    if (wrote.length === 0 && innermostRef.current) calls.push(innermostRef.current);
+    const cards = box.querySelector<HTMLElement>("[data-cards]");
+    const anchors = [calls, wrote].filter((t) => t.length > 0);
+    const tries = cards ? [...anchors.map((t) => [...t, cards]), ...anchors] : anchors;
+    // With no call drawn, the cards alone.
+    if (tries.length === 0 && cards) tries.push([cards]);
+    if (lit) tries.splice(0, tries.length, [lit]);
+    if (tries.length === 0) return;
+    const spans = tries.map(span);
+    const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
+    showSpan(box, top, bottom);
+  });
+  // Only the machine moving lets a held slot go: a write card whose word
+  // lands after the press leaves it held.
+  useEffect(() => {
+    slotHeld.current = false;
+  }, [frames, running]);
+  useEffect(() => {
+    const box = boxRef.current;
+    if (!box || running) return;
+    reveal();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => reveal());
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, [frames, cardKey, running]);
+  // A chip pressed in a pane this view replaced took the focus with it, so
+  // the focus comes here, where the slot is.
+  const revealSlot = useEffectEvent(() => {
+    if (running) return;
+    slotHeld.current = true;
+    reveal();
+    const active = document.activeElement;
+    if (!active || active === document.body) boxRef.current?.focus({ preventScroll: true });
+  });
+  const asked = pointed?.reveal ?? 0;
+  useEffect(() => {
+    if (asked) revealSlot();
+  }, [asked]);
+
+  const idle = !programLoaded
+    ? "Step through the program to watch each call's frame being built."
+    : !stack
+      ? "The emulator loaded here cannot draw stack frames."
+      : stack.frames.length === 0
+        ? "No calls on the stack."
+        : null;
+
+  return (
+    <div
+      ref={boxRef}
+      role="group"
+      aria-label="stack frames"
+      tabIndex={0}
+      className="inner-scroll relative h-full overflow-y-auto overscroll-contain p-3 font-sans focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+    >
+      <p className="mb-2 font-mono text-[12px] text-[var(--text-secondary)]">
+        sp {formatWord32(spValue)} · fp {formatWord32(fpValue)}
+      </p>
+      {/* Still there once main has returned and no frame is left. */}
+      {programLoaded && tree && <CallTree calls={tree} />}
+      {idle || !stack ? (
+        <p className="text-[13px] text-[var(--text-secondary)]">{idle}</p>
+      ) : (
+        // A wide pane only stretched the boxes (2,010px at 2560) and moved the
+        // `← sp` marker far from their words; 40rem leaves a box 30rem.
+        <ol aria-label="calls, main first" className="max-w-[40rem]">
+          {stack.frames.map((frame, i) => (
+            <li
+              key={frame.index}
+              ref={i === stack.frames.length - 1 ? innermostRef : undefined}
+              data-call=""
+              className="mt-3 first:mt-0"
+            >
+              <p className="text-[13px]">
+                <span className="font-medium text-[var(--text-primary)]">{frame.name}</span>
+                <span className="text-[var(--text-secondary)]">
+                  {" "}
+                  · {frame.bytes} bytes{frame.from && ` · ${frame.from}`}
+                </span>
+              </p>
+              {frame.state && <p className="text-[12px] text-[var(--warning)]">{frame.state}</p>}
+              {frame.boxes.length > 0 && (
+                <ul aria-label={`${frame.name}'s frame, high address first`} className="mt-1">
+                  {frame.boxes.map((box) => {
+                    const lit = litAt >= box.addr && litAt < box.addr + box.size;
+                    return (
+                      <FrameRow
+                        key={box.addr}
+                        data-wrote={box.wrote || undefined}
+                        data-lit={lit || undefined}
+                        offset={box.offset}
+                        box={box.overwritten ? OVERWRITTEN : KIND_STYLE[box.kind]}
+                        title={box.title}
+                        detail={box.detail}
+                        marker={box.marker}
+                        wrote={box.wrote}
+                        ring={lit}
+                        note={lit ? `, x${pointed?.reg} points here` : ""}
+                      />
+                    );
+                  })}
+                </ul>
+              )}
+              {i === 0 && stack.folded && (
+                <p className="mt-3 text-[12px] text-[var(--text-secondary)]">{stack.folded}</p>
+              )}
+            </li>
+          ))}
+        </ol>
+      )}
+      {stack?.untracked && <p className="mt-3 text-[12px] text-[var(--text-secondary)]">{stack.untracked}</p>}
+      {cards.length > 0 && (
+        <ul data-cards="" aria-label="what went wrong" className="mt-3">
+          {cards.map((card, i) => (
+            <li key={i} className="mt-1.5 flex gap-1.5 text-[13px] leading-snug text-[var(--danger)] first:mt-0">
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 16 16"
+                className="mt-px h-4 w-4 shrink-0"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
+                <path d="M8 1.75 15 14.25H1Z" strokeLinejoin="round" />
+                <path d="M8 6v4M8 11.75v.5" strokeLinecap="round" />
+              </svg>
+              {/* Backticks mark an instruction as written. */}
+              <span className="min-w-0 break-words">
+                {card.text.split("`").map((part, k) => (k % 2 ? <code key={k} className="font-mono text-[12px]">{part}</code> : part))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p role="status" className="sr-only">
+        {said.load === loadKey && programLoaded ? said.text : ""}
+        {said.count % 2 ? " " : ""}
+      </p>
+    </div>
+  );
+}

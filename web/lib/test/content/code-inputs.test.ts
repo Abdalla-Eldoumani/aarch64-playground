@@ -26,6 +26,7 @@ const CODE_INPUTS = [
   { what: "the touch editor", file: "components/playground/TouchEditor.tsx", marker: "ref={taRef}" },
   { what: "a blank's answer", file: "components/practice/BlanksBlock.tsx", marker: "<input" },
   { what: "a prediction's answer", file: "components/practice/PredictionBlock.tsx", marker: "<input" },
+  { what: "a frame drawing's number", file: "components/practice/FrameExerciseView.tsx", marker: 'inputMode="numeric"' },
 ];
 
 const REQUIRED = ['spellCheck={false}', 'autoCorrect="off"', 'autoCapitalize="off"'];

@@ -265,6 +265,7 @@ mod tests {
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
                 callbacks: &mut self.callbacks,
+                call: None,
             }
         }
         fn call(&mut self, f: fn(&mut HostContext<'_>) -> Result<HostOutcome, EmuError>, c: i64) -> i64 {

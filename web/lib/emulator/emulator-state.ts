@@ -1,4 +1,6 @@
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
+import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
 import type { Workspace } from "@/lib/playground/file-map";
@@ -10,13 +12,37 @@ import type { ExternalCall } from "@/lib/worker/protocol";
  * test fake.
  */
 
+/** What a run with a goal runs until: "over" the call on this line (or
+ *  just this instruction), "out" of this function, or an editor line (run
+ *  to cursor). */
+export type StepTarget = "over" | "out" | number;
+
+/** The same three as the controls name them: run to cursor is the caret's
+ *  line in main.asm, which only the shell knows. */
+export type StepGoal = "over" | "out" | "cursor";
+
 /** A register file the registers panel can show: x0-x30, d0-d31, or v0-v31. */
 export type RegView = "x" | "d" | "v";
 
 export interface AssemblyError {
   line: number;
   message: string;
+  /** The frames' card a runtime error carries, for the editor's hover. */
+  card?: ReturnCard;
 }
+
+/** A finding of the playground's own frame check as `lint_source` hands it
+ *  over: `check` is the rule, the frame's bytes, then each slot's offset and
+ *  width; `names` the function's and the slots' names as written. The editor
+ *  words it (lib/emulator/frame-check.ts). */
+export interface FrameCheckRow {
+  line: number;
+  check: number[];
+  names: string[];
+}
+
+/** One advisory lint row: a worded warning, or a frame check finding. */
+export type LintWarning = AssemblyError | FrameCheckRow;
 
 /** The direct verdict of one assemble attempt, returned to tool callers
  *  (the terminal's gcc) so they never read error state that has not
@@ -53,6 +79,13 @@ export interface EmulatorState {
    *  one; reset and a failed assemble drop the flag. */
   programLoaded: boolean;
   error: string | null;
+  /** `error` is a long run's pause (Run's, or a step over's, step out's or
+   *  run to cursor's after 1,000,000 steps), not a fault. */
+  paused: boolean;
+  /** The frames' card `error` carries in place of the crate's guess, or a
+   *  goal's stop on a bad return: the explainer picks its fix from the
+   *  card's cause. Null for any other error. */
+  errorCard: ReturnCard | null;
   assemblyErrors: AssemblyError[];
   breakpoints: Set<number>;
   /** Breakpoint lines the last assemble dropped because no instruction runs
@@ -65,6 +98,28 @@ export interface EmulatorState {
    *  line the student wrote. Null mid-run, where calls pass too fast to
    *  show, and on older wasm builds. */
   externalCall: ExternalCall | null;
+  /** The call stack numbers as of the last snapshot, null before a
+   *  program loads and on a wasm build without them. Raw on purpose:
+   *  `decodeFrames` (lib/emulator/stack-frames) ships with the view that
+   *  reads them, not with every page the hub runs on. */
+  frames: number[] | null;
+  /** The last assemble's frame layout for `decodeFrameLayout`; null
+   *  beside a failed assemble and on a wasm build without it. */
+  frameLayout: FrameLayoutPayload | null;
+  /** The printf or scanf call the last snapshot's step ran, raw for the
+   *  call card's own chunk; null when it ran neither. */
+  callCard: number[] | null;
+  /** "line 16", or "ui.s line 269" in a helper file: the line holding the
+   *  instruction at `addr` in the program last assembled, else null. */
+  lineLabel: (addr: number) => string | null;
+  /** The same lines as places (file, line, text), and back from a line the
+   *  machine reported to its first instruction: the frames view's cards
+   *  quote the instruction and name its function. */
+  programLines: ProgramLines;
+  /** The clobber note rows the latest snapshot brought (`take_clobber_notes`
+   *  numbers), so the frames view can word a caller reading x19 to x28 at
+   *  the step that read it. */
+  noteRows: number[];
   instructions: DecodedInstruction[];
   codeBase: number;
   /**
@@ -110,6 +165,13 @@ export interface EmulatorState {
   loadState: (name: string) => void;
   deleteState: (name: string) => void;
   run: () => void;
+  /** Step over, step out or run to cursor, at run speed. Resolves to the
+   *  words for why it stopped (also `stopReason`), null when there is
+   *  nothing to say; a stop that is the program's own bug lands in `error`. */
+  runUntil: (target: StepTarget) => Promise<string | null>;
+  /** Why the last step over, step out or run to cursor stopped, until the
+   *  machine moves again. */
+  stopReason: string | null;
   pause: () => void;
   reset: () => void;
   toggleBreakpoint: (line: number) => void;
@@ -151,8 +213,9 @@ export interface EmulatorState {
   deleteVfsFile: (path: string) => Promise<boolean>;
   resolveLabel: (name: string) => Promise<number | null>;
   /** Pre-assembly structural lint: advisory warnings with a line and a
-   *  one-line remedy. Empty on a wasm build that predates the export. */
-  lint: (source: string) => Promise<AssemblyError[]>;
+   *  one-line remedy, then the frame check's findings. Empty on a wasm
+   *  build that predates the export. */
+  lint: (source: string) => Promise<LintWarning[]>;
   /** Standalone m4 pass for the terminal; null when the WASM predates it. */
   m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   /** Address-based breakpoint setter, used by `gdb b <label>` once the

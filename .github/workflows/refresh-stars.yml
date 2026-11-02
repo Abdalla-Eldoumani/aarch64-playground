@@ -25,7 +25,8 @@ jobs:
     name: trigger the production deploy hook
     # Forks inherit the workflow but not the secret or the Vercel project.
     if: github.repository == 'Abdalla-Eldoumani/aarch64-playground'
-    runs-on: ubuntu-latest
+    # Pinned so every workflow runs on the same image.
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
       - name: trigger the production deploy hook

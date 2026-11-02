@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { MAX_STDIN_BYTES, MAX_VFS_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
@@ -400,5 +400,91 @@ describe("ConsolePanel output a terminal session produced", () => {
     setup({ stdout: "sum = 10\n", stderr: "" });
     expect(screen.getByText(/sum = 10/)).toBeTruthy();
     expect(screen.queryByText(NOTE)).toBeNull();
+  });
+});
+
+describe("ConsolePanel following its output to a call card", () => {
+  // jsdom has no layout and no ResizeObserver: the box is 100 px tall over
+  // 200 px of output and then the card, and the stub observer reports only
+  // when a test says the card's slot resized.
+  let reports: (() => void)[] = [];
+  beforeEach(() => {
+    reports = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(report: () => void) {
+          reports.push(report);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+  });
+  afterEach(() => vi.unstubAllGlobals());
+  const resized = () => act(() => reports.forEach((report) => report()));
+
+  function laidOut(cardHeight: number) {
+    const props = {
+      stderr: "",
+      blocked: false,
+      exitCode: null,
+      vfsFiles: [],
+      pushStdin: vi.fn(),
+      closeStdin: vi.fn(),
+      uploadVfsFile: vi.fn(),
+      clearConsole: vi.fn(),
+      call: <p>the card</p>,
+    };
+    const view = render(<ConsolePanel {...props} stdout="first" />);
+    const slot = screen.getByText("the card").parentElement!;
+    const box = slot.parentElement!;
+    const at = { card: cardHeight, top: 0 };
+    Object.defineProperties(box, {
+      clientHeight: { configurable: true, get: () => 100 },
+      scrollHeight: { configurable: true, get: () => 200 + at.card },
+      scrollTop: { configurable: true, get: () => at.top, set: (v: number) => (at.top = v) },
+    });
+    Object.defineProperty(slot, "offsetHeight", { configurable: true, get: () => at.card });
+    box.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
+    slot.getBoundingClientRect = () => ({ top: 200 - at.top }) as DOMRect;
+    const printed = (stdout: string) => view.rerender(<ConsolePanel {...props} stdout={stdout} />);
+    return { box, at, printed };
+  }
+
+  it("shows a card taller than the console from its title, whether it comes alone or with output", () => {
+    const { box, at, printed } = laidOut(300);
+    resized();
+    expect(box.scrollTop).toBe(200);
+    // A printf's card comes with the text it printed.
+    at.top = 400;
+    printed("first second");
+    expect(box.scrollTop).toBe(200);
+  });
+
+  it("leaves the console at its end when the card fits, as for any output", () => {
+    const { box, printed } = laidOut(60);
+    resized();
+    expect(box.scrollTop).toBe(160);
+    printed("first second");
+    expect(box.scrollTop).toBe(160);
+  });
+
+  it("keeps following from the card's title, so the next step's output is followed to the end", () => {
+    const { box, at, printed } = laidOut(300);
+    resized();
+    fireEvent.scroll(box);
+    at.card = 0;
+    printed("first second");
+    expect(box.scrollTop).toBe(100);
+  });
+
+  it("stays where a reader scrolled above the card", () => {
+    const { box, at, printed } = laidOut(300);
+    at.top = 50;
+    fireEvent.scroll(box);
+    resized();
+    printed("first second");
+    expect(box.scrollTop).toBe(50);
   });
 });
