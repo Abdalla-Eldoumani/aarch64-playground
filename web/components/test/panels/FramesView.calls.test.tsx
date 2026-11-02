@@ -189,6 +189,22 @@ describe("FramesView's list of calls", () => {
     expect(box.hasAttribute("tabindex")).toBe(false);
   });
 
+  it("hands its focus to the frames box when it stops scrolling under the keyboard, so the focus never falls to the page", () => {
+    const { rerender } = render(<FramesView {...props({ running: true })} />);
+    const box = list();
+    const size = { rows: 200, box: 60 };
+    Object.defineProperty(box, "scrollHeight", { configurable: true, get: () => size.rows });
+    Object.defineProperty(box, "clientHeight", { configurable: true, get: () => size.box });
+    rerender(<FramesView {...props()} />);
+    box.focus();
+    expect(document.activeElement).toBe(box);
+    // A zoom or a rotation leaves the tab short: the list flows.
+    size.box = 200;
+    rerender(<FramesView {...props({ frames: frames(false, 9, BACK_IN_MAIN), pc: 0x400014 })} />);
+    expect(box.hasAttribute("tabindex")).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole("group", { name: "stack frames" }));
+  });
+
   it("is not there without the calls switch, and a return is said without its value", () => {
     const { rerender } = render(<FramesView {...props({ calls: false, frames: frames(true, 8, IN_ADD_TWO) })} />);
     expect(screen.queryByRole("list", { name: "calls so far" })).toBeNull();
