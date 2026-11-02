@@ -45,7 +45,7 @@ repository root.
 | The playground's stack tab: the frames view first, the raw bytes from `sp` one switch away, the choice kept in this browser | `web/components/playground/StackTab.tsx`, `PaneSwitch.tsx` |
 | Editor (Monaco), loaded on demand | `web/components/playground/Editor.tsx`, `monaco-setup.ts`, `lazy-editor.tsx` |
 | Editor on touch screens | `web/components/playground/TouchEditor.tsx` |
-| Completion, hover cards, and error explanations | `web/lib/asm/asm-completion.ts`, `instruction-docs.ts`, `error-explain.ts` |
+| Hover cards and error explanations | `web/lib/asm/instruction-docs.ts`, `error-explain.ts` |
 | The list of mnemonics behind the reference, hover cards, and highlighting | `web/lib/asm/mnemonics.ts`, `highlight-arm64.ts` |
 | Source formatter (`Ctrl+Shift+F`) | `web/lib/asm/asm-formatter.ts` |
 | Assemble, run, step, back, and reset | `web/components/playground/Controls.tsx`, `web/lib/emulator/use-emulator.ts` |
