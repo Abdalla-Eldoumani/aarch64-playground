@@ -147,6 +147,7 @@ describe("FramesView's list of calls", () => {
     const box = list();
     const scroll = { top: 0 };
     Object.defineProperty(box, "clientHeight", { configurable: true, value: 40 });
+    Object.defineProperty(box, "scrollHeight", { configurable: true, value: 118 });
     Object.defineProperty(box, "scrollTop", {
       configurable: true,
       get: () => scroll.top,
@@ -167,7 +168,25 @@ describe("FramesView's list of calls", () => {
     // Already in view, nothing moves.
     rerender(<FramesView {...props({ frames: frames(false, 10, BACK_IN_MAIN), pc: 0x400018 })} />);
     expect(scroll.top).toBe(10);
-    expect(box.tabIndex).toBe(0);
+    expect(box.getAttribute("tabindex")).toBe("0");
+  });
+
+  it("is a tab stop only while it scrolls, so a list that fits, or flows with the frames on a short tab, adds no empty stop", () => {
+    const { rerender } = render(<FramesView {...props({ running: true })} />);
+    const box = list();
+    const size = { rows: 60, box: 60 };
+    Object.defineProperty(box, "scrollHeight", { configurable: true, get: () => size.rows });
+    Object.defineProperty(box, "clientHeight", { configurable: true, get: () => size.box });
+    rerender(<FramesView {...props()} />);
+    expect(box.hasAttribute("tabindex")).toBe(false);
+    // More calls than its box shows: keys must reach it.
+    size.rows = 200;
+    rerender(<FramesView {...props({ frames: frames(false, 9, BACK_IN_MAIN), pc: 0x400014 })} />);
+    expect(box.getAttribute("tabindex")).toBe("0");
+    // A short tab: the list flows, its box as tall as its rows.
+    size.box = 200;
+    rerender(<FramesView {...props({ frames: frames(false, 10, BACK_IN_MAIN), pc: 0x400018 })} />);
+    expect(box.hasAttribute("tabindex")).toBe(false);
   });
 
   it("is not there without the calls switch, and a return is said without its value", () => {
