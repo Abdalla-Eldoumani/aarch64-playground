@@ -503,9 +503,9 @@ export function Editor({
             // who wants more contrast. On, Monaco re-checks forced colours at
             // every options update and can swap that theme for its stock one.
             autoDetectHighContrast: false,
-            // Enter always ends the line; Tab takes a suggestion. With the
-            // stock setting, `mov x0, x1` then Enter accepted `x1` from the
-            // open list and the next instruction landed on the same line.
+            // Enter always ends the line. With the stock setting, `mov x0, x1`
+            // then Enter accepted `x1` from the open list and the next
+            // instruction landed on the same line.
             acceptSuggestionOnEnter: "off",
             // What a screen reader announces on entering the editor: the way
             // out, since Tab is taken by indentation in here.
