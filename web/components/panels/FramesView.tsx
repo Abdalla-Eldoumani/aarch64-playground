@@ -206,8 +206,12 @@ export function FramesView({
   const reveal = useEffectEvent(() => {
     const box = boxRef.current;
     if (!box) return;
-    // The list of calls scrolls on its own, its current call kept in sight.
+    // The list of calls scrolls on its own on a tall tab, its current call
+    // kept in sight. It is a tab stop only while it scrolls, so keys reach a
+    // list that needs them and a list that flows adds no empty stop.
     const list = box.querySelector<HTMLElement>("[data-calls]");
+    if (list && list.scrollHeight > list.clientHeight) list.tabIndex = 0;
+    else list?.removeAttribute("tabindex");
     const current = list?.querySelector<HTMLElement>("[data-current]");
     if (list && current) showSpan(list, current.offsetTop, current.offsetTop + current.offsetHeight);
     const span = (targets: HTMLElement[]) => [
