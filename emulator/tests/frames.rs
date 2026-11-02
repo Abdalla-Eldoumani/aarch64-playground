@@ -11,7 +11,7 @@
 //! named save; overruns onto the nearest caller's and a grand-caller's
 //! saved fp and lr, through an array base and through a passed pointer,
 //! with the ring recording, paused, and stopped by its side budget; a
-//! callee leaving x19 changed; a call out before lr is saved, and one
+//! callee leaving x19 changed, and copies of what it left; a call out before lr is saved, and one
 //! after lr is saved with no fp set; a qsort comparator; hostile programs (fp into .data, misaligned sp, a bl into a
 //! function's middle, a computed blr, a return into a stub, an fp record
 //! pointing at itself); the frame check, one program per rule, a function
@@ -856,6 +856,75 @@ fn a_callee_that_keeps_x19_changed_is_marked_and_the_callers_read_noted() {
     assert!(r.halted);
     assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "count = 51\n");
     assert!(p.cpu.take_clobber_notes().is_empty(), "main's own x19 is its to change");
+}
+
+const COPIED_LEFTOVER: &str = r#"
+// main keeps 7 in x19 across a call, but triple uses x19 as scratch and does
+// not put it back. main then copies x19 into x20, x0 and, through d0, x9, so
+// it prints 12 6 instead of 12 14. Only x19 was left changed by the call.
+
+define(fp, x29)
+define(lr, x30)
+
+define(base_r, x19)
+define(copy_r, x20)
+
+.data
+fmt_out:    .string "%ld %ld\n"
+
+.text
+
+// triple(x0 = n) -> x0 = 3 * n (bug: x19 is callee-saved)
+        .balign 4
+        .global triple
+triple:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 3                      // bug: x19 belongs to the caller
+        mul     x0, x0, x19
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     base_r, 7
+        mov     x0, 4
+        bl      triple                      // x0 = 12
+        mov     x1, x0                      // x1 = 12
+        mov     copy_r, base_r              // copy x19 into x20
+        mov     x0, base_r                  // copy x19 into x0
+        fmov    d0, base_r                  // copy x19 into d0
+        fmov    x9, d0                      // and from d0 into x9
+        add     x2, x0, copy_r              // the first use of a copy
+        mov     copy_r, 0
+        mov     x9, 0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_copy_of_what_a_callee_left_in_x19_is_not_marked_as_changed_by_the_call() {
+    let mut p = load(COPIED_LEFTOVER);
+    let ret = p.pc_of(26);
+    p.run_to_line(26);
+    p.step(2);
+    for line in 37..=40 {
+        p.step(1);
+        assert_eq!(p.view().leftovers, [(19, ret)], "only x19 after the copy on line {line}");
+    }
+    assert!(p.cpu.take_clobber_notes().is_empty(), "a copy uses nothing");
+    p.step(1);
+    // The add reads x0 first, so the note names x0's copy on line 38.
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, ret as u32, p.pc_of(38) as u32]);
+    let r = p.cpu.run_until_break(1000).unwrap();
+    assert!(r.halted);
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "12 6\n");
 }
 
 const NO_SAVED_LR: &str = r#"
