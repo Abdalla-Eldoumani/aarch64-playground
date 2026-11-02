@@ -464,13 +464,14 @@ impl RegisterFile {
         self.clobbered.x |= mask;
     }
 
-    /// The registers still holding what a returning call left in a
-    /// callee-saved register, with the `ret` that left it.
+    /// The callee-saved registers still holding what a returning call left
+    /// in them, with the `ret` that left it.
     pub fn callee_leftovers(&self) -> Vec<(u8, u64)> {
-        (0..31u8)
+        (19..29u8)
             .filter(|&r| (self.clobbered.x >> r) & 1 != 0)
             .map(|r| (r, self.clobber_origins[usize::from(r)]))
-            .filter(|(_, origin)| (19..29).contains(&origin.register))
+            // A copy takes the origin on for its note, but the call did not change the copy.
+            .filter(|(r, origin)| origin.register == *r)
             .map(|(r, origin)| (r, u64::from(origin.call_pc)))
             .collect()
     }
