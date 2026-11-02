@@ -693,6 +693,59 @@ describe("a callee-saved register a call did not put back", () => {
     m.emu.free();
   });
 
+  // triple (lines 10 to 16) leaves x19 at 3; main copies x19 into x20, x0
+  // and d0 on lines 25 to 27, and from d0 into x9 on 28. Steps: main's stp,
+  // mov, mov, mov, bl 1 to 5; triple's six 6 to 11; the copies 12 to 15; the
+  // add that uses x0, 16.
+  it("stays on x19 when the caller copies it, and the card names the copy", () => {
+    const m = load(`// triple uses x19 as scratch and does not put it back; main copies it.
+define(fp, x29)
+define(lr, x30)
+define(base_r, x19)
+define(copy_r, x20)
+.text
+// triple(x0 = n) -> x0 = 3 * n (bug: x19 is callee-saved)
+        .balign 4
+        .global triple
+triple:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 3                  // bug: x19 belongs to the caller
+        mul     x0, x0, x19
+        ldp     fp, lr, [sp], 16
+        ret
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     base_r, 7
+        mov     x0, 4
+        bl      triple                  // x0 = 12
+        mov     copy_r, base_r          // copy x19 into x20
+        mov     x0, base_r              // copy x19 into x0
+        fmov    d0, base_r              // copy x19 into d0
+        fmov    x9, d0                  // and from d0 into x9
+        add     x0, x0, copy_r          // the first use of a copy
+        ldp     fp, lr, [sp], 16
+        ret
+`);
+    m.step(11);
+    const marks = [calleeLeftovers(Array.from(m.emu.frames()))];
+    for (let i = 0; i < 4; i++) {
+      m.step(1);
+      marks.push(calleeLeftovers(Array.from(m.emu.frames())));
+    }
+    expect(marks).toEqual([[19], [19], [19], [19], [19]]);
+    m.step(1);
+    expect(texts(calleeCards(Array.from(m.emu.take_clobber_notes()), m.lines, layoutOf(m.emu)))).toEqual([
+      "Line 26 in main reads x19, but triple changed it and its ret on line 16 did not put it back. " +
+        "x19 to x28 are callee-saved: a function that uses one must save it first and put it back " +
+        "before it returns. Do scratch work in x9 to x15, or save x19 on the stack and restore it before ret.",
+    ]);
+    m.emu.free();
+  });
+
   // The exercise's starter: double_it (lines 21 to 25) doubles in x19, and
   // main's add on line 43 reads total_r, which is x19.
   it("shows on the Forgetful Helper's starter", () => {
