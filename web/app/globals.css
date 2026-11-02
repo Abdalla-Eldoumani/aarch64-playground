@@ -441,6 +441,14 @@ body:has(> .playground-shell) {
     min-height: 44px;
     min-width: 44px;
   }
+  /* A pointer chip's 44px reach rises 12.5px above its 19px register row, so
+     the list's edge cut a first-row chip to 32px. RegisterPanel's list pads its
+     top by more than that, and its three-row floor grows by the same.
+     Doubled for the same reason as above (Tailwind's min-h-[4.75em]). */
+  .register-list.register-list {
+    padding-top: 14px;
+    min-height: calc(4.75em + 14px);
+  }
   /* iOS zooms the page into any field whose text is under 16px when it takes
      focus, and leaves it zoomed. */
   input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]),
@@ -555,9 +563,11 @@ body:has(> .playground-shell) {
   }
 }
 /* One pane at a time on a phone or touch screen, where the stacked console was
-   too short for its 44px input row. The editor is hidden, not removed, so its
-   caret and undo survive a switch. Placed after the bands so it wins. */
-@media (max-width: 639.98px), (pointer: coarse) {
+   too short for its 44px input row, and in a window under 500px tall (a laptop
+   zoomed to 200%), where the three stacked panes cut standard input and send
+   under a mouse too. The editor is hidden, not removed, so its caret and undo
+   survive a switch. Placed after the bands so it wins. */
+@media (max-width: 639.98px), (pointer: coarse), (max-height: 499.98px) {
   @container (max-width: 55.98rem) {
     .embed-view {
       display: flex;

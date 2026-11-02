@@ -161,11 +161,32 @@ describe("FramesView", () => {
     expect(said()).toBe("back inside add_two");
   });
 
-  it("says nothing when a reset or a new program leaves the call", () => {
+  // Every assemble hands the view a new layout. What it said about the old
+  // program goes, and the new one says nothing until it calls or returns.
+  it("lets go of what it said when a new program loads", () => {
     const { rerender } = render(<FramesView {...props({ frames: frames(false, 7) })} />);
     rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
-    rerender(<FramesView {...props({ frames: frames(false, 0) })} />);
     expect(said()).toBe("add_two called");
+    const next = { ...LAYOUT };
+    rerender(<FramesView {...props({ frameLayout: next, frames: frames(false, 0) })} />);
+    expect(said()).toBe("");
+    rerender(<FramesView {...props({ frameLayout: next, frames: frames(false, 1) })} />);
+    expect(said()).toBe("");
+  });
+
+  // A frame's reset empties the machine and keeps the layout; the
+  // playground's reset assembles again, a new layout.
+  it("says nothing after a reset, in a frame or on the playground", () => {
+    const frame = render(<FramesView {...props({ frames: frames(false, 7) })} />);
+    frame.rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
+    frame.rerender(<FramesView {...props({ programLoaded: false, frames: frames(false, 0) })} />);
+    expect(said()).toBe("");
+    cleanup();
+
+    const playground = render(<FramesView {...props({ frames: frames(false, 7) })} />);
+    playground.rerender(<FramesView {...props({ frames: frames(true, 8) })} />);
+    playground.rerender(<FramesView {...props({ frameLayout: { ...LAYOUT }, frames: frames(false, 0) })} />);
+    expect(said()).toBe("");
   });
 
   it("says nothing about the calls a run makes, or about where it stops", () => {

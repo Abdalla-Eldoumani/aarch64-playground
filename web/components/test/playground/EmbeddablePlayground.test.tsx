@@ -597,6 +597,25 @@ describe("EmbeddablePlayground", () => {
     expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, 1", ["5", "6"]);
   });
 
+  it("embed status line calls a long run's pause a pause, and a fault an error", () => {
+    const pause =
+      "paused after 1,000,000 steps without finishing. " +
+      "press run to continue, or check for a loop whose exit condition never becomes true";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_004, error: pause, paused: true }));
+    const view = () => <EmbeddablePlayground chrome="embed" startSource="b ." />;
+    const { container, rerender } = render(view());
+    engage(container);
+    const line = () => container.querySelector('.embed-status [role="status"]')!;
+    expect(line().textContent).toBe("paused · 1,000,004 steps");
+    expect(line().className).toContain("text-[var(--text-secondary)]");
+
+    const fault = "line 7: stopped: tried to read from address 0x0, which is not part of any program section";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 2, error: fault, paused: false }));
+    rerender(view());
+    expect(line().textContent).toBe("stopped on an error");
+    expect(line().className).toContain("text-[var(--danger)]");
+  });
+
   it("embed consoles point at the step and run buttons, not at keys only the playground binds", () => {
     useEmulatorMock.mockReturnValue(makeHub());
     const { container } = render(<EmbeddablePlayground chrome="embed" startSource="mov x0, 1" />);
@@ -1120,6 +1139,37 @@ describe("terminal context", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the phone playground's status line", () => {
+  function setSize(width: number, height: number): void {
+    Object.defineProperty(window, "innerWidth", { value: width, configurable: true, writable: true });
+    Object.defineProperty(window, "innerHeight", { value: height, configurable: true, writable: true });
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  afterEach(() => setSize(1024, 768));
+
+  it("calls a long run's pause a pause, and a fault an error", async () => {
+    setSize(390, 844);
+    const pause =
+      "paused after 1,000,000 steps without finishing. " +
+      "press run to continue, or check for a loop whose exit condition never becomes true";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_000, error: pause, paused: true }));
+    const view = () => <EmbeddablePlayground chrome="full" startSource="b ." />;
+    const { rerender } = render(view());
+    await fullChromeMounted();
+    const paused = await screen.findByText("paused · 1,000,000 steps");
+    expect(paused.getAttribute("role")).toBe("status");
+    expect(paused.className).toContain("text-[var(--text-secondary)]");
+
+    const fault = "line 7: stopped: tried to read from address 0x0, which is not part of any program section";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 2, error: fault, paused: false }));
+    rerender(view());
+    const failed = screen.getByText("stopped on an error");
+    expect(failed.getAttribute("role")).toBe("status");
+    expect(failed.className).toContain("text-[var(--danger)]");
   });
 });
 

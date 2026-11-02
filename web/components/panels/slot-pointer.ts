@@ -23,8 +23,11 @@ export const PointerContext = createContext<SlotPointer | null>(null);
 
 /** The provider's value. `open` brings the host's stack view forward and
  *  must keep its identity across renders. */
-export function useSlotPointer(open: () => void): SlotPointer {
+export function useSlotPointer(open: () => void, running: boolean): SlotPointer {
   const [pointed, setPointed] = useState<PointedSlot | null>(null);
+  // A run takes the chips away, unmounted or out of view, and no blur or
+  // leave says so: let go of the slot when one starts.
+  if (running && pointed) setPointed(null);
   const point = useCallback(
     (reg: number | null, reveal = false) => {
       setPointed((prev) => (reg == null ? null : { reg, reveal: (prev?.reveal ?? 0) + Number(reveal) }));

@@ -49,6 +49,14 @@ const NO_ROWS: number[] = [];
 // assembles again, starts a new set.
 const saidPerLoad = new WeakMap<object, Set<string>>();
 
+/** Scrolls `box` the least that shows its content from `top` to `bottom`,
+ *  or that span's low end when it is taller than the box. */
+function showSpan(box: HTMLElement, top: number, bottom: number) {
+  if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
+    box.scrollTop = bottom - box.clientHeight;
+  } else if (top < box.scrollTop) box.scrollTop = top;
+}
+
 /**
  * Each call's frame as the course draws it, main first and the innermost
  * call last: offsets from fp on the left, a box per saved register, local
@@ -136,12 +144,15 @@ export function FramesView({
   // A call or a return is said once, after the step that made it; a run
   // says nothing, and neither does its stop. Back undoes one step, so it
   // says the call or return it took back; a reset or a new program moves
-  // the machine further than that and says nothing.
+  // the machine further than that and says nothing. What was said belongs to
+  // the load it was said on: after a new one, or a reset, the words go.
+  const [mountKey] = useState(() => ({}));
+  const loadKey = frameLayout ?? mountKey;
   const depth = stack?.depth ?? 0;
   const step = snapshot?.step ?? 0;
   const innermost = stack?.frames[stack.frames.length - 1]?.name ?? "";
   const [seen, setSeen] = useState({ depth, innermost, running, step });
-  const [said, setSaid] = useState({ text: "", count: 0 });
+  const [said, setSaid] = useState({ text: "", count: 0, load: loadKey });
   if (seen.depth !== depth || seen.running !== running || seen.step !== step) {
     setSeen({ depth, innermost, running, step });
     const back = step === seen.step - 1;
@@ -156,7 +167,7 @@ export function FramesView({
             : // With the calls listed, the value the call left, read as w0
               // or x0 the way it was last written, as the list reads it.
               `${seen.innermost} returned${tree ? ` ${typed(BigInt(registers[0] || 0), tree.x0Width, false, memoryRegions).value}` : ""}`;
-      setSaid((prev) => ({ text, count: prev.count + 1 }));
+      setSaid((prev) => ({ text, count: prev.count + 1, load: loadKey }));
     }
   }
   // A card is said once per program load, without the backticks that mark
@@ -165,15 +176,13 @@ export function FramesView({
   // never while a run goes, and not when the run row's alert carries the
   // same card. Its event counts as said either way, once the stop renders.
   const cardKey = cards.map((card) => card.event).join("\n");
-  const [mountKey] = useState(() => ({}));
-  const loadKey = frameLayout ?? mountKey;
   const unsaid = running ? [] : cards.filter((card) => !saidPerLoad.get(loadKey)?.has(card.event));
   const unsaidKey = unsaid.map((card) => card.event).join("\n");
   const [lastUnsaid, setLastUnsaid] = useState("");
   if (unsaidKey !== lastUnsaid) {
     setLastUnsaid(unsaidKey);
     const spoken = unsaid.filter((card) => card.event !== errorCard?.event);
-    if (spoken.length > 0) setSaid((prev) => ({ text: spoken.map(plain).join(" "), count: prev.count + 1 }));
+    if (spoken.length > 0) setSaid((prev) => ({ text: spoken.map(plain).join(" "), count: prev.count + 1, load: loadKey }));
   }
   useEffect(() => {
     if (unsaid.length === 0) return;
@@ -197,6 +206,10 @@ export function FramesView({
   const reveal = useEffectEvent(() => {
     const box = boxRef.current;
     if (!box) return;
+    // The list of calls scrolls on its own, its current call kept in sight.
+    const list = box.querySelector<HTMLElement>("[data-calls]");
+    const current = list?.querySelector<HTMLElement>("[data-current]");
+    if (list && current) showSpan(list, current.offsetTop, current.offsetTop + current.offsetHeight);
     const span = (targets: HTMLElement[]) => [
       Math.min(...targets.map((t) => t.offsetTop)),
       Math.max(...targets.map((t) => t.offsetTop + t.offsetHeight)),
@@ -214,9 +227,7 @@ export function FramesView({
     if (tries.length === 0) return;
     const spans = tries.map(span);
     const [top, bottom] = spans.find(([t, b]) => b - t <= box.clientHeight) ?? spans[spans.length - 1];
-    if (bottom - top > box.clientHeight || bottom > box.scrollTop + box.clientHeight) {
-      box.scrollTop = bottom - box.clientHeight;
-    } else if (top < box.scrollTop) box.scrollTop = top;
+    showSpan(box, top, bottom);
   });
   // Only the machine moving lets a held slot go: a write card whose word
   // lands after the press leaves it held.
@@ -270,7 +281,9 @@ export function FramesView({
       {idle || !stack ? (
         <p className="text-[13px] text-[var(--text-secondary)]">{idle}</p>
       ) : (
-        <ol aria-label="calls, main first">
+        // A wide pane only stretched the boxes (2,010px at 2560) and moved the
+        // `← sp` marker far from their words; 40rem leaves a box 30rem.
+        <ol aria-label="calls, main first" className="max-w-[40rem]">
           {stack.frames.map((frame, i) => (
             <li
               key={frame.index}
@@ -340,7 +353,7 @@ export function FramesView({
         </ul>
       )}
       <p role="status" className="sr-only">
-        {said.text}
+        {said.load === loadKey && programLoaded ? said.text : ""}
         {said.count % 2 ? " " : ""}
       </p>
     </div>

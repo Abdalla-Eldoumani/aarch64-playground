@@ -137,6 +137,9 @@ export function useEmulator(): EmulatorState {
   // The frames' card an error carries, beside that error's text: any other
   // error replaces the text, and the card no longer applies.
   const [errorCard, setErrorCard] = useState<{ error: string; card: ReturnCard } | null>(null);
+  // The error line's words for a long run's pause, so the status can tell
+  // a pause from a fault; any later error or clear replaces the text.
+  const [pauseText, setPauseText] = useState<string | null>(null);
   const [assemblyErrors, setAssemblyErrors] = useState<AssemblyError[]>([]);
   const [droppedBreakpoints, setDroppedBreakpoints] = useState<number[]>(NO_LINES);
   const [externalCall, setExternalCall] = useState<ExternalCall | null>(null);
@@ -569,9 +572,9 @@ export function useEmulator(): EmulatorState {
    * Surface a runtime stop with its editor line when the wasm side could
    * resolve one: the banner carries "line N" and the editor gets a line
    * marker, so a fault raised inside printf or a syscall points at the
-   * call site instead of at nothing.
+   * call site instead of at nothing. Returns the words the error line shows.
    */
-  const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true) => {
+  const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true): string => {
     // After a ret that went to no caller (frames header slot 5), the frame
     // may show the cause: then its card stands in for the crate's guess, in
     // the console too (not for a run's pause, which repeats every chunk).
@@ -586,6 +589,7 @@ export function useEmulator(): EmulatorState {
     if (line != null && line > 0) setAssemblyErrors([{ line, message: text, card: said ? said.card : undefined }]);
     setErrorCard(said ? { error: shown, card: said.card } : null);
     if (said && note && cards) appendNotes([cards.plain(said.card)]);
+    return shown;
   }, [appendNotes, programLines]);
 
   const step = useCallback(() => {
@@ -728,11 +732,13 @@ export function useEmulator(): EmulatorState {
           if (runResult.error) surfaceRuntimeError(runResult.error, runResult.error_line);
           // A goal's pause has its own words, from stopReason below.
           else if (runResult.step_limit_reached && !goal) {
-            surfaceRuntimeError(
-              `paused after ${formatSteps(total)} without finishing. ` +
-                "press run to continue, or check for a loop whose exit condition never becomes true",
-              null,
-              false,
+            setPauseText(
+              surfaceRuntimeError(
+                `paused after ${formatSteps(total)} without finishing. ` +
+                  "press run to continue, or check for a loop whose exit condition never becomes true",
+                null,
+                false,
+              ),
             );
           }
           // Approximate replay capture: only the final frame of the run
@@ -752,6 +758,8 @@ export function useEmulator(): EmulatorState {
         if (said?.problem) {
           setError(said.text);
           setErrorCard(said.card ? { error: said.text, card: said.card } : null);
+          // The budget's pause, not a bad return (that one brings its card).
+          if (runResult.step_limit_reached && !said.card) setPauseText(said.text);
         }
         else if (said) setStop({ text: said.text, at });
         return said?.text ?? null;
@@ -892,6 +900,7 @@ export function useEmulator(): EmulatorState {
       isHalted,
       programLoaded,
       error,
+      paused: error != null && error === pauseText,
       errorCard: errorCard?.error === error ? errorCard.card : null,
       assemblyErrors,
       breakpoints,
@@ -963,7 +972,7 @@ export function useEmulator(): EmulatorState {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
-      isRunning, isAssembling, isHalted, programLoaded, error, errorCard, assemblyErrors, breakpoints,
+      isRunning, isAssembling, isHalted, programLoaded, error, pauseText, errorCard, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
       currentLine, externalCall, frames, frameLayout, callCard, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
       stdout, stderr, notes, blocked,

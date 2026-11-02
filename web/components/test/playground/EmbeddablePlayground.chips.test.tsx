@@ -117,4 +117,21 @@ describe("pressing a pointer chip", () => {
     const { title } = await litSlot();
     expect(title).toBe("a_s = 0");
   });
+
+  // The press left the registers view, chip and all, so only the playground's
+  // own pointer is there to see a run start.
+  it("on a phone's /playground lets go of the pressed slot when a run starts from the stack view", async () => {
+    setSize(390, 844);
+    useEmulatorMock.mockReturnValue(hub());
+    const view = () => <EmbeddablePlayground chrome="full" startSource="// locals" />;
+    const { rerender } = render(view());
+    fireEvent.click(await screen.findByRole("tab", { name: "registers" }));
+    fireEvent.click(await screen.findByRole("button", { name: X1 }));
+    await litSlot();
+    useEmulatorMock.mockReturnValue({ ...hub(), isRunning: true });
+    rerender(view());
+    useEmulatorMock.mockReturnValue(hub());
+    rerender(view());
+    expect(screen.getByRole("group", { name: "stack frames" }).querySelector("[data-lit]")).toBeNull();
+  });
 });

@@ -120,6 +120,17 @@ main:
         ret
 `;
 
+// A load through a null pointer on line 7: a fault.
+const NULL_READ = `// reads through a null pointer
+        .text
+        .balign 4
+        .global main
+main:
+        mov     x0, 0
+        ldr     x1, [x0]
+        ret
+`;
+
 const paused = (goal: string) =>
   `paused after 1,000,000 steps, before the ${goal} finished. ${goal} again to go on, ` +
   "or check for a loop whose exit condition never becomes true";
@@ -174,12 +185,15 @@ describe("a goal run past the 1,000,000-step run chunk", () => {
     for (const k of [1, 2, 3, 4]) {
       expect(await press(view, "over")).toBe(paused("step over"));
       expect(view.result.current.error).toBe(paused("step over"));
+      // A pause, not a fault: the status line says so in plain words.
+      expect(view.result.current.paused).toBe(true);
       expect(view.result.current.stepCount).toBe(4 + k * 1_000_000);
     }
     // The fifth press runs the last 500,010: 4 + 4,500,010.
     expect(await press(view, "over")).toBe("reached line 36");
     expect(view.result.current.stepCount).toBe(4_500_014);
     expect(view.result.current.error).toBeNull();
+    expect(view.result.current.paused).toBe(false);
     expect(view.result.current.stopReason).toBe("reached line 36");
     expect(BigInt(view.result.current.registers[0])).toBe(1_500_000n);
   }, 60_000);
@@ -197,10 +211,25 @@ describe("a goal run past the 1,000,000-step run chunk", () => {
       "paused after 1,000,000 steps without finishing. " +
         "press run to continue, or check for a loop whose exit condition never becomes true",
     );
+    expect(view.result.current.paused).toBe(true);
     // In work's loop, two calls deep, with no call on the line: one instruction.
     expect(await press(view, "over")).toBeNull();
     expect(view.result.current.stepCount).toBe(2_000_005);
+    expect(view.result.current.paused).toBe(false);
   }, 60_000);
+
+  it("calls a fault an error, never a pause", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await act(async () => {
+      await expect(view.result.current.assemble(NULL_READ)).resolves.toBe(true);
+    });
+    act(() => {
+      view.result.current.run();
+    });
+    await waitFor(() => expect(view.result.current.error).toMatch(/^line 7: stopped: tried to read from address 0x0/));
+    expect(view.result.current.paused).toBe(false);
+  });
 
   it("goes on the same way through gdb ni", async () => {
     const view = await stoppedAt(LONGISH, 35);

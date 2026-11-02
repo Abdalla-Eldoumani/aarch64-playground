@@ -28,6 +28,7 @@ const STATUS: PhoneLayoutProps["runStatus"] = {
   exitCode: null,
   stepCount: 3,
   failed: false,
+  paused: false,
   registers: ["0x0", "0x2f"],
   sp: "0x7ffff0",
   changedRegs: new Set([1]),

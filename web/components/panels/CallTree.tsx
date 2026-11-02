@@ -20,7 +20,10 @@ const STATE_SAID: Record<CallRow["state"], string> = {
 function Rows({ rows }: { rows: CallRow[] }) {
   return rows.map((row, i) => (
     <li key={i}>
-      <p className={`py-px pl-2 text-[13px] leading-snug ${STATE_STYLE[row.state]}`}>
+      <p
+        data-current={row.state === "current" || undefined}
+        className={`py-px pl-2 text-[13px] leading-snug ${STATE_STYLE[row.state]}`}
+      >
         <span aria-hidden="true">{row.call}</span>
         <span className="sr-only">{row.said}</span>
         {row.result && ` · ${row.result}`}
@@ -45,7 +48,16 @@ export function CallTree({ calls }: { calls: DrawnCalls }) {
       <p id={label} className="mb-1 text-[12px] text-[var(--text-secondary)]">
         calls so far
       </p>
-      <ol aria-labelledby={label}>
+      {/* Its own scroll box, at most 40% of the stack tab (a size container):
+          200 calls pushed the frames 4,000px down the tab. FramesView keeps
+          the current call in sight in it, by offsets counted from this
+          `relative` box; focusable, so keys can scroll it. */}
+      <ol
+        aria-labelledby={label}
+        data-calls=""
+        tabIndex={0}
+        className="inner-scroll relative max-h-[40cqh] overflow-y-auto overscroll-contain focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+      >
         <Rows rows={calls.rows} />
       </ol>
       {calls.hidden && <p className="mt-1 text-[12px] text-[var(--text-secondary)]">{calls.hidden}</p>}

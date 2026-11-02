@@ -683,13 +683,14 @@ export function RegisterPanel({
           a phone the list shrank to nothing, so the frame's pane scrolls
           instead. A named group rather than a region: a lesson holds several
           embeds, and identical region landmarks cannot be told apart. The
-          focus outline sits inside the box, where the pane cannot clip it. */}
+          focus outline sits inside the box, where the pane cannot clip it.
+          `register-list` pads its top under a coarse pointer (globals.css). */}
       <div
         ref={bodyRef}
         role="group"
         aria-label="register values"
         tabIndex={0}
-        className="inner-scroll min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
+        className="inner-scroll register-list min-h-[4.75em] flex-1 overflow-y-auto overscroll-contain px-2 pb-2 [scrollbar-gutter:stable] focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[color:var(--focus)]"
         onWheel={(e) => {
           if (!e.ctrlKey) markUserScroll();
         }}

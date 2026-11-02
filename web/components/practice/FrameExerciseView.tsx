@@ -8,7 +8,7 @@
  * wrong; a wrong field shows the exercise's hint, never the number.
  */
 
-import { useId, useRef, useState, type JSX } from "react";
+import { useEffect, useId, useReducer, useRef, useState, type JSX } from "react";
 import type { FrameExercise } from "@/lib/content/exercise-schema";
 import type { FieldMark, FrameAnswers, FrameMarks } from "@/lib/content/frame-checker";
 import { markSolved } from "@/lib/playground/solved-state";
@@ -132,12 +132,26 @@ export function FrameExerciseView({
   sheetNumber?: string;
 }): JSX.Element {
   const baseId = useId();
-  const [answers, setAnswers] = useState<FrameAnswers>(() => ({
+  // A reducer, so the numbers typed before hydration can arrive from the effect below.
+  const [answers, setAnswers] = useReducer((_: FrameAnswers, next: FrameAnswers) => next, exercise, (e) => ({
     size: "",
-    slots: exercise.slots.map(() => ""),
+    slots: e.slots.map(() => ""),
     savedFp: "",
     savedLr: "",
   }));
+  // A number typed before the page's script ran stays in its field through
+  // hydration, but no change reaches `answers`: take it in once, or Check
+  // grades the field empty and clears it.
+  useEffect(() => {
+    const typed = (key: string) => (document.getElementById(`${baseId}-${key}`) as HTMLInputElement | null)?.value ?? "";
+    const found = {
+      size: typed("size"),
+      slots: exercise.slots.map((_, i) => typed(`slot-${i}`)),
+      savedFp: typed("fp"),
+      savedLr: typed("lr"),
+    };
+    if ([found.size, ...found.slots, found.savedFp, found.savedLr].some(Boolean)) setAnswers(found);
+  }, [baseId, exercise.slots]);
   const [check, setCheck] = useState<CheckState>({ status: "idle" });
   // Fields typed in since the last check: an old mark beside a new number
   // would be a lie, so theirs are hidden until the next check.

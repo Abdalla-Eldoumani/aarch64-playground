@@ -189,6 +189,7 @@ const IDLE_RUN_STATUS = {
   exitCode: null,
   stepCount: 0,
   failed: false,
+  paused: false,
   registers: IDLE_CPU_VIEW.registers,
   sp: IDLE_CPU_VIEW.sp,
   changedRegs: NO_CHANGED_REGS,

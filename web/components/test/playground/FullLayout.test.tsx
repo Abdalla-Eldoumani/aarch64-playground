@@ -108,6 +108,7 @@ const RUN_STATUS = {
   exitCode: null,
   stepCount: 0,
   failed: false,
+  paused: false,
   registers: [],
   sp: "0x0",
   changedRegs: new Set<number>(),
