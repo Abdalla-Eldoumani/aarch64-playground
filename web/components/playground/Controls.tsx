@@ -16,6 +16,11 @@ const GOALS: { goal: StepGoal; label: string; keys: string }[] = [
   { goal: "cursor", label: "run to cursor", keys: "Ctrl+F9" },
 ];
 
+/** Text with its marked code drawn as code: EmbedLayout's marks (GAS's `name'
+ *  quoting stays), and the fix lines'. */
+const withCode = (text: string) =>
+  text.split(/`([^`'\n]*)`/).map((part, k) => (k % 2 ? <code key={k} className="font-mono">{part}</code> : part));
+
 interface ControlsProps {
   onAssemble: () => void;
   onStep: () => void;
@@ -98,7 +103,11 @@ export function Controls({
   if (error && error !== held?.error) setHeld({ error, card: errorCard });
   else if (!error && !isRunning && held) setHeld(null);
   const shown = error ?? (isRunning && held ? held.error : null);
-  const explanation = shown ? explainError(shown, error ? errorCard : held?.card) : null;
+  const card = error ? errorCard : held?.card;
+  const explanation = shown ? explainError(shown, card) : null;
+  // A later pause's words leave out a card already said (faultText): it stays
+  // in view with its fix, outside the alert, which says only the pause.
+  const saidCard = shown && card && !shown.includes(card.text) ? card.text : null;
 
   // On a phone the five buttons share the row, assemble a little wider for
   // its longer word, so all five fit a 320px screen with nothing to scroll.
@@ -266,7 +275,7 @@ export function Controls({
 
       {shown && (
         <div
-          role={error ? "alert" : undefined}
+          role={error && !saidCard ? "alert" : undefined}
           aria-hidden={error ? undefined : true}
           // Keyed by the message so a NEW error replays the ~200ms decaying
           // shake; under prefers-reduced-motion the class is inert and the
@@ -287,11 +296,12 @@ export function Controls({
           }}
         >
           <p className="max-h-16 overflow-y-auto whitespace-pre-wrap break-words font-sans text-xs leading-snug text-[var(--danger)]">
-            {shown}
+            {error && saidCard ? <span role="alert">{withCode(shown)}</span> : withCode(shown)}
+            {saidCard && <>{"\n"}{withCode(saidCard)}</>}
           </p>
           {explanation && (
             <p className="mt-0.5 hidden max-h-12 overflow-y-auto whitespace-pre-wrap break-words font-sans text-[12px] leading-snug text-[var(--text-tertiary)] sm:block">
-              {explanation.fix}
+              {withCode(explanation.fix)}
             </p>
           )}
         </div>
