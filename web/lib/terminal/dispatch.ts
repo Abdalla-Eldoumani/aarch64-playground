@@ -425,7 +425,8 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   }
   if (sub === "ni" || sub === "finish") {
     const said = await ctx.runUntil(sub === "ni" ? "over" : "out");
-    return { status: "ok", lines: said ? [said] : [] };
+    // A card marks its code with backticks, which the pane would show as they are.
+    return { status: "ok", lines: said ? [said.replaceAll("`", "")] : [] };
   }
   if (sub === "c") {
     await ctx.runUntilBreak();
