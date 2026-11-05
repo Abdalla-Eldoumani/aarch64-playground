@@ -266,6 +266,16 @@ describe("EmbedLayout's step over, step out and run to cursor", () => {
     rerender(<EmbedLayout {...props({ stopReason: "stopped at the breakpoint on line 30", error: "memory fault" })} />);
     expect(screen.queryByText("stopped at the breakpoint on line 30")).toBeNull();
   });
+
+  // Whether the status line shows is the frame's CSS, which jsdom does not
+  // run: motion-css pins the rule that takes this class away there.
+  test("marks a finished program's exit as the single-pane status line's to say", () => {
+    const stop = "the program exited with code 3";
+    const { rerender } = render(<EmbedLayout {...props({ stopReason: stop, runStatus: { ...STATUS, isHalted: true } })} />);
+    expect(screen.getByText(stop).classList.contains("embed-said")).toBe(true);
+    rerender(<EmbedLayout {...props({ stopReason: "reached line 43" })} />);
+    expect(screen.getByText("reached line 43").classList.contains("embed-said")).toBe(false);
+  });
 });
 
 describe("a pointer chip's slot", () => {
