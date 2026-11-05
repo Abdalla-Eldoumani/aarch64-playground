@@ -7,6 +7,6 @@
     "next": "16.4.5"
   },
   "overrides": {
-    "postcss": "8.5.31"
+    "postcss": "8.5.32"
   }
 }
