@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
@@ -292,5 +293,14 @@ main:
     await waitFor(() => expect(view.result.current.isRunning).toBe(false));
     expect(view.result.current.stepCount).toBe(steps);
     expect(view.result.current.stopReason).toBeNull();
+  });
+
+  it("prints a bad return's card through gdb without the backticks that mark its code", async () => {
+    const source = fs.readFileSync(path.join(process.cwd(), "lib/test/emulator/fixtures/lr-not-saved.s"), "utf8");
+    // show's bl print_n: it comes back to its own ret, so finish goes nowhere.
+    const view = await stoppedAt(source, 28);
+    const [line] = await gdb(view, "finish");
+    expect(line).toContain("show called out with bl print_n on line 28 before saving lr");
+    expect(line).not.toContain("`");
   });
 });
