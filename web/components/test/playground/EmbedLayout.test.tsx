@@ -276,6 +276,56 @@ describe("EmbedLayout's step over, step out and run to cursor", () => {
     rerender(<EmbedLayout {...props({ stopReason: "reached line 43" })} />);
     expect(screen.getByText("reached line 43").classList.contains("embed-said")).toBe(false);
   });
+
+  // A live region that arrives with its words already in it often goes
+  // unsaid, so the node is there first, empty, and a stop changes its text.
+  const stopLine = () =>
+    [...document.querySelectorAll('[role="status"]')].filter((status) => !status.closest(".embed-status"));
+
+  test("keeps one status for the stop line, empty until a stop has words", () => {
+    const { rerender } = render(<EmbedLayout {...props()} />);
+    expect(stopLine()).toHaveLength(1);
+    const [line] = stopLine();
+    expect(line.textContent).toBe("");
+    rerender(<EmbedLayout {...props({ stopReason: "reached line 43" })} />);
+    expect(stopLine()).toEqual([line]);
+    expect(line.textContent).toBe("reached line 43");
+    rerender(<EmbedLayout {...props()} />);
+    expect(stopLine()).toEqual([line]);
+    expect(line.textContent).toBe("");
+    rerender(<EmbedLayout {...props({ stopReason: "reached line 43", error: "memory fault" })} />);
+    expect(stopLine()).toEqual([line]);
+    expect(line.textContent).toBe("");
+  });
+
+  // A repeat comes from the hub with a no-break space flipped on its end,
+  // and the line is empty while the run to it goes.
+  test("says a repeated stop again, and nothing again on a re-render", () => {
+    const stop = "returned to fact at line 27";
+    const { rerender } = render(<EmbedLayout {...props({ stopReason: stop })} />);
+    const [line] = stopLine();
+    const changes = new MutationObserver(() => {});
+    changes.observe(line, { childList: true, characterData: true, subtree: true });
+    rerender(<EmbedLayout {...props({ stopReason: stop, canStepBack: true })} />);
+    expect(changes.takeRecords()).toEqual([]);
+    rerender(<EmbedLayout {...props({ isRunning: true })} />);
+    expect(line.textContent).toBe("");
+    rerender(<EmbedLayout {...props({ stopReason: `${stop}\u00a0` })} />);
+    expect(line.textContent).toBe(`${stop}\u00a0`);
+    expect(changes.takeRecords().length).toBeGreaterThan(0);
+    changes.disconnect();
+  });
+
+  // Whether the status line shows is the frame's CSS, which jsdom does not
+  // run: the class is what takes the words away where it does.
+  test("marks a read's wait as the single-pane status line's to say", () => {
+    const { rerender } = render(
+      <EmbedLayout {...props({ stopReason: "waiting for input", runStatus: { ...STATUS, blocked: true } })} />,
+    );
+    expect(screen.getByText("waiting for input", { selector: ":not(.embed-status *)" }).classList.contains("embed-said")).toBe(true);
+    rerender(<EmbedLayout {...props({ stopReason: "reached line 43" })} />);
+    expect(screen.getByText("reached line 43").classList.contains("embed-said")).toBe(false);
+  });
 });
 
 describe("a pointer chip's slot", () => {

@@ -1321,6 +1321,23 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.stopReason).toBeNull();
   });
 
+  // An identical text would leave a status region unchanged, so unsaid.
+  it("flips a no-break space on a stop that repeats the last one's words", async () => {
+    const fake = makeBackend({
+      runResult: { pc: CODE_BASE + 8, halted: false, steps_executed: 2, hit_breakpoint: false, error: null, reached: true },
+      runSnapshot: { pc: toHex(CODE_BASE + 8) },
+    });
+    const { result } = await mountAssembled(fake);
+    const stops: Array<string | null> = [];
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await result.current.runUntil(11);
+      });
+      stops.push(result.current.stopReason);
+    }
+    expect(stops).toEqual(["reached line 11", "reached line 11\u00a0", "reached line 11"]);
+  });
+
   it("runs nothing for a line past the last instruction, and says why", async () => {
     const fake = makeBackend();
     const { result } = await mountAssembled(fake);

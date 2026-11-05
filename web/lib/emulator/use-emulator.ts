@@ -761,7 +761,8 @@ export function useEmulator(): EmulatorState {
           // The budget's pause, not a bad return (that one brings its card).
           if (runResult.step_limit_reached && !said.card) setPauseText(said.text);
         }
-        else if (said) setStop({ text: said.text, at });
+        // The same words again would leave a status's text unchanged, so unsaid.
+        else if (said) setStop((last) => ({ text: last?.text === said.text ? said.text + "\u00a0" : said.text, at }));
         return said?.text ?? null;
       }
     };

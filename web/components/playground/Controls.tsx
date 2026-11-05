@@ -99,6 +99,8 @@ export function Controls({
   else if (!error && !isRunning && held) setHeld(null);
   const shown = error ?? (isRunning && held ? held.error : null);
   const explanation = shown ? explainError(shown, error ? errorCard : held?.card) : null;
+  // The phone's status line says a read's wait and how a program ended itself.
+  const stop = error || (compact && (blocked || isHalted)) ? null : stopReason;
 
   // On a phone the five buttons share the row, assemble a little wider for
   // its longer word, so all five fit a 320px screen with nothing to scroll.
@@ -258,12 +260,11 @@ export function Controls({
           {goalButtons}
         </div>
       )}
-      {/* The phone's status line says how a program ended, with its step count. */}
-      {stopReason && !error && !(compact && isHalted) && (
-        <p role="status" className="min-w-0 break-words font-sans text-[12px] text-[var(--text-secondary)]">
-          {stopReason}
-        </p>
-      )}
+      {/* There before its words arrive: a status that mounts with them in it
+          often goes unsaid. */}
+      <p role="status" className={stop ? "min-w-0 break-words font-sans text-[12px] text-[var(--text-secondary)]" : "sr-only"}>
+        {stop}
+      </p>
 
       {shown && (
         <div

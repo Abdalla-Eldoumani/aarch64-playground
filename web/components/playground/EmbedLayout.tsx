@@ -280,11 +280,11 @@ export function EmbedLayout({
             {error}
           </p>
         )}
-        {stopReason && !error && (
-          <p role="status" className={`min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]${runStatus.isHalted ? " embed-said" : ""}`}>
-            {stopReason}
-          </p>
-        )}
+        {/* There before its words arrive: a status that mounts with them in it
+            often goes unsaid. */}
+        <p role="status" className={!error && stopReason ? `min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]${runStatus.isHalted || runStatus.blocked ? " embed-said" : ""}` : "sr-only"}>
+          {!error && stopReason}
+        </p>
       </div>
     </div>
   );
