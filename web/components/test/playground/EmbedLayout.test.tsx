@@ -340,6 +340,11 @@ describe("EmbedLayout's error line", () => {
     render(<EmbedLayout {...props({ error: "line 6: unknown mnemonic `mvo' -- `mvo x0, 1'" })} />);
     expect(screen.getByRole("alert").textContent).toBe("line 6: unknown mnemonic `mvo' -- `mvo x0, 1'");
   });
+
+  test.each(["'a'", "'a' x", "x'a'"])("leaves a mark around a typed %s as it is, and drops the next mark's backticks", (typed) => {
+    render(<EmbedLayout {...props({ error: `line 6: \`${typed}\` is not a shift: write \`lsl #8\`` })} />);
+    expect(screen.getByRole("alert").textContent).toBe(`line 6: \`${typed}\` is not a shift: write lsl #8`);
+  });
 });
 
 describe("a pointer chip's slot", () => {
