@@ -294,6 +294,16 @@ describe("gdb-lite ni, si, finish", () => {
     expect(vi.mocked(hub.runUntil).mock.calls).toEqual([["over"], ["out"]]);
   });
 
+  it("prints a stop's card without the backticks that mark its code", async () => {
+    const { ctx } = stoppedAt(fact(4), 39);
+    const runUntil = vi.fn(async () => "show called out with `bl print_n` on line 28 before saving lr");
+    for (const command of ["ni", "finish"]) {
+      expect((await dispatchCommand(`gdb ${command}`, { ...ctx, runUntil })).lines).toEqual([
+        "show called out with bl print_n on line 28 before saving lr",
+      ]);
+    }
+  });
+
   it("keeps n and s one instruction, and si with them", async () => {
     const { ctx } = stoppedAt(fact(4), 39);
     const step = vi.fn(async () => ({ halted: false, line: 16 }));
