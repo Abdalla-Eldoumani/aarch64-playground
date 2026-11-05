@@ -357,6 +357,17 @@ describe("Controls", () => {
     expect([...line.querySelectorAll("code")].map((code) => code.textContent)).toEqual(["lsl #8"]);
   });
 
+  // ld's own words quote with apostrophes: a mark around them would keep its
+  // backticks, as GAS's quoting does.
+  it("draws the no-main fix line with no backtick left", () => {
+    const h = allHandlers();
+    render(
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true}
+        error="undefined reference to `main'" />,
+    );
+    expect(screen.getByText(/multiple definition of '_start'/).textContent).not.toContain("`");
+  });
+
   // One announcement per event. The hub leaves the card out of a later
   // pause's words and keeps it beside them: it stays in view, and each pause
   // mounts a fresh alert holding the pause's words alone.
