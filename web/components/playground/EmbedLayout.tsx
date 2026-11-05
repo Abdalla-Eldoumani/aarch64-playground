@@ -281,7 +281,7 @@ export function EmbedLayout({
           </p>
         )}
         {stopReason && !error && (
-          <p role="status" className="min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]">
+          <p role="status" className={`min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--text-secondary)]${runStatus.isHalted ? " embed-said" : ""}`}>
             {stopReason}
           </p>
         )}
