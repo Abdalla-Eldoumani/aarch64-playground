@@ -1,6 +1,6 @@
 import { at } from "@/lib/emulator/clobber-note";
 import type { StepTarget } from "@/lib/emulator/emulator-state";
-import { cardContext, returnCard, type ProgramLines, type ReturnCard } from "@/lib/emulator/frame-cards";
+import { cardContext, returnCard, sayCard, type ProgramLines, type ReturnCard } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { formatSteps } from "@/lib/emulator/format-steps";
 import type { RunResultPayload, StateSnapshot } from "@/lib/worker/protocol";
@@ -42,7 +42,10 @@ export function stopReason(
   if (result.cancelled || result.error) return null;
   if (result.bad_return && ctx) {
     const card = returnCard(ctx, BigInt(snap.registers[30] ?? 0));
-    if (card) return { text: card.text, problem: true, card };
+    if (card) {
+      sayCard(ctx, card);
+      return { text: card.text, problem: true, card };
+    }
   }
   if (snap.blocked) return said("waiting for input");
   if (snap.halted) {
