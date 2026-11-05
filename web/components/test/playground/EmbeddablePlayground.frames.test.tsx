@@ -121,3 +121,46 @@ describe("a Run's bad return, said once", () => {
     await saidOnceByTheAlert();
   });
 });
+
+// lr-not-saved.s never ends, so every Run stops at its million steps. Each
+// pause's alert says the pause; only the first says the card.
+describe("a bad return under a run's pauses", () => {
+  const NO_LR = readFileSync(path.join(process.cwd(), "lib/test/emulator/fixtures/lr-not-saved.s"), "utf8").replace(/\r\n/g, "\n");
+  const CARD = /show's ret on line \d+ went back into show /;
+
+  /** The alert of the pause after this one: a new element once the run has gone. */
+  async function nextPause(before: HTMLElement) {
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    const after = await waitFor(
+      () => {
+        const alert = screen.getByRole("alert");
+        expect(alert).not.toBe(before);
+        return alert;
+      },
+      { timeout: 30_000 },
+    );
+    expect(after.textContent).toMatch(/^paused after 1,000,000 steps without finishing\. [^\n]*$/);
+    return after;
+  }
+
+  it("in the playground, says the card once and keeps it beside the alert", async () => {
+    setWidth(800);
+    render(<EmbeddablePlayground chrome="full" startSource={NO_LR} />);
+    await screen.findByRole("tab", { name: "stack" }, { timeout: 5000 });
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
+    const first = await screen.findByRole("alert", {}, { timeout: 30_000 });
+    expect(first.textContent).toMatch(CARD);
+    const second = await nextPause(first);
+    expect(second.closest("div")!.textContent).toMatch(CARD);
+    await nextPause(second);
+  }, 90_000);
+
+  it("in a lesson frame, says the card once and the pause each time", async () => {
+    render(<EmbeddablePlayground chrome="embed" startSource={NO_LR} />);
+    fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    const first = await screen.findByRole("alert", {}, { timeout: 30_000 });
+    expect(first.textContent).toMatch(CARD);
+    const second = await nextPause(first);
+    await nextPause(second);
+  }, 90_000);
+});
