@@ -10,6 +10,9 @@
 export interface FrameLayoutPayload {
   numbers: number[];
   names: string[];
+  /** The cards the run row has said, each with its step (frame-cards.ts): here
+   *  because every assemble hands over a new layout object. */
+  said?: Record<string, number>;
 }
 
 /** The frames exports as a wasm build has them: absent on one that
