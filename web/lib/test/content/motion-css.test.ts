@@ -6,7 +6,8 @@ import path from "node:path";
  * Rules in globals.css that jsdom cannot apply, read from the real file:
  * every animation waits for no-preference, nothing animated is left unused,
  * Monaco's own fades stop under reduced motion, a lesson frame fits a phone on
- * its side, and a control with no focus style of its own gets the cyan ring.
+ * its side, a single-pane frame's stop line leaves a finished program to the
+ * status line, and a control with no focus style of its own gets the cyan ring.
  */
 
 // Comments out and line endings normalized, so prose about a rule never
@@ -103,6 +104,15 @@ describe("the lesson frame on a short screen", () => {
     expect(phone).toMatch(
       /\.embed-frame\s*\{\s*height: min\(72vh, 560px\);\s*height: min\(72svh, 560px\);\s*min-height: 420px;\s*\}/,
     );
+  });
+});
+
+describe("the single-pane frame in globals.css", () => {
+  it("hides what the status line says, only where that line shows", () => {
+    const [single] = blocks("@container (max-width: 55.98rem)");
+    expect(single).toMatch(/\.embed-status\s*\{\s*display: block;/);
+    expect(single).toMatch(/\.embed-said\s*\{\s*display: none;/);
+    expect(css.replace(single, "")).not.toContain(".embed-said");
   });
 });
 
