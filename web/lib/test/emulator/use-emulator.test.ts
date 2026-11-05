@@ -922,6 +922,53 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.notes).toEqual([]);
   });
 
+  it("says a bad return's card under the first pause alone, until a new load", async () => {
+    const at = (step: number) => [
+      step, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0xffff0000, 0, 0, 5, CODE_BASE + 4,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const newLayout = () => ({ numbers: MAIN_ONLY.numbers, names: MAIN_ONLY.names });
+    const fake = makeBackend({
+      frameLayout: newLayout(),
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+      runSnapshot: { frames: at(1_000_000) },
+    });
+    const { result } = await mountAssembled(fake);
+    const withCard = /^paused after 1,000,000 steps without finishing\. [^\n]*\nmain's ret on line 13 /;
+    const alone = /^paused after 1,000,000 steps without finishing\. [^\n]*$/;
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(withCard));
+
+    fake.cfg.runSnapshot = { frames: at(2_000_000) };
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(alone));
+    expect(result.current.paused).toBe(true);
+    expect(result.current.errorCard).toMatchObject({ cause: "overwritten" });
+
+    // Every assemble hands over a new layout: the new load has not heard it.
+    fake.cfg.frameLayout = newLayout();
+    fake.cfg.runSnapshot = { frames: at(1_000_000) };
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(withCard));
+  });
+
   // Drawn a frame after the run's end, the alert left the panes a frame to
   // jump up and back, which WebKit reported as a ResizeObserver loop.
   it("ends a paused run and shows its card in one commit", async () => {
