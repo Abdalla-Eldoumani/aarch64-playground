@@ -575,6 +575,11 @@ body:has(> .playground-shell) {
     .embed-status {
       display: block;
     }
+    /* The status line says how a program ended, with its step count; wider,
+       where that line is hidden, the stop line says it. */
+    .embed-said {
+      display: none;
+    }
     /* The view switch offers registers and stack itself here. */
     .embed-side {
       display: none;
