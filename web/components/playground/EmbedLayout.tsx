@@ -54,8 +54,8 @@ export interface EmbedLayoutProps {
 /** Paired backticks mark code in the frames' cards and the crate's own words.
  *  GAS and ld quote a name as `name', and those lines stay word for word as the
  *  server prints them, so a mark never holds an apostrophe (one around a typed
- *  'a' stays as it is). Controls draws the same marks as code; shared, this
- *  export cost the landing's document 45 bytes it does not have. */
+ *  'a' stays as it is). Controls draws the same marks as code from its own
+ *  copy of the rule: a shared module costs both documents more than the copy. */
 const CODE_MARK = /`([^`'\n]*)`/g;
 
 type Pane = "editor" | "registers" | "console";
