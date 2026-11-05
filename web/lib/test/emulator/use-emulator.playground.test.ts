@@ -261,3 +261,36 @@ describe("a goal run past the 1,000,000-step run chunk", () => {
     expect(view.result.current.isHalted).toBe(true);
   }, 120_000);
 });
+
+describe("a stop's words on the real hub", () => {
+  const exitsWith = (code: number) => `// main leaves ${code} as its exit code.
+        .text
+        .balign 4
+        .global main
+main:
+        mov     w0, ${code}
+        ret
+`;
+
+  it("does not say an old program's exit code when a new one runs to the same count", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await act(async () => {
+      await expect(view.result.current.assemble(exitsWith(3))).resolves.toBe(true);
+    });
+    expect(await press(view, "out")).toBe("the program exited with code 3");
+    expect(view.result.current.stopReason).toBe("the program exited with code 3");
+    const steps = view.result.current.stepCount;
+
+    await act(async () => {
+      await expect(view.result.current.assemble(exitsWith(5))).resolves.toBe(true);
+    });
+    act(() => {
+      view.result.current.run();
+    });
+    await waitFor(() => expect(view.result.current.exitCode).toBe(5));
+    await waitFor(() => expect(view.result.current.isRunning).toBe(false));
+    expect(view.result.current.stepCount).toBe(steps);
+    expect(view.result.current.stopReason).toBeNull();
+  });
+});
