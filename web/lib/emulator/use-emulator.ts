@@ -150,8 +150,12 @@ export function useEmulator(): EmulatorState {
   const [callCard, setCallCard] = useState<number[] | null>(null);
   const [frameLayout, setFrameLayout] = useState<FrameLayoutPayload | null>(null);
   const frameLayoutRef = useRef<FrameLayoutPayload | null>(null);
-  // Why the last goal run stopped, shown until the step count moves.
-  const [stop, setStop] = useState<{ text: string; at: number } | null>(null);
+  // Why the last goal run stopped, shown at the step count it stopped on until
+  // the machine moves: any move sets that to -1, since a count can come back
+  // to the number on a machine that never stopped there. The words stay, so
+  // the next stop can tell it repeats them.
+  const [stop, setStop] = useState<string | null>(null);
+  const [stopAt, setStopAt] = useState(-1);
   const programLines = useMemo<ProgramLines>(
     () => ({
       linePlace: (addr) => {
@@ -417,6 +421,7 @@ export function useEmulator(): EmulatorState {
       sourceRef.current = source;
       workspaceRef.current = workspace;
       runBlockedRef.current = false;
+      setStopAt(-1);
       stdinLogRef.current = "";
       if (surfaceErrors) {
         setError(null);
@@ -600,6 +605,7 @@ export function useEmulator(): EmulatorState {
     // or capture a replay frame of a step that never happened.
     if (!backend || !programLoadedRef.current || haltedRef.current) return;
     runBlockedRef.current = false;
+    setStopAt(-1);
     pausedAtRef.current = -1;
     setError(null);
     movingRef.current = backend
@@ -629,6 +635,7 @@ export function useEmulator(): EmulatorState {
     // must not move without it.
     if (!backend || !programLoadedRef.current || !canStepBackRef.current) return;
     runBlockedRef.current = false;
+    setStopAt(-1);
     pausedAtRef.current = -1;
     setError(null);
     movingRef.current = backend
@@ -656,6 +663,7 @@ export function useEmulator(): EmulatorState {
     const backend = backendRef.current;
     if (!backend) return;
     runBlockedRef.current = false;
+    setStopAt(-1);
     // A restored save is a live machine with a program in memory, so the
     // execution controls come back even when a reset preceded the load.
     // Any error banner describes a run the restored state never took.
@@ -687,6 +695,7 @@ export function useEmulator(): EmulatorState {
     if (runningRef.current) return Promise.resolve(null);
     goalRef.current = goal ?? null;
     runBlockedRef.current = false;
+    setStopAt(-1);
     // The last stop's alert ("paused after 1,000,000 steps") describes a run
     // that is over; step clears it the same way.
     setError(null);
@@ -761,8 +770,11 @@ export function useEmulator(): EmulatorState {
           // The budget's pause, not a bad return (that one brings its card).
           if (runResult.step_limit_reached && !said.card) setPauseText(said.text);
         }
-        // The same words again would leave a status's text unchanged, so unsaid.
-        else if (said) setStop((last) => ({ text: last?.text === said.text ? said.text + "\u00a0" : said.text, at }));
+        else if (said) {
+          // The same words again would leave a status's text unchanged, so unsaid.
+          setStop((last) => (last === said.text ? said.text + "\u00a0" : said.text));
+          setStopAt(at);
+        }
         return said?.text ?? null;
       }
     };
@@ -788,7 +800,8 @@ export function useEmulator(): EmulatorState {
         if (typeof target === "number") {
           const pc = resolveBreakpointAddr(target);
           if (pc != null) return run({ until: { pc }, target });
-          setStop({ text: `line ${target} has no instruction to stop at`, at: stepCountRef.current });
+          setStop(`line ${target} has no instruction to stop at`);
+          setStopAt(stepCountRef.current);
           return null;
         }
         if (!snap?.frames) return null;
@@ -819,6 +832,7 @@ export function useEmulator(): EmulatorState {
     if (!backend) return;
     runningRef.current = false;
     runBlockedRef.current = false;
+    setStopAt(-1);
     stdinLogRef.current = "";
     setIsRunning(false);
     setError(null);
@@ -938,7 +952,7 @@ export function useEmulator(): EmulatorState {
       deleteState,
       run,
       runUntil,
-      stopReason: stop && stop.at === stepCount && !isRunning ? stop.text : null,
+      stopReason: stopAt === stepCount && !isRunning ? stop : null,
       pause,
       reset,
       toggleBreakpoint,
@@ -980,7 +994,7 @@ export function useEmulator(): EmulatorState {
       wantsTerminal, setOutputTap,
       exitCode, hostedMode, vfsFiles, canStepBack, stepCount,
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
-      deleteState, run, runUntil, stop, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
+      deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
       pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
