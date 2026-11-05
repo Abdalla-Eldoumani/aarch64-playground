@@ -591,4 +591,17 @@ describe("Controls' step over, step out and run to cursor", () => {
     rerender(<Controls {...props({ stopReason: "returned to main at line 21", error: "memory fault" })} />);
     expect(screen.queryByText("returned to main at line 21")).toBeNull();
   });
+
+  // The phone's status line sits above this row and already says
+  // "finished · exit 0 · 55 steps"; a wider window has no such line.
+  it("leaves a finished program's exit to the phone's status line", () => {
+    const stopped = { stopReason: "the program exited with code 3", isHalted: true };
+    const { rerender } = render(<Controls {...props(stopped)} />);
+    expect(screen.queryByText("the program exited with code 3")).not.toBeNull();
+    rerender(<Controls {...props({ ...stopped, compact: true })} />);
+    expect(screen.queryByText("the program exited with code 3")).toBeNull();
+    // A stop short of the end has no status line saying the same.
+    rerender(<Controls {...props({ stopReason: "reached line 43", compact: true })} />);
+    expect(screen.queryByText("reached line 43")).not.toBeNull();
+  });
 });
