@@ -30,6 +30,8 @@ export interface ProgramLines {
 export interface CardContext extends ProgramLines {
   snapshot: FramesSnapshot;
   layout: FrameLayout | null;
+  /** The hub's layout object, which every assemble replaces. */
+  load?: FrameLayoutPayload | null;
 }
 
 /** A card and the event it tells of (a slot at a step, a function's ret
@@ -57,7 +59,14 @@ export function cardContext(
   lines: ProgramLines,
 ): CardContext | null {
   const snapshot = frames ? decodeFrames(frames) : null;
-  return snapshot && { ...lines, snapshot, layout: layout && decodeFrameLayout(layout) };
+  return snapshot && { ...lines, snapshot, layout: layout && decodeFrameLayout(layout), load: layout };
+}
+
+/** Marks a card said in the run row at this stop, and whether this stop is the
+ *  first on this load to say it. The same stop asking again gets the same
+ *  answer: React may run a state updater twice, and the hub asks from one. */
+export function sayCard({ load, snapshot: { step } }: CardContext, card: Card): boolean {
+  return !load || ((load.said ??= {})[card.event] ??= step) === step;
 }
 
 const hex = (value: number | bigint) => `0x${value.toString(16)}`;
@@ -198,9 +207,9 @@ export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | nu
  * astray: a fault at the address the `ret` went to keeps its first sentence
  * and takes the card in place of the crate's guess about the base register;
  * the step ceiling, and a run paused after its million steps, keep their
- * message and take the card under it. The card comes back too, for the
- * console and the explainer. Null when the frame shows no cause: then the
- * crate's message stands as it is.
+ * message and take the card under it, the first time it is said on this load.
+ * The card comes back too, for the console and the explainer. Null when the
+ * frame shows no cause: then the crate's message stands as it is.
  */
 export function faultText(
   message: string,
@@ -212,7 +221,9 @@ export function faultText(
   const bad = ctx.snapshot.badReturn;
   if (!card?.cause || !bad) return null;
   // The crate's ceiling, or a run paused after its million steps.
-  if (/the playground's ceiling|without finishing/.test(message)) return { error: `${message}\n${card.text}`, card };
+  if (/the playground's ceiling|without finishing/.test(message)) {
+    return { error: sayCard(ctx, card) ? `${message}\n${card.text}` : message, card };
+  }
   if (Number(pc) !== bad.target) return null;
   const end = message.indexOf(". ");
   return { error: `${end < 0 ? message : message.slice(0, end + 1)} ${card.text}`, card };
