@@ -258,7 +258,8 @@ export function Controls({
           {goalButtons}
         </div>
       )}
-      {stopReason && !error && (
+      {/* The phone's status line says how a program ended, with its step count. */}
+      {stopReason && !error && !(compact && isHalted) && (
         <p role="status" className="min-w-0 break-words font-sans text-[12px] text-[var(--text-secondary)]">
           {stopReason}
         </p>
