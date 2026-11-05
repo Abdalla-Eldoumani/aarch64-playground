@@ -346,6 +346,17 @@ describe("Controls", () => {
     expect(screen.getByRole("alert").querySelector("p")!.querySelector("code")?.textContent).toBe("fact:");
   });
 
+  it.each(["'a'", "'a' x", "x'a'"])("leaves a mark around a typed %s as it is, and draws the next mark as code", (typed) => {
+    const h = allHandlers();
+    render(
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true}
+        error={`line 6: \`${typed}\` is not a shift: write \`lsl #8\``} />,
+    );
+    const line = screen.getByRole("alert").querySelector("p")!;
+    expect(line.textContent).toBe(`line 6: \`${typed}\` is not a shift: write lsl #8`);
+    expect([...line.querySelectorAll("code")].map((code) => code.textContent)).toEqual(["lsl #8"]);
+  });
+
   // One announcement per event. The hub leaves the card out of a later
   // pause's words and keeps it beside them: it stays in view, and each pause
   // mounts a fresh alert holding the pause's words alone.
