@@ -575,7 +575,7 @@ body:has(> .playground-shell) {
     .embed-status {
       display: block;
     }
-    /* The status line says how a program ended, with its step count; wider,
+    /* What the status line says itself, such as how a program ended; wider,
        where that line is hidden, the stop line says it. */
     .embed-said {
       display: none;
