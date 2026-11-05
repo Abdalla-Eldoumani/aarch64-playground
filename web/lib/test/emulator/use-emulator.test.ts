@@ -1395,6 +1395,130 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.stopReason).toBe("line 40 has no instruction to stop at");
   });
 
+  // Each press here lands on the count the stop was recorded at, and none of
+  // them stopped on a goal, so the old words would read as this machine's.
+  describe("a stop's words once the machine has moved", () => {
+    const TWO_STEPS = { pc: CODE_BASE + 8, halted: false, steps_executed: 2, hit_breakpoint: false, error: null, reached: true };
+
+    async function stopped() {
+      const fake = makeBackend({ runResult: TWO_STEPS, runSnapshot: { pc: toHex(CODE_BASE + 8), canStepBack: true } });
+      const { result } = await mountAssembled(fake);
+      await act(async () => {
+        await result.current.runUntil(11);
+      });
+      expect(result.current.stopReason).toBe("reached line 11");
+      expect(result.current.stepCount).toBe(2);
+      return { fake, result };
+    }
+
+    type Hub = Awaited<ReturnType<typeof stopped>>["result"];
+
+    const assembled = (result: Hub) =>
+      act(async () => {
+        await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(true);
+      });
+
+    async function step(result: Hub, count: number) {
+      await act(async () => {
+        result.current.step();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(count));
+    }
+
+    it.each(["step", "stepBack"] as const)("go when a %s is sent, before it lands", async (press) => {
+      const { fake, result } = await stopped();
+      let land = () => {};
+      fake.backend[press] = () =>
+        new Promise((resolve) => {
+          land = () => resolve({ stepResult: fake.cfg.stepResult, snapshot: fake.fire({ canStepBack: true }) });
+        });
+      act(() => {
+        result.current[press]();
+      });
+      expect(result.current.stopReason).toBeNull();
+      await act(async () => {
+        land();
+      });
+    });
+
+    it("stay gone when back returns to the count", async () => {
+      const { result } = await stopped();
+      await step(result, 3);
+      await act(async () => {
+        result.current.stepBack();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(2));
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("stay gone when plain steps on a new assemble reach the count", async () => {
+      const { result } = await stopped();
+      await assembled(result);
+      await step(result, 1);
+      await step(result, 2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("stay gone when a plain run on a new assemble reaches the count", async () => {
+      const { result } = await stopped();
+      await assembled(result);
+      await act(async () => {
+        result.current.run();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(2));
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("go when a plain run starts, even one that takes no step", async () => {
+      const { fake, result } = await stopped();
+      fake.cfg.runResult = { ...TWO_STEPS, steps_executed: 0, reached: false };
+      await act(async () => {
+        result.current.run();
+      });
+      expect(result.current.stepCount).toBe(2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("go on a terminal build, which leaves the count standing", async () => {
+      const { result } = await stopped();
+      await act(async () => {
+        await result.current.assembleForTool(HOSTED_SOURCE);
+      });
+      expect(result.current.stepCount).toBe(2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("go on a restored save at the same count", async () => {
+      const { result } = await stopped();
+      act(() => {
+        result.current.saveState("two");
+      });
+      await assembled(result);
+      await act(async () => {
+        await result.current.runUntil(11);
+      });
+      expect(result.current.stopReason).not.toBeNull();
+      await act(async () => {
+        result.current.loadState("two");
+      });
+      expect(result.current.stepCount).toBe(2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it.each([
+      ["a reset", (result: Hub) => act(async () => result.current.reset())],
+      ["a new assemble", assembled],
+    ])("go on %s at count zero", async (_, move) => {
+      const { result } = await mountAssembled(makeBackend());
+      await act(async () => {
+        await result.current.runUntil(40);
+      });
+      expect(result.current.stopReason).toBe("line 40 has no instruction to stop at");
+      await move(result);
+      expect(result.current.stopReason).toBeNull();
+    });
+  });
+
   it("resumes the same goal once the console answers a read", async () => {
     const fake = makeBackend({ runSnapshot: { blocked: true } });
     const { result } = await mountAssembled(fake);
