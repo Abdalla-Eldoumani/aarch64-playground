@@ -118,7 +118,7 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
     return {
       what: "The program has no global `main`, so there is no instruction to begin at.",
       why: "gcc links a startup file whose code calls `main`, and a label is only visible outside its own file when `.global` names it. A file of helper functions is meant to be assembled beside the file that has main.",
-      fix: "Keep the entry called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own fails on the servers with `multiple definition of '_start'`.",
+      fix: "Keep the entry called main even if you have seen `_start` elsewhere: gcc supplies `_start` from its own startup file, so a source that defines its own fails on the servers with multiple definition of '_start'.",
       styleSection: "general",
     };
   }
