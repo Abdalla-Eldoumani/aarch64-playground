@@ -19,7 +19,9 @@ const GOALS: { goal: StepGoal; label: string; keys: string }[] = [
 /** Text with its marked code drawn as code: EmbedLayout's marks (GAS's `name'
  *  quoting stays), and the fix lines'. */
 const withCode = (text: string) =>
-  text.split(/`([^`'\n]*)`/).map((part, k) => (k % 2 ? <code key={k} className="font-mono">{part}</code> : part));
+  text
+    .split(/(`[^`\n]*`)/)
+    .map((part, k) => (k % 2 && !part.includes("'") ? <code key={k} className="font-mono">{part.slice(1, -1)}</code> : part));
 
 interface ControlsProps {
   onAssemble: () => void;
