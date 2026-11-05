@@ -1395,6 +1395,19 @@ describe("useEmulator stepping and running", () => {
     expect(result.current.stopReason).toBe("line 40 has no instruction to stop at");
   });
 
+  it("flips a no-break space on a second press at a line with no instruction", async () => {
+    const { result } = await mountAssembled(makeBackend());
+    const stops: Array<string | null> = [];
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await result.current.runUntil(40);
+      });
+      stops.push(result.current.stopReason);
+    }
+    const words = "line 40 has no instruction to stop at";
+    expect(stops).toEqual([words, `${words} `, words]);
+  });
+
   // Each press here lands on the count the stop was recorded at, and none of
   // them stopped on a goal, so the old words would read as this machine's.
   describe("a stop's words once the machine has moved", () => {
