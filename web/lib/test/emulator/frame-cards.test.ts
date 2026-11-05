@@ -352,6 +352,31 @@ describe("lr not saved before a call", () => {
     m.emu.free();
   });
 
+  // One announcement per event: a pause repeats, the bad return behind it
+  // does not. Its words go under the first stop of a load and no later one.
+  it("is added under the first pause of a load alone", () => {
+    const paused =
+      "paused after 1,000,000 steps without finishing. press run to continue, or check for a loop " +
+      "whose exit condition never becomes true";
+    const ceiling = "stopped after 10 million steps, which is the playground's ceiling. The usual cause is a loop";
+    const m = load(LR_NOT_SAVED);
+    const asked = (message: string) => faultText(message, m.context(), m.lr(), m.pc());
+    m.emu.run_until_break(1_000_000);
+    expect(asked(paused)?.error).toBe(`${paused}\n${MISSING_LR}`);
+    // Asked twice at one stop (React may run a state updater again), the same.
+    expect(asked(paused)?.error).toBe(`${paused}\n${MISSING_LR}`);
+    m.emu.run_until_break(1_000_000);
+    expect(asked(paused)?.error).toBe(paused);
+    expect(asked(paused)?.card).toMatchObject({ text: MISSING_LR, cause: "unsaved" });
+    expect(asked(ceiling)?.error).toBe(ceiling);
+    m.emu.free();
+
+    const next = load(LR_NOT_SAVED);
+    next.emu.run_until_break(1_000_000);
+    expect(faultText(paused, next.context(), next.lr(), next.pc())?.error).toBe(`${paused}\n${MISSING_LR}`);
+    next.emu.free();
+  });
+
   // Ten million steps: about 4 s alone, more beside the rest of the suite.
   it("is added under the step ceiling's message, which stays as it is", () => {
     const m = load(LR_NOT_SAVED);

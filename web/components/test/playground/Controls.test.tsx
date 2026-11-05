@@ -307,6 +307,91 @@ describe("Controls", () => {
     expect(screen.getByRole("alert").textContent).toContain("Watch the base register");
   });
 
+  // The cards, the crate's own words and the fix lines mark code with paired
+  // backticks, which plain text shows as they are.
+  it("draws marked code as code, with no backtick left", () => {
+    const h = allHandlers();
+    const at = (error: string, errorCard: Parameters<typeof Controls>[0]["errorCard"] = null) => (
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true} error={error} errorCard={errorCard} />
+    );
+    const codeIn = (box: HTMLElement) => [...box.querySelectorAll("code")].map((code) => code.textContent);
+    const { rerender } = render(at("line 3: expected a shift modifier like `lsl #3` as the last operand, got `foo`"));
+    expect(screen.getByRole("alert").textContent).toContain("expected a shift modifier like lsl #3 as the last operand, got foo");
+    expect(codeIn(screen.getByRole("alert").querySelector("p")!)).toEqual(["lsl #3", "foo"]);
+
+    const card = {
+      event: "ret at 0x400024 in 0x400020",
+      text: "show's ret on line 29 went back into show instead of going back to main at line 38, because show called out with `bl print_n` on line 28 before saving lr, so lr still held that call's return address.",
+      cause: "unsaved" as const,
+    };
+    rerender(at(`paused after 1,000,000 steps without finishing.\n${card.text}`, card));
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).not.toContain("`");
+    expect(alert.textContent).toContain("called out with bl print_n on line 28");
+    // The card's quoted call, then the fix line's four pieces of code.
+    expect(codeIn(alert)).toEqual(["bl print_n", "stp fp, lr, [sp, -16]!", "mov fp, sp", "ldp fp, lr, [sp], 16", "ret"]);
+  });
+
+  it("leaves GAS's quoting as the server prints it", () => {
+    const h = allHandlers();
+    const at = (error: string) => (
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true} error={error} />
+    );
+    const { rerender } = render(at("line 6: unknown mnemonic `mvo' -- `mvo x0, 1'"));
+    expect(screen.getByRole("alert").textContent).toContain("unknown mnemonic `mvo' -- `mvo x0, 1'");
+    expect(screen.getByRole("alert").querySelector("p")!.querySelector("code")).toBeNull();
+    // The quote the linker printed, then the crate's guidance with its own mark.
+    rerender(at("line 6: undefined reference to `fact'\nno line defines `fact:`: check the spelling"));
+    expect(screen.getByRole("alert").textContent).toContain("undefined reference to `fact'\nno line defines fact:: check the spelling");
+    expect(screen.getByRole("alert").querySelector("p")!.querySelector("code")?.textContent).toBe("fact:");
+  });
+
+  // One announcement per event. The hub leaves the card out of a later
+  // pause's words and keeps it beside them: it stays in view, and each pause
+  // mounts a fresh alert holding the pause's words alone.
+  it("says a bad return's card once over a run's pauses, and keeps it in view", () => {
+    const h = allHandlers();
+    const pause = "paused after 1,000,000 steps without finishing. press run to continue";
+    const card = {
+      event: "ret at 0x400024 in 0x400020",
+      text: "show's ret on line 29 went back into show, because show called out with `bl print_n` on line 28 before saving lr.",
+      cause: "unsaved" as const,
+    };
+    const seen = "show's ret on line 29 went back into show, because show called out with bl print_n on line 28 before saving lr.";
+    const at = (error: string | null, isRunning: boolean) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+        errorCard={error ? card : null}
+      />
+    );
+    const { rerender, container } = render(at(`${pause}\n${card.text}`, false));
+    expect(screen.getByRole("alert").textContent).toContain(seen);
+    expect(screen.getByRole("alert").textContent).toContain("Save lr before the function's first call");
+
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    rerender(at(pause, false));
+    const second = screen.getByRole("alert");
+    expect(second.textContent).toBe(pause);
+    const box = second.closest("div")!;
+    expect(box.textContent).toContain(seen);
+    expect(box.textContent).toContain("Save lr before the function's first call");
+
+    // While the next run goes, the same room, unseen and unsaid.
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(container.querySelector(".invisible")?.textContent).toContain(seen);
+    expect(container.querySelector(".invisible")?.textContent).toContain("Save lr before the function's first call");
+    rerender(at(pause, false));
+    expect(screen.getByRole("alert")).not.toBe(second);
+    expect(screen.getByRole("alert").textContent).toBe(pause);
+  });
+
   it("disables step and back until a program is loaded", () => {
     const h = allHandlers();
     render(

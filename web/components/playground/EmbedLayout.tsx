@@ -51,6 +51,13 @@ export interface EmbedLayoutProps {
   hasOutput: boolean;
 }
 
+/** Paired backticks mark code in the frames' cards and the crate's own words.
+ *  GAS and ld quote a name as `name', and those lines stay word for word as the
+ *  server prints them, so a mark never holds an apostrophe (one around a typed
+ *  'a' stays as it is). Controls draws the same marks as code; shared, this
+ *  export cost the landing's document 45 bytes it does not have. */
+const CODE_MARK = /`([^`'\n]*)`/g;
+
 type Pane = "editor" | "registers" | "console";
 
 // The stack shares the registers' area, so its view is that pane with the
@@ -277,7 +284,7 @@ export function EmbedLayout({
             role="alert"
             className="min-w-[12rem] flex-1 break-words font-mono text-[12px] text-[var(--danger)]"
           >
-            {error}
+            {error.replace(CODE_MARK, "$1")}
           </p>
         )}
         {/* There before its words arrive: a status that mounts with them in it

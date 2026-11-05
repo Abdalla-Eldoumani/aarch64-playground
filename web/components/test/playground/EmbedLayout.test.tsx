@@ -328,6 +328,20 @@ describe("EmbedLayout's step over, step out and run to cursor", () => {
   });
 });
 
+describe("EmbedLayout's error line", () => {
+  test("shows marked code without its backticks, in a card and in the crate's own words", () => {
+    const { rerender } = render(<EmbedLayout {...props({ error: "line 3: expected a shift modifier like `lsl #3` as the last operand, got `foo`" })} />);
+    expect(screen.getByRole("alert").textContent).toBe("line 3: expected a shift modifier like lsl #3 as the last operand, got foo");
+    rerender(<EmbedLayout {...props({ error: "show called out with `bl print_n` on line 28 before saving lr" })} />);
+    expect(screen.getByRole("alert").textContent).toBe("show called out with bl print_n on line 28 before saving lr");
+  });
+
+  test("leaves GAS's quoting as the server prints it", () => {
+    render(<EmbedLayout {...props({ error: "line 6: unknown mnemonic `mvo' -- `mvo x0, 1'" })} />);
+    expect(screen.getByRole("alert").textContent).toBe("line 6: unknown mnemonic `mvo' -- `mvo x0, 1'");
+  });
+});
+
 describe("a pointer chip's slot", () => {
   // Stand-ins for the register panel's chip and the frames view's lit slot,
   // each reading the frame's own pointer as the real ones do.

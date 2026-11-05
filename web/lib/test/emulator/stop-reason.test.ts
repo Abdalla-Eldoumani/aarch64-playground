@@ -1,8 +1,9 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import type { ProgramLines } from "@/lib/emulator/frame-cards";
+import { cardContext, faultText, type ProgramLines } from "@/lib/emulator/frame-cards";
 import { callDepth } from "@/lib/emulator/frame-data";
 import { stopReason } from "@/lib/emulator/stop-reason";
 import type { StepTarget } from "@/lib/emulator/emulator-state";
@@ -69,6 +70,8 @@ main:
 // fill writes eight ints into its four-int array: elements 6 and 7 land on
 // main's saved lr (line 22 is the store), so main's ret on line 39 goes to
 // 7 << 32 | 6.
+const LR_NOT_SAVED = readFileSync(path.join(process.cwd(), "lib/test/emulator/fixtures/lr-not-saved.s"), "utf8").replace(/\r\n/g, "\n");
+
 const OVERRUN = `// fill writes past the end of its array onto main's frame record.
 
 define(fp, x29)
@@ -224,6 +227,7 @@ function machine(source: string) {
   };
   const layout = { numbers: Array.from(emu.frame_layout()), names: emu.frame_names() };
   const depth = () => callDepth(Array.from(emu.frames()));
+  const context = () => cardContext(Array.from(emu.frames()), layout, lines)!;
   const run = (target: StepTarget, until: { depth?: number; pc?: number }) => {
     const result = emu.run_to(1_000_000, until.depth ?? -1, until.pc ?? -1) as RawRun;
     return { result, said: stopReason(target, result, snapshot(), layout, lines) };
@@ -232,6 +236,7 @@ function machine(source: string) {
     emu,
     pcOf,
     depth,
+    context,
     over: () => run("over", { depth: depth() }),
     out: () => run("out", { depth: depth() - 1 }),
     to: (line: number) => run(line, { pc: pcOf(line) }),
@@ -302,6 +307,21 @@ describe("step over, step out and run to cursor on the machine", () => {
   // The words are the frames view's card for the same return. By hand: fill's
   // loop stores arr[i] at step 12 + 4i (stp, mov, mov w0 and bl in main, then
   // fill's stp, mov, add, mov and b, then cmp and b.lt), so arr[7] at step 40.
+  // The stop said the card; a run's pause later on has its own words to say.
+  it("leaves a later pause's words alone once a stop has said the card", () => {
+    const m = machine(LR_NOT_SAVED);
+    // bl show on line 37, and show never saved lr.
+    m.to(37);
+    const over = m.over();
+    expect(over.result.bad_return).toBe(true);
+    expect(over.said?.card).toBeTruthy();
+    m.emu.run_until_break(1_000_000);
+    const paused = "paused after 1,000,000 steps without finishing. press run to continue";
+    const lr = BigInt(m.emu.get_register(30));
+    expect(faultText(paused, m.context(), lr, BigInt(m.emu.get_pc()))?.error).toBe(paused);
+    m.emu.free();
+  });
+
   it("names the store behind a ret through an overwritten lr", () => {
     const m = machine(OVERRUN);
     m.to(39);
