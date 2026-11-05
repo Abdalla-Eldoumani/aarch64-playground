@@ -75,6 +75,9 @@ interface Goal {
   target: StepTarget;
 }
 
+// The same words again would leave a status's text unchanged, so unsaid.
+const saying = (text: string) => (last: string | null) => (last === text ? text + " " : text);
+
 export function useEmulator(): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
@@ -771,8 +774,7 @@ export function useEmulator(): EmulatorState {
           if (runResult.step_limit_reached && !said.card) setPauseText(said.text);
         }
         else if (said) {
-          // The same words again would leave a status's text unchanged, so unsaid.
-          setStop((last) => (last === said.text ? said.text + "\u00a0" : said.text));
+          setStop(saying(said.text));
           setStopAt(at);
         }
         return said?.text ?? null;
@@ -800,7 +802,7 @@ export function useEmulator(): EmulatorState {
         if (typeof target === "number") {
           const pc = resolveBreakpointAddr(target);
           if (pc != null) return run({ until: { pc }, target });
-          setStop(`line ${target} has no instruction to stop at`);
+          setStop(saying(`line ${target} has no instruction to stop at`));
           setStopAt(stepCountRef.current);
           return null;
         }
