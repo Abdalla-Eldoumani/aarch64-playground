@@ -29,6 +29,7 @@ registerHooks({
     next(specifier.startsWith("@/") ? pathToFileURL(path.join(web, `${specifier.slice(2)}.ts`)).href : specifier, context),
 });
 const { buildShareHash } = await import(pathToFileURL(path.join(web, "lib", "playground", "share.ts")).href);
+const { saveProgress } = await import(pathToFileURL(path.join(web, "lib", "playground", "walkthrough.ts")).href);
 
 const site = new URL(process.env.SITE || "http://localhost:3000");
 const STEP_TIMEOUT = 30_000;
@@ -63,12 +64,25 @@ function expect(ok, what) {
   if (!ok) failures.push(what);
 }
 
+// The first-visit offer comes 1.2 s after the page mounts and counts as shown
+// only if that page stays, so a first page left quickly let it land on the
+// checks page, over "run checks". The site's own writer marks it shown here,
+// caught on its way to storage and handed to the context before any page loads.
+const shown = [];
+globalThis.window = { localStorage: { setItem: (name, value) => shown.push({ name, value }) } };
+saveProgress({ offered: true, step: 0 });
+delete globalThis.window;
+expect(shown.length === 1, "the walkthrough's offer is marked as shown");
+
 const browser = await chromium.launch({
   headless: true,
   executablePath: process.env.CHROMIUM_PATH || undefined,
 });
 // The wide layout: the right-hand tabs sit beside the editor.
-const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+const context = await browser.newContext({
+  viewport: { width: 1440, height: 900 },
+  storageState: { cookies: [], origins: [{ origin: site.origin, localStorage: shown }] },
+});
 // Production's bot challenge lets a request carrying the probe header
 // through. Only the site under test gets it: the page also calls Vercel's
 // analytics hosts.

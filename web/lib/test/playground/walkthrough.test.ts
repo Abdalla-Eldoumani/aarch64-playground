@@ -277,6 +277,38 @@ describe("placeCard", () => {
     expect(desk?.avoid).toContain('button[aria-label="back"]');
   });
 
+  it("keeps the offer whole in a short window, the editor's corner giving way", () => {
+    // Measured at 1366x657: tutorials in the run row at the window's foot, 140 px
+    // between the registers and that row, and the card's side spot 3 px into the
+    // editor. The card used to get the 36 px left under the target's top, which
+    // dropped its buttons off the window.
+    const view = { width: 1366, height: 657 };
+    const tutorials = { top: 613, left: 1105, width: 65, height: 36 };
+    const editor = { top: 94, left: 0, width: 748, height: 375 };
+    const registers = { top: 61, left: 754, width: 612, height: 392 };
+    const assemble = { top: 609, left: 16, width: 94, height: 44 };
+    const back = { top: 609, left: 249, width: 65, height: 44 };
+    const p = placeCard(tutorials, { width: 352, height: 183 }, view, [editor, registers, assemble, back]);
+    expect(p.maxHeight).toBeNull();
+    expect(p.top).toBeGreaterThanOrEqual(8);
+    expect(p.top + 183).toBeLessThanOrEqual(657 - 8);
+    for (const box of [tutorials, registers, assemble, back]) expect(overlaps(box, p, 183)).toBe(false);
+  });
+
+  it("lets the next box give way when the first is not enough, the run row last", () => {
+    // A window too short for the card beside the target even over the editor.
+    const view = { width: 1280, height: 480 };
+    const tutorials = { top: 436, left: 1019, width: 65, height: 36 };
+    const editor = { top: 94, left: 0, width: 701, height: 250 };
+    const registers = { top: 61, left: 707, width: 573, height: 290 };
+    const assemble = { top: 432, left: 16, width: 94, height: 44 };
+    const p = placeCard(tutorials, { width: 352, height: 183 }, view, [editor, registers, assemble]);
+    expect(p.maxHeight).toBeNull();
+    expect(p.top + 183).toBeLessThanOrEqual(480 - 8);
+    expect(overlaps(tutorials, p, 183)).toBe(false);
+    expect(overlaps(assemble, p, 183)).toBe(false);
+  });
+
   it("narrows to the viewport on a small phone", () => {
     const tab = { top: 596, left: 0, width: 90, height: 44 };
     const p = check(tab, { width: 320, height: 640 });
