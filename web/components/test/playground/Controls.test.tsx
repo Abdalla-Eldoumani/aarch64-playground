@@ -67,7 +67,7 @@ describe("Controls", () => {
     const buttons = screen.getAllByRole("button");
     expect(buttons).toHaveLength(5);
     // The phone's status line reports steps and the finish instead.
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
     expect(document.querySelector("kbd")).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("Controls", () => {
     // The keys stay in each button's title and the shortcut list.
     expect(document.querySelector("kbd")).toBeNull();
     expect(screen.getByRole("button", { name: "assemble" }).getAttribute("title")).toBe("F6");
-    expect(screen.getByRole("status").textContent).toBe("3 steps");
+    expect(screen.getByRole("status", { name: "3 instructions executed" }).textContent).toBe("3 steps");
     const all = screen.getAllByRole("button").map((b) => b.textContent);
     expect(all[all.length - 1]).toBe("share");
   });
@@ -197,7 +197,7 @@ describe("Controls", () => {
         error={null}
       />,
     );
-    expect(screen.getByRole("status").textContent?.trim()).toMatch(/halted/);
+    expect(screen.getByText("halted").getAttribute("role")).toBe("status");
   });
 
   it("shakes once per new error, and only on a new one", () => {
@@ -590,5 +590,51 @@ describe("Controls' step over, step out and run to cursor", () => {
     expect(screen.getByRole("status", { name: "" }).textContent).toBe("returned to main at line 21");
     rerender(<Controls {...props({ stopReason: "returned to main at line 21", error: "memory fault" })} />);
     expect(screen.queryByText("returned to main at line 21")).toBeNull();
+  });
+
+  // A live region that arrives with its words already in it often goes
+  // unsaid, so the node is there first, empty, and a stop changes its text.
+  it("keeps one status for the stop line, empty until a stop has words", () => {
+    const { rerender } = render(<Controls {...props()} />);
+    const line = screen.getByRole("status");
+    expect(line.textContent).toBe("");
+    rerender(<Controls {...props({ stopReason: "reached line 43" })} />);
+    expect(screen.getByRole("status")).toBe(line);
+    expect(line.textContent).toBe("reached line 43");
+    // The hub takes the words away at the next step: nothing to say.
+    rerender(<Controls {...props()} />);
+    expect(screen.getByRole("status")).toBe(line);
+    expect(line.textContent).toBe("");
+    // An error's alert says more, and the status keeps its place for later.
+    rerender(<Controls {...props({ stopReason: "reached line 43", error: "memory fault" })} />);
+    expect(screen.getByRole("status")).toBe(line);
+    expect(line.textContent).toBe("");
+  });
+
+  // A repeat comes from the hub with a no-break space flipped on its end,
+  // and the line is empty while the run to it goes.
+  it("says a repeated stop again, and nothing again on a re-render", () => {
+    const stop = "returned to fact at line 27";
+    const { rerender } = render(<Controls {...props({ stopReason: stop })} />);
+    const line = screen.getByRole("status");
+    const changes = new MutationObserver(() => {});
+    changes.observe(line, { childList: true, characterData: true, subtree: true });
+    rerender(<Controls {...props({ stopReason: stop, canStepBack: false })} />);
+    expect(changes.takeRecords()).toEqual([]);
+    rerender(<Controls {...props({ isRunning: true })} />);
+    expect(line.textContent).toBe("");
+    rerender(<Controls {...props({ stopReason: `${stop}\u00a0` })} />);
+    expect(line.textContent).toBe(`${stop}\u00a0`);
+    expect(changes.takeRecords().length).toBeGreaterThan(0);
+    changes.disconnect();
+  });
+
+  // The phone's status line sits above this row and says it first.
+  it("leaves a read's wait to the phone's status line", () => {
+    const stopped = { stopReason: "waiting for input", blocked: true };
+    const { rerender } = render(<Controls {...props(stopped)} />);
+    expect(screen.getByRole("status").textContent).toBe("waiting for input");
+    rerender(<Controls {...props({ ...stopped, compact: true })} />);
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 });
