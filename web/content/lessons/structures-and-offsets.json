@@ -2,7 +2,7 @@
   "title": "Structures as offset tables",
   "slug": "structures-and-offsets",
   "order": 20,
-  "lastUpdated": "2026-09-27",
+  "lastUpdated": "2026-10-31",
   "summary": "Lay out a struct as named field offsets with the padding it needs, read and write each field at its own size, and nest one struct inside another.",
   "tags": [
     "arrays"
@@ -93,7 +93,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Monster roster](/practice/monster-roster): find the strongest monster in an array of structures, one field offset at a time.\n- [Basic quiz: arrays and structures](/practice/quiz-basic-arrays), [Fill in the blank: arrays and structures (core)](/practice/blanks-arrays) and [Predict: arrays and structures (challenge)](/practice/predict-arrays): field offsets, padding, and element addresses."
+      "markdown": "## Practice\n\n- [Monster roster](/practice/monster-roster): find the strongest monster in an array of structures, one field offset at a time.\n- [Basic quiz: arrays and structures](/practice/quiz-basic-arrays), [Fill in the blank: arrays and structures (core)](/practice/blanks-arrays) and [Predict: arrays and structures (challenge)](/practice/predict-arrays): field offsets, padding, and element addresses.\n- [Draw the frame: a struct on the stack](/practice/draw-frame-struct): give each field of a record on the stack its offset from fp."
     }
   ]
 }

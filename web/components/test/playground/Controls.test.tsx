@@ -67,7 +67,7 @@ describe("Controls", () => {
     const buttons = screen.getAllByRole("button");
     expect(buttons).toHaveLength(5);
     // The phone's status line reports steps and the finish instead.
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("status").textContent).toBe("");
     expect(document.querySelector("kbd")).toBeNull();
   });
 
@@ -89,7 +89,7 @@ describe("Controls", () => {
     // The keys stay in each button's title and the shortcut list.
     expect(document.querySelector("kbd")).toBeNull();
     expect(screen.getByRole("button", { name: "assemble" }).getAttribute("title")).toBe("F6");
-    expect(screen.getByRole("status").textContent).toBe("3 steps");
+    expect(screen.getByRole("status", { name: "3 instructions executed" }).textContent).toBe("3 steps");
     const all = screen.getAllByRole("button").map((b) => b.textContent);
     expect(all[all.length - 1]).toBe("share");
   });
@@ -197,7 +197,7 @@ describe("Controls", () => {
         error={null}
       />,
     );
-    expect(screen.getByRole("status").textContent?.trim()).toMatch(/halted/);
+    expect(screen.getByText("halted").getAttribute("role")).toBe("status");
   });
 
   it("shakes once per new error, and only on a new one", () => {
@@ -226,6 +226,38 @@ describe("Controls", () => {
     expect(second.className).toContain("anim-error-shake");
   });
 
+  it("keeps the last alert's room, unseen and unsaid, while a run goes", () => {
+    const h = allHandlers();
+    const at = (error: string | null, isRunning: boolean) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+      />
+    );
+    const pause = "paused after 1,000,000 steps without finishing.";
+    const { rerender, container } = render(at(pause, false));
+    const said = screen.getByRole("alert");
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    const held = container.querySelector('.invisible[aria-hidden="true"]');
+    expect(held?.textContent).toContain(pause);
+    // The same words at the next pause are a new alert, said and shaken again.
+    rerender(at(pause, false));
+    const again = screen.getByRole("alert");
+    expect(again).not.toBe(said);
+    expect(again.className).toContain("anim-error-shake");
+    expect(container.querySelector(".invisible")).toBeNull();
+    // A run that ends without a stop to say leaves no room behind.
+    rerender(at(null, true));
+    rerender(at(null, false));
+    expect(container.querySelector('[aria-hidden="true"].invisible')).toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("surfaces a plain-language recovery hint for a recognized error", () => {
     const h = allHandlers();
     render(
@@ -242,6 +274,144 @@ describe("Controls", () => {
     const text = alert.textContent?.toLowerCase() ?? "";
     expect(text).toContain("unknown instruction");
     expect(text).toContain("mnemonic");
+  });
+
+  // The fix line follows the card's cause, which the hub hands over beside
+  // the error; the card's words are never read for it. While a run goes,
+  // the held room keeps the same line.
+  it("takes the fix line from the card an error carries", () => {
+    const h = allHandlers();
+    const fault = "memory fault: the program tried to read 0x0000000000400010, which no section covers.";
+    const card = {
+      event: "ret at step 16",
+      text: "show's ret on line 29 went back into show instead of going back to main at line 38.",
+      cause: "unsaved" as const,
+    };
+    const at = (error: string | null, isRunning: boolean, errorCard: typeof card | null) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+        errorCard={errorCard}
+      />
+    );
+    const { rerender, container } = render(at(`${fault} ${card.text}`, false, card));
+    expect(screen.getByRole("alert").textContent).toContain("Save lr before the function's first call");
+    rerender(at(null, true, null));
+    expect(container.querySelector(".invisible")?.textContent).toContain("Save lr before the function's first call");
+    // The same words with no card are the crate's fault, and keep its fix.
+    rerender(at(`${fault} ${card.text}`, false, null));
+    expect(screen.getByRole("alert").textContent).toContain("Watch the base register");
+  });
+
+  // The cards, the crate's own words and the fix lines mark code with paired
+  // backticks, which plain text shows as they are.
+  it("draws marked code as code, with no backtick left", () => {
+    const h = allHandlers();
+    const at = (error: string, errorCard: Parameters<typeof Controls>[0]["errorCard"] = null) => (
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true} error={error} errorCard={errorCard} />
+    );
+    const codeIn = (box: HTMLElement) => [...box.querySelectorAll("code")].map((code) => code.textContent);
+    const { rerender } = render(at("line 3: expected a shift modifier like `lsl #3` as the last operand, got `foo`"));
+    expect(screen.getByRole("alert").textContent).toContain("expected a shift modifier like lsl #3 as the last operand, got foo");
+    expect(codeIn(screen.getByRole("alert").querySelector("p")!)).toEqual(["lsl #3", "foo"]);
+
+    const card = {
+      event: "ret at 0x400024 in 0x400020",
+      text: "show's ret on line 29 went back into show instead of going back to main at line 38, because show called out with `bl print_n` on line 28 before saving lr, so lr still held that call's return address.",
+      cause: "unsaved" as const,
+    };
+    rerender(at(`paused after 1,000,000 steps without finishing.\n${card.text}`, card));
+    const alert = screen.getByRole("alert");
+    expect(alert.textContent).not.toContain("`");
+    expect(alert.textContent).toContain("called out with bl print_n on line 28");
+    // The card's quoted call, then the fix line's four pieces of code.
+    expect(codeIn(alert)).toEqual(["bl print_n", "stp fp, lr, [sp, -16]!", "mov fp, sp", "ldp fp, lr, [sp], 16", "ret"]);
+  });
+
+  it("leaves GAS's quoting as the server prints it", () => {
+    const h = allHandlers();
+    const at = (error: string) => (
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true} error={error} />
+    );
+    const { rerender } = render(at("line 6: unknown mnemonic `mvo' -- `mvo x0, 1'"));
+    expect(screen.getByRole("alert").textContent).toContain("unknown mnemonic `mvo' -- `mvo x0, 1'");
+    expect(screen.getByRole("alert").querySelector("p")!.querySelector("code")).toBeNull();
+    // The quote the linker printed, then the crate's guidance with its own mark.
+    rerender(at("line 6: undefined reference to `fact'\nno line defines `fact:`: check the spelling"));
+    expect(screen.getByRole("alert").textContent).toContain("undefined reference to `fact'\nno line defines fact:: check the spelling");
+    expect(screen.getByRole("alert").querySelector("p")!.querySelector("code")?.textContent).toBe("fact:");
+  });
+
+  it.each(["'a'", "'a' x", "x'a'"])("leaves a mark around a typed %s as it is, and draws the next mark as code", (typed) => {
+    const h = allHandlers();
+    render(
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true}
+        error={`line 6: \`${typed}\` is not a shift: write \`lsl #8\``} />,
+    );
+    const line = screen.getByRole("alert").querySelector("p")!;
+    expect(line.textContent).toBe(`line 6: \`${typed}\` is not a shift: write lsl #8`);
+    expect([...line.querySelectorAll("code")].map((code) => code.textContent)).toEqual(["lsl #8"]);
+  });
+
+  // ld's own words quote with apostrophes: a mark around them would keep its
+  // backticks, as GAS's quoting does.
+  it("draws the no-main fix line with no backtick left", () => {
+    const h = allHandlers();
+    render(
+      <Controls {...h} canStepBack={false} isRunning={false} isHalted={false} programLoaded={true}
+        error="undefined reference to `main'" />,
+    );
+    expect(screen.getByText(/multiple definition of '_start'/).textContent).not.toContain("`");
+  });
+
+  // One announcement per event. The hub leaves the card out of a later
+  // pause's words and keeps it beside them: it stays in view, and each pause
+  // mounts a fresh alert holding the pause's words alone.
+  it("says a bad return's card once over a run's pauses, and keeps it in view", () => {
+    const h = allHandlers();
+    const pause = "paused after 1,000,000 steps without finishing. press run to continue";
+    const card = {
+      event: "ret at 0x400024 in 0x400020",
+      text: "show's ret on line 29 went back into show, because show called out with `bl print_n` on line 28 before saving lr.",
+      cause: "unsaved" as const,
+    };
+    const seen = "show's ret on line 29 went back into show, because show called out with bl print_n on line 28 before saving lr.";
+    const at = (error: string | null, isRunning: boolean) => (
+      <Controls
+        {...h}
+        canStepBack={false}
+        isRunning={isRunning}
+        isHalted={false}
+        programLoaded={true}
+        error={error}
+        errorCard={error ? card : null}
+      />
+    );
+    const { rerender, container } = render(at(`${pause}\n${card.text}`, false));
+    expect(screen.getByRole("alert").textContent).toContain(seen);
+    expect(screen.getByRole("alert").textContent).toContain("Save lr before the function's first call");
+
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    rerender(at(pause, false));
+    const second = screen.getByRole("alert");
+    expect(second.textContent).toBe(pause);
+    const box = second.closest("div")!;
+    expect(box.textContent).toContain(seen);
+    expect(box.textContent).toContain("Save lr before the function's first call");
+
+    // While the next run goes, the same room, unseen and unsaid.
+    rerender(at(null, true));
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(container.querySelector(".invisible")?.textContent).toContain(seen);
+    expect(container.querySelector(".invisible")?.textContent).toContain("Save lr before the function's first call");
+    rerender(at(pause, false));
+    expect(screen.getByRole("alert")).not.toBe(second);
+    expect(screen.getByRole("alert").textContent).toBe(pause);
   });
 
   it("disables step and back until a program is loaded", () => {
@@ -474,5 +644,117 @@ describe("Controls while blocked on stdin", () => {
     expect(screen.getByRole("button", { name: "run" })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: "step" })).toHaveProperty("disabled", false);
     expect(screen.getByRole("button", { name: "back" })).toHaveProperty("disabled", false);
+  });
+});
+
+describe("Controls' step over, step out and run to cursor", () => {
+  const props = (over: Partial<Parameters<typeof Controls>[0]> = {}) => ({
+    ...allHandlers(),
+    onRunUntil: vi.fn(),
+    canStepBack: true,
+    isRunning: false,
+    isHalted: false,
+    programLoaded: true,
+    error: null,
+    ...over,
+  });
+
+  it("sends each goal and names its key", () => {
+    const p = props();
+    render(<Controls {...p} />);
+    fireEvent.click(screen.getByRole("button", { name: "step over" }));
+    fireEvent.click(screen.getByRole("button", { name: "step out" }));
+    fireEvent.click(screen.getByRole("button", { name: "run to cursor" }));
+    expect(vi.mocked(p.onRunUntil).mock.calls).toEqual([["over"], ["out"], ["cursor"]]);
+    expect(screen.getByRole("button", { name: "step out" }).getAttribute("aria-keyshortcuts")).toBe(
+      "Control+Shift+F10",
+    );
+  });
+
+  it("disables them where step is disabled", () => {
+    for (const over of [{ programLoaded: false }, { isRunning: true }, { isHalted: true }, { blocked: true }]) {
+      render(<Controls {...props(over)} />);
+      expect(screen.getByRole("button", { name: "step over" })).toHaveProperty("disabled", true);
+      cleanup();
+    }
+  });
+
+  it("keeps them behind an ellipsis on a phone until it opens", () => {
+    window.localStorage.clear();
+    render(<Controls {...props({ compact: true })} />);
+    const more = screen.getByRole("button", { name: "more ways to step" });
+    expect(more.getAttribute("aria-expanded")).toBe("false");
+    expect(screen.queryByRole("button", { name: "step over" })).toBeNull();
+    fireEvent.click(more);
+    expect(more.getAttribute("aria-expanded")).toBe("true");
+    // The ellipsis names the row it opens.
+    const goals = document.getElementById(more.getAttribute("aria-controls") ?? "");
+    expect(goals?.contains(screen.getByRole("button", { name: "step over" }))).toBe(true);
+  });
+
+  it("says why the last one stopped, unless an error says more", () => {
+    const { rerender } = render(<Controls {...props({ stopReason: "returned to main at line 21" })} />);
+    expect(screen.getByRole("status", { name: "" }).textContent).toBe("returned to main at line 21");
+    rerender(<Controls {...props({ stopReason: "returned to main at line 21", error: "memory fault" })} />);
+    expect(screen.queryByText("returned to main at line 21")).toBeNull();
+  });
+
+  // The phone's status line sits above this row and already says
+  // "finished · exit 0 · 55 steps"; a wider window has no such line.
+  it("leaves a finished program's exit to the phone's status line", () => {
+    const stopped = { stopReason: "the program exited with code 3", isHalted: true };
+    const { rerender } = render(<Controls {...props(stopped)} />);
+    expect(screen.queryByText("the program exited with code 3")).not.toBeNull();
+    rerender(<Controls {...props({ ...stopped, compact: true })} />);
+    expect(screen.queryByText("the program exited with code 3")).toBeNull();
+    // A stop short of the end has no status line saying the same.
+    rerender(<Controls {...props({ stopReason: "reached line 43", compact: true })} />);
+    expect(screen.queryByText("reached line 43")).not.toBeNull();
+  });
+
+  // A live region that arrives with its words already in it often goes
+  // unsaid, so the node is there first, empty, and a stop changes its text.
+  it("keeps one status for the stop line, empty until a stop has words", () => {
+    const { rerender } = render(<Controls {...props()} />);
+    const line = screen.getByRole("status");
+    expect(line.textContent).toBe("");
+    rerender(<Controls {...props({ stopReason: "reached line 43" })} />);
+    expect(screen.getByRole("status")).toBe(line);
+    expect(line.textContent).toBe("reached line 43");
+    // The hub takes the words away at the next step: nothing to say.
+    rerender(<Controls {...props()} />);
+    expect(screen.getByRole("status")).toBe(line);
+    expect(line.textContent).toBe("");
+    // An error's alert says more, and the status keeps its place for later.
+    rerender(<Controls {...props({ stopReason: "reached line 43", error: "memory fault" })} />);
+    expect(screen.getByRole("status")).toBe(line);
+    expect(line.textContent).toBe("");
+  });
+
+  // A repeat comes from the hub with a no-break space flipped on its end,
+  // and the line is empty while the run to it goes.
+  it("says a repeated stop again, and nothing again on a re-render", () => {
+    const stop = "returned to fact at line 27";
+    const { rerender } = render(<Controls {...props({ stopReason: stop })} />);
+    const line = screen.getByRole("status");
+    const changes = new MutationObserver(() => {});
+    changes.observe(line, { childList: true, characterData: true, subtree: true });
+    rerender(<Controls {...props({ stopReason: stop, canStepBack: false })} />);
+    expect(changes.takeRecords()).toEqual([]);
+    rerender(<Controls {...props({ isRunning: true })} />);
+    expect(line.textContent).toBe("");
+    rerender(<Controls {...props({ stopReason: `${stop}\u00a0` })} />);
+    expect(line.textContent).toBe(`${stop}\u00a0`);
+    expect(changes.takeRecords().length).toBeGreaterThan(0);
+    changes.disconnect();
+  });
+
+  // The phone's status line sits above this row and says it first.
+  it("leaves a read's wait to the phone's status line", () => {
+    const stopped = { stopReason: "waiting for input", blocked: true };
+    const { rerender } = render(<Controls {...props(stopped)} />);
+    expect(screen.getByRole("status").textContent).toBe("waiting for input");
+    rerender(<Controls {...props({ ...stopped, compact: true })} />);
+    expect(screen.getByRole("status").textContent).toBe("");
   });
 });

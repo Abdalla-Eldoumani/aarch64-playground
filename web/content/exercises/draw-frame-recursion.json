@@ -1,0 +1,30 @@
+{
+  "title": "Draw the frame: a recursive call",
+  "slug": "draw-frame-recursion",
+  "order": 141,
+  "lastUpdated": "2026-11-01",
+  "topic": "functions",
+  "difficulty": "challenge",
+  "variant": "frame",
+  "prompt": "The program is paused two calls deep in `sum_to`: `main` called `sum_to(4)`, which called `sum_to(3)`. Draw the running call's frame.\n\nEvery call to `sum_to` builds a frame of its own with the same layout, and fp points at the frame of the call that is running. Three frames are on the stack at the pause; draw the newest one, in bytes from its fp.\n\n## What is checked\n\n- the frame's size in bytes\n- the offsets from fp of `n_s` and `part_s`\n- the offsets from fp of the saved fp and the saved lr\n\nCheck runs the program to the pause and compares each number with the frame the emulator draws there. A wrong number shows a hint, never the answer.",
+  "program": "// Add 1 + 2 + ... + n with a function that calls itself.\n\ndefine(fp, x29)\ndefine(lr, x30)\n\ndefine(n_r, w19)\n\nn_size = 4                                      // int\npart_size = 8                                   // long\n\nn_s = 16\npart_s = (n_s + n_size + 7) & -8                // a long starts on a multiple of 8\nalloc = -(part_s + part_size) & -16\ndealloc = -alloc\n\n.data\nfmt_out:    .string \"sum to %d = %ld\\n\"\n\n.text\n\n// sum_to(w0 = n) -> x0 = 1 + 2 + ... + n\n        .balign 4\n        .global sum_to\nsum_to:\n        stp     fp, lr, [sp, alloc]!\n        mov     fp, sp\n\n        str     w0, [fp, n_s]                   // n has to outlive the call below\n        str     xzr, [fp, part_s]               // nothing added yet\n        cmp     w0, 1\n        b.le    st_base                         // sum_to(1) is 1\n\n        sub     w0, w0, 1\n        bl      sum_to                          // x0 = sum_to(n - 1)\n        str     x0, [fp, part_s]\n        ldrsw   x9, [fp, n_s]\n        ldr     x10, [fp, part_s]\n        add     x0, x10, x9                     // n + sum_to(n - 1)\n        b       st_done\nst_base:\n        ldrsw   x0, [fp, n_s]                   // n itself\nst_done:\n        ldp     fp, lr, [sp], dealloc\n        ret\n\n        .balign 4\n        .global main\nmain:\n        stp     fp, lr, [sp, -16]!\n        mov     fp, sp\n\n        mov     n_r, 4\n        mov     w0, n_r\n        bl      sum_to                          // x0 = sum_to(4)\n\n        mov     x2, x0\n        ldr     x0, =fmt_out\n        mov     w1, n_r\n        bl      printf\n\n        mov     w0, 0\n        ldp     fp, lr, [sp], 16\n        ret\n",
+  "pause": {
+    "line": 30,
+    "hit": 2
+  },
+  "slots": [
+    {
+      "name": "n_s",
+      "hint": "n_s is given as a plain number in the program, and it is the same in every call."
+    },
+    {
+      "name": "part_s",
+      "hint": "Work out (n_s + n_size + 7) & -8 with n_s = 16 and n_size = 4."
+    }
+  ],
+  "hints": {
+    "size": "Every call to sum_to makes the same frame. Add up to the end of part_s (part_s + part_size), then round up to a multiple of 16.",
+    "savedFp": "The running call's stp put its caller's fp at its own new sp, and mov fp, sp points fp there.",
+    "savedLr": "In every call's frame the saved lr comes right after the saved fp, as the stp stores them."
+  }
+}

@@ -306,7 +306,8 @@ describe("gdb-lite's reads", () => {
 
   it("delegates the machine reads it does not interpret", async () => {
     const { hub, ctx } = setup({ pc: 0x400020 });
-    hub.getMemory = vi.fn(() => new Uint8Array([1, 2]));
+    // The machine's own read: the panels' cache answers zeros until it lands.
+    hub.readMemory = vi.fn(async () => new Uint8Array([1, 2]));
     hub.resolveLabel = vi.fn(async () => 0x420000);
     await ctx.setBreakpoint(0x400010);
     await ctx.clearBreakpoint(0x400010);

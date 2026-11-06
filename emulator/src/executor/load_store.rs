@@ -89,7 +89,9 @@ pub(super) fn exec_ldst(
                 // Q is a SIMD&FP width; the integer decode never spells it.
                 MemSize::Q => return Err(EmuError::UnknownInstruction(0)),
             };
-            regs.write_gpr(rt, true, value);
+            // Every load but ldr x is to a w register (the value already
+            // fits): the register's width says so.
+            regs.write_gpr(rt, size == MemSize::X, value);
         }
         LdStOp::Str => {
             check_guest_address(address, crate::errors::MemAccess::Write)?;

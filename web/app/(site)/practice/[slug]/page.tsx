@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { loadAllExercises, loadExercise } from "@/lib/content/exercises";
 import { ExerciseView } from "@/components/practice/ExerciseView";
+import { FrameExerciseView } from "@/components/practice/FrameExerciseView";
 import { InteractiveExerciseView } from "@/components/practice/InteractiveExerciseView";
 import { exerciseDescription, exerciseNodes, jsonLdGraph, pageMetadata, toJsonLd } from "@/lib/content/seo";
 
@@ -55,6 +56,8 @@ export default async function ExercisePage({
       exercise.variant === "prediction" ||
       exercise.variant === "blanks" ? (
         <InteractiveExerciseView exercise={exercise} sheetNumber={sheetNumber} />
+      ) : exercise.variant === "frame" ? (
+        <FrameExerciseView exercise={exercise} sheetNumber={sheetNumber} />
       ) : (
         <ExerciseView exercise={exercise} sheetNumber={sheetNumber} />
       )}

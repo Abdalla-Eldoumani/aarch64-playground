@@ -7,7 +7,8 @@ export interface WalkthroughTarget {
    *  itself: the tab or menu that leads to it. */
   hint?: string;
   /** Controls the card must leave uncovered: a phone's run row sits right
-   *  above its tabs, and a view keeps controls in its header. */
+   *  above its tabs, and a view keeps controls in its header. Where no spot
+   *  clears them all, the first listed gives way first. */
   avoid?: string[];
   /** Lay a short card over the bar that holds the target, not beside it:
    *  everything under a phone's top bar is the student's code. */
@@ -276,7 +277,8 @@ export function placeOverBar(target: Box, cardWidth: number, view: { width: numb
  * card, unless that would cut the text and the target is big enough to hold
  * the whole card: then, and when no side can hold even a short card, the card
  * sits over the target, below its header. No placement covers a box in
- * `avoid`: above or below, the card steps past one in its way.
+ * `avoid`: above or below, the card steps past one in its way. Only when no
+ * stretch can hold even a short card does the first box listed give way.
  */
 export function placeCard(
   target: Box,
@@ -406,5 +408,8 @@ export function placeCard(
   }
 
   const h = Math.min(card.height, avoid.length ? regionBottom - regionTop : fullHeight);
+  // Cut this short the card's buttons fall out of it, and with them out it
+  // measures short enough to lift its own cap, on every other beat.
+  if (avoid.length && h < MIN_HEIGHT) return placeCard(target, card, view, avoid.slice(1));
   return at("over", width, h, h < card.height ? h : null);
 }

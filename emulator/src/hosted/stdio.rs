@@ -417,6 +417,7 @@ mod tests {
                 heap: &mut self.heap,
                 strtok_save: &mut self.strtok_save,
                 callbacks: &mut self.callbacks,
+                call: None,
             }
         }
         fn place_string(&mut self, addr: u64, s: &[u8]) {

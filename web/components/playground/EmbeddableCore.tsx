@@ -10,6 +10,7 @@ import {
 } from "react";
 import type { FullChromeBridge } from "@/components/playground/FullChromeSurface";
 import { useEmulator } from "@/lib/emulator/use-emulator";
+import type { LintWarning, StepGoal } from "@/lib/emulator/emulator-state";
 import { loadAutoSavedBuffer, useAutoSave, useRecentPrograms } from "@/lib/playground/auto-save";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
@@ -20,6 +21,8 @@ import { useWorkingSet } from "@/lib/playground/use-working-set";
 import type { Action } from "@/lib/playground/commands";
 import { buildPaletteCommands } from "@/lib/playground/palette-commands";
 import { Editor } from "@/components/playground/lazy-editor";
+import { FramesView } from "@/components/playground/lazy-frames";
+import { CallCard } from "@/components/playground/lazy-call-card";
 import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
@@ -115,12 +118,10 @@ export function EmbeddableCore({
     setFullReady(bridge !== null);
   }, []);
   const [source, setSource] = useState(startSource ?? "");
-  // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings,
-  // refreshed shortly after the student stops typing. Warnings, never errors:
-  // assembling stays available regardless.
-  const [lintWarnings, setLintWarnings] = useState<
-    Array<{ line: number; message: string }>
-  >([]);
+  // Advisory pre-assembly lint: frame-balance and m4-hygiene warnings and the
+  // frame check, refreshed shortly after the student stops typing. Warnings,
+  // never errors: assembling stays available regardless.
+  const [lintWarnings, setLintWarnings] = useState<LintWarning[]>([]);
   const [argsText, setArgsText] = useState(startArgs ?? "");
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
@@ -343,15 +344,17 @@ export function EmbeddableCore({
   // over empty memory. Same gate, so the first press assembles, re-seeds, and
   // then advances one word. A step on a finished program restarts it from the
   // top, exactly as Run does.
-  const stepEmbed = useCallback(async () => {
-    if (embedAssemblingRef.current) return;
+  const freshEmbed = useCallback(async () => {
+    if (embedAssemblingRef.current) return false;
     const stale =
       emu.instructions.length === 0 ||
       lastRunSourceRef.current !== runKey ||
       emu.isHalted;
-    if (stale && !(await assembleEmbed())) return;
-    emu.step();
+    return !stale || (await assembleEmbed());
   }, [emu, runKey, assembleEmbed]);
+  const stepEmbed = useCallback(async () => {
+    if (await freshEmbed()) emu.step();
+  }, [emu, freshEmbed]);
 
   // Back cannot pass a blocked read (the machine just re-blocks), so while
   // stdin is awaited it no-ops. One guard, two callers: the imperative handle
@@ -385,6 +388,16 @@ export function EmbeddableCore({
     if (caretLine == null) toast.show("put the caret on a line in the editor, then press F9");
     else emu.toggleBreakpoint(caretLine);
   }, [caretLine, emu, toast]);
+  // Step over, step out and run to cursor. The embed's cold or finished
+  // machine assembles first, as its step does; full chrome's wait for one.
+  const runUntil = useCallback(
+    async (goal: StepGoal) => {
+      const target = goal === "cursor" ? caretLine : goal;
+      if (target == null) toast.show("put the caret on a line in main.asm first");
+      else if (chrome === "full" || (await freshEmbed())) void emuRef.current.runUntil(target);
+    },
+    [caretLine, chrome, freshEmbed, toast],
+  );
 
   // The command Action[] is built from the state that lives here (source,
   // launch mode, hub) and surfaced through the handle so a host-rendered
@@ -403,6 +416,7 @@ export function EmbeddableCore({
         assemble: () => void assembleWithHistory(),
         step: () => emu.step(),
         stepBack: () => emu.stepBack(),
+        runUntil: (goal) => void runUntil(goal),
         run: () => runProgram(),
         pause: () => emu.pause(),
         reset: () => resetMachine(),
@@ -419,7 +433,7 @@ export function EmbeddableCore({
         openConverter: () => fullRef.current?.openConverter(),
         toggleTheme: () => onToggleTheme?.(),
       }),
-    [emu, assembleWithHistory, runProgram, resetMachine, source, caretLine, toggleBreakpointAtCaret, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
+    [emu, assembleWithHistory, runProgram, resetMachine, source, caretLine, toggleBreakpointAtCaret, runUntil, toast, onOpenShareDialog, onOpenShortcutsHelp, onToggleTheme],
   );
 
   // Latest-value refs so the imperative handle stays a stable object while
@@ -436,6 +450,7 @@ export function EmbeddableCore({
   const loadProgramRef = useRef(loadProgram);
   const buildCommandsRef = useRef(buildCommands);
   const toggleBreakpointRef = useRef(toggleBreakpointAtCaret);
+  const runUntilRef = useRef(runUntil);
   useEffect(() => {
     emuRef.current = emu;
     sourceRef.current = source;
@@ -450,7 +465,8 @@ export function EmbeddableCore({
     loadProgramRef.current = loadProgram;
     buildCommandsRef.current = buildCommands;
     toggleBreakpointRef.current = toggleBreakpointAtCaret;
-  }, [emu, source, extraFiles, argsText, cursor, checks, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret]);
+    runUntilRef.current = runUntil;
+  }, [emu, source, extraFiles, argsText, cursor, checks, onStateChange, onSourceChange, assembleWithHistory, runEmbed, loadProgram, buildCommands, toggleBreakpointAtCaret, runUntil]);
 
   // The buffer itself, which onStateChange deliberately does not mirror (its
   // ten fields are the machine's outcome, not the editor's). Fires on mount
@@ -491,8 +507,7 @@ export function EmbeddableCore({
   // Check grades a run of the current source, never what a stale run left
   // behind, which could pass code the student already changed. It uses the
   // authored args, not the box's: the expected output was written for them.
-  // The emulator bounds the run; the 10 s poll reads emuRef, since the hub is
-  // a new object every render, and is only a safety net.
+  // The emulator bounds the run; the 10 s cap on the poll is only a safety net.
   const checkKey = `${startArgs ?? ""}\n${source}`;
   const checkEmbed = useCallback(async () => {
     // A run that stopped short of its end (parked on a read, paused, faulted)
@@ -518,9 +533,14 @@ export function EmbeddableCore({
       emu.closeStdin();
       emu.run();
       const startedAt = Date.now();
+      // emuRef (the hub is a new object every render) shows the run a render
+      // late: with no step taken and no error it is still the unrun machine.
       do {
         await new Promise<void>((resolve) => setTimeout(resolve, 16));
-      } while (emuRef.current.isRunning && Date.now() - startedAt < 10_000);
+      } while (
+        (emuRef.current.isRunning || (emuRef.current.stepCount === 0 && emuRef.current.error == null)) &&
+        Date.now() - startedAt < 10_000
+      );
     }
     onCheck?.(currentState());
   }, [emu, source, startArgs, checkKey, onCheck, currentState, applySeeds]);
@@ -554,6 +574,9 @@ export function EmbeddableCore({
         if (!emuRef.current.blocked) emuRef.current.step();
       },
       stepBack: handleStepBack,
+      runUntil: (goal: StepGoal) => {
+        if (!emuRef.current.blocked) void runUntilRef.current(goal);
+      },
       reset: () => resetMachine(),
       notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
@@ -675,6 +698,8 @@ export function EmbeddableCore({
         onReset={emu.reset}
         onStep={() => void stepEmbed()}
         onStepBack={handleStepBack}
+        onRunUntil={(goal) => void runUntil(goal)}
+        stopReason={emu.stopReason}
         onCheck={() => void checkEmbed()}
         runStatus={{
           programLoaded: emu.programLoaded,
@@ -683,7 +708,8 @@ export function EmbeddableCore({
           blocked: emu.blocked,
           exitCode: emu.exitCode,
           stepCount: emu.stepCount,
-          failed: emu.error != null,
+          failed: emu.error != null && !emu.paused,
+          paused: emu.paused,
           registers: emu.registers,
           sp: emu.sp,
           changedRegs: emu.changedRegs,
@@ -723,9 +749,30 @@ export function EmbeddableCore({
             sp={emu.sp}
             pc={emu.pc}
             nzcv={emu.nzcv}
+            frames={emu.frames}
+            frameLayout={emu.frameLayout}
             running={emu.isRunning}
             headingLevel={registerHeadingLevel}
             holdScroll={holdScroll}
+          />
+        }
+        stack={
+          <FramesView
+            frames={emu.frames}
+            frameLayout={emu.frameLayout}
+            registers={emu.registers}
+            sp={emu.sp}
+            pc={emu.pc}
+            getMemory={emu.getMemory}
+            readMemory={emu.readMemory}
+            dirtyAddrs={emu.dirtyAddrs}
+            memoryRegions={emu.memoryRegions}
+            lineLabel={emu.lineLabel}
+            programLines={emu.programLines}
+            noteRows={emu.noteRows}
+            errorCard={emu.errorCard}
+            programLoaded={emu.programLoaded}
+            running={emu.isRunning}
           />
         }
         console={
@@ -733,6 +780,7 @@ export function EmbeddableCore({
             stdout={emu.stdout}
             stderr={emu.stderr}
             notes={emu.notes}
+            call={emu.hostedMode && <CallCard {...emu} />}
             blocked={emu.blocked}
             exitCode={emu.exitCode}
             vfsFiles={emu.vfsFiles}
@@ -785,6 +833,7 @@ export function EmbeddableCore({
         onOpenShortcutsHelp={onOpenShortcutsHelp}
         onOpenShareDialog={onOpenShareDialog}
         registerBridge={registerFullChrome}
+        onRunUntil={(goal) => void runUntil(goal)}
       />
     );
   }

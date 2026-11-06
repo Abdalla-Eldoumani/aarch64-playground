@@ -5,11 +5,14 @@ import {
   loadMemoryMap,
   type EmulatorInstance,
 } from "@/lib/emulator/emulator";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { runChunked } from "@/lib/emulator/run-loop";
 import {
   emptyStateSnapshot,
   type AssembleResultPayload,
+  type RunGoal,
   type RunResultPayload,
   type StateSnapshot,
   type StepResultPayload,
@@ -31,8 +34,11 @@ export interface EmulatorBackend {
   ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }>;
   step(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }>;
   stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }>;
+  /** With `until`, the run also stops where the goal says (step over, step
+   *  out, run to cursor). */
   runUntilBreak(
     maxSteps: number,
+    until?: RunGoal,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }>;
   pause(): Promise<void>;
   reset(): Promise<StateSnapshot>;
@@ -48,7 +54,7 @@ export interface EmulatorBackend {
   /** Whether every page in the range is mapped (watch fault display). */
   isRangeMapped(addr: number, len: number): Promise<boolean>;
   /** Pre-assembly structural lint warnings (advisory, line + remedy). */
-  lint(source: string): Promise<Array<{ line: number; message: string }>>;
+  lint(source: string): Promise<LintWarning[]>;
   setBreakpoint(addr: number): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Remove every breakpoint at once (program switch / re-assemble). */
@@ -70,6 +76,9 @@ export interface EmulatorBackend {
   /** The emulator's address bands, read once from the wasm module; empty
    *  on a build that predates the export. */
   memoryMap(): Promise<MemoryRegion[]>;
+  /** The last assemble's frame layout (lib/emulator/frame-data); null on
+   *  a wasm build that predates it. */
+  frameLayout(): Promise<FrameLayoutPayload | null>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
 }
@@ -147,13 +156,14 @@ class MainThreadBackend implements EmulatorBackend {
 
   async runUntilBreak(
     maxSteps: number,
+    until?: RunGoal,
   ): Promise<{ runResult: RunResultPayload; snapshot: StateSnapshot }> {
     const emu = this.requireEmu();
     this.pauseRequested = false;
     const runResult = await runChunked(
       {
         // The typed wrapper already coerced the wasm record.
-        runChunk: (steps) => emu.runUntilBreak(steps),
+        runChunk: (steps) => emu.runUntilBreak(steps, until),
         isBlocked: () => emu.isBlocked(),
         isPauseRequested: () => this.pauseRequested,
         currentEpoch: () => this.runEpoch,
@@ -221,7 +231,7 @@ class MainThreadBackend implements EmulatorBackend {
     return this.requireEmu().isRangeMapped(addr, len);
   }
 
-  async lint(source: string): Promise<Array<{ line: number; message: string }>> {
+  async lint(source: string): Promise<LintWarning[]> {
     return this.requireEmu().lintSource(source);
   }
 
@@ -285,6 +295,10 @@ class MainThreadBackend implements EmulatorBackend {
     return this.regions;
   }
 
+  async frameLayout(): Promise<FrameLayoutPayload | null> {
+    return this.requireEmu().frameLayout();
+  }
+
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void {
     this.listeners.add(listener);
     return () => {
@@ -309,6 +323,8 @@ class MainThreadBackend implements EmulatorBackend {
     const stdoutSeen = this.emu.stdoutSeen();
     const stderrSeen = this.emu.stderrSeen();
     const clobberNotes = this.emu.takeClobberNotes();
+    const frames = this.emu.frames();
+    const callCard = this.emu.callCard();
     return {
       frame: this.frame,
       registers: regs.gpr,
@@ -328,6 +344,8 @@ class MainThreadBackend implements EmulatorBackend {
       ...(stdoutSeen != null ? { stdoutSeen } : {}),
       ...(stderrSeen != null ? { stderrSeen } : {}),
       ...(clobberNotes.length ? { clobberNotes } : {}),
+      ...(frames ? { frames } : {}),
+      ...(callCard ? { callCard } : {}),
       vfsFiles: this.emu.listVfsFiles(),
       savedStates: this.emu.listStates(),
       wantsTerminal: this.emu.wantsTerminal(),

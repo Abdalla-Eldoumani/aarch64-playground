@@ -72,6 +72,15 @@ describe("practice routes", () => {
     expect(screen.getByText(`exercise-index:${expectedCount}`)).toBeTruthy();
   });
 
+  it("links the intro's frame drawing sentence to the frame side's heading", () => {
+    render(<PracticePage />);
+    const link = screen.getByRole("link", {
+      name: "In a frame drawing, you fill in a paused function's stack frame and the emulator checks each field.",
+    });
+    // The id ExerciseIndex gives the Frame drawings heading.
+    expect(link.getAttribute("href")).toBe("#frame-drawings");
+  });
+
   it("renders the view for a known slug", async () => {
     const element = await ExercisePage({
       params: Promise.resolve({ slug: SEEDED_SLUGS[0] }),

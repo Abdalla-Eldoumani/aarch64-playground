@@ -10,8 +10,10 @@ export interface RunStatusProps {
   blocked: boolean;
   exitCode: number | null;
   stepCount: number;
-  /** The machine or the assembler reported an error. */
+  /** The machine or the assembler reported an error; a pause is not one. */
   failed: boolean;
+  /** A long run stopped at its 1,000,000-step budget and can go on. */
+  paused: boolean;
   /** x0-x30 as the hub's `0x...` text. */
   registers: string[];
   sp: string;
@@ -29,6 +31,7 @@ function statusText(p: RunStatusProps): string {
   if (p.blocked) return "waiting for input";
   if (p.isRunning) return "running";
   const steps = formatSteps(p.stepCount);
+  if (p.paused) return `paused · ${steps}`;
   if (p.isHalted) return p.exitCode == null ? `finished · ${steps}` : `finished · exit ${p.exitCode} · ${steps}`;
   if (!p.programLoaded) return "not assembled";
   return p.stepCount > 0 ? steps : "ready to step";

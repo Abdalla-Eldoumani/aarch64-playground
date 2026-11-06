@@ -18,11 +18,12 @@ describe("StackAlignment", () => {
     expect(screen.getByText("sp % 16 = 0")).toBeTruthy();
     expect(screen.getByText("aligned")).toBeTruthy();
     expect(screen.queryByText(MISALIGNED_NOTE)).toBeNull();
-    // before any move the amber marker sits on the caller's-frame band
+    // before any move the sp marker sits on the caller's-frame band
     expect(
-      screen.getByLabelText("caller's frame, sp rests at its bottom edge"),
-    ).toBeTruthy();
-    expect(screen.getByText("<- sp")).toBeTruthy();
+      screen
+        .getByLabelText("caller's frame, sp rests at its bottom edge")
+        .textContent,
+    ).toContain("← sp");
   });
 
   it("the stp pair preset drops sp 16 bytes and stays aligned", () => {
@@ -33,7 +34,8 @@ describe("StackAlignment", () => {
     expect(screen.getByText("aligned")).toBeTruthy();
     // the marker followed sp onto the newly taken cell
     const cell = screen.getByLabelText("0x7ffffef0, inside the new frame");
-    expect(cell.textContent).toContain("<- sp");
+    expect(cell.textContent).toContain("← sp");
+    expect(screen.getAllByText("sp")).toHaveLength(1);
   });
 
   it("sub sp, sp, 24 lands on an odd multiple of 8 and flips the verdict", () => {
@@ -102,9 +104,8 @@ describe("StackAlignment", () => {
     expect(live?.textContent).toContain("sp = 0x7fffff00");
   });
 
-  it("marks sp in amber and tints the verdict from tokens, never color alone", () => {
+  it("tints the verdict from tokens, never color alone", () => {
     const { container } = render(<StackAlignment />);
-    expect(container.innerHTML).toContain("var(--amber)");
     expect(container.innerHTML).toContain("var(--success)");
     fireEvent.click(screen.getByRole("button", { name: SUB24 }));
     expect(container.innerHTML).toContain("var(--danger)");

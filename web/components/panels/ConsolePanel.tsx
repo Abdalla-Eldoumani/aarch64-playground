@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, type ReactNode } from "react";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
 import { stripEscapeSequences } from "@/lib/terminal/input-state";
@@ -11,6 +11,8 @@ interface ConsolePanelProps {
   stderr: string;
   /** The machine's plain-language notes about the run, under the output. */
   notes?: string[];
+  /** What the printf or scanf call the last step ran did, last in the box. */
+  call?: ReactNode;
   blocked: boolean;
   /** A terminal program owns the pane's input: its reads are answered by
    *  keystrokes in the terminal, so this console's stdin box would send
@@ -61,6 +63,7 @@ export function ConsolePanel({
   stdout,
   stderr,
   notes = NO_NOTES,
+  call,
   blocked,
   exitCode,
   vfsFiles,
@@ -76,6 +79,7 @@ export function ConsolePanel({
 }: ConsolePanelProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoScrollRef = useRef(true);
+  const callRef = useRef<HTMLDivElement | null>(null);
   const stdinRef = useRef<HTMLInputElement | null>(null);
 
   // The machine just stalled in scanf/read: put the caret where the answer
@@ -105,20 +109,34 @@ export function ConsolePanel({
   }, []);
 
   // Auto-scroll on new output unless the user has scrolled up.
-  useEffect(
-    () =>
-      holdScroll(() => {
-        const el = scrollRef.current;
-        if (el && autoScrollRef.current) el.scrollTop = el.scrollHeight;
-      }),
-    [stdout, stderr, notes, holdScroll],
-  );
+  const follow = useEffectEvent(() => {
+    const el = scrollRef.current;
+    if (el && autoScrollRef.current) el.scrollTop = followTo(el, callRef.current);
+  });
+  useEffect(() => holdScroll(() => follow()), [stdout, stderr, notes, holdScroll]);
 
+  // A call card coming or going moves where the output ends, with no new
+  // output when scanf only stored.
+  useEffect(() => {
+    const call = callRef.current;
+    if (!call || typeof ResizeObserver === "undefined") return;
+    let cancel = () => {};
+    const observer = new ResizeObserver(() => {
+      cancel();
+      cancel = holdScroll(() => follow());
+    });
+    observer.observe(call);
+    return () => {
+      observer.disconnect();
+      cancel();
+    };
+  }, [holdScroll]);
+
+  // Still following at or past where following would scroll to.
   const handleScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 4;
-    autoScrollRef.current = atBottom;
+    autoScrollRef.current = el.scrollTop > followTo(el, callRef.current) - 4;
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -271,6 +289,7 @@ export function ConsolePanel({
             </p>
           </div>
         )}
+        <div ref={callRef}>{call}</div>
       </div>
       {vfsFiles.length > 0 && (
         <div className="px-2 py-1 border-t border-[var(--border)] bg-[var(--bg-sunken)] text-[12px] text-[var(--text-secondary)]">
@@ -329,4 +348,14 @@ export function ConsolePanel({
       </form>
     </div>
   );
+}
+
+/**
+ * Where following the output scrolls the box to: its end, or the top of a
+ * call card taller than the box, so the card is read from its title.
+ */
+function followTo(box: HTMLElement, call: HTMLElement | null): number {
+  const end = box.scrollHeight - box.clientHeight;
+  if (!call || call.offsetHeight <= box.clientHeight) return end;
+  return Math.min(end, box.scrollTop + call.getBoundingClientRect().top - box.getBoundingClientRect().top);
 }

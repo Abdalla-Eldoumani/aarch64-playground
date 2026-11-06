@@ -6,7 +6,8 @@ import path from "node:path";
  * Rules in globals.css that jsdom cannot apply, read from the real file:
  * every animation waits for no-preference, nothing animated is left unused,
  * Monaco's own fades stop under reduced motion, a lesson frame fits a phone on
- * its side, and a control with no focus style of its own gets the cyan ring.
+ * its side, a single-pane frame's stop line leaves a finished program to the
+ * status line, and a control with no focus style of its own gets the cyan ring.
  */
 
 // Comments out and line endings normalized, so prose about a rule never
@@ -92,11 +93,26 @@ describe("the lesson frame on a short screen", () => {
     );
   });
 
+  it("shows one pane at a time under 500px tall, under a mouse too, so standard input and send stay whole", () => {
+    const onePane = blocks("@media (max-width: 639.98px), (pointer: coarse), (max-height: 499.98px)").join("\n");
+    expect(onePane).toMatch(/@container \(max-width: 55\.98rem\)/);
+    expect(onePane).toMatch(/\.embed-grid\s*\{\s*grid-template-areas: "pane";/);
+  });
+
   it("keeps the portrait phone rule as it was", () => {
     const phone = blocks("@media (max-width: 639.98px) {").join("\n");
     expect(phone).toMatch(
       /\.embed-frame\s*\{\s*height: min\(72vh, 560px\);\s*height: min\(72svh, 560px\);\s*min-height: 420px;\s*\}/,
     );
+  });
+});
+
+describe("the single-pane frame in globals.css", () => {
+  it("hides what the status line says, only where that line shows", () => {
+    const [single] = blocks("@container (max-width: 55.98rem)");
+    expect(single).toMatch(/\.embed-status\s*\{\s*display: block;/);
+    expect(single).toMatch(/\.embed-said\s*\{\s*display: none;/);
+    expect(css.replace(single, "")).not.toContain(".embed-said");
   });
 });
 

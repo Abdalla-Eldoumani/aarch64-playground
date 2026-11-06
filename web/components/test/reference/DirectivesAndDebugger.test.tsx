@@ -21,6 +21,7 @@ const DEPS: PaletteDeps = {
   assemble: noop,
   step: noop,
   stepBack: noop,
+  runUntil: noop,
   run: noop,
   pause: noop,
   reset: noop,
@@ -68,6 +69,9 @@ describe("DirectivesAndDebugger", () => {
       breakpoint: "F9",
       step: "F10",
       back: "Shift+F10",
+      "step over": "Ctrl+F10",
+      "step out": "Ctrl+Shift+F10",
+      "run to cursor": "Ctrl+F9",
       reset: "Shift+F5",
     };
     expect(Object.fromEntries(DEBUG_CONTROLS.map((c) => [c.control, c.key]))).toEqual(expected);
@@ -77,7 +81,7 @@ describe("DirectivesAndDebugger", () => {
   });
 
   it("lists only watches the watch grammar reads", () => {
-    expect(WATCH_FORMS.map((w) => w.form)).toEqual(["w19", "[fp, 16]", "[fp, sum_s]", "sum_s[1]", "nums[2]", "*x21"]);
+    expect(WATCH_FORMS.map((w) => w.form)).toEqual(["w19", "[fp, 16]", "[fp, sum_s]", "nums[2]", "*x21"]);
     for (const { form } of WATCH_FORMS) {
       expect(evaluateWatch(form, CTX), form).not.toHaveProperty("error");
     }

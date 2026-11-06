@@ -186,6 +186,52 @@ describe("the emulator worker", () => {
     expect(reply.value.runResult.cancelled).toBeUndefined();
   });
 
+  it("serves no frames to a wasm build that predates them", async () => {
+    await send({ id: 1, kind: "assemble", source: "ret", args: [] });
+    const snapshot = (await send({ id: 2, kind: "getSnapshot" })).value as object;
+    expect(snapshot).not.toHaveProperty("frames");
+    expect(await send({ id: 3, kind: "frameLayout" })).toMatchObject({ kind: "ok", value: null });
+  });
+
+  it("passes the frames numbers and the layout on as plain arrays", async () => {
+    const proto = wasm.FakeEmulator.prototype as unknown as Record<string, unknown>;
+    proto.frames = () => new Float64Array([7, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+    proto.frame_layout = () => new Float64Array([0]);
+    proto.frame_names = () => ["main"];
+    try {
+      await send({ id: 1, kind: "assemble", source: "ret", args: [] });
+      const snapshot = (await send({ id: 2, kind: "getSnapshot" })).value as { frames?: number[] };
+      expect(snapshot.frames).toEqual([7, 0, 0, 0, 1, 0, 0, 0, 0, 0]);
+      expect((await send({ id: 3, kind: "frameLayout" })).value).toEqual({ numbers: [0], names: ["main"] });
+    } finally {
+      delete proto.frames;
+      delete proto.frame_layout;
+      delete proto.frame_names;
+    }
+  });
+
+  it.each([
+    ["step over or out", { depth: 2 }, [2, -1]],
+    ["run to cursor", { pc: 0x400010 }, [-1, 0x400010]],
+  ] as const)("runs a %s goal through run_to and stops when it is met", async (_name, until, args) => {
+    const proto = wasm.FakeEmulator.prototype as unknown as Record<string, unknown>;
+    const calls: number[][] = [];
+    // Met on the third chunk: the loop must keep going until then, no further.
+    proto.run_to = (steps: number, depth: number, pc: number) => {
+      calls.push([depth, pc]);
+      return { pc: 0x400010n, halted: false, steps_executed: steps, hit_breakpoint: false, reached: calls.length === 3 };
+    };
+    try {
+      await send({ id: 1, kind: "assemble", source: "ret", args: [] });
+      const reply = await send({ id: 2, kind: "runUntilBreak", maxSteps: 1_000_000, until });
+      const { runResult } = reply.value as { runResult: { reached: boolean; bad_return: boolean; steps_executed: number } };
+      expect(calls).toEqual([args, args, args]);
+      expect(runResult).toMatchObject({ reached: true, bad_return: false, steps_executed: 30_000 });
+    } finally {
+      delete proto.run_to;
+    }
+  });
+
   it("answers an unknown request kind with an error naming it", async () => {
     const reply = await send({ id: 9, kind: "defragment" } as unknown as Request);
     expect(reply.kind).toBe("error");

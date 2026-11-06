@@ -15,7 +15,13 @@ steps in [Run it locally](#run-it-locally).
 - Write or paste a program, assemble it, and run it. `printf`, `scanf`,
   command-line arguments, and files work the way they do on the course server.
 - Step one instruction at a time, step back, and set breakpoints while the
-  registers, the stack, and memory update.
+  registers, the stack, and memory update. Step over a call, step out of a
+  function, or run to the line the cursor is on.
+- Watch each function's stack frame being built, used, and torn down, drawn
+  the way the course draws it: one box per saved register and local, with
+  its offset from `fp`. Under the frames, the playground explains a write
+  over a saved `fp` or `lr`, a `ret` that goes back to no caller, and a
+  caller reading one of `x19` to `x28` after a call left it changed.
 - Use a terminal pane that runs the course workflow (`m4`, `gcc`, `./program`)
   on files kept in the browser.
 - Write checks for your own program in the playground's **checks** tab. Each
@@ -29,7 +35,8 @@ steps in [Run it locally](#run-it-locally).
   exercises that practice it.
 - Practice with 68 coding exercises, checked by running your program on hidden
   inputs, and 68 sets of quizzes, fill-in-the-blank questions, and output
-  predictions.
+  predictions. Three frame drawings ask you to fill in a paused function's
+  stack frame.
 - Look up every instruction the emulator accepts, with its syntax, an example,
   the C it matches, and the flags it sets. The list starts with the ones the
   course uses, and you can search it in plain words, such as `multiply` or
@@ -81,15 +88,15 @@ steps in [Run it locally](#run-it-locally).
 
 You need:
 
-- Rust 1.96 or newer, installed through [rustup](https://rustup.rs/)
-- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/) 0.14
+- Rust 1.99 or newer, installed through [rustup](https://rustup.rs/)
+- [wasm-pack](https://wasm-bindgen.github.io/wasm-pack/) 0.15
 - [Node.js](https://nodejs.org/) 24 or newer
 
 From the repository root:
 
 ```bash
 rustup target add wasm32-unknown-unknown
-cargo install --locked --version 0.14.0 wasm-pack
+cargo install --locked --version 0.15.0 wasm-pack
 wasm-pack build emulator --target web --out-dir ../web/lib/wasm
 wasm-pack build emulator --target nodejs --out-dir ../web/lib/wasm-node
 cd web

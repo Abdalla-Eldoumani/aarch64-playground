@@ -1,11 +1,14 @@
+import { useLayoutEffect } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderHook, act, waitFor, cleanup } from "@testing-library/react";
 import type { EmulatorBackend } from "@/lib/emulator/backend";
+import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { combineSources } from "@/lib/playground/file-map";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type {
   AssembleResultPayload,
+  RunGoal,
   RunResultPayload,
   StateSnapshot,
   StepResultPayload,
@@ -152,6 +155,7 @@ interface BackendConfig {
   loadStateOk: boolean;
   deleteStateOk: boolean;
   memBytes: Uint8Array;
+  frameLayout: FrameLayoutPayload | null;
 }
 
 // Records every backend interaction so a test can assert the hook forwards
@@ -161,6 +165,8 @@ interface BackendCalls {
   step: number;
   stepBack: number;
   run: number[];
+  /** The goal beside each run, in the same order. */
+  until: Array<RunGoal | undefined>;
   reset: number;
   pause: number;
   clearConsole: number;
@@ -203,6 +209,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     loadStateOk: true,
     deleteStateOk: true,
     memBytes: new Uint8Array(4),
+    frameLayout: null,
     ...config,
   };
 
@@ -215,6 +222,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     step: 0,
     stepBack: 0,
     run: [],
+    until: [],
     reset: 0,
     pause: 0,
     clearConsole: 0,
@@ -257,6 +265,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     memoryMap() {
       return Promise.resolve(cfg.memoryRegions);
     },
+    frameLayout() {
+      return Promise.resolve(cfg.frameLayout);
+    },
     getMemory(addr, len) {
       calls.getMemory.push([addr, len]);
       return Promise.resolve(cfg.memBytes);
@@ -295,8 +306,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       };
       return Promise.resolve({ stepResult, snapshot: s });
     },
-    runUntilBreak(maxSteps) {
+    runUntilBreak(maxSteps, until) {
       calls.run.push(maxSteps);
+      calls.until.push(until);
       if (cfg.runThrows) return Promise.reject(new Error("run boom"));
       if (cfg.runDeferred) {
         return new Promise((resolve) => {
@@ -785,6 +797,243 @@ describe("useEmulator assemble", () => {
 });
 
 describe("useEmulator stepping and running", () => {
+  // HOSTED_SOURCE's main as one function (lines 9 to 13), and its frame
+  // record 16 bytes below the stack top.
+  const MAIN_ONLY = { numbers: [1, CODE_BASE, CODE_BASE + 20, 0, 16, 1, 0, 0], names: ["main"] };
+  const RECORD = 0x7ffffff0;
+
+  // main's ret on line 13 took an lr the store on line 10 overwrote at step
+  // 5, and the next fetch faulted there. The frames numbers: a header whose
+  // slots 5 to 7 hold that return and 10 to 16 the call it came from (main,
+  // with its lr hit), then main's one row with that hit.
+  it("puts the frames' card in place of a fault's guess, in the run row and the console", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0xffff0000, 0, 0, 5, CODE_BASE + 4,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const registers = Array<string>(31).fill("0x0000000000000000");
+    registers[30] = "0x0000000700000006";
+    const first = "memory fault: the program tried to read 0x0000000700000006, which no section covers.";
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: {
+        pc: 0x7_0000_0006,
+        halted: true,
+        steps_executed: 1,
+        hit_breakpoint: false,
+        error: `${first} The base register does not hold an address`,
+      },
+      runSnapshot: { frames, registers, pc: "0x0000000700000006", halted: true },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    const card =
+      "main's ret on line 13 jumped to 0x700000006 instead of going back to the C runtime, " +
+      "because line 10 in main overwrote the saved lr in main's frame at step 5.";
+    await waitFor(() => expect(result.current.error).toBe(`${first} ${card}`));
+    expect(result.current.notes).toEqual([card]);
+    expect(result.current.errorCard).toMatchObject({ text: card, cause: "overwritten" });
+  });
+
+  // The same return with nothing behind it in the frame (no store reached
+  // main's saved lr): the run row and the console say what the crate says.
+  it("keeps a fault's own words when the frame shows no cause", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0, 1, 0,
+      0, CODE_BASE, 0xffff0000, 0, 0, 0, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 0, 0, -1, -1,
+    ];
+    const error = "memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register does not hold an address";
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: { pc: 0, halted: true, steps_executed: 1, hit_breakpoint: false, error },
+      runSnapshot: { frames, pc: "0x0000000000000000", halted: true },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toBe(error));
+    expect(result.current.notes).toEqual([]);
+    expect(result.current.errorCard).toBeNull();
+  });
+
+  // main calls show on line 12 before saving lr (flags 1), so its ret on
+  // line 13 comes back to itself, the return address of that last call,
+  // until the ceiling. The run row quotes the call as code; the console's
+  // note reads as every other note does, with no backticks.
+  it("notes a card in the console without the marks around its code", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, CODE_BASE + 16, 1, 0,
+      0, CODE_BASE, 0xffff0000, 1, CODE_BASE + 16, 0, 0,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, 0, 4, 1, 0, 0, -1, -1, 0, 0, -1, -1,
+    ];
+    const ceiling = "stopped after 10 million steps, which is the playground's ceiling. The usual cause is a loop";
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: { pc: CODE_BASE + 16, halted: true, steps_executed: 1, hit_breakpoint: false, error: ceiling },
+      runSnapshot: { frames, pc: "0x0000000000400010", halted: true },
+    });
+    const { result } = await mountLoaded(fake);
+    const lines = HOSTED_SOURCE.split("\n");
+    lines[11] = "        bl      show";
+    await act(async () => {
+      await expect(result.current.assemble(lines.join("\n"))).resolves.toBe(true);
+    });
+    await act(async () => {
+      result.current.run();
+    });
+    const card =
+      "main's ret on line 13 went back into main instead of going back to the C runtime, because main " +
+      "called out with `bl show` on line 12 before saving lr, so lr still held that call's return address.";
+    await waitFor(() => expect(result.current.error).toBe(`${ceiling}\n${card}`));
+    expect(result.current.notes).toEqual([card.replaceAll("`", "")]);
+  });
+
+  // The same return, met by a run that paused at its million steps: the card
+  // goes under the pause, and the console stays quiet (a pause repeats).
+  it("puts the card under a run's pause without a console note", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0xffff0000, 0, 0, 5, CODE_BASE + 4,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+      runSnapshot: { frames },
+    });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(/\nmain's ret on line 13 jumped to 0x700000006 /));
+    expect(result.current.error).toMatch(/^paused after 1,000,000 steps without finishing\. /);
+    expect(result.current.notes).toEqual([]);
+  });
+
+  it("says a bad return's card under the first pause alone, until a new load", async () => {
+    const at = (step: number) => [
+      step, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0xffff0000, 0, 0, 5, CODE_BASE + 4,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const newLayout = () => ({ numbers: MAIN_ONLY.numbers, names: MAIN_ONLY.names });
+    const fake = makeBackend({
+      frameLayout: newLayout(),
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+      runSnapshot: { frames: at(1_000_000) },
+    });
+    const { result } = await mountAssembled(fake);
+    const withCard = /^paused after 1,000,000 steps without finishing\. [^\n]*\nmain's ret on line 13 /;
+    const alone = /^paused after 1,000,000 steps without finishing\. [^\n]*$/;
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(withCard));
+
+    fake.cfg.runSnapshot = { frames: at(2_000_000) };
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(alone));
+    expect(result.current.paused).toBe(true);
+    expect(result.current.errorCard).toMatchObject({ cause: "overwritten" });
+
+    // Every assemble hands over a new layout: the new load has not heard it.
+    fake.cfg.frameLayout = newLayout();
+    fake.cfg.runSnapshot = { frames: at(1_000_000) };
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(withCard));
+  });
+
+  // Drawn a frame after the run's end, the alert left the panes a frame to
+  // jump up and back, which WebKit reported as a ResizeObserver loop.
+  it("ends a paused run and shows its card in one commit", async () => {
+    const frames = [
+      7, 0, 0, 0, 0, 7, CODE_BASE + 16, 0x7_0000_0006, 1, 0,
+      0, CODE_BASE, 0xffff0000, 0, 0, 5, CODE_BASE + 4,
+      0, CODE_BASE, 0, 0xffff0000, RECORD + 16, RECORD, 0, RECORD, 0, 0, 0, 0, -1, -1, 5, CODE_BASE + 4, -1, -1,
+    ];
+    const fake = makeBackend({
+      frameLayout: MAIN_ONLY,
+      runDeferred: true,
+      runResult: {
+        pc: CODE_BASE,
+        halted: false,
+        steps_executed: 1_000_000,
+        hit_breakpoint: false,
+        error: null,
+        step_limit_reached: true,
+      },
+      runSnapshot: { frames },
+    });
+    h.backend = fake.backend;
+    const commits: Array<[boolean, string | null]> = [];
+    const { result } = renderHook(() => {
+      const hub = useEmulator();
+      useLayoutEffect(() => {
+        commits.push([hub.isRunning, hub.error]);
+      });
+      return hub;
+    });
+    await waitFor(() => expect(result.current.isLoaded).toBe(true));
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      void result.current.run();
+    });
+    expect(result.current.isRunning).toBe(true);
+    commits.length = 0;
+    await act(async () => {
+      fake.triggerRun();
+    });
+    await waitFor(() => expect(result.current.error).toMatch(/\nmain's ret on line 13 jumped to 0x700000006 /));
+    // No commit between the run's end and its alert.
+    const ended = commits.filter(([running]) => !running);
+    expect(ended.length).toBeGreaterThan(0);
+    for (const [, error] of ended) {
+      expect(error).toMatch(/^paused after 1,000,000 steps without finishing\. [^\n]*\nmain's ret on line 13 /);
+    }
+  });
+
+  // A row for x19 (code 19): the ret on line 13 left it, line 11 read it.
+  it("notes a caller reading x19 a call left changed, and hands the row to the frames view", async () => {
+    const fake = makeBackend({ frameLayout: MAIN_ONLY, runSnapshot: { clobberNotes: [19, 0, 13, 11] } });
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      result.current.run();
+    });
+    await waitFor(() => expect(result.current.notes).toHaveLength(1));
+    expect(result.current.notes[0]).toMatch(
+      /^Line 11 in main reads x19, but main changed it and its ret on line 13 did not put it back\. /,
+    );
+    expect(result.current.noteRows).toEqual([19, 0, 13, 11]);
+  });
+
   it("step advances the step counter and clears prior errors", async () => {
     const fake = makeBackend();
     const { result } = await mountAssembled(fake);
@@ -1062,6 +1311,328 @@ describe("useEmulator stepping and running", () => {
       capturedRun();
     });
     expect(fake.calls.run).toEqual([1_000_000]);
+  });
+
+  // main, one call folded out of the view, and one more: three calls deep.
+  // Two drawn rows (main and the innermost), all zero but where they sit.
+  const THREE_DEEP = [0, 0, 1, 0, 1, 0, 0, 0, 2, 0, ...Array(36).fill(0)];
+
+  it.each([
+    ["over", { depth: 3 }],
+    ["out", { depth: 2 }],
+  ] as const)("runs %s to a call depth read from the latest snapshot", async (target, until) => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: THREE_DEEP });
+    });
+    await act(async () => {
+      await result.current.runUntil(target);
+    });
+    expect(fake.calls.until).toEqual([until]);
+  });
+
+  it("finishes a library call, not the function, on a step out inside one", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: THREE_DEEP, externalCall: { name: "printf", callSitePc: CODE_BASE + 8, callSiteLine: 11 } });
+    });
+    await act(async () => {
+      await result.current.runUntil("out");
+    });
+    expect(fake.calls.until).toEqual([{ depth: 3 }]);
+  });
+
+  it("runs to the instruction a line stands for, and says so", async () => {
+    // Line 11 is the third instruction; the run stops there.
+    const fake = makeBackend({
+      runResult: { pc: CODE_BASE + 8, halted: false, steps_executed: 2, hit_breakpoint: false, error: null, reached: true },
+      runSnapshot: { pc: toHex(CODE_BASE + 8) },
+    });
+    const { result } = await mountAssembled(fake);
+    let said: string | null = null;
+    await act(async () => {
+      said = await result.current.runUntil(11);
+    });
+    expect(fake.calls.until).toEqual([{ pc: CODE_BASE + 8 }]);
+    expect(said).toBe("reached line 11");
+    expect(result.current.stopReason).toBe("reached line 11");
+    expect(result.current.stepCount).toBe(2);
+
+    // The next step moves the machine on, and the reason goes with it.
+    await act(async () => {
+      result.current.step();
+    });
+    await waitFor(() => expect(result.current.stepCount).toBe(3));
+    expect(result.current.stopReason).toBeNull();
+  });
+
+  // An identical text would leave a status region unchanged, so unsaid.
+  it("flips a no-break space on a stop that repeats the last one's words", async () => {
+    const fake = makeBackend({
+      runResult: { pc: CODE_BASE + 8, halted: false, steps_executed: 2, hit_breakpoint: false, error: null, reached: true },
+      runSnapshot: { pc: toHex(CODE_BASE + 8) },
+    });
+    const { result } = await mountAssembled(fake);
+    const stops: Array<string | null> = [];
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await result.current.runUntil(11);
+      });
+      stops.push(result.current.stopReason);
+    }
+    expect(stops).toEqual(["reached line 11", "reached line 11\u00a0", "reached line 11"]);
+  });
+
+  it("runs nothing for a line past the last instruction, and says why", async () => {
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    await act(async () => {
+      await result.current.runUntil(40);
+    });
+    expect(fake.calls.run).toEqual([]);
+    expect(result.current.stopReason).toBe("line 40 has no instruction to stop at");
+  });
+
+  it("flips a no-break space on a second press at a line with no instruction", async () => {
+    const { result } = await mountAssembled(makeBackend());
+    const stops: Array<string | null> = [];
+    for (let i = 0; i < 3; i++) {
+      await act(async () => {
+        await result.current.runUntil(40);
+      });
+      stops.push(result.current.stopReason);
+    }
+    const words = "line 40 has no instruction to stop at";
+    expect(stops).toEqual([words, `${words} `, words]);
+  });
+
+  // Each press here lands on the count the stop was recorded at, and none of
+  // them stopped on a goal, so the old words would read as this machine's.
+  describe("a stop's words once the machine has moved", () => {
+    const TWO_STEPS = { pc: CODE_BASE + 8, halted: false, steps_executed: 2, hit_breakpoint: false, error: null, reached: true };
+
+    async function stopped() {
+      const fake = makeBackend({ runResult: TWO_STEPS, runSnapshot: { pc: toHex(CODE_BASE + 8), canStepBack: true } });
+      const { result } = await mountAssembled(fake);
+      await act(async () => {
+        await result.current.runUntil(11);
+      });
+      expect(result.current.stopReason).toBe("reached line 11");
+      expect(result.current.stepCount).toBe(2);
+      return { fake, result };
+    }
+
+    type Hub = Awaited<ReturnType<typeof stopped>>["result"];
+
+    const assembled = (result: Hub) =>
+      act(async () => {
+        await expect(result.current.assemble(HOSTED_SOURCE)).resolves.toBe(true);
+      });
+
+    async function step(result: Hub, count: number) {
+      await act(async () => {
+        result.current.step();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(count));
+    }
+
+    it.each(["step", "stepBack"] as const)("go when a %s is sent, before it lands", async (press) => {
+      const { fake, result } = await stopped();
+      let land = () => {};
+      fake.backend[press] = () =>
+        new Promise((resolve) => {
+          land = () => resolve({ stepResult: fake.cfg.stepResult, snapshot: fake.fire({ canStepBack: true }) });
+        });
+      act(() => {
+        result.current[press]();
+      });
+      expect(result.current.stopReason).toBeNull();
+      await act(async () => {
+        land();
+      });
+    });
+
+    it("stay gone when back returns to the count", async () => {
+      const { result } = await stopped();
+      await step(result, 3);
+      await act(async () => {
+        result.current.stepBack();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(2));
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("stay gone when plain steps on a new assemble reach the count", async () => {
+      const { result } = await stopped();
+      await assembled(result);
+      await step(result, 1);
+      await step(result, 2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("stay gone when a plain run on a new assemble reaches the count", async () => {
+      const { result } = await stopped();
+      await assembled(result);
+      await act(async () => {
+        result.current.run();
+      });
+      await waitFor(() => expect(result.current.stepCount).toBe(2));
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("go when a plain run starts, even one that takes no step", async () => {
+      const { fake, result } = await stopped();
+      fake.cfg.runResult = { ...TWO_STEPS, steps_executed: 0, reached: false };
+      await act(async () => {
+        result.current.run();
+      });
+      expect(result.current.stepCount).toBe(2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("go on a terminal build, which leaves the count standing", async () => {
+      const { result } = await stopped();
+      await act(async () => {
+        await result.current.assembleForTool(HOSTED_SOURCE);
+      });
+      expect(result.current.stepCount).toBe(2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it("go on a restored save at the same count", async () => {
+      const { result } = await stopped();
+      act(() => {
+        result.current.saveState("two");
+      });
+      await assembled(result);
+      await act(async () => {
+        await result.current.runUntil(11);
+      });
+      expect(result.current.stopReason).not.toBeNull();
+      await act(async () => {
+        result.current.loadState("two");
+      });
+      expect(result.current.stepCount).toBe(2);
+      expect(result.current.stopReason).toBeNull();
+    });
+
+    it.each([
+      ["a reset", (result: Hub) => act(async () => result.current.reset())],
+      ["a new assemble", assembled],
+    ])("go on %s at count zero", async (_, move) => {
+      const { result } = await mountAssembled(makeBackend());
+      await act(async () => {
+        await result.current.runUntil(40);
+      });
+      expect(result.current.stopReason).toBe("line 40 has no instruction to stop at");
+      await move(result);
+      expect(result.current.stopReason).toBeNull();
+    });
+  });
+
+  // The goal buttons are disabled here, and a key or the palette matches them.
+  it.each<[string, (fake: ReturnType<typeof makeBackend>) => ReturnType<typeof mountLoaded>]>([
+    ["before any assemble", mountLoaded],
+    [
+      "after a reset",
+      async (fake) => {
+        const view = await mountAssembled(fake);
+        await act(async () => view.result.current.reset());
+        return view;
+      },
+    ],
+    [
+      "after a failed assemble on a good one",
+      async (fake) => {
+        const view = await mountAssembled(fake);
+        fake.cfg.assembleSuccess = false;
+        await act(async () => {
+          await expect(view.result.current.assemble(HOSTED_SOURCE)).resolves.toBe(false);
+        });
+        return view;
+      },
+    ],
+  ])("runs nothing and says nothing for a goal with no program, %s", async (_, loaded) => {
+    const fake = makeBackend();
+    const { result } = await loaded(fake);
+    for (const target of [11, 40, "over", "out"] as const) {
+      let said: string | null = "unset";
+      await act(async () => {
+        said = await result.current.runUntil(target);
+      });
+      expect(said).toBeNull();
+      expect(result.current.stopReason).toBeNull();
+    }
+    expect(fake.calls.until).toEqual([]);
+  });
+
+  it("resumes the same goal once the console answers a read", async () => {
+    const fake = makeBackend({ runSnapshot: { blocked: true } });
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: THREE_DEEP });
+    });
+    await act(async () => {
+      await result.current.runUntil("over");
+    });
+    expect(result.current.stopReason).toBe("waiting for input");
+    fake.cfg.runSnapshot = { frames: THREE_DEEP };
+    await act(async () => {
+      result.current.pushStdin("7\n", true);
+      result.current.resumeAfterInput();
+    });
+    await waitFor(() => expect(fake.calls.until).toEqual([{ depth: 3 }, { depth: 3 }]));
+  });
+
+  it("aims a step over pressed while a step is in flight from where that step lands", async () => {
+    // main and one call, both drawn: two deep. The step enters the bl's
+    // callee, three deep, so a step then a step over runs until three deep.
+    const TWO_DEEP = [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, ...Array(36).fill(0)];
+    const fake = makeBackend();
+    const { result } = await mountAssembled(fake);
+    act(() => {
+      fake.fire({ frames: TWO_DEEP });
+    });
+    // The worker answers the step a task after both presses were sent.
+    let land = () => {};
+    fake.backend.step = () =>
+      new Promise((resolve) => {
+        land = () => resolve({ stepResult: fake.cfg.stepResult, snapshot: fake.fire({ frames: THREE_DEEP }) });
+      });
+    let over: Promise<string | null> = Promise.resolve(null);
+    act(() => {
+      result.current.step();
+      over = result.current.runUntil("over");
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fake.calls.until).toEqual([]);
+    await act(async () => {
+      land();
+      await over;
+    });
+    expect(fake.calls.until).toEqual([{ depth: 3 }]);
+  });
+
+  it("says why a step over sent right after a step stopped", async () => {
+    // Both sent in one task: the step's count has not rendered when the
+    // step over stops four steps on, at line 11.
+    const fake = makeBackend({
+      runResult: { pc: CODE_BASE + 8, halted: false, steps_executed: 4, hit_breakpoint: false, error: null, reached: true },
+      runSnapshot: { pc: toHex(CODE_BASE + 8), frames: THREE_DEEP },
+    });
+    const { result } = await mountAssembled(fake);
+    fake.backend.step = () =>
+      Promise.resolve({ stepResult: fake.cfg.stepResult, snapshot: fake.fire({ frames: THREE_DEEP }) });
+    await act(async () => {
+      result.current.step();
+      await result.current.runUntil("over");
+    });
+    expect(result.current.stepCount).toBe(5);
+    expect(result.current.stopReason).toBe("reached line 11");
   });
 
   it("run sets the running flag until the backend resolves", async () => {

@@ -2,7 +2,7 @@
   "title": "Subroutines: saved registers, pointers, and big arguments",
   "slug": "calling-conventions",
   "order": 22,
-  "lastUpdated": "2026-10-01",
+  "lastUpdated": "2026-11-01",
   "summary": "Keep the registers a caller counts on, hand back answers through pointers, pass a ninth argument on the stack, and return a large struct through x8.",
   "tags": [
     "subroutines",
@@ -51,7 +51,7 @@
     },
     {
       "type": "prose",
-      "markdown": "In assembly, `lo` and `hi` are two locals in `main`'s frame. `add x2, fp, lo_s` computes the address of `lo` (it does not load its value), and `minmax` writes through that address with `str lo_r, [x2]`. After the call, `main` loads both locals and prints them.\n\n`minmax` keeps its running lowest and highest in `x19` and `x20`, so it saves and restores them. It calls nothing, so the temporaries `x9` to `x15` would also do; `x19` and `x20` are there to show the save. Run it: it prints `lowest = -3, highest = 25`."
+      "markdown": "In assembly, `lo` and `hi` are two locals in `main`'s frame. `add x2, fp, lo_s` computes the address of `lo` (it does not load its value), and `minmax` writes through that address with `str lo_r, [x2]`. After the call, `main` loads both locals and prints them.\n\n`minmax` keeps its running lowest and highest in `x19` and `x20`, so it saves and restores them. It calls nothing, so the temporaries `x9` to `x15` would also do; `x19` and `x20` are there to show the save. Run it: it prints `lowest = -3, highest = 25`. Press stack beside registers and step through `minmax`: its two `str` instructions put an amber bar on `lo_s` and then `hi_s` in `main`'s frame, not on a box of its own."
     },
     {
       "type": "editor",

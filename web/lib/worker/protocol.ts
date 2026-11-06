@@ -37,7 +37,8 @@ export type RequestKind =
   | "clearConsole"
   | "codeBase"
   | "lineMap"
-  | "memoryMap";
+  | "memoryMap"
+  | "frameLayout";
 
 export interface BaseRequest<K extends RequestKind> {
   id: number;
@@ -49,7 +50,7 @@ export type Request =
   | (BaseRequest<"assemble"> & { source: string; args: string[] })
   | BaseRequest<"step">
   | BaseRequest<"stepBack">
-  | (BaseRequest<"runUntilBreak"> & { maxSteps: number })
+  | (BaseRequest<"runUntilBreak"> & { maxSteps: number; until?: RunGoal })
   | BaseRequest<"pause">
   | BaseRequest<"reset">
   | (BaseRequest<"pushStdin"> & { text: string; interactive?: boolean })
@@ -77,7 +78,8 @@ export type Request =
   | BaseRequest<"clearConsole">
   | BaseRequest<"codeBase">
   | BaseRequest<"lineMap">
-  | BaseRequest<"memoryMap">;
+  | BaseRequest<"memoryMap">
+  | BaseRequest<"frameLayout">;
 
 export interface OkResponse<T> {
   id: number;
@@ -155,6 +157,21 @@ export interface RunResultPayload {
    * resumes; absent on wasm builds that predate pacing.
    */
   sleep_ms?: number | null;
+  /** A run with a goal (`RunGoal`) stopped because it met the goal. */
+  reached?: boolean;
+  /** A run with a goal stopped at a `ret` that went to no caller. */
+  bad_return?: boolean;
+}
+
+/**
+ * What step over, step out and run to cursor run until, besides what stops
+ * any run. Absolute, so every chunk of one run aims at the same place.
+ */
+export interface RunGoal {
+  /** Back in the program's own code with the call stack this deep or less. */
+  depth?: number;
+  /** The pc at this address. */
+  pc?: number;
 }
 
 /**
@@ -225,6 +242,18 @@ export interface StateSnapshot {
    * lib/emulator/clobber-note. Undefined on wasm builds that predate them.
    */
   clobberNotes?: number[];
+  /**
+   * The call stack as the program stands, as the flat numbers
+   * lib/emulator/frame-data decodes. Undefined on wasm builds that predate
+   * the frames export, which hides the stack frames view.
+   */
+  frames?: number[];
+  /**
+   * The printf or scanf call the last step ran, as the numbers `call_card`
+   * (emulator/src/lib.rs) lays out and lib/emulator/call-cards words. Absent
+   * when the step ran neither, and on wasm builds that predate the call card.
+   */
+  callCard?: number[];
   /**
    * `(addr, len)` pairs of memory ranges written since the previous
    * snapshot. Drives memory-cell diff highlighting in the replay scrubber.

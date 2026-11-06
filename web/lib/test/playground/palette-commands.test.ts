@@ -16,6 +16,7 @@ function makeDeps(overrides: Partial<PaletteDeps> = {}): PaletteDeps {
     assemble: vi.fn(),
     step: vi.fn(),
     stepBack: vi.fn(),
+    runUntil: vi.fn(),
     run: vi.fn(),
     pause: vi.fn(),
     reset: vi.fn(),
@@ -43,6 +44,9 @@ const EVERY_ID = [
   "assemble",
   "step",
   "step-back",
+  "step-over",
+  "step-out",
+  "step-cursor",
   "toggle-breakpoint",
   "run",
   "launch-terminal",
@@ -89,6 +93,36 @@ describe("the row set", () => {
     // Run and pause share F5: one key toggles the run loop.
     expect(row(actions, "run").shortcut).toBe("F5");
     expect(row(actions, "pause").shortcut).toBe("F5");
+  });
+});
+
+describe("step over, step out and run to cursor", () => {
+  it("sends each goal, names its key, and says what it does", () => {
+    const deps = makeDeps({ caretLine: 12 });
+    const actions = buildPaletteCommands(deps);
+    for (const [id, goal] of [["step-over", "over"], ["step-out", "out"], ["step-cursor", "cursor"]] as const) {
+      row(actions, id).run();
+      expect(deps.runUntil).toHaveBeenLastCalledWith(goal);
+    }
+    expect(row(actions, "step-over").shortcut).toBe("Ctrl+F10");
+    expect(row(actions, "step-out").shortcut).toBe("Ctrl+Shift+F10");
+    expect(row(actions, "step-cursor")).toMatchObject({
+      shortcut: "Ctrl+F9",
+      description: "run until line 12, where the caret is",
+    });
+  });
+
+  it("does nothing at a read, and says why, as step does", () => {
+    const deps = makeDeps({ blocked: true });
+    const over = row(buildPaletteCommands(deps), "step-over");
+    over.run();
+    expect(deps.runUntil).not.toHaveBeenCalled();
+    expect(over.description).toBe("(waiting for stdin; feed the console first)");
+  });
+
+  it("asks for an assemble first with no program", () => {
+    const actions = buildPaletteCommands(makeDeps({ programLoaded: false }));
+    expect(row(actions, "step-out").description).toBe("(no program; assemble first)");
   });
 });
 

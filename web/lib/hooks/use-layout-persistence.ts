@@ -25,7 +25,8 @@ function readStored(scope: string): number[] | null {
 
 interface Layout {
   sizes: number[];
-  ready: boolean;
+  /** The scope `sizes` were loaded for, null before the first load. */
+  loaded: string | null;
 }
 
 function mergeLayout(prev: Layout, change: Partial<Layout>): Layout {
@@ -37,20 +38,22 @@ function mergeLayout(prev: Layout, change: Partial<Layout>): Layout {
  * short window, plus the group's side); reset clears only the current scope.
  * `save` does nothing until `ready`: a panel group can report its
  * size before the stored sizes load, and saving that report would replace
- * them with the fallback on every reload.
+ * them with the fallback on every reload. `ready` is false again from the
+ * render that changes `scope` until its sizes load, so nothing applies the
+ * last scope's sizes to the new one.
  */
 export function useLayoutPersistence(
   scope: string,
   fallback: number[],
 ): [number[], (next: number[]) => void, () => void, boolean] {
   // A reducer, so the stored layout can arrive from the load effect below.
-  const [{ sizes, ready }, edit] = useReducer(mergeLayout, { sizes: fallback, ready: false });
+  const [{ sizes, loaded }, edit] = useReducer(mergeLayout, { sizes: fallback, loaded: null });
   // The synchronous half of `ready`: a save can arrive between the render
   // that changed `scope` and the effect that loads it, and state is too late.
   const loadedFor = useRef<string | null>(null);
 
   useEffect(() => {
-    edit({ sizes: readStored(scope) ?? fallback, ready: true });
+    edit({ sizes: readStored(scope) ?? fallback, loaded: scope });
     loadedFor.current = scope;
     // `fallback` is out of the deps on purpose: a new array identity must not
     // overwrite a loaded layout.
@@ -71,5 +74,5 @@ export function useLayoutPersistence(
     edit({ sizes: fallback });
   }, [scope, fallback]);
 
-  return [sizes, save, reset, ready];
+  return [sizes, save, reset, loaded === scope];
 }

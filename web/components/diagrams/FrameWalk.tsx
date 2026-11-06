@@ -4,12 +4,15 @@
  * A stepper over a short program: each step highlights a line, says what it
  * did, and shows the registers and stack bands after it. With no steps given
  * it walks the course prologue and epilogue in seven steps. Each state is
- * written by hand to match the emulator; dashed bands hold the layout before
- * a frame opens, so nothing shifts.
+ * written by hand to match the emulator, and the stack is drawn with the
+ * frames view's rows; dashed bands hold the layout before a frame opens, so
+ * nothing shifts.
  */
 
 import { useRef, useState, type JSX, type KeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
+import { FrameRow } from "@/components/panels/FrameRow";
+import { KIND_STYLE, WHOLE_FRAME } from "@/components/panels/frame-styles";
 import { Button } from "@/components/ui/Button";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 
@@ -145,131 +148,88 @@ const STEPS: PrologueState[] = [
   },
 ];
 
-/** Amber tint: the machine changed this on the current step. */
+/** Amber tint: the machine changed this register on the current step. */
 const CHANGED_STYLE = {
   borderColor: "var(--amber)",
   backgroundColor: "color-mix(in srgb, var(--amber) 12%, transparent)",
-} as const;
-
-/** Cyan pointer chips, matching the diagrams' pointer treatment. */
-const POINTER_STYLE = {
-  borderColor: "var(--cyan)",
-  backgroundColor: "color-mix(in srgb, var(--cyan) 12%, transparent)",
-} as const;
-
-// Below sm the chips wrap under the text when both do not fit on one line:
-// beside it they squeezed a 320px band's detail into a 74px column.
-const BAND_BASE =
-  "flex min-h-[44px] flex-wrap items-center justify-between gap-x-3 gap-y-1.5 rounded-[var(--radius-control)] border px-3 py-2 sm:flex-nowrap";
-
-/** Static role tints for diagrams that never step: cyan for a passed value,
- *  amber for a saved one, the AapcsRail's colours. */
-const TINT_STYLE = {
-  cyan: POINTER_STYLE,
-  amber: CHANGED_STYLE,
 } as const;
 
 /** Non-breaking spaces inside each [fp, 16]: a phone broke it after the comma. */
 const keepOperandsWhole = (text: string) =>
   text.replace(/\[[^\]]*\]/g, (operand) => operand.replace(/ /g, "\u00a0"));
 
-/** One stack band. Unique by label within a stack. */
+/** One stack band, drawn as the frames view draws a box. Unique by label
+ *  within a stack. */
 export interface BandProps {
   label: string;
   detail: string;
-  /** A slot that holds nothing yet (or nothing any more): dashed, quiet. */
+  /** Where it sits in its frame, as the frames view writes it ("fp + 8");
+   *  "" for none. Left out, the stack has no offset column. */
+  offset?: string;
+  /** The frames view's colours: a saved fp or lr, or a slot the code
+   *  names. Left out, the band is a whole frame. */
+  kind?: "saved" | "local";
+  /** A slot that holds nothing yet (or nothing any more): dashed, as padding is. */
   ghost?: boolean;
+  /** The step wrote it: the amber bar. */
   changed?: boolean;
-  tint?: keyof typeof TINT_STYLE;
-  markers?: string[];
+  /** The registers pointing into it: "sp", "fp" or "sp, fp". */
+  marker?: string;
 }
 
-export function Band({
-  label,
-  detail,
-  ghost = false,
-  changed = false,
-  tint,
-  markers = [],
-}: BandProps): JSX.Element {
+export function Band({ label, detail, offset, kind, ghost = false, changed = false, marker }: BandProps): JSX.Element {
   return (
-    <li
-      className={`${BAND_BASE} ${
-        ghost
-          ? "border-dashed border-[var(--border)]"
-          : "border-[var(--border)] bg-[var(--bg-raised)]"
-      }`}
-      style={changed ? CHANGED_STYLE : tint ? TINT_STYLE[tint] : undefined}
-    >
-      <span className="flex min-w-0 flex-col gap-0.5">
-        <span
-          className={`font-mono text-[13px] ${
-            ghost ? "text-[var(--text-tertiary)]" : "text-[var(--text-primary)]"
-          }`}
-        >
-          {label}
-        </span>
-        <span
-          className={`font-mono text-[12px] ${
-            ghost ? "text-[var(--text-tertiary)]" : "text-[var(--text-secondary)]"
-          }`}
-        >
-          {keepOperandsWhole(detail)}
-        </span>
-      </span>
-      {markers.length > 0 && (
-        <span className="ml-auto flex shrink-0 flex-wrap justify-end gap-1 sm:flex-col sm:items-end">
-          {markers.map((marker) => (
-            <span
-              key={marker}
-              className="rounded-[var(--radius-control)] border px-2 py-0.5 font-mono text-[12px] text-[var(--text-primary)]"
-              style={POINTER_STYLE}
-            >
-              {marker}
-            </span>
-          ))}
-        </span>
-      )}
-    </li>
+    <FrameRow
+      offset={offset}
+      box={ghost ? KIND_STYLE.padding : kind ? KIND_STYLE[kind] : WHOLE_FRAME}
+      title={label}
+      detail={keepOperandsWhole(detail)}
+      marker={marker}
+      wrote={changed}
+    />
   );
 }
 
 /** The prologue walk's four bands for one state: dashed until the frame opens. */
 function prologueBands(state: PrologueState): BandProps[] {
+  // Offsets as the frames view writes them: from fp once it points at the
+  // saved pair, from sp before that, and none while the frame is not open.
+  const at = (bytes: number) => (state.frameOpen ? `${state.fpAnchored ? "fp" : "sp"} + ${bytes}` : "");
   return [
     {
       label: "caller's frame",
       detail: state.frameOpen
         ? "unchanged above the new frame"
         : "sp rests at its bottom edge, 0xffd0",
-      markers: [
-        ...(state.frameOpen ? [] : ["<- sp"]),
-        ...(state.fpAnchored ? [] : ["fp points here"]),
-      ],
+      offset: "",
+      marker: [!state.frameOpen && "sp", !state.fpAnchored && "fp"].filter(Boolean).join(", "),
     },
     {
       label: "locals",
       detail: !state.frameOpen
         ? "will hold the locals, [fp, 16] up to [fp, 31]"
         : (state.localValue ?? "16 bytes, nothing written yet"),
+      offset: at(16),
+      kind: "local",
       ghost: !state.frameOpen,
       changed: state.changed.includes("local"),
     },
     {
       label: "saved lr",
       detail: state.frameOpen ? "caller's lr, at [fp, 8]" : "will hold the caller's lr",
+      offset: at(8),
+      kind: "saved",
       ghost: !state.frameOpen,
       changed: state.changed.includes("pair"),
     },
     {
       label: "saved fp",
       detail: state.frameOpen ? "caller's fp, at [fp, 0]" : "will hold the caller's fp",
+      offset: at(0),
+      kind: "saved",
       ghost: !state.frameOpen,
       changed: state.changed.includes("pair"),
-      markers: [
-        ...(state.frameOpen ? ["<- sp"] : []),
-        ...(state.fpAnchored ? ["<- fp"] : []),
-      ],
+      marker: [state.frameOpen && "sp", state.fpAnchored && "fp"].filter(Boolean).join(", "),
     },
   ];
 }
@@ -390,7 +350,7 @@ export function FrameWalk({
       </ul>
 
       <StackColumn>
-        <ul aria-label="stack bands" className="flex flex-col gap-2">
+        <ul aria-label="stack bands">
           {step.bands.map((band) => (
             <Band key={band.label} {...band} />
           ))}

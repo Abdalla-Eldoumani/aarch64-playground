@@ -28,6 +28,11 @@ const READ_BY_MAIN_RETURN = 2;
  *  uses (x0-x30 are 0-30, d0-d31 are 32-63). */
 const FLAGS = 31;
 
+/** A row for x19 to x28 is a caller reading what a returning function
+ *  failed to put back, not a library call's leftovers: the stack frames
+ *  view words those. */
+const isCalleeSaved = (code: number) => code >= 19 && code <= 28;
+
 /** A line the machine reported, found in the file it belongs to. */
 export interface Place {
   /** The helper file's name, or null for the main buffer. */
@@ -46,7 +51,7 @@ export function place(line: number, ws: Workspace): Place {
 }
 
 /** "line 16", or "ui.s line 269" in a helper file. */
-function at(p: Place): string {
+export function at(p: Place): string {
   return p.file ? `${p.file} line ${p.line}` : `line ${p.line}`;
 }
 
@@ -75,6 +80,7 @@ export function clobberNoteTexts(rows: readonly number[], ws: Workspace): string
   const notes: string[] = [];
   for (let i = 0; i + 3 < rows.length; i += 4) {
     const [code, readBy, callLine, readLine] = rows.slice(i, i + 4);
+    if (isCalleeSaved(code)) continue;
     const call = callOnLine(ws, callLine);
     const read = readLine > 0 ? place(readLine, ws) : null;
     if (code === FLAGS) {

@@ -201,6 +201,20 @@ describe("ExerciseIndex", () => {
     expect(precedes(jump, screen.getByRole("region", { name: "Coding exercises" }))).toBe(true);
   });
 
+  it("lists the frame drawings under a heading of their own, with a jump link to it", () => {
+    const quiz = makeRow({ title: "Loop Quiz", slug: "loop-quiz", order: 3, variant: "quiz" });
+    const frame = makeRow({ title: "Draw a frame", slug: "draw-a-frame", order: 4, topic: "memory", variant: "frame" });
+    const all = [...exercises, quiz, frame];
+    const { container } = render(<ExerciseIndex exercises={all} blurbs={blurbsOf(all)} />);
+    const frames = screen.getByRole("region", { name: "Frame drawings" });
+    expect(within(frames).getByText("Draw a frame")).toBeTruthy();
+    expect(within(frames).getByText("1 exercise")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Theory sets" })).queryByText("Draw a frame")).toBeNull();
+    expect(within(screen.getByRole("region", { name: "Coding exercises" })).queryByText("Draw a frame")).toBeNull();
+    const jump = screen.getByRole("link", { name: "jump to the frame drawings" });
+    expect(container.querySelector(jump.getAttribute("href") ?? "#none")?.textContent).toBe("Frame drawings");
+  });
+
   it("leaves the jump link out when there are no theory sets", () => {
     render(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
     expect(screen.queryByRole("link", { name: "jump to the theory sets" })).toBeNull();

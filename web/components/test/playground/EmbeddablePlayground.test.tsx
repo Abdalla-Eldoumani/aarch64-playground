@@ -367,7 +367,7 @@ describe("EmbeddablePlayground", () => {
   });
 
   it("checker Check runs the current source to completion, then reports the state after the run", async () => {
-    const hub: Hub = makeHub({ exitCode: 7 });
+    const hub: Hub = makeHub({ exitCode: 7, isHalted: true, stepCount: 2 });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
@@ -385,6 +385,48 @@ describe("EmbeddablePlayground", () => {
       vi.mocked(hub.run).mock.invocationCallOrder[0],
     );
     expect((onCheck.mock.calls[0][0] as EmbeddableState).exitCode).toBe(7);
+  });
+
+  it("checker Check waits for a late render of the run instead of grading the unrun machine", async () => {
+    // As in the real useEmulator, the hub shows the run only after a render.
+    // On a slow device that render came after the poll's first read, and Check
+    // graded the machine the assemble left: nothing printed, nothing finished.
+    let ran = false;
+    const assemble = vi.fn(async () => true);
+    const run = vi.fn();
+    useEmulatorMock.mockImplementation(() => ({
+      ...makeHub(),
+      assemble,
+      run,
+      isHalted: ran,
+      stepCount: ran ? 12 : 0,
+      stdout: ran ? "total = 80\n" : "",
+      exitCode: ran ? 0 : null,
+    }));
+    const onCheck = vi.fn();
+    const view = () => <EmbeddablePlayground chrome="checker" startSource="ret" onCheck={onCheck} />;
+    const { container, rerender } = render(view());
+    engage(container);
+    vi.useFakeTimers();
+    try {
+      fireEvent.click(screen.getByLabelText("check"));
+      // Three polls with the run started but not yet rendered.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(48);
+      });
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(onCheck).not.toHaveBeenCalled();
+
+      ran = true;
+      rerender(view());
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(16);
+      });
+      expect(onCheck).toHaveBeenCalledTimes(1);
+      expect(onCheck.mock.calls[0][0]).toMatchObject({ stdout: "total = 80\n", exitCode: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("checker Check never grades a program that failed to assemble", async () => {
@@ -412,6 +454,7 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
       isHalted: true,
+      stepCount: 1,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -452,9 +495,11 @@ describe("EmbeddablePlayground", () => {
   it("checker Check feeds the exercise's input, then closes it, and reruns a run that stopped short", async () => {
     // Loaded but not halted: a Run that stopped at a read. Grading that
     // half-finished state would fail a correct program, so Check starts over.
+    // Its steps also tell Check the stopped run is the one it started.
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "svc" }],
       isHalted: false,
+      stepCount: 3,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -513,6 +558,7 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub({
       instructions: [{ address: 0x400000, hex: "0x00000000", text: "mov" }],
       isHalted: true,
+      stepCount: 1,
     });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
@@ -549,6 +595,25 @@ describe("EmbeddablePlayground", () => {
     fireEvent.click(screen.getByLabelText("run"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledTimes(3));
     expect(hub.assemble).toHaveBeenLastCalledWith("mov x0, 1", ["5", "6"]);
+  });
+
+  it("embed status line calls a long run's pause a pause, and a fault an error", () => {
+    const pause =
+      "paused after 1,000,000 steps without finishing. " +
+      "press run to continue, or check for a loop whose exit condition never becomes true";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_004, error: pause, paused: true }));
+    const view = () => <EmbeddablePlayground chrome="embed" startSource="b ." />;
+    const { container, rerender } = render(view());
+    engage(container);
+    const line = () => container.querySelector('.embed-status [role="status"]')!;
+    expect(line().textContent).toBe("paused · 1,000,004 steps");
+    expect(line().className).toContain("text-[var(--text-secondary)]");
+
+    const fault = "line 7: stopped: tried to read from address 0x0, which is not part of any program section";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 2, error: fault, paused: false }));
+    rerender(view());
+    expect(line().textContent).toBe("stopped on an error");
+    expect(line().className).toContain("text-[var(--danger)]");
   });
 
   it("embed consoles point at the step and run buttons, not at keys only the playground binds", () => {
@@ -683,7 +748,7 @@ describe("EmbeddablePlayground", () => {
   });
 
   it("checker Check sends the preset stdin again after its assemble", async () => {
-    const hub: Hub = makeHub();
+    const hub: Hub = makeHub({ isHalted: true, stepCount: 1 });
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
     const onCheck = vi.fn();
@@ -738,12 +803,12 @@ describe("EmbeddablePlayground", () => {
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
     await fullChromeMounted();
-    for (const name of [/^step/, /^back/]) {
+    for (const name of [/^step$/, /^back$/, /^step over$/, /^step out$/, /^run to cursor$/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(true);
     }
-    for (const name of [/^run/, /^assemble/]) {
+    for (const name of [/^run$/, /^assemble/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(false);
@@ -754,7 +819,7 @@ describe("EmbeddablePlayground", () => {
       makeHub({ programLoaded: true, canStepBack: true }),
     );
     render(<EmbeddablePlayground chrome="full" />);
-    for (const name of [/^run/, /^step/, /^back/]) {
+    for (const name of [/^run$/, /^step$/, /^back$/, /^step over$/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
       ).toBe(false);
@@ -1074,6 +1139,37 @@ describe("terminal context", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("the phone playground's status line", () => {
+  function setSize(width: number, height: number): void {
+    Object.defineProperty(window, "innerWidth", { value: width, configurable: true, writable: true });
+    Object.defineProperty(window, "innerHeight", { value: height, configurable: true, writable: true });
+    window.dispatchEvent(new Event("resize"));
+  }
+
+  afterEach(() => setSize(1024, 768));
+
+  it("calls a long run's pause a pause, and a fault an error", async () => {
+    setSize(390, 844);
+    const pause =
+      "paused after 1,000,000 steps without finishing. " +
+      "press run to continue, or check for a loop whose exit condition never becomes true";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_000, error: pause, paused: true }));
+    const view = () => <EmbeddablePlayground chrome="full" startSource="b ." />;
+    const { rerender } = render(view());
+    await fullChromeMounted();
+    const paused = await screen.findByText("paused · 1,000,000 steps");
+    expect(paused.getAttribute("role")).toBe("status");
+    expect(paused.className).toContain("text-[var(--text-secondary)]");
+
+    const fault = "line 7: stopped: tried to read from address 0x0, which is not part of any program section";
+    useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 2, error: fault, paused: false }));
+    rerender(view());
+    const failed = screen.getByText("stopped on an error");
+    expect(failed.getAttribute("role")).toBe("status");
+    expect(failed.className).toContain("text-[var(--danger)]");
   });
 });
 

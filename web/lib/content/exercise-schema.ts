@@ -5,7 +5,7 @@
  * instead of throwing.
  */
 
-import { validateArgs, validateStdin } from "@/lib/playground/upload-guard";
+import { validateArgs, validateSource, validateStdin } from "@/lib/playground/upload-guard";
 import { isCalendarDate } from "@/lib/content/lesson-schema";
 
 /** A single result assertion evaluated against emulator output. */
@@ -40,7 +40,7 @@ export interface HiddenCase {
   edge?: boolean;
 }
 
-export type ExerciseVariant = "write" | "identify-bug" | "quiz" | "prediction" | "blanks";
+export type ExerciseVariant = "write" | "identify-bug" | "quiz" | "prediction" | "blanks" | "frame";
 export type ExerciseDifficulty = "intro" | "core" | "challenge";
 
 /** The acceptance criteria: required result checks plus optional structure. */
@@ -143,9 +143,44 @@ export interface BlanksExercise extends BaseExercise {
 }
 
 /**
- * The four variants, discriminated by `variant`.
+ * Where a frame exercise stops its program: just before `line` (1-based, in
+ * `program`) runs for the `hit`th time.
  */
-export type Exercise = WriteExercise | QuizExercise | PredictionExercise | BlanksExercise;
+export interface FramePause {
+  line: number;
+  hit: number;
+}
+
+/** One named slot the student places, and the hint a wrong offset shows. */
+export interface FrameSlotQuestion {
+  /** The name the frames view gives the slot: `count_s`, `rect_s.width`. */
+  name: string;
+  hint: string;
+}
+
+/**
+ * Draw the frame: for the function the program is paused in, the student
+ * gives the frame's size, each named slot's offset from fp, and where the
+ * saved fp and lr sit. The file stores no answer: the checker runs the
+ * program to the pause and reads the frame from the emulator.
+ */
+export interface FrameExercise extends BaseExercise {
+  variant: "frame";
+  /** Shown to the student and run as it is; it reads no input. */
+  program: string;
+  pause: FramePause;
+  /** Lowest offset first, as the program lays them out; the page draws
+   *  them high address first, above the saved lr and fp, as the frames
+   *  view does. */
+  slots: FrameSlotQuestion[];
+  /** What a wrong frame size, saved fp offset and saved lr offset show. */
+  hints: { size: string; savedFp: string; savedLr: string };
+}
+
+/**
+ * The variants' shapes, discriminated by `variant`.
+ */
+export type Exercise = WriteExercise | QuizExercise | PredictionExercise | BlanksExercise | FrameExercise;
 
 /**
  * The row the practice index renders: only the seven fields ExerciseIndex
@@ -159,7 +194,7 @@ export interface ExerciseIndexRow {
   order: number | string;
   topic?: string;
   difficulty?: ExerciseDifficulty;
-  /** Drives practiceSide(): which of the two columns the row lands in. */
+  /** Drives practiceSide(): which side of the practice page the row lands on. */
   variant: ExerciseVariant;
   /** Plain-text row summary, derived from the prompt at build time. */
   blurb: string;
@@ -179,6 +214,15 @@ const LABEL_PATTERN = /^[A-Za-z_.$][\w.$]*$/;
 
 /** Exit statuses a hosted program can report. */
 const MAX_EXIT_STATUS = 255;
+
+/** A frame slot's name: a symbol, a struct field (`rect_s.width`), or an array element (`arr_s[2]`). */
+const SLOT_NAME_PATTERN = /^[A-Za-z_.$][\w.$]*(?:\[\d{1,4}\])?$/;
+
+/** Slots one frame exercise asks for: more than any course frame names. */
+const MAX_FRAME_SLOTS = 16;
+
+/** The latest arrival at a pause line an exercise may ask for. */
+const MAX_PAUSE_HIT = 1000;
 
 /**
  * Validate one result assertion by its `kind`, tagging every message with
@@ -510,6 +554,60 @@ function validateBlanksQuestion(
 }
 
 /**
+ * Validate a frame exercise's own fields: the program within the source cap,
+ * a pause on one of its lines, at least one uniquely named slot, and a hint
+ * for every field the student fills in.
+ */
+function validateFrameFields(
+  o: Record<string, unknown>,
+): { ok: true; fields: Pick<FrameExercise, "program" | "pause" | "slots" | "hints"> } | { ok: false; error: string } {
+  const program = o.program;
+  if (!isFilledString(program) || validateSource(program) !== null) {
+    return { ok: false, error: "program: expected a non-empty program within the source cap" };
+  }
+  const pause = o.pause;
+  if (pause == null || typeof pause !== "object" || Array.isArray(pause)) {
+    return { ok: false, error: "pause: expected an object with line and hit" };
+  }
+  const { line, hit } = pause as Record<string, unknown>;
+  const lines = program.split("\n").length;
+  if (typeof line !== "number" || !Number.isInteger(line) || line < 1 || line > lines) {
+    return { ok: false, error: "pause.line: expected the number of a line in program" };
+  }
+  if (typeof hit !== "number" || !Number.isInteger(hit) || hit < 1 || hit > MAX_PAUSE_HIT) {
+    return { ok: false, error: `pause.hit: expected an integer from 1 to ${MAX_PAUSE_HIT}` };
+  }
+  if (!Array.isArray(o.slots) || o.slots.length === 0 || o.slots.length > MAX_FRAME_SLOTS) {
+    return { ok: false, error: `slots: expected 1 to ${MAX_FRAME_SLOTS} slots` };
+  }
+  const slots: FrameSlotQuestion[] = [];
+  for (const [index, raw] of o.slots.entries()) {
+    const slot: Record<string, unknown> =
+      raw != null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+    const { name, hint } = slot;
+    if (typeof name !== "string" || !SLOT_NAME_PATTERN.test(name)) {
+      return { ok: false, error: `slots[${index}]: name must be a slot name such as count_s or rect_s.width` };
+    }
+    if (slots.some((seen) => seen.name === name)) {
+      return { ok: false, error: `slots[${index}]: ${name} is asked for twice` };
+    }
+    if (!isFilledString(hint)) {
+      return { ok: false, error: `slots[${index}]: hint must be a non-empty string` };
+    }
+    slots.push({ name, hint });
+  }
+  const hints = o.hints;
+  if (hints == null || typeof hints !== "object" || Array.isArray(hints)) {
+    return { ok: false, error: "hints: expected an object with size, savedFp and savedLr" };
+  }
+  const { size, savedFp, savedLr } = hints as Record<string, unknown>;
+  if (!isFilledString(size) || !isFilledString(savedFp) || !isFilledString(savedLr)) {
+    return { ok: false, error: "hints: size, savedFp and savedLr must be non-empty strings" };
+  }
+  return { ok: true, fields: { program, pause: { line, hit }, slots, hints: { size, savedFp, savedLr } } };
+}
+
+/**
  * Validate an untrusted value against the exercise schema. Returns
  * `{ ok: true, exercise }` with an exercise built only from the known,
  * validated fields (unknown keys are dropped), or `{ ok: false, error }`
@@ -574,11 +672,12 @@ export function validateExercise(data: unknown): ExerciseResult {
       v !== "identify-bug" &&
       v !== "quiz" &&
       v !== "prediction" &&
-      v !== "blanks"
+      v !== "blanks" &&
+      v !== "frame"
     ) {
       return {
         ok: false,
-        error: "variant: expected one of write|identify-bug|quiz|prediction|blanks",
+        error: "variant: expected one of write|identify-bug|quiz|prediction|blanks|frame",
       };
     }
     variant = v;
@@ -698,6 +797,12 @@ export function validateExercise(data: unknown): ExerciseResult {
         blanks.push(result.question);
       }
       return { ok: true, exercise: { ...base, variant, blanks } };
+    }
+
+    case "frame": {
+      const result = validateFrameFields(o);
+      if (!result.ok) return result;
+      return { ok: true, exercise: { ...base, variant, ...result.fields } };
     }
   }
 }

@@ -1,11 +1,11 @@
 /**
- * The practice page's two columns (coding exercises and theory sets) and the
- * course's topic order, kept in this one place.
+ * The practice page's three sides (coding exercises, theory sets and frame
+ * drawings) and the course's topic order, kept in this one place.
  */
 
 import type { Exercise } from "@/lib/content/exercise-schema";
 
-export type PracticeSide = "code" | "theory";
+export type PracticeSide = "code" | "theory" | "frame";
 
 export interface PracticeSideInfo {
   id: PracticeSide;
@@ -29,11 +29,19 @@ export const PRACTICE_SIDES: readonly PracticeSideInfo[] = [
     title: "Theory sets",
     description: "Quizzes, fill-in-the-blank drills, and predict-the-output questions, graded on the page.",
   },
+  {
+    id: "frame",
+    caption: "frames",
+    title: "Frame drawings",
+    description:
+      "Draw a function's stack frame where the program stops: its size, where each variable sits, and where fp and lr were saved. The emulator checks it.",
+  },
 ];
 
 /** Which side an exercise belongs to, decided by how it is graded. */
 export function practiceSide(exercise: Pick<Exercise, "variant">): PracticeSide {
-  return exercise.variant === "write" || exercise.variant === "identify-bug" ? "code" : "theory";
+  if (exercise.variant === "write" || exercise.variant === "identify-bug") return "code";
+  return exercise.variant === "frame" ? "frame" : "theory";
 }
 
 /**

@@ -204,8 +204,26 @@ describe("EmulatorInstance step-result normalization", () => {
       error: null,
       error_line: null,
       sleep_ms: null,
+      reached: false,
+      bad_return: false,
     });
     expect(caps).toEqual([250]);
+  });
+
+  it("sends a goal to run_to, a missing half as -1, and reads its two stops", () => {
+    const calls: number[][] = [];
+    const emu = wrap({
+      run_to: (max: number, depth: number, pc: number) => {
+        calls.push([max, depth, pc]);
+        return { pc: 0x400010, halted: false, steps_executed: 9, hit_breakpoint: false, reached: true, bad_return: false };
+      },
+    });
+    expect(emu.runUntilBreak(100, { depth: 2 })).toMatchObject({ pc: 0x400010, reached: true, bad_return: false });
+    emu.runUntilBreak(100, { pc: 0x400020 });
+    expect(calls).toEqual([
+      [100, 2, -1],
+      [100, -1, 0x400020],
+    ]);
   });
 
   it("carries a run's requested sleep across when the build reports one", () => {

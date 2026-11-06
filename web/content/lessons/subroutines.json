@@ -2,7 +2,7 @@
   "title": "Writing your own subroutines",
   "slug": "subroutines",
   "order": 21,
-  "lastUpdated": "2026-10-01",
+  "lastUpdated": "2026-11-01",
   "summary": "Write a subroutine that takes arguments in x0 to x7 and returns in w0 or x0, and know when it needs a frame and when a macro would do.",
   "tags": [
     "subroutines",
@@ -94,7 +94,7 @@
     },
     {
       "type": "prose",
-      "markdown": "To see the chain, run the program (or press step) once, then set a breakpoint on the `bl printf` line inside `show` and press run. `fp` now points at `show`'s frame record: the 8 bytes at `fp` hold `main`'s `fp`, and the 8 bytes at `fp + 8` hold the address of the instruction after the `bl show` that made this call.\n\n`show` also moves its arguments up one register before it loads the format string: `w2` to `w3`, then `w1` to `w2`, then `x0` to `x1`. Working from the top down copies each value out before anything overwrites it."
+      "markdown": "To see the chain, run the program (or press step) once, then set a breakpoint on the `bl printf` line inside `show` and press run. `fp` now points at `show`'s frame record: the 8 bytes at `fp` hold `main`'s `fp`, and the 8 bytes at `fp + 8` hold the address of the instruction after the `bl show` that made this call. Press stack beside registers to see the chain drawn, as in the stack tab of the full playground: `show`'s frame sits below `main`'s, and its saved `fp` box names `main`'s frame.\n\n`show` also moves its arguments up one register before it loads the format string: `w2` to `w3`, then `w1` to `w2`, then `x0` to `x1`. Working from the top down copies each value out before anything overwrites it."
     },
     {
       "type": "callout",
@@ -112,7 +112,7 @@
     },
     {
       "type": "prose",
-      "markdown": "## Practice\n\n- [Call yourself](/practice/call-yourself): a subroutine that calls itself.\n- [Down to one digit](/practice/down-to-one-digit): call a digit-sum subroutine until the answer is one digit long.\n- [Tower of Hanoi](/practice/tower-of-hanoi): a subroutine that calls itself twice and passes four arguments.\n- [Basic quiz: subroutines](/practice/quiz-basic-subroutines), then [core](/practice/quiz-inter-subroutines): `bl`, `ret`, and the argument registers.\n- [Fill in the blank: subroutines (core)](/practice/blanks-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): frames, arguments, and return values.\n- [Intermediate quiz: functions](/practice/quiz-inter-functions) and [Predict: functions (challenge)](/practice/predict-functions): recursion, frame records, and the frame chain. Their questions on saving `x19` come with [the next lesson](/learn/calling-conventions)."
+      "markdown": "## Practice\n\n- [Call yourself](/practice/call-yourself): a subroutine that calls itself.\n- [Down to one digit](/practice/down-to-one-digit): call a digit-sum subroutine until the answer is one digit long.\n- [Tower of Hanoi](/practice/tower-of-hanoi): a subroutine that calls itself twice and passes four arguments.\n- [Draw the frame: a recursive call](/practice/draw-frame-recursion): draw the frame of a call two calls deep in a function that calls itself.\n- [Basic quiz: subroutines](/practice/quiz-basic-subroutines), then [core](/practice/quiz-inter-subroutines): `bl`, `ret`, and the argument registers.\n- [Fill in the blank: subroutines (core)](/practice/blanks-subroutines) and [Predict: subroutines (challenge)](/practice/predict-subroutines): frames, arguments, and return values.\n- [Intermediate quiz: functions](/practice/quiz-inter-functions) and [Predict: functions (challenge)](/practice/predict-functions): recursion, frame records, and the frame chain. Their questions on saving `x19` come with [the next lesson](/learn/calling-conventions)."
     }
   ]
 }

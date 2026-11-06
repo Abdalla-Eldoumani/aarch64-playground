@@ -59,8 +59,14 @@ const nextConfig = {
   // webpack handles our wasm module via `asyncWebAssembly`. Next 16 defaults
   // to Turbopack; the npm `dev`/`build` scripts pass `--webpack` explicitly
   // to opt back in until Turbopack's async-wasm support is stable for us.
-  webpack: (config) => {
+  webpack: (config, { webpack }) => {
     config.experiments = { ...config.experiments, asyncWebAssembly: true };
+    // monaco vendors DOMPurify (./dompurify/dompurify.js) out of the override's
+    // reach; both default-export one createDOMPurify() instance, so this hands
+    // it the pinned copy. scripts/bundle-budget.js fails on an older one.
+    config.plugins.push(
+      new webpack.NormalModuleReplacementPlugin(/[\\/]dompurify[\\/]dompurify\.js$/, "dompurify"),
+    );
     // `?raw` imports load a file's contents as a string at build time, so
     // the cold-load default program can be sourced from its single
     // example file instead of a duplicated literal.

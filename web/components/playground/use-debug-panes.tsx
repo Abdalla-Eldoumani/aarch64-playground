@@ -9,6 +9,9 @@ import type { useTerminalDrive } from "@/lib/playground/use-terminal-drive";
 import type { createTerminalContext } from "@/lib/playground/terminal-context";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import type { DebugPanes } from "@/components/playground/RightTabs";
+import { FramesView } from "@/components/playground/lazy-frames";
+import { CallCard } from "@/components/playground/lazy-call-card";
+import { StackTab } from "@/components/playground/StackTab";
 import {
   BaseConverter,
   ChecksPanel,
@@ -90,22 +93,50 @@ export function useDebugPanes({
   );
   const stackBlock = (
     <ErrorBoundary label="stack">
-      <StackPanel
-        sp={emu.sp}
-        getMemory={emu.getMemory}
-        fp={fpValue}
-        frameSlots={frameSlots}
+      <StackTab
+        frames={
+          <FramesView
+            frames={emu.frames}
+            frameLayout={emu.frameLayout}
+            registers={emu.registers}
+            sp={emu.sp}
+            pc={emu.pc}
+            getMemory={emu.getMemory}
+            readMemory={emu.readMemory}
+            dirtyAddrs={emu.dirtyAddrs}
+            memoryRegions={emu.memoryRegions}
+            lineLabel={emu.lineLabel}
+            programLines={emu.programLines}
+            noteRows={emu.noteRows}
+            errorCard={emu.errorCard}
+            programLoaded={emu.programLoaded}
+            running={emu.isRunning}
+            calls
+          />
+        }
+        bytes={
+          <StackPanel
+            sp={emu.sp}
+            getMemory={emu.getMemory}
+            fp={fpValue}
+            frameSlots={frameSlots}
+          />
+        }
       />
     </ErrorBoundary>
   );
+  const ownedByTerminal = foregroundLive || launchMode === "terminal";
   const consoleBlock = (
     <ErrorBoundary label="console">
       <ConsolePanel
         stdout={emu.stdout}
         stderr={emu.stderr}
         notes={emu.notes}
+        // A terminal session's calls happen in the terminal pane, which this
+        // console's card would describe from the wrong place.
+        call={emu.hostedMode && !ownedByTerminal && <CallCard {...emu} />}
         blocked={emu.blocked}
-        ownedByTerminal={foregroundLive || launchMode === "terminal"}
+        ownedByTerminal={ownedByTerminal}
         terminalOwnedFrom={terminalOwnedFrom}
         exitCode={emu.exitCode}
         vfsFiles={emu.vfsFiles}

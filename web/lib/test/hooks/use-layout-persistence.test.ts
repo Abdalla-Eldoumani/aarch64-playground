@@ -101,6 +101,23 @@ describe("useLayoutPersistence", () => {
     expect(result.current[3]).toBe(true);
   });
 
+  // A render that changes the scope still holds the last scope's sizes; a
+  // caller acting on them while ready would push them into the new scope.
+  it("is not ready again from a scope change until that scope's sizes load", () => {
+    window.localStorage.setItem(`${KEY_PREFIX}lg-frames`, "[30,70]");
+    const seen: [number[], boolean][] = [];
+    const { rerender } = renderHook(({ s }) => {
+      const tuple = useLayoutPersistence(s, [60, 40]);
+      seen.push([tuple[0], tuple[3]]);
+      return tuple;
+    }, { initialProps: { s: "lg-right" } });
+    seen.length = 0;
+    rerender({ s: "lg-frames" });
+    expect(seen[0]).toEqual([[60, 40], false]);
+    expect(seen[seen.length - 1]).toEqual([[30, 70], true]);
+    expect(seen.filter(([, ready]) => ready).every(([sizes]) => sizes[0] === 30)).toBe(true);
+  });
+
   it("ignores a save that arrives before the stored layout is read", () => {
     // The panel group reports its mounted layout the moment it can measure
     // itself, which beats this hook's load effect. That report must not be

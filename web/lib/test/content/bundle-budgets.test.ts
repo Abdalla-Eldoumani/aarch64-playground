@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -53,5 +54,35 @@ describe("bundle budgets", () => {
     // The landing and playground documents load numbered shared chunks, so
     // their budget cannot be a glob at all; it lives in scripts/.
     expect(manifest.scripts.size).toContain("scripts/bundle-budget.js");
+  });
+});
+
+// scripts/bundle-budget.js is CommonJS one level above web/, so it is loaded
+// by path. Its DOMPurify check fails the job on an old copy only if it can
+// read that copy's version, whatever quote mark the minifier put around it.
+const { dompurifyVersions } = createRequire(import.meta.url)(
+  join(process.cwd(), "..", "scripts", "bundle-budget.js"),
+) as { dompurifyVersions: (text: string) => number[][] };
+
+describe("the DOMPurify version check", () => {
+  it("reads the version in double quotes, single quotes or backticks", () => {
+    // Next's minifier writes double quotes; DOMPurify's own purify.min.js
+    // writes backticks.
+    expect(dompurifyVersions('t.version="3.4.17",t.removed=[]')).toEqual([[3, 4, 17]]);
+    expect(dompurifyVersions("t.version='3.4.8',t.removed=[]")).toEqual([[3, 4, 8]]);
+    expect(dompurifyVersions("t.version=`3.4.8`,t.removed=[]")).toEqual([[3, 4, 8]]);
+  });
+
+  it("finds an old copy in backticks beside a new one", () => {
+    const chunk = 'a.version="3.4.17",a.removed=[];b.version=`3.4.8`,b.removed=[]';
+    expect(dompurifyVersions(chunk)).toEqual([
+      [3, 4, 17],
+      [3, 4, 8],
+    ]);
+  });
+
+  it("skips a version that is not DOMPurify's, and one whose quote marks do not match", () => {
+    expect(dompurifyVersions('e.version="19.3.1",e.render=[]')).toEqual([]);
+    expect(dompurifyVersions("t.version=\"3.4.8`,t.removed=[]")).toEqual([]);
   });
 });

@@ -12,6 +12,9 @@ use std::path::{Path, PathBuf};
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
+#[path = "common/frame_walk.rs"]
+mod frame_walk;
+
 /// Programs that crash on purpose. The run must halt with the named
 /// diagnosis (the playground's improvement over the server's bare
 /// `Segmentation fault`); stdout is not compared.
@@ -55,7 +58,8 @@ struct Outcome {
     steps: u64,
 }
 
-fn run_program(dir: &Path, stem: &str, infix: &str) -> Result<Outcome, String> {
+/// One program loaded with its arguments and its input, ready to run.
+fn load_program(dir: &Path, stem: &str, infix: &str) -> Result<Cpu, String> {
     let src = read_text(&dir.join(format!("{stem}{infix}.s")))
         .ok_or_else(|| format!("{stem}: missing .s"))?;
     let mut cpu = Cpu::new();
@@ -74,6 +78,11 @@ fn run_program(dir: &Path, stem: &str, infix: &str) -> Result<Outcome, String> {
     // Every corpus run is a `< file` redirect: an empty queue reads as
     // EOF, never as "wait for the console".
     cpu.close_stdin();
+    Ok(cpu)
+}
+
+fn run_program(dir: &Path, stem: &str, infix: &str) -> Result<Outcome, String> {
+    let mut cpu = load_program(dir, stem, infix)?;
 
     // The wall is the budget; the chunk overshoots it slightly so the
     // ceiling fires INSIDE run_until_break with its calm message, never
@@ -267,4 +276,29 @@ fn corpus_at_o2_matches_the_reference() {
 #[ignore = "optimised tier: runs in the weekly corpus workflow"]
 fn corpus_at_o2plain_matches_the_reference() {
     assert_tier(".O2plain");
+}
+
+/// The call stack against the frame chain at every step of every -O0
+/// program, to its end (tests/frames.rs runs a fast subset per pull
+/// request). Weekly: the deep recursions take seconds each.
+#[test]
+#[ignore = "steps every -O0 program one instruction at a time: runs in the weekly corpus workflow"]
+fn corpus_at_o0_agrees_with_the_frame_chain_at_every_step() {
+    let dir = corpus_dir();
+    let mut stems: Vec<String> = fs::read_dir(&dir)
+        .expect("c-corpus directory exists")
+        .filter_map(|e| e.ok()?.file_name().into_string().ok()?.strip_suffix(".c").map(str::to_string))
+        .collect();
+    stems.sort();
+    assert!(stems.len() >= CORPUS_SIZE, "corpus shrank: {} programs", stems.len());
+    let mut total = frame_walk::Tally::default();
+    for stem in &stems {
+        let mut cpu = load_program(&dir, stem, "").unwrap_or_else(|e| panic!("{e}"));
+        total.add(frame_walk::walk(&mut cpu, STEP_BUDGET, stem));
+        assert!(cpu.is_halted(), "{stem} ran past the step budget");
+    }
+    println!("{} programs: {total:?}", stems.len());
+    assert_eq!(total.disagree, 0, "the chain disagreed:
+  {}", total.examples.join("
+  "));
 }

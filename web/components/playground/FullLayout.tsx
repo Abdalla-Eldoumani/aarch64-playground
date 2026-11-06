@@ -13,6 +13,7 @@ import { PhoneLayout, type PhoneLayoutProps } from "@/components/playground/Phon
 import {
   DEBUG_SPLIT,
   EDITOR_SPLIT,
+  FRAMES_SPLIT,
   PaneSplit,
   ResizableLayout,
 } from "@/components/playground/ResizableLayout";
@@ -32,6 +33,9 @@ export interface FullLayoutProps {
   /** The debug column's tab strip; the phone layout reaches the same views
    *  through `panes`, so both arrive already rendered. */
   rightTabs: ReactNode;
+  /** The stack tab is showing the frames, which open the debug column on
+   *  their own split. */
+  framesOpen?: boolean;
   panes: DebugPanes;
   /** The run controls: a full-width row under the tablet and laptop
    *  layouts, and a cell of the phone grid. */
@@ -73,6 +77,7 @@ export function FullLayout({
   disassembly,
   registers,
   rightTabs,
+  framesOpen = false,
   panes,
   controls,
   consoleBlocked,
@@ -123,6 +128,7 @@ export function FullLayout({
                 disassembly={disassembly}
                 registers={registers}
                 rightTabs={rightTabs}
+                framesOpen={framesOpen}
               />
             ) : (
               <div className="flex flex-row h-full">
@@ -139,8 +145,8 @@ export function FullLayout({
                 <div className="w-1/2 min-h-0">
                   <PaneSplit
                     orientation="vertical"
-                    spec={DEBUG_SPLIT}
-                    storageKey={`${breakpoint}-right`}
+                    spec={framesOpen ? FRAMES_SPLIT : DEBUG_SPLIT}
+                    storageKey={`${breakpoint}-${framesOpen ? "frames" : "right"}`}
                     height={height}
                     first={registers}
                     second={rightTabs}

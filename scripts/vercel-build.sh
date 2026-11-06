@@ -2,7 +2,7 @@
 # Vercel build entrypoint. Installs Rust + wasm-pack if missing, compiles the
 # emulator crate to WebAssembly, then hands off to next build in web/.
 #
-# wasm-pack 0.14 requires rustup, and Vercel's build image ships system rustc
+# wasm-pack requires rustup, and Vercel's build image ships system rustc
 # without it, so a top-level `cargo install --locked wasm-pack` fails; install
 # a minimal rustup profile into $HOME first.
 set -euo pipefail
@@ -13,8 +13,8 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 # compilers the release was verified with; a floating "stable" would silently
 # rebuild production with a toolchain nothing has tested. Bump both pins
 # deliberately, with a full local rebuild and test pass on the new versions.
-rust_toolchain="1.96.0"
-wasm_pack_version="0.14.0"
+rust_toolchain="1.99.1"
+wasm_pack_version="0.15.0"
 
 echo "--- installing rust toolchain ${rust_toolchain}"
 if ! command -v rustup >/dev/null 2>&1; then

@@ -530,3 +530,80 @@ describe("validateExercise (hidden inputs and scoped checks)", () => {
     );
   });
 });
+
+/** A valid draw-the-frame exercise: a two-line program paused on its second line. */
+function validFrame() {
+  return {
+    title: "Draw a Frame",
+    slug: "draw-a-frame",
+    order: 6,
+    prompt: "Fill in the frame.",
+    variant: "frame",
+    program: "main:   stp x29, x30, [sp, -32]!\n        mov x29, sp\n",
+    pause: { line: 2, hit: 1 },
+    slots: [
+      { name: "a_s", hint: "It is the first local." },
+      { name: "rect_s.rect_width", hint: "A field of the record." },
+      { name: "arr_s[2]", hint: "The third element." },
+    ],
+    hints: { size: "Round up to 16.", savedFp: "fp points at it.", savedLr: "8 above the saved fp." },
+  };
+}
+
+describe("validateExercise (draw the frame)", () => {
+  test("accepts a frame exercise and keeps only its validated fields", () => {
+    const result = validateExercise({
+      ...validFrame(),
+      answer: 32,
+      pause: { line: 2, hit: 3, depth: 9 },
+      slots: [{ name: "a_s", hint: "first", offset: 16 }],
+      hints: { size: "a", savedFp: "b", savedLr: "c", extra: "d" },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error);
+    if (result.exercise.variant !== "frame") throw new Error("expected the frame variant");
+    expect(result.exercise).not.toHaveProperty("answer");
+    expect(result.exercise.pause).toEqual({ line: 2, hit: 3 });
+    expect(result.exercise.slots).toEqual([{ name: "a_s", hint: "first" }]);
+    expect(result.exercise.hints).toEqual({ size: "a", savedFp: "b", savedLr: "c" });
+    expect(validateExercise(validFrame()).ok).toBe(true);
+  });
+
+  test("rejects a missing, empty or oversized program", () => {
+    const { program: _drop, ...noProgram } = validFrame();
+    expect(rejectError(noProgram)).toMatch(/^program:/);
+    expect(rejectError({ ...validFrame(), program: "   " })).toMatch(/^program:/);
+    expect(rejectError({ ...validFrame(), program: "x".repeat(1024 * 1024 + 1) })).toMatch(/^program:/);
+  });
+
+  test("rejects a pause that is not on one of the program's lines, or an arrival out of range", () => {
+    expect(rejectError({ ...validFrame(), pause: 2 })).toMatch(/^pause:/);
+    expect(rejectError({ ...validFrame(), pause: { line: 0, hit: 1 } })).toMatch(/^pause\.line:/);
+    // The program's text ends in a newline, so it has three lines.
+    expect(rejectError({ ...validFrame(), pause: { line: 4, hit: 1 } })).toMatch(/^pause\.line:/);
+    expect(rejectError({ ...validFrame(), pause: { line: 1.5, hit: 1 } })).toMatch(/^pause\.line:/);
+    expect(rejectError({ ...validFrame(), pause: { line: 2 } })).toMatch(/^pause\.hit:/);
+    expect(rejectError({ ...validFrame(), pause: { line: 2, hit: 0 } })).toMatch(/^pause\.hit:/);
+    expect(rejectError({ ...validFrame(), pause: { line: 2, hit: 1001 } })).toMatch(/^pause\.hit:/);
+  });
+
+  test("rejects no slots, too many, a name that is not a slot name, a name twice, or a missing hint", () => {
+    const slot = (name: string) => ({ name, hint: "h" });
+    expect(rejectError({ ...validFrame(), slots: [] })).toMatch(/^slots:/);
+    expect(rejectError({ ...validFrame(), slots: Array.from({ length: 17 }, (_, i) => slot(`s${i}`)) })).toMatch(
+      /^slots:/,
+    );
+    expect(rejectError({ ...validFrame(), slots: [slot("a s")] })).toMatch(/^slots\[0\]: name/);
+    expect(rejectError({ ...validFrame(), slots: [slot("<b>")] })).toMatch(/^slots\[0\]: name/);
+    expect(rejectError({ ...validFrame(), slots: [slot("arr_s[-1]")] })).toMatch(/^slots\[0\]: name/);
+    expect(rejectError({ ...validFrame(), slots: ["a_s"] })).toMatch(/^slots\[0\]: name/);
+    expect(rejectError({ ...validFrame(), slots: [slot("a_s"), slot("a_s")] })).toMatch(/^slots\[1\]: a_s/);
+    expect(rejectError({ ...validFrame(), slots: [{ name: "a_s", hint: "" }] })).toMatch(/^slots\[0\]: hint/);
+  });
+
+  test("rejects hints that are missing or empty", () => {
+    expect(rejectError({ ...validFrame(), hints: "round up" })).toMatch(/^hints:/);
+    expect(rejectError({ ...validFrame(), hints: { size: "a", savedFp: "b" } })).toMatch(/^hints:/);
+    expect(rejectError({ ...validFrame(), hints: { size: "a", savedFp: " ", savedLr: "c" } })).toMatch(/^hints:/);
+  });
+});

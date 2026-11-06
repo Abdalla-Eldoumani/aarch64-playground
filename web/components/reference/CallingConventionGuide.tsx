@@ -156,29 +156,33 @@ const rulesMarkdown = [
   `- Keep \`sp\` a multiple of 16 wherever memory is reached through it, not only at a call: [the frame record takes 16 bytes, not 8](${pitfall("frame-record-takes-16-bytes")}) and [round every local allocation up to a multiple of 16](${pitfall("locals-round-up-to-16")}).`,
 ].join("\n");
 
-// The stack at three moments, high addresses first.
+// The stack at three moments, high addresses first, in the frames view's
+// colours: a frame record in the saved colour, every slot the code names in
+// the local colour. Each offset counts from its own frame's fp, as the
+// frames view writes them; a band two frames reach two ways keeps both in
+// its detail instead.
 const OUTGOING_AREA: StackFrame[] = [
   {
     title: "main's frame",
-    bands: [{ label: "main's frame record", detail: "saved fp and lr" }],
+    bands: [{ label: "main's frame record", detail: "saved fp and lr", offset: "fp + 0", kind: "saved" }],
   },
   {
     title: "main's outgoing area",
     bands: [
-      { label: "digit 10 = 0", detail: "[sp, 8] in main, [fp, 24] in join_digits", tint: "cyan" },
+      { label: "digit 10 = 0", detail: "[sp, 8] in main, [fp, 24] in join_digits", kind: "local" },
       {
         label: "digit 9 = 9",
         detail: "[sp] in main, [fp, 16] in join_digits",
-        tint: "cyan",
-        markers: ["<- sp at the bl"],
+        kind: "local",
+        marker: "sp\nat the bl",
       },
     ],
   },
   {
     title: "join_digits' frame",
     bands: [
-      { label: "saved lr", detail: "[fp, 8]" },
-      { label: "saved fp", detail: "[fp, 0]", markers: ["<- sp", "<- fp"] },
+      { label: "saved lr", detail: "[fp, 8]", offset: "fp + 8", kind: "saved" },
+      { label: "saved fp", detail: "[fp, 0]", offset: "fp + 0", kind: "saved", marker: "sp, fp" },
     ],
   },
 ];
@@ -186,17 +190,17 @@ const OUTGOING_AREA: StackFrame[] = [
 const SAVED_REGISTERS: StackFrame[] = [
   {
     title: "main's frame",
-    bands: [{ label: "main's frame record", detail: "saved fp and lr" }],
+    bands: [{ label: "main's frame record", detail: "saved fp and lr", offset: "fp + 0", kind: "saved" }],
   },
   {
     title: "print_multiples' frame, 48 bytes",
     bands: [
-      { label: "padding", detail: "[fp, 40]: rounds 40 bytes up to 48", ghost: true },
-      { label: "saved d8", detail: "[fp, 32], d8_s", tint: "amber" },
-      { label: "saved x20", detail: "[fp, 24], x20_s", tint: "amber" },
-      { label: "saved x19", detail: "[fp, 16], x19_s", tint: "amber" },
-      { label: "saved lr", detail: "[fp, 8]" },
-      { label: "saved fp", detail: "[fp, 0]", markers: ["<- sp", "<- fp"] },
+      { label: "padding", detail: "[fp, 40]: rounds 40 bytes up to 48", offset: "fp + 40", ghost: true },
+      { label: "saved d8", detail: "[fp, 32], d8_s", offset: "fp + 32", kind: "local" },
+      { label: "saved x20", detail: "[fp, 24], x20_s", offset: "fp + 24", kind: "local" },
+      { label: "saved x19", detail: "[fp, 16], x19_s", offset: "fp + 16", kind: "local" },
+      { label: "saved lr", detail: "[fp, 8]", offset: "fp + 8", kind: "saved" },
+      { label: "saved fp", detail: "[fp, 0]", offset: "fp + 0", kind: "saved", marker: "sp, fp" },
     ],
   },
 ];
@@ -205,26 +209,28 @@ const FRAME_CHAIN: StackFrame[] = [
   {
     title: "main's frame",
     bands: [
-      { label: "name", detail: "[fp, 16]: the address of \"main\"" },
-      { label: "main's frame record", detail: "saved fp: points at its caller's record" },
+      { label: "name", detail: "[fp, 16]: the address of \"main\"", offset: "fp + 16", kind: "local" },
+      { label: "main's frame record", detail: "saved fp: points at its caller's record", offset: "fp + 0", kind: "saved" },
     ],
   },
   {
     title: "outer's frame",
     bands: [
-      { label: "name", detail: "[fp, 16]: the address of \"outer\"" },
-      { label: "outer's frame record", detail: "saved fp: points at main's record" },
+      { label: "name", detail: "[fp, 16]: the address of \"outer\"", offset: "fp + 16", kind: "local" },
+      { label: "outer's frame record", detail: "saved fp: points at main's record", offset: "fp + 0", kind: "saved" },
     ],
   },
   {
     title: "inner's frame",
     bands: [
-      { label: "saved x19 and x20", detail: "[fp, 24] and [fp, 32]", tint: "amber" },
-      { label: "name", detail: "[fp, 16]: the address of \"inner\"" },
+      { label: "saved x19 and x20", detail: "[fp, 24] and [fp, 32]", offset: "fp + 24", kind: "local" },
+      { label: "name", detail: "[fp, 16]: the address of \"inner\"", offset: "fp + 16", kind: "local" },
       {
         label: "inner's frame record",
         detail: "saved fp: points at outer's record",
-        markers: ["<- sp", "<- fp"],
+        offset: "fp + 0",
+        kind: "saved",
+        marker: "sp, fp",
       },
     ],
   },

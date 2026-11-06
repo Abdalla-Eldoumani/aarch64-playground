@@ -9,7 +9,7 @@ import {
   useState,
 } from "react";
 import { IDLE_CPU_VIEW } from "@/lib/emulator/use-cpu-view";
-import type { RegView } from "@/lib/emulator/emulator-state";
+import type { RegView, StepGoal } from "@/lib/emulator/emulator-state";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
 import type { WalkCommand, WalkState } from "@/lib/playground/use-autoplay";
@@ -18,6 +18,7 @@ import { StaticCodeView } from "@/components/playground/StaticCodeView";
 import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { ConsolePanel } from "@/components/panels/ConsolePanel";
 import { EmbedLayout } from "@/components/playground/EmbedLayout";
+import { FramesView } from "@/components/playground/lazy-frames";
 import type { SourceFile } from "@/components/playground/MultiFileTabs";
 import { EmbeddableCore, type FirstPress } from "@/components/playground/EmbeddableCore";
 
@@ -59,6 +60,8 @@ export type EmbeddablePlaygroundHandle = {
   pause(): void;
   step(): void;
   stepBack(): void;
+  /** Step over, step out or run to cursor (main.asm's caret line). */
+  runUntil(goal: StepGoal): void;
   reset(): void;
   /** Swap the editor text only (an exercise's restore-starter); a new
    *  program goes through loadProgram so the last run's state is cleared. */
@@ -186,6 +189,7 @@ const IDLE_RUN_STATUS = {
   exitCode: null,
   stepCount: 0,
   failed: false,
+  paused: false,
   registers: IDLE_CPU_VIEW.registers,
   sp: IDLE_CPU_VIEW.sp,
   changedRegs: NO_CHANGED_REGS,
@@ -364,6 +368,7 @@ export const EmbeddablePlayground = forwardRef<
       pause: () => runOrQueue((handle) => handle.pause()),
       step: () => runOrQueue((handle) => handle.step()),
       stepBack: () => runOrQueue((handle) => handle.stepBack()),
+      runUntil: (goal: StepGoal) => runOrQueue((handle) => handle.runUntil(goal)),
       reset: () => runOrQueue((handle) => handle.reset()),
       loadSource: (next: string, label?: string) =>
         runOrQueue((handle) => handle.loadSource(next, label)),
@@ -421,6 +426,8 @@ export const EmbeddablePlayground = forwardRef<
           onReset={engage}
           onStep={() => pressFirst("step")}
           onStepBack={engage}
+          onRunUntil={engage}
+          stopReason={null}
           onCheck={() => pressFirst("check")}
           runStatus={IDLE_RUN_STATUS}
           hasOutput={false}
@@ -441,6 +448,23 @@ export const EmbeddablePlayground = forwardRef<
               pc={IDLE_CPU_VIEW.pc}
               nzcv={IDLE_CPU_VIEW.nzcv}
               headingLevel={registerHeadingLevel}
+            />
+          }
+          // A stack side chosen in another frame on the page shows here too,
+          // as it does in a frame that has engaged but not stepped.
+          stack={
+            <FramesView
+              frames={null}
+              frameLayout={null}
+              registers={IDLE_CPU_VIEW.registers}
+              sp={IDLE_CPU_VIEW.sp}
+              pc={IDLE_CPU_VIEW.pc}
+              getMemory={() => new Uint8Array()}
+              dirtyAddrs={[]}
+              memoryRegions={[]}
+              lineLabel={() => null}
+              programLoaded={false}
+              running={false}
             />
           }
           console={

@@ -252,9 +252,10 @@ export function lessonNodes(lesson: Lesson): JsonLdNode[] {
 }
 
 /**
- * An exercise page's entries. The theory sets are marked as quizzes through
- * learningResourceType rather than the Quiz type: Google reads Quiz only as
- * flashcards, and these are multiple choice, predictions, and blanks.
+ * An exercise page's entries. The theory sets and frame drawings are marked
+ * as quizzes through learningResourceType rather than the Quiz type: Google
+ * reads Quiz only as flashcards, and these are multiple choice, predictions,
+ * blanks, and frames to fill in.
  */
 export function exerciseNodes(exercise: Exercise): JsonLdNode[] {
   const path = `/practice/${exercise.slug}`;

@@ -478,7 +478,7 @@ describe("the error line under the run row", () => {
 
   it("leads a one-file error with its line, under a hint that fits it", async () => {
     const text = await mountWithError("expected a register here, got `3`", 4);
-    expect(text).toContain("line 4: expected a register here, got `3`");
+    expect(text).toContain("line 4: expected a register here, got 3");
     expect(text).toContain("registers only");
   });
 

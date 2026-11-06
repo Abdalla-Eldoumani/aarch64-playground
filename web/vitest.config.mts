@@ -15,6 +15,7 @@ const DOM_LIB_TESTS = [
   "lib/test/emulator/backend.test.ts",
   "lib/test/emulator/use-console-output.test.ts",
   "lib/test/emulator/use-emulator.test.ts",
+  "lib/test/emulator/use-emulator.playground.test.ts",
   "lib/test/hooks/use-breakpoint.test.ts",
   "lib/test/hooks/use-focus-trap.test.tsx",
   "lib/test/hooks/use-layout-persistence.test.ts",

@@ -1,7 +1,12 @@
 // @vitest-environment node
+import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import type { LintWarning } from "@/lib/emulator/emulator-state";
+import { wordLint } from "@/lib/emulator/frame-check";
+import { readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
+import { decodeFrameLayout, decodeFrames, FRAME_STATE } from "@/lib/emulator/stack-frames";
 
 // Pins the emulator calls the web layer relies on, against the real node
 // build. Every expected value is worked out by hand in the comments, never by
@@ -79,6 +84,30 @@ after:
         ret
 `;
 
+const SHARED_BYTES = `// Two locals that share bytes in main's frame.
+define(fp, x29)
+define(lr, x30)
+
+a_s = 16
+b_s = 18
+alloc = -(16 + 12) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 7
+        str     w9, [fp, a_s]
+        mov     x10, 4
+        str     x10, [fp, b_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+`;
+
 describe("lint_source over the real build", () => {
   it("warns on the missing-prologue shape and stays quiet on clean code", () => {
     withEmulator((emu) => {
@@ -94,6 +123,23 @@ describe("lint_source over the real build", () => {
         ".text\n.global main\nmain:\nstp x29, x30, [sp, -16]!\nmov x0, 0\nldp x29, x30, [sp], 16\nret\n",
       ) as Array<{ line: number; message: string }>;
       expect(clean).toHaveLength(0);
+    });
+  });
+
+  it("adds the frame check's findings as numbers and the program's names, which the editor words", () => {
+    withEmulator((emu) => {
+      const lintSource = (emu as unknown as { lint_source: (s: string) => unknown }).lint_source.bind(emu);
+      // alloc = -(16 + 12) & -16 = -32. a_s holds bytes 16 to 19 and b_s
+      // bytes 18 to 25: they overlap, and b_s's 8 bytes start at 18, not a
+      // multiple of 8. Both marks sit on b_s's store, line 19.
+      const rows = lintSource(SHARED_BYTES) as LintWarning[];
+      expect(rows).toEqual([
+        { line: 19, check: [0, 32, 16, 4, 18, 8], names: ["main", "a_s", "b_s"] },
+        { line: 19, check: [3, 32, 18, 8, 0, 0], names: ["main", "b_s", ""] },
+      ]);
+      expect(wordLint(rows)[0].message).toContain(
+        "a_s (4 bytes at 16 to 19) and b_s (8 bytes at 18 to 25) overlap in main's frame",
+      );
     });
   });
 });
@@ -829,5 +875,201 @@ describe("clobber notes", () => {
       expect(Array.from(emu.take_clobber_notes())).toEqual([9, 0, 10, 12]);
       expect(Array.from(emu.take_clobber_notes())).toEqual([]);
     });
+  });
+});
+
+describe("frames", () => {
+  /** The address the line map gives 1-based editor `line`. */
+  function pcOfLine(emu: EmulatorInstance, line: number): number {
+    const map = Array.from(emu.get_line_map());
+    for (let i = 0; i + 1 < map.length; i += 2) {
+      if (map[i + 1] === line) return map[i];
+    }
+    throw new Error(`no instruction on line ${line}`);
+  }
+
+  // The shipped locals example with its fixture input "7 4", stopped on
+  // line 38 (`ldr a_r, [fp, a_s]`), once scanf has stored both. The slides
+  // draw this frame: 32 bytes, the saved fp at fp + 0 (0, main has no
+  // caller frame) and the saved lr at fp + 8, a_s = 7 at fp + 16 and
+  // b_s = 4 at fp + 20.
+  it("decodes the locals frame the slides draw", () => {
+    withEmulator((emu) => {
+      const source = readFileSync(path.join(process.cwd(), "public/examples/cpsc355/locals.s"), "utf8");
+      assemble(emu, source);
+      emu.push_stdin("7 4\n");
+      emu.set_breakpoint(pcOfLine(emu, 38));
+      emu.run_until_break(10_000);
+      const snap = decodeFrames(emu.frames());
+      const layout = decodeFrameLayout({ numbers: Array.from(emu.frame_layout()), names: emu.frame_names() });
+      expect(snap?.frames).toHaveLength(1);
+      const main = snap!.frames[0];
+      const fp = Number(emu.get_register(29));
+      expect(main.state).toBe(FRAME_STATE.complete);
+      expect(main.record).toBe(fp);
+      expect(main.spEntry - main.lo).toBe(32);
+      expect(readU64(emu, fp)).toBe(0n);
+      const view = new DataView(emu.get_memory_range(fp + 16, 8).buffer);
+      expect([view.getInt32(0, true), view.getInt32(4, true)]).toEqual([7, 4]);
+      const fn = layout!.functions.find((f) => f.entry === main.entry);
+      expect(fn?.name).toBe("main");
+      expect(fn?.frameBytes).toBe(32);
+      expect(fn?.slots.map((s) => [s.offset, s.width, s.name])).toEqual([
+        [16, 4, "a_s"],
+        [20, 4, "b_s"],
+      ]);
+      expect(snap!.chainOk).toBe(true);
+    });
+  });
+
+  const OVERFLOW = `// fill_marks writes eight marks into a four-int local array: the last
+// four land on main's saved fp and lr.
+
+define(fp, x29)
+define(lr, x30)
+
+marks_s = 16                            // int marks[4]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16                // 16 bytes of locals: -32
+dealloc = -alloc
+
+        .text
+// fill_marks() sets marks[i] = i + 1 for i = 0 to 7 (bug: marks holds 4)
+        .balign 4
+        .global fill_marks
+fill_marks:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, marks_s         // x9 = &marks[0]
+        mov     w10, 0                  // i = 0
+        b       fm_test
+fm_loop:
+        add     w11, w10, 1
+        str     w11, [x9, w10, sxtw 2]  // marks[i] = i + 1
+        add     w10, w10, 1
+fm_test:
+        cmp     w10, 8                  // bug: should be 4
+        b.lt    fm_loop
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      fill_marks
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  // fill_marks's 32-byte frame ends at main's frame record, with marks at
+  // fp + 16, so marks[4] and marks[5] land on main's saved fp and marks[6]
+  // and marks[7] on its saved lr: 7 | 8 << 32. main's ret then jumps to
+  // 0x800000007. Line 23 is the store, line 39 main's ret.
+  it("reports the writes over main's record and the return they break", () => {
+    withEmulator((emu) => {
+      assemble(emu, OVERFLOW);
+      emu.run_until_break(10_000);
+      expect(emu.is_halted()).toBe(true);
+      const snap = decodeFrames(emu.frames())!;
+      const main = snap.frames[0];
+      expect(main.fpHit).toMatchObject({ pc: pcOfLine(emu, 23), element: 5 });
+      expect(main.lrHit).toMatchObject({ pc: pcOfLine(emu, 23), element: 7 });
+      expect(emu.frame_names()[main.lrHit!.arrayName!]).toBe("marks_s");
+      expect(snap.badReturn).toMatchObject({ pc: pcOfLine(emu, 39), target: 0x8_0000_0007 });
+    });
+  });
+
+  // fill_words writes four 8-byte words into a two-word array: words[3] is
+  // main's saved lr, so main's ret jumps to 0x4141414141414141, eight 'A's,
+  // what a %s overrun leaves; far above 2^53, past an exact f64.
+  const WORDS = `// fill_words writes past its array onto main's saved fp and lr.
+
+define(fp, x29)
+define(lr, x30)
+
+words_s = 16                            // long words[2]: fp + 16 to fp + 31
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+// fill_words() sets words[i] for i = 0 to 3 (bug: words holds 2)
+        .balign 4
+        .global fill_words
+fill_words:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, words_s         // x9 = &words[0]
+        ldr     x11, =0x4141414141414141
+        mov     w10, 0
+        b       fw_test
+fw_loop:
+        str     x11, [x9, w10, sxtw 3]  // words[i] = "AAAAAAAA"
+        add     w10, w10, 1
+fw_test:
+        cmp     w10, 4
+        b.lt    fw_loop
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      fill_words
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  it("hands back a garbage return address from run_to as a number", () => {
+    withEmulator((emu) => {
+      assemble(emu, WORDS);
+      // Step out of main: depth 0.
+      const r = emu.run_to(10_000, 0, -1) as RawRun & { bad_return: boolean; reached: boolean };
+      expect(r).toMatchObject({ bad_return: true, reached: false, halted: false });
+      expect(r.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
+  // Steps 1 to 32 run to main's ret (run_to's count above); step 33 fetches
+  // at 0x4141414141414141, which no page covers: the memory fault errors.rs
+  // words for a read, address in 16 hex digits.
+  const WORDS_FAULT =
+    "memory fault: the program tried to read 0x4141414141414141, which no section covers. " +
+    "The base register (the first one inside the brackets, or a pointer passed to a call) " +
+    "does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the " +
+    "value stored at the label) or a `mov` was written where `ldr xN, =label` was meant";
+
+  it("ends a run through a garbage return with the memory fault, not a trap", () => {
+    withEmulator((emu) => {
+      assemble(emu, WORDS);
+      const r = emu.run_until_break(10_000) as RawRun;
+      expect(r).toMatchObject({ halted: true, steps_executed: 33, error: WORDS_FAULT });
+      expect(r.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
+  it("steps onto a garbage return and back off it without a trap", () => {
+    withEmulator((emu) => {
+      assemble(emu, WORDS);
+      for (let i = 0; i < 31; i++) emu.step();
+      const ret = emu.step() as RawRun;
+      expect(ret.halted).toBe(false);
+      expect(ret.error ?? null).toBeNull();
+      expect(ret.pc).toBe(Number(0x4141_4141_4141_4141n));
+      const fault = emu.step() as RawRun;
+      expect(fault).toMatchObject({ halted: true, error: WORDS_FAULT });
+      const back = emu.step_back() as RawRun;
+      expect(back.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
+  it("reads as absent from a wasm build that predates the frames", () => {
+    expect(readFrames({})).toBeNull();
+    expect(readFrameLayout({})).toBeNull();
+    expect(decodeFrames([])).toBeNull();
   });
 });

@@ -101,13 +101,30 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | Command | Effect |
 | --- | --- |
 | `gdb help` | Show the gdb-lite command list. |
-| `gdb n`, `gdb s` | Step one instruction. |
+| `gdb n`, `gdb s`, `gdb si` | Step one instruction. |
+| `gdb ni` | Step over: run the call on this line in one go and stop on the next line. On any other instruction it steps one instruction. |
+| `gdb finish` | Step out: run until this function returns to its caller. Out of `main`, it runs to the end of the program. |
 | `gdb c` | Continue to halt or breakpoint. |
 | `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
 | `gdb x/Ni $pc` | Show N words of memory at the PC, or at the address in a register (`$x0`). N is at most 1024. |
-| `gdb bt` | One-frame backtrace at the current PC. |
+| `gdb x/Ngx $sp` | Show N 8-byte words in hex, two to a line, from `$sp`, `$fp`, any register, or an address (`0x7ffffff0`). N is at most 1024. |
+| `gdb bt` | The call stack: `#0` is the function the program is in and its line, `#1` its caller at the line of the call, and so on down to `main`. Past 20 frames the rest, apart from `main`, fold into one line (`... 3 more calls ...`). A program deeper than the 16,384 calls the playground records starts with one line for the calls it did not record (`(#0 to #4: 5 deeper frames, not recorded)`). |
+| `gdb info frame` | This function's frame: its size and the addresses it spans, who called it, then each box from the top down (locals by name with their values, padding, the saved lr and what it returns to, the saved fp and whose frame it points at). |
+
+`ni`, `finish`, `bt` and `info frame` read the same call stack the stack
+tab's frames view draws. `ni` and `finish` stop early at a breakpoint, at a
+read waiting for input, when the program ends, or at a `ret` that does not
+go back to a caller (an overwritten saved lr), and print why they stopped.
+After 1,000,000 steps they pause and say so; the same command again goes on
+to the same place. With no frame left (the program has finished), `bt` and
+`info frame` say so.
+
+In real gdb, `n` and `s` step a whole source line. Here they step one
+instruction, as they always have, and keep doing so until after the
+course's final exam (December 16); `ni` and `si` are the
+instruction-level names to use now.
 
 ## Input handling
 

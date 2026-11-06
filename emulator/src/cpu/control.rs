@@ -7,7 +7,18 @@ use super::*;
 impl Cpu {
     /// Run until breakpoint, halt, error, or max_steps reached.
     pub fn run_until_break(&mut self, max_steps: u32) -> Result<RunResult, EmuError> {
+        self.run_until(max_steps, Until::default())
+    }
+
+    /// `run_until_break` that also stops when `until` is met, checked after
+    /// each step, and, with a goal set, after a `ret` that went to no
+    /// caller: a step over or out waiting for that call to return never
+    /// would. A host drives it in chunks, so the goal is absolute.
+    pub fn run_until(&mut self, max_steps: u32, until: Until) -> Result<RunResult, EmuError> {
+        let goal = until.depth.is_some() || until.pc.is_some();
+        let astray = self.frames.bad_return().step;
         let mut steps: u32 = 0;
+        let (mut reached, mut bad_return) = (false, false);
 
         while steps < max_steps && !self.halted && !self.blocked {
             let pc = self.regs.read_pc();
@@ -21,11 +32,26 @@ impl Cpu {
                     steps_executed: steps,
                     hit_breakpoint: true,
                     error: None,
+                    reached: false,
+                    bad_return: false,
                 });
             }
 
             let result = self.step()?;
             steps += 1;
+            // Before the sleep check: a goal met by the step that slept
+            // would otherwise be overshot when the runner resumes.
+            if goal && !self.halted {
+                let pc = self.regs.read_pc();
+                // A stray return that lands in the program is still the stop.
+                bad_return = self.frames.bad_return().step != astray;
+                reached = !bad_return
+                    && (until.pc == Some(pc)
+                        || until.depth.is_some_and(|d| self.frames.depth() <= d && self.in_program(pc)));
+                if reached || bad_return {
+                    break;
+                }
+            }
             // A nanosleep hands control back so a real-time runner can
             // honor the pause (it reads the duration with
             // `take_pending_sleep_ns`). Breaking on the OUTCOME rather
@@ -42,12 +68,14 @@ impl Cpu {
         // sitting exactly on a chunk boundary. If the budget (not a halt or
         // a stall) ended this call while PC rests on a breakpoint, report the
         // hit now, before the next chunk's first step would step past it.
-        let at_cap = steps >= max_steps && !self.halted && !self.blocked;
+        let at_cap = steps >= max_steps && !self.halted && !self.blocked && !reached && !bad_return;
         Ok(RunResult {
             pc,
             halted: self.halted,
             steps_executed: steps,
             hit_breakpoint: at_cap && self.breakpoints.contains(&pc),
+            reached,
+            bad_return,
             // Surface a bounds abort (step ceiling / memory cap) through
             // `error` so the UI shows the calm message. Gated on `halted` so
             // a run resumed from a restored save never re-reports the abort
@@ -105,6 +133,7 @@ impl Cpu {
         self.changed_fprs.clear();
         self.halted = false;
         self.steps_total = 0;
+        self.steps_taken = 0;
         self.output_total = 0;
         self.abort_message = None;
         self.stdout.clear();
@@ -130,6 +159,9 @@ impl Cpu {
         self.refund_output_total = 0;
         self.clobber_notes.clear();
         self.clobber_noted = 0;
+        self.frames.clear();
+        self.last_program_pc = 0;
+        self.last_call = CallRecord::default();
         // Intentionally NOT resetting `self.host`: `Cpu::new` pre-registers
         // the libc + hosted-printf/scanf stubs, and the frontend linker
         // needs them to resolve `bl printf` / `bl scanf` after a reset
@@ -145,6 +177,29 @@ impl Cpu {
     /// program is loaded. See the fall-through guard in `step`.
     pub fn text_end(&self) -> Option<u64> {
         self.text_end
+    }
+
+    /// Steps taken since the last load or reset, as the step ceiling counts
+    /// them: bulk work charged, sleeps refunded.
+    pub fn steps_total(&self) -> u64 {
+        self.steps_total
+    }
+
+    /// Steps taken since the last load or reset, one each: the clock the
+    /// call stack's records are stamped with.
+    pub fn steps_taken(&self) -> u64 {
+        self.steps_taken
+    }
+
+    /// The calls the program is inside, main first.
+    pub fn call_stack(&self) -> &crate::frames::CallStack {
+        &self.frames
+    }
+
+    /// The last printf or scanf call; its `step` says whether the last
+    /// step made it.
+    pub fn last_call(&self) -> &CallRecord {
+        &self.last_call
     }
 
     /// Whether the CPU has at least one recorded snapshot; i.e. whether
@@ -177,13 +232,19 @@ impl Cpu {
             callbacks: self.callbacks.clone(),
             stdout_seen: self.stdout_seen,
             stderr_seen: self.stderr_seen,
+            steps_total: self.steps_total,
+            steps_taken: self.steps_taken,
+            frames: self.frames.clone(),
+            last_program_pc: self.last_program_pc,
+            call: Some(self.last_call.clone()),
         };
         self.snapshots.save_named(name, snap);
     }
 
-    /// Restore everything `snap` holds except registers, memory and the
-    /// heap, which go back to the caller to apply the way their form needs.
-    fn restore_from<R, M, H>(&mut self, snap: Snapshot<R, M, H>) -> (R, M, H) {
+    /// Restore everything `snap` holds except registers, memory, the heap
+    /// and the call stack, which go back to the caller to apply the way
+    /// their form needs.
+    fn restore_from<R, M, H, F>(&mut self, snap: Snapshot<R, M, H, F>) -> (R, M, H, F) {
         self.halted = snap.halted;
         self.blocked = snap.blocked;
         self.exit_code = snap.exit_code;
@@ -203,10 +264,15 @@ impl Cpu {
         // the step budget survives a restore.
         self.stdout_seen = snap.stdout_seen;
         self.stderr_seen = snap.stderr_seen;
+        self.steps_taken = snap.steps_taken;
+        self.last_program_pc = snap.last_program_pc;
+        if let Some(call) = snap.call {
+            self.last_call = call;
+        }
         self.pending_sleep_ns = None;
         self.changed_regs.clear();
         self.changed_fprs.clear();
-        (snap.regs, snap.mem, snap.heap)
+        (snap.regs, snap.mem, snap.heap, snap.frames)
     }
 
     /// Restore a previously saved state by name. Returns `true` when a
@@ -215,7 +281,7 @@ impl Cpu {
         let Some(snap) = self.snapshots.load_named(name) else {
             return false;
         };
-        (self.regs, self.mem, self.heap) = self.restore_from(snap);
+        (self.regs, self.mem, self.heap, self.frames) = self.restore_from(snap);
         // The ring still holds frames recorded AFTER this save was taken,
         // so every one of them lies in the restored machine's future:
         // stepping back into one would move the program FORWARD past the
@@ -257,16 +323,18 @@ impl Cpu {
                 StepOutcome::Advance
             };
         };
-        let (regs, mem, heap) = self.restore_from(*snap);
+        // Put back the count the step started from, bulk charge and sleep
+        // refund included, and drop any abort recorded after it; otherwise a
+        // step taken right after backing off the step ceiling would re-halt
+        // reporting a runaway loop for an instruction that never executed.
+        // Bounded: each backward step refunds what its forward step charged,
+        // and the ring holds at most its capacity.
+        self.steps_total = snap.steps_total;
+        let (regs, mem, heap, frames) = self.restore_from(*snap);
         self.regs.undo(regs);
         self.mem.undo(mem);
         self.heap.undo(heap);
-        // Un-count the step this frame undoes and drop any abort recorded
-        // after it; otherwise a step taken right after backing off the step
-        // ceiling would re-halt reporting a runaway loop for an instruction
-        // that never executed. Bounded: each backward step refunds exactly
-        // one forward step, and the ring holds at most its capacity.
-        self.steps_total = self.steps_total.saturating_sub(1);
+        self.frames.undo(frames);
         self.abort_message = None;
         if self.halted {
             match self.exit_code {

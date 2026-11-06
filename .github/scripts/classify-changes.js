@@ -25,17 +25,26 @@ const RULES = [
 // hashes the same files.
 const WASM_INPUTS = /^emulator\/(src\/|Cargo\.toml$|Cargo\.lock$)/;
 
-// Files outside emulator/ that the Rust tests read.
-const READ_BY_RUST = /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/)/;
+// Files outside emulator/ that the Rust tests read; the web tests' programs
+// are shared with the call card's.
+const READ_BY_RUST =
+  /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/|web\/lib\/test\/emulator\/fixtures\/)/;
 
 // Emulator test data the web tests read: error-explain's server transcripts
 // and the dense -O2 program share.test measures a link with.
 const READ_BY_WEB = /^emulator\/tests\/(error-parity\/|c-corpus\/78_switch_dense\.O2plain\.s$)/;
 
 // What the production build is made from besides the emulator: the manifests,
-// the build and deploy config, and the browser smoke test itself.
+// the build and deploy config, and the browser smoke test itself with the
+// share encoder and the example it loads.
 const BUILD_CONFIG =
-  /^(web\/(package(-lock)?\.json|next\.config\.mjs|tsconfig\.json|tailwind\.config\.ts|postcss\.config\.js)$|vercel\.json$|package\.json$|scripts\/(write-precache-list\.js|browser-smoke\.mjs|smoke-noise\.mjs)$)/;
+  /^(web\/(package(-lock)?\.json|next\.config\.mjs|tsconfig\.json|tailwind\.config\.ts|postcss\.config\.js|lib\/playground\/share\.ts|public\/examples\/cpsc355\/locals\.s)$|vercel\.json$|package\.json$|scripts\/(write-precache-list\.js|browser-smoke\.mjs|smoke-noise\.mjs)$)/;
+
+// The stack frames view the browser smoke reads, from the frames exports'
+// decode to the stack tab's switch, its rows (FrameRow) included. Lessons'
+// EmbedLayout is not on its page.
+const FRAMES_VIEW =
+  /^web\/(lib\/emulator\/(frame-data|stack-frames)\.ts|components\/(panels\/(FramesView|FrameRow)|playground\/(lazy-frames|StackTab))\.tsx)$/;
 
 function classOf(file) {
   const rule = RULES.find(([, pattern]) => pattern.test(file));
@@ -57,7 +66,7 @@ function classify(files) {
     // verify-corpus, next build + size-limit, and the vitest shards
     web: everything || classes.has("web") || classes.has("content") || wasm || any(READ_BY_WEB),
     // the browser smoke test against a production build of the real wasm
-    browser: everything || wasm || any(BUILD_CONFIG),
+    browser: everything || wasm || any(BUILD_CONFIG) || any(FRAMES_VIEW),
   };
 }
 
