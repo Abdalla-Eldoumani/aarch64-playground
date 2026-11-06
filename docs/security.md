@@ -150,9 +150,12 @@ node scripts/audit-deps.js --omit=dev
 node scripts/audit-deps.js
 ```
 
-`overrides` in `web/package.json` holds two packages at patched versions:
-`dompurify`, which arrives through monaco-editor, and `postcss`, which arrives
-through Next.js. The root `package.json` holds the same `postcss`
+`overrides` in `web/package.json` holds three packages at patched versions:
+`dompurify`, which arrives through monaco-editor, `postcss`, which arrives
+through Next.js, and `minimatch`, for the copy
+`@typescript-eslint/typescript-estree` uses in the lint tools. ESLint and its
+other plugins keep minimatch 3, whose API differs, so that override applies
+to that one package. The root `package.json` holds the same `postcss`
 override for the copy of Next.js that Vercel installs there.
 
 monaco-editor also bundles its own, older copy of DOMPurify, a file inside
