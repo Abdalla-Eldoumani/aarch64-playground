@@ -796,6 +796,8 @@ export function useEmulator(): EmulatorState {
   const runUntil = useCallback(
     (target: StepTarget): Promise<string | null> =>
       movingRef.current.then(() => {
+        // With nothing loaded every line reads as having no instruction.
+        if (!programLoadedRef.current) return null;
         const paused = goalRef.current;
         if (paused?.target === target && pausedAtRef.current === stepCountRef.current) return run(paused);
         const snap = snapRef.current;
