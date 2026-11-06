@@ -1532,6 +1532,42 @@ describe("useEmulator stepping and running", () => {
     });
   });
 
+  // The goal buttons are disabled here, and a key or the palette matches them.
+  it.each<[string, (fake: ReturnType<typeof makeBackend>) => ReturnType<typeof mountLoaded>]>([
+    ["before any assemble", mountLoaded],
+    [
+      "after a reset",
+      async (fake) => {
+        const view = await mountAssembled(fake);
+        await act(async () => view.result.current.reset());
+        return view;
+      },
+    ],
+    [
+      "after a failed assemble on a good one",
+      async (fake) => {
+        const view = await mountAssembled(fake);
+        fake.cfg.assembleSuccess = false;
+        await act(async () => {
+          await expect(view.result.current.assemble(HOSTED_SOURCE)).resolves.toBe(false);
+        });
+        return view;
+      },
+    ],
+  ])("runs nothing and says nothing for a goal with no program, %s", async (_, loaded) => {
+    const fake = makeBackend();
+    const { result } = await loaded(fake);
+    for (const target of [11, 40, "over", "out"] as const) {
+      let said: string | null = "unset";
+      await act(async () => {
+        said = await result.current.runUntil(target);
+      });
+      expect(said).toBeNull();
+      expect(result.current.stopReason).toBeNull();
+    }
+    expect(fake.calls.until).toEqual([]);
+  });
+
   it("resumes the same goal once the console answers a read", async () => {
     const fake = makeBackend({ runSnapshot: { blocked: true } });
     const { result } = await mountAssembled(fake);
