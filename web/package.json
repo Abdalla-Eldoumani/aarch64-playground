@@ -106,7 +106,7 @@
     "react-dom": "19.3.1",
     "react-hot-toast": "2.6.1",
     "react-markdown": "10.1.0",
-    "react-resizable-panels": "4.15.0",
+    "react-resizable-panels": "4.16.1",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1"
   },
