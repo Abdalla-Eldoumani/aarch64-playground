@@ -25,13 +25,16 @@ const CODE = ["app", "components", "lib"]
   .flatMap(sources)
   .map((file) => ({ file, text: fs.readFileSync(path.join(WEB, file), "utf8") }));
 
-// Each pattern a line of source may not match, and what to write instead.
-const BANNED: [RegExp, string][] = [
+// Each pattern a line of source may not match, what to write instead, and
+// the folder it applies to when not everywhere.
+const BANNED: [RegExp, string, string?][] = [
   [/^\s*["']use server["'];?\s*$/, "a server action needs a server: do the work in the browser or at build time"],
   [/^\s*export const (revalidate|dynamic)\b/, "every route is a static file: drop the route segment export"],
   [/\brevalidate\s*:/, "a revalidating fetch turns every route into ISR: fetch once per build with cache: \"force-cache\""],
   [/\bcache\s*:\s*["']no-store["']/, "a no-store fetch renders the route per request: fetch once per build with cache: \"force-cache\""],
   [/from\s+["']next\/(headers|server)["']/, "a request-time API renders the route per request: read the URL in the browser instead"],
+  // A page's searchParams prop; client code reads its URL elsewhere under lib/.
+  [/\bsearchParams\b/, "a searchParams prop renders the route per request: read the URL in the browser instead", "app/"],
 ];
 
 describe("the site is static files only", () => {
@@ -66,8 +69,8 @@ describe("the site is static files only", () => {
     const hits: string[] = [];
     for (const { file, text } of CODE) {
       text.split(/\r?\n/).forEach((line, i) => {
-        for (const [pattern, instead] of BANNED) {
-          if (pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
+        for (const [pattern, instead, folder = ""] of BANNED) {
+          if (file.startsWith(folder) && pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
         }
       });
     }
