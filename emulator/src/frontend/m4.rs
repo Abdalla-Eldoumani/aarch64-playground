@@ -19,9 +19,13 @@
 //!     Elsewhere it is an ordinary name (a `dnl:` label runs as it did).
 //!   * `divert(-1)` throws the output away until `divert` or `divert(0)`;
 //!     a numbered diversion is refused.
+//!   * On a line whose source holds a backtick, `` `text' `` is written as
+//!     `text`, unexpanded, and a quoted argument loses its quotes. The quote
+//!     closes on its line. Other lines read a backtick as plain text, as
+//!     they always have.
 //!
-//! Anything else (ifdef, ifelse, forloop, backtick quoting outside a
-//! define) fails with an "unsupported m4 construct" error at its line.
+//! Anything else (ifdef, ifelse, forloop) fails with an "unsupported m4
+//! construct" error at its line.
 
 use std::collections::HashMap;
 
@@ -262,7 +266,17 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         } else if discard {
             continue;
         } else {
-            (expand_recursively(line, &current, line_num)?, *joins)
+            // Only a line whose own source holds a backtick reads m4 quotes:
+            // the playground refused every such line before, so no program
+            // that ran changes. GNU m4 writes the quoted text without its
+            // outer quotes and never reads it again.
+            let quotes = if line.contains('`') { Quotes::Keep } else { Quotes::Plain };
+            let settled = expand_recursively(line, &current, line_num, Gnu { quotes })?;
+            let text = match quotes {
+                Quotes::Keep => substitute_bounded(&settled, &current, line_num, Gnu { quotes: Quotes::Strip })?,
+                _ => settled,
+            };
+            (text, *joins)
         };
         if discard {
             continue;
@@ -309,10 +323,11 @@ fn expand_recursively(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
+    gnu: Gnu,
 ) -> Result<String, EmuError> {
     let mut current = line.to_string();
     for _ in 0..MAX_RECURSION {
-        let next = substitute_bounded(&current, defines, line_num)?;
+        let next = substitute_bounded(&current, defines, line_num, gnu)?;
         if next == current {
             return Ok(current);
         }
@@ -320,7 +335,7 @@ fn expand_recursively(
     }
     // One more pass: if it still changes after MAX_RECURSION rounds, the
     // substitution has a cycle and will never settle.
-    let next = substitute_bounded(&current, defines, line_num)?;
+    let next = substitute_bounded(&current, defines, line_num, gnu)?;
     if next != current {
         return Err(EmuError::PreprocError {
             line: line_num,
@@ -339,9 +354,10 @@ fn substitute_bounded(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
+    gnu: Gnu,
 ) -> Result<String, EmuError> {
     let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
-    substitute_once_gnu(line, defines, limit).map_err(|stop| EmuError::PreprocError {
+    substitute_once_gnu(line, defines, limit, gnu).map_err(|stop| EmuError::PreprocError {
         line: line_num,
         message: match stop {
             Stop::Cap => format!(
@@ -350,6 +366,9 @@ fn substitute_bounded(
             ),
             Stop::Unclosed => "a macro's arguments run past the end of the line: the \
                                playground's m4 needs the closing `)` on the same line"
+                .to_string(),
+            Stop::Quote => "an m4 quote runs past the end of the line: the playground's \
+                            m4 needs its closing quote on the same line"
                 .to_string(),
         },
     })
@@ -361,6 +380,26 @@ pub(crate) enum Stop {
     Cap,
     /// A macro call's argument list has no `)` on its line.
     Unclosed,
+    /// A quoted string has no closing quote on its line.
+    Quote,
+}
+
+/// How GNU m4 reads a line, which the `.req` pass does not share.
+#[derive(Clone, Copy)]
+struct Gnu {
+    quotes: Quotes,
+}
+
+/// What a backtick means on a line.
+#[derive(Clone, Copy, PartialEq)]
+enum Quotes {
+    /// Plain text: the line's own source holds none.
+    Plain,
+    /// It opens a quoted string, copied whole and never expanded.
+    Keep,
+    /// The same, less its outer quotes: GNU m4's output, and an argument
+    /// as GNU m4 collects it.
+    Strip,
 }
 
 /// One token-boundary substitution pass over a line, refusing to build
@@ -374,7 +413,7 @@ pub(crate) fn substitute_once(
     defines: &HashMap<String, String>,
     limit: usize,
 ) -> Option<String> {
-    substitute_pass(line, defines, limit, true).ok()
+    substitute_pass(line, defines, limit, None).ok()
 }
 
 /// GNU m4's view of a line: double quotes, single quotes, and backslashes
@@ -384,26 +423,31 @@ pub(crate) fn substitute_once(
 /// `"\n"` below `define(n, w19)` becomes `"\w19"`. A `#` starts an m4
 /// comment: the rest of the line is copied verbatim, unexpanded. All
 /// three behaviors verified against GNU m4 on the course toolchain. A
-/// name with `(` right after it takes arguments, as in GNU m4.
-pub(crate) fn substitute_once_gnu(
+/// name with `(` right after it takes arguments, as in GNU m4. m4's own
+/// quotes (backtick, then `'`) are read as `gnu.quotes` says.
+fn substitute_once_gnu(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
+    gnu: Gnu,
 ) -> Result<String, Stop> {
-    substitute_pass(line, defines, limit, false)
+    substitute_pass(line, defines, limit, Some(gnu))
 }
 
 /// Text outside an identifier is copied as a byte slice of the input, never
 /// through `as char`, which re-encodes a byte >= 0x80 as two UTF-8 bytes:
 /// one pasted accented letter then doubled every round and expansion never
 /// settled. Slices start and end on ASCII bytes or the line end, so
-/// slicing stays UTF-8 safe while the scan walks raw bytes.
+/// slicing stays UTF-8 safe while the scan walks raw bytes. `gnu` is None
+/// for the `.req` pass.
 fn substitute_pass(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
-    respect_literals: bool,
+    gnu: Option<Gnu>,
 ) -> Result<String, Stop> {
+    let respect_literals = gnu.is_none();
+    let quotes = gnu.map_or(Quotes::Plain, |g| g.quotes);
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
@@ -412,6 +456,12 @@ fn substitute_pass(
             return Err(Stop::Cap);
         }
         let b = bytes[i];
+        if quotes != Quotes::Plain && b == b'`' {
+            let end = i + quote_end(&bytes[i..]).ok_or(Stop::Quote)?;
+            out.push_str(if quotes == Quotes::Strip { &line[i + 1..end - 1] } else { &line[i..end] });
+            i = end;
+            continue;
+        }
         if !respect_literals && b == b'#' {
             // GNU m4 comment: everything from `#` to the end of the line
             // passes through unexpanded, which is why the course style
@@ -453,10 +503,13 @@ fn substitute_pass(
                 // GNU m4 takes arguments whenever `(` follows the name
                 // directly, whether or not the body uses them.
                 Some(body) if !respect_literals => {
-                    let mut args: Vec<&str> = Vec::new();
+                    let quoted = quotes != Quotes::Plain;
+                    let mut args: Vec<String> = Vec::new();
                     if bytes.get(i) == Some(&b'(') {
-                        let close = closing_paren(&line[i..]).ok_or(Stop::Unclosed)?;
-                        args = split_args(&line[i + 1..i + close]);
+                        let close = closing_paren(&line[i..], quoted).ok_or(Stop::Unclosed)?;
+                        for arg in split_args(&line[i + 1..i + close], quoted) {
+                            args.push(if quoted { unquote(arg, limit)? } else { arg.to_string() });
+                        }
                         i += close + 1;
                     }
                     fill_args(body, ident, &args, &mut out, limit)?;
@@ -471,7 +524,7 @@ fn substitute_pass(
         i += 1;
         while i < bytes.len() {
             let c = bytes[i];
-            if c == b'"' || c == b'\'' || c == b'#' || is_id_start_byte(c) {
+            if c == b'"' || c == b'\'' || c == b'#' || c == b'`' || is_id_start_byte(c) {
                 break;
             }
             i += 1;
@@ -481,11 +534,42 @@ fn substitute_pass(
     Ok(out)
 }
 
-/// Where the `)` closing the `(` that `s` starts with sits, if on this line.
-fn closing_paren(s: &str) -> Option<usize> {
+/// Where the m4 quote that `b` opens with a backtick ends: just past its
+/// matching `'`, counting the pairs nested inside. None when it never closes.
+fn quote_end(b: &[u8]) -> Option<usize> {
     let mut depth = 0usize;
-    for (i, c) in s.bytes().enumerate() {
+    for (i, &c) in b.iter().enumerate() {
         match c {
+            b'`' => depth += 1,
+            b'\'' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `text` less one level of m4 quotes, as GNU m4 collects an argument.
+fn unquote(text: &str, limit: usize) -> Result<String, Stop> {
+    substitute_pass(text, &HashMap::new(), limit, Some(Gnu { quotes: Quotes::Strip }))
+}
+
+/// Where the `)` closing the `(` that `s` starts with sits, if on this line.
+/// With `quoted`, a parenthesis inside m4 quotes does not count.
+fn closing_paren(s: &str, quoted: bool) -> Option<usize> {
+    let b = s.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'`' if quoted => {
+                i += quote_end(&b[i..])?;
+                continue;
+            }
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
@@ -496,17 +580,25 @@ fn closing_paren(s: &str) -> Option<usize> {
             b'\n' => return None,
             _ => {}
         }
+        i += 1;
     }
     None
 }
 
-/// A call's arguments: split at the commas outside nested parentheses,
-/// each without its leading whitespace. `f()` has one, empty, argument.
-fn split_args(inside: &str) -> Vec<&str> {
+/// A call's arguments: split at the commas outside nested parentheses (and,
+/// with `quoted`, outside m4 quotes), each without its leading whitespace.
+/// `f()` has one, empty, argument.
+fn split_args(inside: &str, quoted: bool) -> Vec<&str> {
+    let b = inside.as_bytes();
     let mut args = Vec::new();
-    let (mut depth, mut start) = (0usize, 0);
-    for (i, c) in inside.bytes().enumerate() {
-        match c {
+    let (mut depth, mut start, mut i) = (0usize, 0, 0);
+    while i < b.len() {
+        match b[i] {
+            // `closing_paren` already found each quote here closed.
+            b'`' if quoted => {
+                i += quote_end(&b[i..]).unwrap_or(b.len() - i);
+                continue;
+            }
             b'(' => depth += 1,
             b')' => depth -= 1,
             b',' if depth == 0 => {
@@ -515,6 +607,7 @@ fn split_args(inside: &str) -> Vec<&str> {
             }
             _ => {}
         }
+        i += 1;
     }
     args.push(inside[start..].trim_start());
     args
@@ -523,7 +616,7 @@ fn split_args(inside: &str) -> Vec<&str> {
 /// A macro body with a call's arguments put in, as GNU m4 does it: `$1`,
 /// `$2` and on (`$10` is the tenth), `$0` the name, `$#` how many, `$*` and
 /// `$@` all of them joined by commas. An argument not given is empty.
-fn fill_args(body: &str, name: &str, args: &[&str], out: &mut String, limit: usize) -> Result<(), Stop> {
+fn fill_args(body: &str, name: &str, args: &[String], out: &mut String, limit: usize) -> Result<(), Stop> {
     let b = body.as_bytes();
     let mut i = 0;
     while i < b.len() {
@@ -536,7 +629,7 @@ fn fill_args(body: &str, name: &str, args: &[&str], out: &mut String, limit: usi
             let digits = b[i..].iter().take_while(|c| c.is_ascii_digit()).count();
             if digits > 0 {
                 let n: usize = body[i..i + digits].parse().unwrap_or(usize::MAX);
-                out.push_str(if n == 0 { name } else { args.get(n - 1).copied().unwrap_or("") });
+                out.push_str(if n == 0 { name } else { args.get(n - 1).map_or("", String::as_str) });
                 i += digits;
                 continue;
             }
@@ -772,14 +865,14 @@ fn after_call(tail: &str) -> Option<(&str, bool)> {
 }
 
 /// A line that is one call to GNU m4's builtin `name`, bare or with its
-/// arguments, and `dnl` after it if any: the arguments and what the line
-/// leaves (`after_call`). None for any other line, and when the program
-/// defined `name` itself, so its own macro runs as before.
+/// arguments, and `dnl` after it if any: the arguments (quotes stripped)
+/// and what the line leaves (`after_call`). None for any other line, and
+/// when the program defined `name` itself, so its own macro runs as before.
 fn builtin_call<'a>(
     line: &'a str,
     name: &str,
     defines: &HashMap<String, String>,
-) -> Option<(Vec<&'a str>, (&'a str, bool))> {
+) -> Option<(Vec<String>, (&'a str, bool))> {
     let rest = line
         .trim_start()
         .strip_prefix(name)
@@ -787,8 +880,12 @@ fn builtin_call<'a>(
     if !rest.starts_with('(') {
         return Some((Vec::new(), after_call(rest)?));
     }
-    let close = closing_paren(rest)?;
-    Some((split_args(&rest[1..close]), after_call(&rest[close + 1..])?))
+    let close = closing_paren(rest, true)?;
+    let args = split_args(&rest[1..close], true)
+        .into_iter()
+        .map(|arg| unquote(arg, MAX_EXPANDED_LINE_BYTES).ok())
+        .collect::<Option<_>>()?;
+    Some((args, after_call(&rest[close + 1..])?))
 }
 
 fn parse_define(trimmed: &str) -> Option<(String, String, (&str, bool))> {
@@ -1049,10 +1146,6 @@ fn take_ident(s: &str) -> Option<(&str, &str)> {
 }
 
 fn detect_unsupported(line: &str) -> Option<&'static str> {
-    // Backtick is m4 open-quote; never legal in this subset.
-    if line.contains('`') {
-        return Some("backtick-quoted string");
-    }
     for kw in &["ifdef", "ifelse", "forloop"] {
         if let Some(after) = line.strip_prefix(kw) {
             if after.trim_start().starts_with('(') {
