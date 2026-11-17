@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
 import type { StepGoal } from "@/lib/emulator/emulator-state";
 
 const GOALS: [StepGoal, string][] = [
