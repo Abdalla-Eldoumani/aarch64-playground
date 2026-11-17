@@ -19,6 +19,12 @@ const { parseArgs: parseArgsLine } = require(
   path.join(__dirname, "..", "web", "lib", "playground", "args.ts"),
 );
 
+// The app's example list, loaded the same way: each multi-file example's
+// helper files, in the order the app pastes them.
+const { EXAMPLES } = require(
+  path.join(__dirname, "..", "web", "lib", "playground", "example-catalog.ts"),
+);
+
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
 // program may have created.
@@ -73,16 +79,12 @@ function collectStems(dir) {
 
 function findSource(root, stem) {
   const entries = fs.readdirSync(root, { withFileTypes: true });
+  // `fixtures` holds inputs, and a multi-file example's folder holds helper
+  // files with no entry point whose names (array, sort, input, ...) a
+  // fixture may reuse, so a stem must never resolve to one of them.
+  const skip = new Set(["fixtures", ...EXAMPLES.filter((ex) => ex.files).map((ex) => ex.stem)]);
   for (const e of entries) {
-    // `fixtures` holds inputs, and `dsav` / `deadzone` hold helper files
-    // with no entry point whose names (array, sort, input, ...) a future
-    // fixture may reuse, so a stem must never resolve to one of them.
-    if (
-      e.isDirectory() &&
-      e.name !== "fixtures" &&
-      e.name !== "dsav" &&
-      e.name !== "deadzone"
-    ) {
+    if (e.isDirectory() && !skip.has(e.name)) {
       const sub = path.join(root, e.name);
       const hit = findSource(sub, stem);
       if (hit) return hit;
@@ -102,38 +104,18 @@ function fixtureTargets() {
 
 // ---------------------------------------------------------------------
 // Assembly gate. The fixture pass never reaches the terminal examples or
-// the helper files behind `dsav` and `deadzone`; a past comment cleanup
-// broke those and nothing failed. Every shipped example must assemble.
-
-// EXAMPLE_FILES lives in TypeScript and node cannot require that, so the
-// table is parsed out of the real source rather than copied by hand: a
-// duplicate list would drift the first time a helper module is added or
-// reordered, and for `deadzone` the paste order is load-bearing.
-function readExampleFiles(tsPath) {
-  const src = fs.readFileSync(tsPath, "utf8").replace(/^\s*\/\/.*$/gm, "");
-  const table = src.match(/export const EXAMPLE_FILES[^{]*\{([\s\S]*?)\r?\n\};/);
-  if (!table) throw new Error(`could not find EXAMPLE_FILES in ${tsPath}`);
-  const out = {};
-  const entry = /([\w-]+)\s*:\s*\[([^\]]*)\]/g;
-  let m;
-  while ((m = entry.exec(table[1])) !== null) {
-    out[m[1]] = (m[2].match(/"[^"]+"/g) || []).map((q) => q.slice(1, -1));
-  }
-  return out;
-}
+// the multi-file examples' helper files; a past comment cleanup broke those
+// and nothing failed. Every shipped example must assemble.
 
 // Every shipped example's main file, with its helper files in paste order.
 function assemblyTargets() {
-  const exampleFiles = readExampleFiles(
-    path.join(__dirname, "..", "web", "lib", "playground", "playground-handoff.ts"),
-  );
   return fs
     .readdirSync(hostedRoot)
     .sort()
     .filter((file) => file.endsWith(".s"))
     .map((file) => {
       const stem = file.slice(0, -2);
-      return { stem, helpers: exampleFiles[stem] || [] };
+      return { stem, helpers: EXAMPLES.find((ex) => ex.stem === stem)?.files ?? [] };
     });
 }
 
