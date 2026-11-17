@@ -25,22 +25,39 @@ const CODE = ["app", "components", "lib"]
   .flatMap(sources)
   .map((file) => ({ file, text: fs.readFileSync(path.join(WEB, file), "utf8") }));
 
+// The service worker's fetches run in the browser and render no route.
+const SERVICE_WORKER = "lib/playground/sw.js";
+
+// A page or layout's searchParams prop, destructured or typed (a Promise since
+// Next 15), not a client's own `useSearchParams()` or URL read.
+const PAGE_SEARCH_PARAMS = /\{[^}]*\bsearchParams\b[^}]*\}\s*[:)]|\bsearchParams\??\s*:\s*Promise\b/;
+
+const everywhere = () => true;
+const notTheWorker = (file: string) => file !== SERVICE_WORKER;
+const inApp = (file: string) => file.startsWith("app/");
+
 // Each pattern a line of source may not match, what to write instead, and
-// the folder it applies to when not everywhere.
-const BANNED: [RegExp, string, string?][] = [
-  [/^\s*["']use server["'];?\s*$/, "a server action needs a server: do the work in the browser or at build time"],
-  [/^\s*export const (revalidate|dynamic)\b/, "every route is a static file: drop the route segment export"],
-  [/\brevalidate\s*:/, "a revalidating fetch turns every route into ISR: fetch once per build with cache: \"force-cache\""],
-  [/\bcache\s*:\s*["']no-store["']/, "a no-store fetch renders the route per request: fetch once per build with cache: \"force-cache\""],
-  [/from\s+["']next\/(headers|server)["']/, "a request-time API renders the route per request: read the URL in the browser instead"],
-  // A page's searchParams prop; client code reads its URL elsewhere under lib/.
-  [/\bsearchParams\b/, "a searchParams prop renders the route per request: read the URL in the browser instead", "app/"],
+// the files it applies to.
+const BANNED: [RegExp, string, (file: string) => boolean][] = [
+  [/^\s*["']use server["'];?\s*$/, "a server action needs a server: do the work in the browser or at build time", everywhere],
+  [/^\s*export const (revalidate|dynamic)\b/, "every route is a static file: drop the route segment export", everywhere],
+  [/\brevalidate\s*:/, "a revalidating fetch turns every route into ISR: fetch once per build with cache: \"force-cache\"", notTheWorker],
+  [/\bcache\s*:\s*["']no-store["']/, "a no-store fetch renders the route per request: fetch once per build with cache: \"force-cache\"", notTheWorker],
+  [/from\s+["']next\/(headers|server)["']/, "a request-time API renders the route per request: read the URL in the browser instead", everywhere],
+  [PAGE_SEARCH_PARAMS, "a searchParams prop renders the route per request: read the URL in the browser instead", inApp],
 ];
 
 describe("the site is static files only", () => {
   it("scans the app, components and lib sources", () => {
     expect(CODE.length).toBeGreaterThan(250);
     expect(CODE.map(({ file }) => file)).toContain("lib/content/github.ts");
+  });
+
+  it("tells a page's searchParams prop from a client reading its own URL", () => {
+    expect(PAGE_SEARCH_PARAMS.test("export default async function Page({ searchParams }: Props) {")).toBe(true);
+    expect(PAGE_SEARCH_PARAMS.test("  searchParams: Promise<Record<string, string>>;")).toBe(true);
+    expect(PAGE_SEARCH_PARAMS.test("const searchParams = useSearchParams();")).toBe(false);
+    expect(PAGE_SEARCH_PARAMS.test("const { searchParams } = new URL(window.location.href);")).toBe(false);
   });
 
   it("has no proxy or middleware in front of the pages", () => {
@@ -69,8 +86,8 @@ describe("the site is static files only", () => {
     const hits: string[] = [];
     for (const { file, text } of CODE) {
       text.split(/\r?\n/).forEach((line, i) => {
-        for (const [pattern, instead, folder = ""] of BANNED) {
-          if (file.startsWith(folder) && pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
+        for (const [pattern, instead, applies] of BANNED) {
+          if (applies(file) && pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
         }
       });
     }
