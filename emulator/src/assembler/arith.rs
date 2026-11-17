@@ -153,7 +153,7 @@ pub(super) fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Resul
         );
     }
     let (rd, sf) = parse_register(ops[0], ln)?;
-    let (rn, _) = parse_register(ops[1], ln)?;
+    let (rn, rn_is_x) = parse_register(ops[1], ln)?;
     let op3 = ops[2].trim();
     let sf_bit = if sf { 1u32 } else { 0 };
 
@@ -225,7 +225,7 @@ pub(super) fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Resul
     }
 
     // register form
-    let (rm, _) = parse_register(op3, ln)?;
+    let (rm, rm_is_x) = parse_register(op3, ln)?;
     // parse_register folds SP and XZR into 31, but only the EXTENDED form
     // (bit 21 = 1) reads 31 as SP; the shifted form reads XZR, so
     // `add x0, sp, x1` would compute with 0. Route SP to the extended
@@ -265,21 +265,37 @@ pub(super) fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Resul
             | (option << 13) | ((amount as u32) << 10) | ((rn as u32) << 5) | (rd as u32));
     }
     if rd_is_sp || rn_is_sp {
-        if ops.len() == 4 {
-            // The extended-register (SP-capable) encoding carries its own
-            // narrow extend+shift fields; combining SP with a plain shift
-            // modifier has no encoding here.
-            return asm_err(
-                ln,
-                "a shift modifier cannot be combined with sp; compute the shift into a scratch register first",
-            );
-        }
         // Extended-register form, LSL #0: option = UXTX for X, UXTW for W,
         // the alias GAS emits for `add x0, sp, x1`.
-        let option: u32 = if sf { 0b011 } else { 0b010 };
+        let mut option: u32 = if sf { 0b011 } else { 0b010 };
+        let mut amount = 0;
+        if ops.len() == 4 {
+            // GAS reads `lsl #0..4` beside sp as this same form, taking the
+            // extend from the index register's width; lsr and asr have none.
+            if !sf || !rn_is_x {
+                return asm_err(
+                    ln,
+                    "beside sp, add and sub work on x registers: write the destination and first source as x registers",
+                );
+            }
+            if shift_bits != 0 {
+                return asm_err(
+                    ln,
+                    "beside sp only `lsl` #0 to #4 (or an extend such as uxtw) can follow the register; compute an lsr or asr shift into a scratch register first",
+                );
+            }
+            if shift_amt > 4 {
+                return asm_err(
+                    ln,
+                    &format!("an extended-register shift is 0 to 4, got {shift_amt}"),
+                );
+            }
+            option = if rm_is_x { 0b011 } else { 0b010 };
+            amount = shift_amt;
+        }
         return Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
             | (0b01011 << 24) | (1 << 21) | ((rm as u32) << 16)
-            | (option << 13) | ((rn as u32) << 5) | (rd as u32));
+            | (option << 13) | ((amount as u32) << 10) | ((rn as u32) << 5) | (rd as u32));
     }
     Ok((sf_bit << 31) | ((op_bit as u32) << 30) | ((s_bit as u32) << 29)
         | (0b01011 << 24) | (shift_bits << 22) | ((rm as u32) << 16)
