@@ -12,7 +12,9 @@ use aarch64_emulator::cpu::{READ_BY_CALL, READ_BY_MAIN_RETURN};
 use aarch64_emulator::frames::{
     COMPLETE, ENTERED, LEAF, LR_UNSAVED, NONSTANDARD, NO_RECORD, RESERVED, RUNTIME_CALL,
 };
-use aarch64_emulator::hosted::{CALL_NO_INPUT, CALL_NO_MATCH, CALL_SCANF, CALL_STOPPED, MAX_CALL_BYTES};
+use aarch64_emulator::hosted::{
+    ARG_FP, ARG_STACK, CALL_NO_INPUT, CALL_NO_MATCH, CALL_SCANF, CALL_STOPPED, MAX_CALL_BYTES,
+};
 use aarch64_emulator::registers::FLAGS_CODE;
 use aarch64_emulator::{CALL_HEADER, CALL_ROW};
 
@@ -68,6 +70,8 @@ fn call_card_layout_and_codes() {
             ("STOPPED", CALL_STOPPED.into(), "hosted::CALL_STOPPED"),
             ("NO_MATCH", CALL_NO_MATCH.into(), "hosted::CALL_NO_MATCH"),
             ("NO_INPUT", CALL_NO_INPUT.into(), "hosted::CALL_NO_INPUT"),
+            ("FP_SOURCE", ARG_FP, "hosted::ARG_FP"),
+            ("STACK_SOURCE", ARG_STACK, "hosted::ARG_STACK"),
         ],
     );
 }
