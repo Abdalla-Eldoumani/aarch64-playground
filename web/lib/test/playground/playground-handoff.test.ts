@@ -15,8 +15,11 @@ import {
   modeArgsFor,
   parseVfsFixture,
   resolveBoot,
+  resolveExampleStem,
   resolveHandoff,
 } from "@/lib/playground/playground-handoff";
+import { EXAMPLES } from "@/lib/playground/example-catalog";
+import { parseDeepLink } from "@/lib/hooks/use-deep-link";
 import { validateFileName } from "@/lib/playground/file-map";
 import { buildShareHash } from "@/lib/playground/share";
 import { decodeBundle, encodeBundle } from "@/lib/playground/diagnostic-bundle";
@@ -498,6 +501,45 @@ describe("the per-mode args table", () => {
     expect(modeArgsFor("dsav", "console")).toBeNull();
     expect(modeArgsFor(null, "console")).toBeNull();
     expect(modeArgsFor(undefined, "terminal")).toBeNull();
+  });
+});
+
+describe("resolveExampleStem", () => {
+  it("maps a legacy course-labeled stem to its renamed file", () => {
+    expect(resolveExampleStem("week03_exercise")).toBe("basics");
+    expect(resolveExampleStem("week08_scores")).toBe("array-scores");
+    expect(resolveExampleStem("week11_argv")).toBe("command-line-args");
+    expect(resolveExampleStem("week13_copy_file")).toBe("copy-file");
+  });
+
+  it("passes an already-clean stem through unchanged", () => {
+    expect(resolveExampleStem("basics")).toBe("basics");
+    expect(resolveExampleStem("circle-area")).toBe("circle-area");
+  });
+
+  it("passes an unknown stem through unchanged", () => {
+    expect(resolveExampleStem("not-an-example")).toBe("not-an-example");
+  });
+
+  it("does not alias a traversal string, and parseDeepLink still rejects it", () => {
+    // resolveExampleStem only remaps the fixed allow-list; path safety is
+    // parseDeepLink's job, which drops anything outside /^[\w.-]+$/.
+    expect(resolveExampleStem("../etc/passwd")).toBe("../etc/passwd");
+    expect(parseDeepLink("?example=../etc/passwd").example).toBeUndefined();
+  });
+});
+
+describe("old example names", () => {
+  it("resolve in one hop to a clean stem that is no old name itself", () => {
+    const stems = EXAMPLES.map((example) => example.stem);
+    for (const example of EXAMPLES) {
+      expect(resolveExampleStem(example.stem)).toBe(example.stem);
+      for (const alias of example.aliases ?? []) {
+        expect(example.stem).toMatch(/^[a-z0-9-]+$/);
+        expect(stems).not.toContain(alias);
+        expect(resolveExampleStem(alias)).toBe(example.stem);
+      }
+    }
   });
 });
 
