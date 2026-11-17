@@ -392,6 +392,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       calls.clearConsole++;
       return Promise.resolve(fire());
     },
+    dispose() {},
   };
 
   return {
@@ -432,6 +433,7 @@ describe("useEmulator load + snapshot application", () => {
     h.backend = {
       onSnapshot: () => () => {},
       init: () => Promise.reject(new Error("wasm failed to load")),
+      dispose: () => {},
     };
     const { result } = renderHook(() => useEmulator());
     await waitFor(() => expect(result.current.loadError).toBe("wasm failed to load"));
