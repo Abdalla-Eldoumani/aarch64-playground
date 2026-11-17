@@ -119,8 +119,11 @@ fn a_library_call_that_crosses_the_output_wall_halts_after_returning() {
     assert_eq!(p.cpu.exit_code, None);
     assert_eq!(p.cpu.steps_taken(), 42);
     assert_eq!(p.cpu.steps_total(), 42);
-    // The call finished, so it was clobbered and its card kept.
+    // The call finished, so it was clobbered, its card kept and what it
+    // changed (x0, x1, and the trampoline's x16) shown.
     assert_eq!(p.cpu.regs.read_gpr(9, true), CLOBBER_PATTERN);
+    assert_eq!(p.cpu.changed_registers(), &[0, 1, 16]);
+    assert!(p.cpu.changed_fp_registers().is_empty());
     let card = call_card(&p.cpu);
     assert_eq!(&card[..5], &[1.0, 42.0, (p.label("after") - 4) as f64, 1_000_000.0, 0.0]);
     // A halted machine stays halted, with the same answer.
@@ -162,9 +165,11 @@ fn a_system_call_that_crosses_the_output_wall_halts_on_the_svc() {
     halted_with(&r, p.label("write"), &output_ceiling_message());
     assert_eq!(p.cpu.stdout.len(), 5_000_000);
     assert_eq!(p.cpu.steps_taken(), 4 + 4 * 8 + 6);
-    // The call wrote its whole buffer before the wall stopped the program.
+    // The call wrote its whole buffer before the wall stopped the program,
+    // but the halted step leaves the changed sets as the step before did.
     assert_eq!(p.cpu.regs.read_gpr(0, true), 1_000_000);
     assert_eq!(p.cpu.regs.read_gpr(8, true), 64);
+    assert!(p.cpu.changed_registers().is_empty());
 }
 
 /// memset or getrandom of 1 KiB into a fresh page each time round, until
