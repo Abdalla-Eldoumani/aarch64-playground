@@ -171,4 +171,35 @@ describe("every shipped example as the app sees it", () => {
       expect(resolveHandoff(BOOT, `?example=${stem}`, "")).toEqual({ kind: "example", stem });
     }
   });
+
+  it("passes a name it does not know through unchanged", () => {
+    expect(resolveHandoff(BOOT, "?example=not-an-example", "")).toEqual({
+      kind: "example",
+      stem: "not-an-example",
+    });
+  });
+
+  it("refuses a built-in object key as an invalid example name, before any fetch", async () => {
+    serveEverything();
+    for (const key of [
+      "constructor",
+      "__proto__",
+      "toString",
+      "valueOf",
+      "hasOwnProperty",
+      "isPrototypeOf",
+      "propertyIsEnumerable",
+      "toLocaleString",
+      "__defineGetter__",
+      "__defineSetter__",
+      "__lookupGetter__",
+      "__lookupSetter__",
+    ]) {
+      const decision = resolveHandoff(BOOT, `?example=${key}`, "");
+      expect(decision?.kind).toBe("example");
+      if (decision?.kind !== "example") continue;
+      await expect(fetchExample(decision.stem), key).rejects.toThrow("invalid example name");
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
 });
