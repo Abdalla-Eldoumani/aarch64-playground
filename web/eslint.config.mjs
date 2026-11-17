@@ -52,16 +52,13 @@ const OWNED = [
   },
 ];
 
-// The state modules use-emulator composes: the hub is their one reader.
-const COMPOSED = [
-  ...["use-backend-passthroughs", "use-breakpoints", "use-console-output", "use-memory-cache"].map(
-    (module) => ({ name: `@/lib/emulator/${module}` }),
-  ),
-  { name: "@/lib/emulator/use-cpu-view", allowImportNames: ["IDLE_CPU_VIEW"] },
-].map((path) => ({
-  ...path,
+// The state modules use-emulator composes: the hub is their one reader, and
+// IDLE_CPU_VIEW (the embed's pre-engage register view) the one export others take.
+const COMPOSED = {
+  group: ["@/lib/emulator/use-*", "!@/lib/emulator/use-emulator"],
+  allowImportNames: ["IDLE_CPU_VIEW"],
   message: "Read this state through useEmulator (@/lib/emulator/use-emulator), which composes it.",
-}));
+};
 
 const NO_REACT = ["react", "react-dom"].map((name) => ({ name }));
 
@@ -79,11 +76,11 @@ const boundaries = [
   {
     files: [`{app,components,lib}/${TS}`],
     ignores: TESTS,
-    rules: { "@typescript-eslint/no-restricted-imports": restrict([...OWNED, ...COMPOSED]) },
+    rules: { "@typescript-eslint/no-restricted-imports": restrict(OWNED, [COMPOSED]) },
   },
   ...OWNED.flatMap((path) => path.owners).map((file) => ({
     files: [file],
-    rules: { "@typescript-eslint/no-restricted-imports": restrict([...ownedExcept(file), ...COMPOSED]) },
+    rules: { "@typescript-eslint/no-restricted-imports": restrict(ownedExcept(file), [COMPOSED]) },
   })),
   {
     files: [`lib/emulator/${TS}`],
@@ -113,7 +110,7 @@ const boundaries = [
     ignores: TESTS,
     rules: {
       "@typescript-eslint/no-restricted-imports": restrict(
-        [...OWNED, ...COMPOSED, ...NO_REACT.map((path) => ({ ...path, message: "lib/asm is text in, data out: no React." }))],
+        [...OWNED, ...NO_REACT.map((path) => ({ ...path, message: "lib/asm is text in, data out: no React." }))],
         [
           {
             group: ["@/lib/emulator/*", "@/lib/worker/*", "@/lib/wasm/*", "@/lib/wasm-node/*"],
@@ -147,14 +144,32 @@ const boundaries = [
   {
     files: ["components/practice/ExerciseIndex.tsx"],
     rules: {
-      "@typescript-eslint/no-restricted-imports": restrict([
-        ...OWNED,
-        ...COMPOSED,
-        {
-          name: "@/components/learn/LessonMarkdown",
-          message: "Render each blurb on the server in the practice page and pass the nodes in as blurbs: LessonMarkdown here puts react-markdown on /practice.",
-        },
-      ]),
+      "@typescript-eslint/no-restricted-imports": restrict(
+        [
+          ...OWNED,
+          {
+            name: "@/components/learn/LessonMarkdown",
+            message: "Render each blurb on the server in the practice page and pass the nodes in as blurbs: LessonMarkdown here puts react-markdown on /practice.",
+          },
+        ],
+        [COMPOSED],
+      ),
+    },
+  },
+  {
+    files: [`components/reference/${TS}`],
+    ignores: TESTS,
+    rules: {
+      "@typescript-eslint/no-restricted-imports": restrict(
+        [
+          ...OWNED,
+          {
+            name: "@/components/playground/EmbeddablePlayground",
+            message: "Load the embed with next/dynamic or React.lazy, so the /reference route chunk stays free of it.",
+          },
+        ],
+        [COMPOSED],
+      ),
     },
   },
   // Imports use the @/ alias, tests included. lib/theme is the exception:
