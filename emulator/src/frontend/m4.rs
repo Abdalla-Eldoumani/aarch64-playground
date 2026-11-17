@@ -1564,6 +1564,20 @@ mod tests {
     }
 
     #[test]
+    fn changecom_moves_or_ends_the_comment_like_gnu_m4() {
+        // GNU m4 1.4.19: once `#` opens no comment, the name after it
+        // expands; after changecom(`@') an `@` opens one instead.
+        for first in ["changecom", "changecom()", "changecom(`//')"] {
+            let src = format!("{first}\ndefine(n, 4)\nmov x0, #n\n");
+            assert_eq!(text_and_map(&src), gnu("\n\nmov x0, #4", &[1, 2, 3]), "{first}");
+        }
+        assert_eq!(exp("changecom(`@')\ndefine(n, 4)\nmov x0, #n @ n\n").text, "\n\nmov x0, #4 @ n");
+        // GNU m4 ends a comment at any string it is given; the playground's
+        // end at the line's end.
+        rejects(expand("changecom(`/*', `*/')\n"), "unsupported m4 construct: changecom(`/*', `*/')");
+    }
+
+    #[test]
     fn dnl_as_a_label_keeps_todays_output() {
         // GNU m4 deletes from each `dnl` here (`main:\n  b.ge   ret`), so
         // gcc refuses the program; it runs here today, so it stays as is.
