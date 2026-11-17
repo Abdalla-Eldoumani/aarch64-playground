@@ -690,6 +690,30 @@ mod tests {
     }
 
     #[test]
+    fn a_hash_after_changecom_opens_no_comment() {
+        // After `changecom`, GNU m4 expands the name after `#` (`#40`).
+        let src = "changecom\n\
+                   define(size, 40)\n\
+                   .text\n\
+                   main:\n\
+                   mov x0, #size\n\
+                   ret\n";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
+    fn an_m4_quote_is_no_character_literal() {
+        // m4 writes `size' as size, unexpanded, and the second size as 40:
+        // the quote's closing `'` opens no character literal.
+        let src = "define(size, 40)\n\
+                   .text\n\
+                   main:\n\
+                   mov x0, `size' + size\n\
+                   ret\n";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
     fn macro_shadowing_a_register_warns_at_its_define() {
         let src = "define(x0, x19)\n.text\nmain:\nret\n";
         let w = lint_lines(src);
