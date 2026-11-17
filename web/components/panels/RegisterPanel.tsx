@@ -321,7 +321,7 @@ export function RegisterPanel({
   // read as they stand then: a click holds until the next write, and a format
   // click neither re-speaks nor re-scrolls.
   const followWrite = useEffectEvent(
-    (xChanged: ReadonlySet<number>, vecChanged: ReadonlySet<number>) => {
+    (xChanged: ReadonlySet<number>, vecChanged: ReadonlySet<number>, arrived: boolean) => {
       // A d write reaches bits 63:0 and no further; anything above that, or a
       // destination the student spelled v or q, is a vector write.
       const vecClass: RegView = hasVec && (upperMoved || vSpelledDest) ? "v" : "d";
@@ -331,7 +331,10 @@ export function RegisterPanel({
       const usable = touched.filter(
         (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
       );
-      if (follow && usable.length === 1) writeStored(VIEW_KEY, usable[0]);
+      // The snapshot a panel opens on (the registers shown again after the
+      // stack) was followed, and its view stored, when it arrived: storing it
+      // again would undo a choice made since, in every panel on the page.
+      if (follow && arrived && usable.length === 1) writeStored(VIEW_KEY, usable[0]);
 
       const xRows = [...xChanged].sort((a, b) => a - b);
       const vecRows = [...vecChanged].sort((a, b) => a - b);
@@ -386,7 +389,7 @@ export function RegisterPanel({
     const last = followedSnap.current;
     if (last?.[0] === changedRegs && last[1] === followedVecRegs) return;
     followedSnap.current = [changedRegs, followedVecRegs];
-    followWrite(changedRegs, followedVecRegs);
+    followWrite(changedRegs, followedVecRegs, last !== null);
   }, [changedRegs, followedVecRegs, running]);
 
   const pickView = useCallback((next: RegView) => {
