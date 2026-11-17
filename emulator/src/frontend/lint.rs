@@ -161,9 +161,15 @@ fn scan_line_for_hygiene(
                 i += 1;
                 continue;
             }
+            // m4 never expands quoted text, and its closing `'` is no
+            // character literal.
+            b'`' => {
+                i += m4::quote_end(&bytes[i..]).unwrap_or(bytes.len() - i);
+                continue;
+            }
             b'"' if !in_char => in_string = !in_string,
             b'\'' if !in_string => in_char = !in_char,
-            b'#' if !in_string && !in_char => after_hash = true,
+            b'#' if !in_string && !in_char && expanded.comment_at(line) == Some("#") => after_hash = true,
             _ => {}
         }
         if b.is_ascii_alphabetic() || b == b'_' {
