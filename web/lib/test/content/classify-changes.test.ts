@@ -55,7 +55,7 @@ describe("the path filter", () => {
     expect(classify(["web/content/exercises/sum.json"]).rust).toBe(false);
   });
 
-  it("adds the Rust jobs when a web copy of the wasm's codes changes", () => {
+  it("adds the Rust jobs when a web file the wasm_codes test reads changes", () => {
     expect(classify(["web/lib/emulator/call-cards.ts"]).rust).toBe(true);
     expect(classify(["web/lib/emulator/stack-frames.ts"]).rust).toBe(true);
     expect(classify(["web/lib/emulator/clobber-note.ts"]).rust).toBe(true);
