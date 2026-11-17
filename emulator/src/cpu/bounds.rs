@@ -22,12 +22,6 @@ impl Cpu {
         }
     }
 
-    /// The memory-cap halt, the same whichever path raised the page-cap
-    /// write fault: the executor, a hosted libc stub, or a syscall.
-    pub(super) fn memory_cap_halt(&mut self) -> StepResult {
-        self.halt(MEMORY_CAP_MESSAGE.to_string())
-    }
-
     /// Add whatever a host stub or syscall just printed to the cumulative
     /// output counter; true means the `MAX_OUTPUT_BYTES` wall is breached.
     /// The arguments are `stdout.len()` and `stderr.len()` captured before
@@ -77,17 +71,6 @@ impl Cpu {
             .saturating_add(moved / BULK_BYTES_PER_STEP);
     }
 
-    /// The output-ceiling halt.
-    pub(super) fn output_cap_halt(&mut self) -> StepResult {
-        self.halt(output_ceiling_message())
-    }
-
-    /// A propagated runtime error (a fetch fault, an undecodable word, an
-    /// executor fault, or a failed host stub / syscall) as a calm halt.
-    pub(super) fn runtime_error_halt(&mut self, e: EmuError) -> StepResult {
-        self.halt(e.to_string())
-    }
-
     /// The two walls a step meets before it executes anything: the
     /// cumulative instruction budget and the stack floor. `Some` is the
     /// calm halt `step` hands back; `None` means the cycle may proceed.
@@ -105,7 +88,7 @@ impl Cpu {
         // store path maps page after page downward until the memory cap
         // fires, blaming memory instead of the recursion.
         if self.regs.read_sp() < STACK_FLOOR {
-            return Some(self.runtime_error_halt(EmuError::StackOverflow));
+            return Some(self.halt(EmuError::StackOverflow.to_string()));
         }
 
         None
