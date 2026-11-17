@@ -9,7 +9,9 @@
 //! Each kind of return is also pinned at the frames view's numbers as the
 //! wasm exports them, with the clobber notes and Back: a leaf's, nested,
 //! recursive and tail-called returns, and two known defects, a ret that
-//! skips its caller and a stray ret three calls deep.
+//! skips its caller and a stray ret three calls deep. Beside them, what a
+//! skip (across two bl sites and under one), a stray ret and a tail call
+//! to printf should leave, by the sp, fp and pc each return leaves.
 
 use std::path::PathBuf;
 
@@ -1353,4 +1355,213 @@ fn known_defect_a_stray_ret_three_calls_deep_leaves_a_stale_call_and_a_false_x19
     assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 2\n");
     assert_eq!(p.outline(), ["main -> 0", "  sum(2) -> 2", "    sum(1) -> 2", "      sum(0) -> 0"]);
     back_retraces(&mut load(STRAY_SUM), 43, "a stray ret three calls deep");
+}
+
+// ---------------------------------------------------------------------------
+// What a broken return should leave: a ret ends the call whose caller's sp,
+// fp and return address it leaves in sp, x29 and pc, as AAPCS64 has every
+// return do. Each test fails until the unwind follows that rule.
+// ---------------------------------------------------------------------------
+
+/// skip's ldp loads jump's record, so its ret leaves sp, fp and pc as main
+/// had them at `bl jump`: it ends jump too. A ret that ends more than its
+/// own call is a bad return, and main is owed the x19 it had when it
+/// called jump.
+#[test]
+fn a_ret_that_skips_its_caller_is_a_bad_return_and_marks_the_x19_its_caller_is_owed() {
+    let mut p = load(SKIP_CHANGING_X19);
+    let (skip, main) = (p.label("skip"), p.label("main"));
+    assert_eq!(
+        p.numbers_after(skip + 12, 1),
+        [
+            "11 0 0 0 1 11 skip+12 main+16 1 1 2 skip jump+12 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "19 skip+12",
+            "3 1 0 0 4",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 jump 1 0 0 0 1 0 7 4",
+            "2 skip 1 0 0 0 1 0 7 4",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "106\n");
+    // [register, read by an instruction, the ret that left it, the reader]:
+    // main's add reads the 99.
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, skip as u32 + 12, main as u32 + 16]);
+    assert_eq!(p.outline(), ["main -> 0", "  jump -> 7", "    skip -> 7"]);
+    back_retraces(&mut load(SKIP_CHANGING_X19), 19, "a ret that skips its caller");
+}
+
+/// SUM whose base case pops sum(1)'s frame as well as its own. Every sum
+/// call returns to the same address, so only sp and fp tell that the ret
+/// came back to sum(2) and ended sum(1) too.
+const SKIP_IN_A_RECURSION: &str = r#"
+// main prints sum(2), but sum(0) pops its caller's frame as well as its
+// own, so its ret ends sum(1) too and sum(2) adds the n sum(0) put back.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "sum = %ld\n"
+
+        .text
+// sum(x0 = n) -> x0 = n + (n - 1) + ... + 0
+        .balign 4
+        .global sum
+sum:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]           // keep the caller's x19
+        mov     n_r, x0                 // x19 = n
+        cbz     n_r, sum_base
+        sub     x0, n_r, 1
+        bl      sum                     // x0 = sum(n - 1)
+        add     x0, x0, n_r             // x0 += n
+sum_out:
+        ldr     n_r, [fp, 16]           // put the caller's x19 back
+        ldp     fp, lr, [sp], 32
+        ret
+sum_base:                               // sum(0) = 0
+        mov     x0, 0
+        ldr     n_r, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ldp     fp, lr, [sp], 32        // bug: pops the caller's frame too
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 2
+        bl      sum
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ret_that_skips_its_caller_under_one_bl_site_is_caught_by_sp_and_fp() {
+    let mut p = load(SKIP_IN_A_RECURSION);
+    let sum = p.label("sum");
+    // sum(0)'s ret leaves sp and fp as sum(2) had them at its bl: sum(0)
+    // and sum(1) both end, and x19 holds the 1 sum(0) put back, not the 2
+    // sum(1) owed sum(2).
+    assert_eq!(
+        p.numbers_after(p.label("sum_base") + 16, 1),
+        [
+            "28 0 0 0 1 28 sum_base+16 sum+28 2 1 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "19 sum_base+16",
+            "4 2 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 0 8 0 1 0 0 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 1\n");
+    // sum(2)'s add reads the 1.
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, p.label("sum_base") as u32 + 16, sum as u32 + 28]);
+    assert_eq!(p.outline(), ["main -> 0", "  sum(2) -> 1", "    sum(1) -> 0", "      sum(0) -> 0"]);
+    back_retraces(&mut load(SKIP_IN_A_RECURSION), 40, "a ret that skips its caller under one bl site");
+}
+
+/// sum(0)'s ret goes to no return address, but it leaves sp and fp as
+/// sum(1) had them at its bl: sum(0) is over and sum(1) runs on, from its
+/// epilogue. Each later ret then ends its own call and checks it.
+#[test]
+fn a_stray_ret_ends_the_call_it_came_from_and_leaves_no_false_mark() {
+    let mut p = load(STRAY_SUM);
+    let epilogue_ret = p.label("sum_out") + 8;
+    assert_eq!(
+        p.numbers_after(p.label("sum_base") + 16, 1),
+        [
+            "28 0 0 0 1 28 sum_base+16 sum_out 3 0 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "2 sum sum+24 sum+28 top-48 top-80 top-48 top-80 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 3 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 1 8 0 1 0 0 0",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    // sum(1)'s ret ends sum(1), which put x19 back: no mark. It returns the
+    // 0 sum(0) left, since the stray ret skipped sum(1)'s add.
+    assert_eq!(
+        p.numbers_after(epilogue_ret, 1),
+        [
+            "31 0 0 0 1 28 sum_base+16 sum_out 2 0 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 2 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 0 8 0 1 0 0 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    // sum(2)'s ret ends sum(2) alone: 0 + 2.
+    assert_eq!(
+        p.numbers_after(epilogue_ret, 1),
+        [
+            "35 0 0 0 1 28 sum_base+16 sum_out 1 0 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 1 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 0 8 0 2 0 2 8",
+            "2 sum 1 0 8 0 1 0 0 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    assert!(p.cpu.take_clobber_notes().is_empty(), "every call put x19 back");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 2\n");
+    assert_eq!(p.outline(), ["main -> 0", "  sum(2) -> 2", "    sum(1) -> 0", "      sum(0) -> 0"]);
+    back_retraces(&mut load(STRAY_SUM), 43, "a stray ret three calls deep");
+}
+
+/// show's `b printf` leaves lr as main's `bl show` set it, so printf's
+/// return to lr is show's return: it leaves sp, fp and pc as main had them
+/// at the call, and show returns what printf returned.
+#[test]
+fn a_tail_call_to_a_library_function_ends_when_the_library_returns() {
+    let mut p = load(TAIL);
+    let main = p.label("main");
+    p.run_to(main + 24, 1);
+    assert_eq!(
+        p.numbers(),
+        [
+            "18 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "3 1 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 twice 1 0 4 0 21 0 42 4",
+            "1 show 1 0 0 0 42 0 3 8",
+        ]
+    );
+    // main's ret ends main alone.
+    assert_eq!(
+        p.numbers_after(main + 32, 1),
+        [
+            "21 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0",
+            "3 0 0 0 4",
+            "0 main 1 0 0 0 1 0 0 4",
+            "1 twice 1 0 4 0 21 0 42 4",
+            "1 show 1 0 0 0 42 0 3 8",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "42\n");
+    assert!(p.cpu.take_clobber_notes().is_empty());
+    back_retraces(&mut load(TAIL), 21, "a tail call to printf");
 }
