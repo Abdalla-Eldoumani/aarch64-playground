@@ -23,7 +23,8 @@ import {
   parseBits,
 } from "@/lib/emulator/register-format";
 import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { safeGetItem } from "@/lib/playground/safe-storage";
+import { subscribeStored, usePersistedFlag, writeStored } from "@/lib/hooks/use-stored-setting";
 import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
@@ -39,7 +40,6 @@ import {
   HEX_KEY,
   parseView,
   usePersistedArrangement,
-  usePersistedFlag,
   V_DEC_KEY,
   VIEW_KEY,
   X_DEC_KEY,
@@ -217,8 +217,13 @@ export function RegisterPanel({
 
   const [viewState, dispatchView] = useReducer(reduceView, INITIAL_VIEW);
   useEffect(() => {
-    const stored = openOn ?? parseView(safeGetItem(VIEW_KEY));
-    if (stored != null) dispatchView({ kind: "show", view: stored });
+    const show = (stored: RegView | null) => {
+      if (stored != null) dispatchView({ kind: "show", view: stored });
+    };
+    show(openOn ?? parseView(safeGetItem(VIEW_KEY)));
+    // Every view change after that is the stored one, from this panel, another
+    // panel on the page, or another tab.
+    return subscribeStored(VIEW_KEY, (raw) => show(parseView(raw)));
     // openOn is a hint for the first view, not a setting to track.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -326,7 +331,7 @@ export function RegisterPanel({
       const usable = touched.filter(
         (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
       );
-      if (follow && usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
+      if (follow && usable.length === 1) writeStored(VIEW_KEY, usable[0]);
 
       const xRows = [...xChanged].sort((a, b) => a - b);
       const vecRows = [...vecChanged].sort((a, b) => a - b);
@@ -385,8 +390,7 @@ export function RegisterPanel({
   }, [changedRegs, followedVecRegs, running]);
 
   const pickView = useCallback((next: RegView) => {
-    dispatchView({ kind: "show", view: next });
-    safeSetItem(VIEW_KEY, next);
+    writeStored(VIEW_KEY, next);
   }, []);
 
   const bodyRef = useRef<HTMLDivElement>(null);
