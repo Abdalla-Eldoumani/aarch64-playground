@@ -219,11 +219,11 @@ export class WorkerClient implements EmulatorBackend {
     return this.send<FrameLayoutPayload | null>({ id: 0, kind: "frameLayout" });
   }
 
-  terminate(): void {
+  // Pending requests are dropped, not rejected: the hub fires many without
+  // a catch, and its owner is gone, so a rejection would only surface as an
+  // unhandled error.
+  dispose(): void {
     this.worker.terminate();
-    for (const slot of this.pending.values()) {
-      slot.reject(new Error("worker terminated"));
-    }
     this.pending.clear();
     this.listeners.clear();
   }

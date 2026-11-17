@@ -135,12 +135,17 @@ describe("WorkerClient", () => {
     expect(runResult.runResult.steps_executed).toBe(100);
   });
 
-  test("terminate rejects pending promises", async () => {
-    const { w } = makeMockWorker();
+  test("dispose terminates the worker and drops pending requests unsettled", async () => {
+    const { w, posted, fire } = makeMockWorker();
     const client = new WorkerClient(w);
-    const promise = client.step();
-    client.terminate();
-    await expect(promise).rejects.toThrow("worker terminated");
+    const settled = vi.fn();
+    client.step().then(settled, settled);
+    client.dispose();
+    // A reply already on its way finds no request to settle.
+    fire({ id: posted[0].id, kind: "ok", value: null });
+    await new Promise((later) => setTimeout(later, 0));
+    expect(w.terminate).toHaveBeenCalledTimes(1);
+    expect(settled).not.toHaveBeenCalled();
   });
 
   test("heartbeat fans out to every subscriber", async () => {
