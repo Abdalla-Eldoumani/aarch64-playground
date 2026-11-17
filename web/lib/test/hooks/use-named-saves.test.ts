@@ -37,4 +37,21 @@ describe("useNamedSaves", () => {
     act(() => { result.current.remove("alpha"); });
     expect(result.current.saves).toEqual([]);
   });
+
+  // The browser tells a page when another of its tabs writes the key; a
+  // change to some other key leaves the list as it was.
+  it("refreshes when another tab changes the saves, and only then", () => {
+    const { result } = renderHook(() => useNamedSaves());
+    const key = "aarch64-playground:named-saves";
+    act(() => {
+      window.localStorage.setItem(key, JSON.stringify([sample]));
+      window.dispatchEvent(new StorageEvent("storage", { key, storageArea: window.localStorage }));
+    });
+    expect(result.current.saves.map((s) => s.name)).toEqual(["alpha"]);
+    act(() => {
+      window.localStorage.setItem(key, "[]");
+      window.dispatchEvent(new StorageEvent("storage", { key: "aarch64-playground:theme" }));
+    });
+    expect(result.current.saves.map((s) => s.name)).toEqual(["alpha"]);
+  });
 });
