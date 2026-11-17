@@ -308,9 +308,7 @@ class MainThreadBackend implements EmulatorBackend {
     };
   }
 
-  // Only stops a run in progress: the wasm glue's finalizer frees the
-  // machine once nothing holds it, and a late call must not land on a
-  // freed one.
+  // Stands the run down only: the glue's finalizer frees the machine, and a late call must not hit a freed one.
   dispose(): void {
     this.runEpoch++;
   }
