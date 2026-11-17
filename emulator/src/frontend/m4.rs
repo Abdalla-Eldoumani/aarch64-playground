@@ -11,7 +11,8 @@
 //!     the address of that line, not of wherever msg_len is used.
 //!   * Expansion repeats until nothing changes, capped at 32 rounds so a
 //!     loop fails with an error instead of hanging.
-//!   * Comments are stripped first, so comment text never expands.
+//!   * Comments are stripped first, so comment text never expands; a line
+//!     that uses m4 quotes keeps its comments, as GNU m4 reads them.
 //!   * Every output line maps back to the source line that produced it;
 //!     they stay equal until a define or a macro body spans lines.
 //!   * `dnl` deletes through the newline where the playground refused it
@@ -19,6 +20,8 @@
 //!     Elsewhere it is an ordinary name (a `dnl:` label runs as it did).
 //!   * `divert(-1)` throws the output away until `divert` or `divert(0)`;
 //!     a numbered diversion is refused.
+//!   * `changecom` turns comments off, and `changecom(`//')` moves the
+//!     opener; a comment still ends at the line's end.
 //!   * On a line whose source holds a backtick, `` `text' `` is written as
 //!     `text`, unexpanded, and a quoted argument loses its quotes. The quote
 //!     closes on its line. Other lines read a backtick as plain text, as
@@ -75,6 +78,9 @@ pub struct Expanded {
     /// Names whose bindings are windowed (redefined or undefined) rather
     /// than file-wide. For every other name `defines` is exact everywhere.
     pub windowed: std::collections::HashSet<String>,
+    /// Every `changecom` in source order: its 1-based line and the comment
+    /// opener from there on (None: comments off).
+    comment_events: Vec<(usize, Option<String>)>,
 }
 
 impl Expanded {
@@ -95,6 +101,16 @@ impl Expanded {
             }
         }
         body
+    }
+
+    /// What opens an m4 comment at 1-based source `line`: `#` until a
+    /// `changecom` moves or ends it.
+    pub fn comment_at(&self, line: usize) -> Option<&str> {
+        self.comment_events
+            .iter()
+            .rev()
+            .find(|(at, _)| *at <= line)
+            .map_or(Some("#"), |(_, opener)| opener.as_deref())
     }
 }
 
@@ -178,16 +194,20 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                 ),
             });
         }
+        // A line that uses m4 quotes keeps its comments, as GNU m4 reads it:
+        // the `//` in changecom(`//') is quoted text. The assembler strips
+        // them after m4. Every such line was refused before.
+        let kept = if without_comment.contains('`') { *raw } else { without_comment };
         if let Some((name, body)) = parse_assignment(trimmed) {
             assignments.insert(name, body);
             // Keep the assignment line intact so the parser can produce
             // a symbol-assignment item at this exact section offset. The
             // expression body may reference `.` or labels whose meaning
             // depends on where the assignment appears in the source.
-            stripped.push((idx, without_comment.to_string(), false));
+            stripped.push((idx, kept.to_string(), false));
             continue;
         }
-        stripped.push((idx, without_comment.to_string(), false));
+        stripped.push((idx, kept.to_string(), false));
     }
 
     // Find the names defined more than once or undefined, such as
@@ -234,6 +254,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut carry = String::new();
     // Under `divert(-1)`, GNU m4 throws its output away.
     let mut discard = false;
+    let mut comment = Some("#".to_string());
+    let mut comment_events = Vec::new();
     for (idx, line, joins) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -250,18 +272,26 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
+        let unsupported = || EmuError::PreprocError {
+            line: line_num,
+            message: format!("unsupported m4 construct: {}", line.trim()),
+        };
         let (expanded, joins) = if let Some((args, (text, joins))) = builtin_call(line, "divert", &current) {
             // A numbered diversion goes to the end of GNU m4's output, which
             // the line-for-line expansion here cannot place.
             match args.first().map(|n| n.trim()).filter(|n| !n.is_empty()).map_or(Ok(0), str::parse::<i64>) {
                 Ok(n) if n <= 0 => discard = n < 0,
-                _ => {
-                    return Err(EmuError::PreprocError {
-                        line: line_num,
-                        message: format!("unsupported m4 construct: {}", line.trim()),
-                    })
-                }
+                _ => return Err(unsupported()),
             }
+            (text.to_string(), joins)
+        } else if let Some((args, (text, joins))) = builtin_call(line, "changecom", &current) {
+            // A comment that ends anywhere but the line's end can span lines,
+            // which the line-for-line expansion here cannot follow.
+            if args.len() > 1 {
+                return Err(unsupported());
+            }
+            comment = args.into_iter().next().filter(|c| !c.is_empty());
+            comment_events.push((line_num, comment.clone()));
             (text.to_string(), joins)
         } else if discard {
             continue;
@@ -271,9 +301,10 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // that ran changes. GNU m4 writes the quoted text without its
             // outer quotes and never reads it again.
             let quotes = if line.contains('`') { Quotes::Keep } else { Quotes::Plain };
-            let settled = expand_recursively(line, &current, line_num, Gnu { quotes })?;
+            let gnu = Gnu { comment: comment.as_deref(), quotes };
+            let settled = expand_recursively(line, &current, line_num, gnu)?;
             let text = match quotes {
-                Quotes::Keep => substitute_bounded(&settled, &current, line_num, Gnu { quotes: Quotes::Strip })?,
+                Quotes::Keep => substitute_bounded(&settled, &current, line_num, Gnu { quotes: Quotes::Strip, ..gnu })?,
                 _ => settled,
             };
             (text, *joins)
@@ -316,6 +347,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             .map(|(idx, name, body)| (idx + 1, name, body))
             .collect(),
         windowed,
+        comment_events,
     })
 }
 
@@ -323,7 +355,7 @@ fn expand_recursively(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
-    gnu: Gnu,
+    gnu: Gnu<'_>,
 ) -> Result<String, EmuError> {
     let mut current = line.to_string();
     for _ in 0..MAX_RECURSION {
@@ -354,7 +386,7 @@ fn substitute_bounded(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
-    gnu: Gnu,
+    gnu: Gnu<'_>,
 ) -> Result<String, EmuError> {
     let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
     substitute_once_gnu(line, defines, limit, gnu).map_err(|stop| EmuError::PreprocError {
@@ -386,7 +418,10 @@ pub(crate) enum Stop {
 
 /// How GNU m4 reads a line, which the `.req` pass does not share.
 #[derive(Clone, Copy)]
-struct Gnu {
+struct Gnu<'a> {
+    /// What opens a comment that runs to the line's end: `#` until a
+    /// `changecom`, None once comments are off.
+    comment: Option<&'a str>,
     quotes: Quotes,
 }
 
@@ -429,7 +464,7 @@ fn substitute_once_gnu(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
-    gnu: Gnu,
+    gnu: Gnu<'_>,
 ) -> Result<String, Stop> {
     substitute_pass(line, defines, limit, Some(gnu))
 }
@@ -444,10 +479,11 @@ fn substitute_pass(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
-    gnu: Option<Gnu>,
+    gnu: Option<Gnu<'_>>,
 ) -> Result<String, Stop> {
     let respect_literals = gnu.is_none();
     let quotes = gnu.map_or(Quotes::Plain, |g| g.quotes);
+    let comment = gnu.and_then(|g| g.comment);
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
@@ -462,11 +498,12 @@ fn substitute_pass(
             i = end;
             continue;
         }
-        if !respect_literals && b == b'#' {
-            // GNU m4 comment: everything from `#` to the end of the line
-            // passes through unexpanded, which is why the course style
-            // writes bare immediates (`mov x0, 5`, never `#alloc`). A
-            // macro body can put several lines into one.
+        if comment.is_some_and(|c| bytes[i..].starts_with(c.as_bytes())) {
+            // GNU m4 comment: everything from `#` (or the opener a
+            // `changecom` set) to the end of the line passes through
+            // unexpanded, which is why the course style writes bare
+            // immediates (`mov x0, 5`, never `#alloc`). A macro body can
+            // put several lines into one.
             let end = line[i..].find('\n').map_or(line.len(), |n| i + n);
             out.push_str(&line[i..end]);
             i = end;
@@ -508,7 +545,7 @@ fn substitute_pass(
                     if bytes.get(i) == Some(&b'(') {
                         let close = closing_paren(&line[i..], quoted).ok_or(Stop::Unclosed)?;
                         for arg in split_args(&line[i + 1..i + close], quoted) {
-                            args.push(if quoted { unquote(arg, limit)? } else { arg.to_string() });
+                            args.push(if quoted { unquote(arg, comment, limit)? } else { arg.to_string() });
                         }
                         i += close + 1;
                     }
@@ -524,7 +561,12 @@ fn substitute_pass(
         i += 1;
         while i < bytes.len() {
             let c = bytes[i];
-            if c == b'"' || c == b'\'' || c == b'#' || c == b'`' || is_id_start_byte(c) {
+            if c == b'"'
+                || c == b'\''
+                || c == b'`'
+                || comment.is_some_and(|m| m.as_bytes()[0] == c)
+                || is_id_start_byte(c)
+            {
                 break;
             }
             i += 1;
@@ -554,8 +596,8 @@ fn quote_end(b: &[u8]) -> Option<usize> {
 }
 
 /// `text` less one level of m4 quotes, as GNU m4 collects an argument.
-fn unquote(text: &str, limit: usize) -> Result<String, Stop> {
-    substitute_pass(text, &HashMap::new(), limit, Some(Gnu { quotes: Quotes::Strip }))
+fn unquote(text: &str, comment: Option<&str>, limit: usize) -> Result<String, Stop> {
+    substitute_pass(text, &HashMap::new(), limit, Some(Gnu { comment, quotes: Quotes::Strip }))
 }
 
 /// Where the `)` closing the `(` that `s` starts with sits, if on this line.
@@ -883,7 +925,7 @@ fn builtin_call<'a>(
     let close = closing_paren(rest, true)?;
     let args = split_args(&rest[1..close], true)
         .into_iter()
-        .map(|arg| unquote(arg, MAX_EXPANDED_LINE_BYTES).ok())
+        .map(|arg| unquote(arg, None, MAX_EXPANDED_LINE_BYTES).ok())
         .collect::<Option<_>>()?;
     Some((args, after_call(&rest[close + 1..])?))
 }
@@ -1567,14 +1609,16 @@ mod tests {
     fn changecom_moves_or_ends_the_comment_like_gnu_m4() {
         // GNU m4 1.4.19: once `#` opens no comment, the name after it
         // expands; after changecom(`@') an `@` opens one instead.
-        for first in ["changecom", "changecom()", "changecom(`//')"] {
+        for (first, opener) in [("changecom", None), ("changecom()", None), ("changecom(`//')", Some("//"))] {
             let src = format!("{first}\ndefine(n, 4)\nmov x0, #n\n");
             assert_eq!(text_and_map(&src), gnu("\n\nmov x0, #4", &[1, 2, 3]), "{first}");
+            assert_eq!(exp(&src).comment_at(3), opener, "{first}");
         }
         assert_eq!(exp("changecom(`@')\ndefine(n, 4)\nmov x0, #n @ n\n").text, "\n\nmov x0, #4 @ n");
+        assert_eq!(exp("mov x0, 1\n").comment_at(1), Some("#"));
         // GNU m4 ends a comment at any string it is given; the playground's
         // end at the line's end.
-        rejects(expand("changecom(`/*', `*/')\n"), "unsupported m4 construct: changecom(`/*', `*/')");
+        rejects(expand("changecom(`@', `!')\n"), "unsupported m4 construct: changecom(`@', `!')");
     }
 
     #[test]
