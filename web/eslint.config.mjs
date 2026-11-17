@@ -60,7 +60,18 @@ const COMPOSED = {
   message: "Read this state through useEmulator (@/lib/emulator/use-emulator), which composes it.",
 };
 
-const NO_REACT = ["react", "react-dom"].map((name) => ({ name }));
+// React and its entry points (react/jsx-runtime, react-dom/client).
+const noReact = (message) => ({ group: ["react", "react/*", "react-dom", "react-dom/*"], message });
+
+// The embed and the modules that import it statically, from the import graph.
+const EMBED_CARRIERS = [
+  "@/components/playground/EmbeddablePlayground",
+  "@/components/playground/EmbeddableCore",
+  "@/components/landing/Hero",
+  "@/components/landing/HeroDemo",
+  "@/components/learn/LessonArticle",
+  "@/components/practice/ExerciseView",
+];
 
 const restrict = (paths, patterns = []) => [
   "error",
@@ -91,54 +102,45 @@ const boundaries = [
     files: [`lib/emulator/${TS}`],
     ignores: [...TESTS, "lib/emulator/use-*.ts"],
     rules: {
-      "@typescript-eslint/no-restricted-imports": restrict(
-        NO_REACT.map((path) => ({
-          ...path,
-          message: "Pure helpers stay pure: React state lives in use-emulator.ts and its use-* modules.",
-        })).concat(OWNED),
-        [
-          {
-            group: ["@/lib/wasm/*", "@/lib/wasm-node/*"],
-            message: "Pure helpers stay pure: the wasm loads in emulator.ts and the worker.",
-          },
-        ],
-      ),
+      "@typescript-eslint/no-restricted-imports": restrict(OWNED, [
+        noReact("Pure helpers stay pure: React state lives in use-emulator.ts and its use-* modules."),
+        {
+          group: ["@/lib/wasm/*", "@/lib/wasm-node/*"],
+          message: "Pure helpers stay pure: the wasm loads in emulator.ts and the worker.",
+        },
+      ]),
     },
   },
   {
     files: [`lib/asm/${TS}`],
     ignores: TESTS,
     rules: {
-      "@typescript-eslint/no-restricted-imports": restrict(
-        [...OWNED, ...NO_REACT.map((path) => ({ ...path, message: "lib/asm is text in, data out: no React." }))],
-        [
-          {
-            group: ["@/lib/emulator/*", "@/lib/worker/*", "@/lib/wasm/*", "@/lib/wasm-node/*"],
-            message: "lib/asm is text in, data out: take the emulator's types with import type, never its calls.",
-          },
-        ],
-      ),
+      "@typescript-eslint/no-restricted-imports": restrict(OWNED, [
+        noReact("lib/asm is text in, data out: no React."),
+        {
+          group: ["@/lib/emulator/*", "@/lib/worker/*", "@/lib/wasm/*", "@/lib/wasm-node/*"],
+          message: "lib/asm is text in, data out: take the emulator's types with import type, never its calls.",
+        },
+      ]),
     },
   },
   {
     files: ["lib/worker/emulator.worker.ts"],
     rules: {
-      "@typescript-eslint/no-restricted-imports": restrict(
-        [...OWNED, ...NO_REACT.map((path) => ({ ...path, message: "The worker has no DOM: React stays on the main thread." }))],
-        [
-          {
-            group: [
-              "@/components/*",
-              "@/lib/hooks/*",
-              "@/lib/playground/*",
-              "@/lib/content/*",
-              "@/lib/terminal/*",
-              "@/lib/emulator/use-*",
-            ],
-            message: "The worker loads the wasm, lib/worker and lib/emulator's pure helpers only: main-thread modules stay out of its chunk.",
-          },
-        ],
-      ),
+      "@typescript-eslint/no-restricted-imports": restrict(OWNED, [
+        noReact("The worker has no DOM: React stays on the main thread."),
+        {
+          group: [
+            "@/components/*",
+            "@/lib/hooks/*",
+            "@/lib/playground/*",
+            "@/lib/content/*",
+            "@/lib/terminal/*",
+            "@/lib/emulator/use-*",
+          ],
+          message: "The worker loads the wasm, lib/worker and lib/emulator's pure helpers only: main-thread modules stay out of its chunk.",
+        },
+      ]),
     },
   },
   {
@@ -163,27 +165,28 @@ const boundaries = [
       "@typescript-eslint/no-restricted-imports": restrict(
         [
           ...OWNED,
-          {
-            name: "@/components/playground/EmbeddablePlayground",
+          ...EMBED_CARRIERS.map((name) => ({
+            name,
             message: "Load the embed with next/dynamic or React.lazy, so the /reference route chunk stays free of it.",
-          },
+          })),
         ],
         [COMPOSED],
       ),
     },
   },
   // Imports use the @/ alias, tests included. lib/theme is the exception:
-  // tailwind.config.ts loads tokens.ts outside the bundler, where @/ does not resolve.
+  // tailwind.config.ts loads tokens.ts outside the bundler, where @/ does not
+  // resolve; a route's own tests import it as ./page; a stylesheet sits beside its layout.
   {
-    files: [`{components,lib}/${TS}`],
-    ignores: ["lib/theme/**"],
+    files: [`{app,components,lib}/${TS}`],
+    ignores: ["lib/theme/**", "app/**/*.test.ts", "app/**/*.test.tsx"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
             {
-              group: ["./*", "../*"],
+              group: ["./*", "../*", "!*.css"],
               message: "Import through the @/ alias: @/lib/<group>/<module> or @/components/<group>/<Name>.",
             },
           ],
