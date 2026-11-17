@@ -1479,8 +1479,32 @@ mod tests {
     }
 
     #[test]
-    fn backtick_is_rejected() {
-        rejects(expand("mov x0, `foo'\n"), "unsupported m4 construct: backtick-quoted string");
+    fn a_quoted_string_loses_one_level_of_quotes_like_gnu_m4() {
+        // GNU m4 1.4.19: quoted text is written without its outer quotes and
+        // never expanded, a quoted argument is collected without them (and
+        // its body is read again), and a comment keeps its quotes.
+        let fp = "define(fp, x29)\n";
+        let after = |line: &str| exp(&format!("{fp}{line}\n")).text;
+        assert_eq!(after("mov x0, `fp'"), "\nmov x0, fp");
+        assert_eq!(after("mov x0, ``fp''"), "\nmov x0, `fp'");
+        assert_eq!(after("mov x0, fp`'x"), "\nmov x0, x29x");
+        assert_eq!(after(".string \"`fp' is fp\""), "\n.string \"fp is x29\"");
+        assert_eq!(after("mov x0, 1 # `fp' fp"), "\nmov x0, 1 # `fp' fp");
+        assert_eq!(after("define(q, `$1')\nmov x0, q(`fp')"), "\n\nmov x0, x29");
+        assert_eq!(exp("define(f, `[$1|$2]')\nf(`a,b', c)\n").text, "\n[a,b|c]");
+        assert_eq!(exp("define(f, `[$1]')\nf(`)')\n").text, "\n[)]");
+        // GNU m4 reads on to a closing quote on a later line; the playground
+        // needs it on the same line, as it does a macro's `)`.
+        rejects(expand("mov x0, `fp\nmov x1, 2'\n"), "closing quote on the same line");
+    }
+
+    #[test]
+    fn lines_with_no_quote_of_their_own_keep_todays_output() {
+        // GNU m4 strips the quotes a define's body still holds (`a b c`) and
+        // reads quotes inside `//` comments; both run here today as below,
+        // so they stay.
+        assert_eq!(exp("define(x, `a `b' c')\nx\n").text, "\na `b' c");
+        assert_eq!(exp("mov x0, 1 // don`t\n").text, "mov x0, 1 ");
     }
 
     #[test]
@@ -1578,8 +1602,6 @@ mod tests {
     fn a_define_may_quote_its_name_and_body() {
         let r = exp("define(`fp', `x29')\nmov x0, fp\n");
         assert_eq!(r.text, "\nmov x0, x29");
-        // Anywhere else a quote is still refused.
-        rejects(expand("mov x0, `fp'\n"), "backtick");
     }
 
     #[test]
