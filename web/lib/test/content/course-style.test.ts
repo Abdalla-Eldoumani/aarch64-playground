@@ -75,6 +75,15 @@ describe("authored programs stay inside the course directive vocabulary", () => 
     }
   });
 
+  it("exercise reference solutions carry no banned directive", () => {
+    // They ship: course-instructions.ts reads them at build.
+    const files = walk(path.join(process.cwd(), "lib/test/content/exercise-solutions"), ".s");
+    expect(files.length).toBeGreaterThanOrEqual(60);
+    for (const file of files) {
+      assertClean(rel(file), fs.readFileSync(file, "utf8"));
+    }
+  });
+
   it("reference try-in-playground payloads carry no banned directive", () => {
     // The module is authored data end to end (seeds, examples, gotcha prose,
     // runnable programs), so scanning the raw source covers every payload.
