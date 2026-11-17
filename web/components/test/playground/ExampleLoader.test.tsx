@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ExampleLoader } from "@/components/playground/ExampleLoader";
 
 afterEach(() => {
@@ -146,6 +146,86 @@ describe("ExampleLoader", () => {
       stem: "read-file",
       vfs: { "input.txt": "Hi\n" },
     });
+  });
+
+  it("lists every example under its stage in order, and loads each under its own label", async () => {
+    // [stage, [label, stem] in menu order]
+    const MENU: [string, [string, string][]][] = [
+      ["First programs", [["arithmetic", "basics"], ["distance from zero", "distance"]]],
+      ["Data and memory", [["globals (load + store)", "globals"]]],
+      ["Stack and locals", [["locals (sum + product)", "locals"]]],
+      [
+        "Records and arrays",
+        [["scores (scanf + avg)", "array-scores"], ["student record", "student-record"]],
+      ],
+      ["Subroutines", [["find max", "find-max"], ["is prime", "is-prime"]]],
+      [
+        "Static data and command-line arguments",
+        [["static counter", "static-counter"], ["command-line args", "command-line-args"]],
+      ],
+      [
+        "Floating point",
+        [["circle area", "circle-area"], ["triangle area (single precision)", "triangle-area"]],
+      ],
+      [
+        "Files and I/O",
+        [
+          ["hello (write)", "hello"],
+          ["echo (read)", "echo"],
+          ["write file", "write-file"],
+          ["read file", "read-file"],
+          ["copy file", "copy-file"],
+        ],
+      ],
+      [
+        "Vector registers (not taught in the course)",
+        [
+          ["uppercase a line", "vector-upper"],
+          ["count the characters", "vector-strlen"],
+          ["sum sixteen ints", "vector-sum"],
+          ["dot product", "vector-dot"],
+          ["brighten a picture", "vector-brighten"],
+          ["mean of floats", "vector-mean"],
+        ],
+      ],
+      [
+        "Miscellaneous",
+        [
+          ["snake", "snake"],
+          ["data structures visualizer", "dsav"],
+          ["calculator", "calc"],
+          ["temperature converter", "temp-convert"],
+          ["two sum", "two-sum"],
+          ["deadzone", "deadzone"],
+        ],
+      ],
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: async () => (url.endsWith(".vfs.json") ? "{}" : "x\n"),
+      })),
+    );
+    const onLoad = vi.fn();
+    render(<ExampleLoader onLoad={onLoad} />);
+
+    for (const [, rows] of MENU) {
+      for (const [label, stem] of rows) {
+        await pick(label);
+        await waitFor(() =>
+          expect(onLoad).toHaveBeenLastCalledWith(expect.objectContaining({ label, stem })),
+        );
+      }
+    }
+
+    const shown = Array.from(openList().children).map((group) => [
+      groupHeaders(group as HTMLElement)[0],
+      optionLabels(group as HTMLElement),
+    ]);
+    expect(shown).toEqual(MENU.map(([stage, rows]) => [stage, rows.map(([label]) => label)]));
   });
 
   it("shows an inline alert when the fetch fails", async () => {
