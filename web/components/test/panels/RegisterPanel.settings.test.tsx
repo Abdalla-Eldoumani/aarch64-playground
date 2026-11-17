@@ -198,3 +198,32 @@ describe("the register view, moved by a step", () => {
     expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("d");
   });
 });
+
+describe("the register view, when a panel mounts on a step already followed", () => {
+  // Showing the registers again (the registers or stack switch, a phone's
+  // registers tab) mounts a new panel on the last step's snapshot. That write
+  // was followed when it arrived; with "follow changes" off the new panel must
+  // not store its file over the student's choice, here or in any other panel.
+  it("leaves the stored view and the other panels alone", () => {
+    window.localStorage.setItem("aarch64-playground:regfile-view", "d");
+    window.localStorage.setItem("aarch64-playground:regfile-follow", "0");
+    const { rerender } = render(<>{panel("a")}</>);
+    rerender(
+      <>
+        {panel("a")}
+        <RegisterPanel
+          registers={GPRS}
+          changedRegs={new Set([0])}
+          fpRegisters={FPRS}
+          changedFpRegs={new Set()}
+          vectorRegisters={VECS}
+          sp="0x0000000080000000"
+          pc={0x400000}
+          nzcv={0}
+        />
+      </>,
+    );
+    expect(pressed(viewCell(screen.getByTestId("a"), "d"))).toBe(true);
+    expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("d");
+  });
+});
