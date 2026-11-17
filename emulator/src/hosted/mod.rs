@@ -358,44 +358,7 @@ fn noop(_ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
-
-    #[allow(clippy::too_many_arguments)] // one borrow per Cpu field the host context carries
-    fn fresh_ctx<'a>(
-        regs: &'a mut RegisterFile,
-        mem: &'a mut Memory,
-        stdout: &'a mut Vec<u8>,
-        stderr: &'a mut Vec<u8>,
-        stdin: &'a mut Vec<u8>,
-        vfs: &'a mut HashMap<String, Vec<u8>>,
-        open_files: &'a mut HashMap<u32, crate::cpu::OpenFile>,
-        next_fd: &'a mut u32,
-        rand_state: &'a mut crate::hosted::libc::RandState,
-        term: &'a mut crate::cpu::TermState,
-        heap: &'a mut crate::hosted::heap::HeapState,
-        strtok_save: &'a mut u64,
-        callbacks: &'a mut crate::hosted::callback::CallbackState,
-    ) -> HostContext<'a> {
-        HostContext {
-            regs,
-            mem,
-            stdout,
-            stderr,
-            stdin,
-            stdin_closed: false,
-            vfs,
-            open_files,
-            next_fd,
-            rand_state,
-            term,
-            heap,
-            strtok_save,
-            callbacks,
-            call: None,
-        }
-    }
+    use crate::test_support::Host;
 
     #[test]
     fn default_table_contains_noop_at_base_address() {
@@ -429,48 +392,17 @@ mod tests {
             Ok(HostOutcome::Continue)
         }
         let addr = t.register("set_x0", set_x0);
-        let mut regs = RegisterFile::new();
-        let mut mem = Memory::new();
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let mut inp = Vec::new();
-        let mut vfs = HashMap::new();
-        let mut open = HashMap::new();
-        let mut next = 3u32;
-        let mut rand_state = crate::hosted::libc::RandState::default();
-        let mut term = crate::cpu::TermState::default();
-        let mut heap = crate::hosted::heap::HeapState::default();
-        let mut strtok_save = 0u64;
-        let mut callbacks = crate::hosted::callback::CallbackState::default();
-        let mut ctx = fresh_ctx(
-            &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state, &mut term, &mut heap, &mut strtok_save, &mut callbacks,
-        );
-        let outcome = t.dispatch(addr, &mut ctx).unwrap().unwrap();
+        let mut h = Host::new();
+        let outcome = t.dispatch(addr, &mut h.ctx()).unwrap().unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
-        assert_eq!(regs.read_gpr(0, true), 123);
+        assert_eq!(h.regs.read_gpr(0, true), 123);
     }
 
     #[test]
     fn dispatch_returns_none_for_unregistered_address() {
         let t = HostTable::new();
-        let mut regs = RegisterFile::new();
-        let mut mem = Memory::new();
-        let mut out = Vec::new();
-        let mut err = Vec::new();
-        let mut inp = Vec::new();
-        let mut vfs = HashMap::new();
-        let mut open = HashMap::new();
-        let mut next = 3u32;
-        let mut rand_state = crate::hosted::libc::RandState::default();
-        let mut term = crate::cpu::TermState::default();
-        let mut heap = crate::hosted::heap::HeapState::default();
-        let mut strtok_save = 0u64;
-        let mut callbacks = crate::hosted::callback::CallbackState::default();
-        let mut ctx = fresh_ctx(
-            &mut regs, &mut mem, &mut out, &mut err, &mut inp, &mut vfs, &mut open, &mut next,
-            &mut rand_state, &mut term, &mut heap, &mut strtok_save, &mut callbacks,
-        );
+        let mut h = Host::new();
+        let mut ctx = h.ctx();
         // Address past the end of the table.
         assert!(t
             .dispatch(HOST_STUB_BASE + HOST_STUB_STRIDE * 99, &mut ctx)
