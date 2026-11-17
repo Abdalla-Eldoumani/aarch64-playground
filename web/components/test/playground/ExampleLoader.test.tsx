@@ -227,8 +227,7 @@ describe("ExampleLoader", () => {
       optionLabels(group as HTMLElement),
     ]);
     expect(shown).toEqual(MENU.map(([stage, rows]) => [stage, rows.map(([label]) => label)]));
-    // 29 loads take about 2 s alone, near the 5 s default under a full run.
-  }, 15_000);
+  });
 
   it("lists exactly the catalog's examples, in the catalog's order", () => {
     const catalog = EXAMPLES.map((example) => example.stem);
