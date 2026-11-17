@@ -5,30 +5,30 @@ import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 /**
  * What the site keeps in localStorage, and one way to hear it change: a write
- * here tells this tab through a named event that carries the value, and the
- * browser's "storage" event, which reaches only the other tabs, tells the
- * rest. Keys and stored formats belong to the callers and never change here,
- * so a returning student's choices load as they were saved.
+ * here tells this tab through its own named event, and the browser's
+ * "storage" event, which reaches only the other tabs, tells the rest. Keys
+ * and stored formats belong to the callers and never change here, so a
+ * returning student's choices load as they were saved.
  */
 
+// Never "storage": no listener for the browser's event hears this tab's writes.
+// It is a StorageEvent only so it carries key and newValue where the browser's
+// does, and one handler reads both.
 const CHANGED_EVENT = "aarch64-playground:stored-change";
 
 /** Calls back with the new stored text on every change to `key`, in this tab
  *  or another; returns the unsubscribe. */
 export function subscribeStored(key: string, callback: (value: string | null) => void): () => void {
   if (typeof window === "undefined") return () => {};
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === key) callback(event.newValue);
+  const follow = (event: Event) => {
+    const changed = event as StorageEvent;
+    if (changed.key === key) callback(changed.newValue);
   };
-  const onChange = (event: Event) => {
-    const [changed, value] = (event as CustomEvent<[string, string]>).detail;
-    if (changed === key) callback(value);
-  };
-  window.addEventListener("storage", onStorage);
-  window.addEventListener(CHANGED_EVENT, onChange);
+  window.addEventListener("storage", follow);
+  window.addEventListener(CHANGED_EVENT, follow);
   return () => {
-    window.removeEventListener("storage", onStorage);
-    window.removeEventListener(CHANGED_EVENT, onChange);
+    window.removeEventListener("storage", follow);
+    window.removeEventListener(CHANGED_EVENT, follow);
   };
 }
 
@@ -41,7 +41,7 @@ export function subscribeStored(key: string, callback: (value: string | null) =>
 export function writeStored(key: string, value: string): boolean {
   if (typeof window === "undefined") return false;
   const saved = safeSetItem(key, value);
-  window.dispatchEvent(new CustomEvent(CHANGED_EVENT, { detail: [key, value] }));
+  window.dispatchEvent(new StorageEvent(CHANGED_EVENT, { key, newValue: value }));
   return saved;
 }
 
