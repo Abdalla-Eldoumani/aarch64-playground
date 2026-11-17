@@ -241,11 +241,10 @@ impl Cpu {
         true
     }
 
-    /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
-    /// appropriate outcome to `blocked`/`exit_code` and leaves PC for the
-    /// caller to advance.
-    pub(super) fn dispatch_syscall(&mut self, number: u64) -> Result<(), EmuError> {
-        let mut ctx = HostContext {
+    /// What a libc stub or a syscall may touch, borrowed from this machine.
+    /// `record_call` lends printf or scanf the call card's record.
+    pub(crate) fn host_context(&mut self, record_call: bool) -> HostContext<'_> {
+        HostContext {
             regs: &mut self.regs,
             mem: &mut self.mem,
             stdout: &mut self.stdout,
@@ -260,9 +259,15 @@ impl Cpu {
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
             callbacks: &mut self.callbacks,
-            call: None,
-        };
-        let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
+            call: record_call.then_some(&mut self.call_scratch),
+        }
+    }
+
+    /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
+    /// appropriate outcome to `blocked`/`exit_code` and leaves PC for the
+    /// caller to advance.
+    pub(super) fn dispatch_syscall(&mut self, number: u64) -> Result<(), EmuError> {
+        let outcome = crate::hosted::syscalls::dispatch(number, &mut self.host_context(false))?;
         match outcome {
             // No syscall calls into the program, so Call never arrives here.
             HostOutcome::Continue | HostOutcome::Call(_) => {}
@@ -345,25 +350,8 @@ impl Cpu {
         };
         self.call_scratch.began = false;
         let table = std::mem::take(&mut self.host);
-        let mut ctx = HostContext {
-            regs: &mut self.regs,
-            mem: &mut self.mem,
-            stdout: &mut self.stdout,
-            stderr: &mut self.stderr,
-            stdin: &mut self.stdin,
-            stdin_closed: self.stdin_closed,
-            vfs: &mut self.vfs,
-            open_files: &mut self.open_files,
-            next_fd: &mut self.next_fd,
-            rand_state: &mut self.rand_state,
-            term: &mut self.term,
-            heap: &mut self.heap,
-            strtok_save: &mut self.strtok_save,
-            callbacks: &mut self.callbacks,
-            call: (kind != 0).then_some(&mut self.call_scratch),
-        };
         let outcome = table
-            .dispatch(pc, &mut ctx)
+            .dispatch(pc, &mut self.host_context(kind != 0))
             .expect("dispatch_host_stub called with non-host pc");
         self.host = table;
         // A call waiting on input runs again from the start once it comes.
