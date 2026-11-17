@@ -373,8 +373,7 @@ impl Cpu {
                 self.blocked = true;
             }
             HostOutcome::Sleep(ns) => {
-                // No libc stub returns Sleep, but the arm stays correct: a
-                // sleeping stub returns to its caller like Continue.
+                // usleep: the pause, then a return to the caller like Continue.
                 self.apply_sleep(ns);
                 self.clobber_after_call(pc);
                 let lr = self.regs.read_gpr(30, true);
