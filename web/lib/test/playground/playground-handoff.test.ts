@@ -352,6 +352,14 @@ describe("EXAMPLE_FILES manifest", () => {
   });
 });
 
+describe("the example catalog", () => {
+  it("lists every main file in the examples folder and nothing else", () => {
+    const dir = path.join(process.cwd(), "public/examples/cpsc355");
+    const mains = fs.readdirSync(dir).filter((file) => file.endsWith(".s"));
+    expect(EXAMPLES.map((example) => `${example.stem}.s`).sort()).toEqual(mains.sort());
+  });
+});
+
 describe("EXAMPLE_INPUTS manifest", () => {
   it("matches the input fixtures on disk exactly", () => {
     const dir = path.join(process.cwd(), "public/examples/cpsc355/fixtures");
