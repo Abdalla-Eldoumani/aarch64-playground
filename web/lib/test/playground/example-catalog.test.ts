@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  EXAMPLE_INTERACTIVE,
+  exampleFor,
   fetchExample,
   legacyModeArgsFor,
   modeArgsFor,
@@ -134,7 +134,7 @@ async function observe(stem: string): Promise<Facts> {
   if (payload.files) facts.files = payload.files.map((file) => file.name);
   const inputs = (["args", "stdin", "vfs"] as const).filter((kind) => payload[kind] !== undefined);
   if (inputs.length > 0) facts.inputs = inputs;
-  if (EXAMPLE_INTERACTIVE[stem] === true) facts.interactive = true;
+  if (exampleFor(stem)?.interactive === true) facts.interactive = true;
   const modeArgs = [modeArgsFor(stem, "console"), modeArgsFor(stem, "terminal"), legacyModeArgsFor(stem)];
   if (modeArgs.some((value) => value !== null)) facts.modeArgs = modeArgs;
   return facts;
