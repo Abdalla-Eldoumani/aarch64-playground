@@ -578,7 +578,7 @@ fn substitute_pass(
 
 /// Where the m4 quote that `b` opens with a backtick ends: just past its
 /// matching `'`, counting the pairs nested inside. None when it never closes.
-fn quote_end(b: &[u8]) -> Option<usize> {
+pub(super) fn quote_end(b: &[u8]) -> Option<usize> {
     let mut depth = 0usize;
     for (i, &c) in b.iter().enumerate() {
         match c {
