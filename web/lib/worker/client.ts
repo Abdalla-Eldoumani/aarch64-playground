@@ -1,5 +1,6 @@
 "use client";
 
+import type { EmulatorBackend } from "@/lib/emulator/backend";
 import type { LintWarning } from "@/lib/emulator/emulator-state";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
@@ -21,7 +22,7 @@ type SnapshotListener = (snap: StateSnapshot) => void;
  * `onSnapshot` subscription that fires for every state change
  * (response snapshot or run-loop heartbeat).
  */
-export class WorkerClient {
+export class WorkerClient implements EmulatorBackend {
   private worker: Worker;
   private nextId = 1;
   private pending = new Map<
