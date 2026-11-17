@@ -81,6 +81,8 @@ export interface EmulatorBackend {
   frameLayout(): Promise<FrameLayoutPayload | null>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
+  /** Release the machine when its owner unmounts. */
+  dispose(): void;
 }
 
 /**
@@ -304,6 +306,13 @@ class MainThreadBackend implements EmulatorBackend {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  // Only stops a run in progress: the wasm glue's finalizer frees the
+  // machine once nothing holds it, and a late call must not land on a
+  // freed one.
+  dispose(): void {
+    this.runEpoch++;
   }
 
   private requireEmu(): EmulatorInstance {
