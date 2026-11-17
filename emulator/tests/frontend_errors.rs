@@ -271,23 +271,39 @@ ret
     assert!(msg.contains("zero"), "message was: {msg}");
 }
 
+/// GNU as wants a comma after the name ("expected comma after \"FOO\"").
 #[test]
-fn equ_and_set_point_at_the_supported_spelling() {
-    let msg = assemble_err(".equ FOO, 5
-.text
-.global main
-main:
-ret
-");
-    assert!(msg.contains("NAME = expression"), "message was: {msg}");
-    assert!(msg.contains("line 1"), "message was: {msg}");
-    let msg = assemble_err(".set FOO, 5
-.text
-.global main
-main:
-ret
-");
-    assert!(msg.contains("NAME = expression"), "message was: {msg}");
+fn equ_and_set_without_a_comma_name_the_form() {
+    for directive in [".equ", ".set"] {
+        let msg = assemble_err(&format!("{directive} FOO 5\n.text\n.global main\nmain:\nret\n"));
+        assert!(msg.contains(&format!("{directive} NAME, expression")), "message was: {msg}");
+        assert!(msg.contains("line 1"), "message was: {msg}");
+    }
+}
+
+/// The playground runs the base ARMv8-A set and nothing past it, so only
+/// the `.arch` line gcc writes is taken. GNU as refuses `.arch foo`
+/// ("unknown architecture") and takes the others, which turn on extensions.
+#[test]
+fn arch_names_other_than_armv8_a_are_refused() {
+    for arch in ["foo", "armv8.2-a", "armv8-a+crc"] {
+        let msg = assemble_err(&format!(".arch {arch}\n.text\n.global main\nmain:\nret\n"));
+        assert!(msg.contains(".arch armv8-a"), "{arch}: message was: {msg}");
+        assert!(msg.contains("line 1"), "{arch}: message was: {msg}");
+    }
+}
+
+/// ld throws `.note.GNU-stack` away, so GNU ld refuses to link a `main`
+/// written after the note ("defined in discarded section"). gcc writes the
+/// note last; anything after it but a section switch is refused here.
+#[test]
+fn code_after_the_gnu_stack_note_is_refused() {
+    let msg = assemble_err(
+        ".text\n.balign 4\n.section .note.GNU-stack,\"\",@progbits\n.global main\nmain:\n\
+         mov w0, 3\nret\n",
+    );
+    assert!(msg.contains("line 4"), "message was: {msg}");
+    assert!(msg.contains(".text"), "the message names the way out: {msg}");
 }
 
 #[test]
