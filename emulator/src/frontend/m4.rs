@@ -1370,12 +1370,17 @@ mod tests {
         (r.text, r.line_map)
     }
 
+    /// GNU m4's output (its last newline dropped) and the source line of
+    /// each of its lines.
+    fn gnu(text: &str, map: &[usize]) -> (String, Vec<usize>) {
+        (text.to_string(), map.to_vec())
+    }
+
     #[test]
     fn dnl_deletes_through_the_newline_like_gnu_m4() {
         // GNU m4 1.4.19's output for each source: a `dnl` line, and a define,
         // undefine or quoted define followed by `dnl`, write no line, and
         // the blanks before `dnl` start the next line.
-        let gnu = |text: &str, map: &[usize]| (text.to_string(), map.to_vec());
         assert_eq!(text_and_map("define(fp, x29)dnl\nmov x0, fp\n"), gnu("mov x0, x29", &[2]));
         assert_eq!(text_and_map("dnl a whole-line comment\nmov x0, 1\n"), gnu("mov x0, 1", &[2]));
         assert_eq!(text_and_map("  dnl indented\nmov x0, 1\n"), gnu("  mov x0, 1", &[2]));
@@ -1392,6 +1397,31 @@ mod tests {
             text_and_map("define(fp, x29) dnl trailing words\nmov x0, fp\n"),
             gnu(" mov x0, x29", &[2])
         );
+    }
+
+    #[test]
+    fn divert_minus_one_discards_until_divert_like_gnu_m4() {
+        // GNU m4 1.4.19: the lines under `divert(-1)` (any negative number)
+        // write nothing, defines among them still bind, and the `divert` or
+        // `divert(0)` that ends them writes an empty line, or none with `dnl`.
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\nstray text\ndivert\nmov x0, fp\n"),
+            gnu("\nmov x0, x29", &[4, 5])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)dnl\nmov x0, fp\n"),
+            gnu("mov x0, x29", &[4])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)\nmov x0, fp\n"),
+            gnu("\nmov x0, x29", &[3, 4])
+        );
+        assert_eq!(text_and_map("divert(-2)\nstray\ndivert\nmov x0, 1\n"), gnu("\nmov x0, 1", &[3, 4]));
+        // GNU m4 writes a numbered diversion at the end of its output; the
+        // playground refuses one.
+        rejects(expand("divert(1)\nmov x0, 1\ndivert\nmov x1, 2\n"), "unsupported m4 construct: divert(1)");
+        // A program's own `divert` macro runs as it did.
+        assert_eq!(exp("define(divert, nop)\ndivert\n").text, "\nnop");
     }
 
     #[test]
