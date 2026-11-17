@@ -1,10 +1,7 @@
 "use client";
 
-import {
-  parseDeepLink,
-  resolveExampleStem,
-  type BundleDecoder,
-} from "@/lib/hooks/use-deep-link";
+import { parseDeepLink, type BundleDecoder } from "@/lib/hooks/use-deep-link";
+import { EXAMPLES, type Example } from "@/lib/playground/example-catalog";
 import { validateFileName, type SourceFile } from "@/lib/playground/file-map";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { readShareHash } from "@/lib/playground/share";
@@ -226,38 +223,24 @@ export const MAX_VFS_FIXTURE_FILES = 16;
 /** Longest VFS file name an example fixture may declare. */
 const MAX_VFS_FIXTURE_NAME_CHARS = 128;
 
-/** Examples whose DEFAULT owner at run press is the terminal pane: run
- *  takes it over (clear, focus, live keys) instead of routing scanf to
- *  the console. Both entries draw a full-screen ANSI frame, which the
- *  console's plain-text scrollback renders as escape-sequence garbage. */
-export const EXAMPLE_TERMINAL: Record<string, true> = {
-  dsav: true,
-  "two-sum": true,
-};
+/**
+ * One catalog field as a table keyed by stem, holding only the examples that
+ * set it. The table has no prototype, so a built-in key such as `constructor`
+ * finds nothing. What each table gates is its field's comment in
+ * example-catalog.ts.
+ */
+function tableOf<T>(field: (example: Example) => T | undefined): Record<string, T> {
+  const table: Record<string, T> = Object.create(null);
+  for (const example of EXAMPLES) {
+    const value = field(example);
+    if (value !== undefined) table[example.stem] = value;
+  }
+  return table;
+}
 
-/** Examples the run-mode control is offered for: the ones where both surfaces
- *  are a real answer. It gates a SURFACE, never behavior: a program outside it
- *  runs unchanged, and a stem listed here before its source lands simply never
- *  reaches the loader. */
-export const EXAMPLE_INTERACTIVE: Record<string, true> = {
-  snake: true,
-  dsav: true,
-  calc: true,
-  "temp-convert": true,
-  "two-sum": true,
-  deadzone: true,
-};
-
-/** Examples with two faces: in the console they take the argument `console`
- *  and print plain lines; in the terminal they take none and draw a full
- *  screen. The mode sets their args box on load and on each mode change,
- *  over EXAMPLE_INPUTS (temp-convert is in both), unless the student typed
- *  something of their own there. */
-export const EXAMPLE_MODE_ARGS: Record<string, true> = {
-  calc: true,
-  "temp-convert": true,
-  "two-sum": true,
-};
+export const EXAMPLE_TERMINAL = tableOf((example) => example.terminal);
+export const EXAMPLE_INTERACTIVE = tableOf((example) => example.interactive);
+export const EXAMPLE_MODE_ARGS = tableOf((example) => example.modeArgs);
 
 /**
  * The args box for `stem` under `mode`, or null when the mode does not set
@@ -281,72 +264,18 @@ export function legacyModeArgsFor(stem: string | null | undefined): string | nul
   return `./${stem} console`;
 }
 
-/**
- * Extra source files a multi-file example loads into the files strip,
- * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
- * tab order.
- */
-export const EXAMPLE_FILES: Record<string, string[]> = {
-  dsav: [
-    "theme.s",
-    "ui.s",
-    "ansi.s",
-    "display.s",
-    "utils.s",
-    "array.s",
-    "stack.s",
-    "queue.s",
-    "list.s",
-    "bst.s",
-    "rbt.s",
-    "heap.s",
-    "hash.s",
-    "graph.s",
-    "sort.s",
-    "search.s",
-    "recursion.s",
-  ],
-  // The repo builds this one with m4 include(), and the paste order is
-  // load-bearing: an equate only resolves for the modules below it, so
-  // constants comes first and the rest follow the includes. main's own
-  // uses reach back through the assembler's positional first-definition
-  // fallback, but a helper's do not.
-  deadzone: [
-    "constants.s",
-    "terminal.s",
-    "input.s",
-    "player.s",
-    "enemies.s",
-    "projectiles.s",
-    "upgrades.s",
-    "file-io.s",
-    "effects.s",
-    "boss.s",
-    "abilities.s",
-  ],
-};
+export const EXAMPLE_FILES = tableOf((example) => example.files);
+export const EXAMPLE_INPUTS = tableOf((example) => example.inputs);
 
 /**
- * Examples with input files (`<stem>.args`, `.stdin`, `.vfs.json` in the
- * fixtures directory). A test keeps this in sync with that directory.
+ * Resolve a `?example=` stem to the file actually on disk, translating a stem
+ * an example was renamed from to its current one. An unknown stem is returned
+ * unchanged. Path safety stays with the `/^[\w.-]+$/` check in
+ * `parseDeepLink`; this only remaps the catalog's old names.
  */
-export const EXAMPLE_INPUTS: Record<
-  string,
-  { args?: true; stdin?: true; vfs?: true }
-> = {
-  "array-scores": { stdin: true },
-  "circle-area": { stdin: true },
-  "command-line-args": { args: true },
-  "copy-file": { vfs: true },
-  echo: { stdin: true },
-  locals: { stdin: true },
-  "read-file": { vfs: true },
-  "student-record": { stdin: true },
-  "temp-convert": { args: true },
-  "triangle-area": { stdin: true },
-  "vector-strlen": { stdin: true },
-  "vector-upper": { stdin: true },
-};
+export function resolveExampleStem(stem: string): string {
+  return EXAMPLES.find((example) => example.aliases?.includes(stem))?.stem ?? stem;
+}
 
 /**
  * Parse a `<stem>.vfs.json` fixture: a flat object of file name to text. Any
@@ -397,7 +326,9 @@ async function fetchFixture(stem: string, ext: string): Promise<string> {
  * the current program.
  */
 export async function fetchExample(stem: string): Promise<HandoffPayload> {
-  if (!STEM_PATTERN.test(stem)) {
+  // A built-in object key (constructor, __proto__) names no example, and a
+  // link carrying one has always been answered as an invalid name.
+  if (!STEM_PATTERN.test(stem) || stem in Object.prototype) {
     throw new Error("invalid example name");
   }
   const res = await fetch(`${EXAMPLES_PREFIX}${stem}.s`);
