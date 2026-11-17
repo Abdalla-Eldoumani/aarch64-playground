@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  EXAMPLE_FILES,
   MAX_VFS_FIXTURE_FILES,
   decodeLaunch,
   exampleFor,
@@ -327,11 +326,12 @@ describe("fetchExample", () => {
     // `// ---- name ----` marker, so it is checked like any other untrusted
     // name, and checked before a request goes out.
     const calls = stubFetch({ "/examples/cpsc355/basics.s": "mov x0, 1\n" });
-    EXAMPLE_FILES.basics = ["helper.s\n.global evil"];
+    const basics = exampleFor("basics")!;
+    basics.files = ["helper.s\n.global evil"];
     try {
       await expect(fetchExample("basics")).rejects.toThrow(/letters, digits/);
     } finally {
-      delete EXAMPLE_FILES.basics;
+      delete basics.files;
     }
     expect(calls).toEqual(["/examples/cpsc355/basics.s"]);
   });

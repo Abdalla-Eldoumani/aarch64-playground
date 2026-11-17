@@ -232,25 +232,6 @@ export function exampleFor(stem: string): Example | undefined {
 }
 
 /**
- * One catalog field as a table keyed by stem, holding only the examples that
- * set it. The table has no prototype, so a built-in key such as `constructor`
- * finds nothing. What each table gates is its field's comment in
- * example-catalog.ts.
- */
-function tableOf<T>(field: (example: Example) => T | undefined): Record<string, T> {
-  const table: Record<string, T> = Object.create(null);
-  for (const example of EXAMPLES) {
-    const value = field(example);
-    if (value !== undefined) table[example.stem] = value;
-  }
-  return table;
-}
-
-export const EXAMPLE_TERMINAL = tableOf((example) => example.terminal);
-export const EXAMPLE_INTERACTIVE = tableOf((example) => example.interactive);
-export const EXAMPLE_MODE_ARGS = tableOf((example) => example.modeArgs);
-
-/**
  * The args box for `stem` under `mode`, or null when the mode does not set
  * it. The box never holds argv[0]: the emulator adds `./program` itself.
  */
@@ -258,7 +239,7 @@ export function modeArgsFor(
   stem: string | null | undefined,
   mode: LaunchMode,
 ): string | null {
-  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  if (!stem || !exampleFor(stem)?.modeArgs) return null;
   return mode === "console" ? "console" : "";
 }
 
@@ -268,12 +249,9 @@ export function modeArgsFor(
  * migrates that exact string to the current seed and touches nothing else.
  */
 export function legacyModeArgsFor(stem: string | null | undefined): string | null {
-  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  if (!stem || !exampleFor(stem)?.modeArgs) return null;
   return `./${stem} console`;
 }
-
-export const EXAMPLE_FILES = tableOf((example) => example.files);
-export const EXAMPLE_INPUTS = tableOf((example) => example.inputs);
 
 /**
  * Resolve a `?example=` stem to the file actually on disk, translating a stem
@@ -348,9 +326,10 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
   if (sourceError) throw new Error(sourceError);
 
   const payload: HandoffPayload = { source, label: stem, stem };
-  if (EXAMPLE_TERMINAL[stem]) payload.launch = "terminal";
+  const example = exampleFor(stem);
+  if (example?.terminal) payload.launch = "terminal";
 
-  const extraNames = EXAMPLE_FILES[stem];
+  const extraNames = example?.files;
   if (extraNames) {
     // Names checked before a single fetch goes out: each one is pasted into
     // a URL path and then into combineSources' `// ---- name ----` marker,
@@ -377,7 +356,7 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
     );
   }
 
-  const inputs = EXAMPLE_INPUTS[stem];
+  const inputs = example?.inputs;
   if (!inputs) return payload;
 
   if (inputs.args) {
