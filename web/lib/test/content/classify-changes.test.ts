@@ -55,6 +55,13 @@ describe("the path filter", () => {
     expect(classify(["web/content/exercises/sum.json"]).rust).toBe(false);
   });
 
+  it("adds the Rust jobs when a web copy of the wasm's codes changes", () => {
+    expect(classify(["web/lib/emulator/call-cards.ts"]).rust).toBe(true);
+    expect(classify(["web/lib/emulator/stack-frames.ts"]).rust).toBe(true);
+    expect(classify(["web/lib/emulator/clobber-note.ts"]).rust).toBe(true);
+    expect(classify(["web/lib/emulator/frame-cards.ts"]).rust).toBe(false);
+  });
+
   it("runs the pin check and not the cargo or browser jobs for a deploy script change", () => {
     // web-static's check-pins step holds the script's toolchain pins to the workflows.
     expect(classify(["scripts/vercel-build.sh"])).toEqual({
