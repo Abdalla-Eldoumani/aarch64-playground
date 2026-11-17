@@ -183,9 +183,17 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
 
   if (detail.includes("unsupported m4 construct")) {
     return {
-      what: "m4 saw a construct outside the playground's narrow subset (define + name=expr only).",
-      why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop. Those expand at the macro level; the playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. A backtick is the one to take seriously: GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and then swallows the rest of the source (`ERROR: end of file in string`). Use plain quotes in comments.",
+      what: "m4 saw a construct outside the playground's subset (define, undefine, dnl, divert, changecom, quotes, and name=expr).",
+      why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop, or send text to the end of the output with a numbered divert. The playground refuses them so error messages stay aligned with the original lines.",
+      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("m4 quote runs past the end of the line")) {
+    return {
+      what: "m4 read a backtick as an opening quote and found no closing quote (`'`) on the same line.",
+      why: "GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and keeps reading to its closing quote. With none, it swallows the rest of the source (`ERROR: end of file in string`).",
+      fix: "Close the quote on the line that opens it, and keep backticks out of comments and strings: write plain quotes there.",
       styleSection: "m4 preprocessing",
     };
   }
