@@ -992,7 +992,15 @@ impl Cpu {
             if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
                 return Ok(self.halt(EmuError::SpAlignmentFault { sp, at_call: true }.to_string()));
             }
-            if let Some(halt) = self.host_call(pc, |cpu| cpu.dispatch_host_stub(pc)) {
+            // The changed sets are also taken before the output charge, so
+            // a call whose printing crosses the output wall still shows
+            // what it changed.
+            let call = |cpu: &mut Self| {
+                cpu.dispatch_host_stub(pc)?;
+                cpu.record_changed_registers(&snapshot, &fpr_snapshot);
+                Ok(())
+            };
+            if let Some(halt) = self.host_call(pc, call) {
                 return Ok(halt);
             }
             return Ok(self.step_tail(&snapshot, &fpr_snapshot));
