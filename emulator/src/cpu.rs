@@ -792,6 +792,52 @@ impl Cpu {
         }
     }
 
+    /// How every step that did not stop on an error ends: the registers it
+    /// changed and its outcome, in the result `step` hands back.
+    fn step_tail(&mut self, gpr_before: &[u64; 32], fpr_before: &[u128; 32]) -> StepResult {
+        self.record_changed_registers(gpr_before, fpr_before);
+        let outcome = self.classify_outcome();
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: self.halted,
+            error: None,
+            outcome,
+        }
+    }
+
+    /// Run a library call or a system call (`dispatch`) with what every
+    /// host-side call owes the walls: the input it read echoes, the bytes
+    /// it moved and printed are charged, and a failure is a calm halt. A
+    /// write fault there is the page cap, as in normal code; a read fault
+    /// through x0 at a library call names the missing `ldr x0, =fmt`.
+    /// `Some` is the halt `step` hands back.
+    fn host_call(
+        &mut self,
+        pc: u64,
+        dispatch: impl FnOnce(&mut Self) -> Result<(), EmuError>,
+    ) -> Option<StepResult> {
+        let out_before = self.stdout.len();
+        let err_before = self.stderr.len();
+        let moved = self.mem.bytes_written();
+        let queued = self.stdin.len();
+        let dispatched = dispatch(self);
+        // Echo before the charge so echoed bytes count against the
+        // output wall and the display counters like any other output.
+        self.echo_consumed_stdin(queued);
+        self.charge_bulk_work(moved);
+        if self.charge_output(out_before, err_before) {
+            return Some(self.halt(output_ceiling_message()));
+        }
+        let e = match dispatched {
+            Ok(()) => return None,
+            Err(EmuError::MemoryFault { address, access: MemAccess::Read }) => {
+                self.libc_read_fault(pc, address)
+            }
+            Err(e) => map_write_fault(e),
+        };
+        Some(self.halt(e.to_string()))
+    }
+
     /// How the cycle ended, in the order the states shadow one another:
     /// a paused read outranks an exit status, which outranks a plain halt,
     /// which outranks a pending sleep. Sets `halted` for the exit case, so
@@ -928,6 +974,10 @@ impl Cpu {
         self.steps_total += 1;
         self.steps_taken += 1;
 
+        // The register files before the step, for the sets it changed.
+        let snapshot = self.regs.snapshot();
+        let fpr_snapshot = self.regs.snapshot_fpr();
+
         // If PC landed on a host-stub address (reached via `bl printf` or
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
@@ -940,83 +990,43 @@ impl Cpu {
             // diagnosis.
             let sp = self.regs.read_sp();
             if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
-                return Ok(self.runtime_error_halt(EmuError::SpAlignmentFault {
-                    sp,
-                    at_call: true,
-                }));
+                return Ok(self.halt(EmuError::SpAlignmentFault { sp, at_call: true }.to_string()));
             }
-            // A page-cap write fault inside a hosted libc routine (e.g. a
-            // buffer-filling scanf when the program has already neared the
-            // cap) gets the same calm halt as a write in normal code, never
-            // a raw fault. Any other stub failure halts calmly too.
-            let out_before = self.stdout.len();
-            let err_before = self.stderr.len();
-            let moved = self.mem.bytes_written();
-            let queued = self.stdin.len();
-            let dispatched = self.dispatch_host_stub(pc);
-            // Echo before the charge so echoed bytes count against the
-            // output wall and the display counters like any other output.
-            self.echo_consumed_stdin(queued);
-            self.charge_bulk_work(moved);
-            if self.charge_output(out_before, err_before) {
-                return Ok(self.output_cap_halt());
+            if let Some(halt) = self.host_call(pc, |cpu| cpu.dispatch_host_stub(pc)) {
+                return Ok(halt);
             }
-            return match dispatched {
-                Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
-                    Ok(self.memory_cap_halt())
-                }
-                Err(EmuError::MemoryFault { address, access: MemAccess::Read }) => {
-                    let e = self.libc_read_fault(pc, address);
-                    Ok(self.runtime_error_halt(e))
-                }
-                Err(e) => Ok(self.runtime_error_halt(e)),
-                other => other,
-            };
+            return Ok(self.step_tail(&snapshot, &fpr_snapshot));
         }
 
         // Fell off the end of the program: the previous instruction was the
         // image's last and nothing branched. Name the real cause instead of
         // decoding the padding that happens to live here.
         if self.text_end == Some(pc) {
-            self.halted = true;
-            let msg = "execution ran past the last instruction of the program. \
-                       main needs a `ret` (with an epilogue if it pushed one) or an \
-                       exit call as its final step"
-                .to_string();
-            self.abort_message = Some(msg.clone());
-            return Ok(StepResult {
-                pc,
-                halted: true,
-                error: Some(msg),
-                outcome: StepOutcome::Halted,
-            });
+            return Ok(self.halt(
+                "execution ran past the last instruction of the program. \
+                 main needs a `ret` (with an epilogue if it pushed one) or an \
+                 exit call as its final step"
+                    .to_string(),
+            ));
         }
 
         // Not the trampoline past the text that a library call goes through.
         if self.in_program(pc) {
             self.last_program_pc = pc;
         }
-        let snapshot = self.regs.snapshot();
-        let fpr_snapshot = self.regs.snapshot_fpr();
         let word = match self.mem.read_u32(pc) {
             Ok(w) => w,
-            Err(e) => return Ok(self.runtime_error_halt(e)),
+            Err(e) => return Ok(self.halt(e.to_string())),
         };
         let instr = match decoder::decode(word) {
             Ok(i) => i,
-            Err(e) => return Ok(self.runtime_error_halt(e)),
+            Err(e) => return Ok(self.halt(e.to_string())),
         };
         let result = match executor::execute(&instr, &mut self.regs, &mut self.mem) {
             Ok(r) => r,
-            Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
-                // A store tried to map a page past MAX_MAPPED_PAGES. Convert
-                // the allocation-cap fault into the same calm halt as the
-                // step ceiling rather than propagating a raw memory fault.
-                // (Stores are the only writer that faults, so a write fault
-                // here is unambiguously the cap.)
-                return Ok(self.memory_cap_halt());
-            }
-            Err(e) => return Ok(self.runtime_error_halt(e)),
+            // A store past MAX_MAPPED_PAGES halts with the memory-cap
+            // message rather than a raw memory fault.
+            Err(e) => return Ok(self.halt(map_write_fault(e).to_string())),
         };
 
         // advance PC if the instruction didn't branch
@@ -1038,26 +1048,8 @@ impl Cpu {
             if syscall_num == 0 {
                 self.halted = true;
             } else {
-                // A page-cap write fault inside a syscall (e.g. read filling
-                // a buffer when the program has already neared the cap) gets
-                // the same calm halt as a write in normal code, never a raw
-                // fault.
-                let out_before = self.stdout.len();
-                let err_before = self.stderr.len();
-                let moved = self.mem.bytes_written();
-                let queued = self.stdin.len();
-                let dispatched = self.dispatch_syscall(syscall_num);
-                self.echo_consumed_stdin(queued);
-                self.charge_bulk_work(moved);
-                if self.charge_output(out_before, err_before) {
-                    return Ok(self.output_cap_halt());
-                }
-                match dispatched {
-                    Ok(()) => {}
-                    Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
-                        return Ok(self.memory_cap_halt());
-                    }
-                    Err(e) => return Ok(self.runtime_error_halt(e)),
+                if let Some(halt) = self.host_call(pc, |cpu| cpu.dispatch_syscall(syscall_num)) {
+                    return Ok(halt);
                 }
                 // After a syscall returns normally, PC moves past the svc.
                 if !self.blocked {
@@ -1066,16 +1058,7 @@ impl Cpu {
             }
         }
 
-        self.record_changed_registers(&snapshot, &fpr_snapshot);
-
-        let outcome = self.classify_outcome();
-
-        Ok(StepResult {
-            pc: self.regs.read_pc(),
-            halted: self.halted,
-            error: None,
-            outcome,
-        })
+        Ok(self.step_tail(&snapshot, &fpr_snapshot))
     }
 }
 

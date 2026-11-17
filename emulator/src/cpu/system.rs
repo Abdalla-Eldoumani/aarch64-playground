@@ -330,14 +330,11 @@ impl Cpu {
         }
     }
 
-    /// Dispatch a host-stub entry point at `pc`. Splits the mutable borrow
-    /// of `self` so the stub can touch registers, memory, and console
+    /// Dispatch a host-stub entry point at `pc` and apply its outcome to
+    /// pc, `blocked`, `exit_code` and the call stack. Splits the mutable
+    /// borrow of `self` so the stub can touch registers, memory, and console
     /// buffers without racing the `HostTable` itself (which is only read).
-    pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<StepResult, EmuError> {
-        // Snapshot registers so the change highlighter still works across a
-        // host call.
-        let snapshot = self.regs.snapshot();
-        let fpr_snapshot = self.regs.snapshot_fpr();
+    pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<(), EmuError> {
         // The table is read-only during dispatch; split the borrow by
         // temporarily taking the entries, dispatching, then restoring.
         // qsort's comparator returns to the stub it was called from.
@@ -358,9 +355,7 @@ impl Cpu {
         if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
             self.keep_call(kind, outcome.is_err());
         }
-        let host_outcome = outcome?;
-
-        match host_outcome {
+        match outcome? {
             HostOutcome::Continue => {
                 self.clobber_after_call(pc);
                 // Return to caller: pc = lr.
@@ -393,35 +388,7 @@ impl Cpu {
                 }
             }
         }
-
-        let current = self.regs.snapshot();
-        self.changed_regs.clear();
-        for i in 0..32 {
-            if snapshot[i] != current[i] {
-                self.changed_regs.push(i as u8);
-            }
-        }
-        let fpr_current = self.regs.snapshot_fpr();
-        self.changed_fprs.clear();
-        for i in 0..32 {
-            if fpr_snapshot[i] != fpr_current[i] {
-                self.changed_fprs.push(i as u8);
-            }
-        }
-
-        let result_outcome = match host_outcome {
-            HostOutcome::Continue | HostOutcome::Call(_) => StepOutcome::Advance,
-            HostOutcome::NeedInput => StepOutcome::WaitingForInput,
-            HostOutcome::Sleep(ns) => StepOutcome::Sleeping(ns.min(MAX_SLEEP_NS)),
-            HostOutcome::Exited(code) => StepOutcome::Exited(code),
-        };
-
-        Ok(StepResult {
-            pc: self.regs.read_pc(),
-            halted: self.halted,
-            error: None,
-            outcome: result_outcome,
-        })
+        Ok(())
     }
 
     /// Clear accumulated stdout and stderr without resetting the rest of
