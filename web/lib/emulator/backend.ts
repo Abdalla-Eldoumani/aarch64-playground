@@ -387,6 +387,6 @@ export function pickBackend(): EmulatorBackend {
     return new MainThreadBackend();
   }
   const worker = spawnEmulatorWorker();
-  if (worker) return worker as unknown as EmulatorBackend;
+  if (worker) return worker;
   return new MainThreadBackend();
 }
