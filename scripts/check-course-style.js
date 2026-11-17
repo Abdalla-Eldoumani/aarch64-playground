@@ -9,7 +9,8 @@
  *   node scripts/check-course-style.js
  *
  * Exits 0 when every program follows both rules, 1 with one line per break.
- * Runs on node alone: TypeScript sources are read as text.
+ * Runs on node alone: TypeScript sources are read as text, line by line, so
+ * a program squeezed into a one-line string with \n escapes goes unseen.
  */
 
 const fs = require("fs");
@@ -17,10 +18,13 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 
-// The programs the site writes itself. The six terminal games under
-// examples/ are copies of their own repositories (examples/cpsc355/README.md)
-// and are not listed: a fix to them lands upstream first.
-const UPSTREAM = /^web\/public\/examples\/cpsc355\/(snake|calc|two-sum|temp-convert|dsav|deadzone)(\.s$|\/)/;
+// The terminal games under examples/ are copies of their own repositories
+// (examples/cpsc355/README.md), so a fix lands upstream first. Each rule
+// skips only the ones that break it today; two-sum and temp-convert follow both.
+const UPSTREAM = {
+  balign: /^web\/public\/examples\/cpsc355\/(snake|calc|dsav|deadzone)(\.s$|\/)/,
+  adrp: /^web\/public\/examples\/cpsc355\/deadzone(\.s$|\/)/,
+};
 // Each entry is a folder (read recursively) or a file, and the ending of the
 // files it holds programs in.
 const SOURCES = [
@@ -110,14 +114,12 @@ function filesUnder(rel) {
 /** Every break in the tree that KNOWN does not account for, as printable lines. */
 function check() {
   const problems = [];
-  const files = SOURCES.flatMap(([rel, ending]) =>
-    filesUnder(rel).filter((file) => file.endsWith(ending) && !UPSTREAM.test(file)),
-  );
+  const files = SOURCES.flatMap(([rel, ending]) => filesUnder(rel).filter((file) => file.endsWith(ending)));
   for (const file of files) {
     const counts = { balign: 0, adrp: 0 };
     const lines = [];
     for (const text of texts(file)) {
-      for (const hit of breaks(text)) {
+      for (const hit of breaks(text).filter((h) => !UPSTREAM[h.rule].test(file))) {
         counts[hit.rule] += 1;
         lines.push(`${file}:${hit.line}: ${RULES[hit.rule]}`);
       }
