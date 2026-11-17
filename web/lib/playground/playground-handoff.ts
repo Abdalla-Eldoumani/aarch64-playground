@@ -224,6 +224,14 @@ export const MAX_VFS_FIXTURE_FILES = 16;
 const MAX_VFS_FIXTURE_NAME_CHARS = 128;
 
 /**
+ * The catalog's record for `stem`. It matches by value, so a built-in object
+ * key such as `constructor` finds nothing.
+ */
+export function exampleFor(stem: string): Example | undefined {
+  return EXAMPLES.find((example) => example.stem === stem);
+}
+
+/**
  * One catalog field as a table keyed by stem, holding only the examples that
  * set it. The table has no prototype, so a built-in key such as `constructor`
  * finds nothing. What each table gates is its field's comment in
