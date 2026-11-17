@@ -14,8 +14,11 @@
 //!   * Comments are stripped first, so comment text never expands.
 //!   * Every output line maps back to the source line that produced it;
 //!     they stay equal until a define or a macro body spans lines.
+//!   * `dnl` deletes through the newline where the playground refused it
+//!     before: on a line of its own, or after a define's or undefine's `)`.
+//!     Elsewhere it is an ordinary name (a `dnl:` label runs as it did).
 //!
-//! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting outside a
+//! Anything else (ifdef, ifelse, forloop, backtick quoting outside a
 //! define) fails with an "unsupported m4 construct" error at its line.
 
 use std::collections::HashMap;
@@ -104,7 +107,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut assignments: HashMap<String, String> = HashMap::new();
     // Each kept line with its 0-based source line: a define spanning lines
     // keeps only its first, as GNU m4 writes one line for the whole call.
-    let mut stripped: Vec<(usize, String)> = Vec::new();
+    // The flag marks a line whose newline a `dnl` took, so its text opens
+    // the next line.
+    let mut stripped: Vec<(usize, String, bool)> = Vec::new();
     // Every define/undefine in source order: (line index, name, body;
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
@@ -122,20 +127,25 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         let trimmed = without_comment.trim();
         // undefine parses before the backtick gate: GNU m4 requires its
         // argument quoted (`undefine(`name')`), so the quote is legal here.
-        if let Some(names) = parse_undefine(trimmed) {
+        if let Some((names, (text, joins))) = parse_undefine(trimmed) {
             for name in names {
                 define_events.push((idx, name, None));
             }
-            stripped.push((idx, String::new()));
+            stripped.push((idx, text.to_string(), joins));
             continue;
         }
         // The other place a quote is legal: a define's arguments, where a
         // quoted body keeps its commas and may run over several lines.
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
-            let (name, body, used) = parse_quoted_define(&lines[idx..], line_num)?;
+            let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
             define_events.push((idx, name, Some(body)));
-            stripped.push((idx, String::new()));
+            stripped.push((idx, text.to_string(), joins));
             skip = used - 1;
+            continue;
+        }
+        // A `dnl` line: GNU m4 deletes it, newline and all.
+        if let Some((text, true)) = after_call(without_comment) {
+            stripped.push((idx, text.to_string(), true));
             continue;
         }
         if let Some(kw) = detect_unsupported(trimmed) {
@@ -144,9 +154,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                 message: format!("unsupported m4 construct: {kw}"),
             });
         }
-        if let Some((name, body)) = parse_define(trimmed) {
+        if let Some((name, body, (text, joins))) = parse_define(trimmed) {
             define_events.push((idx, name, Some(body)));
-            stripped.push((idx, String::new()));
+            stripped.push((idx, text.to_string(), joins));
             continue;
         }
         // The line got past both define gates (the keyword and the paren)
@@ -168,10 +178,10 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // a symbol-assignment item at this exact section offset. The
             // expression body may reference `.` or labels whose meaning
             // depends on where the assignment appears in the source.
-            stripped.push((idx, without_comment.to_string()));
+            stripped.push((idx, without_comment.to_string(), false));
             continue;
         }
-        stripped.push((idx, without_comment.to_string()));
+        stripped.push((idx, without_comment.to_string(), false));
     }
 
     // Find the names defined more than once or undefined, such as
@@ -214,7 +224,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
-    for (idx, line) in &stripped {
+    // What lines whose newline a `dnl` took wrote, waiting for the next line.
+    let mut carry = String::new();
+    for (idx, line, joins) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
             if *event_idx > idx {
@@ -231,6 +243,11 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             events.next();
         }
         let expanded = expand_recursively(line, &current, line_num)?;
+        if *joins {
+            carry.push_str(&expanded);
+            continue;
+        }
+        let expanded = std::mem::take(&mut carry) + &expanded;
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
@@ -681,7 +698,7 @@ fn diagnose_define(trimmed: &str, raw: &str) -> String {
         }
         return "the closing `)` is missing".to_string();
     };
-    if !after.trim().is_empty() {
+    if after_call(after).is_none() {
         return format!("unexpected text after the closing `)`: `{}`", after.trim());
     }
     let Some((name, _body)) = split_top_level_comma(inside) else {
@@ -716,16 +733,28 @@ fn comment_inside_define_body(raw: &str) -> Option<&'static str> {
     }
 }
 
-fn parse_define(trimmed: &str) -> Option<(String, String)> {
+/// What a call to a builtin leaves of its line, given the text after its
+/// closing `)`: nothing, or GNU m4's `dnl`, which deletes through the
+/// newline, so the blanks before it open the next line. The text to write
+/// and whether the newline went; None for any other text.
+fn after_call(tail: &str) -> Option<(&str, bool)> {
+    let rest = tail.trim_start();
+    if rest.is_empty() {
+        return Some(("", false));
+    }
+    let after = rest.strip_prefix("dnl")?;
+    // The line forms the playground refused before: `dnl:` is a label.
+    (after.is_empty() || after.starts_with([' ', '\t'])).then_some((&tail[..tail.len() - rest.len()], true))
+}
+
+fn parse_define(trimmed: &str) -> Option<(String, String, (&str, bool))> {
     // Tolerate `define (...)` with whitespace; bare "define" alone is not
     // a define so require the opening paren.
     let rest = trimmed.strip_prefix("define")?;
     let rest = rest.trim_start();
     let inside_plus = rest.strip_prefix('(')?;
     let (inside, after) = split_outer_parens(inside_plus)?;
-    if !after.trim().is_empty() {
-        return None;
-    }
+    let tail = after_call(after)?;
     let (name, body) = split_top_level_comma(inside)?;
     // GNU m4 ignores arguments past the body, with a warning.
     let body = split_top_level_comma(body).map_or(body, |(body, _)| body);
@@ -734,7 +763,7 @@ fn parse_define(trimmed: &str) -> Option<(String, String)> {
     if name.is_empty() || !is_valid_ident(&name) {
         return None;
     }
-    Some((name, body))
+    Some((name, body, tail))
 }
 
 /// A define whose arguments carry m4 quotes, read as GNU m4 reads them: a
@@ -742,8 +771,12 @@ fn parse_define(trimmed: &str) -> Option<(String, String)> {
 /// level of quotes, unquoted leading whitespace is dropped, and arguments
 /// past the body are ignored (GNU m4 warns and carries on). `lines` starts
 /// at the define; the result is the name, the body with its comments
-/// stripped, and how many lines the call spans.
-fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, String, usize), EmuError> {
+/// stripped, how many lines the call spans, and what the line after the
+/// `)` leaves (`after_call`).
+fn parse_quoted_define<'a>(
+    lines: &[&'a str],
+    line_num: usize,
+) -> Result<(String, String, usize, (&'a str, bool)), EmuError> {
     let bad = |why: &str| EmuError::PreprocError {
         line: line_num,
         message: format!("malformed m4 define: {why}. Write it as `define(NAME, body)`"),
@@ -776,9 +809,9 @@ fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, Strin
                 _ if quotes > 0 => arg.push(c),
                 _ if leading && c.is_whitespace() => {}
                 ')' if parens == 0 => {
-                    if !strip_comment(&text[i + 1..]).trim().is_empty() {
+                    let Some(tail) = after_call(strip_comment(&text[i + 1..])) else {
                         return Err(bad("unexpected text after the closing `)`"));
-                    }
+                    };
                     let [name, body, ..] = args.as_slice() else {
                         return Err(bad("the comma between the name and the body is missing"));
                     };
@@ -793,7 +826,7 @@ fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, Strin
                         }
                         kept.push_str(strip_comment(part));
                     }
-                    return Ok((name.trim_end().to_string(), kept, used + 1));
+                    return Ok((name.trim_end().to_string(), kept, used + 1, tail));
                 }
                 ',' if parens == 0 => {
                     args.push(String::new());
@@ -815,9 +848,10 @@ fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, Strin
 }
 
 /// `undefine(`name')` (the GNU-required quoted form) or `undefine(name)`,
-/// with one or more comma-separated names. Returns None when the line is
-/// not an undefine call at all.
-fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
+/// with one or more comma-separated names, and what the line after the `)`
+/// leaves (`after_call`). Returns None when the line is not an undefine
+/// call at all.
+fn parse_undefine(trimmed: &str) -> Option<(Vec<String>, (&str, bool))> {
     let rest = trimmed.strip_prefix("undefine")?;
     let rest = rest.trim_start();
     let inside_plus = rest.strip_prefix('(')?;
@@ -825,9 +859,7 @@ fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
     // an unterminated char literal to it. Undefine arguments are bare
     // (possibly quoted) names, so the last ')' is the call's close.
     let close = inside_plus.rfind(')')?;
-    if !inside_plus[close + 1..].trim().is_empty() {
-        return None;
-    }
+    let tail = after_call(&inside_plus[close + 1..])?;
     let inside = &inside_plus[..close];
     let mut names = Vec::new();
     for part in inside.split(',') {
@@ -840,7 +872,7 @@ fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
         }
         names.push(part.to_string());
     }
-    Some(names)
+    Some((names, tail))
 }
 
 fn parse_assignment(trimmed: &str) -> Option<(String, String)> {
@@ -983,9 +1015,6 @@ fn detect_unsupported(line: &str) -> Option<&'static str> {
                 return Some(kw);
             }
         }
-    }
-    if line == "dnl" || line.starts_with("dnl ") || line.starts_with("dnl\t") {
-        return Some("dnl");
     }
     None
 }
