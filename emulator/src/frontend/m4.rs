@@ -17,6 +17,8 @@
 //!   * `dnl` deletes through the newline where the playground refused it
 //!     before: on a line of its own, or after a define's or undefine's `)`.
 //!     Elsewhere it is an ordinary name (a `dnl:` label runs as it did).
+//!   * `divert(-1)` throws the output away until `divert` or `divert(0)`;
+//!     a numbered diversion is refused.
 //!
 //! Anything else (ifdef, ifelse, forloop, backtick quoting outside a
 //! define) fails with an "unsupported m4 construct" error at its line.
@@ -226,6 +228,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut total: usize = 0;
     // What lines whose newline a `dnl` took wrote, waiting for the next line.
     let mut carry = String::new();
+    // Under `divert(-1)`, GNU m4 throws its output away.
+    let mut discard = false;
     for (idx, line, joins) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -242,8 +246,28 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
-        let expanded = expand_recursively(line, &current, line_num)?;
-        if *joins {
+        let (expanded, joins) = if let Some((args, (text, joins))) = builtin_call(line, "divert", &current) {
+            // A numbered diversion goes to the end of GNU m4's output, which
+            // the line-for-line expansion here cannot place.
+            match args.first().map(|n| n.trim()).filter(|n| !n.is_empty()).map_or(Ok(0), str::parse::<i64>) {
+                Ok(n) if n <= 0 => discard = n < 0,
+                _ => {
+                    return Err(EmuError::PreprocError {
+                        line: line_num,
+                        message: format!("unsupported m4 construct: {}", line.trim()),
+                    })
+                }
+            }
+            (text.to_string(), joins)
+        } else if discard {
+            continue;
+        } else {
+            (expand_recursively(line, &current, line_num)?, *joins)
+        };
+        if discard {
+            continue;
+        }
+        if joins {
             carry.push_str(&expanded);
             continue;
         }
@@ -745,6 +769,26 @@ fn after_call(tail: &str) -> Option<(&str, bool)> {
     let after = rest.strip_prefix("dnl")?;
     // The line forms the playground refused before: `dnl:` is a label.
     (after.is_empty() || after.starts_with([' ', '\t'])).then_some((&tail[..tail.len() - rest.len()], true))
+}
+
+/// A line that is one call to GNU m4's builtin `name`, bare or with its
+/// arguments, and `dnl` after it if any: the arguments and what the line
+/// leaves (`after_call`). None for any other line, and when the program
+/// defined `name` itself, so its own macro runs as before.
+fn builtin_call<'a>(
+    line: &'a str,
+    name: &str,
+    defines: &HashMap<String, String>,
+) -> Option<(Vec<&'a str>, (&'a str, bool))> {
+    let rest = line
+        .trim_start()
+        .strip_prefix(name)
+        .filter(|rest| !rest.starts_with(is_id_continue_char) && !defines.contains_key(name))?;
+    if !rest.starts_with('(') {
+        return Some((Vec::new(), after_call(rest)?));
+    }
+    let close = closing_paren(rest)?;
+    Some((split_args(&rest[1..close]), after_call(&rest[close + 1..])?))
 }
 
 fn parse_define(trimmed: &str) -> Option<(String, String, (&str, bool))> {
@@ -1420,8 +1464,10 @@ mod tests {
         // GNU m4 writes a numbered diversion at the end of its output; the
         // playground refuses one.
         rejects(expand("divert(1)\nmov x0, 1\ndivert\nmov x1, 2\n"), "unsupported m4 construct: divert(1)");
-        // A program's own `divert` macro runs as it did.
+        // A program's own `divert` macro runs as it did, and a longer name
+        // is not `divert`.
         assert_eq!(exp("define(divert, nop)\ndivert\n").text, "\nnop");
+        assert_eq!(exp("divertdnl\n").text, "divertdnl");
     }
 
     #[test]
