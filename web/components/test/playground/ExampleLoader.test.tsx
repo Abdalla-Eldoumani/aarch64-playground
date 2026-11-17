@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { ExampleLoader } from "@/components/playground/ExampleLoader";
+import { ExampleLoader, GROUPS } from "@/components/playground/ExampleLoader";
+import { EXAMPLES } from "@/lib/playground/example-catalog";
 
 afterEach(() => {
   cleanup();
@@ -228,6 +229,18 @@ describe("ExampleLoader", () => {
     expect(shown).toEqual(MENU.map(([stage, rows]) => [stage, rows.map(([label]) => label)]));
     // 29 loads take about 2 s alone, near the 5 s default under a full run.
   }, 15_000);
+
+  it("lists exactly the catalog's examples, in the catalog's order", () => {
+    const catalog = EXAMPLES.map((example) => example.stem);
+    const menu = GROUPS.flatMap((group) => group.items.map((item) => item.stem));
+    for (const stem of catalog) {
+      expect(menu, `${stem} is in the catalog but not the menu`).toContain(stem);
+    }
+    for (const stem of menu) {
+      expect(catalog, `${stem} is in the menu but not the catalog`).toContain(stem);
+    }
+    expect(menu, "the menu lists the catalog's examples in another order").toEqual(catalog);
+  });
 
   it("shows an inline alert when the fetch fails", async () => {
     vi.stubGlobal(
