@@ -260,6 +260,12 @@ jobs:
         if: steps.paths.outputs.web == 'true'
         run: node scripts/verify-corpus.js
 
+      # Here, not in web-static: a lesson or example change sets only the
+      # web flag, and this script needs node alone.
+      - name: course style
+        if: steps.paths.outputs.web == 'true'
+        run: node scripts/check-course-style.js
+
   web-static:
     name: lint + typecheck + audit
     if: github.event_name != 'push' || github.ref_name != 'integration'
