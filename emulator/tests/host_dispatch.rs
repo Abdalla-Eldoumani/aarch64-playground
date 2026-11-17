@@ -20,14 +20,14 @@ use aarch64_emulator::{call_card, host_call_context};
 struct Prog {
     cpu: Cpu,
     image: LinkedImage,
-    source: &'static str,
+    source: String,
 }
 
-fn load(source: &'static str) -> Prog {
+fn load(source: &str) -> Prog {
     let mut cpu = Cpu::new();
     let image = assemble_hosted(source, &cpu.host).unwrap_or_else(|e| panic!("assemble: {e}"));
     cpu.load_linked_image(&image).expect("load");
-    Prog { cpu, image, source }
+    Prog { cpu, image, source: source.to_string() }
 }
 
 impl Prog {
@@ -329,6 +329,119 @@ write:  svc     0
     let r = p.halt();
     halted_with(&r, p.label("write"), &read_fault(0x2000));
     assert!(p.cpu.stdout.is_empty());
+}
+
+/// A program that writes `svc 0` over printf's trampoline, then calls
+/// printf with x8 = `number` and x0 = x1 = 0x2000, an address no section
+/// covers. The `svc` runs at a trampoline pc, so only the dispatch tells a
+/// syscall from a library call there.
+fn svc_over_the_trampoline(number: u32) -> String {
+    format!(
+        r#"
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        adr     x9, call
+        ldr     w10, [x9]
+        sbfx    x10, x10, 0, 26
+        add     x9, x9, x10, lsl 2
+        movz    w11, 0x0001
+        movk    w11, 0xD400, lsl 16
+        str     w11, [x9]
+        mov     x0, 0x2000
+        mov     x1, 0x2000
+        mov     x2, 4
+        mov     x8, {number}
+call:   bl      printf
+        ldp     x29, x30, [sp], 16
+        ret
+"#
+    )
+}
+
+#[test]
+fn a_system_call_at_a_trampoline_pc_keeps_the_plain_fault() {
+    // write reads its buffer at x1 and nanosleep its time at x0; both
+    // fault on 0x2000 with x0 holding it, and only a library call earns
+    // the `ldr x0, =fmt` hint.
+    for number in [64, 101] {
+        let mut p = load(&svc_over_the_trampoline(number));
+        let r = p.halt();
+        let pc = p.cpu.trampoline_base;
+        assert_eq!(p.cpu.host_call_name(pc), Some("printf"));
+        halted_with(&r, pc, &read_fault(0x2000));
+        assert_eq!(p.cpu.steps_taken(), 15);
+        assert!(p.cpu.take_clobber_notes().is_empty());
+    }
+}
+
+#[test]
+fn an_unsupported_system_call_halts_on_the_svc_with_the_supported_list() {
+    let mut p = load(
+        r#"
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     x8, 999
+call:   svc     0
+        ldp     x29, x30, [sp], 16
+        ret
+"#,
+    );
+    let r = p.halt();
+    halted_with(
+        &r,
+        p.label("call"),
+        "syscall 999 (x8) is not supported. This emulator implements fcntl(25), ioctl(29), \
+         openat(56), close(57), lseek(62), read(63), write(64), exit(93/94), nanosleep(101), \
+         clock_gettime(113), and getrandom(278); use `mov x8, 93` then `svc 0` to exit",
+    );
+}
+
+#[test]
+fn a_call_that_crosses_the_output_wall_and_fails_reports_the_wall() {
+    // 8,178 memsets fill the page budget. fgets then takes a typed line of
+    // 4,200,001 bytes, whose echo crosses the output wall, and meets the
+    // page cap storing it: one call, both stops, and the wall is reported.
+    let mut p = load(
+        r#"
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        stp     x19, x20, [sp, -16]!
+        stp     x21, x22, [sp, -16]!
+        movz    x19, 1, lsl 32
+        mov     x20, 4096
+        movz    w21, 8178
+fill:   mov     x0, x19
+        mov     w1, 0
+        mov     x2, 1024
+        bl      memset
+        add     x19, x19, x20
+        subs    w21, w21, 1
+        b.ne    fill
+        mov     x0, x19
+        movz    w1, 0x4B40
+        movk    w1, 0x4C, lsl 16
+        ldr     x2, =stdin
+        ldr     x2, [x2]
+        bl      fgets
+        ldp     x21, x22, [sp], 16
+        ldp     x19, x20, [sp], 16
+        ldp     x29, x30, [sp], 16
+        ret
+"#,
+    );
+    let mut line = vec![b'x'; 4_200_000];
+    line.push(b'\n');
+    p.cpu.push_stdin_interactive(&line);
+    let r = p.halt();
+    halted_with(&r, p.stub("fgets"), &output_ceiling_message());
+    assert_eq!(p.cpu.stdout.len(), 4_200_001);
+    assert!(p.cpu.stdin.is_empty());
 }
 
 #[test]
@@ -734,7 +847,7 @@ cmp:    ldr     w0, [x0]
         ret
 "#;
     let mut p = load(source);
-    let layout = frame_layout(p.source, &p.image, &p.cpu.mem);
+    let layout = frame_layout(&p.source, &p.image, &p.cpu.mem);
     let qsort = p.stub("qsort");
     p.step_to(qsort);
     let r = p.step();
