@@ -809,8 +809,9 @@ impl Cpu {
     /// host-side call owes the walls: the input it read echoes, the bytes
     /// it moved and printed are charged, and a failure is a calm halt. A
     /// write fault there is the page cap, as in normal code; a read fault
-    /// through x0 at a library call names the missing `ldr x0, =fmt`.
-    /// `Some` is the halt `step` hands back.
+    /// through x0 at a library call names the missing `ldr x0, =fmt`, while
+    /// a syscall's keeps the plain text, even from an `svc` a program wrote
+    /// over a trampoline. `Some` is the halt `step` hands back.
     fn host_call(
         &mut self,
         pc: u64,
@@ -830,7 +831,9 @@ impl Cpu {
         }
         let e = match dispatched {
             Ok(()) => return None,
-            Err(EmuError::MemoryFault { address, access: MemAccess::Read }) => {
+            Err(EmuError::MemoryFault { address, access: MemAccess::Read })
+                if self.host.contains_address(pc) =>
+            {
                 self.libc_read_fault(pc, address)
             }
             Err(e) => map_write_fault(e),
