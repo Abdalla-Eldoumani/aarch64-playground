@@ -351,7 +351,8 @@ impl CallStack {
     /// a return to no caller is recorded and leaves the stack alone.
     /// `x0_width` is the width of x0's latest write, for the call tree.
     /// Returns the callee-saved registers the returning call left changed
-    /// (bit N for xN); main's are its own to keep.
+    /// (bit N for xN), checked only when the return ends one call; main's
+    /// are its own to keep.
     pub(crate) fn on_return(
         &mut self,
         pc: u64,
@@ -366,29 +367,26 @@ impl CallStack {
             self.tree.leave(regs[0], x0_width, log.map(|log| &mut log.tree));
             return 0;
         }
-        if self.acts.last().is_some_and(|a| a.ret_addr == target) {
-            let Some(top) = self.acts.pop() else { return 0 };
-            self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
-            if let Some(log) = log {
-                log.removed.push(top);
-            }
-            if top.call_pc == 0 {
-                return 0;
-            }
-            let now = callee_saved(regs);
-            return (0..10)
-                .filter(|&j| now[j] != top.saved[j])
-                .fold(0, |mask, j| mask | 1 << (19 + j));
-        }
+        // From the top down, so a plain return matches the top first.
         let floor = self.acts.len().saturating_sub(UNWIND_SEARCH);
         if let Some(at) = self.acts[floor..].iter().rposition(|a| a.ret_addr == target) {
-            for a in self.acts.drain(floor + at..).rev() {
+            let at = floor + at;
+            let changed = match self.acts[at..] {
+                [ended] if ended.call_pc != 0 => {
+                    let now = callee_saved(regs);
+                    (0..10)
+                        .filter(|&j| now[j] != ended.saved[j])
+                        .fold(0, |mask, j| mask | 1 << (19 + j))
+                }
+                _ => 0,
+            };
+            for a in self.acts.drain(at..).rev() {
                 if let Some(log) = log.as_deref_mut() {
                     log.removed.push(a);
                 }
                 self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
             }
-            return 0;
+            return changed;
         }
         if let Some(log) = log {
             log.bad_return = Some(self.bad_return);
