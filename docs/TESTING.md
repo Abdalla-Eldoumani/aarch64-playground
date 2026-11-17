@@ -214,9 +214,9 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 example change skips lint and typecheck, and a change under `emulator/tests/`
 runs only the Rust jobs, except the error-parity cases and the one corpus
 program the web tests read, which also run `wasm`, `corpus`, `web-build`, and
-`web-test`. The three web files that copy the wasm's codes,
+`web-test`. The three web files the `wasm_codes` test reads,
 `web/lib/emulator/call-cards.ts`, `stack-frames.ts` and `clobber-note.ts`,
-also run `rust`, whose `wasm_codes` test reads them. A change to
+also run `rust`. A change to
 `scripts/vercel-build.sh` runs neither the Rust jobs
 nor `browser`: CI never runs that script, and `web-static` checks its
 toolchain pins against the workflows. A change to a workflow, or to a file no
