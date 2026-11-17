@@ -350,6 +350,53 @@ value:
     assert_eq!(exit_code, Some(0));
 }
 
+// divert(-1), dnl, changecom and a quoted string in one program. The
+// output, and the line gcc names once a line is broken, are GNU m4 1.4.19's
+// run through gcc and qemu-user: `m4 f.asm > f.s`, `gcc f.s`, `./program`.
+#[test]
+fn m4_builtins_run_like_gnu_m4() {
+    use aarch64_emulator::errors::EmuError;
+    use aarch64_emulator::frontend::m4::expand;
+    use aarch64_emulator::frontend::pipeline::assemble_hosted;
+
+    let src = r#"divert(-1)
+dnl Register aliases, set up without writing a line.
+define(fp, x29)
+define(lr, x30)
+define(count_r, x19)
+divert(0)dnl
+changecom(`//')dnl
+define(step, 2)dnl
+        .text
+fmt:    .string "`count_r' = %ld\n"
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     count_r, #step
+        add     count_r, count_r, #step
+        ldr     x0, =fmt
+        mov     x1, count_r
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    assert_eq!(run_source(src), ("count_r = 4\n".to_string(), Some(0), true));
+
+    // Eight lines above the `.text` write nothing, so gcc names line 8 of
+    // m4's output where the editor marks line 16.
+    let broken = src.replace("add     count_r, count_r, #step", "movi    v0.8b, -129");
+    let gas = "immediate value out of range -128 to 255 at operand 2 -- `movi v0.8b,-129'";
+    let error_at = |text: &str| match assemble_hosted(text, &Cpu::new().host).err() {
+        Some(EmuError::AssemblyError { line, message }) => (line, message.lines().next().map(str::to_string)),
+        other => panic!("expected an assembler error, got {other:?}"),
+    };
+    let m4_out = expand(&broken).expect("m4").text;
+    assert_eq!(error_at(&m4_out), (8, Some(gas.to_string())), "gcc f.s");
+    assert_eq!(error_at(&broken), (16, Some(gas.to_string())), "the editor");
+}
+
 #[test]
 fn hosted_pipeline_printf_via_host_stub_integration() {
     use aarch64_emulator::frontend::pipeline::assemble_hosted;
