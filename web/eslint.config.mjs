@@ -157,7 +157,7 @@ const boundaries = [
     },
   },
   {
-    files: [`components/reference/${TS}`],
+    files: [`components/reference/${TS}`, `app/**/reference/${TS}`],
     ignores: TESTS,
     rules: {
       "@typescript-eslint/no-restricted-imports": restrict(
