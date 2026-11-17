@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -483,14 +484,14 @@ main:
 	.text
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 table:
 	.xword	st_letter
 	.xword	st_digit
 	.xword	st_other
 	.data
 	.align	2
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 sum_depth:
 	.word	6000
 parity_depth:
@@ -501,10 +502,11 @@ ack_top:
 	.word	4
 	.bss
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 ack_calls:
 	.zero	8
 	.zero	8
 text:
 	.zero	1800
+	.section	.note.GNU-stack,"",@progbits
 

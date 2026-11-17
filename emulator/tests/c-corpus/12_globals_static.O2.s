@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -91,12 +92,12 @@ main:
 	.global	counter
 	.section .rodata
 	.align	3
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 greeting:
 	.string	"hi from rodata"
 	.data
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 id.0:
 	.word	100
 counter:
@@ -106,9 +107,10 @@ name:
 	.zero	4
 	.bss
 	.align	3
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 zeros:
 	.zero	64
 acc:
 	.zero	8
+	.section	.note.GNU-stack,"",@progbits
 

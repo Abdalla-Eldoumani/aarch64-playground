@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -1942,12 +1943,12 @@ main:
 	.string	"dec"
 	.bss
 	.align	2
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 vzero:
 	.zero	4
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC6:
 	.word	0
 	.word	1
@@ -2118,4 +2119,5 @@ CSWTCH.27:
 	.byte	4
 	.byte	4
 	.byte	0
+	.section	.note.GNU-stack,"",@progbits
 

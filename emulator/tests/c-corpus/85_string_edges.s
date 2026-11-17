@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 L:
@@ -1326,4 +1327,5 @@ main:
 .LC90:
 	.string	"Hello, World! 123 caf\351"
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

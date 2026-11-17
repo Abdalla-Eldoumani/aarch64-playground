@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	fsum
@@ -159,4 +160,5 @@ main:
 	.word	1232348160
 	.word	897988541
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

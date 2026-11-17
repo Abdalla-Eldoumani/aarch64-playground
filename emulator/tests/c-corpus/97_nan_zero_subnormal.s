@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 d_of:
@@ -1037,4 +1038,5 @@ main:
 .LC8:
 	.word	-1023872186
 	.word	27618847
+	.section	.note.GNU-stack,"",@progbits
 

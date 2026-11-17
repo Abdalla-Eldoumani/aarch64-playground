@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -369,7 +370,7 @@ main:
 	b	.L19
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC1:
 	.xword	-9223372036854775808
 	.xword	4611686018427387904
@@ -393,7 +394,7 @@ nibble_bits:
 	.xword	-9223372036854775808
 	.data
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 vals:
 	.xword	0
 	.xword	1
@@ -412,4 +413,5 @@ vals:
 	.xword	4294967296
 	.xword	-6148914691236517206
 	.xword	2147483648
+	.section	.note.GNU-stack,"",@progbits
 
