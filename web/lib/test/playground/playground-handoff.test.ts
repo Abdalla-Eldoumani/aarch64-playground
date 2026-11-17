@@ -3,12 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import {
   EXAMPLE_FILES,
-  EXAMPLE_INPUTS,
-  EXAMPLE_INTERACTIVE,
-  EXAMPLE_MODE_ARGS,
-  EXAMPLE_TERMINAL,
   MAX_VFS_FIXTURE_FILES,
   decodeLaunch,
+  exampleFor,
   fetchExample,
   legacyModeArgsFor,
   loadBundleDecoder,
@@ -340,11 +337,11 @@ describe("fetchExample", () => {
   });
 });
 
-describe("EXAMPLE_FILES manifest", () => {
+describe("the catalog's helper files", () => {
   it("declares only names the file-name rule accepts", () => {
-    for (const [stem, names] of Object.entries(EXAMPLE_FILES)) {
+    for (const { stem, files } of EXAMPLES) {
       const seen: { name: string; body: string }[] = [];
-      for (const name of names) {
+      for (const name of files ?? []) {
         expect(`${stem}: ${validateFileName(name, seen)}`).toBe(`${stem}: null`);
         seen.push({ name, body: "" });
       }
@@ -360,7 +357,7 @@ describe("the example catalog", () => {
   });
 });
 
-describe("EXAMPLE_INPUTS manifest", () => {
+describe("the catalog's inputs", () => {
   it("matches the input fixtures on disk exactly", () => {
     const dir = path.join(process.cwd(), "public/examples/cpsc355/fixtures");
     const onDisk: Record<string, { args?: true; stdin?: true; vfs?: true }> = {};
@@ -371,7 +368,10 @@ describe("EXAMPLE_INPUTS manifest", () => {
       const kind = m[2] === "vfs.json" ? "vfs" : (m[2] as "args" | "stdin");
       onDisk[stem] = { ...onDisk[stem], [kind]: true };
     }
-    expect(EXAMPLE_INPUTS).toEqual(onDisk);
+    const declared = Object.fromEntries(
+      EXAMPLES.filter((example) => example.inputs).map((example) => [example.stem, example.inputs]),
+    );
+    expect(declared).toEqual(onDisk);
   });
 
   describe("share failure verdicts", () => {
@@ -423,16 +423,21 @@ describe("EXAMPLE_INPUTS manifest", () => {
   });
 });
 
-describe("launch tables", () => {
+/** The stems whose catalog record sets `flag`, sorted. */
+function stemsWith(flag: "terminal" | "interactive" | "modeArgs"): string[] {
+  return EXAMPLES.filter((example) => example[flag]).map((example) => example.stem).sort();
+}
+
+describe("launch flags", () => {
   it("names exactly the two default-terminal examples", () => {
     // Both redraw the whole screen with terminal escape codes, which the
     // plain-text console would show as garbage. Every other example starts in
     // the console.
-    expect(Object.keys(EXAMPLE_TERMINAL).sort()).toEqual(["dsav", "two-sum"]);
+    expect(stemsWith("terminal")).toEqual(["dsav", "two-sum"]);
   });
 
   it("names the six stems the run-mode control is offered for", () => {
-    expect(Object.keys(EXAMPLE_INTERACTIVE).sort()).toEqual([
+    expect(stemsWith("interactive")).toEqual([
       "calc",
       "deadzone",
       "dsav",
@@ -445,49 +450,33 @@ describe("launch tables", () => {
   it("offers the control for every example that defaults to the terminal", () => {
     // An example that starts in the terminal with no visible mode choice
     // would leave the student stuck there.
-    for (const stem of Object.keys(EXAMPLE_TERMINAL)) {
-      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
+    for (const stem of stemsWith("terminal")) {
+      expect(exampleFor(stem)?.interactive).toBe(true);
     }
   });
 
-  it("carries only `true` values and path-safe stems in both tables", () => {
-    for (const table of [EXAMPLE_TERMINAL, EXAMPLE_INTERACTIVE]) {
-      for (const [stem, value] of Object.entries(table)) {
-        expect(value).toBe(true);
-        expect(stem).toMatch(/^[\w.-]+$/);
-      }
-    }
+  it("names every example by a path-safe stem", () => {
+    for (const { stem } of EXAMPLES) expect(stem).toMatch(/^[\w.-]+$/);
   });
 
-  it("leaves every other example out of both tables", () => {
+  it("leaves both flags unset for every other example", () => {
     for (const stem of ["basics", "echo", "locals", "read-file", "circle-area"]) {
-      expect(EXAMPLE_TERMINAL[stem]).toBeUndefined();
-      expect(EXAMPLE_INTERACTIVE[stem]).toBeUndefined();
+      expect(exampleFor(stem)?.terminal).toBeUndefined();
+      expect(exampleFor(stem)?.interactive).toBeUndefined();
     }
   });
 });
 
-describe("the per-mode args table", () => {
+describe("the per-mode args flag", () => {
   it("names the three stems that take the console token", () => {
-    expect(Object.keys(EXAMPLE_MODE_ARGS).sort()).toEqual([
-      "calc",
-      "temp-convert",
-      "two-sum",
-    ]);
+    expect(stemsWith("modeArgs")).toEqual(["calc", "temp-convert", "two-sum"]);
   });
 
   it("is a subset of the stems the run-mode control is offered for", () => {
     // The mode sets the args box for these; with no visible mode choice the
     // student could never switch the box back.
-    for (const stem of Object.keys(EXAMPLE_MODE_ARGS)) {
-      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
-    }
-  });
-
-  it("carries only `true` values and path-safe stems", () => {
-    for (const [stem, value] of Object.entries(EXAMPLE_MODE_ARGS)) {
-      expect(value).toBe(true);
-      expect(stem).toMatch(/^[\w.-]+$/);
+    for (const stem of stemsWith("modeArgs")) {
+      expect(exampleFor(stem)?.interactive).toBe(true);
     }
   });
 
