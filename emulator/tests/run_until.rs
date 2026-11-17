@@ -458,3 +458,47 @@ fn a_goal_met_by_a_sleeping_step_is_not_run_past() {
     assert_eq!(r.pc, usleep_bl + 4);
     assert_eq!(r.steps_executed, 4);
 }
+
+/// show tail-calls printf, so printf comes back straight to main.
+const TAIL_PRINTF: &str = r#"// show prints its argument by a tail call to printf.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "%d\n"
+
+.text
+
+// show(w1 = value) prints it, by a tail call
+        .balign 4
+        .global show
+show:
+        ldr     x0, =fmt_out
+        b       printf                      // printf returns to show's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w1, 42
+        bl      show
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn step_over_a_call_that_tail_calls_a_library_function_lands_on_the_next_line() {
+    let mut cpu = load(TAIL_PRINTF);
+    let show_bl = label(&cpu, "main") + 3 * 4;
+    step_to(&mut cpu, show_bl, 1);
+    let r = over(&mut cpu);
+    assert!(r.reached && !r.bad_return && !r.halted, "{r:?}");
+    assert_eq!(r.pc, show_bl + 4);
+    assert_eq!(depth(&cpu), 1, "printf's return ended show");
+    // The bl, show's ldr and b, then printf's two trampoline words and stub.
+    assert_eq!(r.steps_executed, 6);
+    assert_eq!(cpu.take_stdout(), b"42\n");
+}
