@@ -1335,9 +1335,42 @@ mod tests {
         rejects(expand("forloop(i, 0, 5, foo)\n"), "unsupported m4 construct: forloop");
     }
 
+    /// The text and line map, for comparing with GNU m4's output.
+    fn text_and_map(src: &str) -> (String, Vec<usize>) {
+        let r = exp(src);
+        (r.text, r.line_map)
+    }
+
     #[test]
-    fn dnl_is_rejected() {
-        rejects(expand("dnl skip to end of line\n"), "unsupported m4 construct: dnl");
+    fn dnl_deletes_through_the_newline_like_gnu_m4() {
+        // GNU m4 1.4.19's output for each source: a `dnl` line, and a define,
+        // undefine or quoted define followed by `dnl`, write no line, and
+        // the blanks before `dnl` start the next line.
+        let gnu = |text: &str, map: &[usize]| (text.to_string(), map.to_vec());
+        assert_eq!(text_and_map("define(fp, x29)dnl\nmov x0, fp\n"), gnu("mov x0, x29", &[2]));
+        assert_eq!(text_and_map("dnl a whole-line comment\nmov x0, 1\n"), gnu("mov x0, 1", &[2]));
+        assert_eq!(text_and_map("  dnl indented\nmov x0, 1\n"), gnu("  mov x0, 1", &[2]));
+        assert_eq!(text_and_map("define(`fp', `x29')dnl\nmov x0, fp\n"), gnu("mov x0, x29", &[2]));
+        assert_eq!(
+            text_and_map("define(`two', `add x0, x0, 1\n  add x0, x0, 2')dnl\ntwo\nmov x1, 3\n"),
+            gnu("add x0, x0, 1\n  add x0, x0, 2\nmov x1, 3", &[3, 3, 4])
+        );
+        assert_eq!(
+            text_and_map("define(fp, x29)\nundefine(`fp')dnl\nmov x0, fp\n"),
+            gnu("\nmov x0, fp", &[1, 3])
+        );
+        assert_eq!(
+            text_and_map("define(fp, x29) dnl trailing words\nmov x0, fp\n"),
+            gnu(" mov x0, x29", &[2])
+        );
+    }
+
+    #[test]
+    fn dnl_as_a_label_keeps_todays_output() {
+        // GNU m4 deletes from each `dnl` here (`main:\n  b.ge   ret`), so
+        // gcc refuses the program; it runs here today, so it stays as is.
+        let src = "main:\n  b.ge dnl\ndnl:\n  ret\n";
+        assert_eq!(exp(src).text, "main:\n  b.ge dnl\ndnl:\n  ret");
     }
 
     #[test]
@@ -1556,11 +1589,11 @@ mod tests {
 
     #[test]
     fn unsupported_construct_error_carries_its_line_number() {
-        let err = expand("mov x0, 1\nmov x1, 2\ndnl skip the rest\n").unwrap_err();
+        let err = expand("mov x0, 1\nmov x1, 2\nforloop(i, 0, 5, foo)\n").unwrap_err();
         match err {
             EmuError::PreprocError { line, message } => {
-                assert_eq!(line, 3, "the error points at the dnl line");
-                assert!(message.contains("dnl"), "message was: {message}");
+                assert_eq!(line, 3, "the error points at the forloop line");
+                assert!(message.contains("forloop"), "message was: {message}");
             }
             other => panic!("expected PreprocError, got {other:?}"),
         }
