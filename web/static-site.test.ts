@@ -19,7 +19,11 @@ function sources(dir: string): string[] {
   });
 }
 
-const CODE = ["app", "components", "lib"].flatMap(sources);
+// Read once as the suite loads: inside a test, with every worker busy, a
+// pass over the tree can overrun the time limit.
+const CODE = ["app", "components", "lib"]
+  .flatMap(sources)
+  .map((file) => ({ file, text: fs.readFileSync(path.join(WEB, file), "utf8") }));
 
 // Each pattern a line of source may not match, and what to write instead.
 const BANNED: [RegExp, string][] = [
@@ -33,7 +37,7 @@ const BANNED: [RegExp, string][] = [
 describe("the site is static files only", () => {
   it("scans the app, components and lib sources", () => {
     expect(CODE.length).toBeGreaterThan(250);
-    expect(CODE).toContain("lib/content/github.ts");
+    expect(CODE.map(({ file }) => file)).toContain("lib/content/github.ts");
   });
 
   it("has no proxy or middleware in front of the pages", () => {
@@ -60,14 +64,12 @@ describe("the site is static files only", () => {
 
   it("has no server action, ISR setting or request-time API", () => {
     const hits: string[] = [];
-    for (const file of CODE) {
-      fs.readFileSync(path.join(WEB, file), "utf8")
-        .split(/\r?\n/)
-        .forEach((line, i) => {
-          for (const [pattern, instead] of BANNED) {
-            if (pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
-          }
-        });
+    for (const { file, text } of CODE) {
+      text.split(/\r?\n/).forEach((line, i) => {
+        for (const [pattern, instead] of BANNED) {
+          if (pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
+        }
+      });
     }
     expect(hits).toEqual([]);
   });
