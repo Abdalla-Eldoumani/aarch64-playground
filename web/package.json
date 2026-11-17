@@ -95,7 +95,7 @@
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
     "@vercel/analytics": "2.0.1",
-    "@vercel/speed-insights": "2.0.0",
+    "@vercel/speed-insights": "2.1.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "cmdk": "1.1.1",
