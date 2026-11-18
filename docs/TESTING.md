@@ -218,8 +218,8 @@ program the web tests read, and `c_corpus.rs` (a web test holds the name
 `web-test`. The three web files the `wasm_codes` test reads,
 `web/lib/emulator/call-cards.ts`, `stack-frames.ts` and `clobber-note.ts`,
 also run `rust`. A change to
-`scripts/vercel-build.sh` runs neither the Rust jobs
-nor `browser`: CI never runs that script, and `web-static` checks its
+`scripts/vercel-build.sh` runs none of the Rust jobs:
+CI never runs that script, and `web-static` checks its
 toolchain pins against the workflows. A change to a workflow, or to a file no
 rule names, runs everything, and so do a push to `main`, the weekly run, and
 the pull request from `integration` to `main`.
@@ -230,7 +230,8 @@ holds its library calls to the stub table.
 
 A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
 it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that
-pull requests into `integration` restore. The pull request from `integration`
+pull requests into `integration` restore, and `web-build` skips its browser
+smoke there. The pull request from `integration`
 to `main` tests the same changes, so a push to `integration` with no such pull
 request open runs no tests.
 
@@ -250,17 +251,10 @@ request open runs no tests.
 - `web-build`: `npm run build`, a check that the lazy chunks the size budgets
   name (Monaco, its worker, the terminal, xterm, the frames view, the frame
   cards, and the call card) exist, since a budget
-  whose files match nothing passes, and `npm run size`.
+  whose files match nothing passes, and `npm run size`. Then, on the same
+  build, `next start` and `scripts/browser-smoke.mjs` in Chromium, so any
+  change that runs the build runs the smoke too.
 - `web-test`: `npm test` split into six shards.
-- `browser`: when `emulator/src/`, the Cargo files, the package manifests, the
-  build configuration, the script that writes the service worker's file list,
-  the Chromium smoke script, the noise filter the two smoke tests share, the
-  share encoder, the locals example, or the stack frames view (its decode in
-  `web/lib/emulator/frame-data.ts` and `stack-frames.ts`, `FramesView.tsx`,
-  its rows' `FrameRow.tsx`, `lazy-frames.tsx`, and the stack tab's
-  `StackTab.tsx`) change (not for a change to the rest of the site's code
-  alone), `npm run build`,
-  `next start`, and `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
   the floors in `web/vitest.config.mts`.

@@ -1,0 +1,23 @@
+name: next start
+description: >-
+  Starts web/'s production build with `next start` on port 3000 and waits
+  until /playground answers, for the browser smoke tests that follow. Needs
+  `npm run build` first. check.yml's web-build job and browser.yml both call
+  it, so the two start the same server.
+
+runs:
+  using: composite
+  steps:
+    # Background processes outlive their step; the readiness poll gives up
+    # after a minute and prints the server's log.
+    - name: start the production server
+      shell: bash
+      working-directory: web
+      run: |
+        nohup npx next start -p 3000 > "$RUNNER_TEMP/next.log" 2>&1 &
+        for _ in $(seq 60); do
+          if curl -fsS -o /dev/null http://localhost:3000/playground; then exit 0; fi
+          sleep 1
+        done
+        cat "$RUNNER_TEMP/next.log"
+        exit 1
