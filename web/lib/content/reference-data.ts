@@ -1325,21 +1325,21 @@ add     sp, sp, 16`,
   {
     mnemonic: "ldur",
     category: "Memory",
-    syntax: "ldur bt/ht/st/dt/qt, [xn, #imm]",
+    syntax: "ldur xt/wt, [xn, #imm] / bt/ht/st/dt/qt",
     example: `fmov    d1, 2.0
 sub     sp, sp, 16
 stur    d1, [sp, 4]             // an offset the scaled form cannot encode
 ldur    d3, [sp, 4]             // d3 = 2.0
 add     sp, sp, 16`,
     gotchas: [
-      "floating-point and vector registers only (b, h, s, d, q), and the offset runs from -256 to 255 in bytes, not scaled by the size.",
+      "the offset runs from -256 to 255 in bytes, not scaled by the size, even where the scaled form could take it.",
       "`ldr` picks this encoding itself for a negative or unaligned offset, so a course file rarely spells it.",
     ],
   },
   {
     mnemonic: "stur",
     category: "Memory",
-    syntax: "stur bt/ht/st/dt/qt, [xn, #imm]",
+    syntax: "stur xt/wt, [xn, #imm] / bt/ht/st/dt/qt",
     example: `fmov    d1, 2.0
 sub     sp, sp, 16
 stur    d1, [sp, 4]             // eight bytes at an unscaled offset

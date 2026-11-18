@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	asc
@@ -176,4 +177,5 @@ main:
 	.word	8
 	.word	6
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

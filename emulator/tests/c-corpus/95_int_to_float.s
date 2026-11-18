@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 fbits:
@@ -572,4 +573,5 @@ main:
 	ldr	x21, [sp, 32]
 	ldp	x29, x30, [sp], 176
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

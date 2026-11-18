@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -75,4 +76,5 @@ main:
 	ldr	w0, [sp, 44]
 	ldp	x29, x30, [sp], 48
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

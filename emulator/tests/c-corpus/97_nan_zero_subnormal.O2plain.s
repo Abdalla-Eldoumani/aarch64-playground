@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -509,7 +510,7 @@ main:
 	ret
 	.section .rodata
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 fma_cases:
 	.byte 0, 8, 1
 	.byte 2, 8, 1
@@ -529,7 +530,7 @@ fma_cases:
 	.word	27618847
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 in:
 	.xword	9221120237041090560
 	.xword	-2251799813685247
@@ -541,4 +542,5 @@ in:
 	.xword	-9223372036854775808
 	.xword	4607182418800017408
 	.xword	1
+	.section	.note.GNU-stack,"",@progbits
 

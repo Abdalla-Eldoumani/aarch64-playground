@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -628,7 +629,7 @@ main:
 	.global	knob
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC4:
 	.byte	12
 	.byte	13
@@ -666,7 +667,8 @@ main:
 	.word	1090519040
 	.data
 	.align	2
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 knob:
 	.word	1056964608
+	.section	.note.GNU-stack,"",@progbits
 

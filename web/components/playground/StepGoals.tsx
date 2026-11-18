@@ -1,7 +1,8 @@
 "use client";
 
 import { useId } from "react";
-import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
+import { EMBED_MORE_KEY } from "@/components/playground/embed-more-key";
 import type { StepGoal } from "@/lib/emulator/emulator-state";
 
 const GOALS: [StepGoal, string][] = [
@@ -25,7 +26,7 @@ export function StepGoals({
   /** The run row's secondary-button classes. */
   className: string;
 }) {
-  const [more, setMore] = usePersistedFlag("aarch64-playground:embed-more");
+  const [more, setMore] = usePersistedFlag(EMBED_MORE_KEY);
   const id = useId();
   return (
     <>

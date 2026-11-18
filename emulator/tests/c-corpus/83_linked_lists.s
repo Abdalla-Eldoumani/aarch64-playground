@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.data
 	.align	2
@@ -1143,4 +1144,5 @@ main:
 	.xword	.LC6
 	.xword	.LC7
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

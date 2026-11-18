@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -249,7 +250,7 @@ main:
 	ret
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 w_pairs:
 	.word	-2147483648
 	.word	-1
@@ -314,4 +315,5 @@ dividends:
 	.word	1000000007
 	.word	2147483646
 	.word	2147483647
+	.section	.note.GNU-stack,"",@progbits
 
