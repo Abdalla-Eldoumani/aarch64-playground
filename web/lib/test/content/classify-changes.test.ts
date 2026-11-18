@@ -81,6 +81,14 @@ describe("the path filter", () => {
     });
     expect(classify(["emulator/tests/c-corpus/78_switch_dense.O2plain.s"]).web).toBe(true);
     expect(classify(["emulator/tests/c-corpus/01_hello.c"]).web).toBe(false);
+    // check-workflow.test holds check.yml's cargo skip to a test in c_corpus.rs.
+    expect(classify(["emulator/tests/c_corpus.rs"])).toEqual({
+      classes: ["emulator"],
+      ...NOTHING,
+      rust: true,
+      web: true,
+    });
+    expect(classify(["emulator/tests/frames.rs"]).web).toBe(false);
   });
 
   it("runs the Rust jobs as well as the web ones for the example catalog", () => {
