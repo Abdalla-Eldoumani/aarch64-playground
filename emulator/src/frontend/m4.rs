@@ -890,11 +890,15 @@ fn comment_inside_define_body(raw: &str) -> Option<&'static str> {
     }
 }
 
+/// What a line leaves after a builtin call: the text to write, and whether
+/// a `dnl` took the line's newline.
+type Leaves<'a> = (&'a str, bool);
+
 /// What a call to a builtin leaves of its line, given the text after its
 /// closing `)`: nothing, or GNU m4's `dnl`, which deletes through the
-/// newline, so the blanks before it open the next line. The text to write
-/// and whether the newline went; None for any other text.
-fn after_call(tail: &str) -> Option<(&str, bool)> {
+/// newline, so the blanks before it open the next line. None for any other
+/// text.
+fn after_call(tail: &str) -> Option<Leaves<'_>> {
     let rest = tail.trim_start();
     if rest.is_empty() {
         return Some(("", false));
@@ -912,7 +916,7 @@ fn after_call(tail: &str) -> Option<(&str, bool)> {
 fn builtin_call<'a>(
     line: &'a str,
     defines: &HashMap<String, String>,
-) -> Option<(&'static str, &'a str, (&'a str, bool))> {
+) -> Option<(&'static str, &'a str, Leaves<'a>)> {
     let line = line.trim_start();
     let name = if line.starts_with("divert") {
         "divert"
@@ -938,7 +942,7 @@ fn unsupported(line: usize, what: &str) -> EmuError {
     EmuError::PreprocError { line, message: format!("unsupported m4 construct: {what}") }
 }
 
-fn parse_define(trimmed: &str) -> Option<(String, String, (&str, bool))> {
+fn parse_define(trimmed: &str) -> Option<(String, String, Leaves<'_>)> {
     // Tolerate `define (...)` with whitespace; bare "define" alone is not
     // a define so require the opening paren.
     let rest = trimmed.strip_prefix("define")?;
@@ -967,7 +971,7 @@ fn parse_define(trimmed: &str) -> Option<(String, String, (&str, bool))> {
 fn parse_quoted_define<'a>(
     lines: &[&'a str],
     line_num: usize,
-) -> Result<(String, String, usize, (&'a str, bool)), EmuError> {
+) -> Result<(String, String, usize, Leaves<'a>), EmuError> {
     let bad = |why: &str| EmuError::PreprocError {
         line: line_num,
         message: format!("malformed m4 define: {why}. Write it as `define(NAME, body)`"),
@@ -1042,7 +1046,7 @@ fn parse_quoted_define<'a>(
 /// with one or more comma-separated names, and what the line after the `)`
 /// leaves (`after_call`). Returns None when the line is not an undefine
 /// call at all.
-fn parse_undefine(trimmed: &str) -> Option<(Vec<String>, (&str, bool))> {
+fn parse_undefine(trimmed: &str) -> Option<(Vec<String>, Leaves<'_>)> {
     let rest = trimmed.strip_prefix("undefine")?;
     let rest = rest.trim_start();
     let inside_plus = rest.strip_prefix('(')?;
