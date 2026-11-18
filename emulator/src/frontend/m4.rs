@@ -1657,7 +1657,7 @@ mod tests {
         let kept = gnu("\nmov x0, 1\n\nmov x1, 2", &[1, 2, 3, 4]);
         assert_eq!(text_and_map("divert(-0)\nmov x0, 1\ndivert\nmov x1, 2\n"), kept);
         assert_eq!(text_and_map("divert(-1 )\nmov x0, 1\ndivert\nmov x1, 2\n"), kept);
-        for arg in ["-00", "+0", "-", "--1", "1x"] {
+        for arg in ["-00", "+0", "-", "--1"] {
             let src = format!("divert({arg})\nmov x0, 1\n");
             assert_eq!(text_and_map(&src), gnu("\nmov x0, 1", &[1, 2]), "{arg}");
         }
@@ -1674,6 +1674,7 @@ mod tests {
         // the playground refuses each.
         rejects(expand("define(off, -1)\ndivert(off)\n"), "unsupported m4 construct: divert(off)");
         rejects(expand("divert(x)\nmov x0, 1\n"), "unsupported m4 construct: divert(x)");
+        rejects(expand("divert(1x)\nmov x0, 1\n"), "unsupported m4 construct: divert(1x)");
         rejects(expand("divert(#)\nmov x0, 1\nmov x1, 2)\n"), "unsupported m4 construct: divert(#)");
         rejects(expand("divert(-4294967295)\n"), "unsupported m4 construct: divert(-4294967295)");
         rejects(expand("divert(4294967296)\n"), "unsupported m4 construct: divert(4294967296)");
