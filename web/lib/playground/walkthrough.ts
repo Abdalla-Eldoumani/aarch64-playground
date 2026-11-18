@@ -391,11 +391,13 @@ export function placeCard(
   }
   for (const side of ["right", "left"] as const) {
     const w = Math.min(width, room[side]);
+    // Tested first, since measuring a narrower card costs the page a layout.
+    if (w < MIN_WIDTH) continue;
     // Judged by the wide card's height, a narrowed card outgrew its spot once
     // placed, and the next beat moved it back.
     const full = w < width && card.heightAt ? card.heightAt(w) : card.height;
     const h = Math.min(full, fullHeight);
-    if (w >= MIN_WIDTH && h >= MIN_HEIGHT) options.push({ side, area: w * h, w, h, full });
+    if (h >= MIN_HEIGHT) options.push({ side, area: w * h, w, h, full });
   }
   const best = options
     .filter((o) => {
