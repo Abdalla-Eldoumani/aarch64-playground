@@ -42,9 +42,12 @@ function job(id: string) {
 const key = (lines: string[], name: string) =>
   lines.map((line) => line.match(new RegExp(`^ {4}${name}: (.*)$`))?.[1]).find((value) => value !== undefined);
 
-/** The #[test] fns in a Rust source that no #[ignore] holds back. */
+/**
+ * The top-level #[test] fns in an integration test that no #[ignore] holds
+ * back. At the top level a test's full name is the bare fn name.
+ */
 function liveTests(source: string) {
-  return [...source.matchAll(/((?:#\[[^\]]*\]\s*)+)fn (\w+)/g)]
+  return [...source.matchAll(/((?:^#\[[^\]]*\]\r?\n)+)^fn (\w+)/gm)]
     .filter(([, attributes]) => attributes.includes("#[test]") && !attributes.includes("#[ignore"))
     .map(([, , name]) => name);
 }
@@ -110,16 +113,16 @@ describe("check.yml", () => {
 
   it("skips in cargo test only the corpus test the corpus shards run", () => {
     const args = job("rust").flatMap((line) => line.match(/^ +args: "(.*)"$/)?.[1] ?? []);
-    const skips = args.flatMap((arg) => [...arg.matchAll(/--skip[= ]([\w:]+)/g)].map((match) => match[1]));
-    expect(skips, "the cargo test job's --skip filters").not.toEqual([]);
+    const skipping = args.filter((arg) => arg.includes("--skip"));
+    expect(skipping, "the cargo test job's --skip filters").not.toEqual([]);
     const live = liveTests(read("emulator/tests/c_corpus.rs"));
-    for (const skip of skips) {
-      // libtest skips every test whose name contains the filter, in every
-      // test binary, so the filter is one whole name, and that name is live.
-      expect(
-        live.filter((name) => name.includes(skip)),
-        `--skip ${skip} against the non-ignored #[test] fns of emulator/tests/c_corpus.rs`,
-      ).toEqual([skip]);
+    for (const arg of skipping) {
+      // Without --exact, libtest skips every test in every binary whose name
+      // contains the filter; with it, only tests named exactly that.
+      expect(arg.split(" "), `cargo test's args "${arg}" need --exact`).toContain("--exact");
+      for (const [, skip] of arg.matchAll(/--skip[= ]([\w:]+)/g)) {
+        expect(live, `--skip ${skip} against the non-ignored #[test] fns of emulator/tests/c_corpus.rs`).toContain(skip);
+      }
     }
   });
 });
