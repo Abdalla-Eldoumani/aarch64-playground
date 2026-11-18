@@ -178,7 +178,15 @@ pub const STUBS: &[Stub] = &[
     Stub { callable: false, ..x0("__main_return", libc::main_return) },
     // The name gcc -S writes for scanf.
     Stub { card: CALL_SCANF, ..x0("__isoc99_scanf", scanf::scanf) },
+    x0("atol", libc::atol),
 ];
+
+/// The rows through `__isoc99_scanf`, which make a program hosted wherever
+/// `bl <name>` appears in its source (`bl putsx` too). A later row counts
+/// only a whole `bl <name>` that the source does not define itself, so a
+/// stub added after a program was written never moves it off the
+/// bare-metal path (lib.rs `detect_hosted_mode`).
+pub const ROWS_DETECTED_ANYWHERE: usize = 69;
 
 const _: () = assert!(STUBS.len() as u64 <= HOST_STUB_COUNT, "host stub table full");
 
