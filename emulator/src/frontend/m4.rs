@@ -27,8 +27,9 @@
 //!     closes on its line. Other lines read a backtick as plain text, as
 //!     they always have.
 //!
-//! Anything else (ifdef, ifelse, forloop, changequote) fails with an
-//! "unsupported m4 construct" error at its line.
+//! Anything else (ifdef, ifelse, forloop, changequote, include) fails with
+//! an "unsupported m4 construct" error at its line, unless the program
+//! defined that name itself.
 
 use std::collections::HashMap;
 
@@ -1208,7 +1209,7 @@ fn take_ident(s: &str) -> Option<(&str, &str)> {
 }
 
 fn detect_unsupported(line: &str) -> Option<&'static str> {
-    for kw in &["ifdef", "ifelse", "forloop", "changequote"] {
+    for kw in &["ifdef", "ifelse", "forloop", "changequote", "include"] {
         if let Some(after) = line.strip_prefix(kw) {
             if after.trim_start().starts_with('(') {
                 return Some(kw);
