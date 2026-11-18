@@ -223,7 +223,9 @@ toolchain pins against the workflows. A change to a workflow, or to a file no
 rule names, runs everything, and so do a push to `main`, the weekly run, and
 the pull request from `integration` to `main`.
 The example catalog, `web/lib/playground/example-catalog.ts`, also runs
-`rust`: `frames.rs` and `filler_examples.rs` read its helper lists.
+`rust`: `frames.rs` and `filler_examples.rs` read its helper lists. So does
+the editor's completion list, `web/lib/asm/asm-completion.ts`: `stub_table.rs`
+holds its library calls to the stub table.
 
 A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
 it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that
@@ -235,7 +237,10 @@ request open runs no tests.
   the emulator's sources.
 - `rust`: `cargo test` without the C corpus, plus the corpus split across
   three jobs (`CORPUS_SHARD=1/3` and so on).
-- `corpus`: `node scripts/verify-corpus.js`.
+- `corpus`: `node scripts/verify-corpus.js`, then
+  `node scripts/check-course-style.js`, which holds the site's own programs to
+  `.balign 4` before each exported function and `ldr xN, =label` for
+  addresses.
 - `web-static`: a check that the Rust and wasm-pack versions in the workflows
   match the ones `scripts/vercel-build.sh` deploys with
   (`.github/scripts/check-pins.js`), the dependency audit, a check that

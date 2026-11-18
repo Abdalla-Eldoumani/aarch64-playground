@@ -21,34 +21,6 @@ use serde::Serialize;
 #[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
 
-/// Every C-callable name the hosted runtime registers, as `bl <name>`
-/// spells it. A program that calls one of these needs the hosted
-/// pipeline, so the list has to keep pace with the stub table: the unit
-/// test `every_registered_stub_is_detected_as_hosted` fails the moment a
-/// new stub is registered without being named here.
-pub const HOSTED_LIBC_NAMES: &[&str] = &[
-    // console and formatted output
-    "printf", "scanf", "__isoc99_scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
-    // strings
-    "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strchr",
-    "strstr", "strtok", "memset", "memcpy", "memmove", "memcmp",
-    // conversion and process control
-    "atof", "atoi", "strtol", "abs", "labs", "exit", "rand", "srand", "time",
-    // heap and pacing
-    "malloc", "calloc", "realloc", "free", "usleep", "fflush",
-    // character classes
-    "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
-    "__ctype_toupper_loc", "__ctype_tolower_loc",
-    // FILE*-level stdio
-    "fopen", "fprintf", "fgets", "fputs", "fclose", "putc", "fputc", "getc",
-    "fwrite",
-    // sorting and searching with the program's comparator
-    "qsort", "bsearch",
-    // libm
-    "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor",
-    "fabs", "fmod", "sincos",
-];
-
 /// Decide whether the source uses the hosted cpsc 355 feature set
 /// (sections, `.global main`, libc BLs, m4 defines). The bare-metal
 /// examples hit none of these so they keep the legacy single-`.text`
@@ -85,10 +57,11 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         return true;
     }
     // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
-    // same as `bl printf`.
+    // same as `bl printf`. A `bl` to any stub a program calls needs the
+    // hosted pipeline.
     let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    for libc in HOSTED_LIBC_NAMES {
-        let pat = format!("bl {libc}");
+    for stub in hosted::STUBS.iter().filter(|stub| stub.callable) {
+        let pat = format!("bl {}", stub.name);
         if normalized.contains(&pat) {
             return true;
         }
@@ -98,7 +71,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
 
 /// Wasm-bindgen wrapper. The TS frontend imports this through the WASM
 /// module so it never has to maintain a parallel list of directives or
-/// libc names; adding a new hosted feature touches only this file.
+/// libc names.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = detectHostedMode)]
 pub fn detect_hosted_mode_js(source: &str) -> bool {
@@ -1309,30 +1282,14 @@ mod hosted_mode_tests {
     }
 
     #[test]
-    fn every_registered_stub_is_detected_as_hosted() {
-        // A stub registered in `Cpu::new` but missing here leaves
-        // `bl <name>` on the bare-metal path, where the call resolves to
-        // nothing. The table is the source of truth; the two internal stubs
-        // are not names a program can call.
-        let cpu = crate::cpu::Cpu::new();
-        let missing: Vec<String> = cpu
-            .host
-            .names()
-            .filter(|name| !matches!(*name, "__host_noop" | "__main_return"))
-            .filter(|name| !super::HOSTED_LIBC_NAMES.contains(name))
-            .map(str::to_string)
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "these stubs are registered but not in HOSTED_LIBC_NAMES: {missing:?}"
-        );
-        // And each listed name really does route a `bl` to the hosted
-        // pipeline, rather than only sitting in the list.
-        for name in super::HOSTED_LIBC_NAMES {
-            assert!(
-                detect_hosted_mode(&format!("main:\n    bl {name}\n    ret\n")),
-                "`bl {name}` must detect as hosted"
-            );
+    fn every_callable_stub_is_detected_as_hosted() {
+        // Every name a program calls routes `bl <name>` to the hosted
+        // pipeline (a missed one would resolve to nothing on the bare-metal
+        // path), and the runtime's own two entries do not. Detection
+        // lowercases the source, so this also catches a name it never matches.
+        for stub in crate::hosted::STUBS {
+            let src = format!("main:\n    bl {}\n    ret\n", stub.name);
+            assert_eq!(detect_hosted_mode(&src), stub.callable, "`bl {}`", stub.name);
         }
     }
 

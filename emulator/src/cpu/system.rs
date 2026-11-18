@@ -68,7 +68,7 @@ impl Cpu {
         if reads.is_empty() {
             return;
         }
-        let (read_by, read_pc) = if self.host.lookup("__main_return") == Some(pc) {
+        let (read_by, read_pc) = if pc == MAIN_RETURN_ADDR {
             (READ_BY_MAIN_RETURN, pc)
         } else if self.host.contains_address(pc) {
             (READ_BY_CALL, lr.wrapping_sub(4))
@@ -128,16 +128,18 @@ impl Cpu {
     }
 
     /// What a real library call leaves behind, applied as the call returns
-    /// (see `RegisterFile::clobber_caller_saved`).
-    fn clobber_after_call(&mut self, stub_pc: u64) {
+    /// (see `RegisterFile::clobber_caller_saved`): every caller-saved
+    /// register but the one `returns` names.
+    fn clobber_after_call(&mut self, stub_pc: u64, returns: Returns) {
         let lr = self.regs.read_gpr(30, true);
         // The call's reads of its arguments are noted against the calls
         // that left them, before this one replaces every origin.
         self.note_clobbered_reads(stub_pc, lr);
-        let name = self.host.name_for_address(stub_pc).unwrap_or_default();
-        let in_d0 = RETURNS_IN_D0.contains(&name);
-        let in_x0 = !in_d0 && !RETURNS_NOTHING.contains(&name);
-        self.regs.clobber_caller_saved(in_x0, in_d0, lr.wrapping_sub(4));
+        self.regs.clobber_caller_saved(
+            returns == Returns::X0,
+            returns == Returns::D0,
+            lr.wrapping_sub(4),
+        );
     }
 
     /// Push bytes onto the stdin buffer. Clears the `blocked` flag so a
@@ -331,33 +333,21 @@ impl Cpu {
     }
 
     /// Dispatch a host-stub entry point at `pc` and apply its outcome to
-    /// pc, `blocked`, `exit_code` and the call stack. Splits the mutable
-    /// borrow of `self` so the stub can touch registers, memory, and console
-    /// buffers without racing the `HostTable` itself (which is only read).
+    /// pc, `blocked`, `exit_code` and the call stack.
     pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<(), EmuError> {
-        // The table is read-only during dispatch; split the borrow by
-        // temporarily taking the entries, dispatching, then restoring.
+        // A copy of the row, so the stub can borrow the rest of the machine.
+        let stub = self.host.stub_at(pc).expect("dispatch_host_stub called with non-host pc");
         // qsort's comparator returns to the stub it was called from.
         self.callbacks.stub_pc = pc;
-        // Only printf and scanf get a call card.
-        let kind = match self.host.name_for_address(pc) {
-            Some("printf") => CALL_PRINTF,
-            Some("scanf" | "__isoc99_scanf") => CALL_SCANF,
-            _ => 0,
-        };
         self.call_scratch.began = false;
-        let table = std::mem::take(&mut self.host);
-        let outcome = table
-            .dispatch(pc, &mut self.host_context(kind != 0))
-            .expect("dispatch_host_stub called with non-host pc");
-        self.host = table;
+        let outcome = (stub.func)(&mut self.host_context(stub.card != 0));
         // A call waiting on input runs again from the start once it comes.
         if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
-            self.keep_call(kind, outcome.is_err());
+            self.keep_call(stub.card, outcome.is_err());
         }
         match outcome? {
             HostOutcome::Continue => {
-                self.clobber_after_call(pc);
+                self.clobber_after_call(pc, stub.returns);
                 // Return to caller: pc = lr.
                 let lr = self.regs.read_gpr(30, true);
                 self.regs.write_pc(lr);
@@ -370,7 +360,7 @@ impl Cpu {
             HostOutcome::Sleep(ns) => {
                 // usleep: the pause, then a return to the caller like Continue.
                 self.apply_sleep(ns);
-                self.clobber_after_call(pc);
+                self.clobber_after_call(pc, stub.returns);
                 let lr = self.regs.read_gpr(30, true);
                 self.regs.write_pc(lr);
             }
