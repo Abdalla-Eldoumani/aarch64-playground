@@ -44,7 +44,8 @@ export interface RunResult {
   /** Pause the last nanosleep asked for, in ms; null when the run
    *  stopped for any other reason (or the wasm predates pacing). */
   sleep_ms: number | null;
-  /** A run with a goal met it, or stopped at a return to no caller. */
+  /** A run with a goal met it, or stopped at a return to no caller or past
+   *  its own caller. */
   reached: boolean;
   bad_return: boolean;
 }

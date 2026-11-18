@@ -12,7 +12,9 @@
 //! saved fp and lr, through an array base and through a passed pointer,
 //! with the ring recording, paused, and stopped by its side budget; a
 //! callee leaving x19 changed, and copies of what it left; a call out before lr is saved, and one
-//! after lr is saved with no fp set; a qsort comparator; hostile programs (fp into .data, misaligned sp, a bl into a
+//! after lr is saved with no fp set; how far a ret searches for the call it
+//! ends; where a frame record is found with fp above sp and before fp is
+//! set; a qsort comparator; hostile programs (fp into .data, misaligned sp, a bl into a
 //! function's middle, a computed blr, a return into a stub, an fp record
 //! pointing at itself); the frame check, one program per rule, a function
 //! off the pattern, a correct frame, and no mark on any shipped example,
@@ -26,7 +28,7 @@ mod example_files;
 
 use std::path::PathBuf;
 
-use aarch64_emulator::cpu::{Cpu, MAX_SNAPSHOT_SIDE_BYTES};
+use aarch64_emulator::cpu::{Cpu, MAX_SNAPSHOT_SIDE_BYTES, STACK_BASE};
 use aarch64_emulator::frames::check::{check_source, ODD_FRAME, ON_RECORD, OUTSIDE, OVERLAP, UNALIGNED};
 use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
 use aarch64_emulator::frames::{
@@ -1081,6 +1083,148 @@ fn a_bad_return_keeps_the_call_it_came_from_after_a_later_return_pops_it() {
     let n = view_numbers(&p.view());
     let call = [1.0, bad.entry as f64, bad.ret_addr as f64, f64::from(bad.flags), bad.last_ret as f64, 0.0, 0.0];
     assert_eq!(n[10..17], call);
+}
+
+/// deep recurses n times; its innermost call then aims lr at main's line
+/// after the first call and returns with its own frame still pushed.
+fn ret_past_every_caller(n: u32) -> String {
+    format!(
+        r#"
+// deep(n) calls itself n times, then the innermost call returns straight
+// to main, past every caller.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// deep(x0 = n): n more calls, then a ret to deep_back in main
+        .balign 4
+        .global deep
+deep:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        cbz     x0, deep_base
+        sub     x0, x0, 1
+        bl      deep
+deep_base:
+        ldr     lr, =deep_back          // bug: lr aimed past every caller
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, {n}
+        bl      deep
+deep_back:
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#
+    )
+}
+
+/// A ret searches the innermost 64 calls for the one it ends. deep(63)
+/// makes main's call the 64th from the top, so its ret ends all 64;
+/// deep(64) puts it 65th, and the ret ends none. Whether the first counts
+/// as a bad return is the call tree suite's business; this pins how far
+/// the search reaches.
+#[test]
+fn a_ret_ends_a_call_up_to_sixty_four_deep_and_none_past_that() {
+    for (n, frames, hidden) in [(63, 1, 0), (64, 64, 2)] {
+        let mut p = load(&ret_past_every_caller(n));
+        p.run_to_line(20); // deep_base's ret, in the innermost call
+        assert_eq!(p.cpu.call_stack().activations().len(), n as usize + 2, "main and deep(n) down to deep(0)");
+        p.step(1);
+        // The header's drawn frames and hidden calls.
+        let v = view_numbers(&p.view());
+        assert_eq!((v[8], v[2]), (frames as f64, hidden as f64), "deep({n})");
+    }
+    let mut p = load(&ret_past_every_caller(64));
+    p.run_to_line(20);
+    p.step(1);
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.pc, bad.target, bad.index), (p.pc_of(20), p.image.symbols["deep_back"], 65));
+}
+
+/// main reserves 16 more bytes after it points fp at its frame record, so
+/// fp and sp differ when it calls leaf.
+const FP_ABOVE_SP: &str = r#"
+// main keeps 16 bytes below its frame record while it calls leaf.
+
+define(fp, x29)
+define(lr, x30)
+
+alloc = -16
+dealloc = -alloc
+
+        .text
+// leaf() -> w0 = 1
+        .balign 4
+        .global leaf
+leaf:
+        mov     w0, 1
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        add     sp, sp, alloc           // 16 bytes below the record
+        bl      leaf
+        add     sp, sp, dealloc
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// main calls leaf after it pushes its frame record but before it points
+/// fp at it.
+const CALL_BEFORE_FP: &str = r#"
+// main calls leaf before it sets fp.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// leaf() -> w0 = 1
+        .balign 4
+        .global leaf
+leaf:
+        mov     w0, 1
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        bl      leaf                    // fp still holds the C runtime's 0
+        mov     fp, sp
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// Where main's frame record sits, as the innermost frame and as a caller:
+/// at fp once fp points at it, even with sp below; at sp while it is pushed
+/// and fp still holds the C runtime's 0.
+#[test]
+fn a_frame_record_is_found_at_fp_once_set_and_at_sp_before() {
+    let record = STACK_BASE - 16;
+    let main = |p: &Loaded| (p.view().frames[0].record, p.view().frames[0].state);
+    let mut p = load(FP_ABOVE_SP);
+    p.step(3); // stp, mov fp, add sp
+    assert_eq!(p.cpu.regs.read_sp(), record - 16, "sp below the record");
+    assert_eq!(main(&p), (record, COMPLETE));
+    p.step(1); // bl leaf
+    assert_eq!(main(&p), (record, COMPLETE), "as leaf's caller");
+    let mut p = load(CALL_BEFORE_FP);
+    p.step(1); // stp
+    assert_eq!(main(&p), (record, RESERVED));
+    p.step(1); // bl leaf
+    assert_eq!(main(&p), (record, COMPLETE), "as leaf's caller");
 }
 
 #[test]
