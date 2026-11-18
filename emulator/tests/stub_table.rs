@@ -112,9 +112,10 @@ buf:    .skip   64
 
 /// Each stub a program calls, with the lines that set up its arguments and
 /// the input queued for it. Every call returns from the one step that runs
-/// the stub, but for one rule: exit ends the program, so it leaves no result
-/// to read. qsort and bsearch get too few elements to call the program's
-/// comparator, and each read finds its input already queued.
+/// the stub, by these rules: exit ends the program, so it leaves no result
+/// to read; usleep returns and reports the pause it asked for; qsort and
+/// bsearch get too few elements to call the program's comparator; and each
+/// read finds its input already queued.
 const CALLS: &[(&str, &str, &str)] = &[
     ("__host_noop", "", ""),
     ("printf", "ldr x0, =fmt\nmov w1, 7", ""),
@@ -347,8 +348,8 @@ const ENTRY_CALLS: &[(&str, &str, &str)] = &[
 ];
 
 /// Run main around `body` to its end and describe it: the call context at
-/// `entry`, the exit status, the steps, where it stopped and why, the
-/// clobber notes and the output.
+/// each step that names a call or sits on `entry`, the exit status, the
+/// steps, where it stopped and why, the clobber notes and the output.
 fn run_entry(entry: &str, body: &str) -> String {
     let source = format!(
         "        .text
@@ -364,10 +365,12 @@ main:   stp     x29, x30, [sp, -16]!
     let image = assemble_hosted(&source, &cpu.host).unwrap_or_else(|e| panic!("{entry}: {e}"));
     cpu.load_linked_image(&image).expect("load");
     let stub = cpu.host.lookup(entry).expect("a registered stub");
-    let mut context = None;
+    let mut context = Vec::new();
     for _ in 0..200 {
-        if cpu.regs.read_pc() == stub && context.is_none() {
-            context = Some(host_call_context(&cpu, &[]).map(|c| (c.name, c.call_site_pc)));
+        let pc = cpu.regs.read_pc();
+        let here = host_call_context(&cpu, &[]).map(|c| (c.name, c.call_site_pc));
+        if here.is_some() || pc == stub {
+            context.push((pc, here));
         }
         if cpu.step().expect("step").halted {
             break;
@@ -388,19 +391,26 @@ main:   stp     x29, x30, [sp, -16]!
 
 /// One line per program from `run_entry`.
 const ENTRY_RUNS: &[&str] = &[
-    "main_return_ends_main: context Some(None), exit Some(5), steps 7, pc 0xffff0430, error None, notes [], stdout \"\"",
-    "main_return_with_sp_off: context Some(None), exit Some(5), steps 8, pc 0xffff0430, error None, notes [], stdout \"\"",
-    "main_return_after_srand: context Some(None), exit Some(-559038737), steps 11, pc 0xffff0430, error None, notes [0, 2, 4194316, 4294902832], stdout \"\"",
-    "host_noop_returns: context Some(Some((\"__host_noop\", 4194320))), exit Some(-559038732), steps 12, pc 0xffff0430, error None, notes [9, 0, 4194320, 4194324], stdout \"\"",
-    "host_noop_with_sp_off: context Some(Some((\"__host_noop\", 4194320))), exit None, steps 8, pc 0xffff0000, error Some(\"Bus error\\nsp is 0x7fffffe8 at this call, which is not a multiple of 16: round the frame size above it up to a multiple of 16 (32 instead of 24), or size it with `alloc = -(16 + locals) & -16`\"), notes [], stdout \"\"",
+    "main_return_ends_main: context [(4194336, Some((\"__main_return\", 4194316))), (4194340, Some((\"__main_return\", 4194316))), (4294902832, None)], exit Some(5), steps 7, pc 0xffff0430, error None, notes [], stdout \"\"",
+    "main_return_with_sp_off: context [(4194336, Some((\"__main_return\", 4194320))), (4194340, Some((\"__main_return\", 4194320))), (4294902832, None)], exit Some(5), steps 8, pc 0xffff0430, error None, notes [], stdout \"\"",
+    "main_return_after_srand: context [(4194336, Some((\"srand\", 4194316))), (4194340, Some((\"srand\", 4194316))), (4294902208, Some((\"srand\", 4194316))), (4194344, Some((\"__main_return\", 4194320))), (4194348, Some((\"__main_return\", 4194320))), (4294902832, None)], exit Some(-559038737), steps 11, pc 0xffff0430, error None, notes [0, 2, 4194316, 4294902832], stdout \"\"",
+    "host_noop_returns: context [(4194344, Some((\"__host_noop\", 4194320))), (4194348, Some((\"__host_noop\", 4194320))), (4294901760, Some((\"__host_noop\", 4194320)))], exit Some(-559038732), steps 12, pc 0xffff0430, error None, notes [9, 0, 4194320, 4194324], stdout \"\"",
+    "host_noop_with_sp_off: context [(4194336, Some((\"__host_noop\", 4194320))), (4194340, Some((\"__host_noop\", 4194320))), (4294901760, Some((\"__host_noop\", 4194320)))], exit None, steps 8, pc 0xffff0000, error Some(\"Bus error\\nsp is 0x7fffffe8 at this call, which is not a multiple of 16: round the frame size above it up to a multiple of 16 (32 instead of 24), or size it with `alloc = -(16 + locals) & -16`\"), notes [], stdout \"\"",
 ];
+
+/// Every name a program calls makes a `bl` to it a hosted program, and the
+/// runtime's own two entries do not.
+#[test]
+fn a_bl_to_every_callable_stub_makes_a_hosted_program() {
+    for (name, _) in ADDRESSES {
+        let entry = matches!(*name, "__host_noop" | "__main_return");
+        let call_alone = format!("main:\n    bl {name}\n    ret\n");
+        assert_eq!(detect_hosted_mode(&call_alone), !entry, "`bl {name}` alone");
+    }
+}
 
 #[test]
 fn a_program_that_names_the_runtimes_own_entries_runs_as_it_did() {
-    for name in ["__main_return", "__host_noop"] {
-        let call_alone = format!("main:\n    bl {name}\n    ret\n");
-        assert!(!detect_hosted_mode(&call_alone), "`bl {name}` alone is not a hosted program");
-    }
     let got: Vec<String> = ENTRY_CALLS
         .iter()
         .map(|(entry, label, body)| format!("{label}: {}", run_entry(entry, body)))
