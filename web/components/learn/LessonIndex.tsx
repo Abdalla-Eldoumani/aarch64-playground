@@ -6,11 +6,12 @@
  * Markdown or HTML injection path here.
  */
 
-import { useId, useMemo, useState, type JSX } from "react";
+import { useId, useMemo, useRef, useState, type JSX } from "react";
 import Link from "next/link";
 import type { LessonIndexRow } from "@/lib/content/lesson-schema";
 import { compareByOrder } from "@/lib/content/content-order";
 import { matchesAllWords } from "@/lib/content/search-words";
+import { useTypedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 
 const ROW_CLASS =
   "group grid min-h-[52px] grid-cols-[3.5rem_1fr] items-baseline gap-x-4 px-4 py-3 outline-none hover:bg-[var(--bg-raised)] focus-visible:[box-shadow:var(--ring)]";
@@ -36,6 +37,8 @@ export function LessonIndex({
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useTypedBeforeHydration(searchRef, query, setQuery);
   const [activeTags, setActiveTags] = useState<Set<string>>(new Set());
   const searchId = useId();
 
@@ -101,6 +104,7 @@ export function LessonIndex({
             search lessons
           </label>
           <input
+            ref={searchRef}
             id={searchId}
             type="search"
             value={query}
