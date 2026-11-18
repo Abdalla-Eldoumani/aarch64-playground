@@ -99,9 +99,9 @@ pub struct Activation {
     serial: u64,
 }
 
-/// A `ret` that went to no caller's return address, and the call it
-/// returned from as that call stood at the `ret`: a later return can pop
-/// the call before a snapshot shows the event.
+/// A return that went to no caller's return address or ended more than its
+/// own call, and the call it returned from as that call stood at the
+/// return: a later return can pop the call before a snapshot shows the event.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BadReturn {
     /// 0 when no return has gone astray.
