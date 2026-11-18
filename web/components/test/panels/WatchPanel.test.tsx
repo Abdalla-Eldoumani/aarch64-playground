@@ -179,6 +179,28 @@ describe("WatchPanel", () => {
     expect(getMemory).toHaveBeenCalledWith(FP + 24, 8);
   });
 
+  it("keeps refusing an unsized label when a same-named = line is typed after assembling", async () => {
+    const refusal = "can't tell the element size of buf: no .byte, .hword, .word or .dword after its label";
+    const program: unknown[] = [];
+    const props = {
+      registers: makeRegisters(),
+      sp: "0x0000000080000000",
+      pc: 0,
+      getMemory: seededMemory(),
+      // The loaded program's `buf` is a data label at its address.
+      resolveLabel: async (name: string) => (name === "buf" ? 0x600000 : null),
+      program,
+    };
+    const { rerender } = render(<WatchPanel {...props} frameSlots={[]} source={".data\nbuf: .skip 16\n"} />);
+    addExpression("buf[0]");
+    expect(await screen.findByText(refusal)).toBeTruthy();
+    // The editor's text gains the line; the loaded program does not.
+    rerender(
+      <WatchPanel {...props} frameSlots={[{ offset: 16, name: "buf" }]} source={"buf = 16\n.data\nbuf: .skip 16\n"} />,
+    );
+    expect(screen.getByText(refusal)).toBeTruthy();
+  });
+
   it("removes an expression and updates the store", () => {
     renderPanel();
     addExpression("x0");
