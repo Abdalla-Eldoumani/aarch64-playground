@@ -2009,6 +2009,28 @@ mod tests {
     }
 
     #[test]
+    fn what_gnu_m4_reads_in_a_define_name_or_past_a_quoted_hash_is_refused_in_a_new_form_program() {
+        // GNU m4 1.4.19 runs a builtin named unquoted as define's first
+        // argument, quotes or not on the line: dnl stops at the end of the
+        // file, divert writes `mov , 2` and divnum `mov 0, 2`.
+        for name in ["dnl", "divert", "divnum"] {
+            let src = format!("define({name}, w0)\nchangecom(`//')\nmov {name}, 2\n");
+            let refusal = format!("unsupported m4 construct: define({name}) with the name unquoted");
+            rejects(expand(&src), &refusal);
+        }
+        // A program without the new forms keeps today's output.
+        assert_eq!(exp("define(divert, w0)\nmov divert, 2\n").text, "\nmov w0, 2");
+        // A quoted `#` opens no comment, so GNU m4 reads the `//` comment
+        // after it, and its dnl takes the next line.
+        rejects(expand("define(a, w0)dnl\nmov a, `#'3 // dnl\nmov w0, 5\n"), "unsupported m4 construct: dnl in a comment");
+        // A one-line macro in a comment expands there to what it names: a
+        // macro that spans lines, or dnl.
+        let multi = "define(`two', `mov w1, 1\n  mov w0, 4')dnl\ndefine(`one', `two')dnl\nmov w0, 3 // one\n";
+        rejects(expand(multi), "unsupported m4 construct: one in a comment");
+        rejects(expand("define(`nl', `dnl')dnl\nmov w0, 3 // nl\nmov w0, 5\n"), "unsupported m4 construct: nl in a comment");
+    }
+
+    #[test]
     fn changecom_moves_or_ends_the_comment_like_gnu_m4() {
         // GNU m4 1.4.19: once `#` opens no comment, the name after it
         // expands; after changecom(`@') an `@` opens one instead.
