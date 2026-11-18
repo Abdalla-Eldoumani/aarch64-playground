@@ -66,7 +66,7 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "Ctrl+/", description: "toggle line comment" },
   { keys: "Shift+Alt+A", description: "toggle block comment" },
   { keys: "Tab", description: "in the editor, indent or take a suggestion" },
-  { keys: "Esc, then Tab", description: "leave the editor and move to the next control" },
+  { keys: "Esc, then Tab", description: "leave the editor and move to the next control (Esc twice while a suggestion list is open)" },
   { keys: "Ctrl+M, then Tab", description: "leave the terminal and move to the next control" },
   { keys: "Ctrl+M", description: "make Tab move focus out of the editor instead of indenting (press again to undo)" },
   { keys: "Ctrl+Wheel", description: "zoom the panel under the pointer" },
