@@ -48,8 +48,8 @@ describe("security header lockstep", () => {
 });
 
 describe("image optimizer", () => {
-  it("is turned off, so /_next/image answers no request", () => {
-    expect(nextConfig.images?.unoptimized).toBe(true);
+  it("allows no local image, so /_next/image refuses every request", () => {
+    expect(nextConfig.images?.localPatterns).toEqual([]);
   });
 });
 
