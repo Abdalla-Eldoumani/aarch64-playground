@@ -52,15 +52,17 @@ const FILL = "h-full min-h-0 flex flex-col";
  *  parent. */
 export const PASS_THROUGH = "contents";
 
-// The control that had the focus when its host left a slot, for the slot that
-// takes the host next, in the same commit.
-const focusLeft = new WeakMap<HTMLElement, HTMLElement>();
+// What a host held when it left a slot, for the slot that takes it next in the
+// same commit: the focused control, and each scroll box's offset (a box
+// scrolled to its end, such as a following console, stays at its end).
+type Held = { focused: HTMLElement | null; scrolls: [Element, number, number, boolean][] };
+const held = new WeakMap<HTMLElement, Held>();
 
 /**
  * Where a host node is attached in whichever arrangement is on screen. Taking
- * the node out of the page drops its focus on the body, so the slot that takes
- * it next gives the focus back: React runs the old slot's cleanup before the
- * new slot's effect in one commit.
+ * the node out of the page drops its focus on the body and resets its scroll
+ * boxes to the top, so the slot that takes it next puts both back: React runs
+ * the old slot's cleanup before the new slot's effect in one commit.
  */
 export function HostSlot({ host, className = FILL }: { host: HTMLElement; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -68,16 +70,31 @@ export function HostSlot({ host, className = FILL }: { host: HTMLElement; classN
     const slot = ref.current;
     if (!slot) return;
     slot.appendChild(host);
-    const focused = focusLeft.get(host);
-    if (focused?.isConnected && document.activeElement === document.body) {
-      focused.focus({ preventScroll: true });
+    const was = held.get(host);
+    if (was) {
+      for (const [box, top, left, atEnd] of was.scrolls) {
+        box.scrollTop = atEnd ? box.scrollHeight : top;
+        box.scrollLeft = left;
+      }
+      if (was.focused?.isConnected && document.activeElement === document.body) {
+        was.focused.focus({ preventScroll: true });
+      }
     }
     return () => {
       const active = document.activeElement;
-      if (active instanceof HTMLElement && host.contains(active)) {
-        focusLeft.set(host, active);
-        queueMicrotask(() => focusLeft.delete(host));
-      }
+      const scrolls = Array.from(host.querySelectorAll("*"))
+        .filter((box) => box.scrollTop > 0 || box.scrollLeft > 0)
+        .map((box): [Element, number, number, boolean] => [
+          box,
+          box.scrollTop,
+          box.scrollLeft,
+          box.scrollTop + box.clientHeight >= box.scrollHeight - 1,
+        ]);
+      held.set(host, {
+        focused: active instanceof HTMLElement && host.contains(active) ? active : null,
+        scrolls,
+      });
+      queueMicrotask(() => held.delete(host));
       if (host.parentNode === slot) slot.removeChild(host);
     };
   }, [host]);
