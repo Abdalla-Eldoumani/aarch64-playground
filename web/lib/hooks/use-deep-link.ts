@@ -65,36 +65,6 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
   return result;
 }
 
-/**
- * Old example names mapped to their current ones, so a `?example=` link
- * shared before the examples were renamed still opens the right file.
- */
-export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
-  week03_exercise: "basics",
-  week08_scores: "array-scores",
-  week09_student_record: "student-record",
-  week10_find_max: "find-max",
-  week11_argv: "command-line-args",
-  week11_static_counter: "static-counter",
-  week12_fp_circle: "circle-area",
-  week12_is_prime: "is-prime",
-  week13_hello: "hello",
-  week13_echo: "echo",
-  week13_write_file: "write-file",
-  week13_read_file: "read-file",
-  week13_copy_file: "copy-file",
-};
-
-/**
- * Resolve a `?example=` stem to the file actually on disk, translating a
- * known legacy stem to its renamed clean stem. An unknown stem is returned
- * unchanged. Path safety stays with the `/^[\w.-]+$/` check in
- * `parseDeepLink`; this only remaps a fixed set of names.
- */
-export function resolveExampleStem(stem: string): string {
-  return LEGACY_EXAMPLE_ALIASES[stem] ?? stem;
-}
-
 /** Compose the query-string portion of a share URL from a partial DeepLink. */
 export function buildDeepLinkQuery(link: Omit<DeepLink, "embed"> & { embed?: boolean }): string {
   const params = new URLSearchParams();

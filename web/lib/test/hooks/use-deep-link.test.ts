@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import LZString from "lz-string";
-import { buildDeepLinkQuery, parseDeepLink, resolveExampleStem } from "@/lib/hooks/use-deep-link";
+import { buildDeepLinkQuery, parseDeepLink } from "@/lib/hooks/use-deep-link";
 // parseDeepLink does not import the decoder (that import is what put
 // lz-string on the landing), so every bundle case hands it in.
 import { decodeBundle } from "@/lib/playground/diagnostic-bundle";
@@ -149,31 +149,6 @@ describe("buildDeepLinkQuery", () => {
   });
 });
 
-describe("resolveExampleStem", () => {
-  test("maps a legacy course-labeled stem to its renamed file", () => {
-    expect(resolveExampleStem("week03_exercise")).toBe("basics");
-    expect(resolveExampleStem("week08_scores")).toBe("array-scores");
-    expect(resolveExampleStem("week11_argv")).toBe("command-line-args");
-    expect(resolveExampleStem("week13_copy_file")).toBe("copy-file");
-  });
-
-  test("passes an already-clean stem through unchanged", () => {
-    expect(resolveExampleStem("basics")).toBe("basics");
-    expect(resolveExampleStem("circle-area")).toBe("circle-area");
-  });
-
-  test("passes an unknown stem through unchanged", () => {
-    expect(resolveExampleStem("not-an-example")).toBe("not-an-example");
-  });
-
-  test("does not alias a traversal string, and parseDeepLink still rejects it", () => {
-    // resolveExampleStem only remaps the fixed allow-list; path safety is
-    // parseDeepLink's job, which drops anything outside /^[\w.-]+$/.
-    expect(resolveExampleStem("../etc/passwd")).toBe("../etc/passwd");
-    expect(parseDeepLink("?example=../etc/passwd").example).toBeUndefined();
-  });
-});
-
 describe("parseDeepLink typed-param guards", () => {
   test("an unknown theme value is dropped, not passed through", () => {
     expect(parseDeepLink("?theme=neon").theme).toBeUndefined();
@@ -200,16 +175,5 @@ describe("parseDeepLink typed-param guards", () => {
     expect(dl.example).toBe("basics");
     expect(dl.embed).toBe(true);
     expect(dl.bundle!.source).toBe("ret\n");
-  });
-});
-
-describe("legacy alias table invariants", () => {
-  test("every alias resolves in one hop to a clean stem outside the legacy set", async () => {
-    const { LEGACY_EXAMPLE_ALIASES } = await import("@/lib/hooks/use-deep-link");
-    for (const [legacy, clean] of Object.entries(LEGACY_EXAMPLE_ALIASES)) {
-      expect(clean).toMatch(/^[a-z0-9-]+$/);
-      expect(LEGACY_EXAMPLE_ALIASES[clean]).toBeUndefined();
-      expect(resolveExampleStem(legacy)).toBe(clean);
-    }
   });
 });

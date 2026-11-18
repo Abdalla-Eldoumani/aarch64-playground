@@ -21,6 +21,9 @@
 #[path = "common/frame_walk.rs"]
 mod frame_walk;
 
+#[path = "common/example_files.rs"]
+mod example_files;
+
 use std::path::PathBuf;
 
 use aarch64_emulator::cpu::{Cpu, MAX_SNAPSHOT_SIDE_BYTES};
@@ -31,6 +34,7 @@ use aarch64_emulator::frames::{
     MAX_ACTIVATIONS, MAX_DRAWN, RESERVED, RUNTIME_CALL,
 };
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
+use example_files::example_files;
 use frame_walk::{walk, Tally};
 
 fn repo_root() -> PathBuf {
@@ -118,22 +122,6 @@ fn assert_agrees(tally: &Tally) {
 /// Long-running examples (calc, snake, deadzone) idle in a loop for
 /// millions of steps; the first stretch covers every call they make.
 const EXAMPLE_STEPS: u64 = 300_000;
-
-/// The helper files of the two multi-file examples, in the order the web
-/// pastes them, read from the list the web itself uses.
-fn example_files(stem: &str) -> Vec<String> {
-    let handoff = read(&repo_root().join("web/lib/playground/playground-handoff.ts"));
-    let list = handoff.split("export const EXAMPLE_FILES").nth(1).expect("EXAMPLE_FILES");
-    let Some(body) = list.split(&format!("{stem}: [")).nth(1) else { return Vec::new() };
-    body.split(']')
-        .next()
-        .unwrap_or("")
-        .split('"')
-        .skip(1)
-        .step_by(2)
-        .map(str::to_string)
-        .collect()
-}
 
 /// Every shipped example as (stem, source), its helper files joined on.
 fn shipped_examples() -> Vec<(String, String)> {

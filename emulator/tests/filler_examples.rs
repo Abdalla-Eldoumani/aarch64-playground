@@ -3,9 +3,13 @@
 //! what is tested cannot drift. Line endings are normalized to LF because
 //! a Windows checkout can hand these files back as CRLF.
 
+#[path = "common/example_files.rs"]
+mod example_files;
+
 use std::path::PathBuf;
 
 use aarch64_emulator::cpu::Cpu;
+use example_files::example_files;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
 /// `web/public/examples/cpsc355/`, resolved relative to the emulator crate.
@@ -413,13 +417,8 @@ fn temp_convert_console_face_draws_the_same_readings_in_plain_text() {
 /// every menu, so every file assembles, links, and runs.
 #[test]
 fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
-    const EXTRAS: [&str; 17] = [
-        "theme.s", "ui.s", "ansi.s", "display.s", "utils.s", "array.s",
-        "stack.s", "queue.s", "list.s", "bst.s", "rbt.s", "heap.s",
-        "hash.s", "graph.s", "sort.s", "search.s", "recursion.s",
-    ];
     let mut source = read("dsav.s");
-    for name in EXTRAS {
+    for name in example_files("dsav") {
         source.push_str(&format!("\n// ---- {name} ----\n"));
         source.push_str(&read(&format!("dsav/{name}")));
     }
@@ -463,13 +462,8 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
 /// move, pause, resume, quit.
 #[test]
 fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
-    const EXTRAS: [&str; 11] = [
-        "constants.s", "terminal.s", "input.s", "player.s", "enemies.s",
-        "projectiles.s", "upgrades.s", "file-io.s", "effects.s", "boss.s",
-        "abilities.s",
-    ];
     let mut source = read("deadzone.s");
-    for name in EXTRAS {
+    for name in example_files("deadzone") {
         source.push_str(&format!("\n// ---- {name} ----\n"));
         source.push_str(&read(&format!("deadzone/{name}")));
     }
