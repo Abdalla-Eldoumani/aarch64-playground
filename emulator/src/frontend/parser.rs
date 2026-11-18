@@ -54,22 +54,29 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
     prog.section_or_insert(SectionKind::Text);
     let mut current = SectionKind::Text;
     // ld throws `.note.GNU-stack` away with whatever is in it, so once the
-    // note opens, only a switch to another section may follow.
+    // note opens, a line that places bytes or a label is refused until a
+    // section switch. The parser sees a program's files joined into one
+    // text, where GNU as starts each file in .text, hence the message.
     let mut in_stack_note = false;
     for line_tokens in group_by_line(&tokens) {
         if is_stack_note(line_tokens) {
             in_stack_note = true;
             continue;
         }
-        if in_stack_note && !opens_section(line_tokens) {
-            return Err(err(
-                line_tokens[0].line,
-                "nothing can follow `.section .note.GNU-stack`: the linker throws that \
-                 section away with everything in it. Move this line above the note, or \
-                 switch back with `.text` (or `.data`, `.bss`, `.rodata`) first",
-            ));
+        if in_stack_note {
+            match line_directive(line_tokens) {
+                Some(".text" | ".data" | ".bss" | ".rodata" | ".section") => in_stack_note = false,
+                Some(".global" | ".globl" | ".type" | ".size" | ".arch" | ".ltorg") => {}
+                _ => {
+                    return Err(err(
+                        line_tokens[0].line,
+                        "this line follows `.section .note.GNU-stack`, which the linker throws \
+                         away: put `.text` (or `.data`, `.bss`, `.rodata`) above it. A program's \
+                         files are joined here, so each file should open with its own section line",
+                    ))
+                }
+            }
         }
-        in_stack_note = false;
         parse_line(line_tokens, &mut prog, &mut current)?;
     }
     Ok(prog)
@@ -90,11 +97,16 @@ fn is_stack_note(tokens: &[Token]) -> bool {
     }
 }
 
-fn opens_section(tokens: &[Token]) -> bool {
-    matches!(
-        &tokens[0].kind,
-        TokenKind::DirectiveIdent(d) if matches!(d.as_str(), ".text" | ".data" | ".bss" | ".rodata" | ".section")
-    )
+/// The directive a line opens with, unless the dotted name is a label (`.L2:`).
+fn line_directive(tokens: &[Token]) -> Option<&str> {
+    match tokens {
+        [Token { kind: TokenKind::DirectiveIdent(d), .. }, rest @ ..]
+            if !matches!(rest.first(), Some(Token { kind: TokenKind::Colon, .. })) =>
+        {
+            Some(d.as_str())
+        }
+        _ => None,
+    }
 }
 
 /// Apply GAS `name .req register` aliases as text, after m4 and before
