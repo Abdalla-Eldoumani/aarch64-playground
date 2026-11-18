@@ -2061,6 +2061,106 @@ mod tests {
         assert_eq!(exp("changecom(`/*', `*/')dnl\nmov w0, 3\n").text, "mov w0, 3");
     }
 
+    /// The first byte of line `j` of `src` the playground drops, read off
+    /// what the strippers leave: pass 0 deletes `/* */` blocks, then
+    /// strip_comment cuts a `//` or `;` comment, on the text m4 hands the
+    /// assembler for a line that reads quotes (the outer quote marks gone).
+    fn dropped_at(src: &str, j: usize) -> Option<usize> {
+        let w = src.lines().nth(j)?;
+        let blanked = strip_block_comments(src).ok()?;
+        let raw = blanked.lines().nth(j)?;
+        // Before pass 0's first cut the line is unchanged, and the block it
+        // deletes starts with `/*`, unless the line opens inside one.
+        let open_above = j > 0 && strip_block_comments(&src.lines().take(j).collect::<Vec<_>>().join("\n")).is_err();
+        let same = w.bytes().zip(raw.bytes()).take_while(|(a, b)| a == b).count();
+        let block = if open_above {
+            Some(0)
+        } else if w == raw {
+            None
+        } else {
+            Some(same - (same > 0 && w[same - 1..].starts_with("/*")) as usize)
+        };
+        let kept = strip_comment(raw);
+        let cut = if after_call(kept).is_some_and(|(_, joins)| joins) || !kept.contains('`') {
+            (kept.len() < raw.len()).then_some(kept.len())
+        } else {
+            let b = raw.as_bytes();
+            let mut at = Vec::new();
+            let mut i = 0;
+            while i < b.len() {
+                if b[i] == b'`' {
+                    if let Some(n) = quote_end(&b[i..]) {
+                        at.extend(i + 1..i + n - 1);
+                        i += n;
+                        continue;
+                    }
+                }
+                at.push(i);
+                i += 1;
+            }
+            let seen: String = at.iter().map(|&k| b[k] as char).collect();
+            at.get(strip_comment(&seen).len()).copied()
+        };
+        [block, cut].into_iter().flatten().min()
+    }
+
+    /// Where the comment check starts reading each line of `src`, None for a
+    /// line it skips, or None for all when m4 refuses the program.
+    fn check_reads_from(src: &str) -> Option<Vec<Option<usize>>> {
+        expand(src).ok()?;
+        let blanked = strip_block_comments(src).ok()?;
+        let lines = src.lines().zip(blanked.lines());
+        Some(lines.map(|(w, raw)| if w != raw && w.ends_with(raw) { Some(0) } else { comment_start(w) }).collect())
+    }
+
+    #[test]
+    fn the_comment_check_reads_every_comment_the_playground_drops() {
+        // Every line of up to five of these tokens, and every line of up to
+        // three after a line of up to two that leaves a `/*` open, with a
+        // `*/` line to close it: 454,571 programs, a few seconds.
+        let tokens = ["\"", "'", "\\", "`", "#", "//", ";", "/*", "*/", "\t", "dnl", "m", "x"];
+        let mut lines: Vec<String> = vec![String::new()];
+        let mut by_len = vec![1];
+        for _ in 0..5 {
+            let start = lines.len() - by_len[by_len.len() - 1];
+            let longer: Vec<String> =
+                lines[start..].iter().flat_map(|l| tokens.iter().map(move |t| format!("{l}{t}"))).collect();
+            by_len.push(longer.len());
+            lines.extend(longer);
+        }
+        let upto = |n: usize| &lines[1..by_len[..=n].iter().sum::<usize>()];
+        let mut programs: Vec<String> = upto(5).iter().map(|l| format!("define(m, w0)\n{l}\n*/\n")).collect();
+        for open in upto(2).iter().filter(|l| strip_block_comments(l).is_err()) {
+            programs.extend(upto(3).iter().map(|l| format!("define(m, w0)\n{open}\n{l}\n*/\n")));
+        }
+        // The verifier's five: a `'"'` literal before the comment.
+        let q = [
+            "define(a, w0)dnl\nmain:\n\tmov a, '\"'\t// dnl\n\tmov w0, 5\n\tret\n",
+            "define(a, w0)dnl\nv:\t.byte '\"'\t// dnl\n\t.byte 7\n",
+            "define(a, w0)dnl\nmain:\n\tmov a, '\"'\t; dnl\n\tmov w0, 5\n\tret\n",
+            "define(`nl', `dnl')dnl\nmain:\n\tmov w0, '\"'\t// nl\n\tmov w0, 5\n\tret\n",
+            "define(a, w0)dnl\nmain:\n\tmov a, '\"'\t// it`s\n\tmov w0, 5\n\tret\n",
+        ];
+        programs.extend(q.iter().map(|p| p.to_string()));
+        let mut missed = Vec::new();
+        for src in &programs {
+            let Some(from) = check_reads_from(src) else { continue };
+            for (j, from) in from.iter().enumerate().skip(1) {
+                if let Some(drop) = dropped_at(src, j) {
+                    if !from.is_some_and(|f| f <= drop) {
+                        missed.push(format!("{:?} line {} dropped from {drop}, read from {from:?}", src, j + 1));
+                    }
+                }
+            }
+        }
+        assert!(missed.is_empty(), "{} lines drop text the check does not read:\n{}", missed.len(), missed[..missed.len().min(30)].join("\n"));
+        rejects(expand(q[0]), "unsupported m4 construct: dnl in a comment");
+        rejects(expand(q[1]), "unsupported m4 construct: dnl in a comment");
+        rejects(expand(q[2]), "unsupported m4 construct: dnl in a comment");
+        rejects(expand(q[3]), "unsupported m4 construct: nl in a comment");
+        rejects(expand(q[4]), "unsupported m4 construct: ` in a comment");
+    }
+
     #[test]
     fn changecom_moves_or_ends_the_comment_like_gnu_m4() {
         // GNU m4 1.4.19: once `#` opens no comment, the name after it
