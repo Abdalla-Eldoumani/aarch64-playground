@@ -28,13 +28,13 @@ const CODE = ["app", "components", "lib"]
 // The service worker's fetches run in the browser and render no route.
 const SERVICE_WORKER = "lib/playground/sw.js";
 
-// A page or layout's searchParams prop, destructured or typed (a Promise since
-// Next 15), not a client's own `useSearchParams()` or URL read.
-const PAGE_SEARCH_PARAMS = /\{[^}]*\bsearchParams\b[^}]*\}\s*[:)]|\bsearchParams\??\s*:\s*Promise\b/;
+// The files the searchParams prop reaches. A test file (page.test.tsx) is
+// neither, and sources() leaves tests out as well.
+const PAGE_OR_LAYOUT = /^app\/(.+\/)?(page|layout)\.(ts|tsx|js|jsx|mjs)$/;
 
 const everywhere = () => true;
 const notTheWorker = (file: string) => file !== SERVICE_WORKER;
-const inApp = (file: string) => file.startsWith("app/");
+const pageOrLayout = (file: string) => PAGE_OR_LAYOUT.test(file);
 
 // Each pattern a line of source may not match, what to write instead, and
 // the files it applies to.
@@ -44,20 +44,43 @@ const BANNED: [RegExp, string, (file: string) => boolean][] = [
   [/\brevalidate\s*:/, "a revalidating fetch turns every route into ISR: fetch once per build with cache: \"force-cache\"", notTheWorker],
   [/\bcache\s*:\s*["']no-store["']/, "a no-store fetch renders the route per request: fetch once per build with cache: \"force-cache\"", notTheWorker],
   [/from\s+["']next\/(headers|server)["']/, "a request-time API renders the route per request: read the URL in the browser instead", everywhere],
-  [PAGE_SEARCH_PARAMS, "a searchParams prop renders the route per request: read the URL in the browser instead", inApp],
+  [
+    /\bsearchParams\b/,
+    "a page's searchParams prop renders the route per request: read the URL with useSearchParams() in a client component outside the page and layout files",
+    pageOrLayout,
+  ],
 ];
 
+/** Every banned line in one file, as "file:line: what to do instead". */
+function banned(file: string, text: string): string[] {
+  return text.split(/\r?\n/).flatMap((line, i) =>
+    BANNED.filter(([pattern, , applies]) => applies(file) && pattern.test(line)).map(
+      ([, instead]) => `${file}:${i + 1}: ${instead}`,
+    ),
+  );
+}
+
 describe("the site is static files only", () => {
-  it("scans the app, components and lib sources", () => {
+  it("scans the app, components and lib sources, tests left out", () => {
     expect(CODE.length).toBeGreaterThan(250);
-    expect(CODE.map(({ file }) => file)).toContain("lib/content/github.ts");
+    const files = CODE.map(({ file }) => file);
+    expect(files).toContain("lib/content/github.ts");
+    expect(files.filter((file) => /\.test\./.test(file))).toEqual([]);
   });
 
-  it("tells a page's searchParams prop from a client reading its own URL", () => {
-    expect(PAGE_SEARCH_PARAMS.test("export default async function Page({ searchParams }: Props) {")).toBe(true);
-    expect(PAGE_SEARCH_PARAMS.test("  searchParams: Promise<Record<string, string>>;")).toBe(true);
-    expect(PAGE_SEARCH_PARAMS.test("const searchParams = useSearchParams();")).toBe(false);
-    expect(PAGE_SEARCH_PARAMS.test("const { searchParams } = new URL(window.location.href);")).toBe(false);
+  it("flags searchParams in a page or layout file only, and no-store everywhere but the service worker", () => {
+    const flagged = (file: string, ...lines: string[]) => banned(file, lines.join("\n")).length > 0;
+    // A page that takes the prop: destructured and typed, through props, or destructured over lines.
+    expect(flagged("app/(site)/r3/page.tsx", "export default async function Page({ searchParams }: { searchParams: Promise<object> }) {")).toBe(true);
+    expect(flagged("app/(site)/r4/page.tsx", 'export default async function Page(props: PageProps<"/r4">) {', "  const { q } = await props.searchParams;")).toBe(true);
+    expect(flagged("app/(site)/r5/page.tsx", "export default async function Page({", "  searchParams,", '}: PageProps<"/r5">) {')).toBe(true);
+    // A "use client" page reading the URL is flagged too: the read belongs in a component outside the page file.
+    expect(flagged("app/(site)/r6/page.tsx", '"use client";', "const searchParams = useSearchParams();")).toBe(true);
+    // A client component outside page and layout files, a route's own test, and the service worker pass.
+    expect(flagged("app/(site)/learn/UrlChip.tsx", '"use client";', "const searchParams = useSearchParams();")).toBe(false);
+    expect(flagged("app/(site)/learn/page.test.tsx", "render(<Page searchParams={{}} />);")).toBe(false);
+    expect(flagged(SERVICE_WORKER, 'const res = await fetch(url, { cache: "no-store" });')).toBe(false);
+    expect(flagged("lib/content/feed.ts", 'await fetch(url, { cache: "no-store" });')).toBe(true);
   });
 
   it("has no proxy or middleware in front of the pages", () => {
@@ -83,14 +106,6 @@ describe("the site is static files only", () => {
   });
 
   it("has no server action, ISR setting or request-time API", () => {
-    const hits: string[] = [];
-    for (const { file, text } of CODE) {
-      text.split(/\r?\n/).forEach((line, i) => {
-        for (const [pattern, instead, applies] of BANNED) {
-          if (applies(file) && pattern.test(line)) hits.push(`${file}:${i + 1}: ${instead}`);
-        }
-      });
-    }
-    expect(hits).toEqual([]);
+    expect(CODE.flatMap(({ file, text }) => banned(file, text))).toEqual([]);
   });
 });
