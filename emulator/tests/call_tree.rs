@@ -1496,7 +1496,7 @@ fn a_ret_that_skips_main_is_a_bad_return_though_the_program_then_exits() {
 
 // ---------------------------------------------------------------------------
 // Returns no `ret` makes: each ends its call or leaves the stack as it is,
-// and none is a bad return.
+// and only one that ends more than the innermost call is a bad return.
 // ---------------------------------------------------------------------------
 
 /// read_n tail-calls scanf and read_c tail-calls getchar, so each library
@@ -1687,6 +1687,111 @@ fn a_return_through_x16_ends_its_call() {
     assert_eq!(p.cpu.call_stack().bad_return().step, 0, "no return went astray");
     assert_eq!(p.outline(), ["main -> 0", "  minus21(42) -> 21"]);
     back_retraces(&mut load(RETURN_THROUGH_X16), 12, "a return through x16");
+}
+
+/// skip pops its own frame record and then jump's, so `br x16` lands where
+/// jump's ret would have, with main's sp and fp: it ends skip and jump,
+/// and skips jump as a ret would.
+const BR_SKIP: &str = r#"
+// main calls jump, which calls skip; skip pops jump's frame record too
+// and goes back into main through x16.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      jump
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global jump
+jump:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      skip
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global skip
+skip:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldp     fp, lr, [sp], 16
+        ldp     fp, x16, [sp], 16       // bug: jump's frame record too
+        br      x16
+"#;
+
+/// The same skip through a tail call: skip pops jump's frame record into
+/// lr, so printf comes back into main and ends skip and jump.
+const LIB_SKIP: &str = r#"
+// main calls jump, which calls skip; skip pops jump's frame record too
+// and tail-calls printf, which comes back into main.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "hi\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      jump
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global jump
+jump:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      skip
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global skip
+skip:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldp     fp, lr, [sp], 16
+        ldp     fp, lr, [sp], 16        // bug: jump's frame record too
+        ldr     x0, =fmt
+        b       printf
+"#;
+
+/// A `br` or a library return that matches a call below the innermost one
+/// ends both, like a ret, and is a bad return; its pc is the `br`, or the
+/// `b` that reached the library function.
+#[test]
+fn a_br_or_a_library_return_that_ends_two_calls_is_a_bad_return() {
+    // x0 at the return: argc, or the count printf returns.
+    for (source, jump_at, steps, out, x0) in [(BR_SKIP, 16, 11, "", 1), (LIB_SKIP, 20, 15, "hi\n", 3)] {
+        let mut p = load(source);
+        let (main, skip) = (p.label("main"), p.label("skip"));
+        p.run_to(main + 12, 1);
+        let stack = p.cpu.call_stack();
+        assert_eq!(stack.depth(), 1, "it ended skip and jump");
+        let bad = stack.bad_return();
+        assert_eq!((bad.step, bad.pc, bad.target, bad.index), (steps, skip + jump_at, main + 12, 2));
+        assert_eq!(p.name(bad.entry), "skip");
+        p.run_to_end();
+        assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), out);
+        assert_eq!(p.outline(), ["main -> 0".to_string(), format!("  jump -> {x0}"), format!("    skip -> {x0}")]);
+        back_retraces(&mut load(source), steps as usize, "a br or a library return that ends two calls");
+    }
 }
 
 /// twice keeps main's way back in x9 and calls add_one by hand: `adr lr`,
