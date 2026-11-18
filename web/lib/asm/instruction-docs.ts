@@ -389,16 +389,16 @@ export const INSTRUCTION_DOCS: Record<string, InstructionDoc> = {
   FCVTMU: { summary: "Float -> unsigned integer, floor. Negatives saturate to 0.", example: "fcvtmu w0, d0" },
   FCVTPS: { summary: "Float -> signed integer, rounding toward plus infinity (ceiling).", example: "fcvtps w0, d0" },
   FCVTPU: { summary: "Float -> unsigned integer, ceiling.", example: "fcvtpu w0, d0" },
-  // the unscaled and no-allocate spellings (SIMD&FP registers only)
+  // the unscaled spellings, and the no-allocate pairs (SIMD&FP registers only)
   LDUR: {
-    summary: "Unscaled signed-offset load into a SIMD&FP register.",
+    summary: "Unscaled signed-offset load into a general or SIMD&FP register.",
     details: [
       "`imm` runs [-256, 255] and is never scaled by the access width.",
       "`LDR` picks this encoding on its own for a negative or unaligned offset, exactly as GAS does.",
     ],
     example: "ldur d3, [sp, 4]",
   },
-  STUR: { summary: "Unscaled signed-offset store from a SIMD&FP register.", example: "stur d1, [sp, 4]" },
+  STUR: { summary: "Unscaled signed-offset store from a general or SIMD&FP register.", example: "stur d1, [sp, 4]" },
   LDNP: {
     summary: "No-allocate pair load: a plain signed offset, no writeback.",
     details: ["Identical here to `LDP`; on hardware it differs only in a cache hint."],

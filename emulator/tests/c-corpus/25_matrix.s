@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	matmul
@@ -204,4 +205,5 @@ main:
 	mov	w0, 0
 	ldp	x29, x30, [sp], 304
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

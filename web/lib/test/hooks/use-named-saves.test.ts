@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderHook, act, cleanup } from "@testing-library/react";
 import { useNamedSaves } from "@/lib/hooks/use-named-saves";
 import { clearSaves } from "@/lib/playground/named-saves";
@@ -36,5 +36,40 @@ describe("useNamedSaves", () => {
     act(() => { result.current.put(sample); });
     act(() => { result.current.remove("alpha"); });
     expect(result.current.saves).toEqual([]);
+  });
+
+  // A save storage refuses (a full quota, a private window) reports false and
+  // never shows in the list.
+  it("leaves the list as it was when storage refuses a save", () => {
+    const { result } = renderHook(() => useNamedSaves());
+    act(() => { result.current.put(sample); });
+    const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+    let stored = true;
+    try {
+      act(() => { stored = result.current.put({ ...sample, name: "beta" }); });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(stored).toBe(false);
+    expect(result.current.saves.map((s) => s.name)).toEqual(["alpha"]);
+  });
+
+  // The browser tells a page when another of its tabs writes the key; a
+  // change to some other key leaves the list as it was.
+  it("refreshes when another tab changes the saves, and only then", () => {
+    const { result } = renderHook(() => useNamedSaves());
+    const key = "aarch64-playground:named-saves";
+    act(() => {
+      window.localStorage.setItem(key, JSON.stringify([sample]));
+      window.dispatchEvent(new StorageEvent("storage", { key, storageArea: window.localStorage }));
+    });
+    expect(result.current.saves.map((s) => s.name)).toEqual(["alpha"]);
+    act(() => {
+      window.localStorage.setItem(key, "[]");
+      window.dispatchEvent(new StorageEvent("storage", { key: "aarch64-playground:theme" }));
+    });
+    expect(result.current.saves.map((s) => s.name)).toEqual(["alpha"]);
   });
 });

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -373,11 +374,12 @@ main:
 	b	.L18
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC5:
 	.word	-266631570
 	.word	-1073143303
 .LC9:
 	.word	1834810029
 	.word	1083394629
+	.section	.note.GNU-stack,"",@progbits
 

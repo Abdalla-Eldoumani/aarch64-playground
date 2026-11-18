@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -382,7 +383,7 @@ main:
 	.string	"three"
 	.section .rodata
 	.align	4
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 names.5:
 	.xword	.LC9
 	.xword	.LC10
@@ -391,7 +392,7 @@ names.5:
 	.xword	.LC1
 	.data
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 pool.12:
 	.word	11
 	.word	22
@@ -436,7 +437,7 @@ big.0:
 	.xword	-9000000000000000000
 	.bss
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 calls.4:
 	.zero	4
 now.2:
@@ -449,4 +450,5 @@ hist.10:
 	.zero	4000
 total.9:
 	.zero	4
+	.section	.note.GNU-stack,"",@progbits
 

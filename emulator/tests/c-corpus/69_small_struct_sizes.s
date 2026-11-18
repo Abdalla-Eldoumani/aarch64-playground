@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	mix1
@@ -1373,4 +1374,5 @@ main:
 	.byte	20
 	.zero	1
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

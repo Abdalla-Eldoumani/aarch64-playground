@@ -79,8 +79,6 @@ RULES = [
     ("cfi",          re.compile(r"^\.cfi_"),                                   "drop"),
     ("file",         re.compile(r"^\.file\b"),                                 "drop"),
     ("ident",        re.compile(r"^\.ident\b"),                                "drop"),
-    ("arch",         re.compile(r"^\.arch\b"),                                 "drop"),
-    ("note",         re.compile(r"^\.section\s+\.note\."),                     "drop"),
     ("type",         re.compile(r"^\.type\b"),                                 "drop"),
     ("size",         re.compile(r"^\.size\b"),                                 "drop"),
     ("local",        re.compile(r"^\.local\b"),                                "drop"),
@@ -89,10 +87,6 @@ RULES = [
     ("sect_text",    re.compile(r"^\.section\s+\.text"),                       ("section", ".text")),
     ("sect_data",    re.compile(r"^\.section\s+\.data"),                       ("section", ".data")),
     ("sect_bss",     re.compile(r"^\.section\s+\.bss"),                        ("section", ".bss")),
-    # gcc pins section anchors with `.set .LANCHOR0, . + 0`: a label at the current address
-    ("set_anchor",   re.compile(r"^\.(set|equ)\s+(?P<a>[^,\s]+)\s*,\s*\.\s*(\+\s*0)?\s*$"), ("replace", "{a}:")),
-    # any other `.set A, B` alias; the playground spells that `A = B`
-    ("set_alias",    re.compile(r"^\.(set|equ)\s+(?P<a>[^,\s]+)\s*,\s*(?P<b>.+)$"), ("replace", "{a} = {b}")),
     # glibc renames these through the headers (__isoc99_ on older glibc,
     # __isoc23_ from glibc 2.38); the playground knows the plain names
     ("isoc",         re.compile(r"^(?P<mn>bl)\s+__isoc(99|23)_(?P<fn>scanf|fscanf|sscanf|strtol)\b"), ("replace", "{mn} {fn}")),

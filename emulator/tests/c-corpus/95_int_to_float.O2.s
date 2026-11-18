@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -279,7 +280,7 @@ main:
 	ret
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 sv:
 	.xword	0
 	.xword	-1
@@ -376,4 +377,5 @@ fnan:
 	.word	2139095041
 	.word	-6291456
 	.word	2143289343
+	.section	.note.GNU-stack,"",@progbits
 

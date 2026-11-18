@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -50,4 +51,5 @@ main:
 .LC0:
 	.string	"raw write\n"
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

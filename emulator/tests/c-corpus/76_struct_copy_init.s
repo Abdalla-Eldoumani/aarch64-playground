@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.global	stock
 	.section .rodata
@@ -981,6 +982,7 @@ main:
 	ldr	x21, [sp, 48]
 	add	sp, sp, 672
 	ret
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

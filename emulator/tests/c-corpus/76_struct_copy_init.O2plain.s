@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -779,7 +780,7 @@ main:
 	.string	"cam"
 	.section .rodata
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 .LC0:
 	.word	0
 	.word	1
@@ -811,7 +812,7 @@ table:
 	.word	1321528399
 	.data
 	.align	3
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 knob:
 	.word	4
 	.zero	4
@@ -838,7 +839,7 @@ stock:
 	.word	1078198272
 	.bss
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 st.0:
 	.zero	16
 g33:
@@ -846,4 +847,5 @@ g33:
 	.zero	7
 zeros:
 	.zero	300
+	.section	.note.GNU-stack,"",@progbits
 

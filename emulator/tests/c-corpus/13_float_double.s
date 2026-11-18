@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	avg
@@ -267,4 +268,5 @@ main:
 .LC11:
 	.word	-266631570
 	.word	1074340345
+	.section	.note.GNU-stack,"",@progbits
 

@@ -95,6 +95,17 @@ describe("the path filter", () => {
     expect(classify(["web/lib/playground/playground-handoff.ts"]).rust).toBe(false);
   });
 
+  it("runs the Rust jobs as well as the web ones for the editor's completions", () => {
+    // stub_table.rs reads its list of library calls.
+    expect(classify(["web/lib/asm/asm-completion.ts"])).toEqual({
+      classes: ["web"],
+      ...NOTHING,
+      rust: true,
+      static: true,
+      web: true,
+    });
+  });
+
   it("runs the browser test only when the build or the wasm can change", () => {
     for (const file of [
       "emulator/Cargo.lock",

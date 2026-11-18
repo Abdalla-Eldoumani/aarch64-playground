@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.global	counter
 	.data
@@ -166,6 +167,7 @@ main:
 	.align	2
 id.0:
 	.word	100
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

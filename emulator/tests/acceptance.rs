@@ -931,3 +931,69 @@ main:
     assert_eq!(cpu.exit_code(), Some(12));
 }
 
+// ---------------------------------------------------------------------------
+// 18. the GNU as directives gcc writes: .arch, .equ/.set, .ltorg, the stack note
+// ---------------------------------------------------------------------------
+
+#[test]
+fn gnu_as_directives_assemble_and_run() {
+    // `.equ` and `.set` give the frame offsets, `.ltorg` sits in .rodata and
+    // after a `ret`, and the GNU-stack note closes the file as gcc writes it.
+    // GNU as 2.42 and ld under qemu-aarch64 print this line and exit 0.
+    let src = r#"
+        .arch   armv8-a
+        .equ    i_size, 8
+        .equ    j_size, 8
+        .equ    i_s, 16
+        .set    j_s, i_s + i_size
+        .equ    alloc, -(16 + i_size + j_size) & -16
+        .set    dealloc, -alloc
+
+        .section .rodata
+fmt:    .string "i = %ld, j = %ld, sum = %ld, msg_len = %ld\n"
+        .ltorg
+msg:    .ascii  "done\n"
+        .equ    msg_len, . - msg
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, alloc]!
+        mov     x29, sp
+        mov     x19, 30
+        str     x19, [x29, i_s]
+        mov     x20, 12
+        str     x20, [x29, j_s]
+        bl      add_pair
+        mov     x3, x0
+        ldr     x0, =fmt
+        ldr     x1, [x29, i_s]
+        ldr     x2, [x29, j_s]
+        mov     x4, msg_len
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], dealloc
+        ret
+        .ltorg
+
+add_pair:
+        ldr     x0, [x29, i_s]
+        ldr     x1, [x29, j_s]
+        add     x0, x0, x1
+        ret
+
+        .section .note.GNU-stack,"",@progbits
+"#;
+    let mut cpu = assemble_and_run(src);
+    assert_eq!(stdout_of(&mut cpu), "i = 30, j = 12, sum = 42, msg_len = 5\n");
+    assert_eq!(cpu.exit_code(), Some(0));
+
+    // `%progbits` is the note's other spelling; GNU as takes it the same way.
+    let cpu = assemble_and_run(
+        ".text\n.balign 4\n.global main\nmain:\nmov w0, 5\nret\n\
+         .section .note.GNU-stack,\"\",%progbits\n",
+    );
+    assert_eq!(cpu.exit_code(), Some(5));
+}
+
