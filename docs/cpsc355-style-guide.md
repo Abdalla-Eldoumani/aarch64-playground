@@ -56,7 +56,9 @@ The playground reads these with the same m4 pass it has always used for
 `define`, so where that pass already differs from GNU m4 on the servers,
 it still does: an m4 word such as `dnl` or `len(` inside a `.string`, a
 label named after an m4 builtin (`dnl:`, `traceon:`), quotes nested inside
-a define's body, and a second define of a name that is already a macro
+a define's body, an unquoted macro name in a define's body (GNU m4 takes
+that macro's value when the define runs, the playground when the new
+macro is used), and a second define of a name that is already a macro
 (GNU m4 expands the name before it defines it).
 
 `ifdef`, `ifelse`, `forloop`, `changequote`, `include`, and a numbered
