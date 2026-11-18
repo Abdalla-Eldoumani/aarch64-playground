@@ -7,7 +7,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import type { ReactNode } from "react";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeMemoryMap } from "@/lib/emulator/memory-map";
 
 const nodeRequire = createRequire(import.meta.url);
@@ -35,6 +35,15 @@ vi.mock("@/lib/emulator/emulator", async (importOriginal) => {
 // textarea that takes the focus the way Monaco does.
 vi.mock("@/components/playground/lazy-editor", async () => ({
   Editor: (await import("@/components/playground/Editor")).Editor,
+}));
+// The surface and the terminal pane themselves, not their dynamic() wrappers,
+// which load only on their first render and so leave a case run alone waiting.
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
+}));
+vi.mock("@/components/playground/lazy-panels", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/playground/lazy-panels")>()),
+  TerminalPane: (await import("@/components/panels/TerminalPane")).TerminalPane,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
@@ -166,11 +175,6 @@ const pane = () => screen.getByRole("application", { name: "shell terminal" });
 const exits = () => xterm.writes.filter((w) => w.includes("[no exit")).length;
 
 const realMatchMedia = window.matchMedia;
-
-beforeAll(async () => {
-  await import("@/components/playground/FullChromeSurface");
-  await import("@/components/panels/TerminalPane");
-});
 
 beforeEach(() => {
   window.localStorage.setItem("aarch64-playground:backend", "main");
