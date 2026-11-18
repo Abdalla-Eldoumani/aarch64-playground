@@ -37,9 +37,9 @@
 //! so do a builtin GNU m4 runs bare (divert, dnl and the like) as a
 //! define's unquoted name, and a comment whose text GNU m4 carries past its
 //! line; any other program keeps the output it had. The new forms go
-//! through the same pass as define, so its other differences from GNU m4
-//! (an m4 word in a string, a label named after a builtin, quotes nested in
-//! a body, a define of a name already defined) stay.
+//! through define's pass, so its other differences from GNU m4 (an m4 word
+//! in a string, a label named after a builtin, quotes nested in a body, a
+//! body's unquoted macro expanded at use, a define of a defined name) stay.
 
 use std::collections::HashMap;
 
