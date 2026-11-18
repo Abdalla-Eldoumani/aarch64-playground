@@ -405,6 +405,7 @@ export function useEmulator(): EmulatorState {
     return () => {
       cancelled = true;
       unsubscribe();
+      backend.dispose();
     };
     // applySnapshot depends on codeBase but we want this to run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps

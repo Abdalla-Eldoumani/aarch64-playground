@@ -141,6 +141,18 @@ describe("MainThreadBackend pause parity", () => {
     expect(runResult.steps_executed).toBeLessThan(1_000_000);
   });
 
+  test("dispose stops a run in progress at its next chunk", async () => {
+    setPref("main");
+    const backend = pickBackend()!;
+    await backend.init();
+    const run = backend.runUntilBreak(1_000_000);
+    backend.dispose();
+    const { runResult } = await run;
+    // One 10k chunk ran before the loop's first yield saw the dispose.
+    expect(runResult.steps_executed).toBe(10_000);
+    expect(runResult.cancelled).toBe(true);
+  });
+
   test("a fresh run clears the previous pause", async () => {
     setPref("main");
     const backend = pickBackend()!;
