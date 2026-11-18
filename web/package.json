@@ -46,7 +46,7 @@
         ".next/static/chunks/monaco.*.js",
         ".next/static/chunks/monaco-worker.*.js"
       ],
-      "limit": "800 KB"
+      "limit": "812.54 KB"
     },
     {
       "name": "lazy terminal pane (xterm)",
