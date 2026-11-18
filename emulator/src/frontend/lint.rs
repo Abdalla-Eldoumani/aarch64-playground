@@ -660,6 +660,27 @@ mod tests {
     }
 
     #[test]
+    fn a_call_on_a_labelled_line_still_starts_a_function() {
+        // `again: bl helper` is the only call, so helper is a function only
+        // if the scan reads past the label; its 24-byte push then warns.
+        let src = ".text\n\
+                   .global main\n\
+                   main:\n\
+                   stp x29, x30, [sp, -16]!\n\
+                   again: bl helper\n\
+                   ldp x29, x30, [sp], 16\n\
+                   ret\n\
+                   helper:\n\
+                   stp x29, x30, [sp, -24]!\n\
+                   ldp x29, x30, [sp], 24\n\
+                   ret\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 9);
+        assert!(w[0].1.contains("pushes 24 bytes"), "{}", w[0].1);
+    }
+
+    #[test]
     fn macro_name_inside_a_string_warns_with_the_server_behavior() {
         let src = "define(register, w19)\n\
                    .data\n\
