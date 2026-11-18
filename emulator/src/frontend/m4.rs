@@ -1859,14 +1859,17 @@ mod tests {
     fn an_unquoted_builtin_name_in_a_quoted_define_is_refused() {
         // On a line with quotes, GNU m4 1.4.19 runs an unquoted divert,
         // changecom, changequote or dnl among a define's arguments before
-        // the define sees it; the playground refuses that. Quoted, the name
-        // is the program's own macro.
+        // the define sees it; the playground refuses that in a program that
+        // uses dnl, divert, changecom or quotes. Quoted, the name is the
+        // program's own macro.
         for name in ["divert", "changecom", "changequote", "dnl"] {
             let refusal = format!("unsupported m4 construct: define({name}) with the name unquoted");
-            rejects(expand(&format!("define({name}, `x')\n")), &refusal);
+            rejects(expand(&format!("define({name}, `x')\ndefine(a, x1)dnl\n")), &refusal);
         }
         assert_eq!(exp("define( `divert', `nop')\ndivert(-1)\n").text, "\nnop");
-        // A backtick only in a comment leaves the line as it runs today.
+        // Any other program builds as it does today: a quoted define is no
+        // new form, nor is a backtick only in a comment.
+        assert_eq!(exp("define(dnl, `x19')\nmov dnl, 1\n").text, "\nmov x19, 1");
         assert_eq!(exp("define(divert, nop) // it`s\ndivert\n").text, "\nnop");
     }
 
@@ -1896,8 +1899,11 @@ mod tests {
         for comment in ["// use `n' here", "// n is the count", "// printf(fmt here", "// divert here", "// see # dnl here"] {
             assert!(expand(&format!("{new}mov x0, 1 {comment}\nmov x1, 2\n")).is_ok(), "{comment}");
         }
-        // A program without those forms keeps today's output.
+        // A program without those forms keeps today's output; a quoted
+        // define, which the playground took before, is none of them.
         assert_eq!(exp("define(n, 4)\nmov x0, 1 // dnl here\nmov x1, 2\n").text, "\nmov x0, 1 \nmov x1, 2");
+        let quoted_define = "define(`two', `add x0, x0, 1\n  add x0, x0, 2')\ntwo // two adds, dnl\n";
+        assert_eq!(exp(quoted_define).text, "\nadd x0, x0, 1\n  add x0, x0, 2 ");
     }
 
     #[test]
