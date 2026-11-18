@@ -278,6 +278,11 @@ pub(super) fn encode_dp(ops: &[&str], op_bit: u8, s_bit: u8, ln: usize) -> Resul
                     "beside sp, add and sub work on x registers: write the destination and first source as x registers",
                 );
             }
+            // Register 31 is sp in this form, so a written xzr would mean sp;
+            // only the flag-setting forms keep xzr as their destination (cmp, cmn).
+            if (rn == 31 && !rn_is_sp) || (rd == 31 && !rd_is_sp && s_bit == 0) {
+                return asm_err(ln, "xzr cannot stand beside sp here: in this form register 31 is sp");
+            }
             if shift_bits != 0 {
                 return asm_err(
                     ln,
