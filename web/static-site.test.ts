@@ -46,7 +46,7 @@ const BANNED: [RegExp, string, (file: string) => boolean][] = [
   [/from\s+["']next\/(headers|server)["']/, "a request-time API renders the route per request: read the URL in the browser instead", everywhere],
   [
     /\bsearchParams\b/,
-    "a page's searchParams prop renders the route per request: read the URL with useSearchParams() in a client component outside the page and layout files",
+    "searchParams in a page or layout file (as the page prop, it renders the route per request): read the URL with useSearchParams() in a client component outside the page and layout files",
     pageOrLayout,
   ],
 ];
