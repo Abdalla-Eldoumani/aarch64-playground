@@ -182,11 +182,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         // quoted body keeps its commas and may run over several lines.
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
             let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
-            // On a line with quotes, GNU m4 runs these builtins among a
-            // define's arguments before the define sees them, unless quoted;
-            // refused below once the program uses the new forms.
             let quoted = raw[raw.find('(').map_or(0, |i| i + 1)..].trim_start().starts_with('`');
-            if !quoted && without_comment.contains('`') && ["divert", "changecom", "changequote", "dnl"].contains(&name.as_str()) {
+            if !quoted && bare_builtin(&name) {
                 unquoted_name.get_or_insert((line_num, name.clone()));
             }
             define_events.push((idx, name, Some(body)));
@@ -215,6 +212,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             new_forms |= kw.starts_with("if") || kw == "forloop";
         }
         if let Some((name, body, (text, joins))) = parse_define(trimmed) {
+            if bare_builtin(&name) {
+                unquoted_name.get_or_insert((line_num, name.clone()));
+            }
             define_events.push((idx, name, Some(body)));
             stripped.push((idx, text, joins));
             continue;
@@ -454,11 +454,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             let line = idx + 1;
             // A line a block comment touches is read from its `/*`, or whole.
             let start = if w != raw { w.find("/*").unwrap_or(0) } else if let Some(at) = comment_start(raw) { at } else { continue };
-            // GNU m4's own comment, opened earlier on the line, covers it.
-            if expanded.comment_at(line).is_some_and(|o| w[..start].contains(o)) {
-                continue;
-            }
-            if let Some(token) = escapes(&w[start..], &expanded, line) {
+            if let Some(token) = escapes(w, start, &expanded, line, 0) {
                 return Err(unsupported(line, &format!("{token} in a comment")));
             }
         }
@@ -491,11 +487,22 @@ const GNU_BUILTINS: &str = "__file__ __gnu__ __line__ __program__ __unix__ built
     include incr index indir len m4exit m4wrap maketemp mkstemp patsubst popdef pushdef regexp shift sinclude \
     substr syscmd sysval traceoff traceon translit undefine undivert";
 
-/// The first thing in comment text that GNU m4 carries past the comment's
-/// line (each checked against GNU m4 1.4.19): an unclosed quote; dnl,
-/// changecom or m4exit; a builtin or macro called with `(`; or a macro whose
-/// body spans lines. GNU m4's own comment opener ends the search.
-fn escapes<'a>(text: &'a str, expanded: &Expanded, line: usize) -> Option<&'a str> {
+/// GNU m4 1.4.19's builtins that run with no arguments, so that, named
+/// unquoted as define's first argument, they run before define sees them
+/// (each checked with GNU m4 1.4.19).
+fn bare_builtin(name: &str) -> bool {
+    "__file__ __gnu__ __line__ __program__ __unix__ changecom changequote debugfile debugmode divert divnum dnl \
+     dumpdef m4exit sysval traceoff traceon undivert"
+        .split(' ')
+        .any(|n| n == name)
+}
+
+/// The first thing GNU m4 carries past the comment's line in `text` from
+/// byte `from` on (each checked against GNU m4 1.4.19): an unclosed quote;
+/// dnl, changecom or m4exit; a builtin or macro called with `(`; or a macro
+/// whose expansion spans lines or reaches one of these. GNU m4's own
+/// comment opener, outside its quotes, ends the search.
+fn escapes<'a>(text: &'a str, from: usize, expanded: &Expanded, line: usize, depth: usize) -> Option<&'a str> {
     let b = text.as_bytes();
     let opener = expanded.comment_at(line);
     let mut i = 0;
@@ -506,7 +513,7 @@ fn escapes<'a>(text: &'a str, expanded: &Expanded, line: usize) -> Option<&'a st
         if b[i] == b'`' {
             match quote_end(&b[i..]) {
                 Some(n) => i += n,
-                None => return Some("`"),
+                None => return (i >= from).then_some("`"),
             }
             continue;
         }
@@ -518,12 +525,20 @@ fn escapes<'a>(text: &'a str, expanded: &Expanded, line: usize) -> Option<&'a st
         while i < b.len() && is_id_continue_byte(b[i]) {
             i += 1;
         }
+        if start < from {
+            continue;
+        }
         let name = &text[start..i];
         let body = expanded.define_body_at(name, line);
         if b.get(i) == Some(&b'(') && (body.is_some() || GNU_BUILTINS.split(' ').any(|n| n == name)) {
             return Some(&text[start..=i]);
         }
-        if matches!(name, "dnl" | "changecom" | "m4exit") || body.is_some_and(|body| body.contains('\n')) {
+        // A bare macro expands where it stands, and GNU m4 reads its text
+        // again; a chain past the recursion cap never settles there either.
+        let reaches = body.is_some_and(|body| {
+            body.contains('\n') || depth == MAX_RECURSION || escapes(body, 0, expanded, line, depth + 1).is_some()
+        });
+        if matches!(name, "dnl" | "changecom" | "m4exit") || reaches {
             return Some(name);
         }
     }
