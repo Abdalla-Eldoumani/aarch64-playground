@@ -155,6 +155,30 @@ describe("WatchPanel", () => {
     ).toBeTruthy();
   });
 
+  it("reads an = name's array from the frame though the label lookup knows the name", async () => {
+    const getMemory = vi.fn((addr: number, len: number) => {
+      const out = new Uint8Array(len);
+      if (addr === FP + 24) out[0] = 0x07;
+      return out;
+    });
+    render(
+      <WatchPanel
+        registers={makeRegisters()}
+        sp="0x0000000080000000"
+        pc={0}
+        frameSlots={[{ offset: 16, name: "sum_s" }]}
+        getMemory={getMemory}
+        source={"sum_s = 16\n.text\nmain:\n"}
+        // The loaded program answers every = name with its value.
+        resolveLabel={async (name) => (name === "sum_s" ? 16 : null)}
+        program={[]}
+      />,
+    );
+    addExpression("sum_s[1]");
+    expect(await screen.findByText("0x0000000000000007")).toBeTruthy();
+    expect(getMemory).toHaveBeenCalledWith(FP + 24, 8);
+  });
+
   it("removes an expression and updates the store", () => {
     renderPanel();
     addExpression("x0");
