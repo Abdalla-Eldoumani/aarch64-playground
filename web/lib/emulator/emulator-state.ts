@@ -219,9 +219,10 @@ export interface EmulatorState {
   /** Standalone m4 pass for the terminal; null when the WASM predates it. */
   m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   /** Address-based breakpoint setter, used by `gdb b <label>` once the
-   *  label resolves. The line-based `toggleBreakpoint` stays the
-   *  primary path for the gutter UI. */
-  setBreakpointAddress: (addr: number) => Promise<void>;
+   *  label resolves; with the label, the editor's next assemble arms it
+   *  again. The line-based `toggleBreakpoint` stays the primary path for
+   *  the gutter UI. */
+  setBreakpointAddress: (addr: number, label?: string) => Promise<void>;
   clearBreakpointAddress: (addr: number) => Promise<void>;
   /** Rebuild a bookmark: assemble its source and args, queue its stdin, and
    *  step to `stepCount`. `success` is false when the source no longer
