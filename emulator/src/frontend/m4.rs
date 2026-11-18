@@ -284,7 +284,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut discard = false;
     let mut comment_events: Vec<(usize, Option<String>)> = Vec::new();
     let mut quote_lines: Vec<usize> = Vec::new();
-    for (idx, line, joins) in &stripped {
+    for (k, (idx, line, joins)) in stripped.iter().enumerate() {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
             if *event_idx > idx {
@@ -355,10 +355,14 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // ones, define, undefine and dnl lines (pass 1 left them blank)
             // with no such comment before a `dnl`, and comments m4 itself
             // opens. An m4 quote's `'` hides a comment from strip_comment, so
-            // any `//` or `;` counts.
-            let (raw, written) = (lines[idx], written[idx]);
-            let blank = line.trim().is_empty() && written == raw && (*joins || !(raw.contains("//") || raw.contains(';')));
-            if !blank && !comment.is_some_and(|c| written.trim_start().starts_with(c)) {
+            // any `//` or `;` counts, on every line a quoted define spans.
+            let end = stripped.get(k + 1).map_or(lines.len(), |next| next.0);
+            let blank = line.trim().is_empty()
+                && (idx..end).all(|j| {
+                    let raw = lines[j];
+                    written[j] == raw && (*joins || !(raw.contains("//") || raw.contains(';')))
+                });
+            if !blank && !comment.is_some_and(|c| written[idx].trim_start().starts_with(c)) {
                 return Err(unsupported(line_num, "text or a comment under divert(-1)"));
             }
             *joins
