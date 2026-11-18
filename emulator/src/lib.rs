@@ -59,15 +59,19 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
     // same as `bl printf`. A `bl` to any stub a program calls needs the
     // hosted pipeline.
-    let words: Vec<&str> = lower.split_whitespace().collect();
-    let normalized = words.join(" ");
-    let defines = |name: &str| words.iter().any(|w| w.strip_prefix(name).is_some_and(|rest| rest.starts_with(':')));
-    hosted::STUBS.iter().enumerate().filter(|(_, stub)| stub.callable).any(|(row, stub)| {
-        if row < hosted::ROWS_DETECTED_ANYWHERE {
-            normalized.contains(&format!("bl {}", stub.name))
-        } else {
-            words.windows(2).any(|pair| pair == ["bl", stub.name]) && !defines(stub.name)
-        }
+    let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
+    let (earlier, later) = hosted::STUBS.split_at(hosted::ROWS_DETECTED_ANYWHERE);
+    if earlier.iter().any(|stub| stub.callable && normalized.contains(&format!("bl {}", stub.name))) {
+        return true;
+    }
+    // A later row reads only what both assemblers read as code, m4's output
+    // with every comment form gone, and counts a whole `bl <name>` whose name
+    // the source does not define. Text m4 refuses is refused on either path.
+    let code = crate::frontend::m4::expand(source).map(|e| e.text.to_lowercase()).unwrap_or_default();
+    let words: Vec<&str> = code.split_whitespace().collect();
+    later.iter().filter(|stub| stub.callable).any(|stub| {
+        words.windows(2).any(|pair| pair == ["bl", stub.name])
+            && !words.iter().any(|w| w.strip_prefix(stub.name).is_some_and(|rest| rest.starts_with(':')))
     })
 }
 
