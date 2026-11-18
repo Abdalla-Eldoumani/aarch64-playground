@@ -7,6 +7,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 type KeyHandler = (e: { key: string; domEvent: KeyboardEvent }) => void;
 type DataHandler = (data: string) => void;
 type CustomKeyHandler = (e: KeyboardEvent) => boolean;
+type ResizeHandler = (size: { cols: number; rows: number }) => void;
 const instances = vi.hoisted(
   () =>
     [] as Array<{
@@ -16,6 +17,9 @@ const instances = vi.hoisted(
       keyCb: KeyHandler | null;
       dataCb: DataHandler | null;
       customKeyCb: CustomKeyHandler | null;
+      resizeCb: ResizeHandler | null;
+      cols: number;
+      rows: number;
       textarea: HTMLTextAreaElement;
       options: { theme?: { background?: string }; fontSize?: number };
     }>,
@@ -25,9 +29,13 @@ vi.mock("@xterm/xterm", () => ({
     writes: string[] = [];
     dispose = vi.fn();
     blur = vi.fn();
+    focus = vi.fn();
     keyCb: KeyHandler | null = null;
     dataCb: DataHandler | null = null;
     customKeyCb: CustomKeyHandler | null = null;
+    resizeCb: ResizeHandler | null = null;
+    cols = 80;
+    rows = 24;
     textarea = document.createElement("textarea");
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown> = {}) {
@@ -54,6 +62,10 @@ vi.mock("@xterm/xterm", () => ({
     }
     onData(cb: DataHandler) {
       this.dataCb = cb;
+      return { dispose: vi.fn() };
+    }
+    onResize(cb: ResizeHandler) {
+      this.resizeCb = cb;
       return { dispose: vi.fn() };
     }
   },

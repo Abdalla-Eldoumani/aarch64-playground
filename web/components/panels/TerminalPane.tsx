@@ -77,9 +77,13 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     write: (text: string) => termRef.current?.write(text),
     setForeground: (fg: TerminalForegroundProgram | null) => {
       foregroundRef.current = fg;
+      const t = termRef.current;
+      if (!fg || !t) return;
       // A program taking the pane over should also take the keyboard:
       // without focus its first frames render but keys go nowhere.
-      if (fg) termRef.current?.focus();
+      t.focus();
+      // And it learns the pane's size now; onResize below sends each change.
+      fg.resize(t.cols, t.rows);
     },
     clear: () => {
       // reset() wipes scrollback and terminal state (SGR included),
@@ -272,6 +276,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       }
     };
     const sub = term.onKey(handleKey);
+    const resizeSub = term.onResize(({ cols, rows }) => foregroundRef.current?.resize(cols, rows));
 
     // Paste support (mobile keyboards, clipboard).
     const pasteSub = term.onData((data) => {
@@ -338,6 +343,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
 
     return () => {
       sub.dispose();
+      resizeSub.dispose();
       pasteSub.dispose();
       ro.disconnect();
       themeObserver.disconnect();
