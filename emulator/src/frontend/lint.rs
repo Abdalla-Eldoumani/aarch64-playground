@@ -145,6 +145,7 @@ fn scan_line_for_hygiene(
     let mut in_string = false;
     let mut in_char = false;
     let mut after_hash = false;
+    let hash_comments = expanded.comment_at(line) == Some("#");
     while i < bytes.len() {
         let b = bytes[i];
         match b {
@@ -169,7 +170,7 @@ fn scan_line_for_hygiene(
             }
             b'"' if !in_char => in_string = !in_string,
             b'\'' if !in_string => in_char = !in_char,
-            b'#' if !in_string && !in_char && expanded.comment_at(line) == Some("#") => after_hash = true,
+            b'#' if !in_string && !in_char && hash_comments => after_hash = true,
             _ => {}
         }
         if b.is_ascii_alphabetic() || b == b'_' {
