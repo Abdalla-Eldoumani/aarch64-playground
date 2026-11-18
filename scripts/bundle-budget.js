@@ -43,8 +43,8 @@ const ROUTES = [
     name: "playground document js (every chunk /playground loads)",
     page: "/playground/page",
     document: "playground.html",
-    // 225.94 kB brotli measured (2026-11-18).
-    limit: 226_030,
+    // 225.12 kB brotli measured (2026-10-28).
+    limit: 226_000,
   },
 ];
 
