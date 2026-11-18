@@ -2091,6 +2091,48 @@ fn the_frame_check_counts_both_registers_of_a_pair() {
     assert_eq!(frame_check(INT_PAIR), (1, 0, vec![]));
 }
 
+/// main's call to square shares line 18 with a label, and nothing else
+/// names square a function, so square's frame (line 28, 24 bytes) is read as
+/// part of main's.
+const LABEL_THEN_CALL: &str = r#"
+// main prints 5 squared; its call to square shares a line with a label,
+// and square's 24-byte frame is never rounded up to 16.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 5
+call:   bl      square
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+// square(w0 = n) -> w0 = n * n
+square:
+        stp     fp, lr, [sp, -24]!
+        mov     fp, sp
+        mul     w0, w0, w0
+        ldp     fp, lr, [sp], 24
+        ret
+"#;
+
+#[test]
+fn the_frame_check_finds_a_function_called_on_a_labelled_line() {
+    assert_eq!(frame_check(LABEL_THEN_CALL), (2, 0, vec![row(ODD_FRAME, 28, "square", 24, &[])]));
+}
+
 /// Precision over every program the site ships and the tests hold: each
 /// assembles, and no function on the pattern gets a mark.
 #[test]
