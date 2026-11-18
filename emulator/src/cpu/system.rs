@@ -241,11 +241,10 @@ impl Cpu {
         true
     }
 
-    /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
-    /// appropriate outcome to `blocked`/`exit_code` and leaves PC for the
-    /// caller to advance.
-    pub(super) fn dispatch_syscall(&mut self, number: u64) -> Result<(), EmuError> {
-        let mut ctx = HostContext {
+    /// What a libc stub or a syscall may touch, borrowed from this machine.
+    /// `record_call` lends printf or scanf the call card's record.
+    pub(crate) fn host_context(&mut self, record_call: bool) -> HostContext<'_> {
+        HostContext {
             regs: &mut self.regs,
             mem: &mut self.mem,
             stdout: &mut self.stdout,
@@ -260,9 +259,15 @@ impl Cpu {
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
             callbacks: &mut self.callbacks,
-            call: None,
-        };
-        let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
+            call: record_call.then_some(&mut self.call_scratch),
+        }
+    }
+
+    /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
+    /// appropriate outcome to `blocked`/`exit_code` and leaves PC for the
+    /// caller to advance.
+    pub(super) fn dispatch_syscall(&mut self, number: u64) -> Result<(), EmuError> {
+        let outcome = crate::hosted::syscalls::dispatch(number, &mut self.host_context(false))?;
         match outcome {
             // No syscall calls into the program, so Call never arrives here.
             HostOutcome::Continue | HostOutcome::Call(_) => {}
@@ -325,14 +330,11 @@ impl Cpu {
         }
     }
 
-    /// Dispatch a host-stub entry point at `pc`. Splits the mutable borrow
-    /// of `self` so the stub can touch registers, memory, and console
+    /// Dispatch a host-stub entry point at `pc` and apply its outcome to
+    /// pc, `blocked`, `exit_code` and the call stack. Splits the mutable
+    /// borrow of `self` so the stub can touch registers, memory, and console
     /// buffers without racing the `HostTable` itself (which is only read).
-    pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<StepResult, EmuError> {
-        // Snapshot registers so the change highlighter still works across a
-        // host call.
-        let snapshot = self.regs.snapshot();
-        let fpr_snapshot = self.regs.snapshot_fpr();
+    pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<(), EmuError> {
         // The table is read-only during dispatch; split the borrow by
         // temporarily taking the entries, dispatching, then restoring.
         // qsort's comparator returns to the stub it was called from.
@@ -345,34 +347,15 @@ impl Cpu {
         };
         self.call_scratch.began = false;
         let table = std::mem::take(&mut self.host);
-        let mut ctx = HostContext {
-            regs: &mut self.regs,
-            mem: &mut self.mem,
-            stdout: &mut self.stdout,
-            stderr: &mut self.stderr,
-            stdin: &mut self.stdin,
-            stdin_closed: self.stdin_closed,
-            vfs: &mut self.vfs,
-            open_files: &mut self.open_files,
-            next_fd: &mut self.next_fd,
-            rand_state: &mut self.rand_state,
-            term: &mut self.term,
-            heap: &mut self.heap,
-            strtok_save: &mut self.strtok_save,
-            callbacks: &mut self.callbacks,
-            call: (kind != 0).then_some(&mut self.call_scratch),
-        };
         let outcome = table
-            .dispatch(pc, &mut ctx)
+            .dispatch(pc, &mut self.host_context(kind != 0))
             .expect("dispatch_host_stub called with non-host pc");
         self.host = table;
         // A call waiting on input runs again from the start once it comes.
         if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
             self.keep_call(kind, outcome.is_err());
         }
-        let host_outcome = outcome?;
-
-        match host_outcome {
+        match outcome? {
             HostOutcome::Continue => {
                 self.clobber_after_call(pc);
                 // Return to caller: pc = lr.
@@ -385,8 +368,7 @@ impl Cpu {
                 self.blocked = true;
             }
             HostOutcome::Sleep(ns) => {
-                // No libc stub returns Sleep, but the arm stays correct: a
-                // sleeping stub returns to its caller like Continue.
+                // usleep: the pause, then a return to the caller like Continue.
                 self.apply_sleep(ns);
                 self.clobber_after_call(pc);
                 let lr = self.regs.read_gpr(30, true);
@@ -406,35 +388,7 @@ impl Cpu {
                 }
             }
         }
-
-        let current = self.regs.snapshot();
-        self.changed_regs.clear();
-        for i in 0..32 {
-            if snapshot[i] != current[i] {
-                self.changed_regs.push(i as u8);
-            }
-        }
-        let fpr_current = self.regs.snapshot_fpr();
-        self.changed_fprs.clear();
-        for i in 0..32 {
-            if fpr_snapshot[i] != fpr_current[i] {
-                self.changed_fprs.push(i as u8);
-            }
-        }
-
-        let result_outcome = match host_outcome {
-            HostOutcome::Continue | HostOutcome::Call(_) => StepOutcome::Advance,
-            HostOutcome::NeedInput => StepOutcome::WaitingForInput,
-            HostOutcome::Sleep(ns) => StepOutcome::Sleeping(ns.min(MAX_SLEEP_NS)),
-            HostOutcome::Exited(code) => StepOutcome::Exited(code),
-        };
-
-        Ok(StepResult {
-            pc: self.regs.read_pc(),
-            halted: self.halted,
-            error: None,
-            outcome: result_outcome,
-        })
+        Ok(())
     }
 
     /// Clear accumulated stdout and stderr without resetting the rest of

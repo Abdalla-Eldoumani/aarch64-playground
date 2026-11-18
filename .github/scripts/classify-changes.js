@@ -26,13 +26,18 @@ const RULES = [
 const WASM_INPUTS = /^emulator\/(src\/|Cargo\.toml$|Cargo\.lock$)/;
 
 // Files outside emulator/ that the Rust tests read; the web tests' programs
-// are shared with the call card's.
+// are shared with the call card's, and the wasm_codes test reads call-cards,
+// stack-frames and clobber-note.
 const READ_BY_RUST =
-  /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/|web\/lib\/test\/emulator\/fixtures\/)/;
+  /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/|web\/lib\/test\/emulator\/fixtures\/|web\/lib\/emulator\/(call-cards|stack-frames|clobber-note)\.ts$)/;
 
 // Emulator test data the web tests read: error-explain's server transcripts
 // and the dense -O2 program share.test measures a link with.
 const READ_BY_WEB = /^emulator\/tests\/(error-parity\/|c-corpus\/78_switch_dense\.O2plain\.s$)/;
+
+// The example catalog, also read by the Rust tests: frames.rs and
+// filler_examples.rs take each multi-file example's helper list from it.
+const CATALOG_READ_BY_RUST = /^web\/lib\/playground\/example-catalog\.ts$/;
 
 // What the production build is made from besides the emulator: the manifests,
 // the build and deploy config, and the browser smoke test itself with the
@@ -59,7 +64,7 @@ function classify(files) {
   return {
     classes: [...classes].sort(),
     // cargo test and the three corpus shards
-    rust: everything || classes.has("emulator") || any(READ_BY_RUST),
+    rust: everything || classes.has("emulator") || any(READ_BY_RUST) || any(CATALOG_READ_BY_RUST),
     // lint, typecheck, the dependency audit, and the toolchain pin check (all
     // a vercel-build.sh change needs); typecheck reads the wasm bundles' types
     static: everything || classes.has("web") || wasm,
