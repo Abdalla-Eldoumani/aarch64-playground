@@ -1973,19 +1973,40 @@ describe("useEmulator breakpoints", () => {
     expect(result.current.droppedBreakpoints).toEqual([]);
   });
 
-  it("forwards address-based breakpoint set and clear to the backend", async () => {
+  it("numbers gdb b's breakpoints as gdb does and deletes them through the backend", async () => {
+    // The fake resolves every label to CODE_BASE.
     const fake = makeBackend();
     const { result } = await mountLoaded(fake);
 
+    let numbers: number[] = [];
     await act(async () => {
-      await result.current.setBreakpointAddress(0x401234);
+      numbers = [await result.current.setBreakpointAddress(CODE_BASE, "loop")];
+      numbers.push(await result.current.setBreakpointAddress(CODE_BASE, "done"));
     });
-    expect(fake.calls.setBreakpoint).toEqual([0x401234]);
+    expect(numbers).toEqual([1, 2]);
+    expect(fake.calls.setBreakpoint).toEqual([CODE_BASE, CODE_BASE]);
+    expect(result.current.gdbBreakpoints()).toEqual([
+      [1, "loop"],
+      [2, "done"],
+    ]);
 
+    // Breakpoint 2 still names the instruction, so the CPU keeps its stop.
     await act(async () => {
-      await result.current.clearBreakpointAddress(0x401234);
+      expect(await result.current.deleteBreakpoints(1)).toBe(true);
     });
-    expect(fake.calls.clearBreakpoint).toEqual([0x401234]);
+    expect(fake.calls.clearBreakpoint).toEqual([]);
+    await act(async () => {
+      expect(await result.current.deleteBreakpoints(1)).toBe(false);
+      expect(await result.current.deleteBreakpoints()).toBe(true);
+    });
+    expect(fake.calls.clearBreakpoint).toEqual([CODE_BASE]);
+    expect(result.current.gdbBreakpoints()).toEqual([]);
+
+    // gdb never gives a number twice.
+    await act(async () => {
+      numbers = [await result.current.setBreakpointAddress(CODE_BASE, "loop")];
+    });
+    expect(numbers).toEqual([3]);
   });
 });
 
