@@ -954,15 +954,15 @@ mod tests {
 
     #[test]
     fn percent_s_with_a_bad_pointer_names_the_conversion() {
-        // A null (unmapped) pointer must not surface as a bare memory
-        // fault; the message names printf %s, the pointer, and the remedy.
+        // An unmapped pointer must not surface as a bare memory fault; the
+        // message names printf %s, the pointer, and the remedy.
         let err = try_call("%s", |regs, _| {
-            regs.write_gpr(1, true, 0);
+            regs.write_gpr(1, true, 0x10);
         })
         .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("printf %s"), "was: {msg}");
-        assert!(msg.contains("0x0"), "was: {msg}");
+        assert!(msg.contains("0x10,"), "was: {msg}");
         assert!(msg.contains("ldr"), "was: {msg}");
     }
 
