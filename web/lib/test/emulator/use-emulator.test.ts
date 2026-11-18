@@ -596,6 +596,19 @@ describe("useEmulator load + snapshot application", () => {
       [0x2000, 8],
     ]);
   });
+
+  it("drops the dirty ranges when a snapshot writes nothing", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      fake.fire({ dirtyAddrs: [0x1000, 4] });
+    });
+    expect(result.current.dirtyAddrs).toEqual([[0x1000, 4]]);
+    act(() => {
+      fake.fire();
+    });
+    expect(result.current.dirtyAddrs).toEqual([]);
+  });
 });
 
 describe("useEmulator assemble", () => {
