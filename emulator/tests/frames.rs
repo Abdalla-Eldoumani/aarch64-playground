@@ -1994,6 +1994,103 @@ fn the_frame_check_is_silent_on_a_correct_frame() {
     assert_eq!(frame_check(WELL_LAID_OUT), (2, 0, vec![]));
 }
 
+/// A 32-byte frame covers fp + 0 to 31; the pair store at 24 (line 18)
+/// writes x19 to 24 to 31 and x20 to 32 to 39, past the frame's end.
+const PAIR_PAST_THE_FRAME: &str = r#"
+// Saves x19 and x20 with one pair store whose second register lands past
+// the end of main's 32-byte frame.
+
+define(fp, x29)
+define(lr, x30)
+
+pair_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, pair_s]
+        mov     w0, 0
+        ldp     x19, x20, [fp, pair_s]
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// The pair store at 16 covers 16 to 31, so count_s (24 to 27, line 21)
+/// lands on the saved x20.
+const PAIR_UNDER_A_COUNT: &str = r#"
+// Saves x19 and x20 with one pair store at 16, then keeps a count at 24,
+// inside the pair's second register.
+
+define(fp, x29)
+define(lr, x30)
+
+pair_s = 16
+count_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, pair_s]
+        mov     w9, 3
+        str     w9, [fp, count_s]
+        ldp     x19, x20, [fp, pair_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Two ints stored with one pair at 20: 8 bytes at an offset that is not a
+/// multiple of 8, but each int is 4 bytes, so nothing is off its size.
+const INT_PAIR: &str = r#"
+// Keeps two ints in main's frame, stored with one pair store.
+
+define(fp, x29)
+define(lr, x30)
+
+ints_s = 20
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 1
+        mov     w10, 2
+        stp     w9, w10, [fp, ints_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_counts_both_registers_of_a_pair() {
+    assert_eq!(
+        frame_check(PAIR_PAST_THE_FRAME),
+        (1, 0, vec![row(OUTSIDE, 18, "main", 32, &[("pair_s", 24, 16)])])
+    );
+    assert_eq!(
+        frame_check(PAIR_UNDER_A_COUNT),
+        (1, 0, vec![row(OVERLAP, 21, "main", 32, &[("pair_s", 16, 16), ("count_s", 24, 4)])])
+    );
+    // The multiple-of-8 rule is about one 8-byte value, which a pair of ints
+    // is not; an x pair cannot sit off a multiple of 8 at all, since its
+    // offset is encoded in units of 8.
+    assert_eq!(frame_check(INT_PAIR), (1, 0, vec![]));
+}
+
 /// Precision over every program the site ships and the tests hold: each
 /// assembles, and no function on the pattern gets a mark.
 #[test]
