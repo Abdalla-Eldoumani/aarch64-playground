@@ -54,15 +54,142 @@ pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
     regs.read_gpr(0, false) as i32 as i64
 }
 
-/// The stubs whose result comes back in d0. Every stub on neither list
-/// answers an int, a size, or a pointer in x0: the one caller-saved
-/// register a call's return leaves meaningful.
-pub const RETURNS_IN_D0: &[&str] = &[
-    "atof", "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor", "fabs", "fmod",
+/// Where a stub's result comes back: the one caller-saved register the
+/// clobber after the call leaves alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Returns {
+    /// An int, a size or a pointer.
+    X0,
+    /// A double.
+    D0,
+    /// C's `void`.
+    Nothing,
+}
+
+/// One stub: the name `bl` spells, the function, where its result comes
+/// back, the call card it records (`CALL_PRINTF`, `CALL_SCANF`, or 0 for
+/// none), and whether a program calls it by name, which the runtime's own
+/// two entries are not.
+#[derive(Debug, Clone, Copy)]
+pub struct Stub {
+    pub name: &'static str,
+    pub func: HostFn,
+    pub returns: Returns,
+    pub card: u8,
+    pub callable: bool,
+}
+
+const fn x0(name: &'static str, func: HostFn) -> Stub {
+    Stub { name, func, returns: Returns::X0, card: 0, callable: true }
+}
+
+const fn d0(name: &'static str, func: HostFn) -> Stub {
+    Stub { returns: Returns::D0, ..x0(name, func) }
+}
+
+const fn void(name: &'static str, func: HostFn) -> Stub {
+    Stub { returns: Returns::Nothing, ..x0(name, func) }
+}
+
+/// Every stub, in slot order: a stub's address is `HOST_STUB_BASE` plus its
+/// row times `HOST_STUB_STRIDE`, so a new stub goes last and no other
+/// address moves. The linker seeds every name as a symbol.
+pub const STUBS: &[Stub] = &[
+    // Slot 0 does nothing, so every stub a program calls has a nonzero
+    // address.
+    Stub { callable: false, ..x0("__host_noop", noop) },
+    Stub { card: CALL_PRINTF, ..x0("printf", printf::printf) },
+    Stub { card: CALL_SCANF, ..x0("scanf", scanf::scanf) },
+    x0("puts", libc::puts),
+    x0("putchar", libc::putchar),
+    x0("getchar", libc::getchar),
+    x0("sprintf", printf::sprintf),
+    x0("snprintf", printf::snprintf),
+    x0("strlen", libc::strlen),
+    x0("strcmp", libc::strcmp),
+    x0("strncmp", libc::strncmp),
+    x0("strcpy", libc::strcpy),
+    x0("strncpy", libc::strncpy),
+    x0("strcat", libc::strcat),
+    x0("strchr", libc::strchr),
+    x0("strstr", libc::strstr),
+    x0("strtok", libc::strtok),
+    x0("memset", libc::memset),
+    x0("memcpy", libc::memcpy),
+    x0("memmove", libc::memmove),
+    x0("memcmp", libc::memcmp),
+    x0("exit", libc::exit),
+    d0("atof", libc::atof),
+    x0("atoi", libc::atoi),
+    x0("strtol", libc::strtol),
+    x0("abs", libc::abs),
+    x0("labs", libc::labs),
+    x0("rand", libc::rand),
+    void("srand", libc::srand),
+    x0("time", libc::time),
+    x0("malloc", heap::malloc),
+    x0("calloc", heap::calloc),
+    x0("realloc", heap::realloc),
+    void("free", heap::free),
+    x0("usleep", libc::usleep),
+    x0("fflush", libc::fflush),
+    // The C-locale character classes and case conversions, both ways a
+    // program reaches them: the functions, and the three tables the
+    // __ctype_*_loc pointers address.
+    x0("isdigit", ctype::isdigit),
+    x0("isalpha", ctype::isalpha),
+    x0("isspace", ctype::isspace),
+    x0("toupper", ctype::toupper),
+    x0("tolower", ctype::tolower),
+    x0("__ctype_b_loc", ctype::ctype_b_loc),
+    x0("__ctype_toupper_loc", ctype::ctype_toupper_loc),
+    x0("__ctype_tolower_loc", ctype::ctype_tolower_loc),
+    // FILE*-level stdio over the VFS; the handle scheme lives in stdio.rs.
+    x0("fopen", stdio::fopen),
+    x0("fprintf", stdio::fprintf),
+    x0("fgets", stdio::fgets),
+    x0("fputs", stdio::fputs),
+    x0("fclose", stdio::fclose),
+    // What optimized code calls in place of putchar, getchar and fputs:
+    // glibc's inline putchar is putc(c, stdout).
+    x0("putc", stdio::putc),
+    x0("fputc", stdio::putc),
+    x0("getc", stdio::getc),
+    x0("fwrite", stdio::fwrite),
+    // The two calls that run the program's own comparator.
+    void("qsort", callback::qsort),
+    x0("bsearch", callback::bsearch),
+    // The libm subset: double in d0 (and d1 for the two-argument forms),
+    // double out in d0.
+    d0("sqrt", math::sqrt),
+    d0("pow", math::pow),
+    d0("sin", math::sin),
+    d0("cos", math::cos),
+    d0("tan", math::tan),
+    d0("log", math::log),
+    d0("log10", math::log10),
+    d0("exp", math::exp),
+    d0("floor", math::floor),
+    d0("fabs", math::fabs),
+    d0("fmod", math::fmod),
+    void("sincos", math::sincos),
+    // Where a `ret` from main lands: the loader puts this address in lr,
+    // and it halts with w0 as the exit status.
+    Stub { callable: false, ..x0("__main_return", libc::main_return) },
+    // The name gcc -S writes for scanf.
+    Stub { card: CALL_SCANF, ..x0("__isoc99_scanf", scanf::scanf) },
 ];
 
-/// The stubs that return nothing (C's `void`).
-pub const RETURNS_NOTHING: &[&str] = &["srand", "free", "qsort", "sincos"];
+const _: () = assert!(STUBS.len() as u64 <= HOST_STUB_COUNT, "host stub table full");
+
+/// The `__main_return` stub's address, read off `STUBS` while compiling.
+pub const MAIN_RETURN_ADDR: u64 = {
+    let mut row = 0;
+    while !matches!(STUBS[row].name.as_bytes(), b"__main_return") {
+        row += 1;
+    }
+    HOST_STUB_BASE + row as u64 * HOST_STUB_STRIDE
+};
 
 /// Context passed to each host stub. Split out so stubs can borrow what
 /// they need without holding a `&mut Cpu` (which would conflict with the
@@ -279,27 +406,25 @@ impl VarargWalker {
 
 /// Table of host stubs, indexed by symbolic name and addressable via a
 /// stable 64-bit address in the `HOST_STUB_BASE` range. The linker reads
-/// `lookup(name)` to resolve `bl printf`; the executor calls `dispatch`
+/// `lookup(name)` to resolve `bl printf`; the executor reads `stub_at`
 /// when a BL lands on a stub address.
 #[derive(Debug, Default)]
 pub struct HostTable {
-    entries: Vec<(String, HostFn)>,
+    entries: Vec<Stub>,
 }
 
 impl HostTable {
+    /// Every stub in `STUBS`, each at its slot.
     pub fn new() -> Self {
-        let mut table = HostTable::default();
-        // Reserve slot 0 for a no-op so we can prove dispatch in isolation
-        // and so later stubs get non-zero addresses.
-        table.register("__host_noop", noop);
-        table
+        HostTable { entries: STUBS.to_vec() }
     }
 
-    /// Register a named stub. Returns its synthetic entry address.
-    pub fn register(&mut self, name: &str, func: HostFn) -> u64 {
+    /// Add a stub after the others, answering in x0 with no call card.
+    /// Returns its synthetic entry address.
+    pub fn register(&mut self, name: &'static str, func: HostFn) -> u64 {
         let idx = self.entries.len() as u64;
         assert!(idx < HOST_STUB_COUNT, "host stub table full");
-        self.entries.push((name.to_string(), func));
+        self.entries.push(x0(name, func));
         HOST_STUB_BASE + idx * HOST_STUB_STRIDE
     }
 
@@ -307,7 +432,7 @@ impl HostTable {
     pub fn lookup(&self, name: &str) -> Option<u64> {
         self.entries
             .iter()
-            .position(|(n, _)| n == name)
+            .position(|stub| stub.name == name)
             .map(|i| HOST_STUB_BASE + (i as u64) * HOST_STUB_STRIDE)
     }
 
@@ -319,38 +444,27 @@ impl HostTable {
             && (address - HOST_STUB_BASE).is_multiple_of(HOST_STUB_STRIDE)
     }
 
+    /// The stub at `address`, or `None` when no entry lives there.
+    pub fn stub_at(&self, address: u64) -> Option<Stub> {
+        if !self.contains_address(address) {
+            return None;
+        }
+        let idx = ((address - HOST_STUB_BASE) / HOST_STUB_STRIDE) as usize;
+        self.entries.get(idx).copied()
+    }
+
     /// Name of the stub at `address`, or `None` when no entry lives there.
     /// The stepping UI needs the reverse of `lookup`: a pc parked on a
     /// synthetic address has to be reported as "inside printf" rather than
     /// as an instruction the student wrote.
     pub fn name_for_address(&self, address: u64) -> Option<&str> {
-        if !self.contains_address(address) {
-            return None;
-        }
-        let idx = ((address - HOST_STUB_BASE) / HOST_STUB_STRIDE) as usize;
-        self.entries.get(idx).map(|(name, _)| name.as_str())
-    }
-
-    /// Dispatch to the stub at `address`. Returns `None` when the address
-    /// is outside the table (so the caller can fall through to normal
-    /// instruction fetch) or misaligned.
-    pub fn dispatch(
-        &self,
-        address: u64,
-        ctx: &mut HostContext<'_>,
-    ) -> Option<Result<HostOutcome, EmuError>> {
-        if !self.contains_address(address) {
-            return None;
-        }
-        let idx = ((address - HOST_STUB_BASE) / HOST_STUB_STRIDE) as usize;
-        let (_, func) = &self.entries[idx];
-        Some(func(ctx))
+        self.stub_at(address).map(|stub| stub.name)
     }
 
     /// Names of every registered stub, useful for the UI's register-alias
     /// resolver and for debugging.
     pub fn names(&self) -> impl Iterator<Item = &str> {
-        self.entries.iter().map(|(n, _)| n.as_str())
+        self.entries.iter().map(|stub| stub.name)
     }
 }
 
@@ -367,6 +481,7 @@ mod tests {
     fn default_table_contains_noop_at_base_address() {
         let t = HostTable::new();
         assert_eq!(t.lookup("__host_noop"), Some(HOST_STUB_BASE));
+        assert_eq!(t.lookup("__main_return"), Some(MAIN_RETURN_ADDR));
     }
 
     #[test]
@@ -374,8 +489,9 @@ mod tests {
         let mut t = HostTable::new();
         let a = t.register("alpha", noop);
         let b = t.register("beta", noop);
-        assert_eq!(a, HOST_STUB_BASE + HOST_STUB_STRIDE);
-        assert_eq!(b, HOST_STUB_BASE + 2 * HOST_STUB_STRIDE);
+        let first = HOST_STUB_BASE + STUBS.len() as u64 * HOST_STUB_STRIDE;
+        assert_eq!(a, first);
+        assert_eq!(b, first + HOST_STUB_STRIDE);
     }
 
     #[test]
@@ -384,11 +500,11 @@ mod tests {
         assert!(t.contains_address(HOST_STUB_BASE));
         // One byte into a slot is not a valid entry point.
         assert!(!t.contains_address(HOST_STUB_BASE + 1));
-        assert!(!t.contains_address(HOST_STUB_BASE + HOST_STUB_STRIDE));
+        assert!(!t.contains_address(HOST_STUB_BASE + STUBS.len() as u64 * HOST_STUB_STRIDE));
     }
 
     #[test]
-    fn dispatch_runs_stub_and_reports_continue() {
+    fn a_registered_stub_runs_from_its_row() {
         let mut t = HostTable::new();
         fn set_x0(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             ctx.regs.write_gpr(0, true, 123);
@@ -396,30 +512,28 @@ mod tests {
         }
         let addr = t.register("set_x0", set_x0);
         let mut h = Host::new();
-        let outcome = t.dispatch(addr, &mut h.ctx()).unwrap().unwrap();
+        let stub = t.stub_at(addr).expect("a registered address");
+        let outcome = (stub.func)(&mut h.ctx()).unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
         assert_eq!(h.regs.read_gpr(0, true), 123);
     }
 
     #[test]
-    fn dispatch_returns_none_for_unregistered_address() {
+    fn stub_at_returns_none_for_unregistered_address() {
         let t = HostTable::new();
-        let mut h = Host::new();
-        let mut ctx = h.ctx();
         // Address past the end of the table.
-        assert!(t
-            .dispatch(HOST_STUB_BASE + HOST_STUB_STRIDE * 99, &mut ctx)
-            .is_none());
+        assert!(t.stub_at(HOST_STUB_BASE + HOST_STUB_STRIDE * 99).is_none());
         // Address in a completely different range.
-        assert!(t.dispatch(0x0040_0000, &mut ctx).is_none());
+        assert!(t.stub_at(0x0040_0000).is_none());
     }
 
     #[test]
     fn names_iterator_reports_all_registered_entries() {
         let mut t = HostTable::new();
-        t.register("printf", noop);
-        t.register("scanf", noop);
+        t.register("alpha", noop);
         let names: Vec<&str> = t.names().collect();
-        assert_eq!(names, vec!["__host_noop", "printf", "scanf"]);
+        assert_eq!(names.len(), STUBS.len() + 1);
+        assert_eq!(names[..2], ["__host_noop", "printf"]);
+        assert_eq!(names.last(), Some(&"alpha"));
     }
 }

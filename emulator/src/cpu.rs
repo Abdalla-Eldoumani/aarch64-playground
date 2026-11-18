@@ -11,10 +11,7 @@ use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
 use crate::frames::CallStack;
 use crate::frontend::sections::{align_padding, Item, Program};
-use crate::hosted::{
-    CALL_PRINTF, CALL_SCANF, CallRecord, HostContext, HostOutcome, HostTable, RETURNS_IN_D0,
-    RETURNS_NOTHING,
-};
+use crate::hosted::{CallRecord, HostContext, HostOutcome, HostTable, Returns, MAIN_RETURN_ADDR};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 use crate::snapshot::{SavedState, Snapshot, SnapshotRing};
@@ -426,10 +423,9 @@ pub struct Cpu {
     /// Output bytes refunded by sleeping so far, capped at
     /// MAX_REFUND_OUTPUT_BYTES per loaded program.
     refund_output_total: usize,
-    /// Table of hosted libc / syscall stubs reachable by `bl` into the
-    /// synthetic 0xFFFF_0000 range. Populated by `Cpu::new` with the
-    /// default suite of stubs; the linker reads `host.lookup(name)` to
-    /// resolve external calls.
+    /// Table of hosted libc stubs reachable by `bl` into the synthetic
+    /// 0xFFFF_0000 range: every row of `hosted::STUBS` at its slot. The
+    /// linker reads `host.lookup(name)` to resolve external calls.
     pub host: HostTable,
     /// Ring of pre-step snapshots powering `step_back`. Holds the last
     /// `SNAPSHOT_CAPACITY` frames of CPU state (registers + memory +
@@ -552,96 +548,6 @@ impl Cpu {
             last_call: CallRecord::default(),
             call_scratch: CallRecord::default(),
         };
-        // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
-        // corpus reaches for. Doing it here means the frontend linker can
-        // resolve `bl printf` / `bl scanf` / ... with no extra wiring on
-        // the JS or integration-test side.
-        cpu.host.register("printf", crate::hosted::printf::printf);
-        cpu.host.register("scanf", crate::hosted::scanf::scanf);
-        cpu.host.register("puts", crate::hosted::libc::puts);
-        cpu.host.register("putchar", crate::hosted::libc::putchar);
-        cpu.host.register("getchar", crate::hosted::libc::getchar);
-        cpu.host.register("sprintf", crate::hosted::printf::sprintf);
-        cpu.host.register("snprintf", crate::hosted::printf::snprintf);
-        cpu.host.register("strlen", crate::hosted::libc::strlen);
-        cpu.host.register("strcmp", crate::hosted::libc::strcmp);
-        cpu.host.register("strncmp", crate::hosted::libc::strncmp);
-        cpu.host.register("strcpy", crate::hosted::libc::strcpy);
-        cpu.host.register("strncpy", crate::hosted::libc::strncpy);
-        cpu.host.register("strcat", crate::hosted::libc::strcat);
-        cpu.host.register("strchr", crate::hosted::libc::strchr);
-        cpu.host.register("strstr", crate::hosted::libc::strstr);
-        cpu.host.register("strtok", crate::hosted::libc::strtok);
-        cpu.host.register("memset", crate::hosted::libc::memset);
-        cpu.host.register("memcpy", crate::hosted::libc::memcpy);
-        cpu.host.register("memmove", crate::hosted::libc::memmove);
-        cpu.host.register("memcmp", crate::hosted::libc::memcmp);
-        cpu.host.register("exit", crate::hosted::libc::exit);
-        cpu.host.register("atof", crate::hosted::libc::atof);
-        cpu.host.register("atoi", crate::hosted::libc::atoi);
-        cpu.host.register("strtol", crate::hosted::libc::strtol);
-        cpu.host.register("abs", crate::hosted::libc::abs);
-        cpu.host.register("labs", crate::hosted::libc::labs);
-        cpu.host.register("rand", crate::hosted::libc::rand);
-        cpu.host.register("srand", crate::hosted::libc::srand);
-        cpu.host.register("time", crate::hosted::libc::time);
-        cpu.host.register("malloc", crate::hosted::heap::malloc);
-        cpu.host.register("calloc", crate::hosted::heap::calloc);
-        cpu.host.register("realloc", crate::hosted::heap::realloc);
-        cpu.host.register("free", crate::hosted::heap::free);
-        cpu.host.register("usleep", crate::hosted::libc::usleep);
-        cpu.host.register("fflush", crate::hosted::libc::fflush);
-        // The C-locale character classes and case conversions, both ways
-        // a program reaches them: the functions, and the three tables the
-        // __ctype_*_loc pointers address.
-        cpu.host.register("isdigit", crate::hosted::ctype::isdigit);
-        cpu.host.register("isalpha", crate::hosted::ctype::isalpha);
-        cpu.host.register("isspace", crate::hosted::ctype::isspace);
-        cpu.host.register("toupper", crate::hosted::ctype::toupper);
-        cpu.host.register("tolower", crate::hosted::ctype::tolower);
-        cpu.host
-            .register("__ctype_b_loc", crate::hosted::ctype::ctype_b_loc);
-        cpu.host
-            .register("__ctype_toupper_loc", crate::hosted::ctype::ctype_toupper_loc);
-        cpu.host
-            .register("__ctype_tolower_loc", crate::hosted::ctype::ctype_tolower_loc);
-        // FILE*-level stdio over the VFS; the handle scheme lives in
-        // hosted/stdio.rs.
-        cpu.host.register("fopen", crate::hosted::stdio::fopen);
-        cpu.host.register("fprintf", crate::hosted::stdio::fprintf);
-        cpu.host.register("fgets", crate::hosted::stdio::fgets);
-        cpu.host.register("fputs", crate::hosted::stdio::fputs);
-        cpu.host.register("fclose", crate::hosted::stdio::fclose);
-        // What optimized code calls in place of putchar, getchar and
-        // fputs: glibc's inline putchar is putc(c, stdout).
-        cpu.host.register("putc", crate::hosted::stdio::putc);
-        cpu.host.register("fputc", crate::hosted::stdio::putc);
-        cpu.host.register("getc", crate::hosted::stdio::getc);
-        cpu.host.register("fwrite", crate::hosted::stdio::fwrite);
-        // The two calls that run the program's own comparator.
-        cpu.host.register("qsort", crate::hosted::callback::qsort);
-        cpu.host.register("bsearch", crate::hosted::callback::bsearch);
-        // The libm subset: double in d0 (and d1 for the two-argument
-        // forms), double out in d0.
-        cpu.host.register("sqrt", crate::hosted::math::sqrt);
-        cpu.host.register("pow", crate::hosted::math::pow);
-        cpu.host.register("sin", crate::hosted::math::sin);
-        cpu.host.register("cos", crate::hosted::math::cos);
-        cpu.host.register("tan", crate::hosted::math::tan);
-        cpu.host.register("log", crate::hosted::math::log);
-        cpu.host.register("log10", crate::hosted::math::log10);
-        cpu.host.register("exp", crate::hosted::math::exp);
-        cpu.host.register("floor", crate::hosted::math::floor);
-        cpu.host.register("fabs", crate::hosted::math::fabs);
-        cpu.host.register("fmod", crate::hosted::math::fmod);
-        cpu.host.register("sincos", crate::hosted::math::sincos);
-        // Sentinel used when a hosted program's `main` returns. Loader
-        // stashes this address in LR so `ret` from main halts cleanly
-        // with x0 as the exit code.
-        cpu.host.register("__main_return", crate::hosted::libc::main_return);
-        // The name gcc -S writes for scanf. Registered last so no other
-        // stub's address moves.
-        cpu.host.register("__isoc99_scanf", crate::hosted::scanf::scanf);
         cpu.regs.write_sp(STACK_BASE);
         cpu.regs.write_pc(CODE_BASE);
 
@@ -992,7 +898,7 @@ impl Cpu {
             // wrong line for an unbalanced epilogue, which has its own
             // diagnosis.
             let sp = self.regs.read_sp();
-            if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
+            if !sp.is_multiple_of(16) && pc != MAIN_RETURN_ADDR {
                 return Ok(self.halt(EmuError::SpAlignmentFault { sp, at_call: true }.to_string()));
             }
             // The changed sets are also taken before the output charge, so

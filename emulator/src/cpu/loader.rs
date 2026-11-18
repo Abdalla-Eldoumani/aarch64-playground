@@ -90,10 +90,8 @@ impl Cpu {
         self.regs.write_pc(image.entry_point);
         // Stash the `__main_return` sentinel in LR so a hosted program
         // that returns out of `main` halts cleanly instead of jumping to
-        // PC = 0. The sentinel is always registered by `Cpu::new`.
-        if let Some(ret_addr) = self.host.lookup("__main_return") {
-            self.regs.write_gpr(30, true, ret_addr);
-        }
+        // PC = 0.
+        self.regs.write_gpr(30, true, MAIN_RETURN_ADDR);
         crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
         crate::hosted::stdio::write_stdio_globals(&mut self.mem).map_err(map_write_fault)?;
         self.frames.start(image.entry_point, &self.regs.snapshot());
@@ -120,7 +118,7 @@ impl Cpu {
             // program made, the same exemption the SP-alignment check
             // makes. Naming it would report an external call for the one step
             // between main's `ret` and the halt.
-            if name == "__main_return" {
+            if pc == MAIN_RETURN_ADDR {
                 return None;
             }
             return Some(name);
