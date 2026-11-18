@@ -1299,3 +1299,24 @@ describe("autoplay", () => {
     }
   });
 });
+
+describe("the tools across the short window line", () => {
+  function setHeight(px: number): void {
+    Object.defineProperty(window, "innerHeight", { value: px, configurable: true, writable: true });
+    window.dispatchEvent(new Event("resize"));
+  }
+  afterEach(() => setHeight(768));
+
+  // A 1440x900 window zoomed to 150% is 960x600: past the short line, the
+  // header band hands its tools to the run row.
+  it("moves the same toolbar to the run row, with the focus still on it", async () => {
+    setHeight(900);
+    render(<EmbeddablePlayground chrome="full" startSource="main: ret" />);
+    const share = await screen.findByRole("button", { name: "share program" });
+    act(() => share.focus());
+    act(() => setHeight(600));
+    expect(screen.getByRole("button", { name: "open navigation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "share program" })).toBe(share);
+    expect(document.activeElement).toBe(share);
+  });
+});
