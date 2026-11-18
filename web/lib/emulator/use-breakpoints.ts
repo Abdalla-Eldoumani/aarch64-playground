@@ -11,7 +11,7 @@ export interface Breakpoints {
   toggleBreakpoint: (line: number) => void;
   remapBreakpoints: (remap: (line: number) => number | null) => void;
   clearAllBreakpoints: () => void;
-  setBreakpointAddress: (addr: number) => Promise<void>;
+  setBreakpointAddress: (addr: number, label?: string) => Promise<void>;
   clearBreakpointAddress: (addr: number) => Promise<void>;
   /** The instruction a line stands for: its own, or the next one after a
    *  label, blank or comment line; null past the last. */
@@ -21,12 +21,14 @@ export interface Breakpoints {
    * deliberately keeps its address set across an assemble, but those
    * addresses belong to the previous assembly of possibly different
    * source, so they are cleared and re-armed from the surviving lines.
+   * With `labels`, `gdb b`'s labels are looked up again and re-armed too.
    * Resolves the lines that had no instruction at or after them, in order.
    */
   rekeyAfterAssemble: (params: {
     base: number;
     source: string;
     map: LineMap;
+    labels: boolean;
   }) => Promise<number[]>;
 }
 
@@ -56,6 +58,9 @@ export function useBreakpoints({
   const linesRef = useRef<Set<number>>(new Set());
   // Which gutter LINES share each armed CPU address.
   const bpLinesByAddrRef = useRef<Map<number, Set<number>>>(new Map());
+  // The labels `gdb b` named. gdb keeps a breakpoint across a restart and
+  // sets it again by name, so a reset and assemble must not lose them.
+  const labelsRef = useRef<Set<string>>(new Set());
 
   const commit = useCallback((next: Set<number>) => {
     linesRef.current = next;
@@ -146,15 +151,17 @@ export function useBreakpoints({
    *  dots and addresses must never survive into this one. */
   const clearAllBreakpoints = useCallback(() => {
     bpLinesByAddrRef.current = new Map();
+    labelsRef.current = new Set();
     commit(new Set());
     const backend = backendRef.current;
     if (backend) void backend.clearAllBreakpoints();
   }, [backendRef, commit]);
 
   const setBreakpointAddress = useCallback(
-    async (addr: number) => {
+    async (addr: number, label?: string) => {
       const backend = backendRef.current;
       if (!backend) return;
+      if (label) labelsRef.current.add(label);
       await backend.setBreakpoint(addr);
     },
     [backendRef],
@@ -170,7 +177,7 @@ export function useBreakpoints({
   );
 
   const rekeyAfterAssemble = useCallback(
-    async ({ base, source, map }: { base: number; source: string; map: LineMap }) => {
+    async ({ base, source, map, labels }: { base: number; source: string; map: LineMap; labels: boolean }) => {
       const backend = backendRef.current;
       if (!backend) return [];
       const mapped = !isEmptyLineMap(map);
@@ -199,6 +206,14 @@ export function useBreakpoints({
       }
       bpLinesByAddrRef.current = byAddr;
       commit(survivors);
+      // Looked up in this program, where the label may have moved; one the
+      // program no longer has stays unarmed until it comes back.
+      if (labels) {
+        for (const label of labelsRef.current) {
+          const addr = await backend.resolveLabel(label);
+          if (addr != null) void backend.setBreakpoint(addr);
+        }
+      }
       return dropped.sort((a, b) => a - b);
     },
     [backendRef, commit],

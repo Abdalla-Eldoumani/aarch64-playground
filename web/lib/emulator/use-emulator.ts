@@ -506,7 +506,9 @@ export function useEmulator(): EmulatorState {
           const mapped = !isEmptyLineMap(map);
           // The gutter dots are re-keyed through the FRESH map; lines that
           // no longer resolve lose their dot, and the editor says which.
-          const dropped = await rekeyAfterAssemble({ base, source, map });
+          // `gdb b`'s labels come back only for the editor's assemble: a
+          // terminal build (gcc, ./name) has always run past them.
+          const dropped = await rekeyAfterAssemble({ base, source, map, labels: surfaceErrors });
           if (surfaceErrors && dropped.length > 0) setDroppedBreakpoints(dropped);
           // The post-assemble snapshot was applied while the loaded flag was
           // still down (and before this map existed), so it left no marker.
