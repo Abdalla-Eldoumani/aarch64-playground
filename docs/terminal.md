@@ -104,8 +104,8 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `gdb n`, `gdb s`, `gdb si` | Step one instruction. |
 | `gdb ni` | Step over: run the call on this line in one go and stop on the next line. On any other instruction it steps one instruction. |
 | `gdb finish` | Step out: run until this function returns to its caller. Out of `main`, it runs to the end of the program. |
-| `gdb c` | Continue to halt or breakpoint. |
-| `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). |
+| `gdb c` | Continue to halt or breakpoint. Once the program has exited, it says there is nothing to continue. |
+| `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). Like gdb, it stays across a reset: the next assemble from the editor finds the label again in the program and sets it there. A terminal build (`gcc`, `./name`) runs past it. |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
 | `gdb x/Ni $pc` | Show N words of memory at the PC, or at the address in a register (`$x0`). N is at most 1024. |
@@ -118,8 +118,9 @@ tab's frames view draws. `ni` and `finish` stop early at a breakpoint, at a
 read waiting for input, when the program ends, or at a `ret` that does not
 go back to a caller (an overwritten saved lr), and print why they stopped.
 After 1,000,000 steps they pause and say so; the same command again goes on
-to the same place. With no frame left (the program has finished), `bt` and
-`info frame` say so.
+to the same place. Once the program has finished, `bt` and `info frame` say
+so, even when it exited from inside a function (`bl exit`, or a `_start`
+ending with `svc`) and left frames on the stack.
 
 In real gdb, `n` and `s` step a whole source line. Here they step one
 instruction, as they always have, and keep doing so until after the
