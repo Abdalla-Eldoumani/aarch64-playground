@@ -35,6 +35,10 @@ const READ_BY_RUST =
 // and the dense -O2 program share.test measures a link with.
 const READ_BY_WEB = /^emulator\/tests\/(error-parity\/|c-corpus\/78_switch_dense\.O2plain\.s$)/;
 
+// The example catalog, also read by the Rust tests: frames.rs and
+// filler_examples.rs take each multi-file example's helper list from it.
+const CATALOG_READ_BY_RUST = /^web\/lib\/playground\/example-catalog\.ts$/;
+
 // What the production build is made from besides the emulator: the manifests,
 // the build and deploy config, and the browser smoke test itself with the
 // share encoder and the example it loads.
@@ -60,7 +64,7 @@ function classify(files) {
   return {
     classes: [...classes].sort(),
     // cargo test and the three corpus shards
-    rust: everything || classes.has("emulator") || any(READ_BY_RUST),
+    rust: everything || classes.has("emulator") || any(READ_BY_RUST) || any(CATALOG_READ_BY_RUST),
     // lint, typecheck, the dependency audit, and the toolchain pin check (all
     // a vercel-build.sh change needs); typecheck reads the wasm bundles' types
     static: everything || classes.has("web") || wasm,

@@ -222,6 +222,8 @@ nor `browser`: CI never runs that script, and `web-static` checks its
 toolchain pins against the workflows. A change to a workflow, or to a file no
 rule names, runs everything, and so do a push to `main`, the weekly run, and
 the pull request from `integration` to `main`.
+The example catalog, `web/lib/playground/example-catalog.ts`, also runs
+`rust`: `frames.rs` and `filler_examples.rs` read its helper lists.
 
 A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
 it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that

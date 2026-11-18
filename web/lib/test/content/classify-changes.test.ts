@@ -83,6 +83,18 @@ describe("the path filter", () => {
     expect(classify(["emulator/tests/c-corpus/01_hello.c"]).web).toBe(false);
   });
 
+  it("runs the Rust jobs as well as the web ones for the example catalog", () => {
+    // frames.rs and filler_examples.rs read its helper lists.
+    expect(classify(["web/lib/playground/example-catalog.ts"])).toEqual({
+      classes: ["web"],
+      ...NOTHING,
+      rust: true,
+      static: true,
+      web: true,
+    });
+    expect(classify(["web/lib/playground/playground-handoff.ts"]).rust).toBe(false);
+  });
+
   it("runs the browser test only when the build or the wasm can change", () => {
     for (const file of [
       "emulator/Cargo.lock",
