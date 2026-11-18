@@ -35,11 +35,13 @@
 //! would run once the program has undefined them, and dnl once it has
 //! defined it. In a program that uses dnl, divert, changecom or quotes,
 //! so do a builtin GNU m4 runs bare (divert, dnl and the like) as a
-//! define's unquoted name, and a comment whose text GNU m4 carries past its
-//! line; any other program keeps the output it had. The new forms go
+//! define's unquoted name, a comment whose text GNU m4 carries past its
+//! line, and a `/* */` comment GNU m4 reads inside a quote or that leaves
+//! one open; any other program keeps the output it had. The new forms go
 //! through define's pass, so its other differences from GNU m4 (an m4 word
 //! in a string, a label named after a builtin, quotes nested in a body, a
-//! body's unquoted macro expanded at use, a define of a defined name) stay.
+//! comment in a quoted body, a body's unquoted macro expanded at use, a
+//! define of a defined name) stay.
 
 use std::collections::HashMap;
 
@@ -59,6 +61,10 @@ pub(crate) const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
 /// gigabytes and trap the instance. 8 MiB is far above any real course
 /// program (source itself is capped at 1 MiB upstream).
 pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+
+/// A piece of a source line the playground drops as a comment: its 0-based
+/// line and byte range in the line as written.
+type Dropped = (usize, usize, usize);
 
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
@@ -94,6 +100,10 @@ pub struct Expanded {
     comment_events: Vec<(usize, Option<String>)>,
     /// The 1-based source lines m4 read with quotes, in order.
     quote_lines: Vec<usize>,
+    /// What the playground drops as comments, which the comment check
+    /// reads: pass 0's `/* */` pieces in line order, then each `//` or `;`
+    /// comment, which runs to `usize::MAX`.
+    drops: Vec<Dropped>,
 }
 
 impl Expanded {
@@ -139,8 +149,10 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
-    let source = strip_block_comments(source)?;
+    let (source, mut drops) = strip_block_comments(source)?;
     let source = source.as_str();
+    // The comments the passes below drop follow pass 0's blocks in `drops`.
+    let blocks = drops.len();
     // Pass 1: collect `define()` aliases for substitution, record `name =
     // expr` assignments separately (they stay inline so the parser can
     // pin them to a section offset), and strip comments. Walking the
@@ -157,6 +169,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // forloop. Only such a program has its comments checked below.
     let mut new_forms = false;
     let mut unquoted_name: Option<(usize, String)> = None;
+    // Each quoted define body that held a comment, as written, by its line.
+    let mut bodies: Vec<(usize, String)> = Vec::new();
     // Every define/undefine in source order: (line index, name, body;
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
@@ -172,6 +186,12 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         }
         let without_comment = strip_comment(raw);
         let trimmed = without_comment.trim();
+        // A quoted define and a line read with quotes lose their comments
+        // elsewhere, and take this back.
+        let cut = without_comment.len() < raw.len();
+        if cut {
+            drops.push((idx, as_written(&drops[..blocks], idx, without_comment.len()), usize::MAX));
+        }
         // undefine parses before the backtick gate: GNU m4 requires its
         // argument quoted (`undefine(`name')`), so the quote is legal here.
         if let Some((names, (text, joins))) = parse_undefine(trimmed) {
@@ -184,12 +204,31 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         // The other place a quote is legal: a define's arguments, where a
         // quoted body keeps its commas and may run over several lines.
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
-            let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
+            let (name, body, used, (text, joins), tail) = parse_quoted_define(&lines[idx..], line_num)?;
             let quoted = raw[raw.find('(').map_or(0, |i| i + 1)..].trim_start().starts_with('`');
             if !quoted && bare_builtin(&name) {
                 unquoted_name.get_or_insert((line_num, name.clone()));
             }
-            define_events.push((idx, name, Some(body)));
+            if cut {
+                drops.pop();
+            }
+            let last = idx + used - 1;
+            if tail < lines[last].len() {
+                drops.push((last, as_written(&drops[..blocks], last, tail), usize::MAX));
+            }
+            // Comments leave the body here, as they leave every other line;
+            // GNU m4 reads them where the macro is used.
+            let mut kept = String::with_capacity(body.len());
+            for (j, part) in body.split('\n').enumerate() {
+                if j > 0 {
+                    kept.push('\n');
+                }
+                kept.push_str(strip_comment(part));
+            }
+            if kept.len() < body.len() {
+                bodies.push((idx, body));
+            }
+            define_events.push((idx, name, Some(kept)));
             stripped.push((idx, text, joins));
             skip = used - 1;
             continue;
@@ -238,7 +277,14 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         // A line that uses m4 quotes keeps its comments, as GNU m4 reads it:
         // the `//` in changecom(`//') is quoted text. The assembler strips
         // them after m4. Every such line was refused before.
-        let kept = if without_comment.contains('`') { *raw } else { without_comment };
+        let kept = if without_comment.contains('`') {
+            if cut {
+                drops.pop();
+            }
+            *raw
+        } else {
+            without_comment
+        };
         if let Some((name, body)) = parse_assignment(trimmed) {
             assignments.insert(name, body);
             // Keep the assignment line intact so the parser can produce
@@ -392,7 +438,15 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // Only a line whose own source holds a backtick reads m4 quotes:
             // the playground refused every such line before, so no program
             // that ran changes.
-            let quotes = if quoted { Quotes::Keep } else { Quotes::Plain };
+            let quotes = if quoted {
+                let cut = unquoted_cut(line);
+                if cut < line.len() {
+                    drops.push((idx, as_written(&drops[..blocks], idx, cut), usize::MAX));
+                }
+                Quotes::Keep
+            } else {
+                Quotes::Plain
+            };
             let text = expand_recursively(line, &current, line_num, Gnu { comment, quotes })?;
             // Most lines start an empty carry: move the text in, not a copy.
             if carry.is_empty() {
@@ -442,6 +496,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         windowed,
         comment_events,
         quote_lines,
+        drops,
     };
     // GNU m4 reads the comments the passes above drop. In a program that
     // relies on a form the playground refused before, a comment whose text
@@ -453,42 +508,82 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         if written.is_empty() {
             written.extend(original.lines());
         }
-        for (idx, (w, raw)) in written.iter().zip(&lines).enumerate() {
-            let line = idx + 1;
-            // A line a block comment touches is read from its `/*`, or whole.
-            // A line pass 0 cut at its start lies in a block comment opened
-            // above: all of it is comment text.
-            let start = if w != raw && w.ends_with(raw) { 0 } else if let Some(at) = comment_start(w) { at } else { continue };
-            if let Some(token) = escapes(w, start, &expanded, line, 0) {
-                return Err(unsupported(line, &format!("{token} in a comment")));
+        // Each line is read from the first byte the passes above drop, and
+        // each quoted define body from its comments, as GNU m4 reads the
+        // body where the macro is used. GNU m4 pairs a quote mark in a
+        // `/* */` block with one outside it, so a block it reads inside a
+        // quote, or one that leaves a quote open, is refused.
+        let mut first = vec![usize::MAX; written.len()];
+        for &(idx, from, _) in &expanded.drops {
+            first[idx] = first[idx].min(from);
+        }
+        // The next block piece and body to read; both come in line order.
+        let (mut piece, mut body) = (0, 0);
+        for (idx, w) in written.iter().enumerate() {
+            let (b, mut at, mut depth) = (w.as_bytes(), 0, 0);
+            while piece < blocks && expanded.drops[piece].0 == idx {
+                let (_, from, to) = expanded.drops[piece];
+                let open = quote_depth(b.get(at..from).unwrap_or_default(), depth);
+                depth = quote_depth(b.get(from..to.min(b.len())).unwrap_or_default(), open);
+                if open + depth > 0 {
+                    return Err(unsupported(idx + 1, "an m4 quote across a /* */ comment"));
+                }
+                (at, piece) = (to, piece + 1);
+            }
+            let mut token = if first[idx] < w.len() { escapes(w, first[idx], &expanded, idx + 1, 0) } else { None };
+            while body < bodies.len() && bodies[body].0 == idx {
+                for part in bodies[body].1.split('\n') {
+                    token = token.or_else(|| escapes(part, strip_comment(part).len(), &expanded, idx + 1, 0));
+                }
+                body += 1;
+            }
+            if let Some(token) = token {
+                return Err(unsupported(idx + 1, &format!("{token} in a comment")));
             }
         }
     }
     Ok(expanded)
 }
 
-/// Where a `//`, `;` or `/*` comment starts on a line as written, outside
-/// double-quoted strings and m4 quotes. A `'` opens nothing here: it may
-/// close an m4 quote.
-fn comment_start(line: &str) -> Option<usize> {
+/// Where the assembler cuts the comment off a line m4 reads quotes on: in
+/// the text m4 writes, which has each quote's outer marks taken off.
+fn unquoted_cut(line: &str) -> usize {
     let b = line.as_bytes();
-    let mut in_string = false;
+    // Where each byte m4 writes sits in `line`.
+    let mut at = Vec::with_capacity(b.len());
     let mut i = 0;
     while i < b.len() {
-        match b[i] {
-            b'\\' if in_string => i += 1,
-            b'"' => in_string = !in_string,
-            b'`' if !in_string => {
-                i += quote_end(&b[i..]).unwrap_or(b.len() - i);
+        if b[i] == b'`' {
+            if let Some(n) = quote_end(&b[i..]) {
+                at.extend(i + 1..i + n - 1);
+                i += n;
                 continue;
             }
-            b';' if !in_string => return Some(i),
-            b'/' if !in_string && matches!(b.get(i + 1), Some(b'/' | b'*')) => return Some(i),
-            _ => {}
         }
+        at.push(i);
         i += 1;
     }
-    None
+    // Only ASCII marks left, so the text is still UTF-8.
+    let text: Vec<u8> = at.iter().map(|&k| b[k]).collect();
+    let kept = std::str::from_utf8(&text).map_or(0, |t| strip_comment(t).len());
+    at.get(kept).copied().unwrap_or(usize::MAX)
+}
+
+/// Byte `at` of source line `line` with pass 0's `blocks` (in line order)
+/// taken out, as a byte of the line as written.
+fn as_written(blocks: &[Dropped], line: usize, at: usize) -> usize {
+    let first = blocks.partition_point(|b| b.0 < line);
+    blocks[first..].iter().take_while(|b| b.0 == line).fold(at, |at, &(_, from, to)| if from <= at { at + to - from } else { at })
+}
+
+/// How many m4 quotes GNU m4 has open after `text`, with `depth` open
+/// before it.
+fn quote_depth(text: &[u8], depth: usize) -> usize {
+    text.iter().fold(depth, |depth, b| match b {
+        b'`' => depth + 1,
+        b'\'' => depth.saturating_sub(1),
+        _ => depth,
+    })
 }
 
 /// GNU m4 1.4.19's builtin macros, as its `dumpdef` lists them.
@@ -910,10 +1005,11 @@ fn fill_args(body: &str, name: &str, args: &[String], out: &mut String, limit: u
 /// newlines so line numbers match the editor. A `/*` inside a literal or a
 /// `//` comment (left for `strip_comment`) never opens a block. Literal
 /// state resets at each newline because assembly literals are single-line,
-/// so one stray quote cannot swallow the rest of the file.
-fn strip_block_comments(source: &str) -> Result<String, EmuError> {
+/// so one stray quote cannot swallow the rest of the file. Also gives each
+/// piece of a line a block takes: its 0-based line and byte range there.
+fn strip_block_comments(source: &str) -> Result<(String, Vec<Dropped>), EmuError> {
     if !source.contains("/*") {
-        return Ok(source.to_string());
+        return Ok((source.to_string(), Vec::new()));
     }
     let bytes = source.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -921,22 +1017,31 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
     let mut in_string = false;
     let mut in_char = false;
     let mut in_block = false;
-    let mut line = 1usize;
+    let mut blocks = Vec::new();
+    // The 0-based line, where it starts, and where the open block's piece
+    // of it starts.
+    let (mut line, mut line_start, mut from) = (0, 0, 0);
     let mut block_open_line = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'\n' {
+            if in_block {
+                blocks.push((line, from, i - line_start));
+                from = 0;
+            }
             in_string = false;
             in_char = false;
             out.push(b'\n');
             i += 1;
             line += 1;
+            line_start = i;
             continue;
         }
         if in_block {
             if b == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
                 in_block = false;
                 i += 2;
+                blocks.push((line, from, i - line_start));
                 continue;
             }
             i += 1;
@@ -961,7 +1066,8 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
             }
             b'/' if !in_string && !in_char && i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
                 in_block = true;
-                block_open_line = line;
+                block_open_line = line + 1;
+                from = i - line_start;
                 i += 2;
                 continue;
             }
@@ -980,8 +1086,7 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
         });
     }
     // Only ASCII spans were removed, so the bytes are still valid UTF-8.
-    Ok(String::from_utf8(out)
-        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
+    Ok((String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()), blocks))
 }
 
 /// Shared by the legacy assembler's preprocess and the pipeline's
@@ -1202,13 +1307,13 @@ fn parse_define(trimmed: &str) -> Option<(String, String, Leaves<'_>)> {
 /// quoted piece keeps its commas, parentheses and line breaks and loses one
 /// level of quotes, unquoted leading whitespace is dropped, and arguments
 /// past the body are ignored (GNU m4 warns and carries on). `lines` starts
-/// at the define; the result is the name, the body with its comments
-/// stripped, how many lines the call spans, and what the line after the
-/// `)` leaves (`after_call`).
+/// at the define; the result is the name, the body as written, how many
+/// lines the call spans, what the line after the `)` leaves (`after_call`),
+/// and where on that line its comment starts.
 fn parse_quoted_define<'a>(
     lines: &[&'a str],
     line_num: usize,
-) -> Result<(String, String, usize, Leaves<'a>), EmuError> {
+) -> Result<(String, String, usize, Leaves<'a>, usize), EmuError> {
     let bad = |why: &str| EmuError::PreprocError {
         line: line_num,
         message: format!("malformed m4 define: {why}. Write it as `define(NAME, body)`"),
@@ -1241,7 +1346,8 @@ fn parse_quoted_define<'a>(
                 _ if quotes > 0 => arg.push(c),
                 _ if leading && c.is_whitespace() => {}
                 ')' if parens == 0 => {
-                    let Some(tail) = after_call(strip_comment(&text[i + 1..])) else {
+                    let after = strip_comment(&text[i + 1..]);
+                    let Some(tail) = after_call(after) else {
                         return Err(bad("unexpected text after the closing `)`"));
                     };
                     let [name, body, ..] = args.as_slice() else {
@@ -1250,15 +1356,9 @@ fn parse_quoted_define<'a>(
                     if !is_valid_ident(name.trim_end()) {
                         return Err(bad(&format!("`{}` is not a valid macro name", name.trim_end())));
                     }
-                    // Comments leave here, as they leave every other line.
-                    let mut kept = String::with_capacity(body.len());
-                    for (j, part) in body.split('\n').enumerate() {
-                        if j > 0 {
-                            kept.push('\n');
-                        }
-                        kept.push_str(strip_comment(part));
-                    }
-                    return Ok((name.trim_end().to_string(), kept, used + 1, tail));
+                    // `text` ends `line`, so this is where its comment starts.
+                    let cut = line.len() - text.len() + i + 1 + after.len();
+                    return Ok((name.trim_end().to_string(), body.clone(), used + 1, tail, cut));
                 }
                 ',' if parens == 0 => {
                     args.push(String::new());
@@ -2053,12 +2153,14 @@ mod tests {
         let multi = "define(`two', `mov w1, 1\n  mov w0, 4')dnl\ndefine(`one', `two')dnl\nmov w0, 3 // one\n";
         rejects(expand(multi), "unsupported m4 construct: one in a comment");
         rejects(expand("define(`nl', `dnl')dnl\nmov w0, 3 // nl\nmov w0, 5\n"), "unsupported m4 construct: nl in a comment");
-        // A `;` or `/*` inside m4 quotes starts no comment, so what follows
+        // A `;` inside a call's m4 quotes starts no comment, so what follows
         // the call is no comment either; after changecom(`;') a `;` is m4's
         // own comment, as in GNU m4 1.4.19 (whose text keeps the comment
         // the playground drops).
         assert_eq!(exp("changecom(`;')dnl\nmov w0, 3 ; dnl\nmov w0, 5\n").text, "mov w0, 3 \nmov w0, 5");
-        assert_eq!(exp("changecom(`/*', `*/')dnl\nmov w0, 3\n").text, "mov w0, 3");
+        // The `/* */` comment the playground drops holds quote marks GNU m4
+        // reads.
+        rejects(expand("changecom(`/*', `*/')dnl\nmov w0, 3\n"), "unsupported m4 construct: an m4 quote across a /* */ comment");
     }
 
     /// The first byte of line `j` of `src` the playground drops, read off
@@ -2067,7 +2169,7 @@ mod tests {
     /// assembler for a line that reads quotes (the outer quote marks gone).
     fn dropped_at(src: &str, j: usize) -> Option<usize> {
         let w = src.lines().nth(j)?;
-        let blanked = strip_block_comments(src).ok()?;
+        let blanked = strip_block_comments(src).ok()?.0;
         let raw = blanked.lines().nth(j)?;
         // Before pass 0's first cut the line is unchanged, and the block it
         // deletes starts with `/*`, unless the line opens inside one.
@@ -2107,10 +2209,11 @@ mod tests {
     /// Where the comment check starts reading each line of `src`, None for a
     /// line it skips, or None for all when m4 refuses the program.
     fn check_reads_from(src: &str) -> Option<Vec<Option<usize>>> {
-        expand(src).ok()?;
-        let blanked = strip_block_comments(src).ok()?;
-        let lines = src.lines().zip(blanked.lines());
-        Some(lines.map(|(w, raw)| if w != raw && w.ends_with(raw) { Some(0) } else { comment_start(w) }).collect())
+        let mut from = vec![None; src.lines().count()];
+        for (line, start, _) in expand(src).ok()?.drops {
+            from[line] = Some(from[line].map_or(start, |f: usize| f.min(start)));
+        }
+        Some(from)
     }
 
     #[test]
@@ -2159,6 +2262,25 @@ mod tests {
         rejects(expand(q[2]), "unsupported m4 construct: dnl in a comment");
         rejects(expand(q[3]), "unsupported m4 construct: nl in a comment");
         rejects(expand(q[4]), "unsupported m4 construct: ` in a comment");
+        // The assembler cuts at a `;` m4 hands it out of a quote, and a line
+        // inside a block is dropped from its start; GNU m4 runs each dnl.
+        rejects(expand("define(a, w0)dnl\nmov a, `5;'dnl\nmov w0, 5\n"), "unsupported m4 construct: dnl in a comment");
+        rejects(expand("define(a, w0)dnl\nmov a, 1 /* c\ndnl */ /* d */\nmov w0, 5\n"), "unsupported m4 construct: dnl in a comment");
+        // GNU m4 pairs quote marks inside a dropped block with marks outside it.
+        for line in ["`/*`*/'", "mov a, `1 /* it's */ 2'", "mov a, /* ` */ '1'"] {
+            let src = format!("define(a, w0)dnl\n{line}\nmov w0, 5\n");
+            rejects(expand(&src), "unsupported m4 construct: an m4 quote across a /* */ comment");
+        }
+        // GNU m4 reads a comment in a quoted define's body where the macro
+        // is used; without the new forms the program keeps today's output.
+        let body = "define(`x', `mov w0, 1 // dnl')\nx\nmov w0, 5\n";
+        rejects(expand(&format!("define(a, w0)dnl\n{body}")), "unsupported m4 construct: dnl in a comment");
+        assert_eq!(exp(body).text, "\nmov w0, 1 \nmov w0, 5");
+        // A line of 200,000 blocks is read once, not once per block.
+        let long = format!("define(a, w0)dnl\nmov a, 1 {}// c\n", "/**/".repeat(200_000));
+        let started = std::time::Instant::now();
+        assert_eq!(exp(&long).text, "mov w0, 1 ");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "took {:?}", started.elapsed());
     }
 
     #[test]
