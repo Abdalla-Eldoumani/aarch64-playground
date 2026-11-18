@@ -16,6 +16,11 @@ vi.mock("@/components/playground/lazy-editor", () => ({
     return <div data-testid="editor" />;
   },
 }));
+// The surface itself, not its dynamic() wrapper: the wrapper loads on its
+// first render, so a case run alone would read "loading emulator...".
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
+}));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
 }));
@@ -180,20 +185,10 @@ afterEach(() => {
   terminalProps.current = null;
 });
 
-// The full-chrome surface is reached through dynamic(), so it mounts a beat
-// after the shell does. Awaiting the same import settles it before a case
-// reads the surface's own markup.
-async function fullChromeMounted() {
-  await act(async () => {
-    await import("@/components/playground/FullChromeSurface");
-  });
-}
-
 describe("the run-mode control's presence", () => {
-  it("appears for an interactive example, at that example's default", async () => {
+  it("appears for an interactive example, at that example's default", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
-    await fullChromeMounted();
     expect(runModeGroup()).toBeNull();
 
     act(() => {
@@ -207,10 +202,9 @@ describe("the run-mode control's presence", () => {
     ).toBe("true");
   });
 
-  it("shows terminal preselected for a default-terminal example", async () => {
+  it("shows terminal preselected for a default-terminal example", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
-    await fullChromeMounted();
     act(() => {
       ref.current!.loadProgram({
         source: SOURCE,
@@ -233,10 +227,9 @@ describe("the run-mode control's presence", () => {
     expect(runModeGroup()).toBeNull();
   });
 
-  it("disappears when a text-only swap replaces the interactive program", async () => {
+  it("disappears when a text-only swap replaces the interactive program", () => {
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
-    await fullChromeMounted();
     act(() => {
       ref.current!.loadProgram({ source: SOURCE, stem: "snake", label: "snake" });
     });
@@ -653,7 +646,6 @@ describe("run after an edit or a finish", () => {
   async function assembled(hub: Hub) {
     useEmulatorMock.mockReturnValue(hub);
     mount(createRef<EmbeddablePlaygroundHandle>());
-    await fullChromeMounted();
     // The run row's assemble (the first-run card has one of its own).
     const assemble = screen
       .getAllByRole("button", { name: "assemble" })
@@ -715,7 +707,6 @@ describe("run after an edit or a finish", () => {
     useEmulatorMock.mockReturnValue(hub);
     const ref = createRef<EmbeddablePlaygroundHandle>();
     mount(ref);
-    await fullChromeMounted();
     act(() => {
       ref.current!.loadProgram({ source: SOURCE, stem: "dsav", launch: "terminal", label: "dsav" });
     });
