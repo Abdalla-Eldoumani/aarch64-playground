@@ -1,9 +1,11 @@
 // Pins the register panel's stored choices: the view, each view's dec or hex,
 // the lane width and "follow changes". Each is kept under its own key in the
-// format a returning student's storage already holds, read back on the next
-// visit, followed at once by every other panel on the page (a lesson holds
-// several) and by a change made in another tab, and still followed by the
-// page when storage throws (a private window, blocked site data).
+// format a returning student's storage already holds and read back on the
+// next visit. The dec/hex and follow flags are followed at once by every
+// other panel on the page (a lesson holds several) and by a change made in
+// another tab, and still by the page when storage throws (a private window,
+// blocked site data). The view and the lane width are read when a panel
+// mounts: a change, picked or made by a step, moves no panel already open.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import type { RegView } from "@/lib/emulator/emulator-state";
@@ -75,7 +77,8 @@ interface Setting {
   shows: (p: HTMLElement) => boolean;
 }
 
-const SETTINGS: Setting[] = [
+/** Read when a panel mounts; a change moves only the panel it was made in. */
+const MOUNT_READ: Setting[] = [
   {
     name: "the register view",
     key: "aarch64-playground:regfile-view",
@@ -84,6 +87,18 @@ const SETTINGS: Setting[] = [
     change: (p) => openView(p, "d"),
     shows: (p) => pressed(viewCell(p, "d")),
   },
+  {
+    name: "the lane width",
+    key: "aarch64-playground:regfile-lane-width",
+    stored: "s",
+    view: "v",
+    change: (p) => fireEvent.click(cell(p, "lane arrangement", "s, 32-bit lanes")),
+    shows: (p) => pressed(cell(p, "lane arrangement", "s, 32-bit lanes")),
+  },
+];
+
+/** Followed at once by every open panel, on this page and in other tabs. */
+const FOLLOWED: Setting[] = [
   {
     name: "the x view's dec or hex",
     key: "aarch64-playground:regfile-x-dec",
@@ -109,14 +124,6 @@ const SETTINGS: Setting[] = [
     shows: (p) => pressed(cell(p, "vector value format", "dec")),
   },
   {
-    name: "the lane width",
-    key: "aarch64-playground:regfile-lane-width",
-    stored: "s",
-    view: "v",
-    change: (p) => fireEvent.click(cell(p, "lane arrangement", "s, 32-bit lanes")),
-    shows: (p) => pressed(cell(p, "lane arrangement", "s, 32-bit lanes")),
-  },
-  {
     name: "follow changes",
     key: "aarch64-playground:regfile-follow",
     stored: "0",
@@ -126,7 +133,7 @@ const SETTINGS: Setting[] = [
   },
 ];
 
-describe.each(SETTINGS)("$name", (setting) => {
+describe.each([...MOUNT_READ, ...FOLLOWED])("$name", (setting) => {
   it("is kept under its own key, in the stored format", () => {
     const [a] = page();
     openView(a, setting.view);
@@ -140,7 +147,51 @@ describe.each(SETTINGS)("$name", (setting) => {
     const [a] = page();
     expect(setting.shows(a)).toBe(true);
   });
+});
 
+describe.each(MOUNT_READ)("$name, in an open panel", (setting) => {
+  it("moves only the panel it was changed in", () => {
+    const [a, b] = page();
+    openView(a, setting.view);
+    openView(b, setting.view);
+    setting.change(a);
+    expect(setting.shows(a)).toBe(true);
+    expect(window.localStorage.getItem(setting.key)).toBe(setting.stored);
+    expect(setting.shows(b)).toBe(false);
+  });
+
+  // Another tab's pick or step reaches this one as the browser's storage
+  // event; the landing hero walks with "follow changes" on and stores x.
+  it("stays as it was when another tab changes it, and a panel opened later reads it", () => {
+    const [a] = page();
+    openView(a, setting.view);
+    act(() => {
+      window.localStorage.setItem(setting.key, setting.stored);
+      window.dispatchEvent(
+        new StorageEvent("storage", {
+          key: setting.key,
+          newValue: setting.stored,
+          storageArea: window.localStorage,
+        }),
+      );
+    });
+    expect(setting.shows(a)).toBe(false);
+    render(panel("later"));
+    expect(setting.shows(screen.getByTestId("later"))).toBe(true);
+  });
+
+  it("holds in its own panel only when storage throws", () => {
+    blockStorage();
+    const [a, b] = page();
+    openView(a, setting.view);
+    openView(b, setting.view);
+    setting.change(a);
+    expect(setting.shows(a)).toBe(true);
+    expect(setting.shows(b)).toBe(false);
+  });
+});
+
+describe.each(FOLLOWED)("$name, in every open panel", (setting) => {
   it("moves every panel on the page at once", () => {
     const [a, b] = page();
     openView(a, setting.view);
@@ -178,9 +229,9 @@ describe.each(SETTINGS)("$name", (setting) => {
 });
 
 describe("the register view, moved by a step", () => {
-  // "follow changes" switches a panel to the file a step wrote; that switch is
-  // the stored view, so the other panels on the page take it too.
-  it("moves every panel on the page when a write switches one", () => {
+  // "follow changes" switches a panel to the file a step wrote and stores that
+  // view for the next visit; a lesson's other frames stay on theirs.
+  it("stores the view a write switches one panel to and leaves the others on theirs", () => {
     const { rerender } = render(
       <>
         {panel("a")}
@@ -194,8 +245,8 @@ describe("the register view, moved by a step", () => {
       </>,
     );
     expect(pressed(viewCell(screen.getByTestId("a"), "d"))).toBe(true);
-    expect(pressed(viewCell(screen.getByTestId("b"), "d"))).toBe(true);
     expect(window.localStorage.getItem("aarch64-playground:regfile-view")).toBe("d");
+    expect(pressed(viewCell(screen.getByTestId("b"), "x"))).toBe(true);
   });
 });
 
