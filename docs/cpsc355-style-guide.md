@@ -42,9 +42,10 @@ These GNU m4 builtins work as they do on the servers:
   `define(fp, x29)dnl` leaves no empty line behind.
 - `divert(-1)` throws away everything m4 writes until `divert` or
   `divert(0)`, so a block of defines between them writes no lines. Only
-  define, undefine and `dnl` lines and m4's own comments (`#`, unless
-  `changecom` moved it) may sit between them: GNU m4 still reads any other
-  text there, so it is rejected.
+  `dnl` lines, define and undefine lines with no `//`, `;` or `/* */`
+  comment ahead of a `dnl`, and m4's own comments (`#`, unless `changecom`
+  moved it) may sit between them: GNU m4 still reads any other text there,
+  comments included, so it is rejected.
 - `changecom` with no argument turns `#` comments off, so a name after
   `#` expands; ``changecom(`//')`` makes `//` the comment start instead.
 - A quoted string, `` `text' ``, is written without its quotes and never
