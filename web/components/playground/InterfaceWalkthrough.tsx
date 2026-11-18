@@ -76,7 +76,6 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   }
   const rootRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
-  const textRef = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const focusPendingRef = useRef(false);
   const titleId = useId();
@@ -155,14 +154,18 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     const targets = mode.kind === "offer" ? OFFER_TARGETS : WALKTHROUGH_STEPS[mode.step].targets;
     const found = hidden ? null : resolveTarget(targets);
     const view = { width: window.innerWidth, height: window.innerHeight };
-    // The text's full length, not the capped box: measuring the capped card
-    // would call it short enough to lift the cap, and the two would take
-    // turns on every beat.
-    const text = textRef.current;
-    const hiddenText = text ? text.scrollHeight - text.clientHeight : 0;
-    const size = { width: CARD_WIDTH, height: card.offsetHeight + hiddenText };
+    // Measured at a set width with its cap lifted, never as it stands: placed
+    // by its own capped or narrowed height, the card moved on every other beat.
+    const heightAt = (w: number) => {
+      const shown = { width: card.style.width, maxHeight: card.style.maxHeight };
+      Object.assign(card.style, { width: `${w}px`, maxHeight: "none" });
+      const height = card.offsetHeight;
+      Object.assign(card.style, shown);
+      return height;
+    };
+    const width = Math.min(CARD_WIDTH, view.width - 16);
+    const size = { width: CARD_WIDTH, height: heightAt(width), heightAt };
     if (!found) {
-      const width = Math.min(CARD_WIDTH, view.width - 16);
       const next: Layout = {
         ring: null,
         hidden,
@@ -311,7 +314,6 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
           </button>
         )}
         <div
-          ref={textRef}
           aria-live="polite"
           className={`min-h-0 flex-1 overflow-y-auto pl-3 ${layout.compact ? "pt-2" : "pt-3"} ${step ? "pr-11" : "pr-3"}`}
         >
