@@ -396,8 +396,24 @@ describe("frame-slot arrays named by an = line", () => {
     expect(ok(evaluateWatch("sum_s[w1]", ctx)).value).toBe(7n);
   });
 
-  it("reads it while the label lookup is still in flight", () => {
+  it("waits while the label lookup is still in flight", () => {
     const waiting: EvalContext = { ...ctx, resolveLabelAddress: () => "pending" };
-    expect(ok(evaluateWatch("sum_s[1]", waiting)).value).toBe(7n);
+    expect(evaluateWatch("sum_s[1]", waiting)).toEqual({ pending: true });
+  });
+
+  // The panel's slots come from the editor's text line by line, so an
+  // `arr = 16` inside a block comment names a slot the assembler never saw.
+  it("reads a sized data label before a frame slot of the same name", () => {
+    const both: EvalContext = {
+      ...ctx,
+      readMemory: (addr, size) =>
+        addr === 0x70_0004n && size === 4 ? 20n : addr === 0x8000_0018n && size === 8 ? 99n : "unmapped",
+      resolveSlotOffset: (name) => (name === "arr" ? 16n : null),
+      resolveLabelAddress: (name) => (name === "arr" ? 0x70_0000n : null),
+      labelElementSize: (name) => labelElementSize("/*\narr = 16\n*/\n.data\narr: .word 10, 20\n", name),
+    };
+    const r = ok(evaluateWatch("arr[1]", both));
+    expect(r.value).toBe(20n);
+    expect(r.size).toBe(4);
   });
 });
