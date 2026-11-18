@@ -830,12 +830,6 @@ impl RegisterFile {
     pub fn write_fpr_f32(&mut self, index: u8, value: f32) {
         self.write_fpr_scalar(index, 4, u64::from(value.to_bits()));
     }
-
-    /// Snapshot all 32 FP registers, full 128-bit width, for change
-    /// detection alongside GPRs.
-    pub fn snapshot_fpr(&self) -> [u128; 32] {
-        self.fpr
-    }
 }
 
 impl Default for RegisterFile {
