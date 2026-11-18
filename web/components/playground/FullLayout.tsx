@@ -71,16 +71,33 @@ export function HostSlot({ host, className = FILL }: { host: HTMLElement; classN
     if (!slot) return;
     slot.appendChild(host);
     const was = held.get(host);
+    // The new arrangement's splits settle their sizes after this commit, so a
+    // box put back at its end is kept there as it resizes, until the reader
+    // moves it: a console following its output keeps following.
+    let settle: ResizeObserver | null = null;
     if (was) {
+      const ends = new Map<Element, number>();
       for (const [box, top, left, atEnd] of was.scrolls) {
         box.scrollTop = atEnd ? box.scrollHeight : top;
         box.scrollLeft = left;
+        if (atEnd) ends.set(box, box.scrollTop);
+      }
+      if (ends.size > 0 && typeof ResizeObserver !== "undefined") {
+        settle = new ResizeObserver(() => {
+          for (const [box, pinned] of ends) {
+            if (box.scrollTop !== pinned) continue;
+            box.scrollTop = box.scrollHeight;
+            ends.set(box, box.scrollTop);
+          }
+        });
+        for (const box of ends.keys()) settle.observe(box);
       }
       if (was.focused?.isConnected && document.activeElement === document.body) {
         was.focused.focus({ preventScroll: true });
       }
     }
     return () => {
+      settle?.disconnect();
       const active = document.activeElement;
       const scrolls = Array.from(host.querySelectorAll("*"))
         .filter((box) => box.scrollTop > 0 || box.scrollLeft > 0)
