@@ -54,9 +54,10 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
     prog.section_or_insert(SectionKind::Text);
     let mut current = SectionKind::Text;
     // ld throws `.note.GNU-stack` away with whatever is in it, so once the
-    // note opens, a line that places bytes or a label is refused until a
-    // section switch. The parser sees a program's files joined into one
-    // text, where GNU as starts each file in .text, hence the message.
+    // note opens, a line that places bytes, defines a label or sets an
+    // equate is refused until a section line ends the note. The parser sees
+    // a program's files joined into one text, where GNU as starts each file
+    // in .text, hence the message.
     let mut in_stack_note = false;
     for line_tokens in group_by_line(&tokens) {
         if is_stack_note(line_tokens) {
