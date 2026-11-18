@@ -206,7 +206,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         };
         if let Some(kw) = detect_unsupported(trimmed) {
             if !own_macro(kw) {
-                return Err(unsupported(line_num, kw));
+                return Err(unsupported(line_num, format_args!("{kw}")));
             }
             // The playground refused these before, a program's own included.
             new_forms |= kw.starts_with("if") || kw == "forloop";
@@ -325,7 +325,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         }
         let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
             if touched(name) {
-                return Err(unsupported(line_num, &format!("{name} once the program undefines it")));
+                return Err(unsupported(line_num, format_args!("{name} once the program undefines it")));
             }
             new_forms = true;
             // A numbered diversion goes to the end of GNU m4's output, and a
@@ -358,7 +358,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                     true
                 };
             if !supported {
-                return Err(unsupported(line_num, line.trim()));
+                return Err(unsupported(line_num, format_args!("{}", line.trim())));
             }
             if !discard {
                 carry.push_str(text);
@@ -382,7 +382,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                     written[j] == raw && (*joins || !(raw.contains("//") || raw.contains(';')))
                 });
             if !blank && !comment.is_some_and(|c| written[idx].trim_start().starts_with(c)) {
-                return Err(unsupported(line_num, "text or a comment under divert(-1)"));
+                return Err(unsupported(line_num, format_args!("text or a comment under divert(-1)")));
             }
             *joins
         } else {
@@ -400,7 +400,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             *joins
         };
         if joins && touched("dnl") {
-            return Err(unsupported(line_num, "dnl once the program defines or undefines it"));
+            return Err(unsupported(line_num, format_args!("dnl once the program defines or undefines it")));
         }
         new_forms |= joins || quoted;
         if discard || joins {
@@ -445,7 +445,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // GNU m4 carries past its own line is refused; others keep today's output.
     if new_forms {
         if let Some((line, name)) = unquoted_name {
-            return Err(unsupported(line, &format!("define({name}) with the name unquoted")));
+            return Err(unsupported(line, format_args!("define({name}) with the name unquoted")));
         }
         if written.is_empty() {
             written.extend(original.lines());
@@ -457,7 +457,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // above: all of it is comment text.
             let start = if w != raw && w.ends_with(raw) { 0 } else if let Some(at) = comment_start(w) { at } else { continue };
             if let Some(token) = escapes(w, start, &expanded, line, 0) {
-                return Err(unsupported(line, &format!("{token} in a comment")));
+                return Err(unsupported(line, format_args!("{token} in a comment")));
             }
         }
     }
@@ -1172,7 +1172,7 @@ fn reads_on(args: &str, comment: Option<&str>) -> bool {
 
 /// The refusal of a construct the playground's m4 does not take.
 #[cold]
-fn unsupported(line: usize, what: &str) -> EmuError {
+fn unsupported(line: usize, what: std::fmt::Arguments<'_>) -> EmuError {
     EmuError::PreprocError { line, message: format!("unsupported m4 construct: {what}") }
 }
 
