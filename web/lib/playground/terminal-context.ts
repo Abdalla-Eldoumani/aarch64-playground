@@ -1,8 +1,38 @@
 import type { RefObject } from "react";
+import type { GdbLabels } from "@/lib/emulator/use-breakpoints";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
 import type { DispatchContext, TerminalProgramIO } from "@/lib/terminal/dispatch";
 import { combineSources, type Workspace } from "@/lib/playground/file-map";
 import { validateStdin } from "@/lib/playground/upload-guard";
+
+/**
+ * `gdb b`'s breakpoints by gdb's numbers, which are never given twice. They
+ * hang on the hub's gdbLabels, so every per-command context shares them, and
+ * they stay out of the hub the landing page loads.
+ */
+class GdbBreakpoints implements GdbLabels {
+  next = 1;
+  labels = new Map<number, string>();
+  machine: RefObject<EmulatorState>;
+
+  constructor(machine: RefObject<EmulatorState>) {
+    this.machine = machine;
+  }
+
+  // Each label is looked up in the program as it reads now; one it no longer
+  // has stays unarmed until it comes back.
+  async assembled() {
+    const hub = this.machine.current;
+    for (const label of this.labels.values()) {
+      const addr = await hub.resolveLabel(label);
+      if (addr != null) await hub.setBreakpointAddress(addr);
+    }
+  }
+
+  cleared() {
+    this.labels.clear();
+  }
+}
 
 export type TerminalContextDeps = {
   /** The hub as a ref, never the render's object: the hub is new after every
@@ -32,6 +62,13 @@ export type TerminalContextDeps = {
  */
 export function createTerminalContext(deps: TerminalContextDeps): DispatchContext {
   const { machine, applySeeds, driveForeground } = deps;
+  // Made on the first gdb b, delete or list; until then the hub has none.
+  const gdbBreakpoints = () => {
+    const ref = machine.current.gdbLabels;
+    const set = ref.current instanceof GdbBreakpoints ? ref.current : new GdbBreakpoints(machine);
+    ref.current = set;
+    return set;
+  };
   const dec = new TextDecoder();
   // One wait loop for every terminal-run shape: sleep BEFORE checking so React
   // has committed run()'s isRunning=true into the ref.
@@ -179,9 +216,30 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
       return { snapshot, stack, memory };
     },
     lineLabel: (addr: number) => machine.current.lineLabel(addr),
-    setBreakpoint: async (addr: number, label: string) => machine.current.setBreakpointAddress(addr, label),
-    deleteBreakpoints: (n?: number) => machine.current.deleteBreakpoints(n),
-    breakpoints: () => machine.current.gdbBreakpoints(),
+    setBreakpoint: async (addr: number, label: string) => {
+      const set = gdbBreakpoints();
+      const n = set.next++;
+      set.labels.set(n, label);
+      await machine.current.setBreakpointAddress(addr);
+      return n;
+    },
+    deleteBreakpoints: async (n?: number) => {
+      const { labels } = gdbBreakpoints();
+      const gone = [...labels].filter(([k]) => n == null || k === n);
+      if (n != null && gone.length === 0) return false;
+      for (const [k] of gone) labels.delete(k);
+      // An instruction another gdb b still names keeps its stop (the hub
+      // keeps a gutter dot's).
+      const hub = machine.current;
+      const kept = new Set<number | null>();
+      for (const label of labels.values()) kept.add(await hub.resolveLabel(label));
+      for (const [, label] of gone) {
+        const addr = await hub.resolveLabel(label);
+        if (addr != null && !kept.has(addr)) await hub.clearBreakpointAddress(addr);
+      }
+      return true;
+    },
+    breakpoints: () => [...gdbBreakpoints().labels],
     resolveLabel: async (name: string) => machine.current.resolveLabel(name),
     m4Expand: async (text: string) => machine.current.m4Expand(text),
     assembleSource: async (text: string) => {

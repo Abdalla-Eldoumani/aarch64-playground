@@ -1973,40 +1973,51 @@ describe("useEmulator breakpoints", () => {
     expect(result.current.droppedBreakpoints).toEqual([]);
   });
 
-  it("numbers gdb b's breakpoints as gdb does and deletes them through the backend", async () => {
-    // The fake resolves every label to CODE_BASE.
+  it("forwards address-based breakpoint set and clear to the backend", async () => {
     const fake = makeBackend();
     const { result } = await mountLoaded(fake);
 
-    let numbers: number[] = [];
     await act(async () => {
-      numbers = [await result.current.setBreakpointAddress(CODE_BASE, "loop")];
-      numbers.push(await result.current.setBreakpointAddress(CODE_BASE, "done"));
+      await result.current.setBreakpointAddress(0x401234);
     });
-    expect(numbers).toEqual([1, 2]);
-    expect(fake.calls.setBreakpoint).toEqual([CODE_BASE, CODE_BASE]);
-    expect(result.current.gdbBreakpoints()).toEqual([
-      [1, "loop"],
-      [2, "done"],
-    ]);
+    expect(fake.calls.setBreakpoint).toEqual([0x401234]);
 
-    // Breakpoint 2 still names the instruction, so the CPU keeps its stop.
     await act(async () => {
-      expect(await result.current.deleteBreakpoints(1)).toBe(true);
+      await result.current.clearBreakpointAddress(0x401234);
+    });
+    expect(fake.calls.clearBreakpoint).toEqual([0x401234]);
+  });
+
+  it("keeps a gutter dot's stop when an address clear names its instruction", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    await act(async () => {
+      await result.current.clearBreakpointAddress(CODE_BASE);
     });
     expect(fake.calls.clearBreakpoint).toEqual([]);
-    await act(async () => {
-      expect(await result.current.deleteBreakpoints(1)).toBe(false);
-      expect(await result.current.deleteBreakpoints()).toBe(true);
-    });
-    expect(fake.calls.clearBreakpoint).toEqual([CODE_BASE]);
-    expect(result.current.gdbBreakpoints()).toEqual([]);
+  });
 
-    // gdb never gives a number twice.
+  // gdb sets a breakpoint again by name when the program restarts.
+  it("hands the terminal's gdb b breakpoints the editor's assemble and every clear, not a terminal build", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    const labels = { assembled: vi.fn(async () => {}), cleared: vi.fn() };
+    result.current.gdbLabels.current = labels;
     await act(async () => {
-      numbers = [await result.current.setBreakpointAddress(CODE_BASE, "loop")];
+      await result.current.assemble(HOSTED_SOURCE);
+      await result.current.assembleForTool(HOSTED_SOURCE);
     });
-    expect(numbers).toEqual([3]);
+    expect(labels.assembled).toHaveBeenCalledTimes(1);
+    act(() => {
+      result.current.clearAllBreakpoints();
+    });
+    expect(labels.cleared).toHaveBeenCalledTimes(1);
   });
 });
 

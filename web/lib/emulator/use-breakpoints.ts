@@ -11,12 +11,11 @@ export interface Breakpoints {
   toggleBreakpoint: (line: number) => void;
   remapBreakpoints: (remap: (line: number) => number | null) => void;
   clearAllBreakpoints: () => void;
-  /** `gdb b label`: arms `addr` and resolves to the breakpoint's number. */
-  setBreakpointAddress: (addr: number, label: string) => Promise<number>;
-  /** `gdb delete [n]`: breakpoint n, or every one; false when n names none. */
-  deleteBreakpoints: (n?: number) => Promise<boolean>;
-  /** `gdb b`'s breakpoints as [number, label], lowest number first. */
-  gdbBreakpoints: () => [number, string][];
+  setBreakpointAddress: (addr: number) => Promise<void>;
+  /** Leaves the stop when a gutter dot is on the same instruction. */
+  clearBreakpointAddress: (addr: number) => Promise<void>;
+  /** Where the terminal keeps `gdb b`'s breakpoints for this machine. */
+  gdbLabels: RefObject<GdbLabels | null>;
   /** The instruction a line stands for: its own, or the next one after a
    *  label, blank or comment line; null past the last. */
   resolveBreakpointAddr: (line: number) => number | null;
@@ -25,7 +24,7 @@ export interface Breakpoints {
    * deliberately keeps its address set across an assemble, but those
    * addresses belong to the previous assembly of possibly different
    * source, so they are cleared and re-armed from the surviving lines.
-   * With `labels`, `gdb b`'s labels are looked up again and re-armed too.
+   * With `labels`, `gdb b`'s breakpoints are then set again too.
    * Resolves the lines that had no instruction at or after them, in order.
    */
   rekeyAfterAssemble: (params: {
@@ -34,6 +33,17 @@ export interface Breakpoints {
     map: LineMap;
     labels: boolean;
   }) => Promise<number[]>;
+}
+
+/**
+ * `gdb b`'s breakpoints, which the terminal keeps by label. gdb sets a
+ * breakpoint again by name when the program restarts, so the hub calls
+ * `assembled` once the editor's assemble has re-armed the gutter, and
+ * `cleared` when another program drops every breakpoint.
+ */
+export interface GdbLabels {
+  assembled(): Promise<void>;
+  cleared(): void;
 }
 
 /**
@@ -62,11 +72,7 @@ export function useBreakpoints({
   const linesRef = useRef<Set<number>>(new Set());
   // Which gutter LINES share each armed CPU address.
   const bpLinesByAddrRef = useRef<Map<number, Set<number>>>(new Map());
-  // The labels `gdb b` named, by gdb's breakpoint number. gdb keeps a
-  // breakpoint across a restart and sets it again by name, so a reset and
-  // assemble must not lose them; like gdb, a number is never given twice.
-  const labelsRef = useRef<Map<number, string>>(new Map());
-  const nextNumberRef = useRef(1);
+  const gdbLabels = useRef<GdbLabels | null>(null);
 
   const commit = useCallback((next: Set<number>) => {
     linesRef.current = next;
@@ -157,43 +163,29 @@ export function useBreakpoints({
    *  dots and addresses must never survive into this one. */
   const clearAllBreakpoints = useCallback(() => {
     bpLinesByAddrRef.current = new Map();
-    labelsRef.current = new Map();
     commit(new Set());
+    gdbLabels.current?.cleared();
     const backend = backendRef.current;
     if (backend) void backend.clearAllBreakpoints();
   }, [backendRef, commit]);
 
   const setBreakpointAddress = useCallback(
-    async (addr: number, label: string) => {
-      const n = nextNumberRef.current++;
-      labelsRef.current.set(n, label);
-      await backendRef.current?.setBreakpoint(addr);
-      return n;
-    },
-    [backendRef],
-  );
-
-  const deleteBreakpoints = useCallback(
-    async (n?: number) => {
-      const labels = labelsRef.current;
-      const gone = [...labels].filter(([k]) => n == null || k === n);
-      if (n != null && gone.length === 0) return false;
-      for (const [k] of gone) labels.delete(k);
+    async (addr: number) => {
       const backend = backendRef.current;
-      if (!backend) return true;
-      // An instruction a gutter dot or another gdb b still names keeps its stop.
-      const kept = new Set(bpLinesByAddrRef.current.keys());
-      for (const label of labels.values()) kept.add((await backend.resolveLabel(label)) ?? -1);
-      for (const [, label] of gone) {
-        const addr = await backend.resolveLabel(label);
-        if (addr != null && !kept.has(addr)) void backend.clearBreakpoint(addr);
-      }
-      return true;
+      if (!backend) return;
+      await backend.setBreakpoint(addr);
     },
     [backendRef],
   );
 
-  const gdbBreakpoints = useCallback(() => [...labelsRef.current], []);
+  const clearBreakpointAddress = useCallback(
+    async (addr: number) => {
+      const backend = backendRef.current;
+      if (!backend || bpLinesByAddrRef.current.has(addr)) return;
+      await backend.clearBreakpoint(addr);
+    },
+    [backendRef],
+  );
 
   const rekeyAfterAssemble = useCallback(
     async ({ base, source, map, labels }: { base: number; source: string; map: LineMap; labels: boolean }) => {
@@ -225,14 +217,7 @@ export function useBreakpoints({
       }
       bpLinesByAddrRef.current = byAddr;
       commit(survivors);
-      // Looked up in this program, where the label may have moved; one the
-      // program no longer has stays unarmed until it comes back.
-      if (labels) {
-        for (const label of labelsRef.current.values()) {
-          const addr = await backend.resolveLabel(label);
-          if (addr != null) void backend.setBreakpoint(addr);
-        }
-      }
+      if (labels) await gdbLabels.current?.assembled();
       return dropped.sort((a, b) => a - b);
     },
     [backendRef, commit],
@@ -244,8 +229,8 @@ export function useBreakpoints({
     remapBreakpoints,
     clearAllBreakpoints,
     setBreakpointAddress,
-    deleteBreakpoints,
-    gdbBreakpoints,
+    clearBreakpointAddress,
+    gdbLabels,
     resolveBreakpointAddr,
     rekeyAfterAssemble,
   };

@@ -1,8 +1,10 @@
+import type { RefObject } from "react";
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
 import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
+import type { GdbLabels } from "@/lib/emulator/use-breakpoints";
 import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -222,14 +224,14 @@ export interface EmulatorState {
   /** Standalone m4 pass for the terminal; null when the WASM predates it. */
   m4Expand: (source: string) => Promise<{ success: boolean; text?: string; error?: string; error_line?: number } | null>;
   /** Address-based breakpoint setter, used by `gdb b <label>` once the
-   *  label resolves; it resolves to gdb's breakpoint number, and the
-   *  editor's next assemble arms the label again. The line-based
-   *  `toggleBreakpoint` stays the primary path for the gutter UI. */
-  setBreakpointAddress: (addr: number, label: string) => Promise<number>;
-  /** `gdb delete [n]`: breakpoint n, or every one; false when n names none. */
-  deleteBreakpoints: (n?: number) => Promise<boolean>;
-  /** `gdb b`'s breakpoints as [number, label], lowest number first. */
-  gdbBreakpoints: () => [number, string][];
+   *  label resolves. The line-based `toggleBreakpoint` stays the
+   *  primary path for the gutter UI. */
+  setBreakpointAddress: (addr: number) => Promise<void>;
+  /** Leaves the stop when a gutter dot is on the same instruction. */
+  clearBreakpointAddress: (addr: number) => Promise<void>;
+  /** Where the terminal keeps `gdb b`'s breakpoints for this machine; the
+   *  editor's assemble sets them again and loading a program clears them. */
+  gdbLabels: RefObject<GdbLabels | null>;
   /** Rebuild a bookmark: assemble its source and args, queue its stdin, and
    *  step to `stepCount`. `success` is false when the source no longer
    *  assembles; `stepped` is how far it got before a halt, fault, or read. */
