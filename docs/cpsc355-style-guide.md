@@ -38,10 +38,13 @@ Comments strip before substitution: `//` to end of line.
 These GNU m4 builtins work as they do on the servers:
 
 - `dnl` deletes the rest of its line, newline included, on a line of its
-  own or right after a `define(...)` or `undefine(...)`:
+  own or right after a `define`, `undefine`, `divert` or `changecom` call:
   `define(fp, x29)dnl` leaves no empty line behind.
 - `divert(-1)` throws away everything m4 writes until `divert` or
-  `divert(0)`, so a block of defines between them writes no lines.
+  `divert(0)`, so a block of defines between them writes no lines. Only
+  define, undefine and `dnl` lines and m4's own comments (`#`, unless
+  `changecom` moved it) may sit between them: GNU m4 still reads any other
+  text there, so it is rejected.
 - `changecom` with no argument turns `#` comments off, so a name after
   `#` expands; ``changecom(`//')`` makes `//` the comment start instead.
 - A quoted string, `` `text' ``, is written without its quotes and never
@@ -49,10 +52,10 @@ These GNU m4 builtins work as they do on the servers:
 
 `ifdef`, `ifelse`, `forloop`, `changequote`, `include`, and a numbered
 diversion such as `divert(1)` are rejected with a clear error rather than
-silently ignored, unless the program defines that name itself. For
-`include`, add the file to the program instead: the playground joins a
-program's files the way `include` does. A quoted string closes on the line
-that opens it, as a macro's arguments do.
+silently ignored, unless the program defines that name itself. `include`
+is not supported: copy the included file's lines into this file where the
+include was. A quoted string closes on the line that opens it, as a
+macro's arguments do.
 Undefining a name ends that define's reach at that line, so an alias can
 be rebound per function.
 
