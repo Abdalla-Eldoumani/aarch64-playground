@@ -32,13 +32,22 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
 /** Serves the frame's HTML, types into the field named `label` before
  *  hydrating, hydrates, then engages the frame with a press. Returns the
- *  field's value afterwards. */
-async function typeBeforeScript(frame: ReactElement, label: string, typed: string): Promise<string> {
+ *  field's value once hydrated and once engaged. */
+async function typeBeforeScript(
+  frame: ReactElement,
+  label: string,
+  typed: string,
+): Promise<{ hydrated: string; engaged: string }> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   let root: ReturnType<typeof hydrateRoot> | undefined;
+  const value = () => (screen.getByLabelText(label) as HTMLInputElement).value;
   // cleanup() knows nothing of this root: a failure must not leave a frame
   // in the page for the next case.
   try {
@@ -47,26 +56,49 @@ async function typeBeforeScript(frame: ReactElement, label: string, typed: strin
     await act(async () => {
       root = hydrateRoot(container, frame);
     });
-    // Hydration keeps it; the press below is what must keep it too.
-    expect((screen.getByLabelText(label) as HTMLInputElement).value).toBe(typed);
+    const hydrated = value();
     await act(async () => {
       fireEvent.mouseDown(container.firstChild as Element);
     });
-    return (screen.getByLabelText(label) as HTMLInputElement).value;
+    return { hydrated, engaged: value() };
   } finally {
     act(() => root?.unmount());
     container.remove();
   }
 }
 
+const ARGS_FRAME = <EmbeddablePlayground chrome="checker" startSource={SRC} startArgs="12 7 30 4" showArgs />;
+const LESSON_FRAME = <EmbeddablePlayground chrome="embed" startSource={SRC} />;
+
 describe("text typed before the frame engages", () => {
   it("keeps the exercise's args box text", async () => {
-    const frame = <EmbeddablePlayground chrome="checker" startSource={SRC} startArgs="12 7 30 4" showArgs />;
-    expect(await typeBeforeScript(frame, "args", "1 2 3 4")).toBe("1 2 3 4");
+    expect(await typeBeforeScript(ARGS_FRAME, "args", "1 2 3 4")).toEqual({ hydrated: "1 2 3 4", engaged: "1 2 3 4" });
   });
 
   it("keeps a lesson frame's Standard input text", async () => {
-    const frame = <EmbeddablePlayground chrome="embed" startSource={SRC} />;
-    expect(await typeBeforeScript(frame, "Standard input", "42")).toBe("42");
+    expect(await typeBeforeScript(LESSON_FRAME, "Standard input", "42")).toEqual({ hydrated: "42", engaged: "42" });
+  });
+
+  // Each of these re-renders the field before anything engages the frame.
+  it("keeps the args box text when the stack side was chosen on an earlier page", async () => {
+    window.localStorage.setItem("aarch64-playground:embed-stack", "1");
+    expect(await typeBeforeScript(ARGS_FRAME, "args", "1 2 3 4")).toEqual({ hydrated: "1 2 3 4", engaged: "1 2 3 4" });
+  });
+
+  it("keeps the Standard input text on a touch screen", async () => {
+    vi.spyOn(window, "matchMedia").mockImplementation(
+      (query: string) =>
+        ({
+          matches: query === "(pointer: coarse)",
+          media: query,
+          onchange: null,
+          addEventListener: () => {},
+          removeEventListener: () => {},
+          addListener: () => {},
+          removeListener: () => {},
+          dispatchEvent: () => false,
+        }) as MediaQueryList,
+    );
+    expect(await typeBeforeScript(LESSON_FRAME, "Standard input", "42")).toEqual({ hydrated: "42", engaged: "42" });
   });
 });
