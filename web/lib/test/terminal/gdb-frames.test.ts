@@ -366,23 +366,28 @@ describe("gdb-lite bt and info frame with no frame", () => {
   });
 });
 
-describe("gdb-lite c", () => {
-  // gdb answers "The program is not being run." to a continue after the exit.
-  it("says the program has finished once it has exited, and runs nothing", async () => {
+describe("gdb-lite's run and step commands after the end", () => {
+  const RESUMES = ["c", "n", "s", "si", "ni", "finish"];
+
+  // gdb answers "The program is not being run." to each of them after the exit.
+  it("say the program has finished once it has exited, and run nothing", async () => {
     const { ctx, hub } = stoppedAt(QUITS, null);
-    expect(await gdb("c", ctx)).toEqual({
-      status: "err",
-      lines: ["gdb: the program has finished"],
-    });
+    for (const command of RESUMES) {
+      expect(await gdb(command, ctx)).toEqual({ status: "err", lines: ["gdb: the program has finished"] });
+    }
     expect(hub.run).not.toHaveBeenCalled();
+    expect(hub.step).not.toHaveBeenCalled();
+    expect(hub.runUntil).not.toHaveBeenCalled();
   });
 
   // gdb keeps a faulted program alive until a continue ends it.
-  it("leaves a program stopped at a fault to the machine, since it has not exited", async () => {
+  it("leave a program stopped at a fault to the machine, since it has not exited", async () => {
     const { ctx, hub } = stoppedAt(NULL_READ, null);
     expect(hub.isHalted).toBe(true);
-    expect(await gdb("c", ctx)).toEqual({ status: "ok", lines: [] });
+    for (const command of RESUMES) expect(await gdb(command, ctx)).toEqual({ status: "ok", lines: [] });
     expect(hub.run).toHaveBeenCalledTimes(1);
+    expect(hub.step).toHaveBeenCalledTimes(3);
+    expect(hub.runUntil).toHaveBeenCalledTimes(2);
   });
 });
 
