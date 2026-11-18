@@ -648,7 +648,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `.equ NAME, expr` / `.set NAME, expr` | The same as `NAME = expr` (see m4 preprocessing below), so `.equ alloc, -(16 + 8) & -16` gives a frame offset. |
 | `.arch armv8-a` | Accepted, as GCC writes it. The playground runs that base instruction set, so any other name is refused. |
 | `.ltorg` | Accepted. The literal pool stays at the end of `.text`, so a `. - label` span across a `.ltorg` does not count the pool GNU `as` places there, and code that runs into a `.ltorg` keeps going here, where the GNU-built program runs the pool's words as instructions, which usually stops it with an illegal instruction. |
-| `.section .note.GNU-stack` | Accepted, as GCC writes it at the end of a file. The linker throws that section away, so a line after it that places bytes or a label needs a switch to another section first. The playground joins a program's files into one text, so a file that follows one ending with the note must open with its own section line. |
+| `.section .note.GNU-stack` | Accepted, as GCC writes it at the end of a file. The linker throws that section away, so a line after it that places bytes, defines a label or sets an equate is refused until a section line ends the note; `.global`, `.globl`, `.type`, `.size`, `.arch` and `.ltorg` may follow it. The playground joins a program's files into one text, so a file that follows one ending with the note must open with its own section line. |
 | `name .req reg` | Register alias, integer or FP (`fp .req x29`, `sum .req d19`). Takes effect on the lines after it; string literals are never rewritten. |
 
 ## Pseudo-instructions
