@@ -1940,3 +1940,147 @@ fn a_stray_ret_from_a_function_with_no_frame_is_one_bad_return() {
     assert_eq!(p.outline(), ["main -> 5", "  outer -> 5", "    leaf -> 5"]);
     back_retraces(&mut load(FRAMELESS_STRAY), 12, "a stray ret from a function with no frame");
 }
+
+/// minus21 returns with `ret x16`: a ret through another register is still
+/// a ret.
+const RET_THROUGH_X16: &str = r#"
+// minus21 returns with ret x16 instead of a plain ret.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// minus21(w0 = n) -> w0 = n - 21, returning with ret x16
+        .balign 4
+        .global minus21
+minus21:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     w0, w0, 21
+        ldp     fp, x16, [sp], 16       // the way back into x16
+        ret     x16
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 42
+        bl      minus21
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ret_through_x16_ends_its_call() {
+    let mut p = load(RET_THROUGH_X16);
+    let main = p.label("main");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "ret x16 ended minus21");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "21\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    assert_eq!(p.outline(), ["main -> 0", "  minus21(42) -> 21"]);
+}
+
+/// walk(2), back from walk(1), jumps with `br` to the label right after
+/// its own `bl walk`: the address every walk call returns to, but reached
+/// with walk(2)'s frame still pushed, so it is a jump, not a return.
+const BR_TO_A_RETURN_ADDRESS: &str = r#"
+// walk(n) counts its calls; walk(2) jumps back to the label after its bl
+// once, with a br, which adds one more.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "%ld\n"
+
+        .text
+// walk(x0 = n) -> x0 = n, plus one for the jump in walk(2)
+        .balign 4
+        .global walk
+walk:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]           // keep the caller's x19
+        mov     n_r, x0                 // x19 = n
+        mov     x0, 0
+        cbz     n_r, walk_done          // walk(0) = 0
+        sub     x0, n_r, 1
+        bl      walk                    // x0 = walk(n - 1)
+walk_back:                              // where every walk call returns
+        add     x0, x0, 1
+        cmp     n_r, 2
+        b.ne    walk_done
+        mov     n_r, 20                 // only once
+        adr     x9, walk_back
+        br      x9                      // a jump to walk_back, not a return
+walk_done:
+        ldr     n_r, [fp, 16]           // put the caller's x19 back
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 3
+        bl      walk
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_br_to_the_label_after_a_recursive_bl_ends_no_call() {
+    let mut p = load(BR_TO_A_RETURN_ADDRESS);
+    let jump = p.label("walk_done") - 4;
+    // walk(3) -> walk(2) -> walk(1) -> walk(0); walk(1) has returned, so
+    // the stack is main, walk(3) and walk(2) at the br.
+    p.run_to(jump, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 3);
+    p.cpu.step().expect("br x9");
+    assert_eq!(p.cpu.regs.read_pc(), p.label("walk_back"));
+    assert_eq!(p.cpu.call_stack().depth(), 3, "the br ended no call");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "4\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    assert_eq!(p.outline(), ["main -> 0", "  walk(3) -> 4", "    walk(2) -> 3", "      walk(1) -> 1", "        walk(0) -> 0"]);
+}
+
+/// Every library call goes through its trampoline, `ldr x16, <slot>` then
+/// `br x16` into the stub. That br ends no call, whatever the stack holds:
+/// a comparator's record holds a stub address as its return address.
+#[test]
+fn a_library_calls_trampoline_branch_ends_no_call() {
+    for name in ["80_qsort_bsearch.s", "80_qsort_bsearch.O2.s", "82_callbacks_generic.s", "82_callbacks_generic.O2plain.s"] {
+        let mut p = load(&read(&format!("emulator/tests/c-corpus/{name}")));
+        p.cpu.close_stdin();
+        let trampolines = p.image.trampoline_base..p.image.trampoline_base + 8 * p.image.trampoline_names.len() as u64;
+        let mut branches = 0;
+        while !p.cpu.is_halted() {
+            let pc = p.cpu.regs.read_pc();
+            let before = (p.cpu.call_stack().depth(), p.cpu.call_stack().bad_return().step);
+            p.cpu.step().expect("step");
+            if trampolines.contains(&pc) && (pc - trampolines.start) % 8 == 4 {
+                branches += 1;
+                let after = (p.cpu.call_stack().depth(), p.cpu.call_stack().bad_return().step);
+                assert_eq!(after, before, "{name}: the trampoline's br at {pc:#x}");
+            }
+        }
+        assert!(branches > 10, "{name}: {branches} library calls");
+    }
+}
