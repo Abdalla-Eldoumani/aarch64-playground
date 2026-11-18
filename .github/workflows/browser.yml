@@ -20,7 +20,7 @@ env:
   # scripts/vercel-build.sh.
   NODE_VERSION: "24"
   RUST_TOOLCHAIN: "1.99.1"
-  WASM_PACK_VERSION: "0.15.0"
+  WASM_PACK_VERSION: "0.15.1"
 
 jobs:
   browsers:
