@@ -1,11 +1,16 @@
 //! What each libc stub is to a program: the address a `bl` reaches it at,
 //! the register its result comes back in, what one call changes and the
 //! call card it leaves, and what a program that calls one of the runtime's
-//! own two entries gets.
+//! own two entries gets. Also holds the editor's completion list of library
+//! calls (web/lib/asm/asm-completion.ts, read in place) to the stub table.
+
+use std::collections::BTreeSet;
+use std::path::PathBuf;
 
 use aarch64_emulator::{call_card, detect_hosted_mode, host_call_context};
 use aarch64_emulator::cpu::{Cpu, StepOutcome};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
+use aarch64_emulator::hosted::STUBS;
 use aarch64_emulator::registers::CLOBBER_PATTERN;
 
 /// Every stub in slot order. A stub's address is its slot, so a stub
@@ -248,7 +253,11 @@ fn runs(numbers: &[u8]) -> String {
         while j + 1 < numbers.len() && numbers[j + 1] == numbers[j] + 1 {
             j += 1;
         }
-        out.push(if i == j { numbers[i].to_string() } else { format!("{}-{}", numbers[i], numbers[j]) });
+        out.push(if i == j {
+            numbers[i].to_string()
+        } else {
+            format!("{}-{}", numbers[i], numbers[j])
+        });
         i = j + 1;
     }
     out.join(",")
@@ -328,7 +337,8 @@ const CALLED: &[&str] = &[
 
 #[test]
 fn each_stub_returns_its_result_where_it_did_and_changes_what_it_did() {
-    let got: Vec<String> = CALLS.iter().map(|(name, setup, input)| call_once(name, setup, input)).collect();
+    let got: Vec<String> =
+        CALLS.iter().map(|(name, setup, input)| call_once(name, setup, input)).collect();
     assert_eq!(got.len(), CALLED.len(), "one line per call");
     for (got, want) in got.iter().zip(CALLED) {
         assert_eq!(got, want);
@@ -419,4 +429,49 @@ fn a_program_that_names_the_runtimes_own_entries_runs_as_it_did() {
     for (got, want) in got.iter().zip(ENTRY_RUNS) {
         assert_eq!(got, want);
     }
+}
+
+/// Stubs a program calls that the editor leaves out of its completions on
+/// purpose: the name gcc -S writes for scanf, and the three ctype table
+/// lookups that compiled code calls, never a student.
+const NOT_COMPLETED: &[&str] =
+    &["__isoc99_scanf", "__ctype_b_loc", "__ctype_toupper_loc", "__ctype_tolower_loc"];
+
+/// The names in web/lib/asm/asm-completion.ts's `LIBC` list. Panics when the
+/// list is not where it was or yields no names, so a reworded file fails
+/// here instead of comparing an empty set.
+fn completion_names() -> BTreeSet<String> {
+    let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    path.pop();
+    path.push("web/lib/asm/asm-completion.ts");
+    let source = std::fs::read_to_string(&path)
+        .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
+    let (list, _) = source
+        .split_once("const LIBC: Suggestion[] = [")
+        .and_then(|(_, rest)| rest.split_once("].map("))
+        .unwrap_or_else(|| {
+            panic!("{} has no `const LIBC: Suggestion[] = [...].map(` list", path.display())
+        });
+    let names: BTreeSet<String> = list.split('"').skip(1).step_by(2).map(str::to_string).collect();
+    assert!(!names.is_empty(), "read no names from the LIBC list in {}", path.display());
+    names
+}
+
+#[test]
+fn the_editor_completes_every_stub_a_program_calls_but_the_compilers_names() {
+    let callable: BTreeSet<String> =
+        STUBS.iter().filter(|stub| stub.callable).map(|stub| stub.name.to_string()).collect();
+    for name in NOT_COMPLETED {
+        assert!(callable.contains(*name), "{name} is left out but is no stub a program calls");
+    }
+    let expected: BTreeSet<String> =
+        callable.into_iter().filter(|name| !NOT_COMPLETED.contains(&name.as_str())).collect();
+    let offered = completion_names();
+    let missing: Vec<&String> = expected.difference(&offered).collect();
+    let extra: Vec<&String> = offered.difference(&expected).collect();
+    assert!(
+        missing.is_empty() && extra.is_empty(),
+        "asm-completion.ts's LIBC list against the stub table: \
+         stubs it lacks {missing:?}, names that are no stub a program calls {extra:?}"
+    );
 }
