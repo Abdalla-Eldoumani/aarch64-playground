@@ -387,3 +387,27 @@ describe("gdb b across a reset", () => {
     expect(view.result.current.exitCode).toBe(3);
   });
 });
+
+describe("gdb-lite once the program has exited, on the real hub", () => {
+  // bt and c read the exit code, so a step back from the exit, which brings
+  // the program back, must bring them back too.
+  it("lists the frames again and continues after a step back from the exit", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await act(async () => {
+      await expect(view.result.current.assemble(quits(false))).resolves.toBe(true);
+    });
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+    expect(await gdb(view, "bt")).toEqual(["gdb: no frames: the program has finished"]);
+    await act(async () => {
+      view.result.current.stepBack();
+    });
+    await waitFor(() => expect(view.result.current.exitCode).toBeNull());
+    // Back inside exit, called from quit: the pc is in the library, so quit
+    // has no line; main is at its bl quit on line 22.
+    expect(await gdb(view, "bt")).toEqual(["#0  quit", "#1  main at line 22"]);
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+  });
+});
