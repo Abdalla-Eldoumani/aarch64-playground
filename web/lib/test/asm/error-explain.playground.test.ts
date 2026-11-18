@@ -240,5 +240,7 @@ describe("error guidance for the messages the emulator really sends", () => {
     const include = explained(`include(\`helpers.s')\n${withBody("")}`).fix;
     expect(include).toContain("copy the included file's lines into this file where the include was");
     expect(include).not.toContain("add the file");
+    const comment = explained(`define(a, x1)dnl\n${withBody("        mov     x0, 1 // dnl here")}`);
+    expect(comment.fix).toContain("Reword a comment the message names");
   });
 });
