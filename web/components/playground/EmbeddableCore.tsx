@@ -170,9 +170,7 @@ export function EmbeddableCore({
         pinned?.extras ?? extraFilesRef.current,
       );
       setActiveFile(loc.file);
-      // A fault in a program typed at the terminal pane (the one
-      // role="application" region) keeps its line's marker but leaves the
-      // keyboard there, so the next command reaches the shell, not the source.
+      // A keyboard in the terminal pane stays there; the line is still marked.
       if (!document.activeElement?.closest('[role="application"]')) {
         setErrorFocus({ line: loc.line, nonce: Date.now() });
       }
