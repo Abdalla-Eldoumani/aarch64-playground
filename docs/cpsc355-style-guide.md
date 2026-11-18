@@ -56,7 +56,11 @@ diversion such as `divert(1)` are rejected with a clear error rather than
 silently ignored, unless the program defines that name itself. `include`
 is not supported: copy the included file's lines into this file where the
 include was. A quoted string closes on the line that opens it, as a
-macro's arguments do.
+macro's arguments do. GNU m4 reads `//`, `;` and `/* */` comments as
+text, so in a program that uses `dnl`, `divert`, `changecom` or quotes, a
+comment holding `dnl`, `changecom`, `m4exit`, an unclosed quote, a macro
+or builtin called with `(`, or a macro whose body spans lines is rejected:
+each acts past the comment's line there.
 Undefining a name ends that define's reach at that line, so an alias can
 be rebound per function.
 
