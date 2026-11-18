@@ -146,6 +146,14 @@ describe("ConsolePanel vfs upload", () => {
 });
 
 describe("ConsolePanel controls and state", () => {
+  it("keeps the names the browser smoke types its input by", () => {
+    // scripts/browser-smoke.mjs reads these in a production build; vitest is
+    // where a rename shows first.
+    setup();
+    expect(screen.getByRole("textbox", { name: "Standard input" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "send" })).toBeTruthy();
+  });
+
   it("invokes clearConsole when the clear button is pressed", () => {
     const { clearConsole } = setup();
     fireEvent.click(screen.getByRole("button", { name: "clear" }));
