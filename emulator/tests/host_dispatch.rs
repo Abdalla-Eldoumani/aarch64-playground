@@ -477,6 +477,31 @@ main:   stp     x29, x30, [sp, -16]!
 }
 
 #[test]
+fn a_forty_byte_frames_bus_error_names_no_other_frames_size() {
+    // 40 leaves sp 8 off a multiple of 16, as 24 does, and the course's
+    // formula rounds it to 48: telling this program "32 instead of 24"
+    // points at a frame it does not have.
+    let mut p = load(
+        r#"
+        .rodata
+fmt:    .string "hi\n"
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -40]!
+        mov     x29, sp
+        ldr     x0, =fmt
+        bl      printf
+        ldp     x29, x30, [sp], 40
+        ret
+"#,
+    );
+    let r = p.halt();
+    let message = r.error.as_deref().expect("a halt message");
+    assert!(message.starts_with("Bus error\n") && message.contains("not a multiple of 16"), "{message}");
+    assert!(!message.contains("instead of 24"), "{message}");
+}
+
+#[test]
 fn falling_off_main_after_a_library_call_halts_at_the_end_of_the_text() {
     let mut p = load(
         r#"
