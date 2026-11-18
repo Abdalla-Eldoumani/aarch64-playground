@@ -38,19 +38,19 @@ const ROUTES = [
     document: "index.html",
     // 211.26 kB brotli measured (2026-10-28). Raised 62 B (2026-11-18) for the
     // real-time request and the unmount stop: 211,936 -> 211,998 B locally,
-    // 211.97 -> 212.02 kB in CI. Raised 64 B (2026-11-18) for the hub's hook
-    // that sets gdb b's breakpoints again: 212,012 -> 212,076 B locally,
-    // 212.03 -> 212.07 kB in CI.
-    limit: 212_126,
+    // 211.97 -> 212.02 kB in CI. Raised 50 B (2026-11-18) for the hub's hook
+    // that sets gdb b's breakpoints again: 212,034 -> 212,079 B locally,
+    // 212.02 -> 212.07 kB in CI.
+    limit: 212_112,
   },
   {
     name: "playground document js (every chunk /playground loads)",
     page: "/playground/page",
     document: "playground.html",
-    // 225.12 kB brotli measured (2026-10-28). Raised 64 B (2026-11-18) for
-    // the hub's hook that sets gdb b's breakpoints again: 225,950 -> 226,014 B
-    // locally, 225.98 -> 226.02 kB in CI.
-    limit: 226_064,
+    // 225.12 kB brotli measured (2026-10-28). Raised 50 B (2026-11-18) for
+    // the hub's hook that sets gdb b's breakpoints again: 225,972 -> 226,017 B
+    // locally, 225.97 -> 226.01 kB in CI.
+    limit: 226_050,
   },
 ];
 
