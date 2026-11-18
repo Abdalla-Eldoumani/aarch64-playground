@@ -753,7 +753,12 @@ impl Cpu {
         self.echo_consumed_stdin(queued);
         self.charge_bulk_work(moved);
         if self.charge_output(out_before, err_before) {
-            return Some(self.halt(output_ceiling_message()));
+            let message = if self.refunds_spent() {
+                SESSION_CAP_MESSAGE.to_string()
+            } else {
+                output_ceiling_message()
+            };
+            return Some(self.halt(message));
         }
         let e = match dispatched {
             Ok(()) => return None,
