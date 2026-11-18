@@ -326,8 +326,7 @@ export function RegisterPanel({
       const usable = touched.filter(
         (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
       );
-      // Only a write this panel saw arrive is stored: the snapshot it mounts on
-      // may predate the student's last pick, and `follow` reads its default on mount.
+      // Stored only once this panel has followed an earlier snapshot while idle.
       if (follow && arrived && usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
 
       const xRows = [...xChanged].sort((a, b) => a - b);
