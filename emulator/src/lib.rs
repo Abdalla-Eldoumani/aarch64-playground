@@ -59,14 +59,16 @@ pub fn detect_hosted_mode(source: &str) -> bool {
     // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
     // same as `bl printf`. A `bl` to any stub a program calls needs the
     // hosted pipeline.
-    let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    for stub in hosted::STUBS.iter().filter(|stub| stub.callable) {
-        let pat = format!("bl {}", stub.name);
-        if normalized.contains(&pat) {
-            return true;
+    let words: Vec<&str> = lower.split_whitespace().collect();
+    let normalized = words.join(" ");
+    let defines = |name: &str| words.iter().any(|w| w.strip_prefix(name).is_some_and(|rest| rest.starts_with(':')));
+    hosted::STUBS.iter().enumerate().filter(|(_, stub)| stub.callable).any(|(row, stub)| {
+        if row < hosted::ROWS_DETECTED_ANYWHERE {
+            normalized.contains(&format!("bl {}", stub.name))
+        } else {
+            words.windows(2).any(|pair| pair == ["bl", stub.name]) && !defines(stub.name)
         }
-    }
-    false
+    })
 }
 
 /// Wasm-bindgen wrapper. The TS frontend imports this through the WASM
