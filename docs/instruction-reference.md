@@ -670,7 +670,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `changecom`              | Turns `#` comments off, so a name after `#` expands. ``changecom(`//')`` makes `//` the comment start instead. |
 | `` `text' ``             | A quoted string: written without its quotes and never expanded. It closes on the line that opens it. |
 
-`ifdef`, `ifelse`, `forloop`, and a numbered diversion such as `divert(1)` are rejected. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
+`ifdef`, `ifelse`, `forloop`, `changequote`, and a numbered diversion such as `divert(1)` are rejected. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
 
 ## GCC output compatibility
 
