@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 add:
@@ -1414,4 +1415,5 @@ main:
 	.xword	.LC20
 	.xword	.LC21
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

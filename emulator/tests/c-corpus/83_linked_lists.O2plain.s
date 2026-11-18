@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -793,7 +794,7 @@ main:
 	.string	"alp"
 	.section .rodata
 	.align	3
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 .LC22:
 	.word	1
 	.word	-2
@@ -808,7 +809,8 @@ main:
 	.xword	.LC7
 	.data
 	.align	2
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 seed:
 	.word	12345
+	.section	.note.GNU-stack,"",@progbits
 

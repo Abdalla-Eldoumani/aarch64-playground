@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.global	grid
 	.bss
@@ -1242,4 +1243,5 @@ main:
 	ldp	x20, x21, [sp, 16]
 	add	sp, sp, 944
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

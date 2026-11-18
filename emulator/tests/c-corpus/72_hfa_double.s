@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	qmul
@@ -1005,4 +1006,5 @@ main:
 	.word	0
 	.word	-1076887552
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

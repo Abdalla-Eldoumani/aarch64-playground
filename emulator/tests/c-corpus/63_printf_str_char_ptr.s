@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -404,6 +405,7 @@ latin.1:
 	.align	3
 utf8.0:
 	.byte 195, 169, 116, 195, 169, 0
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

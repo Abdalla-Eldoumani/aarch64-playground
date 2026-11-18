@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -366,7 +367,7 @@ main:
 	b	.L31
 	.data
 	.align	2
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 mat_n:
 	.word	7
 loop_passes:
@@ -375,4 +376,5 @@ loop_size:
 	.word	6000
 rec_top:
 	.word	180
+	.section	.note.GNU-stack,"",@progbits
 

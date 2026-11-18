@@ -12,7 +12,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 | `MOVZ`   | `MOVZ Xd, #imm, LSL #shift`      | Zero upper bits, shift is 0/16/32/48.    |
 | `MOVK`   | `MOVK Xd, #imm, LSL #shift`      | Keep other halfwords.                    |
 | `MOVN`   | `MOVN Xd, #imm, LSL #shift`      | Bitwise NOT, same shifts.                |
-| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Xm, LSL #k` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The plain register form is the shifted-register one: an optional `LSL`/`LSR`/`ASR` amount of 0 to 63 (31 for a W destination) rides the second source, and `add x0, x1, x2` is that form with an amount of zero. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. GAS also accepts the bare `add x0, sp, x1` spelling, which is the same extended form with `UXTX #0`. |
+| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Xm, LSL #k` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The plain register form is the shifted-register one: an optional `LSL`/`LSR`/`ASR` amount of 0 to 63 (31 for a W destination) rides the second source, and `add x0, x1, x2` is that form with an amount of zero. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. GAS also accepts the bare `add x0, sp, x1` spelling, which is the same extended form with `UXTX #0`, and `add x0, sp, x1, lsl #k` with `k` from 0 to 4, which is `UXTX #k` (`UXTW #k` for a W index). `LSR` and `ASR` have no form that reaches `SP`. |
 | `ADDS`   | same                             | Sets NZCV.                               |
 | `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm` / `SUB Xd, Xn, Xm, LSL #k` / `SUB Xd, Xn, Wm, SXTW #s` | No flags. Same shifted- and extended-register forms as `ADD`. |
 | `SUBS`   | same                             | Sets NZCV.                               |
@@ -116,7 +116,7 @@ which is why none of them accepts `AL` or `NV`.
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
 | `LDPSW`  | `LDPSW Xt1, Xt2, [Xn, #imm]` (+ pre/post index) | Load a pair of words, each sign-extended to 64 bits. `X` targets only; the offset scales by 4. |
-| `LDUR`   | `LDUR Bt/Ht/St/Dt/Qt, [Xn, #imm]`                     | The unscaled signed-offset load, spelled out. SIMD&FP targets only; `imm` runs [-256, 255] and is never scaled. `LDR` picks this encoding on its own for a negative or unaligned offset. |
+| `LDUR`   | `LDUR Xt/Wt, [Xn, #imm]` / `LDUR Bt/Ht/St/Dt/Qt, [Xn, #imm]` | The unscaled signed-offset load, spelled out, into a general or SIMD&FP register. `imm` runs [-256, 255] and is never scaled, even where the scaled form could take it (`ldur x30, [sp, 8]`). `LDR` picks this encoding on its own for a negative or unaligned offset. |
 | `STUR`   | same                                                  | The unscaled store.                |
 | `LDNP`   | `LDNP St1, St2, [Xn, #imm]` / `Dt1, Dt2` / `Qt1, Qt2` | The no-allocate pair load: a plain signed offset, no writeback. Identical here to `LDP`; on hardware it only differs in a cache hint. |
 | `STNP`   | same                                                  | The no-allocate pair store.        |
@@ -645,6 +645,10 @@ An address in the unmapped first page faults here exactly as it does for
 | `.string` / `.asciz` | Null-terminated string.                        |
 | `.ascii`      | String, no null terminator.                           |
 | `.type` / `.size` | Accepted and ignored, so the ones GCC writes need no edit. |
+| `.equ NAME, expr` / `.set NAME, expr` | The same as `NAME = expr` (see m4 preprocessing below), so `.equ alloc, -(16 + 8) & -16` gives a frame offset. |
+| `.arch armv8-a` | Accepted, as GCC writes it. The playground runs that base instruction set, so any other name is refused. |
+| `.ltorg` | Accepted. The literal pool stays at the end of `.text`, so a `. - label` span across a `.ltorg` does not count the pool GNU `as` places there, and code that runs into a `.ltorg` keeps going here, where the GNU-built program runs the pool's words as instructions, which usually stops it with an illegal instruction. |
+| `.section .note.GNU-stack` | Accepted, as GCC writes it at the end of a file. The linker throws that section away, so a line after it that places bytes, defines a label or sets an equate is refused until a section line ends the note; `.global`, `.globl`, `.type`, `.size`, `.arch` and `.ltorg` may follow it. The playground joins a program's files into one text, so a file that follows one ending with the note must open with its own section line. |
 | `name .req reg` | Register alias, integer or FP (`fp .req x29`, `sum .req d19`). Takes effect on the lines after it; string literals are never rewritten. |
 
 ## Pseudo-instructions
@@ -670,12 +674,11 @@ An address in the unmapped first page faults here exactly as it does for
 
 ## GCC output compatibility
 
-Most of what AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) are in the table above.
+Most of what AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) and its `.arch armv8-a`, `.set` and `.section .note.GNU-stack` lines are in the table above.
 
 A whole `-S` file still needs these edits before it assembles:
 
-- Delete the metadata lines: `.arch`, `.file`, `.ident`, every `.cfi_` directive, `.aeabi_subsection` / `.aeabi_attribute`, `.section .note.GNU-stack`, and the `#APP` / `#NO_APP` markers around inline assembly.
-- Write `.set NAME, VALUE` as `NAME = VALUE`.
+- Delete the metadata lines: `.file`, `.ident`, every `.cfi_` directive, `.aeabi_subsection` / `.aeabi_attribute`, and the `#APP` / `#NO_APP` markers around inline assembly.
 - Replace `.local NAME` plus `.comm NAME, SIZE, ALIGN` with `.balign ALIGN`, `NAME:`, and `.skip SIZE` in `.bss`.
 - Write a `.base64` string out as `.byte` rows.
 - Call `strtol` by that name where glibc's headers renamed it `__isoc23_strtol`.

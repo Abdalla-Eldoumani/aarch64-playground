@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -137,4 +138,5 @@ main:
 .L18:
 	mov	w2, -1
 	b	.L9
+	.section	.note.GNU-stack,"",@progbits
 

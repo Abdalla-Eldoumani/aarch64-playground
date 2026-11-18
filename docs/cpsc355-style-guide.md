@@ -85,7 +85,7 @@ the author meant:
 
 The directive table in [instruction-reference.md](instruction-reference.md#directives)
 lists every spelling, including the ones gcc writes (`.xword`, `.p2align`,
-`.space`, `.2byte`). `.equ` and `.set` are refused: write `NAME = value`.
+`.space`, `.2byte`). `.equ NAME, value` and `.set NAME, value` work as `NAME = value` does.
 
 Base addresses:
 

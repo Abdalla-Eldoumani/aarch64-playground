@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -834,7 +835,7 @@ main:
 	.string	"hedge"
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 text:
 	.ascii	"the red "
 	.string	"kite rode the warm air over the hill and the small birds below it hid in the hedge, while the kite turned and turned again; a farmer on the hill saw the kite, saw the hedge shake, and went back to the barn where the old red tractor sat waiting in the dark."
@@ -855,4 +856,5 @@ text:
 	.xword	.LC9
 	.xword	.LC11
 	.xword	.LC12
+	.section	.note.GNU-stack,"",@progbits
 

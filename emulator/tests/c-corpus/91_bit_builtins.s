@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -573,4 +574,5 @@ main:
 	.xword	4097
 	.xword	-9223372036854775808
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

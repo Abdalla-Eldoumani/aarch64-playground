@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -184,7 +185,7 @@ main:
 	.string	"seven"
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 CSWTCH.1:
 	.xword	.LC6
 	.xword	.LC7
@@ -194,4 +195,5 @@ CSWTCH.1:
 	.xword	.LC11
 	.xword	.LC12
 	.xword	.LC13
+	.section	.note.GNU-stack,"",@progbits
 
