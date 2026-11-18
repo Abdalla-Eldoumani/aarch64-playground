@@ -58,6 +58,15 @@ export const PASS_THROUGH = "contents";
 type Held = { focused: HTMLElement | null; scrolls: [Element, number, number, boolean][] };
 const held = new WeakMap<HTMLElement, Held>();
 
+// Whether each scroll box sat at its end after its last scroll. The resize
+// that changes the arrangement reflows the old one before the move, so a box
+// at its end a moment ago may have shrunk away from it by then.
+const endAfterScroll = new WeakMap<Element, boolean>();
+const atEnd = (box: Element) => box.scrollTop + box.clientHeight >= box.scrollHeight - 1;
+const noteEnd = (event: Event) => {
+  if (event.target instanceof Element) endAfterScroll.set(event.target, atEnd(event.target));
+};
+
 /**
  * Where a host node is attached in whichever arrangement is on screen. Taking
  * the node out of the page drops its focus on the body and resets its scroll
@@ -70,6 +79,8 @@ export function HostSlot({ host, className = FILL }: { host: HTMLElement; classN
     const slot = ref.current;
     if (!slot) return;
     slot.appendChild(host);
+    // A scroll event does not bubble, so the host listens in the capture phase.
+    host.addEventListener("scroll", noteEnd, true);
     const was = held.get(host);
     // The new arrangement's splits settle their sizes after this commit, so a
     // box put back at its end is kept there as it resizes, until the reader
@@ -98,6 +109,7 @@ export function HostSlot({ host, className = FILL }: { host: HTMLElement; classN
     }
     return () => {
       settle?.disconnect();
+      host.removeEventListener("scroll", noteEnd, true);
       const active = document.activeElement;
       const scrolls = Array.from(host.querySelectorAll("*"))
         .filter((box) => box.scrollTop > 0 || box.scrollLeft > 0)
@@ -105,7 +117,7 @@ export function HostSlot({ host, className = FILL }: { host: HTMLElement; classN
           box,
           box.scrollTop,
           box.scrollLeft,
-          box.scrollTop + box.clientHeight >= box.scrollHeight - 1,
+          endAfterScroll.get(box) ?? atEnd(box),
         ]);
       held.set(host, {
         focused: active instanceof HTMLElement && host.contains(active) ? active : null,
