@@ -47,6 +47,12 @@ describe("security header lockstep", () => {
   });
 });
 
+describe("image optimizer", () => {
+  it("allows no local image, so /_next/image refuses every request", () => {
+    expect(nextConfig.images?.localPatterns).toEqual([]);
+  });
+});
+
 describe("build id", () => {
   afterEach(() => vi.unstubAllEnvs());
 
