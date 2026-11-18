@@ -54,16 +54,6 @@ pub fn exit_status(regs: &crate::registers::RegisterFile) -> i64 {
     regs.read_gpr(0, false) as i32 as i64
 }
 
-/// The stubs whose result comes back in d0. Every stub on neither list
-/// answers an int, a size, or a pointer in x0: the one caller-saved
-/// register a call's return leaves meaningful.
-pub const RETURNS_IN_D0: &[&str] = &[
-    "atof", "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor", "fabs", "fmod",
-];
-
-/// The stubs that return nothing (C's `void`).
-pub const RETURNS_NOTHING: &[&str] = &["srand", "free", "qsort", "sincos"];
-
 /// Where a stub's result comes back: the one caller-saved register the
 /// clobber after the call leaves alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -468,21 +458,6 @@ impl HostTable {
         self.stub_at(address).map(|stub| stub.name)
     }
 
-    /// Dispatch to the stub at `address`. Returns `None` when the address
-    /// is outside the table (so the caller can fall through to normal
-    /// instruction fetch) or misaligned.
-    pub fn dispatch(
-        &self,
-        address: u64,
-        ctx: &mut HostContext<'_>,
-    ) -> Option<Result<HostOutcome, EmuError>> {
-        if !self.contains_address(address) {
-            return None;
-        }
-        let idx = ((address - HOST_STUB_BASE) / HOST_STUB_STRIDE) as usize;
-        Some((self.entries[idx].func)(ctx))
-    }
-
     /// Names of every registered stub, useful for the UI's register-alias
     /// resolver and for debugging.
     pub fn names(&self) -> impl Iterator<Item = &str> {
@@ -526,7 +501,7 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_runs_stub_and_reports_continue() {
+    fn a_registered_stub_runs_from_its_row() {
         let mut t = HostTable::new();
         fn set_x0(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             ctx.regs.write_gpr(0, true, 123);
@@ -534,22 +509,19 @@ mod tests {
         }
         let addr = t.register("set_x0", set_x0);
         let mut h = Host::new();
-        let outcome = t.dispatch(addr, &mut h.ctx()).unwrap().unwrap();
+        let stub = t.stub_at(addr).expect("a registered address");
+        let outcome = (stub.func)(&mut h.ctx()).unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
         assert_eq!(h.regs.read_gpr(0, true), 123);
     }
 
     #[test]
-    fn dispatch_returns_none_for_unregistered_address() {
+    fn stub_at_returns_none_for_unregistered_address() {
         let t = HostTable::new();
-        let mut h = Host::new();
-        let mut ctx = h.ctx();
         // Address past the end of the table.
-        assert!(t
-            .dispatch(HOST_STUB_BASE + HOST_STUB_STRIDE * 99, &mut ctx)
-            .is_none());
+        assert!(t.stub_at(HOST_STUB_BASE + HOST_STUB_STRIDE * 99).is_none());
         // Address in a completely different range.
-        assert!(t.dispatch(0x0040_0000, &mut ctx).is_none());
+        assert!(t.stub_at(0x0040_0000).is_none());
     }
 
     #[test]
