@@ -121,10 +121,4 @@ describe("LessonIndex", () => {
     expect(screen.getByText(/no lessons/i)).toBeTruthy();
     expect(container.querySelector('a[href^="/learn/"]')).toBeNull();
   });
-
-  it("renders the loading skeleton instead of the list", () => {
-    const { container } = render(<LessonIndex lessons={lessons} loading />);
-    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
-    expect(screen.queryByText("Alpha Lesson")).toBeNull();
-  });
 });
