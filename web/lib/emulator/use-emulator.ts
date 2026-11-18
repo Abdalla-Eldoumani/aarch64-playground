@@ -226,7 +226,6 @@ export function useEmulator(): EmulatorState {
     changedFpRegs,
     vectorRegisters,
     currentLine,
-    replayTick,
     applyRegisters,
     latestSnapRef,
     markCurrentLine,
@@ -898,12 +897,6 @@ export function useEmulator(): EmulatorState {
     [assembleWith, pushReplayFrame, resetReplayHistory],
   );
 
-  // The ring lives behind a ref, so the memo reads the tick that moves with it.
-  const replayFrames = useMemo(() => {
-    void replayTick;
-    return readReplayFrames();
-  }, [replayTick, readReplayFrames]);
-
   // Memoized return so consumers' useCallback/useMemo dependents don't
   // see a fresh object every render.
   return useMemo(
@@ -985,7 +978,7 @@ export function useEmulator(): EmulatorState {
       restoreBookmark,
       clearConsole,
       dirtyAddrs,
-      replayFrames,
+      replayFrames: readReplayFrames(),
       seekReplay,
     }),
     [
@@ -1001,7 +994,7 @@ export function useEmulator(): EmulatorState {
       getMemory, getMemoryMapped, readMemory,
       pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
-      clearConsole, dirtyAddrs, replayFrames, seekReplay,
+      clearConsole, dirtyAddrs, readReplayFrames, seekReplay,
     ],
   );
 }
