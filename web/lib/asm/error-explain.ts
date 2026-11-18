@@ -185,7 +185,7 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
     return {
       what: "m4 reached a construct the playground's m4 does not take; the message names it.",
       why: "It refuses what it cannot run the way GNU m4 on the course servers does: ifdef, ifelse, forloop, changequote and include; a numbered divert; a second argument, an unquoted name or a comment inside divert's or changecom's parentheses; text or a comment between divert(-1) and divert; divert, changecom or dnl after the program undefines it, or dnl after it defines it; and those names, or changequote, unquoted as a define's name on a line with quotes.",
-      fix: "Expand an ifdef, ifelse or forloop into plain code. include is not supported; copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and put a numbered divert's text where it should appear. Give divert -1, 0 or nothing and changecom one quoted argument, keep only define, undefine and dnl lines between divert(-1) and divert, and leave the names divert, changecom, changequote and dnl to m4.",
+      fix: "Expand an ifdef, ifelse or forloop into plain code. include is not supported; copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and put a numbered divert's text where it should appear. Give divert -1, 0 or nothing and changecom one quoted argument, keep only define, undefine and dnl lines, without comments, between divert(-1) and divert, and leave the names divert, changecom, changequote and dnl to m4.",
       styleSection: "m4 preprocessing",
     };
   }
