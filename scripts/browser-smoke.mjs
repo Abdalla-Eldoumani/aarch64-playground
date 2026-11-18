@@ -174,7 +174,7 @@ try {
   // a link's stdin so a program waits for the student, so it is typed here.
   await step(14);
   await page.getByRole("textbox", { name: "Standard input" }).fill("7 4");
-  await page.getByRole("button", { name: "send", exact: true }).click();
+  await page.getByRole("button", { name: "submit", exact: true }).click();
   // scanf returns into main, at ldr a_r, [fp, a_s].
   await step(1, 14);
   await page.getByRole("tab", { name: /^stack/ }).click();
