@@ -32,9 +32,11 @@
 //! Anything else (ifdef, ifelse, forloop, changequote, include) fails with
 //! an "unsupported m4 construct" error at its line, unless the program
 //! defined that name itself. So do divert, changecom and dnl where they
-//! would run once the program has undefined them, dnl once it has defined
-//! it, and one of these four as a define's unquoted name on a line with
-//! quotes.
+//! would run once the program has undefined them, and dnl once it has
+//! defined it. In a program that uses dnl, divert, changecom or quotes,
+//! so do divert, changecom, changequote or dnl as a define's unquoted name on
+//! a line with quotes, and a comment whose text GNU m4 carries past its
+//! line; any other program keeps the output it had.
 
 use std::collections::HashMap;
 
