@@ -532,16 +532,22 @@ _start: ldr     x0, =num
 /// Load `source` the way the playground does (`detect_hosted_mode` picks
 /// the path), run it to its end, and describe it: the path, the libc
 /// trampolines the link made, the exit status, the steps, where it stopped
-/// and why, x0 and the output.
+/// and why, x0 and the output; or the path and why it was not built.
 fn load_and_run(source: &str) -> String {
     let hosted = detect_hosted_mode(source);
     let mut cpu = Cpu::new();
     let trampolines = if hosted {
-        let image = assemble_hosted(source, &cpu.host).unwrap_or_else(|e| panic!("{e}"));
+        let image = match assemble_hosted(source, &cpu.host) {
+            Ok(image) => image,
+            Err(e) => return format!("hosted {hosted}, not built: {e}"),
+        };
         cpu.load_linked_image_with_args(&image, &[]).expect("load");
         image.trampoline_names
     } else {
-        let code = assemble(source).unwrap_or_else(|e| panic!("{e}"));
+        let code = match assemble(source) {
+            Ok(code) => code,
+            Err(e) => return format!("hosted {hosted}, not built: {e}"),
+        };
         cpu.reset();
         cpu.load_program(&code);
         Vec::new()
@@ -577,6 +583,47 @@ fn a_program_with_its_own_atol_loads_and_runs_as_it_did() {
         .collect();
     assert_eq!(got.len(), OWN_ATOL_RUNS.len(), "one line per program: {got:#?}");
     for (got, want) in got.iter().zip(OWN_ATOL_RUNS) {
+        assert_eq!(got, want);
+    }
+}
+
+/// Directive-free programs that run on the bare-metal path with the words
+/// `bl atol` in a comment of each form the assembler takes (`//`, `;`, and
+/// `/* */` on its own line, after code and over several lines), which is no
+/// call. The last three are the shapes a block comment once moved.
+const ATOL_IN_COMMENTS: &[(&str, &str)] = &[
+    ("line_slashes", "// bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("tail_slashes", "        mov     x0, 5 // bl atol\n        mov     x8, 93\n        svc     0\n"),
+    ("line_semicolon", "; bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("tail_semicolon", "        mov     x0, 5 ; bl atol\n        mov     x8, 93\n        svc     0\n"),
+    ("line_block", "/* bl atol */\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("tail_block", "        mov     x0, 5 /* bl atol */\n        mov     x8, 93\n        svc     0\n"),
+    ("lines_block", "/* the call\n        bl      atol\n   is not made */\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("block_main", "/* bl atol */\nmain:   mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("block_start_lr", "/* bl atol */\n_start: mov     x0, x30\n        and     x0, x0, 0xff\n        mov     x8, 93\n        svc     0\n"),
+];
+
+/// One line per program from `load_and_run`.
+const ATOL_IN_COMMENTS_RUNS: &[&str] = &[
+    "line_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "tail_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "line_semicolon: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "tail_semicolon: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "line_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "tail_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "lines_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "block_main: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "block_start_lr: hosted false, trampolines [], exit Some(0), steps 4, pc 0x400010, x0 0x0, error None, stdout \"\"",
+];
+
+#[test]
+fn bl_atol_in_a_comment_leaves_a_program_on_its_path() {
+    let got: Vec<String> = ATOL_IN_COMMENTS
+        .iter()
+        .map(|(label, source)| format!("{label}: {}", load_and_run(source)))
+        .collect();
+    assert_eq!(got.len(), ATOL_IN_COMMENTS_RUNS.len(), "one line per program: {got:#?}");
+    for (got, want) in got.iter().zip(ATOL_IN_COMMENTS_RUNS) {
         assert_eq!(got, want);
     }
 }
