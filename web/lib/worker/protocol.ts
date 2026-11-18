@@ -15,6 +15,7 @@ export type RequestKind =
   | "pushStdin"
   | "closeStdin"
   | "setSnapshotsPaused"
+  | "setRealTime"
   | "takeStdout"
   | "takeStderr"
   | "getMemory"
@@ -56,6 +57,7 @@ export type Request =
   | (BaseRequest<"pushStdin"> & { text: string; interactive?: boolean })
   | BaseRequest<"closeStdin">
   | (BaseRequest<"setSnapshotsPaused"> & { paused: boolean })
+  | (BaseRequest<"setRealTime"> & { on: boolean })
   | BaseRequest<"takeStdout">
   | BaseRequest<"takeStderr">
   | (BaseRequest<"getMemory"> & { addr: number; len: number })

@@ -35,9 +35,9 @@ pub struct CallNode {
     /// Nodes from the program's first function down to it, 1 for that one.
     depth: u32,
     /// The calls it stands for: 1, or the rest of a run in a fold.
-    pub calls: u32,
+    pub calls: u64,
     /// Of those, the ones that have not returned.
-    pub open: u32,
+    pub open: u64,
     /// x0 when its first call began, and when its latest return came.
     pub arg: u64,
     pub ret: u64,
@@ -60,7 +60,7 @@ pub struct CallTree {
     /// One more than the node of the innermost call that has one, 0 for none.
     current: usize,
     /// Calls the program is inside, below that one, that have no node.
-    outside: u32,
+    outside: u64,
     /// Calls made that have no node.
     dropped: u64,
 }
@@ -70,7 +70,7 @@ pub struct CallTree {
 /// change. A node the step added goes when the length is put back.
 #[derive(Debug, Default)]
 pub struct TreeUndo {
-    head: Option<(usize, usize, u32, u64)>,
+    head: Option<(usize, usize, u64, u64)>,
     nodes: Vec<(usize, CallNode)>,
 }
 
@@ -85,7 +85,7 @@ impl CallTree {
     }
 
     /// Calls the program is inside that have no node.
-    pub fn outside(&self) -> u32 {
+    pub fn outside(&self) -> u64 {
         self.outside
     }
 
@@ -212,7 +212,7 @@ impl CallTree {
         out.extend([
             self.nodes.len() as f64,
             self.current as f64,
-            f64::from(self.outside),
+            self.outside as f64,
             self.dropped as f64,
             f64::from(x0_width),
         ]);
@@ -220,8 +220,8 @@ impl CallTree {
             out.extend([
                 n.parent as f64,
                 n.entry as f64,
-                f64::from(n.calls),
-                f64::from(n.open),
+                n.calls as f64,
+                n.open as f64,
                 f64::from(width),
                 (n.arg >> 32) as f64,
                 f64::from(n.arg as u32),
@@ -230,5 +230,43 @@ impl CallTree {
                 f64::from(n.ret_width),
             ]);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn calls_into_a_fold_count_past_two_to_the_thirty_second() {
+        // A program paced by sleeps in the terminal can make more than 2^32
+        // calls in one session, so a fold's counts must not wrap there.
+        const F: u64 = 0x40_0100;
+        let mut tree = CallTree::default();
+        tree.start(0x40_0000, 0);
+        // Four calls keep a node each; the fifth makes the fold.
+        for _ in 0..=RUN_SHOWN {
+            tree.enter(F, 0, None);
+            tree.leave(0, 8, None);
+        }
+        let fold = tree.nodes.len() - 1;
+        assert!(tree.nodes[fold].folds());
+        // Inside the fold, f calls itself and never returns.
+        tree.enter(F, 0, None);
+        tree.nodes[fold].calls = u32::MAX.into();
+        tree.nodes[fold].open = u32::MAX.into();
+        tree.enter(F, 0, None);
+        assert_eq!(tree.nodes[fold].calls, 1 << 32);
+        assert_eq!(tree.nodes[fold].open, 1 << 32);
+        // A call past the tree's caps while outside it.
+        tree.outside = u32::MAX.into();
+        tree.enter(F, 0, None);
+        assert_eq!(tree.outside(), 1 << 32);
+
+        let mut out = Vec::new();
+        tree.numbers(&[0; MAX_TREE_NODES], 8, &mut out);
+        assert_eq!(out[2], (1u64 << 32) as f64, "outside");
+        let at = 5 + fold * 10;
+        assert_eq!((out[at + 2], out[at + 3]), ((1u64 << 32) as f64, (1u64 << 32) as f64), "calls, open");
     }
 }

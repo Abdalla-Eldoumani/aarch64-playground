@@ -292,13 +292,22 @@ impl Cpu {
         self.term.virtual_ns = self.term.virtual_ns.saturating_add(ns);
         // Refunds stop at the lifetime cap so a runner that skips the
         // real pauses (a batch fixture run) cannot mint budget forever.
+        // A real-time host gets the four-hour caps, and each refund is
+        // charged only what it credits: a sleep into a full budget is free.
+        let (step_cap, byte_cap, spent_steps, spent_bytes) = if self.real_time {
+            (REAL_TIME_REFUND_STEPS, REAL_TIME_REFUND_OUTPUT_BYTES, self.steps_total, self.output_total)
+        } else {
+            (MAX_REFUND_STEPS, MAX_REFUND_OUTPUT_BYTES, u64::MAX, u64::MAX)
+        };
         let step_refund = (ns / SLEEP_STEP_REFUND_NS_PER_STEP)
-            .min(MAX_REFUND_STEPS.saturating_sub(self.refund_steps_total));
+            .min(step_cap.saturating_sub(self.refund_steps_total))
+            .min(spent_steps);
         self.refund_steps_total += step_refund;
         self.steps_total = self.steps_total.saturating_sub(step_refund);
         if step_refund > 0 {
-            let byte_refund = ((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize)
-                .min(MAX_REFUND_OUTPUT_BYTES.saturating_sub(self.refund_output_total));
+            let byte_refund = (ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE)
+                .min(byte_cap.saturating_sub(self.refund_output_total))
+                .min(spent_bytes);
             self.refund_output_total += byte_refund;
             self.output_total = self.output_total.saturating_sub(byte_refund);
         }

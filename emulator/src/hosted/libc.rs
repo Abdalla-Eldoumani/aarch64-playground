@@ -517,6 +517,13 @@ pub fn strtol(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// atol(nptr) -> strtol(nptr, NULL, 10), which is how glibc defines it.
+pub fn atol(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let bytes = read_c_string(ctx.mem, ctx.regs.read_gpr(0, true), "atol")?;
+    ctx.regs.write_gpr(0, true, parse_strtol(&bytes, 10).0 as u64);
+    Ok(HostOutcome::Continue)
+}
+
 /// The strtol grammar, returning the value and how many bytes it used.
 /// A value too big for a long clamps to LONG_MAX / LONG_MIN, which is
 /// what glibc returns alongside ERANGE (nothing here models errno, and
