@@ -91,26 +91,26 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
     const index = arrayMatch[2].trim();
     const idx = parseOffset(index, ctx);
     if (idx == null) return { error: `unknown index ${index}` };
+    const label = ctx.resolveLabelAddress(name);
+    if (label === "pending") return { pending: true };
+    let refused: string | null = null;
+    if (label != null) {
+      const element = ctx.labelElementSize?.(name) ?? { error: "no source to read" };
+      if ("size" in element) return readAt(ctx, label + idx * BigInt(element.size), element.size);
+      refused = `can't tell the element size of ${name}: ${element.error}`;
+    }
     // A frame-slot name is an OFFSET from fp, never an address; resolve
     // it against the live frame pointer so `a_s[0]` reads the array on
-    // the stack instead of dereferencing the offset as low memory. It goes
-    // before the label lookup, which answers an `=` name with its value.
+    // the stack instead of dereferencing the offset as low memory. The
+    // label lookup answers an `=` name too, with its value and no element
+    // size, so a refused size still tries the frame.
     const slot = ctx.resolveSlotOffset(name);
     if (slot != null) {
       const fp = ctx.readRegister("fp");
       if (fp == null) return { error: "fp is not available" };
       return readAt(ctx, fp + slot + idx * 8n, 8);
     }
-    const label = ctx.resolveLabelAddress(name);
-    if (label === "pending") return { pending: true };
-    if (label != null) {
-      const element = ctx.labelElementSize?.(name) ?? { error: "no source to read" };
-      if ("error" in element) {
-        return { error: `can't tell the element size of ${name}: ${element.error}` };
-      }
-      return readAt(ctx, label + idx * BigInt(element.size), element.size);
-    }
-    return { error: `unknown symbol ${name}` };
+    return { error: refused ?? `unknown symbol ${name}` };
   }
 
   return { error: "unsupported expression" };
