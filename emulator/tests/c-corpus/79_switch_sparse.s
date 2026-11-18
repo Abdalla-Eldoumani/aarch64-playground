@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 sparse32:
@@ -1411,6 +1412,7 @@ s64.0:
 	.xword	9223372036854775807
 	.xword	2147483647
 	.xword	-2147483648
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

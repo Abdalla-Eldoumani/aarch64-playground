@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 import {
-  exportBundle as moduleExportBundle,
-  importBundle as moduleImportBundle,
+  exportBundle,
+  importBundle,
   type ImportResult,
   listSaves,
   putSave,
   removeSave,
-  SAVES_CHANGED_EVENT,
+  subscribeSaves,
   type NamedSave,
   type SaveBundle,
 } from "@/lib/playground/named-saves";
@@ -25,27 +25,17 @@ function refreshCache(): void {
 }
 
 function subscribe(callback: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  const onStorage = (e: StorageEvent) => {
-    if (e.key === "aarch64-playground:named-saves") {
-      refreshCache();
-      callback();
-    }
-  };
-  const onCustom = () => {
-    refreshCache();
-    callback();
-  };
   // The module-scope snapshot was taken at import time; refresh it when the
   // first consumer subscribes.
   if (listenerCount === 0) refreshCache();
   listenerCount++;
-  window.addEventListener("storage", onStorage);
-  window.addEventListener(SAVES_CHANGED_EVENT, onCustom);
+  const unsubscribe = subscribeSaves(() => {
+    refreshCache();
+    callback();
+  });
   return () => {
     listenerCount--;
-    window.removeEventListener("storage", onStorage);
-    window.removeEventListener(SAVES_CHANGED_EVENT, onCustom);
+    unsubscribe();
   };
 }
 
@@ -74,12 +64,5 @@ export interface NamedSavesApi {
  */
 export function useNamedSaves(): NamedSavesApi {
   const saves = useSyncExternalStore(subscribe, getSnapshot, serverSnapshot);
-  const put = useCallback((save: NamedSave) => putSave(save), []);
-  const remove = useCallback((name: string) => removeSave(name), []);
-  const exportBundle = useCallback(() => moduleExportBundle(), []);
-  const importBundle = useCallback(
-    (bundle: unknown) => moduleImportBundle(bundle),
-    [],
-  );
-  return { saves, put, remove, exportBundle, importBundle };
+  return { saves, put: putSave, remove: removeSave, exportBundle, importBundle };
 }

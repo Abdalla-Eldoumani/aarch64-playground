@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -320,7 +321,7 @@ main:
 	ret
 	.data
 	.align	2
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 cycle_len:
 	.word	3000
 fm_top:
@@ -333,7 +334,8 @@ tak_z:
 	.word	3
 	.bss
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 tak_calls:
 	.zero	8
+	.section	.note.GNU-stack,"",@progbits
 

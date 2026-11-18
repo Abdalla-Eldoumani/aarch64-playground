@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -273,7 +274,7 @@ main:
 	b	.L6
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 wv:
 	.word	-559038737
 	.zero	4
@@ -291,4 +292,5 @@ counts:
 	.word	100
 	.word	255
 	.word	-31
+	.section	.note.GNU-stack,"",@progbits
 

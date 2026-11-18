@@ -74,6 +74,18 @@ describe("solved-state", () => {
     expect(calls).toBe(1);
   });
 
+  it("subscribeSolved fires when another tab changes the solved set, and only then", () => {
+    let calls = 0;
+    const unsubscribe = subscribeSolved(() => {
+      calls += 1;
+    });
+    window.dispatchEvent(new StorageEvent("storage", { key: SOLVED_KEY, newValue: '["x"]' }));
+    expect(calls).toBe(1);
+    window.dispatchEvent(new StorageEvent("storage", { key: "aarch64-playground:theme", newValue: "light" }));
+    expect(calls).toBe(1);
+    unsubscribe();
+  });
+
   it("does not throw when localStorage.setItem throws", () => {
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("quota exceeded");

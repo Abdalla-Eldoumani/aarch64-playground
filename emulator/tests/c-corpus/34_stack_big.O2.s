@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -91,4 +92,5 @@ main:
 	.align	4
 g.0:
 	.zero	400000
+	.section	.note.GNU-stack,"",@progbits
 

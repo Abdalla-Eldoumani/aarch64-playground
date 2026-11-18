@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -267,4 +268,5 @@ main:
 .LC2:
 	.byte 222, 173, 190, 239, 0, 127
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

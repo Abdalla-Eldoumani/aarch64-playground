@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.data
 	.align	2
@@ -1021,6 +1022,7 @@ main:
 	mov	w0, 0
 	ldp	x29, x30, [sp], 48
 	ret
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

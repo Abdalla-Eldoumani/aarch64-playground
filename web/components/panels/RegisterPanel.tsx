@@ -24,6 +24,7 @@ import {
 } from "@/lib/emulator/register-format";
 import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
 import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
@@ -39,7 +40,6 @@ import {
   HEX_KEY,
   parseView,
   usePersistedArrangement,
-  usePersistedFlag,
   V_DEC_KEY,
   VIEW_KEY,
   X_DEC_KEY,
@@ -316,7 +316,7 @@ export function RegisterPanel({
   // read as they stand then: a click holds until the next write, and a format
   // click neither re-speaks nor re-scrolls.
   const followWrite = useEffectEvent(
-    (xChanged: ReadonlySet<number>, vecChanged: ReadonlySet<number>) => {
+    (xChanged: ReadonlySet<number>, vecChanged: ReadonlySet<number>, arrived: boolean) => {
       // A d write reaches bits 63:0 and no further; anything above that, or a
       // destination the student spelled v or q, is a vector write.
       const vecClass: RegView = hasVec && (upperMoved || vSpelledDest) ? "v" : "d";
@@ -326,7 +326,8 @@ export function RegisterPanel({
       const usable = touched.filter(
         (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
       );
-      if (follow && usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
+      // Stored only once this panel has followed an earlier snapshot while idle.
+      if (follow && arrived && usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
 
       const xRows = [...xChanged].sort((a, b) => a - b);
       const vecRows = [...vecChanged].sort((a, b) => a - b);
@@ -381,7 +382,7 @@ export function RegisterPanel({
     const last = followedSnap.current;
     if (last?.[0] === changedRegs && last[1] === followedVecRegs) return;
     followedSnap.current = [changedRegs, followedVecRegs];
-    followWrite(changedRegs, followedVecRegs);
+    followWrite(changedRegs, followedVecRegs, last !== null);
   }, [changedRegs, followedVecRegs, running]);
 
   const pickView = useCallback((next: RegView) => {

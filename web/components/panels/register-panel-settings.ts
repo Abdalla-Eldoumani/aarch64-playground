@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useReducer } from "react";
 import type { RegView } from "@/lib/emulator/emulator-state";
 import type { LaneArrangement } from "@/lib/emulator/register-format";
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { useStoredSetting } from "@/lib/hooks/use-stored-setting";
 
 export const VIEW_KEY = "aarch64-playground:regfile-view";
 /** The d-view's format flag keeps the key it shipped with, so a returning
@@ -36,36 +35,6 @@ function isArrangementId(raw: string | null): raw is ArrangementId {
   return raw != null && Object.hasOwn(ARRANGEMENTS, raw);
 }
 
-/** Persisted boolean flag, SSR-safe (reads localStorage after mount). A
- *  reducer, like the lane arrangement below, so the stored value can arrive
- *  from an effect. Every copy of the flag follows a change at once: the
- *  other embeds on a lesson page, and the viewer's other tabs. */
-export function usePersistedFlag(
-  key: string,
-  fallback = false,
-): [boolean, (next: boolean) => void] {
-  const [value, apply] = useReducer((_prev: boolean, next: boolean) => next, fallback);
-  useEffect(() => {
-    // Storage unavailable reads as null, which keeps the fallback: session-only
-    // state, no separate branch needed.
-    const stored = safeGetItem(key);
-    if (stored != null) apply(stored === "1");
-    const follow = (event: StorageEvent) => {
-      if (event.key === key && event.newValue) apply(event.newValue === "1");
-    };
-    window.addEventListener("storage", follow);
-    return () => window.removeEventListener("storage", follow);
-  }, [key]);
-  const set = useCallback((next: boolean) => {
-    const newValue = next ? "1" : "0";
-    safeSetItem(key, newValue);
-    // The browser tells only the other tabs; this page hears it from here,
-    // which also carries the choice when storage is unavailable.
-    window.dispatchEvent(new StorageEvent("storage", { key, newValue }));
-  }, [key]);
-  return [value, set];
-}
-
 /** "1" / "0" are the two-view flag this control replaced: a returning student
  *  who left the panel on the d-file lands back on it. */
 export function parseView(raw: string | null): RegView | null {
@@ -73,19 +42,9 @@ export function parseView(raw: string | null): RegView | null {
   return stored === "x" || stored === "d" || stored === "v" ? stored : null;
 }
 
-/** The lane arrangement, persisted like the format flags. 64-bit integer
- *  lanes by default: two halves is the reading closest to the d-view the
- *  student came from. The state is a reducer so the stored value can arrive
- *  from an effect, the same reason RegisterPanel's pulse ids are one. */
+/** The lane arrangement, read from storage on mount; a pick moves this panel
+ *  alone. 64-bit integer lanes by default: two halves is the reading closest
+ *  to the d-view the student came from. */
 export function usePersistedArrangement(): [ArrangementId, (next: ArrangementId) => void] {
-  const [value, apply] = useReducer((_prev: ArrangementId, next: ArrangementId) => next, "d");
-  useEffect(() => {
-    const stored = safeGetItem(LANE_KEY);
-    if (isArrangementId(stored)) apply(stored);
-  }, []);
-  const set = useCallback((next: ArrangementId) => {
-    apply(next);
-    safeSetItem(LANE_KEY, next);
-  }, []);
-  return [value, set];
+  return useStoredSetting(LANE_KEY, (raw) => (isArrangementId(raw) ? raw : "d"), false);
 }

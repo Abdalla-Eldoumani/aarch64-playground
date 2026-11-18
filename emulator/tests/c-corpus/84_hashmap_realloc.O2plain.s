@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -881,7 +882,7 @@ main:
 	.string	"hedge"
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC21:
 	.xword	.LC0
 	.xword	.LC1
@@ -898,4 +899,5 @@ main:
 	.xword	.LC9
 	.xword	.LC11
 	.xword	.LC12
+	.section	.note.GNU-stack,"",@progbits
 

@@ -3,7 +3,7 @@
 import type { ReactNode } from "react";
 import { useCallback, useState } from "react";
 import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
-import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
 import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
 import type { StepGoal } from "@/lib/emulator/emulator-state";
 import { PaneSwitch } from "@/components/playground/PaneSwitch";

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -24,4 +25,5 @@ main:
 .L6:
 	mov	w0, 300
 	bl	exit
+	.section	.note.GNU-stack,"",@progbits
 

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -187,10 +188,11 @@ main:
 	.text
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC4:
 	.byte 222, 173, 190, 239, 0, 127
 	.zero	2
 hexd:
 	.string	"0123456789abcdef"
+	.section	.note.GNU-stack,"",@progbits
 

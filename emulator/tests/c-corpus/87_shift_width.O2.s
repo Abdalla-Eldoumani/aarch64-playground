@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -360,7 +361,7 @@ main:
 	b	.L21
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 wv:
 	.word	-559038737
 	.zero	4
@@ -378,4 +379,5 @@ counts:
 	.word	100
 	.word	255
 	.word	-31
+	.section	.note.GNU-stack,"",@progbits
 

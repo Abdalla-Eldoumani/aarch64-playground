@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -1103,4 +1104,5 @@ main:
 .LC34:
 	.xword	0
 	.xword	67108864
+	.section	.note.GNU-stack,"",@progbits
 

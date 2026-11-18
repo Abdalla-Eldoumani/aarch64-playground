@@ -207,7 +207,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SMADDL", "SMSUBL", "UMADDL", "UMSUBL", "SMNEGL", "UMNEGL",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
-    // the unscaled and no-allocate spellings (SIMD&FP registers only)
+    // the unscaled spellings, and the no-allocate pairs (SIMD&FP registers only)
     "LDUR", "STUR", "LDNP", "STNP",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",

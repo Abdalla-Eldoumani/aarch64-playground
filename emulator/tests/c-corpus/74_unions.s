@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	flipsign
@@ -591,4 +592,5 @@ main:
 .LC4:
 	.word	-1717986918
 	.word	1069128089
+	.section	.note.GNU-stack,"",@progbits
 

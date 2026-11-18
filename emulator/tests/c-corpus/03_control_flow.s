@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	classify
@@ -248,4 +249,5 @@ main:
 	.word	42
 	.word	500
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

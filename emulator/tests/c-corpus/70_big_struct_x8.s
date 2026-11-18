@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	cross
@@ -1130,4 +1131,5 @@ main:
 	.xword	1
 	.xword	0
 	.text
+	.section	.note.GNU-stack,"",@progbits
 
