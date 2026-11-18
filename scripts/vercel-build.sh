@@ -14,7 +14,7 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 # rebuild production with a toolchain nothing has tested. Bump both pins
 # deliberately, with a full local rebuild and test pass on the new versions.
 rust_toolchain="1.99.1"
-wasm_pack_version="0.15.0"
+wasm_pack_version="0.15.1"
 
 echo "--- installing rust toolchain ${rust_toolchain}"
 if ! command -v rustup >/dev/null 2>&1; then

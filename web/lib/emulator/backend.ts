@@ -81,6 +81,8 @@ export interface EmulatorBackend {
   frameLayout(): Promise<FrameLayoutPayload | null>;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
+  /** Release the machine when its owner unmounts. */
+  dispose(): void;
 }
 
 /**
@@ -306,6 +308,11 @@ class MainThreadBackend implements EmulatorBackend {
     };
   }
 
+  // Stands the run down only: the glue's finalizer frees the machine, and a late call must not hit a freed one.
+  dispose(): void {
+    this.runEpoch++;
+  }
+
   private requireEmu(): EmulatorInstance {
     if (!this.emu) {
       throw new Error("emulator not initialized; call init() first");
@@ -387,6 +394,6 @@ export function pickBackend(): EmulatorBackend {
     return new MainThreadBackend();
   }
   const worker = spawnEmulatorWorker();
-  if (worker) return worker as unknown as EmulatorBackend;
+  if (worker) return worker;
   return new MainThreadBackend();
 }
