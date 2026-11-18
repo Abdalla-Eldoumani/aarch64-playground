@@ -365,6 +365,14 @@ fn format_conversion(
         }
         b's' => {
             let ptr = walker.next_int(ctx);
+            // glibc prints a NULL string as `(null)`, or as nothing when a
+            // precision under 6 has no room for it, and reads no memory.
+            if ptr == 0 {
+                let null: &[u8] =
+                    if spec.precision.is_some_and(|max| max < 6) { b"" } else { b"(null)" };
+                emit_field(b"", null, spec, false, out);
+                return Ok(());
+            }
             // C's %s precision is a maximum BYTE count, and the bytes go
             // out as they are, whether or not they spell UTF-8.
             let bytes = match spec.precision {
