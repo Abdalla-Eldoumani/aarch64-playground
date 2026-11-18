@@ -16,10 +16,12 @@
 //!   * Every output line maps back to the source line that produced it;
 //!     they stay equal until a define or a macro body spans lines.
 //!   * `dnl` deletes through the newline where the playground refused it
-//!     before: on a line of its own, or after a define's or undefine's `)`.
-//!     Elsewhere it is an ordinary name (a `dnl:` label runs as it did).
+//!     before: on a line of its own, or after a define, undefine, divert
+//!     or changecom call. Elsewhere it is an ordinary name (a `dnl:` label
+//!     runs as it did).
 //!   * `divert(-1)` throws the output away until `divert` or `divert(0)`;
-//!     a numbered diversion is refused.
+//!     only define, undefine and dnl lines and m4 comments may sit in
+//!     between. A numbered diversion is refused.
 //!   * `changecom` turns comments off, and `changecom(`//')` moves the
 //!     opener; a comment still ends at the line's end.
 //!   * On a line whose source holds a backtick, `` `text' `` is written as
@@ -29,7 +31,9 @@
 //!
 //! Anything else (ifdef, ifelse, forloop, changequote, include) fails with
 //! an "unsupported m4 construct" error at its line, unless the program
-//! defined that name itself.
+//! defined that name itself. So do divert, changecom and dnl where they
+//! would run once the program has undefined them, and dnl once it has
+//! defined it.
 
 use std::collections::HashMap;
 
@@ -117,6 +121,8 @@ impl Expanded {
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
+    // The lines as written: GNU m4 reads the comments the passes below drop.
+    let written: Vec<&str> = source.lines().collect();
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
@@ -278,18 +284,40 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
+        // GNU m4 drops a builtin for good once a define or undefine names
+        // it; where the playground would run it, it refuses instead.
+        let touched = |name: &str| define_events.iter().any(|(at, n, _)| *at <= idx && n == name);
+        let gone = |name: &str| unsupported(line_num, &format!("{name} once the program defines or undefines it"));
+        let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
         let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
+            if touched(name) {
+                return Err(gone(name));
+            }
             // A numbered diversion goes to the end of GNU m4's output, and a
             // comment that ends anywhere but the line's end can span lines:
-            // the line-for-line expansion here can follow neither. A comma
-            // between the parentheses means more than one argument. Taking
-            // off quotes never lengthens the text, so `args.len()` caps it.
-            let arg = unquote(args.trim_start(), None, args.len()).unwrap_or_default();
+            // the line-for-line expansion here can follow neither, nor a name
+            // GNU m4 would expand between the parentheses, nor a comment
+            // there that hides the `)`. A comma means more than one
+            // argument. Taking off quotes never lengthens the text, so
+            // `args.len()` caps it.
+            let arg = unquote(args.trim_start_matches(C_SPACE), None, args.len()).unwrap_or_default();
             let supported = !args.contains(',')
+                && !reads_on(args, comment)
                 && if name == "divert" {
-                    let n = arg.trim();
-                    discard = n.strip_prefix('-').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
-                    discard || n.is_empty() || n == "0"
+                    // GNU m4 reads the number as strtol does: blanks, a sign,
+                    // then digits only; anything else leaves the diversion as
+                    // it is. Past nine digits it wraps into another diversion.
+                    let n = arg.trim_start_matches(C_SPACE);
+                    let (minus, digits) = match n.strip_prefix('-') {
+                        Some(digits) => (true, digits),
+                        None => (false, n.strip_prefix('+').unwrap_or(n)),
+                    };
+                    let number = digits.trim_start_matches('0');
+                    let numeric = arg.is_empty() || (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()));
+                    if numeric {
+                        discard = minus && !number.is_empty();
+                    }
+                    !numeric || number.is_empty() || (minus && number.len() < 10)
                 } else {
                     comment_events.push((line_num, Some(arg).filter(|c| !c.is_empty())));
                     true
@@ -302,16 +330,28 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             joins
         } else if discard {
-            continue;
+            // GNU m4 reads the text it throws away, comments the playground
+            // drops first included: a backtick there opens a quote, and a
+            // `divert` ends the discard. The lines read alike here are blank
+            // ones, define, undefine and dnl lines (pass 1 left them blank)
+            // with no such comment, and comments m4 itself opens.
+            let (raw, written) = (lines[idx], written[idx]);
+            let blank = line.trim().is_empty() && written == raw && (*joins || strip_comment(raw).len() == raw.len());
+            if !blank && !comment.is_some_and(|c| written.trim_start().starts_with(c)) {
+                return Err(unsupported(line_num, "text or a comment under divert(-1)"));
+            }
+            *joins
         } else {
             // Only a line whose own source holds a backtick reads m4 quotes:
             // the playground refused every such line before, so no program
             // that ran changes.
             let quotes = if line.contains('`') { Quotes::Keep } else { Quotes::Plain };
-            let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
             carry.push_str(&expand_recursively(line, &current, line_num, Gnu { comment, quotes })?);
             *joins
         };
+        if joins && touched("dnl") {
+            return Err(gone("dnl"));
+        }
         if discard || joins {
             continue;
         }
@@ -943,6 +983,27 @@ fn builtin_call<'a>(
     }
     let close = closing_paren(rest, true)?;
     Some((name, &rest[1..close], after_call(&rest[close + 1..])?))
+}
+
+/// The blanks C's isspace knows, which GNU m4 skips before an argument.
+const C_SPACE: [char; 6] = [' ', '\t', '\n', '\x0b', '\x0c', '\r'];
+
+/// Whether GNU m4 would read a builtin's arguments past their own text: a
+/// name outside quotes it may expand, or a comment that hides the `)`.
+fn reads_on(args: &str, comment: Option<&str>) -> bool {
+    let b = args.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'`' {
+            i += quote_end(&b[i..]).unwrap_or(b.len() - i);
+            continue;
+        }
+        if is_id_start_byte(b[i]) || comment.is_some_and(|c| b[i..].starts_with(c.as_bytes())) {
+            return true;
+        }
+        i += 1;
+    }
+    false
 }
 
 /// The refusal of a construct the playground's m4 does not take.
