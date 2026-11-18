@@ -368,11 +368,11 @@ describe("gdb-lite bt and info frame with no frame", () => {
 
 describe("gdb-lite c", () => {
   // gdb answers "The program is not being run." to a continue after the exit.
-  it("says there is nothing to continue once the program has exited, and runs nothing", async () => {
+  it("says the program has finished once it has exited, and runs nothing", async () => {
     const { ctx, hub } = stoppedAt(QUITS, null);
     expect(await gdb("c", ctx)).toEqual({
       status: "err",
-      lines: ["gdb: nothing to continue: the program has finished"],
+      lines: ["gdb: the program has finished"],
     });
     expect(hub.run).not.toHaveBeenCalled();
   });
