@@ -212,8 +212,9 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 `wasm`, `corpus`, `web-build`, and `web-test`, and
 `docs/instruction-reference.md` runs those four and `rust`. A lesson or
 example change skips lint and typecheck, and a change under `emulator/tests/`
-runs only the Rust jobs, except the error-parity cases and the one corpus
-program the web tests read, which also run `wasm`, `corpus`, `web-build`, and
+runs only the Rust jobs, except the error-parity cases, the one corpus
+program the web tests read, and `c_corpus.rs` (a web test holds the name
+`cargo test` skips to it), which also run `wasm`, `corpus`, `web-build`, and
 `web-test`. The three web files the `wasm_codes` test reads,
 `web/lib/emulator/call-cards.ts`, `stack-frames.ts` and `clobber-note.ts`,
 also run `rust`. A change to
