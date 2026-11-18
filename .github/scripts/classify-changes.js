@@ -31,9 +31,10 @@ const WASM_INPUTS = /^emulator\/(src\/|Cargo\.toml$|Cargo\.lock$)/;
 const READ_BY_RUST =
   /^(docs\/instruction-reference\.md$|web\/public\/examples\/cpsc355\/|web\/lib\/test\/emulator\/fixtures\/|web\/lib\/emulator\/(call-cards|stack-frames|clobber-note)\.ts$)/;
 
-// Emulator test data the web tests read: error-explain's server transcripts
-// and the dense -O2 program share.test measures a link with.
-const READ_BY_WEB = /^emulator\/tests\/(error-parity\/|c-corpus\/78_switch_dense\.O2plain\.s$)/;
+// Emulator test data the web tests read: error-explain's server transcripts,
+// the dense -O2 program share.test measures a link with, and c_corpus.rs,
+// whose test check-workflow.test holds check.yml's cargo skip to.
+const READ_BY_WEB = /^emulator\/tests\/(error-parity\/|c-corpus\/78_switch_dense\.O2plain\.s$|c_corpus\.rs$)/;
 
 // The example catalog, also read by the Rust tests: frames.rs and
 // filler_examples.rs take each multi-file example's helper list from it.
