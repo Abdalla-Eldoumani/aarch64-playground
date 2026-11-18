@@ -1,9 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useReducer } from "react";
 import type { RegView } from "@/lib/emulator/emulator-state";
 import type { LaneArrangement } from "@/lib/emulator/register-format";
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { useStoredSetting } from "@/lib/hooks/use-stored-setting";
 
 export const VIEW_KEY = "aarch64-playground:regfile-view";
 /** The d-view's format flag keeps the key it shipped with, so a returning
@@ -45,17 +44,7 @@ export function parseView(raw: string | null): RegView | null {
 
 /** The lane arrangement, read from storage on mount; a pick moves this panel
  *  alone. 64-bit integer lanes by default: two halves is the reading closest
- *  to the d-view the student came from. The state is a reducer so the stored
- *  value can arrive from an effect, the same reason RegisterPanel's pulse ids are one. */
+ *  to the d-view the student came from. */
 export function usePersistedArrangement(): [ArrangementId, (next: ArrangementId) => void] {
-  const [value, apply] = useReducer((_prev: ArrangementId, next: ArrangementId) => next, "d");
-  useEffect(() => {
-    const stored = safeGetItem(LANE_KEY);
-    if (isArrangementId(stored)) apply(stored);
-  }, []);
-  const set = useCallback((next: ArrangementId) => {
-    apply(next);
-    safeSetItem(LANE_KEY, next);
-  }, []);
-  return [value, set];
+  return useStoredSetting(LANE_KEY, (raw) => (isArrangementId(raw) ? raw : "d"), false);
 }
