@@ -1859,6 +1859,36 @@ mod tests {
     }
 
     #[test]
+    fn a_comment_gnu_m4_reads_past_its_line_is_refused_once_a_program_uses_the_new_forms() {
+        // GNU m4 1.4.19 reads `//`, `;` and `/* */` comments as text, and
+        // each comment below acts past its own line there. A program that
+        // uses dnl, divert, changecom or quotes is refused at that comment.
+        let new = "define(n, 4)dnl\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2')dnl\n";
+        for (comment, token) in [
+            ("// don`t", "`"),
+            ("// dnl here", "dnl"),
+            ("; dnl here", "dnl"),
+            ("/* dnl here */", "dnl"),
+            ("// changecom here", "changecom"),
+            ("// m4exit here", "m4exit"),
+            ("// divert(-1) here", "divert("),
+            ("// undefine(`n') here", "undefine("),
+            ("// len(abc here", "len("),
+            ("// n(1 here", "n("),
+            ("// two adds", "two"),
+        ] {
+            let refusal = format!("unsupported m4 construct: {token} in a comment");
+            rejects(expand(&format!("{new}mov x0, 1 {comment}\nmov x1, 2\n")), &refusal);
+        }
+        // What stays on its line in GNU m4 builds.
+        for comment in ["// use `n' here", "// n is the count", "// printf(fmt here", "// divert here", "// see # dnl here"] {
+            assert!(expand(&format!("{new}mov x0, 1 {comment}\nmov x1, 2\n")).is_ok(), "{comment}");
+        }
+        // A program without those forms keeps today's output.
+        assert_eq!(exp("define(n, 4)\nmov x0, 1 // dnl here\nmov x1, 2\n").text, "\nmov x0, 1 \nmov x1, 2");
+    }
+
+    #[test]
     fn changecom_moves_or_ends_the_comment_like_gnu_m4() {
         // GNU m4 1.4.19: once `#` opens no comment, the name after it
         // expands; after changecom(`@') an `@` opens one instead.
