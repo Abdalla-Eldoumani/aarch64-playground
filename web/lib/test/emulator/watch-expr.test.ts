@@ -416,4 +416,19 @@ describe("frame-slot arrays named by an = line", () => {
     expect(r.value).toBe(20n);
     expect(r.size).toBe(4);
   });
+
+  // A label resolves to an address, an `=` name to its own value, so only a
+  // value equal to the slot's offset is the `=` line the slot came from.
+  it("refuses an unsized data label beside a commented-out = line of the same name", () => {
+    const unsized: EvalContext = {
+      ...ctx,
+      readMemory: (addr, size) => (addr === 0x8000_0010n && size === 8 ? 0x77n : "unmapped"),
+      resolveSlotOffset: (name) => (name === "buf" ? 16n : null),
+      resolveLabelAddress: (name) => (name === "buf" ? 0x60_0000n : null),
+      labelElementSize: (name) => labelElementSize("/*\nbuf = 16\n*/\n.data\nbuf: .skip 16\n", name),
+    };
+    expect(evaluateWatch("buf[0]", unsized)).toEqual({
+      error: "can't tell the element size of buf: no .byte, .hword, .word or .dword after its label",
+    });
+  });
 });
