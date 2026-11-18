@@ -183,6 +183,7 @@ interface BackendCalls {
   deleteVfsFile: string[];
   resolveLabel: string[];
   getMemory: Array<[number, number]>;
+  setWindowSize: Array<[number, number]>;
 }
 
 // Like MainThreadBackend and WorkerClient, the fake fires each snapshot at the
@@ -238,6 +239,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     deleteVfsFile: [],
     resolveLabel: [],
     getMemory: [],
+    setWindowSize: [],
   };
 
   function fire(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
@@ -343,7 +345,8 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     setRealTime() {
       return Promise.resolve();
     },
-    setWindowSize() {
+    setWindowSize(cols, rows) {
+      calls.setWindowSize.push([cols, rows]);
       return Promise.resolve();
     },
     clearAllBreakpoints() {
@@ -1993,6 +1996,16 @@ describe("useEmulator breakpoints", () => {
 });
 
 describe("useEmulator backend passthroughs", () => {
+  it("setWindowSize forwards the pane's columns, then rows, to the backend", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      result.current.setWindowSize(48, 43);
+      result.current.setWindowSize(0, 0);
+    });
+    expect(fake.calls.setWindowSize).toEqual([[48, 43], [0, 0]]);
+  });
+
   it("pushStdin forwards text to the backend", async () => {
     const fake = makeBackend();
     const { result } = await mountLoaded(fake);
