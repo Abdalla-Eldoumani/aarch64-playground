@@ -717,6 +717,22 @@ mod tests {
     }
 
     #[test]
+    fn a_push_off_16_warns_in_a_start_that_never_returns() {
+        // `_start` ends with the exit system call, so it has no `ret` for the
+        // balance walk to end at; a 24-byte push is off 16 on every path.
+        let src = "_start:\n\
+                   stp x29, x30, [sp, -24]!\n\
+                   mov x29, sp\n\
+                   ldp x29, x30, [sp], 24\n\
+                   mov x8, 93\n\
+                   svc 0\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 2);
+        assert!(w[0].1.contains("pushes 24 bytes"), "{}", w[0].1);
+    }
+
+    #[test]
     fn macro_name_inside_a_string_warns_with_the_server_behavior() {
         let src = "define(register, w19)\n\
                    .data\n\
