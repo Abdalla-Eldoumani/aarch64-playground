@@ -116,33 +116,26 @@ export function ConsolePanel({
   useEffect(() => holdScroll(() => follow()), [stdout, stderr, notes, holdScroll]);
 
   // A call card coming or going moves where the output ends, with no new
-  // output when scanf only stored; so does the box changing size (a dragged
-  // split, a move to another layout).
-  const boxHeightRef = useRef<number | null>(null);
+  // output when scanf only stored.
   useEffect(() => {
     const call = callRef.current;
-    const box = scrollRef.current;
-    if (!call || !box || typeof ResizeObserver === "undefined") return;
+    if (!call || typeof ResizeObserver === "undefined") return;
     let cancel = () => {};
     const observer = new ResizeObserver(() => {
-      boxHeightRef.current = box.clientHeight;
       cancel();
       cancel = holdScroll(() => follow());
     });
     observer.observe(call);
-    observer.observe(box);
     return () => {
       observer.disconnect();
       cancel();
     };
   }, [holdScroll]);
 
-  // Still following at or past where following would scroll to. A scroll that
-  // comes with a box height the observer has not reported yet is the layout's,
-  // not a reader leaving the end.
+  // Still following at or past where following would scroll to.
   const handleScroll = () => {
     const el = scrollRef.current;
-    if (!el || (boxHeightRef.current !== null && el.clientHeight !== boxHeightRef.current)) return;
+    if (!el) return;
     autoScrollRef.current = el.scrollTop > followTo(el, callRef.current) - 4;
   };
 
