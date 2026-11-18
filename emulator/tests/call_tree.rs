@@ -1621,3 +1621,322 @@ fn a_ret_that_skips_main_is_a_bad_return_though_the_program_then_exits() {
     assert_eq!(p.cpu.exit_code(), Some(11), "main's exit status is bump's w0");
     back_retraces(&mut load(SKIP_PAST_MAIN), 7, "a ret that skips main");
 }
+
+// ---------------------------------------------------------------------------
+// Returns no `ret` makes: each ends its call or leaves the stack as it is,
+// and none is a bad return.
+// ---------------------------------------------------------------------------
+
+/// read_n tail-calls scanf and read_c tail-calls getchar, so each library
+/// function returns straight to main, whether or not it waited for input.
+const TAIL_READS: &str = r#"
+// read_n and read_c read by tail calls, so scanf and getchar return
+// straight to main.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+n_m:        .word 0
+fmt_in:     .string "%d"
+fmt_out:    .string "%d %d\n"
+
+        .text
+// read_n() reads an int into n_m, by a tail call
+        .balign 4
+        .global read_n
+read_n:
+        ldr     x0, =fmt_in
+        ldr     x1, =n_m
+        b       scanf                   // scanf returns to read_n's caller
+
+// read_c() -> w0 = the next character, by a tail call
+        .balign 4
+        .global read_c
+read_c:
+        b       getchar                 // getchar returns to read_c's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      read_n
+        bl      read_c                  // w0 = the newline after the number
+        mov     w2, w0
+        ldr     x0, =n_m
+        ldr     w1, [x0]
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_tail_call_to_scanf_or_getchar_ends_when_it_returns_even_after_waiting_for_input() {
+    let mut p = load(TAIL_READS);
+    let main = p.label("main");
+    p.cpu.push_stdin(b"42\n");
+    p.cpu.close_stdin();
+    p.run_to(main + 12, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "scanf's return ended read_n");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "getchar's return ended read_c");
+    p.run_to_end();
+    assert!(String::from_utf8_lossy(&p.cpu.take_stdout()).ends_with("42 10\n"));
+    assert_eq!(p.outline(), ["main -> 0", "  read_n -> 1", "  read_c -> 10"]);
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    // No input yet: scanf waits, and its return still ends read_n.
+    let mut p = load(TAIL_READS);
+    p.cpu.run_until_break(1_000).expect("run");
+    assert!(p.cpu.is_blocked(), "scanf waits for input");
+    p.cpu.push_stdin(b"42\n");
+    p.cpu.close_stdin();
+    p.cpu.step().expect("scanf again, now with input");
+    assert_eq!(p.cpu.regs.read_pc(), main + 12, "scanf returned to main");
+    assert_eq!(p.cpu.call_stack().depth(), 1, "scanf's return after the wait ended read_n");
+    let mut p = load(TAIL_READS);
+    p.cpu.push_stdin(b"42\n");
+    p.cpu.close_stdin();
+    back_retraces(&mut p, 20, "two tail calls into library reads");
+}
+
+/// sort3 tail-calls qsort, which runs the program's comparator and then
+/// returns straight to main.
+const TAIL_QSORT: &str = r#"
+// sort3 sorts main's three longs by a tail call to qsort, which returns
+// straight to main once its comparisons are done.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+nums_m:     .dword 30, 10, 20
+fmt_out:    .string "%ld %ld %ld\n"
+
+        .text
+// cmp_long(x0 = &a, x1 = &b) -> w0 = -1, 0 or 1
+        .balign 4
+        .global cmp_long
+cmp_long:
+        ldr     x2, [x0]
+        ldr     x3, [x1]
+        cmp     x2, x3
+        cset    w0, gt                  // 1 when a > b
+        csinv   w0, w0, wzr, ge         // -1 when a < b
+        ret
+
+// sort3(x0 = array of three longs), by a tail call
+        .balign 4
+        .global sort3
+sort3:
+        mov     x1, 3
+        mov     x2, 8
+        ldr     x3, =cmp_long
+        b       qsort                   // qsort returns to sort3's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =nums_m
+        bl      sort3
+        ldr     x9, =nums_m
+        ldr     x1, [x9]
+        ldr     x2, [x9, 8]
+        ldr     x3, [x9, 16]
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_tail_call_to_qsort_ends_when_qsort_returns_after_its_comparisons() {
+    let mut p = load(TAIL_QSORT);
+    let main = p.label("main");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "qsort's return ended sort3");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    let steps = p.cpu.steps_taken() as usize + 2;
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "10 20 30\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    back_retraces(&mut load(TAIL_QSORT), steps, "a tail call into qsort");
+}
+
+/// minus21 returns through x16, which `br x16` jumps to as `ret` would.
+const RETURN_THROUGH_X16: &str = r#"
+// minus21 returns through x16 instead of x30.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// minus21(w0 = n) -> w0 = n - 21, returning through x16
+        .balign 4
+        .global minus21
+minus21:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     w0, w0, 21
+        ldp     fp, x16, [sp], 16       // the way back into x16
+        br      x16                     // back to the caller, as ret would
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 42
+        bl      minus21
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_return_through_x16_ends_its_call() {
+    let mut p = load(RETURN_THROUGH_X16);
+    let main = p.label("main");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "br x16 ended minus21");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "21\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0, "no return went astray");
+    assert_eq!(p.outline(), ["main -> 0", "  minus21(42) -> 21"]);
+    back_retraces(&mut load(RETURN_THROUGH_X16), 12, "a return through x16");
+}
+
+/// twice keeps main's way back in x9 and calls add_one by hand: `adr lr`,
+/// then `b`. add_one's ret goes to no return address the stack knows, as
+/// today; twice has no frame, so nothing shows that twice is over.
+const HAND_MADE_CALL: &str = r#"
+// twice calls add_one by hand (adr lr, then b), keeping main's way back
+// in x9.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// add_one(w0 = n) -> w0 = n + 1
+        .balign 4
+        .global add_one
+add_one:
+        add     w0, w0, 1
+        ret
+
+// twice(w0 = n) -> w0 = (n + 1) * 2
+        .balign 4
+        .global twice
+twice:
+        mov     x9, lr                  // keep the way back to main
+        adr     lr, twice_back          // a call made by hand
+        b       add_one
+twice_back:
+        add     w0, w0, w0
+        mov     lr, x9
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 20
+        bl      twice
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_hand_made_call_is_one_bad_return_as_today_and_never_ends_its_caller_early() {
+    let mut p = load(HAND_MADE_CALL);
+    let (add_one, main) = (p.label("add_one"), p.label("main"));
+    // add_one's ret reaches no return address the stack holds: recorded,
+    // and twice stays the call running.
+    p.run_to(add_one + 4, 1);
+    p.cpu.step().expect("add_one's ret");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.pc, bad.target), (add_one + 4, p.label("twice_back")));
+    assert_eq!(p.cpu.call_stack().depth(), 2, "twice is still running");
+    // twice's own ret ends twice, with no second bad return.
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1);
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "42\n");
+    assert_eq!(p.cpu.call_stack().bad_return(), bad, "one bad return only");
+}
+
+/// leaf has no frame and aims lr past outer's next instruction, so its ret
+/// goes to no return address; sp and fp cannot show whether leaf is over.
+const FRAMELESS_STRAY: &str = r#"
+// leaf returns into outer's epilogue instead of to its caller, and has
+// no frame of its own.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// leaf() -> w0 = 5 (bug: lr aimed at outer's epilogue)
+        .balign 4
+        .global leaf
+leaf:
+        mov     w0, 5
+        ldr     lr, =outer_out
+        ret
+
+// outer() -> w0 = leaf() + 1, but leaf skips the add
+        .balign 4
+        .global outer
+outer:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      leaf
+        add     w0, w0, 1               // never runs
+outer_out:
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      outer
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_stray_ret_from_a_function_with_no_frame_is_one_bad_return() {
+    let mut p = load(FRAMELESS_STRAY);
+    let (leaf, main) = (p.label("leaf"), p.label("main"));
+    p.run_to(leaf + 8, 1);
+    p.cpu.step().expect("leaf's ret");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.pc, bad.target), (leaf + 8, p.label("outer_out")));
+    // outer's ret ends outer, and leaf with it, with no second bad return.
+    p.run_to(main + 12, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1);
+    assert_eq!(p.cpu.call_stack().bad_return(), bad, "one bad return only");
+    p.run_to_end();
+    assert_eq!(p.outline(), ["main -> 5", "  outer -> 5", "    leaf -> 5"]);
+    back_retraces(&mut load(FRAMELESS_STRAY), 12, "a stray ret from a function with no frame");
+}
