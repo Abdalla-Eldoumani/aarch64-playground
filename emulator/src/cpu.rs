@@ -213,6 +213,20 @@ pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 /// this much more if it paced itself with real sleeps to earn it.
 pub const MAX_REFUND_OUTPUT_BYTES: u64 = MAX_OUTPUT_BYTES;
 
+/// The lifetime refund caps while the host waits out every sleep in real
+/// time (`Cpu::real_time`, the terminal pane): what four hours of sleeping
+/// earns at the refund rates. They bound a session's total work, not its
+/// length: a refund is charged only what it credits, so a program that
+/// spends less than the refill runs longer.
+pub const REAL_TIME_REFUND_STEPS: u64 =
+    4 * 3600 * 1_000_000_000 / SLEEP_STEP_REFUND_NS_PER_STEP;
+pub const REAL_TIME_REFUND_OUTPUT_BYTES: u64 =
+    4 * 3600 * 1_000_000_000 / SLEEP_OUTPUT_REFUND_NS_PER_BYTE;
+
+/// Calm abort once a real-time session has spent one of those caps.
+pub const SESSION_CAP_MESSAGE: &str =
+    "stopped: the playground ends a program after about four hours";
+
 /// Bytes of guest memory one host stub may move per step it is charged
 /// for. `memset`, `memcpy` and `read` do a whole buffer's work inside a
 /// single instruction, so without a charge a loop of whole-buffer fills
@@ -413,6 +427,11 @@ pub struct Cpu {
     /// Transient runner state: not part of any snapshot, cleared on
     /// load/reset.
     pub snapshots_paused: bool,
+    /// The host waits out every sleep in real time (the web's live
+    /// terminal session), so the refund caps are the four-hour ones and a
+    /// refund is charged only what it credits. Batch runners leave it
+    /// off. Runner state like `snapshots_paused`: cleared on load/reset.
+    pub real_time: bool,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -525,6 +544,7 @@ impl Cpu {
             strtok_save: 0,
             callbacks: Default::default(),
             snapshots_paused: false,
+            real_time: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
             refund_output_total: 0,
