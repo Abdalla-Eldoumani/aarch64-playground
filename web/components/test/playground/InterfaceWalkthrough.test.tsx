@@ -3,7 +3,7 @@
 // with the step kept for a resume, reset once finished, opened at the start by
 // a deep link, put in the top layer where the popover API exists, stepped
 // aside while a picker's list is open, and settled in one spot by measures
-// that never write to the card.
+// that never write to the card and run once per width.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { InterfaceWalkthrough } from "@/components/playground/InterfaceWalkthrough";
@@ -260,10 +260,10 @@ describe("entry points and the top layer", () => {
 });
 
 describe("placement", () => {
-  it("settles in one spot where a narrower card would be taller", () => {
-    // The registers step on a 568x360 turned phone, as measured there: room
-    // left of the registers for a 296 px card, which wraps to 255 px and would
-    // reach the run row, where the 352 px card is 212 px.
+  // The registers step on a 568x360 turned phone, as measured there: room
+  // left of the registers for a 296 px card, which wraps to 255 px and would
+  // reach the run row, where the 352 px card is 212 px. No room right of them.
+  function turnedPhone(): () => void {
     const rect = (el: Element, top: number, left: number, width: number, height: number) =>
       vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
         top, left, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
@@ -287,6 +287,15 @@ describe("placement", () => {
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
       return parseFloat(this.style.width) < 352 ? 255 : 212;
     });
+    return () => {
+      registers.remove();
+      assemble.remove();
+      back.remove();
+    };
+  }
+
+  it("settles in one spot where a narrower card would be taller", () => {
+    const done = turnedPhone();
     renderOpen(6);
     expect(screen.getByRole("heading", { name: "Registers" })).toBeTruthy();
     const spot = () => `${card().style.top} ${card().style.left} ${card().style.width}`;
@@ -295,9 +304,23 @@ describe("placement", () => {
       act(() => vi.advanceTimersByTime(400));
       expect(spot(), `beat ${beat}`).toBe(first);
     }
-    registers.remove();
-    assemble.remove();
-    back.remove();
+    done();
+  });
+
+  it("measures each width once, never a side too narrow for the card, and nothing while idle", () => {
+    const done = turnedPhone();
+    // Each measure lays a copy of the card beside it; the copy's width is the width measured.
+    const measured: string[] = [];
+    const after = Element.prototype.after;
+    vi.spyOn(Element.prototype, "after").mockImplementation(function (this: Element, ...nodes: (Node | string)[]) {
+      for (const n of nodes) if (n instanceof HTMLElement) measured.push(n.style.width);
+      after.apply(this, nodes);
+    });
+    renderOpen(6);
+    expect(measured).toEqual(["352px", "296px"]);
+    act(() => vi.advanceTimersByTime(1200));
+    expect(measured).toEqual(["352px", "296px"]);
+    done();
   });
 
   it("measures without writing to the card, so a capped card's text keeps its scroll", () => {
