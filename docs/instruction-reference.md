@@ -665,8 +665,12 @@ An address in the unmapped first page faults here exactly as it does for
 | `define(NAME, BODY)`     | Token-boundary substitution. Use for register aliases. |
 | `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line. |
 | `NAME = EXPRESSION`      | Symbol assignment. `.` is the address at the line where the assignment appears. |
+| `dnl`                    | Deletes the rest of its line and the newline, on a line of its own or right after a `define(...)` or `undefine(...)`. |
+| `divert(-1)` ... `divert` | Throws away everything m4 writes in between; `divert(0)` ends it too. |
+| `changecom`              | Turns `#` comments off, so a name after `#` expands. ``changecom(`//')`` makes `//` the comment start instead. |
+| `` `text' ``             | A quoted string: written without its quotes and never expanded. It closes on the line that opens it. |
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick outside a `define` or ``undefine(`NAME')``. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
+`ifdef`, `ifelse`, `forloop`, and a numbered diversion such as `divert(1)` are rejected. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
 
 ## GCC output compatibility
 
