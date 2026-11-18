@@ -50,6 +50,15 @@ describe("wordLint", () => {
     );
   });
 
+  it("suggests a multiple of 8 that keeps the slot inside the frame", () => {
+    // total_s is bytes 28 to 35 of a 32-byte frame. 32, the next multiple
+    // of 8, would put all of it past the end; 24 is the last that fits.
+    const rows = [{ line: 21, check: [3, 32, 28, 8, 0, 0], names: ["main", "total_s", ""] }];
+    expect(wordLint(rows)[0].message).toBe(
+      "frame check: total_s holds 8 bytes at 28, which is not a multiple of 8. Move it to a multiple of 8, such as 24." + TAIL,
+    );
+  });
+
   it("rounds a frame size up to the next multiple of 16", () => {
     const rows = [{ line: 15, check: [4, 24, 0, 0, 0, 0], names: ["main", "", ""] }];
     expect(wordLint(rows)[0].message).toBe(
