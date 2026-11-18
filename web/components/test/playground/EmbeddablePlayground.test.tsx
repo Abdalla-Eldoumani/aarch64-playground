@@ -8,6 +8,11 @@ import type { ReactNode } from "react";
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
+// The surface itself, not its dynamic() wrapper: the wrapper loads on its
+// first render, so a case run alone would read "loading emulator...".
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
+}));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: (props: { openOn?: string; vectorRegisters?: string[] }) => (
     <div
@@ -106,15 +111,6 @@ afterEach(() => {
   // place would change what every later case sees.
   vi.unstubAllGlobals();
 });
-
-// The full-chrome surface is reached through dynamic(), so it mounts a beat
-// after the shell does. Awaiting the same import settles it before a case
-// reads the surface's own markup.
-async function fullChromeMounted() {
-  await act(async () => {
-    await import("@/components/playground/FullChromeSurface");
-  });
-}
 
 describe("EmbeddablePlayground", () => {
   it("can be driven through its ref handle once started", () => {
@@ -793,7 +789,7 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 
-  it("disables the full playground's step and back until a program is loaded, and keeps run live", async () => {
+  it("disables the full playground's step and back until a program is loaded, and keeps run live", () => {
     // The real Controls renders in full chrome; step and back must follow
     // programLoaded even when the step-back history says stepping back is
     // possible (an old canStepBack cannot outvote a missing program). Run
@@ -802,7 +798,6 @@ describe("EmbeddablePlayground", () => {
       makeHub({ programLoaded: false, canStepBack: true }),
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
-    await fullChromeMounted();
     for (const name of [/^step$/, /^back$/, /^step over$/, /^step out$/, /^run to cursor$/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
@@ -923,7 +918,6 @@ describe("loading a program from recents and the tutorial", () => {
         startSource={"// working buffer\nret"}
       />,
     );
-    await fullChromeMounted();
     // Loading a program with stdin and a file pushes the current code into
     // recents. The stdin must not come back with the recalled code; the file
     // stays, because the full playground treats files as the student's home
@@ -1159,7 +1153,6 @@ describe("the phone playground's status line", () => {
     useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_000, error: pause, paused: true }));
     const view = () => <EmbeddablePlayground chrome="full" startSource="b ." />;
     const { rerender } = render(view());
-    await fullChromeMounted();
     const paused = await screen.findByText("paused · 1,000,000 steps");
     expect(paused.getAttribute("role")).toBe("status");
     expect(paused.className).toContain("text-[var(--text-secondary)]");
