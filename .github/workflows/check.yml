@@ -43,7 +43,7 @@ env:
   # match scripts/vercel-build.sh, so CI tests the compiler that ships.
   NODE_VERSION: "24"
   RUST_TOOLCHAIN: "1.99.1"
-  WASM_PACK_VERSION: "0.15.0"
+  WASM_PACK_VERSION: "0.15.1"
 
 # Each job first asks .github/actions/changed-paths whether this run needs
 # it; on a pull request that cannot affect it, the job skips its remaining
