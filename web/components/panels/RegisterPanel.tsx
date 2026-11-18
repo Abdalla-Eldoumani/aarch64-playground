@@ -23,8 +23,8 @@ import {
   parseBits,
 } from "@/lib/emulator/register-format";
 import { sliceLanes, upperHalfMoved } from "@/lib/emulator/vector-lanes";
-import { safeGetItem } from "@/lib/playground/safe-storage";
-import { subscribeStored, usePersistedFlag, writeStored } from "@/lib/hooks/use-stored-setting";
+import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
 import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { RegisterRow } from "@/components/panels/RegisterRow";
@@ -217,13 +217,8 @@ export function RegisterPanel({
 
   const [viewState, dispatchView] = useReducer(reduceView, INITIAL_VIEW);
   useEffect(() => {
-    const show = (stored: RegView | null) => {
-      if (stored != null) dispatchView({ kind: "show", view: stored });
-    };
-    show(openOn ?? parseView(safeGetItem(VIEW_KEY)));
-    // Every view change after that is the stored one, from this panel, another
-    // panel on the page, or another tab.
-    return subscribeStored(VIEW_KEY, (raw) => show(parseView(raw)));
+    const stored = openOn ?? parseView(safeGetItem(VIEW_KEY));
+    if (stored != null) dispatchView({ kind: "show", view: stored });
     // openOn is a hint for the first view, not a setting to track.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -331,10 +326,9 @@ export function RegisterPanel({
       const usable = touched.filter(
         (t) => t === "x" || (t === "d" && hasFp) || (t === "v" && hasVec),
       );
-      // The snapshot a panel opens on (the registers shown again after the
-      // stack) was followed, and its view stored, when it arrived: storing it
-      // again would undo a choice made since, in every panel on the page.
-      if (follow && arrived && usable.length === 1) writeStored(VIEW_KEY, usable[0]);
+      // Only a write this panel saw arrive is stored: the snapshot it mounts on
+      // may predate the student's last pick, and `follow` reads its default on mount.
+      if (follow && arrived && usable.length === 1) safeSetItem(VIEW_KEY, usable[0]);
 
       const xRows = [...xChanged].sort((a, b) => a - b);
       const vecRows = [...vecChanged].sort((a, b) => a - b);
@@ -393,7 +387,8 @@ export function RegisterPanel({
   }, [changedRegs, followedVecRegs, running]);
 
   const pickView = useCallback((next: RegView) => {
-    writeStored(VIEW_KEY, next);
+    dispatchView({ kind: "show", view: next });
+    safeSetItem(VIEW_KEY, next);
   }, []);
 
   const bodyRef = useRef<HTMLDivElement>(null);
