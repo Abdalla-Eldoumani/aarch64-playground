@@ -2,13 +2,18 @@
 // assemble wipes the machine, so the saved files must be loaded back each
 // time. The storage module is mocked; lib/test/playground/vfs-persist.test.ts
 // covers it.
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import type { ReactNode } from "react";
 
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
+}));
+// The surface itself, not its dynamic() wrapper: the wrapper loads on its
+// first render, so a case run alone would read "loading emulator...".
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
 }));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
@@ -100,13 +105,6 @@ async function openTerminal(): Promise<NonNullable<typeof terminalProps.current>
   await waitFor(() => expect(terminalProps.current).not.toBeNull());
   return terminalProps.current!;
 }
-
-// The full chrome's surface arrives through a dynamic import. Transforming
-// it the first time took about half a second, which the first test's
-// one-second waitFor had to absorb and, on a loaded machine, did not.
-beforeAll(async () => {
-  await import("@/components/playground/FullChromeSurface");
-});
 
 beforeEach(() => {
   useEmulatorMock.mockReturnValue(makeHub());
