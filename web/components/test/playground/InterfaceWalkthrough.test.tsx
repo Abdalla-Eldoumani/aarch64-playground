@@ -263,7 +263,7 @@ describe("placement", () => {
   // The registers step on a 568x360 turned phone, as measured there: room
   // left of the registers for a 296 px card, which wraps to 255 px and would
   // reach the run row, where the 352 px card is 212 px. No room right of them.
-  function turnedPhone(heightAt = (width: number) => (width < 352 ? 255 : 212)): () => void {
+  function turnedPhone(heightAt: (width: number) => number = (width) => (width < 352 ? 255 : 212)): () => void {
     const rect = (el: Element, top: number, left: number, width: number, height: number) =>
       vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
         top, left, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
