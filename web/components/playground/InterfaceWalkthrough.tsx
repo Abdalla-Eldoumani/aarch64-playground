@@ -100,6 +100,18 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     return () => clearTimeout(timer);
   }, [deepLinked]);
 
+  // A font that arrives late changes the card's height at every width, not
+  // only the one it shows, so its arrival drops every measured height.
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts) return;
+    const drop = () => {
+      heightsRef.current = { key: "", byWidth: new Map() };
+    };
+    fonts.addEventListener("loadingdone", drop);
+    return () => fonts.removeEventListener("loadingdone", drop);
+  }, []);
+
   const goTo = useCallback((step: number) => {
     saveProgress({ offered: true, step });
     setMode({ kind: "open", step });
@@ -159,7 +171,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     const view = { width: window.innerWidth, height: window.innerHeight };
     // Each copy below costs a layout, so its heights are kept while the card's
     // content and its own full height as it stands are unchanged: an idle
-    // card forces no layout, and a font that swaps in late is still caught.
+    // card forces no layout.
     const text = textRef.current;
     const key = `${card.offsetHeight + (text ? text.scrollHeight - text.clientHeight : 0)} ${card.innerHTML}`;
     if (heightsRef.current.key !== key) heightsRef.current = { key, byWidth: new Map() };
