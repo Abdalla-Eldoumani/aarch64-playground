@@ -178,7 +178,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
             // On a line with quotes, GNU m4 runs these builtins among a
             // define's arguments before the define sees them, unless quoted.
-            let quoted = raw.split_once('(').is_some_and(|(_, rest)| rest.trim_start().starts_with('`'));
+            let quoted = raw[raw.find('(').map_or(0, |i| i + 1)..].trim_start().starts_with('`');
             if !quoted && without_comment.contains('`') && ["divert", "changecom", "changequote", "dnl"].contains(&name.as_str()) {
                 return Err(unsupported(line_num, &format!("define({name}) with the name unquoted")));
             }
@@ -319,14 +319,14 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // there that hides the `)`. A comma means more than one
             // argument. Taking off quotes never lengthens the text, so
             // `args.len()` caps it.
-            let arg = unquote(args.trim_start_matches(C_SPACE), None, args.len()).unwrap_or_default();
+            let arg = unquote(c_blanks(args), None, args.len()).unwrap_or_default();
             let supported = !args.contains(',')
                 && !reads_on(args, comment)
                 && if name == "divert" {
                     // GNU m4 reads the number as strtol does: blanks, a sign,
                     // then digits only; anything else leaves the diversion as
                     // it is. Past nine digits it wraps into another diversion.
-                    let n = arg.trim_start_matches(C_SPACE);
+                    let n = c_blanks(&arg);
                     let (minus, digits) = match n.strip_prefix('-') {
                         Some(digits) => (true, digits),
                         None => (false, n.strip_prefix('+').unwrap_or(n)),
@@ -1008,7 +1008,9 @@ fn builtin_call<'a>(
 }
 
 /// The blanks C's isspace knows, which GNU m4 skips before an argument.
-const C_SPACE: [char; 6] = [' ', '\t', '\n', '\x0b', '\x0c', '\r'];
+fn c_blanks(s: &str) -> &str {
+    s.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\x0b')
+}
 
 /// Whether GNU m4 would read a builtin's arguments past their own text: a
 /// name outside quotes it may expand, or a comment that hides the `)`.
