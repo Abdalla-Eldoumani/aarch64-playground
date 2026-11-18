@@ -339,4 +339,47 @@ describe("FullLayout", () => {
     rerender(probed("md"));
     expect([...mounted].sort()).toEqual(["DISASM", "REGS", "TABS"]);
   });
+
+  // The new layout's splits settle their sizes after the move, so a box that
+  // was at its end (a console following its output) is kept at its end as it
+  // resizes, until the reader scrolls it. jsdom has no layout: the box is
+  // 200 px of content whose height the test sets, and the stub observer
+  // reports when the test says the box resized.
+  it("keeps a moved box at its end while the new layout resizes it", () => {
+    const reports: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(report: () => void) {
+          reports.push(report);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const withBox = (breakpoint: Breakpoint) => (
+        <FullLayout {...layout(breakpoint).props} rightTabs={<div aria-label="BOX">output</div>} />
+      );
+      const { rerender } = render(withBox("lg"));
+      const box = document.querySelector('[aria-label="BOX"]') as HTMLElement;
+      const at = { top: 100, height: 100 };
+      Object.defineProperties(box, {
+        clientHeight: { configurable: true, get: () => at.height },
+        scrollHeight: { configurable: true, get: () => 200 },
+        scrollTop: { configurable: true, get: () => at.top, set: (v: number) => (at.top = Math.min(v, 200 - at.height)) },
+      });
+      rerender(withBox("md"));
+      at.height = 40;
+      act(() => reports.forEach((report) => report()));
+      expect(box.scrollTop).toBe(160);
+      // The reader scrolls up; a later resize leaves the box where they put it.
+      at.top = 50;
+      at.height = 60;
+      act(() => reports.forEach((report) => report()));
+      expect(box.scrollTop).toBe(50);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
