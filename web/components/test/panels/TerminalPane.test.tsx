@@ -98,6 +98,7 @@ function makeContext(overrides: Partial<DispatchContext> = {}): DispatchContext 
     readRegisters: vi.fn(() => ({})),
     readMemory: vi.fn(async () => new Uint8Array()),
     pcAddress: vi.fn(() => 0x400000),
+    exitCode: vi.fn(() => null),
     m4Expand: async (source: string) => ({ success: true, text: source }),
     assembleSource: async () => ({ success: true, errors: [] }),
     runSource: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
