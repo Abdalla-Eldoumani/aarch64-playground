@@ -206,6 +206,7 @@ export function useEmulator(): EmulatorState {
     pushStdin: pushStdinToBackend,
     closeStdin,
     setSnapshotsPaused,
+    setRealTime,
     lint,
     uploadVfsFile,
     readVfsFile,
@@ -400,6 +401,9 @@ export function useEmulator(): EmulatorState {
       });
     return () => {
       cancelled = true;
+      // A run waiting out a sleep stands down like a pause: the main-thread
+      // backend has no worker to terminate, so the drive would run on.
+      runningRef.current = false;
       unsubscribe();
       backend.dispose();
     };
@@ -711,8 +715,8 @@ export function useEmulator(): EmulatorState {
         if (runResult.cancelled) return null;
         total += runResult.steps_executed;
         // A pacing pause (nanosleep): honor it in real time and keep the
-        // same run going, unless pause/reset stood the drive down while
-        // it waited. The steps so far still land on the counter below.
+        // same run going, unless pause, reset or an unmount stood the drive
+        // down while it waited. The steps so far still land on the counter below.
         if (
           runResult.sleep_ms != null &&
           !runResult.halted &&
@@ -967,6 +971,7 @@ export function useEmulator(): EmulatorState {
       resumeAfterInput,
       closeStdin,
       setSnapshotsPaused,
+      setRealTime,
       lint,
       uploadVfsFile,
       readVfsFile,
@@ -992,7 +997,7 @@ export function useEmulator(): EmulatorState {
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
-      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
+      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, setRealTime, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, dirtyAddrs, readReplayFrames, seekReplay,
     ],

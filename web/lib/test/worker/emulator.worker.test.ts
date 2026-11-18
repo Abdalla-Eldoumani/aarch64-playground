@@ -232,6 +232,24 @@ describe("the emulator worker", () => {
     }
   });
 
+  it("sets real time on a wasm build that has it, and answers ok on one that predates it", async () => {
+    await send({ id: 1, kind: "assemble", source: "ret", args: [] });
+    expect(await send({ id: 2, kind: "setRealTime", on: true })).toMatchObject({ kind: "ok", value: null });
+    const proto = wasm.FakeEmulator.prototype as unknown as Record<string, unknown>;
+    const seen: Array<[unknown, boolean]> = [];
+    proto.set_real_time = function (this: unknown, on: boolean) {
+      seen.push([this, on]);
+    };
+    try {
+      expect(await send({ id: 3, kind: "setRealTime", on: true })).toMatchObject({ kind: "ok", value: null });
+      await send({ id: 4, kind: "setRealTime", on: false });
+      expect(seen.map(([, on]) => on)).toEqual([true, false]);
+      expect(seen[0][0]).toBeInstanceOf(wasm.FakeEmulator);
+    } finally {
+      delete proto.set_real_time;
+    }
+  });
+
   it("answers an unknown request kind with an error naming it", async () => {
     const reply = await send({ id: 9, kind: "defragment" } as unknown as Request);
     expect(reply.kind).toBe("error");

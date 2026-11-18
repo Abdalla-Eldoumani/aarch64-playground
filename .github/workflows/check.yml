@@ -73,7 +73,7 @@ jobs:
       # Nothing is built when no job in this run uses the bundles.
       - name: look up wasm bundles
         id: bundles
-        if: steps.paths.outputs.web == 'true' || steps.paths.outputs.static == 'true' || steps.paths.outputs.browser == 'true'
+        if: steps.paths.outputs.web == 'true' || steps.paths.outputs.static == 'true'
         uses: ./.github/actions/wasm-bundles
         with:
           lookup-only: "true"
@@ -390,6 +390,26 @@ jobs:
         working-directory: web
         run: npm run size
 
+      # Chromium against the build above, with the real wasm: the playground
+      # loads with a clean console, a program assembles, steps and runs,
+      # checks opened from a share link report a pass and a fail, and the
+      # stack tab shows the locals example's frame. These steps test, so the
+      # warm-up push skips them; browser.yml runs the same smoke nightly.
+      # The browser that matches web/'s pinned playwright.
+      - name: install chromium
+        if: steps.paths.outputs.web == 'true' && (github.event_name != 'push' || github.ref_name != 'integration')
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: start the production server
+        if: steps.paths.outputs.web == 'true' && (github.event_name != 'push' || github.ref_name != 'integration')
+        uses: ./.github/actions/next-start
+
+      - name: browser smoke
+        if: steps.paths.outputs.web == 'true' && (github.event_name != 'push' || github.ref_name != 'integration')
+        timeout-minutes: 5
+        run: node scripts/browser-smoke.mjs
+
   # Six shards because vitest splits by file count, not cost, and four left
   # the slowest at 80 s holding up the whole run. Coverage runs only where
   # the whole suite gates a landing: main (its pushes and the weekly run) and
@@ -474,75 +494,6 @@ jobs:
         working-directory: web
         run: npm test -- --merge-reports --coverage
 
-  # Chromium against a production build (next build, then next start) of
-  # the real wasm: the playground loads with a clean console, a program
-  # assembles, steps and runs, and checks opened from a share link report a
-  # pass and a fail. It runs when emulator/src/, the Cargo files, the package
-  # manifests, the build configuration, or the smoke script change (not for a
-  # change to the site's own code alone); browser.yml runs it nightly on main.
-  browser:
-    name: browser smoke
-    if: github.event_name != 'push' || github.ref_name != 'integration'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 2
-
-      - name: check which files changed
-        id: paths
-        uses: ./.github/actions/changed-paths
-
-      - if: steps.paths.outputs.browser == 'true'
-        uses: ./.github/actions/node-setup
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      # Restore only: the web-build job saves this cache.
-      - name: restore next build cache
-        if: steps.paths.outputs.browser == 'true'
-        uses: actions/cache/restore@v6
-        with:
-          path: web/.next/cache
-          key: ${{ runner.os }}-next-${{ hashFiles('web/package-lock.json') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-next-${{ hashFiles('web/package-lock.json') }}-
-            ${{ runner.os }}-next-
-
-      # The browser that matches web/'s pinned playwright.
-      - name: install chromium
-        if: steps.paths.outputs.browser == 'true'
-        working-directory: web
-        run: npx playwright install --with-deps chromium
-
-      - if: steps.paths.outputs.browser == 'true'
-        uses: ./.github/actions/wasm-bundles
-
-      - name: build
-        if: steps.paths.outputs.browser == 'true'
-        working-directory: web
-        run: npm run build
-
-      # Background processes outlive their step; the readiness poll gives up
-      # after a minute and prints the server's log.
-      - name: start the production server
-        if: steps.paths.outputs.browser == 'true'
-        working-directory: web
-        run: |
-          nohup npx next start -p 3000 > "$RUNNER_TEMP/next.log" 2>&1 &
-          for _ in $(seq 60); do
-            if curl -fsS -o /dev/null http://localhost:3000/playground; then exit 0; fi
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/next.log"
-          exit 1
-
-      - name: browser smoke
-        if: steps.paths.outputs.browser == 'true'
-        timeout-minutes: 5
-        run: node scripts/browser-smoke.mjs
-
   # The one required status check. It waits for every job above and fails
   # if any of them failed or was cancelled; a skipped job passes (coverage
   # on a pull request). A push to integration names it apart: that run skips
@@ -550,7 +501,7 @@ jobs:
   # the same commit.
   ci:
     name: ${{ github.event_name == 'push' && github.ref_name == 'integration' && 'ci (cache warm-up)' || 'ci' }}
-    needs: [wasm, rust, corpus, web-static, web-build, web-test, coverage, browser]
+    needs: [wasm, rust, corpus, web-static, web-build, web-test, coverage]
     if: always()
     runs-on: ubuntu-24.04
     timeout-minutes: 5
