@@ -295,15 +295,35 @@ fn arch_names_other_than_armv8_a_are_refused() {
 
 /// ld throws `.note.GNU-stack` away, so GNU ld refuses to link a `main`
 /// written after the note ("defined in discarded section"). gcc writes the
-/// note last; anything after it but a section switch is refused here.
+/// note last; a line after it that places bytes or a label is refused here.
+/// The joined files of a program reach the parser as one text, where GNU as
+/// starts each file in .text, so the message tells a helper file to open
+/// with its own section line.
 #[test]
 fn code_after_the_gnu_stack_note_is_refused() {
     let msg = assemble_err(
         ".text\n.balign 4\n.section .note.GNU-stack,\"\",@progbits\n.global main\nmain:\n\
          mov w0, 3\nret\n",
     );
-    assert!(msg.contains("line 4"), "message was: {msg}");
+    assert!(msg.contains("line 5"), "message was: {msg}");
     assert!(msg.contains(".text"), "the message names the way out: {msg}");
+    assert!(msg.contains("each file"), "the message names the joined-file cause: {msg}");
+}
+
+/// A line that places nothing may follow the note: GNU as and ld build this
+/// program and it exits 3 under qemu-aarch64.
+#[test]
+fn a_global_after_the_gnu_stack_note_still_builds() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(
+        ".text\n.balign 4\nmain:\nmov w0, 3\nret\n\
+         .section .note.GNU-stack,\"\",@progbits\n.global main\n",
+        &cpu.host,
+    )
+    .unwrap_or_else(|e| panic!("should assemble: {e}"));
+    cpu.load_linked_image(&image).expect("load");
+    assert!(cpu.run_until_break(1000).expect("run").halted);
+    assert_eq!(cpu.exit_code(), Some(3));
 }
 
 #[test]
