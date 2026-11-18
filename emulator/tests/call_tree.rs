@@ -1494,6 +1494,70 @@ fn a_ret_that_skips_main_is_a_bad_return_though_the_program_then_exits() {
     back_retraces(&mut load(SKIP_PAST_MAIN), 7, "a ret that skips main");
 }
 
+/// f's first call returns astray to landing, which ends it; main then calls
+/// f again from the same bl, and that call pops main's frame record too, so
+/// its ret ends main as well.
+const STRAY_THEN_SKIP: &str = r#"
+// main calls f twice from one bl: the first call returns to landing
+// instead of to main, and the second pops main's frame record too.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 0
+again:
+        mov     x0, x19
+        bl      f
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+landing:
+        add     x19, x19, 1
+        b       again
+
+// f(x0 = n): n == 0 returns to landing, otherwise it pops main's record
+        .balign 4
+        .global f
+f:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        cbnz    x0, second
+        ldp     fp, lr, [sp], 16
+        ldr     lr, =landing            // bug: back to landing, not to main
+        ret
+second:
+        ldp     fp, lr, [sp], 16
+        ldp     fp, lr, [sp], 16        // bug: main's frame record too
+        ret
+"#;
+
+/// The second call sits where the first one did (same index, entry and
+/// return address), but it is a new call: its skip is a bad return of its
+/// own.
+#[test]
+fn a_skip_by_a_call_made_again_where_a_stray_one_was_is_a_bad_return() {
+    let mut p = load(STRAY_THEN_SKIP);
+    let second = p.label("second");
+    p.run_to(second - 4, 1);
+    p.cpu.step().expect("step");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.step, bad.pc, bad.target, bad.index), (11, second - 4, p.label("landing"), 1));
+    assert_eq!(p.cpu.call_stack().depth(), 1, "the stray ret ended f");
+    p.run_to(second + 8, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 2, "f called again");
+    p.cpu.step().expect("step");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.step, bad.pc, bad.index), (21, second + 8, 1), "the second call's skip");
+    assert_eq!(p.cpu.call_stack().depth(), 0, "it ended f and main");
+    back_retraces(&mut load(STRAY_THEN_SKIP), 21, "a stray call made again that skips");
+}
+
 // ---------------------------------------------------------------------------
 // Returns no `ret` makes: each ends its call or leaves the stack as it is,
 // and only one that ends more than the innermost call is a bad return.
