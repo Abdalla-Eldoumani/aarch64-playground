@@ -146,9 +146,12 @@ export interface DispatchContext {
   /** "line 12", or "ui.s line 12" in a program of several files. */
   lineLabel(addr: number): string | null;
   /** `gdb b label`: arms `addr` now, and the label again after the editor's
-   *  next assemble. */
-  setBreakpoint(addr: number, label: string): Promise<void>;
-  clearBreakpoint(addr: number): Promise<void>;
+   *  next assemble; resolves to the breakpoint's number. */
+  setBreakpoint(addr: number, label: string): Promise<number>;
+  /** `gdb delete [n]`: false when n names no breakpoint. */
+  deleteBreakpoints(n?: number): Promise<boolean>;
+  /** `gdb b`'s breakpoints as [number, label], lowest number first. */
+  breakpoints(): [number, string][];
   /** Look up a label's runtime address. Returns null when unresolved. */
   resolveLabel(label: string): Promise<number | null> | number | null;
   /** Standalone m4 pass over source text; null when the emulator build
@@ -217,7 +220,9 @@ const GDB_HELP_LINES = [
   "  gdb ni                            step over: run the call on this line in one go",
   "  gdb finish                        step out: run until this function returns to its caller",
   "  gdb c                             continue until the program ends or hits a breakpoint",
-  "  gdb b <label>                     set a breakpoint at a label",
+  "  gdb b <label>                     set a breakpoint at a label and print its number",
+  "  gdb delete [N]                    delete breakpoint N, or every breakpoint",
+  "  gdb info breakpoints              list the breakpoints gdb b set",
   "  gdb p $xN                         print register N's value in hex",
   "  gdb info registers                print every register",
   "  gdb x/Ni $pc                      show N instruction words in hex from the current PC",
@@ -230,6 +235,9 @@ const GDB_HELP_LINES = [
 // function returns; an exit() deeper down, or a `_start` that exits through
 // svc, leaves frames behind, so an exit code means finished too.
 const NO_FRAMES = "gdb: no frames: the program has finished";
+
+// The commands that run or step the program.
+const RESUMES = new Set(["n", "s", "si", "ni", "finish", "c"]);
 
 // More recorded frames than this fold into one line, with main still shown last.
 const BT_SHOWN = 20;
@@ -425,6 +433,9 @@ export async function dispatchCommand(
 async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
   const sub = args[0];
   if (!sub || sub === "help") return { status: "ok", lines: GDB_HELP_LINES, table: true };
+  // gdb's "The program is not being run.": after the exit these would do
+  // nothing and say nothing.
+  if (RESUMES.has(sub) && ctx.exitCode() != null) return { status: "err", lines: ["gdb: the program has finished"] };
   if (sub === "n" || sub === "s" || sub === "si") {
     await ctx.step();
     return { status: "ok", lines: [] };
@@ -435,8 +446,6 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     return { status: "ok", lines: said ? [said.replaceAll("`", "")] : [] };
   }
   if (sub === "c") {
-    // gdb's "The program is not being run.": the run would do nothing silently.
-    if (ctx.exitCode() != null) return { status: "err", lines: ["gdb: the program has finished"] };
     await ctx.runUntilBreak();
     return { status: "ok", lines: [] };
   }
@@ -445,8 +454,28 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     if (!label) return { status: "err", lines: ["gdb: b needs a label"] };
     const addr = await ctx.resolveLabel(label);
     if (addr == null) return { status: "err", lines: [`gdb: unknown label '${label}'`] };
-    await ctx.setBreakpoint(addr, label);
-    return { status: "ok", lines: [`breakpoint set at ${formatWord64(addr)} (${label})`] };
+    const n = await ctx.setBreakpoint(addr, label);
+    return { status: "ok", lines: [`breakpoint ${n} at ${formatWord64(addr)} (${label})`] };
+  }
+  if (sub === "delete") {
+    const n = args[1];
+    // gdb's "bad breakpoint number" and "No breakpoint number 7.".
+    if (n !== undefined && !/^[1-9]\d*$/.test(n)) return { status: "err", lines: [`gdb: bad breakpoint number '${n}'`] };
+    if (!(await ctx.deleteBreakpoints(n === undefined ? undefined : Number(n)))) {
+      return { status: "err", lines: [`gdb: no breakpoint number ${n}`] };
+    }
+    return { status: "ok", lines: [] };
+  }
+  if (sub === "info" && args[1] === "breakpoints") {
+    const set = ctx.breakpoints();
+    if (set.length === 0) return { status: "ok", lines: ["no breakpoints"] };
+    const lines = ["Num  Address             What"];
+    for (const [n, label] of set) {
+      // A label the program in the machine no longer has waits, as gdb's pending ones do.
+      const addr = await ctx.resolveLabel(label);
+      lines.push(`${String(n).padEnd(5)}${addr == null ? "pending".padEnd(18) : formatWord64(addr)}  ${label}`);
+    }
+    return { status: "ok", lines };
   }
   if (sub === "p") {
     const operand = args[1];
