@@ -1066,6 +1066,13 @@ impl Emulator {
         self.cpu.snapshots_paused = paused;
     }
 
+    /// The terminal pane waits out every sleep in real time: the lifetime
+    /// refund caps become four hours' worth and a refund is charged only
+    /// what it credits. Off by default; cleared by load and reset.
+    pub fn set_real_time(&mut self, on: bool) {
+        self.cpu.real_time = on;
+    }
+
     /// True once the running program has put the terminal in raw mode
     /// (ioctl TCSETS clearing ICANON/ECHO): the UI treats it as a
     /// terminal program and hands it the terminal pane.
