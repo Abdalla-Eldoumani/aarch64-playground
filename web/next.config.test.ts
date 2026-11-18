@@ -47,6 +47,12 @@ describe("security header lockstep", () => {
   });
 });
 
+describe("image optimizer", () => {
+  it("is turned off, so /_next/image answers no request", () => {
+    expect(nextConfig.images?.unoptimized).toBe(true);
+  });
+});
+
 describe("build id", () => {
   afterEach(() => vi.unstubAllEnvs());
 
