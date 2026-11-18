@@ -1,0 +1,125 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+
+// .github/workflows/check.yml says some things more than once, and GitHub
+// checks none of the copies against each other: the jobs ci waits for, the
+// two conditions that read the branch, the vitest shard count, and the
+// corpus test the cargo job skips by name. The workflow is read as text one
+// level above web/ (vitest's cwd), as .github/scripts/check-pins.js reads it.
+const ROOT = path.join(process.cwd(), "..");
+const read = (file: string) => readFileSync(path.join(ROOT, file), "utf8");
+const WORKFLOW = read(".github/workflows/check.yml").split(/\r?\n/);
+
+// A push to integration only warms caches, so the jobs that only test skip
+// it; the coverage floors run where the whole suite gates a landing; ci's
+// name marks the warm-up run with the skip's negation.
+const SKIP = "github.event_name != 'push' || github.ref_name != 'integration'";
+const GATE = "github.ref_name == 'main' || github.head_ref == 'integration'";
+const WARM_UP = "github.event_name == 'push' && github.ref_name == 'integration'";
+
+/** Each job under `jobs:` with its own lines. */
+function jobs(lines: string[]) {
+  const result = new Map<string, string[]>();
+  let block: string[] = [];
+  for (const line of lines.slice(lines.indexOf("jobs:") + 1)) {
+    const id = line.match(/^ {2}([\w-]+):$/)?.[1];
+    if (id) result.set(id, (block = []));
+    else block.push(line);
+  }
+  return result;
+}
+
+const JOBS = jobs(WORKFLOW);
+
+function job(id: string) {
+  const lines = JOBS.get(id);
+  if (!lines) throw new Error(`check.yml has no ${id} job`);
+  return lines;
+}
+
+/** A key set on the job itself, four spaces in. */
+const key = (lines: string[], name: string) =>
+  lines.map((line) => line.match(new RegExp(`^ {4}${name}: (.*)$`))?.[1]).find((value) => value !== undefined);
+
+/** The #[test] fns in a Rust source that no #[ignore] holds back. */
+function liveTests(source: string) {
+  return [...source.matchAll(/((?:#\[[^\]]*\]\s*)+)fn (\w+)/g)]
+    .filter(([, attributes]) => attributes.includes("#[test]") && !attributes.includes("#[ignore"))
+    .map(([, , name]) => name);
+}
+
+describe("check.yml", () => {
+  it("makes ci wait for every other job", () => {
+    const needs = (key(job("ci"), "needs")?.match(/^\[(.*)\]$/)?.[1] ?? "").split(",").map((id) => id.trim());
+    const others = [...JOBS.keys()].filter((id) => id !== "ci");
+    expect(
+      others.filter((id) => !needs.includes(id)),
+      "jobs missing from ci's needs",
+    ).toEqual([]);
+    expect(
+      needs.filter((id) => !others.includes(id)),
+      "ci's needs names a job that does not exist",
+    ).toEqual([]);
+  });
+
+  it("gives every job the run it is meant for", () => {
+    const conditions = Object.fromEntries([...JOBS].map(([id, lines]) => [id, key(lines, "if")]));
+    expect(conditions, "each job's if:").toEqual({
+      wasm: undefined,
+      rust: SKIP,
+      corpus: SKIP,
+      "web-static": SKIP,
+      "web-build": undefined,
+      "web-test": SKIP,
+      coverage: GATE,
+      browser: SKIP,
+      ci: "always()",
+    });
+  });
+
+  it("writes each condition on the branch the same way everywhere", () => {
+    const stray = WORKFLOW.flatMap((line, i) =>
+      /github\.(ref_name|head_ref)\b/.test(line.replaceAll(SKIP, "").replaceAll(GATE, "").replaceAll(WARM_UP, ""))
+        ? [`line ${i + 1}: ${line.trim()}`]
+        : [],
+    );
+    expect(stray, "a branch condition that differs from its other copies").toEqual([]);
+    const copies = (condition: string) => WORKFLOW.filter((line) => line.includes(condition)).length;
+    expect(copies(GATE), "copies of the coverage gate (the COVERAGE flag, the blob upload, the coverage job)").toBe(3);
+    expect(copies(WARM_UP), "copies of the warm-up run's test in ci's name").toBe(1);
+  });
+
+  it("runs every vitest shard and divides the suite by the number of shards", () => {
+    const lines = job("web-test");
+    const start = lines.indexOf("      matrix:");
+    const end = lines.findIndex((line, i) => i > start && !line.startsWith("       "));
+    const matrix = lines.slice(start + 1, end).map((line) => line.trim());
+    // strategy.job-total counts every combination, so shard is the only key.
+    expect(matrix, "web-test's matrix").toEqual([expect.stringMatching(/^shard: \[[\d, ]+\]$/)]);
+    const shards = matrix[0].slice("shard: [".length, -1).split(",").map(Number);
+    expect(shards, "shard numbers, 1 to the count").toEqual(Array.from(shards, (_, i) => i + 1));
+    const divisor = lines
+      .map((line) => line.match(/--shard=\$\{\{ matrix\.shard \}\}\/(\$\{\{ strategy\.job-total \}\}|\d+)/)?.[1])
+      .find(Boolean);
+    expect(
+      divisor === "${{ strategy.job-total }}" ? shards.length : Number(divisor),
+      `vitest's --shard divisor (${divisor}) against the matrix's ${shards.length} shards`,
+    ).toBe(shards.length);
+  });
+
+  it("skips in cargo test only the corpus test the corpus shards run", () => {
+    const args = job("rust").flatMap((line) => line.match(/^ +args: "(.*)"$/)?.[1] ?? []);
+    const skips = args.flatMap((arg) => [...arg.matchAll(/--skip[= ]([\w:]+)/g)].map((match) => match[1]));
+    expect(skips, "the cargo test job's --skip filters").not.toEqual([]);
+    const live = liveTests(read("emulator/tests/c_corpus.rs"));
+    for (const skip of skips) {
+      // libtest skips every test whose name contains the filter, in every
+      // test binary, so the filter is one whole name, and that name is live.
+      expect(
+        live.filter((name) => name.includes(skip)),
+        `--skip ${skip} against the non-ignored #[test] fns of emulator/tests/c_corpus.rs`,
+      ).toEqual([skip]);
+    }
+  });
+});
