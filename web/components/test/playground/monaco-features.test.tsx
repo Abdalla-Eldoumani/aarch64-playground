@@ -50,4 +50,13 @@ describe("monaco feature list", () => {
     for (const name of LEFT_OUT) expect(order).toContain(name);
     expect(listed).toEqual(order.filter((name) => !LEFT_OUT.includes(name)));
   });
+
+  // The suggest feature holds only the list's model; the controller that draws
+  // the list and binds its keys arrives through inlineCompletions, which is
+  // left out, so the editor loads it by itself.
+  it("loads the suggestion list's controller that inlineCompletions carried", () => {
+    const controller = "editor/contrib/suggest/browser/suggestController";
+    expect(readFileSync(SUBJECT, "utf8")).toContain(`"monaco-editor/${controller}"`);
+    expect(existsSync(join(FEATURES, "..", `${controller}.js`))).toBe(true);
+  });
 });
