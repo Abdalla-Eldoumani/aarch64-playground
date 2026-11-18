@@ -64,8 +64,9 @@ function makeCtx(over: Partial<DispatchContext> = {}): DispatchContext {
     runUntil: async () => null,
     frameStack: async () => null,
     lineLabel: () => null,
-    setBreakpoint: async (_addr) => {},
-    clearBreakpoint: async (_addr) => {},
+    setBreakpoint: async (_addr) => 1,
+    deleteBreakpoints: async () => true,
+    breakpoints: () => [],
     resolveLabel: (_label) => null,
     readRegister: (_name) => null,
     readRegisters: () => ({}),
@@ -247,7 +248,7 @@ describe("dispatchCommand", () => {
     const set: number[] = [];
     const ctx = makeCtx({
       resolveLabel: (l) => (l === "main" ? 0x400044 : null),
-      setBreakpoint: async (addr) => { set.push(addr); },
+      setBreakpoint: async (addr) => { set.push(addr); return 1; },
     });
     const r = await dispatchCommand("gdb b main", ctx);
     expect(r.status).toBe("ok");
@@ -608,10 +609,60 @@ describe("gdb-lite edges", () => {
     expect(unknown.lines[0]).toBe("gdb: unknown label 'nowhere'");
   });
 
-  it("gdb b echoes the resolved address and the label", async () => {
-    const ctx = makeCtx({ resolveLabel: (l) => (l === "loop" ? 0x400014 : null) });
+  it("gdb b echoes the breakpoint's number, the resolved address and the label", async () => {
+    // gdb: "Breakpoint 2 at 0x4007b8".
+    const ctx = makeCtx({ resolveLabel: (l) => (l === "loop" ? 0x400014 : null), setBreakpoint: async () => 2 });
     const r = await dispatchCommand("gdb b loop", ctx);
-    expect(r.lines).toEqual(["breakpoint set at 0x0000000000400014 (loop)"]);
+    expect(r.lines).toEqual(["breakpoint 2 at 0x0000000000400014 (loop)"]);
+  });
+
+  it("gdb delete N deletes that breakpoint and prints nothing, as gdb does", async () => {
+    const deleteBreakpoints = vi.fn(async () => true);
+    expect(await dispatchCommand("gdb delete 2", makeCtx({ deleteBreakpoints }))).toEqual({ status: "ok", lines: [] });
+    expect(deleteBreakpoints).toHaveBeenCalledWith(2);
+  });
+
+  it("gdb delete with no number deletes every breakpoint", async () => {
+    const deleteBreakpoints = vi.fn(async () => true);
+    expect(await dispatchCommand("gdb delete", makeCtx({ deleteBreakpoints }))).toEqual({ status: "ok", lines: [] });
+    expect(deleteBreakpoints).toHaveBeenCalledWith(undefined);
+  });
+
+  it("gdb delete says gdb's words for a number it does not have", async () => {
+    // gdb: "No breakpoint number 7."
+    const r = await dispatchCommand("gdb delete 7", makeCtx({ deleteBreakpoints: async () => false }));
+    expect(r).toEqual({ status: "err", lines: ["gdb: no breakpoint number 7"] });
+  });
+
+  it("gdb delete refuses what is not a breakpoint number before deleting anything", async () => {
+    // gdb: "warning: bad breakpoint number at or near '0'".
+    const deleteBreakpoints = vi.fn(async () => true);
+    for (const n of ["0", "-1", "abc", "1.5"]) {
+      expect(await dispatchCommand(`gdb delete ${n}`, makeCtx({ deleteBreakpoints }))).toEqual({
+        status: "err",
+        lines: [`gdb: bad breakpoint number '${n}'`],
+      });
+    }
+    expect(deleteBreakpoints).not.toHaveBeenCalled();
+  });
+
+  it("gdb info breakpoints lists each number, its address and label, pending where the label is gone", async () => {
+    const ctx = makeCtx({
+      breakpoints: () => [
+        [1, "quit"],
+        [3, "gone"],
+      ],
+      resolveLabel: (l) => (l === "quit" ? 0x400000 : null),
+    });
+    expect((await dispatchCommand("gdb info breakpoints", ctx)).lines).toEqual([
+      "Num  Address             What",
+      "1    0x0000000000400000  quit",
+      "3    pending             gone",
+    ]);
+  });
+
+  it("gdb info breakpoints says when there are none", async () => {
+    expect(await dispatchCommand("gdb info breakpoints", makeCtx())).toEqual({ status: "ok", lines: ["no breakpoints"] });
   });
 
   it("gdb x/2i $pc prints two little-endian words from memory", async () => {
