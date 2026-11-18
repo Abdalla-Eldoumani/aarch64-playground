@@ -154,13 +154,16 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     const targets = mode.kind === "offer" ? OFFER_TARGETS : WALKTHROUGH_STEPS[mode.step].targets;
     const found = hidden ? null : resolveTarget(targets);
     const view = { width: window.innerWidth, height: window.innerHeight };
-    // Measured at a set width with its cap lifted, never as it stands: placed
-    // by its own capped or narrowed height, the card moved on every other beat.
+    // Measured on a hidden copy at a set width with no cap. Placed by its own
+    // capped or narrowed height, the card moved on every other beat, and
+    // lifting its own cap scrolled its text back to the top.
     const heightAt = (w: number) => {
-      const shown = { width: card.style.width, maxHeight: card.style.maxHeight };
-      Object.assign(card.style, { width: `${w}px`, maxHeight: "none" });
-      const height = card.offsetHeight;
-      Object.assign(card.style, shown);
+      const copy = card.cloneNode(true) as HTMLElement;
+      copy.setAttribute("aria-hidden", "true");
+      Object.assign(copy.style, { width: `${w}px`, maxHeight: "none", visibility: "hidden" });
+      card.after(copy);
+      const height = copy.offsetHeight;
+      copy.remove();
       return height;
     };
     const width = Math.min(CARD_WIDTH, view.width - 16);
