@@ -674,7 +674,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `changecom`              | Turns `#` comments off, so a name after `#` expands. ``changecom(`//')`` makes `//` the comment start instead. |
 | `` `text' ``             | A quoted string: written without its quotes and never expanded. It closes on the line that opens it. |
 
-`ifdef`, `ifelse`, `forloop`, `changequote`, `include`, and a numbered diversion such as `divert(1)` are rejected unless the program defines that name itself. `include` is not supported: copy the included file's lines into this file where the include was. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
+`ifdef`, `ifelse`, `forloop`, `changequote`, `include`, and a numbered diversion such as `divert(1)` are rejected unless the program defines that name itself. `include` is not supported: copy the included file's lines into this file where the include was. GNU m4 reads `//`, `;` and `/* */` comments as text, so in a program that uses `dnl`, `divert`, `changecom` or quotes, a comment holding `dnl`, `changecom`, `m4exit`, an unclosed quote, a macro or builtin called with `(`, or a macro whose body spans lines is rejected: each acts past the comment's line there. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
 
 ## GCC output compatibility
 
