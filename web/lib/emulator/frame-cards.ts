@@ -198,13 +198,13 @@ export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | nu
   // Back to its own return address (every call from one bl site shares it),
   // or out of the program with no call left: the frame record popped before
   // the ret was its caller's, so it ended that call too.
-  const skipped = bad.target === row.retAddr || (!landed && !ctx.snapshot.frames.length);
-  const where = `${name}'s ret on ${ret ? at(ret) : "its last line"}`;
+  const what =
+    bad.target === row.retAddr || (!landed && !ctx.snapshot.frames.length)
+      ? `ended its caller ${fnName(row.retAddr)} too: that call's frame record was popped before the ret`
+      : `${went} instead of going back to ${backTo(row, ctx, fnName)}${because}`;
   return {
     event: `ret at ${hex(bad.pc)} in ${hex(row.entry)}`,
-    text: skipped
-      ? `${where} ended its caller ${fnName(row.retAddr)} too: that call's frame record was popped before the ret.`
-      : `${where} ${went} instead of going back to ${backTo(row, ctx, fnName)}${because}.`,
+    text: `${name}'s ret on ${ret ? at(ret) : "its last line"} ${what}.`,
     cause,
   };
 }
