@@ -8,10 +8,9 @@
 const fs = require("fs");
 const path = require("path");
 
-const wasmDir = process.env.WASM_DIR || path.join(__dirname, "..", "web", "lib", "wasm-node");
-const wasm = require(path.join(wasmDir, "aarch64_emulator.js"));
-
 const examplesDir = path.join(__dirname, "..", "web", "public", "examples");
+const hostedRoot = path.join(examplesDir, "cpsc355");
+const fixturesRoot = path.join(hostedRoot, "fixtures");
 
 // The app's own argument parser, so a fixture's .args splits exactly the way
 // the args box does. Node 24 strips the file's types on load; the file
@@ -20,10 +19,16 @@ const { parseArgs: parseArgsLine } = require(
   path.join(__dirname, "..", "web", "lib", "playground", "args.ts"),
 );
 
+// The app's example list, loaded the same way: each multi-file example's
+// helper files, in the order the app pastes them.
+const { EXAMPLES } = require(
+  path.join(__dirname, "..", "web", "lib", "playground", "example-catalog.ts"),
+);
+
 // Feed optional stdin / argv / vfs inputs, run until halt or exit, then
 // return stdout + exit code + the post-run state of every VFS file the
 // program may have created.
-function runHosted(file, stdin, args, vfsIn) {
+function runHosted(wasm, file, stdin, args, vfsIn) {
   const src = fs.readFileSync(file, "utf8");
   const emu = new wasm.Emulator();
   const asm = (args && args.length > 0)
@@ -63,16 +68,80 @@ function runHosted(file, stdin, args, vfsIn) {
   return { ok: true, stdout, stderr, exitCode, vfs: vfsOut };
 }
 
-let passed = 0, failed = 0;
+function collectStems(dir) {
+  const seen = new Set();
+  for (const f of fs.readdirSync(dir)) {
+    const m = f.match(/^(.+?)\.(stdin|stdout|args|vfs\.json|vfsout\.json)$/);
+    if (m) seen.add(m[1]);
+  }
+  return Array.from(seen).sort();
+}
 
-// A fixture stem runs with whichever of `.stdin`, `.args`, and `.vfs.json`
-// it has. One with neither `.stdout` nor `.vfsout.json` to check against
-// prints SKIP, so it can never pass silently.
-const hostedRoot = path.join(examplesDir, "cpsc355");
-const fixturesRoot = path.join(hostedRoot, "fixtures");
-if (fs.existsSync(fixturesRoot)) {
-  const stems = collectStems(fixturesRoot);
-  for (const stem of stems) {
+function findSource(root, stem) {
+  const entries = fs.readdirSync(root, { withFileTypes: true });
+  // `fixtures` holds inputs, and a multi-file example's folder holds helper
+  // files with no entry point whose names (array, sort, input, ...) a
+  // fixture may reuse, so a stem must never resolve to one of them.
+  const skip = new Set(["fixtures", ...EXAMPLES.filter((ex) => ex.files).map((ex) => ex.stem)]);
+  for (const e of entries) {
+    if (e.isDirectory() && !skip.has(e.name)) {
+      const sub = path.join(root, e.name);
+      const hit = findSource(sub, stem);
+      if (hit) return hit;
+    } else if (e.isFile()) {
+      const base = e.name.replace(/\.(asm|s|S)$/, "");
+      if (base === stem) return path.join(root, e.name);
+    }
+  }
+  return null;
+}
+
+// Each fixture stem with the source it runs, or null when no source matches.
+function fixtureTargets() {
+  if (!fs.existsSync(fixturesRoot)) return [];
+  return collectStems(fixturesRoot).map((stem) => ({ stem, source: findSource(hostedRoot, stem) }));
+}
+
+// ---------------------------------------------------------------------
+// Assembly gate. The fixture pass never reaches the terminal examples or
+// the multi-file examples' helper files; a past comment cleanup broke those
+// and nothing failed. Every shipped example must assemble.
+
+// Every shipped example's main file, with its helper files in paste order.
+function assemblyTargets() {
+  return fs
+    .readdirSync(hostedRoot)
+    .sort()
+    .filter((file) => file.endsWith(".s"))
+    .map((file) => {
+      const stem = file.slice(0, -2);
+      return { stem, helpers: EXAMPLES.find((ex) => ex.stem === stem)?.files ?? [] };
+    });
+}
+
+// Mirrors combineSources in web/lib/playground/file-map.ts: main stays
+// byte-for-byte first so line numbers still point at the editor buffer,
+// then each helper behind its `// ---- name ----` boundary comment.
+function combineSources(main, extras) {
+  if (extras.length === 0) return main;
+  const parts = [main];
+  for (const f of extras) {
+    parts.push(`// ---- ${f.name} ----`);
+    parts.push(f.body);
+  }
+  return parts.join("\n");
+}
+
+function main() {
+  const wasmDir = process.env.WASM_DIR || path.join(__dirname, "..", "web", "lib", "wasm-node");
+  const wasm = require(path.join(wasmDir, "aarch64_emulator.js"));
+
+  let passed = 0, failed = 0;
+
+  // A fixture stem runs with whichever of `.stdin`, `.args`, and `.vfs.json`
+  // it has. One with neither `.stdout` nor `.vfsout.json` to check against
+  // prints SKIP, so it can never pass silently.
+  for (const { stem, source: srcPath } of fixtureTargets()) {
     const stdoutPath = path.join(fixturesRoot, stem + ".stdout");
     const stdinPath = path.join(fixturesRoot, stem + ".stdin");
     const argsPath = path.join(fixturesRoot, stem + ".args");
@@ -85,7 +154,6 @@ if (fs.existsSync(fixturesRoot)) {
       console.log(`  SKIP: no .stdout or .vfsout.json fixture`);
       continue;
     }
-    const srcPath = findSource(hostedRoot, stem);
     if (!srcPath) {
       console.log(`\n=== cpsc355/${stem} ===`);
       console.log(`  SKIP: no matching source file found`);
@@ -99,7 +167,7 @@ if (fs.existsSync(fixturesRoot)) {
     const vfsIn = fs.existsSync(vfsInPath)
       ? JSON.parse(fs.readFileSync(vfsInPath, "utf8"))
       : null;
-    const result = runHosted(srcPath, stdin, args, vfsIn);
+    const result = runHosted(wasm, srcPath, stdin, args, vfsIn);
     if (!result.ok) {
       console.log(`  FAIL at ${result.stage}: ${result.error}${result.line != null ? " at line " + result.line : ""}`);
       failed++;
@@ -143,100 +211,33 @@ if (fs.existsSync(fixturesRoot)) {
     }
     if (ok) passed++; else failed++;
   }
-}
 
-function collectStems(dir) {
-  const seen = new Set();
-  for (const f of fs.readdirSync(dir)) {
-    const m = f.match(/^(.+?)\.(stdin|stdout|args|vfs\.json|vfsout\.json)$/);
-    if (m) seen.add(m[1]);
-  }
-  return Array.from(seen).sort();
-}
-
-function findSource(root, stem) {
-  const entries = fs.readdirSync(root, { withFileTypes: true });
-  for (const e of entries) {
-    // `fixtures` holds inputs, and `dsav` / `deadzone` hold helper files
-    // with no entry point whose names (array, sort, input, ...) a future
-    // fixture may reuse, so a stem must never resolve to one of them.
-    if (
-      e.isDirectory() &&
-      e.name !== "fixtures" &&
-      e.name !== "dsav" &&
-      e.name !== "deadzone"
-    ) {
-      const sub = path.join(root, e.name);
-      const hit = findSource(sub, stem);
-      if (hit) return hit;
-    } else if (e.isFile()) {
-      const base = e.name.replace(/\.(asm|s|S)$/, "");
-      if (base === stem) return path.join(root, e.name);
+  console.log(`\n=== assembly gate ===`);
+  let assembleFailed = false;
+  for (const { stem, helpers: names } of assemblyTargets()) {
+    const helpers = names.map((name) => ({
+      name,
+      body: fs.readFileSync(path.join(hostedRoot, stem, name), "utf8"),
+    }));
+    const label = helpers.length > 0 ? `${stem} (+${helpers.length} files)` : stem;
+    const src = combineSources(fs.readFileSync(path.join(hostedRoot, `${stem}.s`), "utf8"), helpers);
+    // argv[0] only. Nothing needs its real `.args` to assemble: the examples
+    // that take a run mode branch on argv while running, not while linking.
+    const asm = new wasm.Emulator().assemble_and_load_with_args(src, [`./${stem}`]);
+    if (!asm.success) {
+      const at = asm.error_line != null ? ` at line ${asm.error_line}` : "";
+      console.log(`  FAIL ${label}: ${asm.error}${at}`);
+      assembleFailed = true;
+      break; // the first broken example is the one to fix
     }
+    console.log(`  OK ${label}`);
   }
-  return null;
+
+  console.log(`\n--- ${passed}/${passed + failed} targets passed ---`);
+  if (failed > 0 || assembleFailed) process.exit(1);
 }
 
-// ---------------------------------------------------------------------
-// Assembly gate. The fixture pass never reaches the terminal examples or
-// the helper files behind `dsav` and `deadzone`; a past comment cleanup
-// broke those and nothing failed. Every shipped example must assemble.
+// A test reads the target lists without loading the emulator.
+if (require.main === module) main();
 
-// EXAMPLE_FILES lives in TypeScript and node cannot require that, so the
-// table is parsed out of the real source rather than copied by hand: a
-// duplicate list would drift the first time a helper module is added or
-// reordered, and for `deadzone` the paste order is load-bearing.
-function readExampleFiles(tsPath) {
-  const src = fs.readFileSync(tsPath, "utf8").replace(/^\s*\/\/.*$/gm, "");
-  const table = src.match(/export const EXAMPLE_FILES[^{]*\{([\s\S]*?)\r?\n\};/);
-  if (!table) throw new Error(`could not find EXAMPLE_FILES in ${tsPath}`);
-  const out = {};
-  const entry = /([\w-]+)\s*:\s*\[([^\]]*)\]/g;
-  let m;
-  while ((m = entry.exec(table[1])) !== null) {
-    out[m[1]] = (m[2].match(/"[^"]+"/g) || []).map((q) => q.slice(1, -1));
-  }
-  return out;
-}
-
-// Mirrors combineSources in web/lib/playground/file-map.ts: main stays
-// byte-for-byte first so line numbers still point at the editor buffer,
-// then each helper behind its `// ---- name ----` boundary comment.
-function combineSources(main, extras) {
-  if (extras.length === 0) return main;
-  const parts = [main];
-  for (const f of extras) {
-    parts.push(`// ---- ${f.name} ----`);
-    parts.push(f.body);
-  }
-  return parts.join("\n");
-}
-
-console.log(`\n=== assembly gate ===`);
-const exampleFiles = readExampleFiles(
-  path.join(__dirname, "..", "web", "lib", "playground", "playground-handoff.ts"),
-);
-let assembleFailed = false;
-for (const file of fs.readdirSync(hostedRoot).sort()) {
-  if (!file.endsWith(".s")) continue;
-  const stem = file.slice(0, -2);
-  const helpers = (exampleFiles[stem] || []).map((name) => ({
-    name,
-    body: fs.readFileSync(path.join(hostedRoot, stem, name), "utf8"),
-  }));
-  const label = helpers.length > 0 ? `${stem} (+${helpers.length} files)` : stem;
-  const src = combineSources(fs.readFileSync(path.join(hostedRoot, file), "utf8"), helpers);
-  // argv[0] only. Nothing needs its real `.args` to assemble: the examples
-  // that take a run mode branch on argv while running, not while linking.
-  const asm = new wasm.Emulator().assemble_and_load_with_args(src, [`./${stem}`]);
-  if (!asm.success) {
-    const at = asm.error_line != null ? ` at line ${asm.error_line}` : "";
-    console.log(`  FAIL ${label}: ${asm.error}${at}`);
-    assembleFailed = true;
-    break; // the first broken example is the one to fix
-  }
-  console.log(`  OK ${label}`);
-}
-
-console.log(`\n--- ${passed}/${passed + failed} targets passed ---`);
-if (failed > 0 || assembleFailed) process.exit(1);
+module.exports = { findSource, fixtureTargets, assemblyTargets };
