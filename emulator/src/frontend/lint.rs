@@ -681,6 +681,27 @@ mod tests {
     }
 
     #[test]
+    fn space_freed_once_on_each_of_two_paths_is_not_freed_twice() {
+        // Each path out of the `cbz` gives back the 16 bytes the `sub`
+        // took, once; read top to bottom, the two `add`s look like two.
+        let src = ".text\n\
+                   .global main\n\
+                   main:\n\
+                   stp x29, x30, [sp, -32]!\n\
+                   mov x29, sp\n\
+                   sub sp, sp, 16\n\
+                   cbz x0, none\n\
+                   add sp, sp, 16\n\
+                   b done\n\
+                   none:\n\
+                   add sp, sp, 16\n\
+                   done:\n\
+                   ldp x29, x30, [sp], 32\n\
+                   ret\n";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
     fn macro_name_inside_a_string_warns_with_the_server_behavior() {
         let src = "define(register, w19)\n\
                    .data\n\
