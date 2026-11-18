@@ -784,13 +784,14 @@ impl Cpu {
                 let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
                 self.frames.on_call(pc, target, into_program, &regs, &self.mem, log);
             }
-            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
-                let regs = self.regs.snapshot();
-                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
-                let x0_width = self.regs.write_width(0);
-                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, x0_width, log);
-                if changed != 0 {
-                    self.regs.mark_callee_saved(changed, pc);
+            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, .. } => {
+                let target = self.regs.read_pc();
+                // A br through another register is a return only when it
+                // lands as one; a br out of the program is a library
+                // trampoline's jump into its stub.
+                let quiet = matches!(*instr, I::BrReg { op: BrRegOp::Br, rn } if rn != 30);
+                if !quiet || self.in_program(target) {
+                    self.track_return(pc, target, quiet);
                 }
             }
             I::LdSt { op: LdStOp::Str, rt: 30, size: MemSize::X, .. }
@@ -800,6 +801,19 @@ impl Cpu {
                 self.frames.on_lr_store(log);
             }
             _ => {}
+        }
+    }
+
+    /// A return the instruction or library call at `pc` just made to
+    /// `target` (`quiet`: one that may be a return, `CallStack::on_return`),
+    /// and the callee-saved registers the call it ended left changed.
+    fn track_return(&mut self, pc: u64, target: u64, quiet: bool) {
+        let regs = self.regs.snapshot();
+        let x0_width = self.regs.write_width(0);
+        let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+        let changed = self.frames.on_return(pc, target, self.steps_taken, &regs, x0_width, quiet, log);
+        if changed != 0 {
+            self.regs.mark_callee_saved(changed, pc);
         }
     }
 
