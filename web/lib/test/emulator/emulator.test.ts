@@ -284,6 +284,7 @@ describe("EmulatorInstance feature detection", () => {
     const emu = wrap();
     expect(() => emu.closeStdin()).not.toThrow();
     expect(() => emu.setSnapshotsPaused(true)).not.toThrow();
+    expect(() => emu.setRealTime(true)).not.toThrow();
     expect(() => emu.clearAllBreakpoints()).not.toThrow();
   });
 
@@ -316,6 +317,7 @@ describe("EmulatorInstance feature detection", () => {
     // own pointer check.
     const receivers: unknown[] = [];
     const paused: boolean[] = [];
+    const realTime: boolean[] = [];
     const args: Array<[number, number]> = [];
     const inner = {
       ...baseInner(),
@@ -325,6 +327,10 @@ describe("EmulatorInstance feature detection", () => {
       set_snapshots_paused(p: boolean) {
         receivers.push(this);
         paused.push(p);
+      },
+      set_real_time(on: boolean) {
+        receivers.push(this);
+        realTime.push(on);
       },
       clear_all_breakpoints() {
         receivers.push(this);
@@ -340,10 +346,12 @@ describe("EmulatorInstance feature detection", () => {
     const emu = new EmulatorInstance(inner as unknown as Inner);
     emu.closeStdin();
     emu.setSnapshotsPaused(true);
+    emu.setRealTime(true);
     emu.clearAllBreakpoints();
     emu.isRangeMapped(0x400000, 16);
-    expect(receivers).toEqual([inner, inner, inner]);
+    expect(receivers).toEqual([inner, inner, inner, inner]);
     expect(paused).toEqual([true]);
+    expect(realTime).toEqual([true]);
     expect(args).toEqual([[4194304, 16]]);
     expect(emu.lintSource("abcd")).toEqual([{ line: 4, message: "seen" }]);
   });
