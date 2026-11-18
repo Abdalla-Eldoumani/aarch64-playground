@@ -7,7 +7,8 @@
 //! arrived (typed, opened from a share link, or uploaded).
 
 use aarch64_emulator::cpu::{
-    step_ceiling_message, Cpu, MAX_SNAPSHOT_SIDE_BYTES, MAX_TOTAL_STEPS, MEMORY_CAP_MESSAGE,
+    output_ceiling_message, step_ceiling_message, Cpu, MAX_SNAPSHOT_SIDE_BYTES, MAX_TOTAL_STEPS,
+    MEMORY_CAP_MESSAGE,
 };
 use aarch64_emulator::frames::layout::frame_layout;
 use aarch64_emulator::frames::tree::MAX_TREE_NODES;
@@ -394,4 +395,201 @@ fn a_long_scanf_format_costs_time_in_line_with_its_length() {
     let took = start.elapsed();
     assert!(r.halted && r.error.is_none(), "the program ends on its own: {:?}", r.error);
     assert!(took < std::time::Duration::from_secs(2), "one scanf call took {took:?}");
+}
+
+/// Branches to itself forever, so only the step ceiling can stop it.
+const RUNAWAY_LOOP: &str = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+spin:
+        b       spin                        // never falls through
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// Prints a numbered line on every pass of a loop with no exit, so the
+/// output wall is what stops it.
+const PRINT_FLOOD: &str = r#"
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+n_s = 16
+
+        .data
+fmt_line:   .string "line %ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        str     x19, [fp, n_s]
+
+        mov     n_r, 0
+flood:
+        ldr     x0, =fmt_line
+        mov     x1, n_r
+        bl      printf
+        add     n_r, n_r, 1
+        b       flood                       // never falls through
+
+        ldr     x19, [fp, n_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Sleeps one millisecond through nanosleep on every pass of a loop with no
+/// exit, the way a paced game waits between frames.
+const PACED_LOOP: &str = r#"
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+n_s = 16
+
+        .data
+started:    .string "pacing\n"
+pause:      .dword 0                        // tv_sec
+            .dword 1000000                  // tv_nsec: 1 ms
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        str     x19, [fp, n_s]
+
+        ldr     x0, =started
+        bl      printf
+
+        mov     n_r, 0
+tick:
+        ldr     x0, =pause                  // req
+        mov     x1, 0                       // rem: not wanted
+        mov     x8, 101                     // nanosleep
+        svc     0
+        add     n_r, n_r, 1
+        b       tick                        // never falls through
+
+        ldr     x19, [fp, n_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Where a wall stopped a program: the step, the bytes it printed, the
+/// last line it printed, the sleeps it took, its virtual clock and the
+/// message.
+#[derive(Debug, PartialEq)]
+struct WallStop {
+    step: u64,
+    pc: u64,
+    stdout_bytes: u64,
+    last_line: String,
+    sleeps: u64,
+    virtual_ns: u64,
+    message: String,
+}
+
+/// Runs `src` the way every batch runner does: 1M-step calls, the console
+/// drained after each, and no sleep waited out, until a wall stops it.
+fn run_to_the_wall(src: &str) -> WallStop {
+    let mut cpu = load(src);
+    let mut sleeps = 0;
+    let mut tail = Vec::new();
+    loop {
+        let r = cpu.run_until_break(1_000_000).expect("run");
+        let out = cpu.take_stdout();
+        if !out.is_empty() {
+            tail = out;
+        }
+        if cpu.take_pending_sleep_ns().is_some() {
+            sleeps += 1;
+        }
+        if r.halted {
+            let text = String::from_utf8_lossy(&tail).into_owned();
+            return WallStop {
+                step: cpu.steps_taken(),
+                pc: r.pc,
+                stdout_bytes: cpu.stdout_seen(),
+                last_line: text.lines().last().unwrap_or("").to_string(),
+                sleeps,
+                virtual_ns: cpu.term.virtual_ns,
+                message: r.error.unwrap_or_default(),
+            };
+        }
+    }
+}
+
+// The three walls with every sleep skipped, as each batch runner runs a
+// program: the step, the output and the message each one stops on.
+#[test]
+fn a_runaway_loop_stops_at_the_step_ceiling_where_it_always_has() {
+    let stop = run_to_the_wall(RUNAWAY_LOOP);
+    assert_eq!(
+        stop,
+        WallStop {
+            step: 10_000_000,
+            pc: 0x40_0008,
+            stdout_bytes: 0,
+            last_line: String::new(),
+            sleeps: 0,
+            virtual_ns: 0,
+            message: step_ceiling_message(),
+        }
+    );
+}
+
+#[test]
+fn a_print_flood_stops_at_the_output_wall_where_it_always_has() {
+    let stop = run_to_the_wall(PRINT_FLOOD);
+    assert_eq!(
+        stop,
+        WallStop {
+            step: 2_870_282,
+            pc: 0x40_001c,
+            stdout_bytes: 4_194_310,
+            last_line: "line 358784".to_string(),
+            sleeps: 0,
+            virtual_ns: 0,
+            message: output_ceiling_message(),
+        }
+    );
+}
+
+#[test]
+fn a_paced_loop_stops_at_the_step_ceiling_where_it_always_has() {
+    // Each 1 ms sleep spends 1,000 steps of the 200M lifetime refund cap
+    // while the budget it refills is already full, so the cap is gone after
+    // 200,000 passes and the loop then spends the plain ceiling.
+    let stop = run_to_the_wall(PACED_LOOP);
+    assert_eq!(
+        stop,
+        WallStop {
+            step: 11_200_007,
+            pc: 0x40_0020,
+            stdout_bytes: 7,
+            last_line: "pacing".to_string(),
+            sleeps: 1_866_666,
+            virtual_ns: 1_866_666_000_000,
+            message: step_ceiling_message(),
+        }
+    );
 }
