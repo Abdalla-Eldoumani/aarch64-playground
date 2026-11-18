@@ -237,5 +237,6 @@ describe("error guidance for the messages the emulator really sends", () => {
     expect(loop.why).toContain("define(x29, x29)");
     expect(explained(withBody("        mov     x0, `one")).why).toContain("end of file in string");
     expect(explained(`ifelse(a, b, c, d)\n${withBody("")}`).styleSection).toBe("m4 preprocessing");
+    expect(explained(`include(\`helpers.s')\n${withBody("")}`).fix).toContain("add the file");
   });
 });
