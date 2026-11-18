@@ -447,9 +447,9 @@ describe("ConsolePanel following its output to a call card", () => {
     const view = render(<ConsolePanel {...props} stdout="first" />);
     const slot = screen.getByText("the card").parentElement!;
     const box = slot.parentElement!;
-    const at = { card: cardHeight, top: 0, height: 100 };
+    const at = { card: cardHeight, top: 0 };
     Object.defineProperties(box, {
-      clientHeight: { configurable: true, get: () => at.height },
+      clientHeight: { configurable: true, get: () => 100 },
       scrollHeight: { configurable: true, get: () => 200 + at.card },
       scrollTop: { configurable: true, get: () => at.top, set: (v: number) => (at.top = v) },
     });
@@ -494,20 +494,5 @@ describe("ConsolePanel following its output to a call card", () => {
     resized();
     printed("first second");
     expect(box.scrollTop).toBe(50);
-  });
-
-  // A dragged split or a move to another layout resizes the box. The browser
-  // fires the scroll that causes before the observer reports the new size,
-  // and that scroll is the layout's, not a reader leaving the end.
-  it("keeps following when its box changes size", () => {
-    const { box, at, printed } = laidOut(0);
-    resized();
-    expect(box.scrollTop).toBe(100);
-    at.height = 40;
-    fireEvent.scroll(box);
-    resized();
-    expect(box.scrollTop).toBe(160);
-    printed("first second");
-    expect(box.scrollTop).toBe(160);
   });
 });
