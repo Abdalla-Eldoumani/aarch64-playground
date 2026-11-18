@@ -453,7 +453,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         for (idx, (w, raw)) in written.iter().zip(&lines).enumerate() {
             let line = idx + 1;
             // A line a block comment touches is read from its `/*`, or whole.
-            let start = if w != raw { w.find("/*").unwrap_or(0) } else if let Some(at) = comment_start(raw) { at } else { continue };
+            // A line pass 0 cut at its start lies in a block comment opened
+            // above: all of it is comment text.
+            let start = if w != raw && w.ends_with(raw) { 0 } else if let Some(at) = comment_start(w) { at } else { continue };
             if let Some(token) = escapes(w, start, &expanded, line, 0) {
                 return Err(unsupported(line, &format!("{token} in a comment")));
             }
@@ -462,8 +464,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     Ok(expanded)
 }
 
-/// Where a `//` or `;` comment starts on a line, outside double-quoted
-/// strings. A `'` opens nothing here: it may close an m4 quote.
+/// Where a `//`, `;` or `/*` comment starts on a line as written, outside
+/// double-quoted strings and m4 quotes. A `'` opens nothing here: it may
+/// close an m4 quote.
 fn comment_start(line: &str) -> Option<usize> {
     let b = line.as_bytes();
     let mut in_string = false;
@@ -472,8 +475,12 @@ fn comment_start(line: &str) -> Option<usize> {
         match b[i] {
             b'\\' if in_string => i += 1,
             b'"' => in_string = !in_string,
+            b'`' if !in_string => {
+                i += quote_end(&b[i..]).unwrap_or(b.len() - i);
+                continue;
+            }
             b';' if !in_string => return Some(i),
-            b'/' if !in_string && b.get(i + 1) == Some(&b'/') => return Some(i),
+            b'/' if !in_string && matches!(b.get(i + 1), Some(b'/' | b'*')) => return Some(i),
             _ => {}
         }
         i += 1;
@@ -2045,8 +2052,9 @@ mod tests {
         rejects(expand("define(`nl', `dnl')dnl\nmov w0, 3 // nl\nmov w0, 5\n"), "unsupported m4 construct: nl in a comment");
         // A `;` or `/*` inside m4 quotes starts no comment, so what follows
         // the call is no comment either; after changecom(`;') a `;` is m4's
-        // own comment, as in GNU m4 1.4.19.
-        assert_eq!(exp("changecom(`;')dnl\nmov w0, 3 ; dnl\nmov w0, 5\n").text, "mov w0, 3 ; dnl\nmov w0, 5");
+        // own comment, as in GNU m4 1.4.19 (whose text keeps the comment
+        // the playground drops).
+        assert_eq!(exp("changecom(`;')dnl\nmov w0, 3 ; dnl\nmov w0, 5\n").text, "mov w0, 3 \nmov w0, 5");
         assert_eq!(exp("changecom(`/*', `*/')dnl\nmov w0, 3\n").text, "mov w0, 3");
     }
 
