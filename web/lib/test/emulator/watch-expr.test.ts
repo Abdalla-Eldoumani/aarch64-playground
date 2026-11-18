@@ -376,3 +376,28 @@ describe("label arrays step by the element size", () => {
     expect(watchLabelName("x0")).toBeNull();
   });
 });
+
+describe("frame-slot arrays named by an = line", () => {
+  // The loaded program's symbol table holds every `=` name, so the label
+  // lookup answers `sum_s` with its value, 16, as if it were an address.
+  const source = "sum_s = 16\n.text\nmain:\n";
+  const ctx: EvalContext = {
+    readRegister: (name) => (name === "fp" ? 0x8000_0000n : name === "w1" ? 1n : null),
+    readMemory: (addr, size) => (addr === 0x8000_0018n && size === 8 ? 7n : "unmapped"),
+    resolveSlotOffset: (name) => (name === "sum_s" ? 16n : null),
+    resolveLabelAddress: (name) => (name === "sum_s" ? 16n : null),
+    labelElementSize: (name) => labelElementSize(source, name),
+  };
+
+  it("reads sum_s[1] as the 8 bytes at fp + 16 + 8", () => {
+    const r = ok(evaluateWatch("sum_s[1]", ctx));
+    expect(r.value).toBe(7n);
+    expect(r.size).toBe(8);
+    expect(ok(evaluateWatch("sum_s[w1]", ctx)).value).toBe(7n);
+  });
+
+  it("reads it while the label lookup is still in flight", () => {
+    const waiting: EvalContext = { ...ctx, resolveLabelAddress: () => "pending" };
+    expect(ok(evaluateWatch("sum_s[1]", waiting)).value).toBe(7n);
+  });
+});
