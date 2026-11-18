@@ -19,8 +19,8 @@ export interface StopWords {
  * controls and the terminal show. The hub imports this on the first such
  * stop, so a page that never steps over never loads it. Null when there is
  * nothing to add: the error line already says why, or a step over moved one
- * instruction. A ret that went to no caller is said with the frames view's
- * own card (frame-cards.ts).
+ * instruction. A return that went to no caller or past its own caller is
+ * said with the frames view's own card (frame-cards.ts).
  */
 export function stopReason(
   target: StepTarget,

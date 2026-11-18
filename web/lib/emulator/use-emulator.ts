@@ -587,9 +587,10 @@ export function useEmulator(): EmulatorState {
    * call site instead of at nothing. Returns the words the error line shows.
    */
   const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true): string => {
-    // After a ret that went to no caller (frames header slot 5), the frame
-    // may show the cause: then its card stands in for the crate's guess, in
-    // the console too (not for a run's pause, which repeats every chunk).
+    // After a return that went to no caller or past its own caller (frames
+    // header slot 5), the frame may show the cause: then its card stands in
+    // for the crate's guess, in the console too (not for a run's pause, which
+    // repeats every chunk).
     // The callers load the words first (loadFrameCards).
     const snap = snapRef.current;
     const cards = snap?.frames?.[5] ? frameCards : null;

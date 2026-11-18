@@ -354,7 +354,8 @@ impl Cpu {
         if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
             self.keep_call(stub.card, outcome.is_err());
         }
-        match outcome? {
+        let outcome = outcome?;
+        match outcome {
             HostOutcome::Continue => {
                 self.clobber_after_call(pc, stub.returns);
                 // Return to caller: pc = lr.
@@ -386,6 +387,13 @@ impl Cpu {
                     self.frames.on_runtime_call(pc, target, &self.regs.snapshot(), log);
                 }
             }
+        }
+        // A library function a tail call (`b printf`) reached returns for
+        // the function that made it, named by the program's last instruction.
+        // shortcut: after qsort or bsearch ran the comparator that is the
+        // comparator's ret, not the b; take the call site once stub entries record it.
+        if matches!(outcome, HostOutcome::Continue | HostOutcome::Sleep(_)) {
+            self.track_return(self.last_program_pc, self.regs.read_pc(), true);
         }
         Ok(())
     }

@@ -80,8 +80,9 @@ export interface FramesSnapshot {
   hiddenEntry: number;
   /** The x29 chain in memory matches the call stack. */
   chainOk: boolean;
-  /** The last `ret` that went to no caller, with the call it returned from
-   *  as that call stood at the `ret` (a later return can pop it), or null. */
+  /** The last return that went to no caller or past its own caller, with
+   *  the call it returned from as that call stood then (a later return can
+   *  pop it), or null. */
   badReturn: {
     step: number;
     pc: number;
