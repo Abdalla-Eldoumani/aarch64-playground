@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
 import type { LintWarning, StepGoal } from "@/lib/emulator/emulator-state";
 import { useBreakpoint, usePhoneShape, useScreenHeight } from "@/lib/hooks/use-breakpoint";
@@ -20,7 +21,7 @@ import { RegisterPanel } from "@/components/panels/RegisterPanel";
 import { Controls } from "@/components/playground/Controls";
 import { DecodeStrip } from "@/components/panels/DecodeStrip";
 import { FirstRunState } from "@/components/playground/FirstRunState";
-import { FullLayout } from "@/components/playground/FullLayout";
+import { FullLayout, HostSlot, PASS_THROUGH, useHostNode } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
 import { Toolbar } from "@/components/playground/Toolbar";
 import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
@@ -615,6 +616,20 @@ export function FullChromeSurface({
   const openTutorials = () => setTutorialOpen(true);
   const openCommandPalette = () => onOpenCommandPalette?.();
   const openShortcuts = () => onOpenShortcutsHelp?.();
+  // One toolbar for both homes, so crossing the short line moves it without a
+  // remount and a focused button keeps the focus. The phone menu has its own.
+  const toolsHost = useHostNode(PASS_THROUGH);
+  const tools = (
+    <Toolbar
+      className={short ? "sm:ml-auto" : "ml-auto"}
+      onShare={openShare}
+      onTutorials={openTutorials}
+      buildDiagnostic={buildDiagnostic}
+      onOpenCommandPalette={openCommandPalette}
+      onOpenShortcuts={openShortcuts}
+    />
+  );
+  const placedTools = toolsHost ? <HostSlot host={toolsHost} className={PASS_THROUGH} /> : tools;
 
   const controls = (
     <Controls
@@ -637,18 +652,7 @@ export function FullChromeSurface({
       stepCount={emu.stepCount}
       compact={phone !== null}
       short={short}
-      trailing={
-        short ? (
-          <Toolbar
-            className="sm:ml-auto"
-            onShare={openShare}
-            onTutorials={openTutorials}
-            buildDiagnostic={buildDiagnostic}
-            onOpenCommandPalette={openCommandPalette}
-            onOpenShortcuts={openShortcuts}
-          />
-        ) : undefined
-      }
+      trailing={short ? placedTools : undefined}
     />
   );
 
@@ -678,6 +682,7 @@ export function FullChromeSurface({
               }
             : null
         }
+        tools={placedTools}
         onShare={openShare}
         onTutorials={openTutorials}
         buildDiagnostic={buildDiagnostic}
@@ -733,6 +738,7 @@ export function FullChromeSurface({
           controls={controls}
         />
       </PointerContext.Provider>
+      {phone === null && toolsHost && createPortal(tools, toolsHost)}
 
       <TutorialRunner
         open={tutorialOpen}
