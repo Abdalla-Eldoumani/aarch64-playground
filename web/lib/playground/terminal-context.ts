@@ -179,7 +179,7 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
       return { snapshot, stack, memory };
     },
     lineLabel: (addr: number) => machine.current.lineLabel(addr),
-    setBreakpoint: async (addr: number) => machine.current.setBreakpointAddress(addr),
+    setBreakpoint: async (addr: number, label: string) => machine.current.setBreakpointAddress(addr, label),
     clearBreakpoint: async (addr: number) => machine.current.clearBreakpointAddress(addr),
     resolveLabel: async (name: string) => machine.current.resolveLabel(name),
     m4Expand: async (text: string) => machine.current.m4Expand(text),
@@ -229,6 +229,7 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     // From the machine itself: the panels' cache answers zeros until a read lands.
     readMemory: (addr: number, len: number) => machine.current.readMemory(addr, len),
     pcAddress: () => machine.current.pc,
+    exitCode: () => machine.current.exitCode,
     reset: async () => machine.current.reset(),
   };
 }
