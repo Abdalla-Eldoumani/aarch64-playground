@@ -159,7 +159,8 @@ export interface RunResultPayload {
   sleep_ms?: number | null;
   /** A run with a goal (`RunGoal`) stopped because it met the goal. */
   reached?: boolean;
-  /** A run with a goal stopped at a `ret` that went to no caller. */
+  /** A run with a goal stopped at a return that went to no caller or past
+   *  its own caller. */
   bad_return?: boolean;
 }
 
