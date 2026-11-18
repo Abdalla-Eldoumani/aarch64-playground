@@ -11,10 +11,7 @@ use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
 use crate::frames::CallStack;
 use crate::frontend::sections::{align_padding, Item, Program};
-use crate::hosted::{
-    CALL_PRINTF, CALL_SCANF, CallRecord, HostContext, HostOutcome, HostTable, RETURNS_IN_D0,
-    RETURNS_NOTHING,
-};
+use crate::hosted::{CallRecord, HostContext, HostOutcome, HostTable, Returns, MAIN_RETURN_ADDR};
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 use crate::snapshot::{SavedState, Snapshot, SnapshotRing};
