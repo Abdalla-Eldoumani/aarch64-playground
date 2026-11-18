@@ -297,7 +297,7 @@ impl Cpu {
         self.refund_steps_total += step_refund;
         self.steps_total = self.steps_total.saturating_sub(step_refund);
         if step_refund > 0 {
-            let byte_refund = ((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize)
+            let byte_refund = (ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE)
                 .min(MAX_REFUND_OUTPUT_BYTES.saturating_sub(self.refund_output_total));
             self.refund_output_total += byte_refund;
             self.output_total = self.output_total.saturating_sub(byte_refund);

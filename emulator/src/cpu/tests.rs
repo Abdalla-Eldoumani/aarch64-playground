@@ -882,7 +882,7 @@ fn the_sleep_output_refund_stops_at_its_lifetime_cap() {
     cpu.load_program(&[encode_svc(0)]);
     let start = MAX_OUTPUT_BYTES * 3;
     cpu.output_total = start;
-    let per_sleep = (MAX_SLEEP_NS / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize;
+    let per_sleep = MAX_SLEEP_NS / SLEEP_OUTPUT_REFUND_NS_PER_BYTE;
     for _ in 0..(MAX_REFUND_OUTPUT_BYTES / per_sleep + 20) {
         cpu.apply_sleep(MAX_SLEEP_NS);
     }
@@ -1073,4 +1073,18 @@ stray:
     let view = crate::frames::view_numbers(&crate::frames::frame_view(&cpu, &layout));
     assert_eq!(view[0], cpu.steps_taken() as f64);
     assert_eq!(view[5], bad as f64);
+}
+
+#[test]
+fn the_budget_counters_are_64_bit_on_every_target() {
+    // usize is 32 bits on wasm32, where a long terminal session's totals
+    // would wrap while every native test passed.
+    let cpu = Cpu::new();
+    let _: [u64; 5] = [
+        cpu.steps_total,
+        cpu.steps_taken,
+        cpu.refund_steps_total,
+        cpu.output_total,
+        cpu.refund_output_total,
+    ];
 }

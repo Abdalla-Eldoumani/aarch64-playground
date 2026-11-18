@@ -34,7 +34,7 @@ impl Cpu {
         let err_new = self.stderr.len().saturating_sub(err_before);
         self.stdout_seen = self.stdout_seen.saturating_add(out_new as u64);
         self.stderr_seen = self.stderr_seen.saturating_add(err_new as u64);
-        self.output_total += out_new + err_new;
+        self.output_total += (out_new + err_new) as u64;
         self.output_total > MAX_OUTPUT_BYTES
     }
 
