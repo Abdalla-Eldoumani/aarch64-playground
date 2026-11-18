@@ -2,7 +2,8 @@
 // without taking focus, walked by buttons and arrow keys, closed at any step
 // with the step kept for a resume, reset once finished, opened at the start by
 // a deep link, put in the top layer where the popover API exists, stepped
-// aside while a picker's list is open, and settled in one spot.
+// aside while a picker's list is open, and settled in one spot by measures
+// that never write to the card.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { InterfaceWalkthrough } from "@/components/playground/InterfaceWalkthrough";
@@ -297,5 +298,14 @@ describe("placement", () => {
     registers.remove();
     assemble.remove();
     back.remove();
+  });
+
+  it("measures without writing to the card, so a capped card's text keeps its scroll", () => {
+    renderOpen(6);
+    const writes = new MutationObserver(() => {});
+    writes.observe(card(), { attributes: true, attributeFilter: ["style"] });
+    act(() => vi.advanceTimersByTime(800));
+    expect(writes.takeRecords()).toEqual([]);
+    writes.disconnect();
   });
 });
