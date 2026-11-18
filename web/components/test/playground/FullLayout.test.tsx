@@ -297,4 +297,15 @@ describe("FullLayout", () => {
     expect(button("TABS")).toBe(tabs);
     expect(document.activeElement).toBe(tabs);
   });
+
+  // The editor's node already survives (the case above it), but taking it
+  // out of one arrangement and into the next drops the focus on the page.
+  it("keeps the focus in the editor through a change of arrangement", () => {
+    const { rerender } = renderLayout("lg");
+    const editor = document.querySelector('textarea[aria-label="EDITOR"]') as HTMLTextAreaElement;
+    act(() => editor.focus());
+    rerender(layout("md"));
+    expect(document.querySelector('textarea[aria-label="EDITOR"]')).toBe(editor);
+    expect(document.activeElement).toBe(editor);
+  });
 });
