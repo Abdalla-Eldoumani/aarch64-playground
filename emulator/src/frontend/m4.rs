@@ -147,6 +147,11 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // The flag marks a line whose newline a `dnl` took, so its text opens
     // the next line.
     let mut stripped: Vec<(usize, &str, bool)> = Vec::new();
+    // Whether the program uses a form the playground refused before: a dnl,
+    // divert or changecom that acts, m4 quotes, or its own ifdef, ifelse or
+    // forloop. Only such a program has its comments checked below.
+    let mut new_forms = false;
+    let mut unquoted_name: Option<(usize, String)> = None;
     // Every define/undefine in source order: (line index, name, body;
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
@@ -176,10 +181,11 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
             let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
             // On a line with quotes, GNU m4 runs these builtins among a
-            // define's arguments before the define sees them, unless quoted.
+            // define's arguments before the define sees them, unless quoted;
+            // refused below once the program uses the new forms.
             let quoted = raw[raw.find('(').map_or(0, |i| i + 1)..].trim_start().starts_with('`');
             if !quoted && without_comment.contains('`') && ["divert", "changecom", "changequote", "dnl"].contains(&name.as_str()) {
-                return Err(unsupported(line_num, &format!("define({name}) with the name unquoted")));
+                unquoted_name.get_or_insert((line_num, name.clone()));
             }
             define_events.push((idx, name, Some(body)));
             stripped.push((idx, text, joins));
@@ -199,8 +205,12 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                 .find(|(_, name, _)| name == kw)
                 .is_some_and(|(_, _, body)| body.is_some())
         };
-        if let Some(kw) = detect_unsupported(trimmed).filter(|kw| !own_macro(kw)) {
-            return Err(unsupported(line_num, kw));
+        if let Some(kw) = detect_unsupported(trimmed) {
+            if !own_macro(kw) {
+                return Err(unsupported(line_num, kw));
+            }
+            // The playground refused these before, a program's own included.
+            new_forms |= kw.starts_with("if") || kw == "forloop";
         }
         if let Some((name, body, (text, joins))) = parse_define(trimmed) {
             define_events.push((idx, name, Some(body)));
@@ -315,6 +325,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             if touched(name) {
                 return Err(unsupported(line_num, &format!("{name} once the program undefines it")));
             }
+            new_forms = true;
             // A numbered diversion goes to the end of GNU m4's output, and a
             // comment that ends anywhere but the line's end can span lines:
             // the line-for-line expansion here can follow neither, nor a name
@@ -389,6 +400,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         if joins && touched("dnl") {
             return Err(unsupported(line_num, "dnl once the program defines or undefines it"));
         }
+        new_forms |= joins || quoted;
         if discard || joins {
             continue;
         }
@@ -413,7 +425,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         out.push(expanded);
     }
 
-    Ok(Expanded {
+    let expanded = Expanded {
         text: out.join("\n"),
         line_map,
         defines,
@@ -425,7 +437,95 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         windowed,
         comment_events,
         quote_lines,
-    })
+    };
+    // GNU m4 reads the comments the passes above drop. In a program that
+    // relies on a form the playground refused before, a comment whose text
+    // GNU m4 carries past its own line is refused; others keep today's output.
+    if new_forms {
+        if let Some((line, name)) = unquoted_name {
+            return Err(unsupported(line, &format!("define({name}) with the name unquoted")));
+        }
+        if written.is_empty() {
+            written.extend(original.lines());
+        }
+        for (idx, (w, raw)) in written.iter().zip(&lines).enumerate() {
+            let line = idx + 1;
+            // A line a block comment touches is read from its `/*`, or whole.
+            let start = if w != raw { w.find("/*").unwrap_or(0) } else if let Some(at) = comment_start(raw) { at } else { continue };
+            // GNU m4's own comment, opened earlier on the line, covers it.
+            if expanded.comment_at(line).is_some_and(|o| w[..start].contains(o)) {
+                continue;
+            }
+            if let Some(token) = escapes(&w[start..], &expanded, line) {
+                return Err(unsupported(line, &format!("{token} in a comment")));
+            }
+        }
+    }
+    Ok(expanded)
+}
+
+/// Where a `//` or `;` comment starts on a line, outside double-quoted
+/// strings. A `'` opens nothing here: it may close an m4 quote.
+fn comment_start(line: &str) -> Option<usize> {
+    let b = line.as_bytes();
+    let mut in_string = false;
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'\\' if in_string => i += 1,
+            b'"' => in_string = !in_string,
+            b';' if !in_string => return Some(i),
+            b'/' if !in_string && b.get(i + 1) == Some(&b'/') => return Some(i),
+            _ => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// GNU m4 1.4.19's builtin macros, as its `dumpdef` lists them.
+const GNU_BUILTINS: &str = "__file__ __gnu__ __line__ __program__ __unix__ builtin changecom changequote \
+    debugfile debugmode decr define defn divert divnum dnl dumpdef errprint esyscmd eval format ifdef ifelse \
+    include incr index indir len m4exit m4wrap maketemp mkstemp patsubst popdef pushdef regexp shift sinclude \
+    substr syscmd sysval traceoff traceon translit undefine undivert";
+
+/// The first thing in comment text that GNU m4 carries past the comment's
+/// line (each checked against GNU m4 1.4.19): an unclosed quote; dnl,
+/// changecom or m4exit; a builtin or macro called with `(`; or a macro whose
+/// body spans lines. GNU m4's own comment opener ends the search.
+fn escapes<'a>(text: &'a str, expanded: &Expanded, line: usize) -> Option<&'a str> {
+    let b = text.as_bytes();
+    let opener = expanded.comment_at(line);
+    let mut i = 0;
+    while i < b.len() {
+        if opener.is_some_and(|o| b[i..].starts_with(o.as_bytes())) {
+            return None;
+        }
+        if b[i] == b'`' {
+            match quote_end(&b[i..]) {
+                Some(n) => i += n,
+                None => return Some("`"),
+            }
+            continue;
+        }
+        if !is_id_start_byte(b[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && is_id_continue_byte(b[i]) {
+            i += 1;
+        }
+        let name = &text[start..i];
+        let body = expanded.define_body_at(name, line);
+        if b.get(i) == Some(&b'(') && (body.is_some() || GNU_BUILTINS.split(' ').any(|n| n == name)) {
+            return Some(&text[start..=i]);
+        }
+        if matches!(name, "dnl" | "changecom" | "m4exit") || body.is_some_and(|body| body.contains('\n')) {
+            return Some(name);
+        }
+    }
+    None
 }
 
 fn expand_recursively(
@@ -1864,7 +1964,7 @@ mod tests {
         // program's own macro.
         for name in ["divert", "changecom", "changequote", "dnl"] {
             let refusal = format!("unsupported m4 construct: define({name}) with the name unquoted");
-            rejects(expand(&format!("define({name}, `x')\ndefine(a, x1)dnl\n")), &refusal);
+            rejects(expand(&format!("define({name}, `x')\nmov x0, `a'\n")), &refusal);
         }
         assert_eq!(exp("define( `divert', `nop')\ndivert(-1)\n").text, "\nnop");
         // Any other program builds as it does today: a quoted define is no
