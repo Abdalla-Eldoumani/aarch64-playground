@@ -901,6 +901,16 @@ export function useEmulator(): EmulatorState {
     [assembleWith, pushReplayFrame, resetReplayHistory],
   );
 
+  // Both live behind refs, so each memo reads the tick that moves with its ref.
+  const replayFrames = useMemo(() => {
+    void replayTick;
+    return readReplayFrames();
+  }, [replayTick, readReplayFrames]);
+  const dirtyAddrs = useMemo(() => {
+    void dirtyAddrsTick;
+    return dirtyAddrsRef.current;
+  }, [dirtyAddrsTick]);
+
   // Memoized return so consumers' useCallback/useMemo dependents don't
   // see a fresh object every render.
   return useMemo(
@@ -981,17 +991,12 @@ export function useEmulator(): EmulatorState {
       clearBreakpointAddress,
       restoreBookmark,
       clearConsole,
-      dirtyAddrs: dirtyAddrsRef.current,
-      replayFrames: readReplayFrames(),
+      dirtyAddrs,
+      replayFrames,
       seekReplay,
     }),
-    // replayTick is intentionally a dep so consumers re-render when the
-    // underlying replay ring mutates (the ref identity itself never
-    // changes). eslint can't see that the returned `replayFrames` reads
-    // through the ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
+      isLoaded, loadError, registers, fpRegisters, changedFpRegs, vectorRegisters, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, pauseText, errorCard, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
       currentLine, externalCall, frames, frameLayout, callCard, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
@@ -1001,9 +1006,9 @@ export function useEmulator(): EmulatorState {
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
-      pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
+      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
-      clearConsole, replayTick, dirtyAddrsTick, seekReplay,
+      clearConsole, dirtyAddrs, replayFrames, seekReplay,
     ],
   );
 }
