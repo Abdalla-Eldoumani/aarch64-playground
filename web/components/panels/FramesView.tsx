@@ -129,8 +129,9 @@ export function FramesView({
   const pointed = useContext(PointerContext)?.pointed ?? null;
   const litAt = pointed ? parseInt(registers[pointed.reg] ?? "", 16) : NaN;
   // What went wrong, under the frames: a write over a caller's saved fp or
-  // lr at the step that made it, a ret that went to no caller from then on,
-  // and a caller reading x19 to x28 a call left changed at the step it read.
+  // lr at the step that made it, a return that went to no caller or past its
+  // own caller from then on, and a caller reading x19 to x28 a call left
+  // changed at the step it read.
   const context = snapshot && { ...programLines, snapshot, layout };
   const ret = context && returnCard(context, BigInt(registers[30] ?? 0));
   const cards: Card[] = context
