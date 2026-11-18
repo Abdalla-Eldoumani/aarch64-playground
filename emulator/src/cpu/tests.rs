@@ -1019,3 +1019,58 @@ fn syscall_write_past_page_cap_aborts_calmly() {
     );
     assert_eq!(cpu.abort_message.as_deref(), Some(MEMORY_CAP_MESSAGE));
 }
+
+#[test]
+fn step_counts_past_two_to_the_thirty_second_reach_every_stamp_exactly() {
+    // A terminal session paced by sleeps can take more than 2^32 steps, and
+    // the wasm hands each count over as an f64, exact below 2^53.
+    const SRC: &str = r#"
+        .data
+fmt:    .string "hi\n"
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldr     x0, =fmt
+        bl      printf
+        bl      stray
+        nop
+skipped:
+        ldp     x29, x30, [sp], 16
+        ret
+stray:
+        ldr     x30, =skipped
+        ret
+"#;
+    let mut cpu = Cpu::new();
+    let image = crate::frontend::pipeline::assemble_hosted(SRC, &cpu.host).expect("assembles");
+    cpu.load_linked_image(&image).expect("loads");
+    let layout = crate::frames::layout::frame_layout(SRC, &image, &cpu.mem);
+    cpu.steps_taken = (1 << 32) - 3;
+    cpu.stdout_seen = (1 << 32) - 1;
+
+    // The printf call's card carries the step that made it.
+    while crate::call_card(&cpu).is_empty() {
+        cpu.step().unwrap();
+    }
+    let at = cpu.steps_taken();
+    assert!(at > 1 << 32, "the call came after 2^32: {at}");
+    assert_eq!(crate::call_card(&cpu)[1], at as f64);
+    assert_eq!(cpu.stdout_seen(), (1 << 32) + 2);
+
+    // Back puts the count back by exactly one across 2^32, and forward again.
+    cpu.step_back();
+    assert_eq!(cpu.steps_taken(), at - 1);
+    cpu.step().unwrap();
+    assert_eq!(cpu.steps_taken(), at);
+
+    // stray returns past its caller's next line: the bad return's stamp.
+    let r = cpu.run_until_break(100).unwrap();
+    assert!(r.halted && r.error.is_none(), "{:?}", r.error);
+    let bad = cpu.frames.bad_return().step;
+    assert!(bad > at, "the stray ret came later: {bad}");
+    let view = crate::frames::view_numbers(&crate::frames::frame_view(&cpu, &layout));
+    assert_eq!(view[0], cpu.steps_taken() as f64);
+    assert_eq!(view[5], bad as f64);
+}
