@@ -8,10 +8,11 @@
  * wrong; a wrong field shows the exercise's hint, never the number.
  */
 
-import { useEffect, useId, useReducer, useRef, useState, type JSX } from "react";
+import { useId, useRef, useState, type JSX } from "react";
 import type { FrameExercise } from "@/lib/content/exercise-schema";
 import type { FieldMark, FrameAnswers, FrameMarks } from "@/lib/content/frame-checker";
 import { markSolved } from "@/lib/playground/solved-state";
+import { useTypedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Button } from "@/components/ui/Button";
 import { CheckSquare } from "@/components/ui/CheckSquare";
@@ -75,6 +76,8 @@ function NumberField({
   mark: FieldMark | null;
   onChange: (value: string) => void;
 }): JSX.Element {
+  const field = useRef<HTMLInputElement>(null);
+  useTypedBeforeHydration(field, value, onChange);
   const missed = mark !== null && mark !== "right";
   const tone =
     mark === null ? "border-[var(--border-control)]" : missed ? "border-[var(--danger)]" : "border-[var(--success)]";
@@ -84,6 +87,7 @@ function NumberField({
         {label}
       </label>
       <input
+        ref={field}
         id={id}
         type="text"
         inputMode="numeric"
@@ -132,26 +136,12 @@ export function FrameExerciseView({
   sheetNumber?: string;
 }): JSX.Element {
   const baseId = useId();
-  // A reducer, so the numbers typed before hydration can arrive from the effect below.
-  const [answers, setAnswers] = useReducer((_: FrameAnswers, next: FrameAnswers) => next, exercise, (e) => ({
+  const [answers, setAnswers] = useState<FrameAnswers>(() => ({
     size: "",
-    slots: e.slots.map(() => ""),
+    slots: exercise.slots.map(() => ""),
     savedFp: "",
     savedLr: "",
   }));
-  // A number typed before the page's script ran stays in its field through
-  // hydration, but no change reaches `answers`: take it in once, or Check
-  // grades the field empty and clears it.
-  useEffect(() => {
-    const typed = (key: string) => (document.getElementById(`${baseId}-${key}`) as HTMLInputElement | null)?.value ?? "";
-    const found = {
-      size: typed("size"),
-      slots: exercise.slots.map((_, i) => typed(`slot-${i}`)),
-      savedFp: typed("fp"),
-      savedLr: typed("lr"),
-    };
-    if ([found.size, ...found.slots, found.savedFp, found.savedLr].some(Boolean)) setAnswers(found);
-  }, [baseId, exercise.slots]);
   const [check, setCheck] = useState<CheckState>({ status: "idle" });
   // Fields typed in since the last check: an old mark beside a new number
   // would be a lie, so theirs are hidden until the next check.
@@ -170,8 +160,10 @@ export function FrameExerciseView({
   const field = (key: string) => fields.find((f) => f.key === key) ?? { key, mark: null, hint: "" };
   const right = fields.filter((f) => f.mark === "right").length;
 
-  const edit = (key: string, next: FrameAnswers) => {
-    setAnswers(next);
+  // A change to one field, from the latest answers: the fields typed before
+  // hydration all arrive in one pass, before any render between them.
+  const edit = (key: string, change: (old: FrameAnswers) => FrameAnswers) => {
+    setAnswers(change);
     if (marks && !edited.has(key)) setEdited(new Set(edited).add(key));
   };
 
@@ -279,7 +271,7 @@ export function FrameExerciseView({
             label="frame size in bytes"
             value={answers.size}
             mark={field("size").mark}
-            onChange={(value) => edit("size", { ...answers, size: value })}
+            onChange={(value) => edit("size", (old) => ({ ...old, size: value }))}
           />
           <span aria-hidden="true">bytes</span>
           <Mark mark={field("size").mark} />
@@ -289,15 +281,15 @@ export function FrameExerciseView({
           {exercise.slots
             .map((slot, i) =>
               box(`slot-${i}`, `offset of ${slot.name} from fp, in bytes`, slot.name, "local", answers.slots[i], (value) =>
-                edit(`slot-${i}`, { ...answers, slots: answers.slots.map((old, k) => (k === i ? value : old)) }),
+                edit(`slot-${i}`, (old) => ({ ...old, slots: old.slots.map((slotValue, k) => (k === i ? value : slotValue)) })),
               ),
             )
             .reverse()}
           {box("lr", "offset of the saved lr from fp, in bytes", "saved lr (x30)", "saved", answers.savedLr, (value) =>
-            edit("lr", { ...answers, savedLr: value }),
+            edit("lr", (old) => ({ ...old, savedLr: value })),
           )}
           {box("fp", "offset of the saved fp from fp, in bytes", "saved fp (x29)", "saved", answers.savedFp, (value) =>
-            edit("fp", { ...answers, savedFp: value }),
+            edit("fp", (old) => ({ ...old, savedFp: value })),
           )}
         </ul>
         <div className="mt-5 flex flex-wrap items-center gap-4">
