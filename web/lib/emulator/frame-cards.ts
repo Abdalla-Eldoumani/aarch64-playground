@@ -195,9 +195,16 @@ export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | nu
     const bl = call && /^bl\b/i.test(code(call)) ? ` with \`${code(call)}\` on ${at(call)}` : "";
     because = `, because ${name} called out${bl} before saving lr, so lr still held that call's return address`;
   }
+  // Back to its own return address (every call from one bl site shares it),
+  // or out of the program with no call left: the frame record popped before
+  // the ret was its caller's, so it ended that call too.
+  const skipped = bad.target === row.retAddr || (!landed && !ctx.snapshot.frames.length);
+  const where = `${name}'s ret on ${ret ? at(ret) : "its last line"}`;
   return {
     event: `ret at ${hex(bad.pc)} in ${hex(row.entry)}`,
-    text: `${name}'s ret on ${ret ? at(ret) : "its last line"} ${went} instead of going back to ${backTo(row, ctx, fnName)}${because}.`,
+    text: skipped
+      ? `${where} ended its caller ${fnName(row.retAddr)} too: that call's frame record was popped before the ret.`
+      : `${where} ${went} instead of going back to ${backTo(row, ctx, fnName)}${because}.`,
     cause,
   };
 }
