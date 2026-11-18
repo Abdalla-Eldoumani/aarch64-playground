@@ -43,10 +43,12 @@ These GNU m4 builtins work here as on the servers, in the forms below:
   leaves no empty line behind. A label named `dnl:` stays a label here.
 - `divert(-1)` throws away everything m4 writes until `divert` or
   `divert(0)`, so a block of defines between them writes no lines. Only
-  `dnl` lines, define and undefine lines with no `/* */` comment and no
-  `//` or `;` comment unless they end in `dnl`, and m4's own comments
-  (`#`, unless `changecom` moved it) may sit between them: GNU m4 still reads any other text there,
-  comments included, so it is rejected.
+  blank lines, `dnl` lines with no `/* */` comment, `divert` and
+  `changecom` calls, `define` and `undefine` calls with no `/* */` comment
+  on their lines and, unless `dnl` follows the call, no `//` or `;` there,
+  and m4's own comments (`#`, unless `changecom` moved it) may sit between
+  them: GNU m4 still reads any other text there, comments included, so it
+  is rejected.
 - `changecom` with no argument turns `#` comments off, so a name after
   `#` expands; ``changecom(`//')`` makes `//` the comment start instead.
 - A quoted string, `` `text' ``, is written without its quotes and never
@@ -70,8 +72,13 @@ macro's arguments do. GNU m4 reads `//`, `;` and `/* */` comments as
 text, so in a program that uses `dnl`, `divert`, `changecom` or quotes, a
 comment holding `dnl`, `changecom`, `m4exit`, an unclosed quote, a macro
 or builtin called with `(`, or a macro that expands to more than one line
-or to one of these is rejected: each acts past the comment's line there.
-In such a program, a builtin such as `divert`, `divnum` or `dnl` used
+or to one of these, ahead of m4's own comment start (`#`, unless
+`changecom` moved it), is rejected: each acts past the comment's line
+there. That holds for a comment inside a quoted define's body too, which
+GNU m4 reads where the macro is used. So is a `/* */` comment that GNU m4
+reads inside an m4 quote, or that leaves one open, as in
+``changecom(`/*', `*/')``: GNU m4 pairs its quote marks with text outside
+it. In such a program, a builtin such as `divert`, `divnum` or `dnl` used
 unquoted as a define's name is rejected too: GNU m4 runs the builtin
 before define sees the name.
 Undefining a name ends that define's reach at that line, so an alias can
