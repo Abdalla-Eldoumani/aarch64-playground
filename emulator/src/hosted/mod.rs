@@ -246,6 +246,9 @@ pub const CALL_NO_INPUT: u8 = 3;
 
 /// `Conversion::source` of a conversion that read no argument (`%%`).
 pub const ARG_NONE: i64 = -1;
+/// `Conversion::source` of d0, and of the first 8-byte stack slot above sp.
+pub const ARG_FP: i64 = 32;
+pub const ARG_STACK: i64 = 64;
 
 /// A record keeps this many conversions and this many bytes of the format
 /// and of the text, and counts the rest, so a hostile format cannot grow it.
@@ -258,8 +261,8 @@ pub struct Conversion {
     /// Byte offsets in the format, from the `%` to just past its letter.
     pub fmt_start: usize,
     pub fmt_end: usize,
-    /// Where its argument came from: xN as N, dN as 32 + N, the stack as
-    /// 64 + its 8-byte slot above sp, or `ARG_NONE`.
+    /// Where its argument came from: xN as N, dN as `ARG_FP` + N, the stack
+    /// as `ARG_STACK` + its 8-byte slot above sp, or `ARG_NONE`.
     pub source: i64,
     /// The argument: printf's value (a double's bits), scanf's pointer.
     pub arg: u64,
@@ -383,7 +386,7 @@ impl VarargWalker {
     pub(crate) fn next_double(&mut self, ctx: &mut HostContext<'_>) -> f64 {
         let bits = if self.fp_idx <= 7 {
             let v = ctx.regs.read_fpr_bits(self.fp_idx);
-            self.last.0 = 32 + i64::from(self.fp_idx);
+            self.last.0 = ARG_FP + i64::from(self.fp_idx);
             self.fp_idx = self.fp_idx.saturating_add(1);
             v
         } else {
@@ -395,7 +398,7 @@ impl VarargWalker {
 
     fn next_spill(&mut self, ctx: &mut HostContext<'_>) -> u64 {
         let addr = ctx.regs.read_sp().wrapping_add(self.stack_off);
-        self.last.0 = 64 + (self.stack_off / 8) as i64;
+        self.last.0 = ARG_STACK + (self.stack_off / 8) as i64;
         self.stack_off = self.stack_off.wrapping_add(8);
         ctx.mem.read_u64(addr).unwrap_or(0)
     }
