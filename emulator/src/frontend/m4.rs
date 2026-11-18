@@ -1592,6 +1592,10 @@ mod tests {
             gnu("mov x0, x29", &[4])
         );
         assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)dnl back to fp, lr\nmov x0, fp\n"),
+            gnu("mov x0, x29", &[4])
+        );
+        assert_eq!(
             text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)\nmov x0, fp\n"),
             gnu("\nmov x0, x29", &[3, 4])
         );
