@@ -456,3 +456,154 @@ fn step_back_inside_a_comparator_resumes_the_same_sort() {
     cpu.clear_all_breakpoints();
     assert_eq!(run(&mut cpu), SORTED_OUTPUT);
 }
+
+/// What glibc 2.39's atol returns for each string (the string in GAS
+/// escapes), captured by running a program that calls atol on each one,
+/// built with aarch64-linux-gnu-gcc 13.3.0, under qemu-aarch64 8.2.2. It is
+/// strtol in base 10: C-locale whitespace (\v and \f too, not a no-break
+/// space), one sign, decimal digits up to the first other byte, 0 when
+/// nothing converts, and LONG_MAX or LONG_MIN when the value is too big.
+const ATOL_CASES: &[(&str, i64)] = &[
+    ("42", 42),
+    ("-17", -17),
+    ("+5", 5),
+    ("   12", 12),
+    ("\\t\\n 123abc", 123),
+    ("\\013\\014\\r 7", 7),
+    ("", 0),
+    ("abc", 0),
+    ("- 5", 0),
+    ("--5", 0),
+    ("+-5", 0),
+    ("0x1A", 0),
+    ("012", 12),
+    ("007x", 7),
+    ("-0", 0),
+    ("4294967296", 4294967296),
+    ("-4294967297", -4294967297),
+    ("2147483648", 2147483648),
+    ("9223372036854775807", i64::MAX),
+    ("9223372036854775808", i64::MAX),
+    ("-9223372036854775808", i64::MIN),
+    ("-9223372036854775809", i64::MIN),
+    ("99999999999999999999999", i64::MAX),
+    ("-99999999999999999999999", i64::MIN),
+    ("18446744073709551617", i64::MAX),
+    ("\\302\\240 5", 0),
+    ("1 2", 1),
+    ("3.9", 3),
+    ("1e3", 1),
+    (" +", 0),
+];
+
+#[test]
+fn atol_converts_each_string_as_glibc_does() {
+    let strings: String =
+        ATOL_CASES.iter().enumerate().map(|(i, (s, _))| format!("s{i}:     .string \"{s}\"\n")).collect();
+    let table: String = (0..ATOL_CASES.len()).map(|i| format!("        .dword  s{i}\n")).collect();
+    let src = format!(
+        "define(fp, x29)
+define(lr, x30)
+define(i_r, x19)
+define(base_r, x20)
+
+        .data
+{strings}
+        .align 3
+cases:
+{table}fmt:    .string \"%ld: %ld\\n\"
+
+        .text
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        ldr     base_r, =cases
+        mov     i_r, 0
+loop:   ldr     x0, [base_r, i_r, lsl 3]
+        bl      atol
+        mov     x2, x0
+        mov     x1, i_r
+        ldr     x0, =fmt
+        bl      printf
+        add     i_r, i_r, 1
+        cmp     i_r, {}
+        b.lt    loop
+        ldp     x19, x20, [sp, 16]
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+",
+        ATOL_CASES.len()
+    );
+    let want: String = ATOL_CASES.iter().enumerate().map(|(i, (_, v))| format!("{i}: {v}\n")).collect();
+    let mut cpu = load(&src);
+    assert_eq!(run(&mut cpu), want);
+}
+
+/// What glibc 2.39 prints for a NULL `%s` argument, captured the same way,
+/// alike for printf, fprintf, sprintf and snprintf: `(null)`, or nothing
+/// when a precision under 6 has no room for it, padded to the width either
+/// way. Each row is the conversion and the field it prints.
+const NULL_STRING: &[(&str, &str)] = &[
+    ("%s", "(null)"),
+    ("%.3s", ""),
+    ("%10s", "    (null)"),
+    ("%-10s", "(null)    "),
+    ("%.0s", ""),
+    ("%.5s", ""),
+    ("%.6s", "(null)"),
+    ("%10.3s", "          "),
+];
+
+/// A program that hands `function` a NULL for `conv` inside brackets, then
+/// prints what came out and the count the call returned.
+fn null_string_program(function: &str, conv: &str) -> String {
+    let line = format!("fmt:    .string \"[{conv}]\\n\"\nfmt_ret: .string \"ret=%d\\n\"");
+    let buffered = format!("fmt:    .string \"[{conv}]\"\nfmt_out: .string \"%s ret=%d\\n\"");
+    let (data, call) = match function {
+        "printf" => (line, "        ldr     x0, =fmt\n        mov     x1, 0\n        bl      printf\n        mov     w1, w0\n        ldr     x0, =fmt_ret\n"),
+        "fprintf" => (line, "        ldr     x0, =stdout\n        ldr     x0, [x0]\n        ldr     x1, =fmt\n        mov     x2, 0\n        bl      fprintf\n        mov     w1, w0\n        ldr     x0, =fmt_ret\n"),
+        "sprintf" => (buffered, "        ldr     x0, =buf\n        ldr     x1, =fmt\n        mov     x2, 0\n        bl      sprintf\n        mov     w2, w0\n        ldr     x0, =fmt_out\n        ldr     x1, =buf\n"),
+        _ => (buffered, "        ldr     x0, =buf\n        mov     x1, 64\n        ldr     x2, =fmt\n        mov     x3, 0\n        bl      snprintf\n        mov     w2, w0\n        ldr     x0, =fmt_out\n        ldr     x1, =buf\n"),
+    };
+    format!(
+        "        .data
+{data}
+
+        .bss
+        .align 3
+buf:    .skip   64
+
+        .text
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+{call}        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"
+    )
+}
+
+#[test]
+fn a_null_string_prints_as_glibc_prints_it() {
+    for function in ["printf", "fprintf", "sprintf", "snprintf"] {
+        for (conv, field) in NULL_STRING {
+            // printf and fprintf print the field and a newline; the other
+            // two keep the newline out of the buffer.
+            let want = match function {
+                "printf" | "fprintf" => format!("[{field}]\nret={}\n", field.len() + 3),
+                _ => format!("[{field}] ret={}\n", field.len() + 2),
+            };
+            let mut cpu = load(&null_string_program(function, conv));
+            cpu.run_until_break(10_000).expect("run");
+            assert_eq!(cpu.abort_message, None, "{function} {conv}");
+            assert_eq!(cpu.exit_code(), Some(0), "{function} {conv}");
+            assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), want, "{function} {conv}");
+        }
+    }
+}

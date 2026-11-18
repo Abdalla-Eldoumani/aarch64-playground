@@ -34,6 +34,7 @@ function makeMachine(overrides: Partial<TerminalDriveMachine> = {}): TerminalDri
     pushStdin: vi.fn(),
     setOutputTap: vi.fn(),
     setSnapshotsPaused: vi.fn(),
+    setRealTime: vi.fn(),
     ...overrides,
   };
   return machine;
@@ -425,6 +426,17 @@ describe("forwarding keystrokes", () => {
   });
 });
 
+/** Real time goes on after the ring pauses and off before it resumes, once
+ *  each, so no step the ring records ran under real time. */
+function expectRealTimeInsideThePause(machine: TerminalDriveMachine) {
+  const pause = vi.mocked(machine.setSnapshotsPaused).mock;
+  const real = vi.mocked(machine.setRealTime).mock;
+  expect(pause.calls).toEqual([[true], [false]]);
+  expect(real.calls).toEqual([[true], [false]]);
+  expect(pause.invocationCallOrder[0]).toBeLessThan(real.invocationCallOrder[0]);
+  expect(real.invocationCallOrder[1]).toBeLessThan(pause.invocationCallOrder[1]);
+}
+
 describe("standing down", () => {
   async function startSession(machine: TerminalDriveMachine) {
     const h = setup({}, machine);
@@ -448,6 +460,7 @@ describe("standing down", () => {
     expect(exit).toBe(7);
     expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
     expect(machine.setSnapshotsPaused).toHaveBeenLastCalledWith(false);
+    expectRealTimeInsideThePause(machine);
     expect(io.setForeground).toHaveBeenLastCalledWith(null);
     expect(h.drive().foregroundLive).toBe(false);
   });
@@ -462,6 +475,7 @@ describe("standing down", () => {
       exit = await session;
     });
     expect(exit).toBeNull();
+    expectRealTimeInsideThePause(machine);
   });
 
   it("stops on ctrl+c by pausing the machine", async () => {
@@ -474,6 +488,7 @@ describe("standing down", () => {
     });
     expect(machine.pause).toHaveBeenCalledTimes(1);
     expect(exit).toBeNull();
+    expectRealTimeInsideThePause(machine);
   });
 
   it("lets go when the pane it was driving goes away", async () => {
@@ -497,6 +512,7 @@ describe("standing down", () => {
       await session;
     });
     expect(machine.setSnapshotsPaused).toHaveBeenLastCalledWith(false);
+    expectRealTimeInsideThePause(machine);
   });
 
   it("lets go when an assemble replaces the program under it", async () => {
@@ -512,6 +528,7 @@ describe("standing down", () => {
       await session;
     });
     expect(machine.run).toHaveBeenCalledTimes(1);
+    expectRealTimeInsideThePause(machine);
   });
 
   it("lets go when the host surface unmounts", async () => {
@@ -524,5 +541,6 @@ describe("standing down", () => {
     });
     expect(exit).toBeNull();
     expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
+    expectRealTimeInsideThePause(machine);
   });
 });

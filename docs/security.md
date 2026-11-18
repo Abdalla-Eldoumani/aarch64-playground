@@ -89,6 +89,16 @@ the call, with a plain message instead of a crash:
   to fill the 8 MiB stack and the 16 MiB heap together.
 - At most 4 MiB of output (`cpu::MAX_OUTPUT_BYTES`), and a cap on the field
   width and precision `printf` will pad to.
+- A program that sleeps (`nanosleep`, `usleep`) earns back one instruction per
+  microsecond slept and one byte of output per ten, never past the two limits
+  above, up to 200,000,000 instructions and 4 MiB in a run. The terminal pane
+  waits out every sleep in real time, so there the caps are what four hours of
+  sleeping earns, 14,400,000,000 instructions and 1,440,000,000 bytes
+  (`cpu::REAL_TIME_REFUND_STEPS`, `cpu::REAL_TIME_REFUND_OUTPUT_BYTES`), and a
+  sleep counts against them only what it gave back. That bounds a terminal
+  session's work, not its length: a game using most of each second's refill
+  runs about five to eight hours, and a program that does little each second
+  can run for weeks. A program that never sleeps meets the limits above.
 - In the virtual filesystem: 4 MiB per file, 4 MiB in total, and 16 files. A
   call past a limit fails as on a full Linux disk: a system call returns a
   negative error number, a library call -1 or NULL.

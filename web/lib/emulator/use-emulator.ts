@@ -206,6 +206,7 @@ export function useEmulator(): EmulatorState {
     pushStdin: pushStdinToBackend,
     closeStdin,
     setSnapshotsPaused,
+    setRealTime,
     lint,
     uploadVfsFile,
     readVfsFile,
@@ -400,6 +401,9 @@ export function useEmulator(): EmulatorState {
       });
     return () => {
       cancelled = true;
+      // A run waiting out a sleep stands down like a pause: the main-thread
+      // backend has no worker to terminate, so the drive would run on.
+      runningRef.current = false;
       unsubscribe();
       backend.dispose();
     };
@@ -580,9 +584,10 @@ export function useEmulator(): EmulatorState {
    * call site instead of at nothing. Returns the words the error line shows.
    */
   const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true): string => {
-    // After a ret that went to no caller (frames header slot 5), the frame
-    // may show the cause: then its card stands in for the crate's guess, in
-    // the console too (not for a run's pause, which repeats every chunk).
+    // After a return that went to no caller or past its own caller (frames
+    // header slot 5), the frame may show the cause: then its card stands in
+    // for the crate's guess, in the console too (not for a run's pause, which
+    // repeats every chunk).
     // The callers load the words first (loadFrameCards).
     const snap = snapRef.current;
     const cards = snap?.frames?.[5] ? frameCards : null;
@@ -711,8 +716,8 @@ export function useEmulator(): EmulatorState {
         if (runResult.cancelled) return null;
         total += runResult.steps_executed;
         // A pacing pause (nanosleep): honor it in real time and keep the
-        // same run going, unless pause/reset stood the drive down while
-        // it waited. The steps so far still land on the counter below.
+        // same run going, unless pause, reset or an unmount stood the drive
+        // down while it waited. The steps so far still land on the counter below.
         if (
           runResult.sleep_ms != null &&
           !runResult.halted &&
@@ -967,6 +972,7 @@ export function useEmulator(): EmulatorState {
       resumeAfterInput,
       closeStdin,
       setSnapshotsPaused,
+      setRealTime,
       lint,
       uploadVfsFile,
       readVfsFile,
@@ -992,7 +998,7 @@ export function useEmulator(): EmulatorState {
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
-      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
+      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, setRealTime, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
       setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
       clearConsole, dirtyAddrs, readReplayFrames, seekReplay,
     ],

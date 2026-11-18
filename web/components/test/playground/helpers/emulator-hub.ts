@@ -81,6 +81,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     stdinGiven: vi.fn(() => ""),
     resumeAfterInput: vi.fn(),
     setSnapshotsPaused: vi.fn(),
+    setRealTime: vi.fn(),
     closeStdin: vi.fn(),
     uploadVfsFile: vi.fn(),
     readVfsFile: vi.fn(async () => new Uint8Array()),

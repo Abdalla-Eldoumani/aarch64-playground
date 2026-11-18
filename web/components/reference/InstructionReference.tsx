@@ -29,6 +29,7 @@ import { FlagEffect, FLAG_SETTERS, type FlagMnemonic } from "@/components/diagra
 import { CondCodeExplorer } from "@/components/diagrams/CondCodeExplorer";
 import { buildShareHash } from "@/lib/playground/share";
 import { useHashFragment } from "@/lib/hooks/use-hash-fragment";
+import { useTypedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 import { playgroundSource } from "@/lib/playground/playground-source";
 import { referenceId } from "@/lib/content/site";
 import {
@@ -149,6 +150,11 @@ export function InstructionReference({
 
   const filterId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
+  // From the live URL, not `finder`: hydration renders the server's empty
+  // search, and building on it would drop a link's group and show=all.
+  useTypedBeforeHydration(inputRef, filter, (query) =>
+    writeFinder({ ...readFinderState(window.location.search), query }, false),
+  );
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const detailRef = useRef<HTMLElement>(null);
 
