@@ -32,8 +32,9 @@
 //! Anything else (ifdef, ifelse, forloop, changequote, include) fails with
 //! an "unsupported m4 construct" error at its line, unless the program
 //! defined that name itself. So do divert, changecom and dnl where they
-//! would run once the program has undefined them, and dnl once it has
-//! defined it.
+//! would run once the program has undefined them, dnl once it has defined
+//! it, and one of these four as a define's unquoted name on a line with
+//! quotes.
 
 use std::collections::HashMap;
 
@@ -175,6 +176,12 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         // quoted body keeps its commas and may run over several lines.
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
             let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
+            // On a line with quotes, GNU m4 runs these builtins among a
+            // define's arguments before the define sees them, unless quoted.
+            let quoted = raw.split_once('(').is_some_and(|(_, rest)| rest.trim_start().starts_with('`'));
+            if !quoted && without_comment.contains('`') && ["divert", "changecom", "changequote", "dnl"].contains(&name.as_str()) {
+                return Err(unsupported(line_num, &format!("define({name}) with the name unquoted")));
+            }
             define_events.push((idx, name, Some(body)));
             stripped.push((idx, text, joins));
             skip = used - 1;
@@ -294,16 +301,16 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             events.next();
         }
         // GNU m4 drops a builtin for good once a define or undefine names
-        // it; where the playground would run it, it refuses instead.
+        // it; where the playground would run it, it refuses instead. A
+        // divert or changecom the program defines is its own macro here.
         let touched = |name: &str| define_events.iter().any(|(at, n, _)| *at <= idx && n == name);
-        let gone = |name: &str| unsupported(line_num, &format!("{name} once the program defines or undefines it"));
         let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
         if line.contains('`') {
             quote_lines.push(line_num);
         }
         let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
             if touched(name) {
-                return Err(gone(name));
+                return Err(unsupported(line_num, &format!("{name} once the program undefines it")));
             }
             // A numbered diversion goes to the end of GNU m4's output, and a
             // comment that ends anywhere but the line's end can span lines:
@@ -346,9 +353,11 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // drops first included: a backtick there opens a quote, and a
             // `divert` ends the discard. The lines read alike here are blank
             // ones, define, undefine and dnl lines (pass 1 left them blank)
-            // with no such comment, and comments m4 itself opens.
+            // with no such comment before a `dnl`, and comments m4 itself
+            // opens. An m4 quote's `'` hides a comment from strip_comment, so
+            // any `//` or `;` counts.
             let (raw, written) = (lines[idx], written[idx]);
-            let blank = line.trim().is_empty() && written == raw && (*joins || strip_comment(raw).len() == raw.len());
+            let blank = line.trim().is_empty() && written == raw && (*joins || !(raw.contains("//") || raw.contains(';')));
             if !blank && !comment.is_some_and(|c| written.trim_start().starts_with(c)) {
                 return Err(unsupported(line_num, "text or a comment under divert(-1)"));
             }
@@ -362,7 +371,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             *joins
         };
         if joins && touched("dnl") {
-            return Err(gone("dnl"));
+            return Err(unsupported(line_num, "dnl once the program defines or undefines it"));
         }
         if discard || joins {
             continue;
