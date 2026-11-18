@@ -53,10 +53,61 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
     // expect a section to be present.
     prog.section_or_insert(SectionKind::Text);
     let mut current = SectionKind::Text;
+    // ld throws `.note.GNU-stack` away with whatever is in it, so once the
+    // note opens, a line that places bytes, defines a label or sets an
+    // equate is refused until a section line ends the note. The parser sees
+    // a program's files joined into one text, where GNU as starts each file
+    // in .text, hence the message.
+    let mut in_stack_note = false;
     for line_tokens in group_by_line(&tokens) {
+        if is_stack_note(line_tokens) {
+            in_stack_note = true;
+            continue;
+        }
+        if in_stack_note {
+            match line_directive(line_tokens) {
+                Some(".text" | ".data" | ".bss" | ".rodata" | ".section") => in_stack_note = false,
+                Some(".global" | ".globl" | ".type" | ".size" | ".arch" | ".ltorg") => {}
+                _ => {
+                    return Err(err(
+                        line_tokens[0].line,
+                        "this line follows `.section .note.GNU-stack`, which the linker throws \
+                         away: put `.text` (or `.data`, `.bss`, `.rodata`) above it. A program's \
+                         files are joined here, so each file should open with its own section line",
+                    ))
+                }
+            }
+        }
         parse_line(line_tokens, &mut prog, &mut current)?;
     }
     Ok(prog)
+}
+
+/// `.section .note.GNU-stack`, alone or with the `,"",@progbits` gcc adds.
+fn is_stack_note(tokens: &[Token]) -> bool {
+    let kinds: Vec<&TokenKind> = tokens.iter().map(|t| &t.kind).collect();
+    match kinds.as_slice() {
+        [TokenKind::DirectiveIdent(section), TokenKind::DirectiveIdent(note), TokenKind::DirectiveIdent(gnu), TokenKind::Minus, TokenKind::Ident(stack), rest @ ..] => {
+            section == ".section"
+                && note == ".note"
+                && gnu == ".GNU"
+                && stack == "stack"
+                && rest.first().is_none_or(|k| matches!(k, TokenKind::Comma))
+        }
+        _ => false,
+    }
+}
+
+/// The directive a line opens with, unless the dotted name is a label (`.L2:`).
+fn line_directive(tokens: &[Token]) -> Option<&str> {
+    match tokens {
+        [Token { kind: TokenKind::DirectiveIdent(d), .. }, rest @ ..]
+            if !matches!(rest.first(), Some(Token { kind: TokenKind::Colon, .. })) =>
+        {
+            Some(d.as_str())
+        }
+        _ => None,
+    }
 }
 
 /// Apply GAS `name .req register` aliases as text, after m4 and before
@@ -377,8 +428,6 @@ fn parse_line(
 }
 
 /// Every directive spelling `parse_directive` recognizes, aliases included.
-/// `.equ`/`.set` are listed but answered with a message pointing at
-/// `NAME = expression`, which helps more than "unknown directive".
 /// `detect_hosted_mode` in lib.rs reads this list, and
 /// `every_directive_reaches_an_arm` checks no entry falls through.
 pub const DIRECTIVES: &[&str] = &[
@@ -395,8 +444,8 @@ pub const DIRECTIVES: &[&str] = &[
     ".8byte",
     // floats
     ".double", ".float", ".single",
-    // recognized, answered with the "write NAME = expression" message
-    ".equ", ".set",
+    // equates, and the gcc lines that place nothing
+    ".equ", ".set", ".arch", ".ltorg",
 ];
 
 fn parse_directive(
@@ -579,13 +628,38 @@ fn parse_directive(
         ".quad" | ".dword" | ".xword" | ".8byte" => emit_int_list(rest, prog, *current, line, 8),
         ".double" => emit_float_list(rest, prog, *current, line, true),
         ".float" | ".single" => emit_float_list(rest, prog, *current, line, false),
-        // Constants are supported, just not under these spellings; say so
-        // instead of calling the directive unknown.
-        ".equ" | ".set" => Err(err(
-            line,
-            "`.equ`/`.set` are not supported; write `NAME = expression` instead \
-             (for example `SIZE = 40`)",
-        )),
+        // GAS reads both as `NAME = expression`, so they share its item.
+        ".equ" | ".set" => match rest {
+            [Token { kind: TokenKind::Ident(symbol) | TokenKind::DirectiveIdent(symbol), .. }, Token { kind: TokenKind::Comma, .. }, body @ ..]
+                if !body.is_empty() =>
+            {
+                prog.section_or_insert(*current).items.push(Item::SymbolAssignment {
+                    name: symbol.clone(),
+                    body: stringify_tokens_space(body),
+                    original_line: line,
+                });
+                Ok(())
+            }
+            _ => Err(err(line, &format!("expected `{name} NAME, expression`"))),
+        },
+        // gcc opens every file with `.arch armv8-a`. The playground runs that
+        // base set and no extension, so another name is refused.
+        ".arch" => match rest {
+            [Token { kind: TokenKind::Ident(base), .. }, Token { kind: TokenKind::Minus, .. }, Token { kind: TokenKind::Ident(profile), .. }]
+                if base == "armv8" && profile == "a" =>
+            {
+                Ok(())
+            }
+            _ => Err(err(
+                line,
+                "only `.arch armv8-a` is supported: the playground runs the base \
+                 ARMv8-A instruction set",
+            )),
+        },
+        // shortcut: the pool stays after .text, so a `. - label` span across a
+        // .ltorg misses the pool GAS places there and code that runs into one
+        // keeps going; revisit if a program depends on either.
+        ".ltorg" => require_no_args(rest, line, name),
         other => Err(err(
             line,
             &format!(
@@ -1475,7 +1549,7 @@ mod tests {
     #[test]
     fn every_directive_reaches_an_arm() {
         // Each listed spelling, given a plausible operand, must never reach
-        // the unknown-directive arm; any other error (`.equ`/`.set`) is fine.
+        // the unknown-directive arm; any other error is fine.
         // First check the probe can reach that arm at all, so the walk
         // cannot pass without testing anything.
         let unknown = parse(".nosuchthing 1\n").unwrap_err().to_string();
@@ -1493,6 +1567,7 @@ mod tests {
                 | ".dword" | ".xword" | ".8byte" => " 1",
                 ".double" | ".float" | ".single" => " 1.0",
                 ".equ" | ".set" => " SIZE, 40",
+                ".arch" => " armv8-a",
                 _ => "",
             };
             if let Err(e) = parse(&format!("{name}{operand}\n")) {

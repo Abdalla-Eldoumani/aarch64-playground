@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -71,7 +72,8 @@ main:
 	.global	calls
 	.bss
 	.align	2
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 calls:
 	.zero	4
+	.section	.note.GNU-stack,"",@progbits
 

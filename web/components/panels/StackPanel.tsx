@@ -1,8 +1,7 @@
 "use client";
 
-import { useEffect, useReducer } from "react";
 import { useZoom } from "@/lib/hooks/use-zoom";
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { useStoredSetting } from "@/lib/hooks/use-stored-setting";
 import { ZoomControl } from "@/components/ui/ZoomControl";
 import { labelForOffset, type StackSlot } from "@/lib/emulator/frame-labels";
 import { formatWord32, formatWord64 } from "@/lib/emulator/format-hex";
@@ -33,16 +32,8 @@ export function StackPanel({ sp, getMemory, fp, frameSlots = [] }: StackPanelPro
   const data = getMemory(spVal, BYTES_TO_SHOW);
   const zoom = useZoom("stack");
 
-  // Read after mount, since the server has no storage; a reducer, so the
-  // stored choice can arrive from an effect.
-  const [width, setWidth] = useReducer((_prev: SlotWidth, next: SlotWidth) => next, 8);
-  useEffect(() => {
-    if (safeGetItem(WIDTH_KEY) === "4") setWidth(4);
-  }, []);
-  const pickWidth = (next: SlotWidth) => {
-    setWidth(next);
-    safeSetItem(WIDTH_KEY, String(next));
-  };
+  const [width, saveWidth] = useStoredSetting<SlotWidth>(WIDTH_KEY, (raw) => (raw === "4" ? 4 : 8));
+  const pickWidth = (next: SlotWidth) => saveWidth(String(next));
   const rows = BYTES_TO_SHOW / width;
 
   const fpVal = fp ?? 0;

@@ -24,7 +24,7 @@ import { FullLayout } from "@/components/playground/FullLayout";
 import { PlaygroundHeaderBand } from "@/components/playground/PlaygroundHeaderBand";
 import { Toolbar } from "@/components/playground/Toolbar";
 import { RightTabs, type RightTab } from "@/components/playground/RightTabs";
-import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
 import { BYTES_KEY } from "@/components/playground/StackTab";
 import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
 import {

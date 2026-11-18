@@ -255,8 +255,8 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
   if (detail.includes("unsupported section")) {
     return {
       what: "A .section directive names a section the playground does not lay out (only .text/.data/.rodata/.bss have addresses here).",
-      why: "gcc -S output carries linker-metadata sections like `.note.GNU-stack` or `.init_array` that only matter to a real ELF linker; the dot-separated name means the message may show just the first word of it.",
-      fix: "If the line is compiler metadata (`.note.GNU-stack`, `.init_array`, `.comment`), delete it: nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
+      why: "gcc -S output carries linker-metadata sections like `.comment` or `.init_array` that only matter to a real ELF linker; the dot-separated name means the message may show just the first word of it.",
+      fix: "If the line is compiler metadata (`.comment`, `.init_array`), delete it: nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
       styleSection: "section directives",
     };
   }

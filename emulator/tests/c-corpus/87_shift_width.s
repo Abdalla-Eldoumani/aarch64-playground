@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 lsl_w:
@@ -656,4 +657,5 @@ main:
 	ldr	x27, [sp, 96]
 	add	sp, sp, 240
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

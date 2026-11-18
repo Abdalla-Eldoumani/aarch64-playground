@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -302,11 +303,12 @@ main:
 	ret
 	.data
 	.align	2
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 walk_depth:
 	.word	3000
 ten_depth:
 	.word	600
 keep_depth:
 	.word	1500
+	.section	.note.GNU-stack,"",@progbits
 

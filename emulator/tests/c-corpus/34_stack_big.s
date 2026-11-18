@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	depth
@@ -179,6 +180,7 @@ main:
 	add	sp, sp, 2240
 	add	sp, sp, 77824
 	ret
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

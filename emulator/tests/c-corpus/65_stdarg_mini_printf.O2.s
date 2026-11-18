@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -1465,7 +1466,7 @@ main:
 	b	.L239
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC2:
 	.byte	15
 	.byte	14
@@ -1485,9 +1486,10 @@ main:
 	.byte	0
 	.bss
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 A:
 	.zero	512
 B:
 	.zero	512
+	.section	.note.GNU-stack,"",@progbits
 

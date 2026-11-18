@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -318,7 +319,7 @@ main:
 	b	.L37
 	.section .rodata
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 .LC3:
 	.word	0
 	.word	1
@@ -359,7 +360,7 @@ main:
 	.xword	-200
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 odd_sizes:
 	.word	1
 	.word	3
@@ -371,4 +372,5 @@ calls:
 	.word	3000
 chain_depth:
 	.word	120
+	.section	.note.GNU-stack,"",@progbits
 

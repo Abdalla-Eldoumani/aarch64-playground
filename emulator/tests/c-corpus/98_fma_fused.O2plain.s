@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -234,7 +235,7 @@ main:
 	ret
 	.section .rodata
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 coef.0:
 	.word	436314138
 	.word	1059717536
@@ -254,7 +255,7 @@ coef.0:
 	.word	1072693248
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 dv:
 	.word	-1717986918
 	.word	1069128089
@@ -364,7 +365,7 @@ fv:
 	.word	-679477250
 	.bss
 	.align	4
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 xs:
 	.zero	64
 ys:
@@ -375,4 +376,5 @@ lb:
 	.zero	32
 lc:
 	.zero	32
+	.section	.note.GNU-stack,"",@progbits
 

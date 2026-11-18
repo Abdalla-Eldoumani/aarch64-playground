@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -345,7 +346,7 @@ main:
 	ret
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 utf8.0:
 	.byte 195, 169, 116, 195, 169, 0
 	.zero	2
@@ -355,4 +356,5 @@ latin.1:
 	.align	4
 plain:
 	.zero	70000
+	.section	.note.GNU-stack,"",@progbits
 

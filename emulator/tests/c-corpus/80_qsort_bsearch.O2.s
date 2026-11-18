@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -567,7 +568,7 @@ main:
 	.string	"cherry"
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC0:
 	.word	42
 	.word	-7
@@ -676,4 +677,5 @@ main:
 	.word	40
 	.word	0
 	.word	8
+	.section	.note.GNU-stack,"",@progbits
 

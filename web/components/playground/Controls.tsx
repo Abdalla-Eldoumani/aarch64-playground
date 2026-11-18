@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useState, type ReactNode } from "react";
-import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
+import { EMBED_MORE_KEY } from "@/components/playground/embed-more-key";
 import { Button } from "@/components/ui/Button";
 import { ShortcutChip } from "@/components/ui/ShortcutChip";
 import { explainError } from "@/lib/asm/error-explain";
@@ -119,7 +120,7 @@ export function Controls({
   const chips = !compact && !short;
   // The phone row has no room for three more, so they open as a row of
   // their own; the same remembered choice as a lesson frame's ellipsis.
-  const [more, setMore] = usePersistedFlag("aarch64-playground:embed-more");
+  const [more, setMore] = usePersistedFlag(EMBED_MORE_KEY);
   const goalsId = useId();
   const steppable = programLoaded && !isRunning && !isHalted && !blocked;
   const goalButtons = onRunUntil

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -193,7 +194,7 @@ main:
 	ret
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 vals.1:
 	.xword	-9114578090645354616
 	.xword	9187201950435737471
@@ -214,4 +215,5 @@ nv.0:
 	.word	65535
 	.word	65536
 	.word	-40000
+	.section	.note.GNU-stack,"",@progbits
 
