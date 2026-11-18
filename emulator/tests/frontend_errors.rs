@@ -295,7 +295,8 @@ fn arch_names_other_than_armv8_a_are_refused() {
 
 /// ld throws `.note.GNU-stack` away, so GNU ld refuses to link a `main`
 /// written after the note ("defined in discarded section"). gcc writes the
-/// note last; a line after it that places bytes or a label is refused here.
+/// note last; a line after it that places bytes, defines a label or sets an
+/// equate is refused here until a section line ends the note.
 /// The joined files of a program reach the parser as one text, where GNU as
 /// starts each file in .text, so the message tells a helper file to open
 /// with its own section line.
