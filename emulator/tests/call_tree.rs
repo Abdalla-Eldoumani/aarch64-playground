@@ -1690,8 +1690,8 @@ fn a_return_through_x16_ends_its_call() {
 }
 
 /// twice keeps main's way back in x9 and calls add_one by hand: `adr lr`,
-/// then `b`. add_one's ret goes to no return address the stack knows, as
-/// today; twice has no frame, so nothing shows that twice is over.
+/// then `b`. add_one's ret goes to no return address the stack knows;
+/// twice has no frame, so nothing shows that twice is over.
 const HAND_MADE_CALL: &str = r#"
 // twice calls add_one by hand (adr lr, then b), keeping main's way back
 // in x9.
@@ -1738,7 +1738,7 @@ main:
 "#;
 
 #[test]
-fn a_hand_made_call_is_one_bad_return_as_today_and_never_ends_its_caller_early() {
+fn a_hand_made_call_is_one_bad_return_and_never_ends_its_caller_early() {
     let mut p = load(HAND_MADE_CALL);
     let (add_one, main) = (p.label("add_one"), p.label("main"));
     // add_one's ret reaches no return address the stack holds: recorded,
