@@ -177,7 +177,7 @@ fn a_zero_row_or_column_count_clears_the_size() {
 
 #[test]
 fn set_window_size_takes_columns_then_rows() {
-    let mut cpu = in_the_pane();
+    let cpu = in_the_pane();
     assert_eq!(cpu.window_size, Some(WindowSize { rows: 43, cols: 48 }));
 }
 
