@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ExampleLoader } from "@/components/playground/ExampleLoader";
 import { ImportExport } from "@/components/playground/ImportExport";
 import { RecentPrograms } from "@/components/playground/RecentPrograms";
@@ -42,6 +42,10 @@ export interface PlaygroundHeaderBandProps {
     onChange: (next: LaunchMode) => void;
     disabled: boolean;
   } | null;
+  /** The wide band's tools, placed by the shell: the same toolbar moves to
+   *  the run row in a short window, so the shell renders it once. */
+  tools: ReactNode;
+  /** The phone menu's own toolbar takes the actions below. */
   onShare: () => void;
   onTutorials: () => void;
   /** Gathered by the shell, which owns the hub the snapshot reads. */
@@ -72,6 +76,7 @@ export function PlaygroundHeaderBand({
   args,
   onArgsChange,
   runMode,
+  tools,
   onShare,
   onTutorials,
   buildDiagnostic,
@@ -188,14 +193,7 @@ export function PlaygroundHeaderBand({
           <MobileNavDrawer stars={stars} everywhere />
         </div>
       ) : (
-        <Toolbar
-          className="ml-auto"
-          onShare={onShare}
-          onTutorials={onTutorials}
-          buildDiagnostic={buildDiagnostic}
-          onOpenCommandPalette={onOpenCommandPalette}
-          onOpenShortcuts={onOpenShortcuts}
-        />
+        tools
       )}
     </div>
   );
