@@ -517,10 +517,12 @@ export function EmbeddableCore({
   const checkEmbed = useCallback(async () => {
     // A run that stopped short of its end (parked on a read, paused, faulted)
     // is not a result to grade, so it runs again from the top like a stale one.
+    // A faulted Run may also have read input the student typed.
     if (
       emu.instructions.length === 0 ||
       lastRunSourceRef.current !== checkKey ||
-      !emuRef.current.isHalted
+      !emuRef.current.isHalted ||
+      emuRef.current.error != null
     ) {
       lastRunSourceRef.current = checkKey;
       const ok = await emu.assemble(source, parseArgs(startArgs ?? ""));
