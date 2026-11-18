@@ -36,8 +36,10 @@ const ROUTES = [
     name: "landing document js (every chunk / loads)",
     page: "/page",
     document: "index.html",
-    // 211.26 kB brotli measured (2026-10-28).
-    limit: 212_000,
+    // 211.26 kB brotli measured (2026-10-28). Raised 54 B (2026-11-18) for the
+    // real-time request and the unmount stop: 211,936 -> 211,990 B locally,
+    // 211.97 -> 212.02 kB in CI.
+    limit: 212_054,
   },
   {
     name: "playground document js (every chunk /playground loads)",
