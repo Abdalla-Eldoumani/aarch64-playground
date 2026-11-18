@@ -71,6 +71,7 @@ function makeCtx(over: Partial<DispatchContext> = {}): DispatchContext {
     readRegisters: () => ({}),
     readMemory: async (_addr, _len) => new Uint8Array(),
     pcAddress: () => 0x400000,
+    exitCode: () => null,
     reset: async () => {},
     ...over,
   };
