@@ -1555,6 +1555,12 @@ mod tests {
         rejects(expand("forloop(i, 0, 5, foo)\n"), "unsupported m4 construct: forloop");
     }
 
+    #[test]
+    fn changequote_is_rejected() {
+        // Read as text, the quotes it names reach the assembler as data.
+        rejects(expand("changequote([,])\n"), "unsupported m4 construct: changequote");
+    }
+
     /// The text and line map, for comparing with GNU m4's output.
     fn text_and_map(src: &str) -> (String, Vec<usize>) {
         let r = exp(src);
