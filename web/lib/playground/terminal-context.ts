@@ -180,7 +180,8 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
     },
     lineLabel: (addr: number) => machine.current.lineLabel(addr),
     setBreakpoint: async (addr: number, label: string) => machine.current.setBreakpointAddress(addr, label),
-    clearBreakpoint: async (addr: number) => machine.current.clearBreakpointAddress(addr),
+    deleteBreakpoints: (n?: number) => machine.current.deleteBreakpoints(n),
+    breakpoints: () => machine.current.gdbBreakpoints(),
     resolveLabel: async (name: string) => machine.current.resolveLabel(name),
     m4Expand: async (text: string) => machine.current.m4Expand(text),
     assembleSource: async (text: string) => {
