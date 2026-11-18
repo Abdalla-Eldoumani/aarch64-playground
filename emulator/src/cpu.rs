@@ -335,7 +335,7 @@ pub struct RunResult {
     pub error: Option<String>,
     /// The run's `Until` goal was met.
     pub reached: bool,
-    /// A `ret` went to no caller during a run with a goal.
+    /// A bad return (`CallStack::bad_return`) happened during a run with a goal.
     pub bad_return: bool,
 }
 
