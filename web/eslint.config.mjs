@@ -3,14 +3,11 @@ import nextConfig from "eslint-config-next";
 const TS = "**/*.{ts,tsx}";
 const TESTS = ["components/test/**", "lib/test/**", "**/*.test.ts", "**/*.test.tsx"];
 
-// Import boundaries. The no-restricted-imports blocks flag
-// `import { Editor } from "@/components/playground/Editor"`, and pass the lazy
-// seam `() => import("@/components/playground/Editor")` and `import type
-// { FullChromeSurfaceProps } from "@/components/playground/FullChromeSurface"`.
-// In flat config the last block that sets a rule replaces its options, so each
-// block below lists its files' whole set.
+// Import boundaries. In flat config the last block that sets a rule replaces
+// its options, so each block below lists its files' whole set.
 
-// Modules other files reach only through the named owners.
+// Each owner file is left out of its own entry. Flagged in a component:
+// `import { Editor } from "@/components/playground/Editor"`.
 const OWNED = [
   {
     name: "@/components/playground/Editor",
@@ -54,8 +51,7 @@ const OWNED = [
   },
 ];
 
-// The state modules use-emulator composes: the hub is their one reader, and
-// IDLE_CPU_VIEW (the embed's pre-engage register view) the one export others take.
+// Flagged outside lib/emulator: `import { useBreakpoints } from "@/lib/emulator/use-breakpoints"`.
 const COMPOSED = {
   group: ["@/lib/emulator/use-*", "!@/lib/emulator/use-emulator"],
   allowImportNames: ["IDLE_CPU_VIEW"],
@@ -65,8 +61,8 @@ const COMPOSED = {
 // React and its entry points (react/jsx-runtime, react-dom/client).
 const noReact = (message) => ({ group: ["react", "react/*", "react-dom", "react-dom/*"], message });
 
-// The embed, EmbeddableCore (which the embed imports), and the components that
-// import the embed statically today: Hero, HeroDemo, LessonArticle, ExerciseView.
+// The embed, EmbeddableCore (the embed imports it), HeroDemo, LessonArticle and
+// ExerciseView (they import the embed) and Hero (it imports HeroDemo).
 const EMBED_CARRIERS = [
   "@/components/playground/EmbeddablePlayground",
   "@/components/playground/EmbeddableCore",
@@ -177,10 +173,10 @@ const boundaries = [
       ),
     },
   },
-  // Imports use the @/ alias: `import type { SelectOption } from "../ui/Select"`
-  // in a component or its test is flagged. Left out: lib/theme (tailwind.config.ts
-  // loads tokens.ts outside the bundler, where @/ does not resolve), app tests
-  // (`import Page from "./page"`), and a stylesheet beside its layout (`./globals.css`).
+  // The @/ alias. Scope: app, components and lib, tests included, except lib/theme
+  // (tailwind.config.ts loads tokens.ts outside the bundler, where @/ does not
+  // resolve) and app tests; `*.css` paths do not match. Flagged in a component:
+  // `import type { SelectOption } from "../ui/Select"`.
   {
     files: [`{app,components,lib}/${TS}`],
     ignores: ["lib/theme/**", "app/**/*.test.ts", "app/**/*.test.tsx"],
@@ -199,7 +195,7 @@ const boundaries = [
     },
   },
   {
-    files: ["lib/playground/args.ts"],
+    files: ["lib/playground/args.ts", "lib/playground/example-catalog.ts"],
     rules: {
       "no-restricted-imports": [
         "error",
@@ -207,7 +203,7 @@ const boundaries = [
           patterns: [
             {
               regex: ".",
-              message: "args.ts imports nothing: scripts/verify-corpus.js loads it through Node's type stripping, with no path resolver.",
+              message: "This file imports nothing: scripts/verify-corpus.js and parity-sweep.js load it through Node's type stripping, with no path resolver.",
             },
           ],
         },
