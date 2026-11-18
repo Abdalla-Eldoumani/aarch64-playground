@@ -1088,3 +1088,192 @@ fn the_budget_counters_are_64_bit_on_every_target() {
         cpu.refund_output_total,
     ];
 }
+
+fn load_hosted(src: &str) -> Cpu {
+    let mut cpu = Cpu::new();
+    let image = crate::frontend::pipeline::assemble_hosted(src, &cpu.host).expect("assembles");
+    cpu.load_linked_image(&image).expect("loads");
+    cpu
+}
+
+/// Five steps and a 1 ms nanosleep a pass, forever.
+const PACED_PASS: &str = "
+        .data
+pause:  .dword 0
+        .dword 1000000
+        .text
+        .global main
+main:
+tick:
+        ldr     x0, =pause
+        mov     x1, 0
+        mov     x8, 101
+        svc     0
+        b       tick
+";
+
+/// 100 bytes written and a 1 ms nanosleep a pass: exactly the output refill.
+const PACED_PRINT: &str = "
+        .data
+pause:  .dword 0
+        .dword 1000000
+line:   .skip 100
+        .text
+        .global main
+main:
+tick:
+        mov     x0, 1
+        ldr     x1, =line
+        mov     x2, 100
+        mov     x8, 64
+        svc     0
+        ldr     x0, =pause
+        mov     x1, 0
+        mov     x8, 101
+        svc     0
+        b       tick
+";
+
+/// Runs one sleep's worth at a time, `sleeps` times or to a halt: its error.
+fn run_sleeps(cpu: &mut Cpu, sleeps: u64) -> Option<String> {
+    for _ in 0..sleeps {
+        let r = cpu.run_until_break(1_000_000).unwrap();
+        cpu.take_stdout();
+        if r.halted {
+            return Some(r.error.unwrap_or_default());
+        }
+    }
+    None
+}
+
+#[test]
+fn real_time_is_off_until_set_and_load_and_reset_clear_it() {
+    let mut cpu = load_hosted(PACED_PASS);
+    assert!(!cpu.real_time);
+    cpu.real_time = true;
+    let image = crate::frontend::pipeline::assemble_hosted(PACED_PASS, &cpu.host).unwrap();
+    cpu.load_linked_image(&image).unwrap();
+    assert!(!cpu.real_time, "a load starts the next program without it");
+    cpu.real_time = true;
+    cpu.reset();
+    assert!(!cpu.real_time, "so does a reset");
+}
+
+#[test]
+fn a_sleep_under_real_time_is_charged_only_what_it_credits() {
+    // The first pass credits the 4 steps before its sleep, each later one 5;
+    // without real time every 1 ms sleep is charged its full 1,000.
+    for (real_time, charged) in [(false, 1_000 * 1_000), (true, 5 * 1_000 - 1)] {
+        let mut cpu = load_hosted(PACED_PASS);
+        cpu.real_time = real_time;
+        assert_eq!(run_sleeps(&mut cpu, 1_000), None);
+        assert_eq!(cpu.refund_steps_total, charged, "real time {real_time}");
+    }
+}
+
+#[test]
+fn real_time_runs_on_past_todays_lifetime_caps() {
+    // Seeded as a session that has already spent today's caps, 200M steps
+    // and 4 MiB of refunds, with the output budget nearly spent too.
+    for real_time in [false, true] {
+        let mut cpu = load_hosted(PACED_PRINT);
+        cpu.real_time = real_time;
+        cpu.refund_steps_total = MAX_REFUND_STEPS;
+        cpu.refund_output_total = MAX_REFUND_OUTPUT_BYTES;
+        cpu.output_total = MAX_OUTPUT_BYTES - 500;
+        let stop = run_sleeps(&mut cpu, 100_000);
+        if real_time {
+            assert_eq!(stop, None, "10 MB more at the refill rate meets no wall");
+            assert_eq!(cpu.stdout_seen(), 100_000 * 100);
+            assert!(cpu.refund_steps_total > MAX_REFUND_STEPS, "the step refund went on");
+        } else {
+            assert_eq!(stop, Some(output_ceiling_message()));
+        }
+    }
+}
+
+#[test]
+fn real_time_prints_past_eight_mib_at_the_refill_rate() {
+    // Unseeded: 100,000 bytes and a 1 s sleep a pass.
+    const SECOND_PRINT: &str = "
+        .data
+pause:  .dword 1
+        .dword 0
+        .bss
+buf:    .skip 100000
+        .text
+        .global main
+main:
+tick:
+        mov     x0, 1
+        ldr     x1, =buf
+        movz    x2, 0x86a0
+        movk    x2, 0x1, lsl 16
+        mov     x8, 64
+        svc     0
+        ldr     x0, =pause
+        mov     x1, 0
+        mov     x8, 101
+        svc     0
+        b       tick
+";
+    for real_time in [false, true] {
+        let mut cpu = load_hosted(SECOND_PRINT);
+        cpu.real_time = real_time;
+        let stop = run_sleeps(&mut cpu, 100);
+        if real_time {
+            assert_eq!(stop, None);
+            assert_eq!(cpu.stdout_seen(), 100 * 100_000);
+        } else {
+            // 4 MiB plus 4 MiB of refunds, to the write that crossed it.
+            assert_eq!(stop, Some(output_ceiling_message()));
+            assert_eq!(cpu.stdout_seen(), 84 * 100_000);
+        }
+    }
+}
+
+#[test]
+fn the_four_hour_step_cap_ends_a_real_time_session_with_its_own_message() {
+    let mut cpu = load_hosted(PACED_PASS);
+    cpu.real_time = true;
+    cpu.refund_steps_total = REAL_TIME_REFUND_STEPS - 5_000;
+    cpu.steps_total = MAX_TOTAL_STEPS - 20_000;
+    assert_eq!(run_sleeps(&mut cpu, 100_000).as_deref(), Some(SESSION_CAP_MESSAGE));
+    assert_eq!(cpu.refund_steps_total, REAL_TIME_REFUND_STEPS);
+}
+
+#[test]
+fn the_four_hour_byte_cap_ends_a_real_time_session_at_the_output_wall() {
+    let mut cpu = load_hosted(PACED_PRINT);
+    cpu.real_time = true;
+    cpu.refund_output_total = REAL_TIME_REFUND_OUTPUT_BYTES;
+    cpu.output_total = MAX_OUTPUT_BYTES - 500;
+    assert_eq!(run_sleeps(&mut cpu, 100).as_deref(), Some(SESSION_CAP_MESSAGE));
+    // The same spent budget without real time is today's flood.
+    let mut cpu = load_hosted(PACED_PRINT);
+    cpu.refund_output_total = MAX_REFUND_OUTPUT_BYTES;
+    cpu.output_total = MAX_OUTPUT_BYTES - 500;
+    assert_eq!(run_sleeps(&mut cpu, 100), Some(output_ceiling_message()));
+}
+
+#[test]
+fn a_cpu_bound_loop_under_real_time_stops_with_todays_message() {
+    let mut cpu = Cpu::new();
+    cpu.load_program(&[0x1400_0000]); // b .
+    cpu.real_time = true;
+    cpu.steps_total = MAX_TOTAL_STEPS - 10;
+    let r = cpu.run_until_break(100).unwrap();
+    assert_eq!(r.error, Some(step_ceiling_message()));
+}
+
+#[test]
+fn a_paused_ring_leaves_no_step_back_across_a_real_time_sleep() {
+    // The web pauses the ring before it turns real time on and turns real
+    // time off before it resumes the ring, so Back never crosses a sleep
+    // credited under real time.
+    let mut cpu = load_hosted(PACED_PASS);
+    cpu.snapshots_paused = true;
+    cpu.real_time = true;
+    assert_eq!(run_sleeps(&mut cpu, 3), None);
+    assert!(!cpu.can_step_back());
+}
