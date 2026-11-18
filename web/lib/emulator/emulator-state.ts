@@ -206,6 +206,9 @@ export interface EmulatorState {
   resumeAfterInput: () => void;
   /** Pause/resume the step-back snapshot ring (terminal sessions). */
   setSnapshotsPaused: (paused: boolean) => void;
+  /** Wait out sleeps in real time: the four-hour refund caps (terminal
+   *  sessions). A load or reset turns it off. */
+  setRealTime: (on: boolean) => void;
   /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
