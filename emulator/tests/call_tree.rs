@@ -1565,3 +1565,59 @@ fn a_tail_call_to_a_library_function_ends_when_the_library_returns() {
     assert!(p.cpu.take_clobber_notes().is_empty());
     back_retraces(&mut load(TAIL), 21, "a tail call to printf");
 }
+
+/// bump pops a frame record it never pushed: main's. Its ret then leaves
+/// sp, fp and pc as the C runtime had them at main's start, so it ends
+/// main too, and the program exits with bump's w0 before its printf.
+const SKIP_PAST_MAIN: &str = r#"
+// main calls bump, whose stray ldp pops main's frame record, so bump's
+// ret ends main too and the program exits before its printf.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "n = %d\n"
+
+        .text
+// bump(w0 = n) -> w0 = n + 1 (bug: pops a frame it never pushed)
+        .balign 4
+        .global bump
+bump:
+        add     w0, w0, 1
+        ldp     fp, lr, [sp], 16        // bug: bump pushed nothing
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 10
+        bl      bump
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ret_that_skips_main_is_a_bad_return_though_the_program_then_exits() {
+    let mut p = load(SKIP_PAST_MAIN);
+    let bump = p.label("bump");
+    assert_eq!(
+        p.numbers_after(bump + 8, 1),
+        [
+            "7 0 0 0 1 7 bump+8 __main_return 0 0 1 bump main+16 0 0 0 0",
+            "2 0 0 0 4",
+            "0 main 1 0 0 0 1 0 11 4",
+            "1 bump 1 0 4 0 10 0 11 4",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(p.cpu.take_stdout(), b"", "printf never runs");
+    assert_eq!(p.cpu.exit_code(), Some(11), "main's exit status is bump's w0");
+    back_retraces(&mut load(SKIP_PAST_MAIN), 7, "a ret that skips main");
+}
