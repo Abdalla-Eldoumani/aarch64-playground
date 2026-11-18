@@ -34,9 +34,12 @@
 //! defined that name itself. So do divert, changecom and dnl where they
 //! would run once the program has undefined them, and dnl once it has
 //! defined it. In a program that uses dnl, divert, changecom or quotes,
-//! so do divert, changecom, changequote or dnl as a define's unquoted name on
-//! a line with quotes, and a comment whose text GNU m4 carries past its
-//! line; any other program keeps the output it had.
+//! so do a builtin GNU m4 runs bare (divert, dnl and the like) as a
+//! define's unquoted name, and a comment whose text GNU m4 carries past its
+//! line; any other program keeps the output it had. The new forms go
+//! through the same pass as define, so its other differences from GNU m4
+//! (an m4 word in a string, a label named after a builtin, quotes nested in
+//! a body, a define of a name already defined) stay.
 
 use std::collections::HashMap;
 
