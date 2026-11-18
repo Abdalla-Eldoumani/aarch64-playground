@@ -185,7 +185,7 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
     return {
       what: "m4 saw a construct outside the playground's subset (define, undefine, dnl, divert, changecom, quotes, and name=expr).",
       why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop, or send text to the end of the output with a numbered divert. The playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control.",
+      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. For an `include`, add the file to the program with the add-file box beside the file tabs instead: the playground joins a program's files the way `include` does.",
       styleSection: "m4 preprocessing",
     };
   }
