@@ -679,29 +679,16 @@ impl Cpu {
         }
     }
 
-    /// Detect which registers changed, against the integer and FP files as
-    /// they stood before the instruction ran. The UI flashes both sets.
-    fn record_changed_registers(&mut self, gpr_before: &[u64; 32], fpr_before: &[u128; 32]) {
-        let current = self.regs.snapshot();
-        self.changed_regs.clear();
-        for i in 0..32 {
-            if gpr_before[i] != current[i] {
-                self.changed_regs.push(i as u8);
-            }
-        }
-        let fpr_current = self.regs.snapshot_fpr();
-        self.changed_fprs.clear();
-        for i in 0..32 {
-            if fpr_before[i] != fpr_current[i] {
-                self.changed_fprs.push(i as u8);
-            }
-        }
+    /// The integer and FP registers the step changed since it started
+    /// (`RegisterFile::start_changes`). The UI flashes both sets.
+    fn record_changed_registers(&mut self) {
+        self.regs.changed(&mut self.changed_regs, &mut self.changed_fprs);
     }
 
     /// How every step that did not stop on an error ends: the registers it
     /// changed and its outcome, in the result `step` hands back.
-    fn step_tail(&mut self, gpr_before: &[u64; 32], fpr_before: &[u128; 32]) -> StepResult {
-        self.record_changed_registers(gpr_before, fpr_before);
+    fn step_tail(&mut self) -> StepResult {
+        self.record_changed_registers();
         let outcome = self.classify_outcome();
         StepResult {
             pc: self.regs.read_pc(),
@@ -883,9 +870,8 @@ impl Cpu {
         self.steps_total += 1;
         self.steps_taken += 1;
 
-        // The register files before the step, for the sets it changed.
-        let snapshot = self.regs.snapshot();
-        let fpr_snapshot = self.regs.snapshot_fpr();
+        // The sets of registers the step changes start here.
+        self.regs.start_changes();
 
         // If PC landed on a host-stub address (reached via `bl printf` or
         // similar), dispatch to Rust instead of fetching an instruction,
@@ -906,13 +892,13 @@ impl Cpu {
             // what it changed.
             let call = |cpu: &mut Self| {
                 cpu.dispatch_host_stub(pc)?;
-                cpu.record_changed_registers(&snapshot, &fpr_snapshot);
+                cpu.record_changed_registers();
                 Ok(())
             };
             if let Some(halt) = self.host_call(pc, call) {
                 return Ok(halt);
             }
-            return Ok(self.step_tail(&snapshot, &fpr_snapshot));
+            return Ok(self.step_tail());
         }
 
         // Fell off the end of the program: the previous instruction was the
@@ -975,7 +961,7 @@ impl Cpu {
             }
         }
 
-        Ok(self.step_tail(&snapshot, &fpr_snapshot))
+        Ok(self.step_tail())
     }
 }
 
