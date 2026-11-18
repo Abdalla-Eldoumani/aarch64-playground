@@ -181,12 +181,11 @@ pub const STUBS: &[Stub] = &[
     x0("atol", libc::atol),
 ];
 
-/// The rows through `__isoc99_scanf`, which make a program hosted wherever
-/// `bl <name>` appears in its source (`bl putsx` too). A later row counts
-/// only a whole `bl <name>` in the code the assembler reads, outside every
-/// comment, whose name the source does not define, so a stub added after a
-/// program was written never moves it off the bare-metal path (lib.rs
-/// `detect_hosted_mode`).
+/// The rows through `__isoc99_scanf`, the only ones detection reads: each
+/// makes a program hosted wherever `bl <name>` appears in its source
+/// (`bl putsx` too). Detection never reads a later row, so a stub added
+/// after a program was written cannot move it from one path to the other
+/// (lib.rs `detect_hosted_mode`).
 pub const ROWS_DETECTED_ANYWHERE: usize = 69;
 
 const _: () = assert!(
