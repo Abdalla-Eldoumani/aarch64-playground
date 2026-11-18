@@ -43,8 +43,15 @@ const key = (lines: string[], name: string) =>
   lines.map((line) => line.match(new RegExp(`^ {4}${name}: (.*)$`))?.[1]).find((value) => value !== undefined);
 
 /**
- * The top-level #[test] fns in an integration test that no #[ignore] holds
- * back. At the top level a test's full name is the bare fn name.
+ * The fns whose `fn` line starts at column 0 right under one or more lines
+ * that are each one attribute at column 0, one of them `#[test]` and none
+ * holding the text `#[ignore`. In an integration test a top-level test's
+ * full name is the bare fn name, which is what --exact compares.
+ * shortcut: column 0 stands in for top level and the text `#[ignore` for
+ * ignored, so a `mod m {` whose body stays at column 0 (cargo names the test
+ * `m::...`, which the --exact skip misses) and `#[cfg_attr(..., ignore)]`
+ * (cargo ignores the test) both pass; revisit if c_corpus.rs gains an inline
+ * module or a conditional ignore.
  */
 function liveTests(source: string) {
   return [...source.matchAll(/((?:^#\[[^\]]*\]\r?\n)+)^fn (\w+)/gm)]
@@ -112,16 +119,18 @@ describe("check.yml", () => {
   });
 
   it("skips in cargo test only the corpus test the corpus shards run", () => {
-    const args = job("rust").flatMap((line) => line.match(/^ +args: "(.*)"$/)?.[1] ?? []);
-    const skipping = args.filter((arg) => arg.includes("--skip"));
-    expect(skipping, "the cargo test job's --skip filters").not.toEqual([]);
+    // Every line but a comment, in any job or key, so a new step cannot slip past.
+    const skipping = WORKFLOW.flatMap((line, i) =>
+      !line.trimStart().startsWith("#") && line.includes("--skip") ? [{ line, at: `line ${i + 1}: ${line.trim()}` }] : [],
+    );
+    expect(skipping, "lines of check.yml that pass --skip").not.toEqual([]);
     const live = liveTests(read("emulator/tests/c_corpus.rs"));
-    for (const arg of skipping) {
+    for (const { line, at } of skipping) {
       // Without --exact, libtest skips every test in every binary whose name
       // contains the filter; with it, only tests named exactly that.
-      expect(arg.split(" "), `cargo test's args "${arg}" need --exact`).toContain("--exact");
-      for (const [, skip] of arg.matchAll(/--skip[= ]([\w:]+)/g)) {
-        expect(live, `--skip ${skip} against the non-ignored #[test] fns of emulator/tests/c_corpus.rs`).toContain(skip);
+      expect(line, `${at} needs --exact on the same line`).toMatch(/--exact\b/);
+      for (const [, skip] of line.matchAll(/--skip[= ]([\w:]+)/g)) {
+        expect(live, `${at} skips ${skip}, which is not one of these c_corpus.rs tests`).toContain(skip);
       }
     }
   });
