@@ -51,7 +51,7 @@ const OWNED = [
   },
 ];
 
-// Flagged outside lib/emulator: `import { useBreakpoints } from "@/lib/emulator/use-breakpoints"`.
+// Flagged outside lib/emulator, in non-test files: `import { useBreakpoints } from "@/lib/emulator/use-breakpoints"`.
 const COMPOSED = {
   group: ["@/lib/emulator/use-*", "!@/lib/emulator/use-emulator"],
   allowImportNames: ["IDLE_CPU_VIEW"],
@@ -175,8 +175,9 @@ const boundaries = [
   },
   // The @/ alias. Scope: app, components and lib, tests included, except lib/theme
   // (tailwind.config.ts loads tokens.ts outside the bundler, where @/ does not
-  // resolve) and app tests; `*.css` paths do not match. Flagged in a component:
-  // `import type { SelectOption } from "../ui/Select"`.
+  // resolve) and app tests; a stylesheet beside the file or one level up
+  // (`./x.css`, `../x.css`) passes; a deeper relative stylesheet path is flagged.
+  // Flagged in a component: `import type { SelectOption } from "../ui/Select"`.
   {
     files: [`{app,components,lib}/${TS}`],
     ignores: ["lib/theme/**", "app/**/*.test.ts", "app/**/*.test.tsx"],
