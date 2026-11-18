@@ -36,9 +36,10 @@ const ROUTES = [
     name: "landing document js (every chunk / loads)",
     page: "/page",
     document: "index.html",
-    // 212.03 kB brotli measured (2026-11-18): keeping gdb b's labels across
-    // a reset added 65 B of hub code to 211.97 kB, and the limit with it.
-    limit: 212_065,
+    // 211.26 kB brotli measured (2026-10-28). Raised 62 B (2026-11-18) for the
+    // real-time request and the unmount stop: 211,936 -> 211,998 B locally,
+    // 211.97 -> 212.02 kB in CI.
+    limit: 212_062,
   },
   {
     name: "playground document js (every chunk /playground loads)",

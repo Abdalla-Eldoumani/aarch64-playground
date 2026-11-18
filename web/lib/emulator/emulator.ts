@@ -143,6 +143,14 @@ export class EmulatorInstance {
     if (typeof set === "function") set.call(this.inner, paused);
   }
 
+  /** The terminal pane waits out every sleep in real time: the refund
+   *  caps become four hours' worth. Feature-detected so an older wasm
+   *  build keeps today's caps. */
+  setRealTime(on: boolean): void {
+    const set = (this.inner as { set_real_time?: (on: boolean) => void }).set_real_time;
+    if (typeof set === "function") set.call(this.inner, on);
+  }
+
   /** Queue stdin. `interactive` marks a line the student typed at a
    *  prompt: the machine echoes it into stdout when a read consumes it, so
    *  the transcript reads like a cooked-mode terminal. A redirect stays

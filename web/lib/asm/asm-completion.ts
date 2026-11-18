@@ -60,7 +60,7 @@ const LIBC: Suggestion[] = [
   "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat",
   "strchr", "strstr", "strtok",
   "memset", "memcpy", "memcmp", "memmove",
-  "atoi", "atof", "strtol", "abs", "labs",
+  "atoi", "atol", "atof", "strtol", "abs", "labs",
   "isdigit", "isalpha", "isspace", "toupper", "tolower",
   "rand", "srand", "time", "exit", "usleep",
   "malloc", "free", "calloc", "realloc", "qsort", "bsearch",

@@ -4,9 +4,10 @@ import { describe, expect, it } from "vitest";
 
 // .github/workflows/check.yml says some things more than once, and GitHub
 // checks none of the copies against each other: the jobs ci waits for, the
-// two conditions that read the branch, the vitest shard count, and the
-// corpus test the cargo job skips by name. The workflow is read as text one
-// level above web/ (vitest's cwd), as .github/scripts/check-pins.js reads it.
+// two conditions that read the branch, the vitest shard count, the corpus
+// test the cargo job skips by name, and the skip on web-build's browser
+// smoke. The workflow is read as text one level above web/ (vitest's cwd),
+// as .github/scripts/check-pins.js reads it.
 const ROOT = path.join(process.cwd(), "..");
 const read = (file: string) => readFileSync(path.join(ROOT, file), "utf8");
 const WORKFLOW = read(".github/workflows/check.yml").split(/\r?\n/);
@@ -38,9 +39,21 @@ function job(id: string) {
   return lines;
 }
 
-/** A key set on the job itself, four spaces in. */
-const key = (lines: string[], name: string) =>
-  lines.map((line) => line.match(new RegExp(`^ {4}${name}: (.*)$`))?.[1]).find((value) => value !== undefined);
+/** A key set on the job itself (four spaces in) or on a step (eight). */
+const key = (lines: string[], name: string, indent = 4) =>
+  lines
+    .map((line) => line.match(new RegExp(`^ {${indent}}${name}: (.*)$`))?.[1])
+    .find((value) => value !== undefined);
+
+/** A job's steps, each with its own lines, its `- ` turned to spaces. */
+function steps(lines: string[]) {
+  const result: string[][] = [];
+  for (const line of lines) {
+    if (line.startsWith("      - ")) result.push([line.replace("- ", "  ")]);
+    else result.at(-1)?.push(line);
+  }
+  return result;
+}
 
 /**
  * The fns whose line starts `fn ` right under a run of stretches that each go
@@ -84,9 +97,26 @@ describe("check.yml", () => {
       "web-build": undefined,
       "web-test": SKIP,
       coverage: GATE,
-      browser: SKIP,
       ci: "always()",
     });
+  });
+
+  it("runs web-build's browser smoke on every run but the warm-up push", () => {
+    // web-build runs on the warm-up push to refill its cache; the steps after
+    // size-limit test, so each skips that push, as the jobs that only test do.
+    const all = steps(job("web-build"));
+    const smoke = all.slice(all.findIndex((step) => key(step, "name", 8) === "size-limit") + 1);
+    expect(
+      smoke.map((step) => key(step, "name", 8)),
+      "web-build's steps after size-limit: chromium, then the server, then the smoke",
+    ).toEqual(["install chromium", "start the production server", "browser smoke"]);
+    expect(
+      smoke.at(-1)?.some((line) => line.trim() === "run: node scripts/browser-smoke.mjs"),
+      "web-build's last step runs the smoke",
+    ).toBe(true);
+    for (const step of smoke) {
+      expect(key(step, "if", 8), `${key(step, "name", 8)}'s if:`).toBe(`steps.paths.outputs.web == 'true' && (${SKIP})`);
+    }
   });
 
   it("writes each condition on the branch the same way everywhere", () => {

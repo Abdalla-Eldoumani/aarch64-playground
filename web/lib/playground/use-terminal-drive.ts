@@ -22,6 +22,7 @@ export type TerminalDriveMachine = {
   pushStdin: (text: string) => void;
   setOutputTap: (tap: ((text: string) => void) | null) => void;
   setSnapshotsPaused: (paused: boolean) => void;
+  setRealTime: (on: boolean) => void;
 };
 
 export type TerminalDrive = {
@@ -208,6 +209,10 @@ export function useTerminalDrive(opts: {
       // Live sessions skip the step-back ring: stepping back mid-session
       // has no meaning.
       machine.current.setSnapshotsPaused(true);
+      // The pane waits out every sleep in real time, so a paced program gets
+      // four hours of refunds. Only inside the paused ring: Back never
+      // crosses a sleep credited under it.
+      machine.current.setRealTime(true);
       machine.current.setOutputTap((t) => io.write(t));
       // Cooked-mode input works like a canonical tty: the line buffers
       // locally with echo (so typed digits are visible) and backspace
@@ -313,6 +318,7 @@ export function useTerminalDrive(opts: {
           break;
         }
       } finally {
+        machine.current.setRealTime(false);
         machine.current.setSnapshotsPaused(false);
         machine.current.setOutputTap(null);
         io.setForeground(null);
