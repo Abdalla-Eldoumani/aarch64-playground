@@ -721,6 +721,20 @@ mod tests {
     }
 
     #[test]
+    fn a_backtick_m4_never_reads_opens_no_quote() {
+        // m4 never reads the text of a block comment, so its backtick opens
+        // no quote and the rows for the `#` and the string in it stay.
+        let src = "define(size, 40)\n\
+                   /* don`t write #size here,\n   or \"size\" in a string */\n\
+                   .text\n\
+                   .global main\n\
+                   main: mov x0, 0\n\
+                   ret\n";
+        let lines: Vec<usize> = lint_lines(src).into_iter().map(|(line, _)| line).collect();
+        assert_eq!(lines, [2, 3]);
+    }
+
+    #[test]
     fn macro_shadowing_a_register_warns_at_its_define() {
         let src = "define(x0, x19)\n.text\nmain:\nret\n";
         let w = lint_lines(src);
