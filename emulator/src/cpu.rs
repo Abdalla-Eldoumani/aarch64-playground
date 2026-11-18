@@ -115,7 +115,7 @@ pub fn step_ceiling_message() -> String {
 /// counter survives the UI draining the buffers, so it measures what the
 /// program produced, not what happens to be queued. 4 MiB dwarfs any real
 /// course program's output.
-pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Map a Write fault into the calm page-cap message. Stores are the only
 /// writer that faults (memory.rs's cap check is the sole producer), so a
@@ -211,7 +211,7 @@ pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 /// back 20 MB, raising the 4 MiB output wall to 23 MiB. Capping it here
 /// states the real ceiling: a program may print MAX_OUTPUT_BYTES, plus
 /// this much more if it paced itself with real sleeps to earn it.
-pub const MAX_REFUND_OUTPUT_BYTES: usize = MAX_OUTPUT_BYTES;
+pub const MAX_REFUND_OUTPUT_BYTES: u64 = MAX_OUTPUT_BYTES;
 
 /// Bytes of guest memory one host stub may move per step it is charged
 /// for. `memset`, `memcpy` and `read` do a whole buffer's work inside a
@@ -422,7 +422,7 @@ pub struct Cpu {
     refund_steps_total: u64,
     /// Output bytes refunded by sleeping so far, capped at
     /// MAX_REFUND_OUTPUT_BYTES per loaded program.
-    refund_output_total: usize,
+    refund_output_total: u64,
     /// Table of hosted libc stubs reachable by `bl` into the synthetic
     /// 0xFFFF_0000 range: every row of `hosted::STUBS` at its slot. The
     /// linker reads `host.lookup(name)` to resolve external calls.
@@ -452,7 +452,7 @@ pub struct Cpu {
     max_total_steps: u64,
     /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
     /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
-    output_total: usize,
+    output_total: u64,
     /// Bytes ever appended to `stdout` / `stderr`, echo included. DISPLAY
     /// state, not budget: a snapshot carries them and step-back restores
     /// them, so the web can drop exactly the characters a rolled-back step
