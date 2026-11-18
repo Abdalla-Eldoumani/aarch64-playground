@@ -38,15 +38,17 @@ const ROUTES = [
     document: "index.html",
     // 211.26 kB brotli measured (2026-10-28). Raised 62 B (2026-11-18) for the
     // real-time request and the unmount stop: 211,936 -> 211,998 B locally,
-    // 211.97 -> 212.02 kB in CI.
-    limit: 212_062,
+    // 211.97 -> 212.02 kB in CI. Raised 112 B (2026-11-18) for the window-size
+    // request: 212,010 -> 212,122 B locally, 212.03 -> 212.12 kB in CI.
+    limit: 212_174,
   },
   {
     name: "playground document js (every chunk /playground loads)",
     page: "/playground/page",
     document: "playground.html",
-    // 225.12 kB brotli measured (2026-10-28).
-    limit: 226_000,
+    // 225.12 kB brotli measured (2026-10-28). Raised 112 B (2026-11-18) for the
+    // window-size request: 225,960 -> 226,072 B locally, 225.98 -> 226.06 kB in CI.
+    limit: 226_112,
   },
 ];
 
