@@ -1556,9 +1556,12 @@ mod tests {
     }
 
     #[test]
-    fn changequote_is_rejected() {
+    fn changequote_is_rejected_unless_the_program_defines_it() {
         // Read as text, the quotes it names reach the assembler as data.
         rejects(expand("changequote([,])\n"), "unsupported m4 construct: changequote");
+        // A program's own changequote macro runs, as it did before and as
+        // GNU m4 1.4.19 runs it.
+        assert_eq!(exp("define(`changequote', nop)\nchangequote([,])\n").text, "\nnop");
     }
 
     /// The text and line map, for comparing with GNU m4's output.
