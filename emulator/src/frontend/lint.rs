@@ -146,6 +146,7 @@ fn scan_line_for_hygiene(
     let mut in_char = false;
     let mut after_hash = false;
     let hash_comments = expanded.comment_at(line) == Some("#");
+    let quotes = expanded.reads_quotes(line);
     while i < bytes.len() {
         let b = bytes[i];
         match b {
@@ -162,9 +163,9 @@ fn scan_line_for_hygiene(
                 i += 1;
                 continue;
             }
-            // m4 never expands quoted text, and its closing `'` is no
-            // character literal.
-            b'`' => {
+            // On a line m4 reads quotes on, it never expands quoted text, and
+            // the closing `'` is no character literal.
+            b'`' if quotes => {
                 i += m4::quote_end(&bytes[i..]).unwrap_or(bytes.len() - i);
                 continue;
             }
