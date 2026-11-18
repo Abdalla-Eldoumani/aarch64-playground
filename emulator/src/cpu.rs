@@ -898,7 +898,7 @@ impl Cpu {
             // wrong line for an unbalanced epilogue, which has its own
             // diagnosis.
             let sp = self.regs.read_sp();
-            if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
+            if !sp.is_multiple_of(16) && pc != MAIN_RETURN_ADDR {
                 return Ok(self.halt(EmuError::SpAlignmentFault { sp, at_call: true }.to_string()));
             }
             // The changed sets are also taken before the output charge, so
