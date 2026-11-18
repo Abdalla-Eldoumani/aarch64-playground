@@ -670,7 +670,7 @@ An address in the unmapped first page faults here exactly as it does for
 | `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line. |
 | `NAME = EXPRESSION`      | Symbol assignment. `.` is the address at the line where the assignment appears. |
 | `dnl`                    | Deletes the rest of its line and the newline, on a line of its own or right after a `define`, `undefine`, `divert` or `changecom` call. |
-| `divert(-1)` ... `divert` | Throws away everything m4 writes in between; `divert(0)` ends it too. Only define, undefine and `dnl` lines and m4's own comments (`#`, unless `changecom` moved it) may sit in between. |
+| `divert(-1)` ... `divert` | Throws away everything m4 writes in between; `divert(0)` ends it too. Only `dnl` lines, define and undefine lines with no `//`, `;` or `/* */` comment ahead of a `dnl`, and m4's own comments (`#`, unless `changecom` moved it) may sit in between. |
 | `changecom`              | Turns `#` comments off, so a name after `#` expands. ``changecom(`//')`` makes `//` the comment start instead. |
 | `` `text' ``             | A quoted string: written without its quotes and never expanded. It closes on the line that opens it. |
 
