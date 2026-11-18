@@ -1781,6 +1781,8 @@ mod tests {
             "divert(-1)\ndefine(a, x19) // the counter\ndivert\nmov x0, a\n",
             "divert(-1)\ndefine(a, `x19') // use divert to switch\ndivert\nmov x0, a\n",
             "divert(-1)\ndefine(a, `x19') // don`t\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2') // use divert to switch\ndivert\nmov x0, 1\n",
+            "divert(-1)\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2') // don`t\ndivert\nmov x0, 1\n",
             "divert(-1)\n/* switch back with divert */\ndefine(a, x19)\ndivert\nmov x0, a\n",
             "divert(-1)\n/* aliases\n   for the frame */\ndefine(a, x19)\ndivert\nmov x0, a\n",
         ] {
@@ -1800,6 +1802,11 @@ mod tests {
             text_and_map("divert(-1)\ndefine(a, `x19')dnl // use divert to switch\ndivert\nmov x0, a\n"),
             gnu("\nmov x0, x19", &[3, 4])
         );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2')\ndivert\nmov x0, 1\n"),
+            gnu("\nmov x0, 1", &[4, 5])
+        );
+        assert_eq!(text_and_map("divert( -1)\ndefine(a, x1)\ndivert\nmov x0, a\n"), gnu("\nmov x0, x1", &[3, 4]));
         assert_eq!(
             text_and_map("changecom(`//')\ndivert(-1)\n// don`t divert\ndefine(a, x19)\ndivert\nmov x0, a\n"),
             gnu("\n\nmov x0, x19", &[1, 5, 6])
