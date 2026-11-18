@@ -3,10 +3,12 @@ import nextConfig from "eslint-config-next";
 const TS = "**/*.{ts,tsx}";
 const TESTS = ["components/test/**", "lib/test/**", "**/*.test.ts", "**/*.test.tsx"];
 
-// Import boundaries. The lint sees static imports only, so `import()` (the
-// lazy chunks' own seam) and `import type` (allowTypeImports) pass. In flat
-// config the last block that sets a rule replaces its options, so each block
-// below lists its files' whole set.
+// Import boundaries. The no-restricted-imports blocks flag
+// `import { Editor } from "@/components/playground/Editor"`, and pass the lazy
+// seam `() => import("@/components/playground/Editor")` and `import type
+// { FullChromeSurfaceProps } from "@/components/playground/FullChromeSurface"`.
+// In flat config the last block that sets a rule replaces its options, so each
+// block below lists its files' whole set.
 
 // Modules other files reach only through the named owners.
 const OWNED = [
@@ -63,7 +65,8 @@ const COMPOSED = {
 // React and its entry points (react/jsx-runtime, react-dom/client).
 const noReact = (message) => ({ group: ["react", "react/*", "react-dom", "react-dom/*"], message });
 
-// The embed and the modules that import it statically, from the import graph.
+// The embed, EmbeddableCore (which the embed imports), and the components that
+// import the embed statically today: Hero, HeroDemo, LessonArticle, ExerciseView.
 const EMBED_CARRIERS = [
   "@/components/playground/EmbeddablePlayground",
   "@/components/playground/EmbeddableCore",
@@ -174,9 +177,10 @@ const boundaries = [
       ),
     },
   },
-  // Imports use the @/ alias, tests included. lib/theme is the exception:
-  // tailwind.config.ts loads tokens.ts outside the bundler, where @/ does not
-  // resolve; a route's own tests import it as ./page; a stylesheet sits beside its layout.
+  // Imports use the @/ alias: `import type { SelectOption } from "../ui/Select"`
+  // in a component or its test is flagged. Left out: lib/theme (tailwind.config.ts
+  // loads tokens.ts outside the bundler, where @/ does not resolve), app tests
+  // (`import Page from "./page"`), and a stylesheet beside its layout (`./globals.css`).
   {
     files: [`{app,components,lib}/${TS}`],
     ignores: ["lib/theme/**", "app/**/*.test.ts", "app/**/*.test.tsx"],
