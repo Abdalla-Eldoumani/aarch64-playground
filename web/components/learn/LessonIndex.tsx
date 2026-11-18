@@ -29,13 +29,7 @@ function EmptyCard({ message }: { message: string }): JSX.Element {
   );
 }
 
-export function LessonIndex({
-  lessons,
-  loading,
-}: {
-  lessons: LessonIndexRow[];
-  loading?: boolean;
-}): JSX.Element {
+export function LessonIndex({ lessons }: { lessons: LessonIndexRow[] }): JSX.Element {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
   useTypedBeforeHydration(searchRef, query, setQuery);
@@ -76,20 +70,6 @@ export function LessonIndex({
       else next.add(tag);
       return next;
     });
-  }
-
-  if (loading) {
-    return (
-      <div
-        aria-busy="true"
-        data-testid="lesson-index-skeleton"
-        className="divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border-strong)]"
-      >
-        {[0, 1, 2].map((i) => (
-          <div key={i} className="h-[52px] bg-[var(--bg-sunken)]" />
-        ))}
-      </div>
-    );
   }
 
   if (numbered.length === 0) {
