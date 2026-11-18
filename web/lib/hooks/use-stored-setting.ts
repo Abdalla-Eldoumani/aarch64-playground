@@ -46,23 +46,30 @@ export function writeStored(key: string, value: string): boolean {
 }
 
 /**
- * A stored setting, the same in every copy on the page. `parse` turns the
- * stored text, null when there is none, into the value, so it owns the
- * fallback and any older format. Read after mount, since the server has no
- * storage; a reducer, so the stored text can arrive from an effect.
+ * A stored setting, the same in every copy on the page and in other tabs.
+ * `parse` turns the stored text, null when there is none, into the value, so
+ * it owns the fallback and any older format. Read after mount, since the
+ * server has no storage; a reducer, so the stored text can arrive from an
+ * effect. With `follow` false, each copy reads storage only when it mounts
+ * and a change moves only the copy that made it.
  */
 export function useStoredSetting<T>(
   key: string,
   parse: (raw: string | null) => T,
+  follow = true,
 ): [T, (value: string) => void] {
   const [raw, apply] = useReducer((_prev: string | null, next: string | null) => next, null);
   useEffect(() => {
     apply(safeGetItem(key));
-    return subscribeStored(key, apply);
-  }, [key]);
+    return follow ? subscribeStored(key, apply) : undefined;
+  }, [key, follow]);
   const save = useCallback((value: string) => {
-    writeStored(key, value);
-  }, [key]);
+    if (follow) writeStored(key, value);
+    else {
+      apply(value);
+      safeSetItem(key, value);
+    }
+  }, [key, follow]);
   return [parse(raw), save];
 }
 
