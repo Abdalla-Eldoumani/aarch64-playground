@@ -413,14 +413,17 @@ const ENTRY_RUNS: &[&str] = &[
     "host_noop_with_sp_off: context [(4194336, Some((\"__host_noop\", 4194320))), (4194340, Some((\"__host_noop\", 4194320))), (4294901760, Some((\"__host_noop\", 4194320)))], exit None, steps 8, pc 0xffff0000, error Some(\"Bus error\\nsp is 0x7fffffe8 at this call, which is not a multiple of 16: round the frame size above it up to a multiple of 16 (32 instead of 24), or size it with `alloc = -(16 + locals) & -16`\"), notes [], stdout \"\"",
 ];
 
-/// Every name a program calls makes a `bl` to it a hosted program, and the
-/// runtime's own two entries do not.
+/// Every name a program calls through the rows detection reads makes a `bl`
+/// to it a hosted program; the runtime's own two entries and the rows after
+/// `__isoc99_scanf` (`atol`) do not.
 #[test]
 fn a_bl_to_every_callable_stub_makes_a_hosted_program() {
-    for (name, _) in ADDRESSES {
+    let last_read = ADDRESSES.iter().position(|(name, _)| *name == "__isoc99_scanf").expect("listed");
+    for (row, (name, _)) in ADDRESSES.iter().enumerate() {
         let entry = matches!(*name, "__host_noop" | "__main_return");
         let call_alone = format!("main:\n    bl {name}\n    ret\n");
-        assert_eq!(detect_hosted_mode(&call_alone), !entry, "`bl {name}` alone");
+        let read = row <= last_read;
+        assert_eq!(detect_hosted_mode(&call_alone), !entry && read, "`bl {name}` alone");
     }
 }
 
@@ -587,11 +590,16 @@ fn a_program_with_its_own_atol_loads_and_runs_as_it_did() {
     }
 }
 
-/// Directive-free programs that run on the bare-metal path with the words
-/// `bl atol` in a comment of each form the assembler takes (`//`, `;`, and
-/// `/* */` on its own line, after code and over several lines), which is no
-/// call. The last three are the shapes a block comment once moved.
-const ATOL_IN_COMMENTS: &[(&str, &str)] = &[
+/// Directive-free programs that spell `atol` without a directive to make
+/// them hosted. Detection reads no stub after `__isoc99_scanf`, so each
+/// loads and runs as it did before the library had `atol`:
+/// - `bl atol` in a comment of each form the assembler takes (`//`, `;`, and
+///   `/* */` on its own line, after code and over several lines);
+/// - a program's own `atol` defined as `atol :`, `atol<TAB>:` or `ATOL :`;
+/// - `// bl atol` or `; bl atol` on a line with m4 quotes. The m4 here
+///   refuses backtick quotes, so these four record that refusal; with an m4
+///   that takes them they run, and their path stays the bare-metal one.
+const ATOL_SPELLINGS: &[(&str, &str)] = &[
     ("line_slashes", "// bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
     ("tail_slashes", "        mov     x0, 5 // bl atol\n        mov     x8, 93\n        svc     0\n"),
     ("line_semicolon", "; bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
@@ -601,10 +609,20 @@ const ATOL_IN_COMMENTS: &[(&str, &str)] = &[
     ("lines_block", "/* the call\n        bl      atol\n   is not made */\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
     ("block_main", "/* bl atol */\nmain:   mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
     ("block_start_lr", "/* bl atol */\n_start: mov     x0, x30\n        and     x0, x0, 0xff\n        mov     x8, 93\n        svc     0\n"),
+    ("own_space_colon", "        mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol :  mov     x0, 7\n        ret\n"),
+    ("own_space_colon_start", "_start: mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol :  mov     x0, 7\n        ret\n"),
+    ("own_space_colon_main", "main:   mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol :  mov     x0, 7\n        ret\n"),
+    ("own_tab_colon", "        mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol\t:  mov     x0, 7\n        ret\n"),
+    ("own_upper_space_colon", "        mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\nATOL :  mov     x0, 7\n        ret\n"),
+    ("quoted_slashes", "        mov     x0, `5' // bl atol\n        mov     x8, 93\n        svc     0\n"),
+    ("quoted_slashes_start_lr", "_start: mov     x0, `x30' // bl atol\n        and     x0, x0, 0xff\n        mov     x8, 93\n        svc     0\n"),
+    ("quoted_slashes_main", "main:   mov     x0, `5' // bl atol\n        mov     x8, 93\n        svc     0\n"),
+    ("quoted_semicolon", "        mov     x0, `5' ; bl atol\n        mov     x8, 93\n        svc     0\n"),
 ];
 
-/// One line per program from `load_and_run`.
-const ATOL_IN_COMMENTS_RUNS: &[&str] = &[
+/// One line per program from `load_and_run`, each as d312a96f's emulator
+/// gave it.
+const ATOL_SPELLINGS_RUNS: &[&str] = &[
     "line_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "tail_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "line_semicolon: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
@@ -614,28 +632,40 @@ const ATOL_IN_COMMENTS_RUNS: &[&str] = &[
     "lines_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "block_main: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "block_start_lr: hosted false, trampolines [], exit Some(0), steps 4, pc 0x400010, x0 0x0, error None, stdout \"\"",
+    "own_space_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "own_space_colon_start: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "own_space_colon_main: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "own_tab_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "own_upper_space_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "quoted_slashes: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
+    "quoted_slashes_start_lr: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
+    "quoted_slashes_main: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
+    "quoted_semicolon: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
 ];
 
 #[test]
-fn bl_atol_in_a_comment_leaves_a_program_on_its_path() {
-    let got: Vec<String> = ATOL_IN_COMMENTS
+fn programs_that_spell_atol_load_and_run_as_before_the_stub() {
+    let got: Vec<String> = ATOL_SPELLINGS
         .iter()
         .map(|(label, source)| format!("{label}: {}", load_and_run(source)))
         .collect();
-    assert_eq!(got.len(), ATOL_IN_COMMENTS_RUNS.len(), "one line per program: {got:#?}");
-    for (got, want) in got.iter().zip(ATOL_IN_COMMENTS_RUNS) {
+    assert_eq!(got.len(), ATOL_SPELLINGS_RUNS.len(), "one line per program: {got:#?}");
+    for (got, want) in got.iter().zip(ATOL_SPELLINGS_RUNS) {
         assert_eq!(got, want);
     }
 }
 
-/// With no directive and no `atol:` of its own, `bl atol` is the library's
-/// and takes the program to the hosted path.
+/// With no directive, `bl atol` alone does not make a program hosted, so a
+/// bare-metal `_start` program that calls the library's `atol` is refused,
+/// as it was before the library had one.
 #[test]
-fn a_bare_start_program_runs_the_librarys_atol() {
+fn a_bare_start_program_that_calls_the_librarys_atol_is_refused_as_before() {
     let source = "_start: sub     sp, sp, 16\n        mov     x9, 0x3234\n        str     x9, [sp]\n        mov     x0, sp\n        bl      atol\n        mov     x8, 93\n        svc     0\n";
-    let got = load_and_run(source);
-    assert!(got.starts_with("hosted true, trampolines [\"atol\"], exit Some(42), "), "{got}");
-    assert!(got.contains(", error None, "), "{got}");
+    assert_eq!(
+        load_and_run(source),
+        "hosted false, not built: assembly error at line 5: undefined reference to `atol'\n\
+         no line defines `atol:`: check the spelling, and check that the label line ends with a `:`"
+    );
 }
 
 /// Stubs a program calls that the editor leaves out of its completions on
