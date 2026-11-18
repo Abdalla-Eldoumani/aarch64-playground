@@ -5,7 +5,7 @@
 // arrangement: it is the same node before and after.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 type Layout = Record<string, number>;
 
@@ -307,5 +307,36 @@ describe("FullLayout", () => {
     rerender(layout("md"));
     expect(document.querySelector('textarea[aria-label="EDITOR"]')).toBe(editor);
     expect(document.activeElement).toBe(editor);
+  });
+
+  // The phone layout places its own copies of the panes, so none of the wider
+  // layouts' stays mounted out of sight there: a hidden frames view or call
+  // card would count its lines as said while nobody saw them.
+  it("keeps no wider layout's pane mounted in the phone layout", () => {
+    const mounted = new Set<string>();
+    function Probe({ name }: { name: string }) {
+      useEffect(() => {
+        mounted.add(name);
+        return () => {
+          mounted.delete(name);
+        };
+      }, [name]);
+      return <span>{name}</span>;
+    }
+    const probed = (breakpoint: Breakpoint, phone: PhoneShape = null) => (
+      <FullLayout
+        {...layout(breakpoint, phone).props}
+        disassembly={<Probe name="DISASM" />}
+        registers={<Probe name="REGS" />}
+        rightTabs={<Probe name="TABS" />}
+      />
+    );
+    const { rerender } = render(probed("lg"));
+    expect([...mounted].sort()).toEqual(["DISASM", "REGS", "TABS"]);
+    // The phone opens on its code view, which shows none of the three.
+    rerender(probed("sm", "portrait"));
+    expect([...mounted]).toEqual([]);
+    rerender(probed("md"));
+    expect([...mounted].sort()).toEqual(["DISASM", "REGS", "TABS"]);
   });
 });
