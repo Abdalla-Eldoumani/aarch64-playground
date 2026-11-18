@@ -145,7 +145,9 @@ export interface DispatchContext {
   frameStack(): Promise<FrameStack | null>;
   /** "line 12", or "ui.s line 12" in a program of several files. */
   lineLabel(addr: number): string | null;
-  setBreakpoint(addr: number): Promise<void>;
+  /** `gdb b label`: arms `addr` now, and the label again after the editor's
+   *  next assemble. */
+  setBreakpoint(addr: number, label: string): Promise<void>;
   clearBreakpoint(addr: number): Promise<void>;
   /** Look up a label's runtime address. Returns null when unresolved. */
   resolveLabel(label: string): Promise<number | null> | number | null;
@@ -173,6 +175,9 @@ export interface DispatchContext {
   readRegisters(): Record<string, bigint>;
   readMemory(addr: number, len: number): Promise<Uint8Array>;
   pcAddress(): number;
+  /** The code the program exited with; null while it can still run (a
+   *  fault stops it without one) and with nothing loaded. */
+  exitCode(): number | null;
   reset(): Promise<void>;
   /** Present when the pane can host interactive programs; dispatch hands
    *  it to runProgram/runSource for `./name` runs without a `>` capture. */
@@ -221,8 +226,9 @@ const GDB_HELP_LINES = [
   "  gdb info frame                    this function's frame: its bytes, saved fp and lr, locals",
 ];
 
-// The machine drops the last frame only when the outermost function returns,
-// which ends the program (a `_start` that exits through svc keeps its own).
+// gdb's "No stack." The machine drops the last frame only when the outermost
+// function returns; an exit() deeper down, or a `_start` that exits through
+// svc, leaves frames behind, so an exit code means finished too.
 const NO_FRAMES = "gdb: no frames: the program has finished";
 
 // More recorded frames than this fold into one line, with main still shown last.
@@ -429,6 +435,8 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     return { status: "ok", lines: said ? [said.replaceAll("`", "")] : [] };
   }
   if (sub === "c") {
+    // gdb's "The program is not being run.": the run would do nothing silently.
+    if (ctx.exitCode() != null) return { status: "err", lines: ["gdb: nothing to continue: the program has finished"] };
     await ctx.runUntilBreak();
     return { status: "ok", lines: [] };
   }
@@ -437,7 +445,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     if (!label) return { status: "err", lines: ["gdb: b needs a label"] };
     const addr = await ctx.resolveLabel(label);
     if (addr == null) return { status: "err", lines: [`gdb: unknown label '${label}'`] };
-    await ctx.setBreakpoint(addr);
+    await ctx.setBreakpoint(addr, label);
     return { status: "ok", lines: [`breakpoint set at ${formatWord64(addr)} (${label})`] };
   }
   if (sub === "p") {
@@ -451,7 +459,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "info" && args[1] === "frame") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: info frame needs an assembled program"] };
-    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
+    if (view.snapshot.frames.length === 0 || ctx.exitCode() != null) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: frameLines(view) };
   }
   if (sub === "info" && args[1] === "registers") {
@@ -467,7 +475,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "bt") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: bt needs an assembled program"] };
-    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
+    if (view.snapshot.frames.length === 0 || ctx.exitCode() != null) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: backtrace(view, ctx) };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };
