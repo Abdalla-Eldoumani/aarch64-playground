@@ -38,6 +38,14 @@ impl Cpu {
         self.output_total > MAX_OUTPUT_BYTES
     }
 
+    /// A real-time session has spent a four-hour refund cap, so the wall
+    /// it meets next ends the session rather than a runaway or a flood.
+    pub(super) fn refunds_spent(&self) -> bool {
+        self.real_time
+            && (self.refund_steps_total >= REAL_TIME_REFUND_STEPS
+                || self.refund_output_total >= REAL_TIME_REFUND_OUTPUT_BYTES)
+    }
+
     /// Whether the state a snapshot frame copies WHOLE (virtual files,
     /// queued stdin, open-file paths) has outgrown the ring's budget.
     /// Registers, memory and the heap go in as undo logs of what a step
@@ -80,7 +88,12 @@ impl Cpu {
         // Checked here so single-stepping a loop is bounded the same way run
         // mode is; surfaced through `error` while `halted` stays true.
         if self.steps_total >= self.max_total_steps {
-            return Some(self.halt(step_ceiling_message()));
+            let message = if self.refunds_spent() {
+                SESSION_CAP_MESSAGE.to_string()
+            } else {
+                step_ceiling_message()
+            };
+            return Some(self.halt(message));
         }
 
         // Stack wall: sp far below the base is runaway recursion (or a
