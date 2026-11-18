@@ -154,6 +154,17 @@ enum Shape {
     Nonstandard,
 }
 
+impl Shape {
+    /// Where the frame record sits, 0 for none.
+    fn record(self, sp: u64, fp: u64) -> u64 {
+        match self {
+            Shape::Complete => fp,
+            Shape::Reserved => sp,
+            Shape::Bare | Shape::Nonstandard => 0,
+        }
+    }
+}
+
 fn shape(a: &Activation, sp: u64, fp: u64, mem: &Memory) -> Shape {
     // One 16-byte read: the saved fp, then the saved lr above it.
     let record = u128::from(a.fp_entry) | u128::from(a.ret_addr) << 64;
@@ -272,11 +283,7 @@ impl CallStack {
         // Past the cap the real caller is one the stack never recorded.
         let top = self.acts.len().wrapping_sub(1);
         if let (0, Some(caller)) = (self.uncounted, self.acts.last_mut()) {
-            let record = match shape(caller, sp, fp, mem) {
-                Shape::Complete => fp,
-                Shape::Reserved => sp,
-                _ => 0,
-            };
+            let record = shape(caller, sp, fp, mem).record(sp, fp);
             // What the call did, not the frame's shape: a function that
             // saved lr without setting fp still saved it.
             let flags = if caller.flags & LR_STORED == 0 { caller.flags | LR_UNSAVED } else { caller.flags };
@@ -351,7 +358,8 @@ impl CallStack {
     /// a return to no caller is recorded and leaves the stack alone.
     /// `x0_width` is the width of x0's latest write, for the call tree.
     /// Returns the callee-saved registers the returning call left changed
-    /// (bit N for xN); main's are its own to keep.
+    /// (bit N for xN), checked only when the return ends one call; main's
+    /// are its own to keep.
     pub(crate) fn on_return(
         &mut self,
         pc: u64,
@@ -366,29 +374,26 @@ impl CallStack {
             self.tree.leave(regs[0], x0_width, log.map(|log| &mut log.tree));
             return 0;
         }
-        if self.acts.last().is_some_and(|a| a.ret_addr == target) {
-            let Some(top) = self.acts.pop() else { return 0 };
-            self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
-            if let Some(log) = log {
-                log.removed.push(top);
-            }
-            if top.call_pc == 0 {
-                return 0;
-            }
-            let now = callee_saved(regs);
-            return (0..10)
-                .filter(|&j| now[j] != top.saved[j])
-                .fold(0, |mask, j| mask | 1 << (19 + j));
-        }
+        // From the top down, so a plain return matches the top first.
         let floor = self.acts.len().saturating_sub(UNWIND_SEARCH);
         if let Some(at) = self.acts[floor..].iter().rposition(|a| a.ret_addr == target) {
-            for a in self.acts.drain(floor + at..).rev() {
+            let at = floor + at;
+            let changed = match self.acts[at..] {
+                [ended] if ended.call_pc != 0 => {
+                    let now = callee_saved(regs);
+                    (0..10)
+                        .filter(|&j| now[j] != ended.saved[j])
+                        .fold(0, |mask, j| mask | 1 << (19 + j))
+                }
+                _ => 0,
+            };
+            for a in self.acts.drain(at..).rev() {
                 if let Some(log) = log.as_deref_mut() {
                     log.removed.push(a);
                 }
                 self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
             }
-            return 0;
+            return changed;
         }
         if let Some(log) = log {
             log.bad_return = Some(self.bad_return);
@@ -545,13 +550,15 @@ pub fn frame_view(cpu: &Cpu, layout: &FrameLayout) -> FrameView {
             let a = acts[i];
             let innermost = i + 1 == n && stack.uncounted == 0;
             let (record, state) = if innermost {
-                match shape(&a, sp, fp, &cpu.mem) {
-                    Shape::Complete => (fp, COMPLETE),
-                    Shape::Reserved => (sp, RESERVED),
-                    Shape::Bare if layout.makes_record(a.entry) => (0, ENTERED),
-                    Shape::Bare => (0, LEAF),
-                    Shape::Nonstandard => (0, NONSTANDARD),
-                }
+                let now = shape(&a, sp, fp, &cpu.mem);
+                let state = match now {
+                    Shape::Complete => COMPLETE,
+                    Shape::Reserved => RESERVED,
+                    Shape::Bare if layout.makes_record(a.entry) => ENTERED,
+                    Shape::Bare => LEAF,
+                    Shape::Nonstandard => NONSTANDARD,
+                };
+                (now.record(sp, fp), state)
             } else if a.record != 0 {
                 (a.record, COMPLETE)
             } else {
