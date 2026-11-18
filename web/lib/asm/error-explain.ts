@@ -183,9 +183,9 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
 
   if (detail.includes("unsupported m4 construct")) {
     return {
-      what: "m4 saw a construct outside the playground's subset (define, undefine, dnl, divert, changecom, quotes, and name=expr).",
-      why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop, or send text to the end of the output with a numbered divert. The playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. For an `include`, add the file to the program with the add-file box beside the file tabs instead: the playground joins a program's files the way `include` does.",
+      what: "m4 reached a construct the playground's m4 does not take; the message names it.",
+      why: "The playground's m4 takes define, undefine, macros with arguments, dnl, divert(-1) and divert, changecom with one argument, quoted strings, and name=expr. It refuses what it cannot run the way GNU m4 on the course servers runs it: ifdef, ifelse, forloop, changequote and include; a numbered divert, which GNU m4 writes at the end of the output, and a number past nine digits, which it wraps; more than one argument (a changecom end string is a second one), a name, or the comment opener between divert's or changecom's parentheses; text or a comment between divert(-1) and divert, which GNU m4 still reads; and divert, changecom or dnl once the program defines or undefines that name.",
+      fix: "Rewrite the line the message names. Expand an ifdef, ifelse or forloop into plain code. include is not supported; copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and move the text of a numbered divert to where it should appear. Give divert -1, 0 or nothing, and changecom one quoted argument. Keep only define, undefine and dnl lines between divert(-1) and divert, and put comments and other text after the divert. Rename a macro of your own called dnl, and drop an undefine of divert, changecom or dnl.",
       styleSection: "m4 preprocessing",
     };
   }
