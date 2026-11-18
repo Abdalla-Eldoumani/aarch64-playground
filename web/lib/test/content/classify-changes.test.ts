@@ -165,7 +165,12 @@ describe("the path filter", () => {
     for (const file of ["web/lib/playground/share.ts", "web/public/examples/cpsc355/locals.s"]) {
       expect(classify([file]).browser, file).toBe(true);
     }
-    for (const file of ["web/lib/playground/upload-guard.ts", "web/public/examples/cpsc355/hello.s"]) {
+    // The smoke also loads walkthrough.ts and share.ts's own imports, which no rule routes here.
+    for (const file of [
+      "web/lib/playground/upload-guard.ts",
+      "web/lib/playground/walkthrough.ts",
+      "web/public/examples/cpsc355/hello.s",
+    ]) {
       expect(classify([file]).browser, file).toBe(false);
     }
   });
