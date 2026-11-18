@@ -430,7 +430,7 @@ jobs:
           # A flag, not the shard index: it only tells vitest to defer the floors.
           VITEST_SHARD: "1"
           COVERAGE: ${{ (github.ref_name == 'main' || github.head_ref == 'integration') && 'yes' || '' }}
-        run: npm test -- ${COVERAGE:+--coverage --reporter=blob} --reporter=default --shard=${{ matrix.shard }}/6
+        run: npm test -- ${COVERAGE:+--coverage --reporter=blob} --reporter=default --shard=${{ matrix.shard }}/${{ strategy.job-total }}
 
       # .vitest/blob is where vitest 5 writes the blob (vitest 4 used
       # .vitest-reports). It is a dot-directory, which upload-artifact skips
