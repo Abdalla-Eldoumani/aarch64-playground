@@ -107,6 +107,10 @@ describe("check.yml", () => {
     const all = steps(job("web-build"));
     const smoke = all.slice(all.findIndex((step) => key(step, "name", 8) === "size-limit") + 1);
     expect(
+      smoke.map((step) => key(step, "name", 8)),
+      "web-build's steps after size-limit: chromium, then the server, then the smoke",
+    ).toEqual(["install chromium", "start the production server", "browser smoke"]);
+    expect(
       smoke.at(-1)?.some((line) => line.trim() === "run: node scripts/browser-smoke.mjs"),
       "web-build's last step runs the smoke",
     ).toBe(true);
