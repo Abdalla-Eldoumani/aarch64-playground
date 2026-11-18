@@ -50,6 +50,9 @@ export interface EmulatorBackend {
   /** Pause/resume the step-back snapshot ring (live terminal sessions,
    *  where stepping back has no meaning). */
   setSnapshotsPaused(paused: boolean): Promise<void>;
+  /** Live terminal sessions wait out every sleep in real time, so the
+   *  machine may give a paced program four hours of refunds. */
+  setRealTime(on: boolean): Promise<void>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   /** Whether every page in the range is mapped (watch fault display). */
   isRangeMapped(addr: number, len: number): Promise<boolean>;
@@ -211,6 +214,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async setSnapshotsPaused(paused: boolean): Promise<void> {
     this.requireEmu().setSnapshotsPaused(paused);
+  }
+
+  async setRealTime(on: boolean): Promise<void> {
+    this.requireEmu().setRealTime(on);
   }
 
   async getMemory(addr: number, len: number): Promise<Uint8Array> {
