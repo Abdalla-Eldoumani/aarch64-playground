@@ -250,6 +250,24 @@ describe("the emulator worker", () => {
     }
   });
 
+  it("sets the window size, columns first, on a wasm build that has it, and answers ok on one that predates it", async () => {
+    await send({ id: 1, kind: "assemble", source: "ret", args: [] });
+    expect(await send({ id: 2, kind: "setWindowSize", cols: 48, rows: 43 })).toMatchObject({ kind: "ok", value: null });
+    const proto = wasm.FakeEmulator.prototype as unknown as Record<string, unknown>;
+    const seen: Array<[unknown, number, number]> = [];
+    proto.set_window_size = function (this: unknown, cols: number, rows: number) {
+      seen.push([this, cols, rows]);
+    };
+    try {
+      expect(await send({ id: 3, kind: "setWindowSize", cols: 48, rows: 43 })).toMatchObject({ kind: "ok", value: null });
+      await send({ id: 4, kind: "setWindowSize", cols: 0, rows: 0 });
+      expect(seen.map(([, cols, rows]) => [cols, rows])).toEqual([[48, 43], [0, 0]]);
+      expect(seen[0][0]).toBeInstanceOf(wasm.FakeEmulator);
+    } finally {
+      delete proto.set_window_size;
+    }
+  });
+
   it("answers an unknown request kind with an error naming it", async () => {
     const reply = await send({ id: 9, kind: "defragment" } as unknown as Request);
     expect(reply.kind).toBe("error");
