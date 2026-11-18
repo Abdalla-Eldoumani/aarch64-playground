@@ -343,6 +343,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     setRealTime() {
       return Promise.resolve();
     },
+    setWindowSize() {
+      return Promise.resolve();
+    },
     clearAllBreakpoints() {
       return Promise.resolve();
     },
