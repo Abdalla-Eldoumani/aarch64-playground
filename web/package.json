@@ -46,7 +46,7 @@
         ".next/static/chunks/monaco.*.js",
         ".next/static/chunks/monaco-worker.*.js"
       ],
-      "limit": "812.54 KB"
+      "limit": "800 KB"
     },
     {
       "name": "lazy terminal pane (xterm)",
@@ -79,7 +79,7 @@
     {
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
       "path": ".next/static/css/*.css",
-      "limit": "37.13 KB"
+      "limit": "36 KB"
     },
     {
       "name": "practice index flight payload (the rows the server sends)",
