@@ -702,6 +702,21 @@ mod tests {
     }
 
     #[test]
+    fn spaces_inside_the_brackets_change_no_push_or_pop() {
+        // GNU as reads `[ sp, -16 ]!` as `[sp, -16]!` and `[ sp ], 16` as
+        // `[sp], 16`.
+        let frame = |push: &str, pop: &str| {
+            format!(".text\n.global main\nmain:\nstp x29, x30, {push}\nmov x29, sp\nldp x29, x30, {pop}\nret\n")
+        };
+        assert_eq!(lint(&frame("[ sp, -16 ]!", "[sp], 16")), Vec::new());
+        assert_eq!(lint(&frame("[sp, -16]!", "[ sp ], 16")), Vec::new());
+        let w = lint_lines(&frame("[ sp, -40 ]!", "[sp], 40"));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 4);
+        assert!(w[0].1.contains("pushes 40 bytes"), "{}", w[0].1);
+    }
+
+    #[test]
     fn macro_name_inside_a_string_warns_with_the_server_behavior() {
         let src = "define(register, w19)\n\
                    .data\n\
