@@ -76,6 +76,9 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   }
   const rootRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
+  const textRef = useRef<HTMLDivElement>(null);
+  // The card's measured heights by width, good while `key` holds.
+  const heightsRef = useRef({ key: "", byWidth: new Map<number, number>() });
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const focusPendingRef = useRef(false);
   const titleId = useId();
@@ -154,16 +157,26 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     const targets = mode.kind === "offer" ? OFFER_TARGETS : WALKTHROUGH_STEPS[mode.step].targets;
     const found = hidden ? null : resolveTarget(targets);
     const view = { width: window.innerWidth, height: window.innerHeight };
+    // Each copy below costs a layout, so its heights are kept while the card's
+    // content and its own full height as it stands are unchanged: an idle
+    // card forces no layout, and a font that swaps in late is still caught.
+    const text = textRef.current;
+    const key = `${card.offsetHeight + (text ? text.scrollHeight - text.clientHeight : 0)} ${card.innerHTML}`;
+    if (heightsRef.current.key !== key) heightsRef.current = { key, byWidth: new Map() };
+    const { byWidth } = heightsRef.current;
     // Measured on a hidden copy at a set width with no cap. Placed by its own
     // capped or narrowed height, the card moved on every other beat, and
     // lifting its own cap scrolled its text back to the top.
     const heightAt = (w: number) => {
+      const known = byWidth.get(w);
+      if (known !== undefined) return known;
       const copy = card.cloneNode(true) as HTMLElement;
       copy.setAttribute("aria-hidden", "true");
       Object.assign(copy.style, { width: `${w}px`, maxHeight: "none", visibility: "hidden" });
       card.after(copy);
       const height = copy.offsetHeight;
       copy.remove();
+      byWidth.set(w, height);
       return height;
     };
     const width = Math.min(CARD_WIDTH, view.width - 16);
@@ -317,6 +330,7 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
           </button>
         )}
         <div
+          ref={textRef}
           aria-live="polite"
           className={`min-h-0 flex-1 overflow-y-auto pl-3 ${layout.compact ? "pt-2" : "pt-3"} ${step ? "pr-11" : "pr-3"}`}
         >
