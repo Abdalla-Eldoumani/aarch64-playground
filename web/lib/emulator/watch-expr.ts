@@ -93,24 +93,23 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
     if (idx == null) return { error: `unknown index ${index}` };
     const label = ctx.resolveLabelAddress(name);
     if (label === "pending") return { pending: true };
-    let refused: string | null = null;
+    const slot = ctx.resolveSlotOffset(name);
     if (label != null) {
       const element = ctx.labelElementSize?.(name) ?? { error: "no source to read" };
       if ("size" in element) return readAt(ctx, label + idx * BigInt(element.size), element.size);
-      refused = `can't tell the element size of ${name}: ${element.error}`;
+      // The lookup answers an `=` name with its own value, so only a value
+      // equal to the slot's offset is that `=` line; a label is refused.
+      if (label !== slot) return { error: `can't tell the element size of ${name}: ${element.error}` };
     }
     // A frame-slot name is an OFFSET from fp, never an address; resolve
     // it against the live frame pointer so `a_s[0]` reads the array on
-    // the stack instead of dereferencing the offset as low memory. The
-    // label lookup answers an `=` name too, with its value and no element
-    // size, so a refused size still tries the frame.
-    const slot = ctx.resolveSlotOffset(name);
+    // the stack instead of dereferencing the offset as low memory.
     if (slot != null) {
       const fp = ctx.readRegister("fp");
       if (fp == null) return { error: "fp is not available" };
       return readAt(ctx, fp + slot + idx * 8n, 8);
     }
-    return { error: refused ?? `unknown symbol ${name}` };
+    return { error: `unknown symbol ${name}` };
   }
 
   return { error: "unsupported expression" };
