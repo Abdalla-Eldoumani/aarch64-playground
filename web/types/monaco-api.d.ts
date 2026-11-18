@@ -14,3 +14,7 @@ declare module "monaco-editor/platform/registry/common/platform" {
 declare module "monaco-editor/platform/theme/common/colorUtils" {
   export const Extensions: { ColorContribution: string };
 }
+
+// The suggestion list's controller ships no types either. It registers itself
+// on import, and the editor reads nothing from it.
+declare module "monaco-editor/editor/contrib/suggest/browser/suggestController" {}
