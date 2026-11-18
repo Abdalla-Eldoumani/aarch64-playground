@@ -1073,3 +1073,15 @@ main:
     expect(decodeFrames([])).toBeNull();
   });
 });
+
+describe("set_real_time", () => {
+  it("is on the build under the name the worker and the wrapper probe for", () => {
+    // Both feature-detect it, so a rename here would quietly give the
+    // terminal pane today's refund caps instead of failing.
+    withEmulator((emu) => {
+      expect(typeof (emu as { set_real_time?: unknown }).set_real_time).toBe("function");
+      emu.set_real_time(true);
+      emu.set_real_time(false);
+    });
+  });
+});

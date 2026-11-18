@@ -340,6 +340,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     setSnapshotsPaused() {
       return Promise.resolve();
     },
+    setRealTime() {
+      return Promise.resolve();
+    },
     clearAllBreakpoints() {
       return Promise.resolve();
     },

@@ -693,7 +693,7 @@ Built into the playground, so `bl` reaches them with no setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |
-| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. |
+| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. A NULL `%s` argument prints `(null)`, or nothing under a precision below 6, as glibc does. |
 | `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
 | `scanf`  | `%d %u %x %s %c %f`, where `%f` also reads `inf`, `infinity` and `nan` in any case, as glibc does; returns `WaitingForInput` when stdin runs dry. `__isoc99_scanf`, the name `gcc -S` writes, is the same function. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
@@ -711,6 +711,7 @@ Built into the playground, so `bl` reaches them with no setup:
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
+| `atol`                         | glibc's `strtol(s, NULL, 10)`: skips whitespace, optional sign, decimal digits; LONG_MIN/LONG_MAX on overflow; result in `x0`. |
 | `rand` / `srand`               | glibc's TYPE_3 additive generator, `RAND_MAX` 2147483647: the sequence is identical to the course servers', so unseeded draws diff cleanly against sample runs. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
 | `malloc` / `free`              | A fixed 16 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |

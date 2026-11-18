@@ -155,6 +155,52 @@ describe("WatchPanel", () => {
     ).toBeTruthy();
   });
 
+  it("reads an = name's array from the frame though the label lookup knows the name", async () => {
+    const getMemory = vi.fn((addr: number, len: number) => {
+      const out = new Uint8Array(len);
+      if (addr === FP + 24) out[0] = 0x07;
+      return out;
+    });
+    render(
+      <WatchPanel
+        registers={makeRegisters()}
+        sp="0x0000000080000000"
+        pc={0}
+        frameSlots={[{ offset: 16, name: "sum_s" }]}
+        getMemory={getMemory}
+        source={"sum_s = 16\n.text\nmain:\n"}
+        // The loaded program answers every = name with its value.
+        resolveLabel={async (name) => (name === "sum_s" ? 16 : null)}
+        program={[]}
+      />,
+    );
+    addExpression("sum_s[1]");
+    expect(await screen.findByText("0x0000000000000007")).toBeTruthy();
+    expect(getMemory).toHaveBeenCalledWith(FP + 24, 8);
+  });
+
+  it("keeps refusing an unsized label when a same-named = line is typed after assembling", async () => {
+    const refusal = "can't tell the element size of buf: no .byte, .hword, .word or .dword after its label";
+    const program: unknown[] = [];
+    const props = {
+      registers: makeRegisters(),
+      sp: "0x0000000080000000",
+      pc: 0,
+      getMemory: seededMemory(),
+      // The loaded program's `buf` is a data label at its address.
+      resolveLabel: async (name: string) => (name === "buf" ? 0x600000 : null),
+      program,
+    };
+    const { rerender } = render(<WatchPanel {...props} frameSlots={[]} source={".data\nbuf: .skip 16\n"} />);
+    addExpression("buf[0]");
+    expect(await screen.findByText(refusal)).toBeTruthy();
+    // The editor's text gains the line; the loaded program does not.
+    rerender(
+      <WatchPanel {...props} frameSlots={[{ offset: 16, name: "buf" }]} source={"buf = 16\n.data\nbuf: .skip 16\n"} />,
+    );
+    expect(screen.getByText(refusal)).toBeTruthy();
+  });
+
   it("removes an expression and updates the store", () => {
     renderPanel();
     addExpression("x0");

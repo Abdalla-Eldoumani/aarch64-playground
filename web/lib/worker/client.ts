@@ -117,6 +117,10 @@ export class WorkerClient implements EmulatorBackend {
     return this.send<void>({ id: 0, kind: "setSnapshotsPaused", paused });
   }
 
+  setRealTime(on: boolean): Promise<void> {
+    return this.send<void>({ id: 0, kind: "setRealTime", on });
+  }
+
   clearAllBreakpoints(): Promise<void> {
     return this.send<void>({ id: 0, kind: "clearAllBreakpoints" });
   }

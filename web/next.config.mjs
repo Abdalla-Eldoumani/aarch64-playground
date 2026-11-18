@@ -41,6 +41,9 @@ const nextConfig = {
   // scripts/vercel-build.sh builds twice so the service worker written after
   // the first build ships with the second; both must share one build id.
   generateBuildId: async () => process.env.PLAYGROUND_BUILD_ID || null,
+  // No page uses next/image. shortcut: Next still allows /_next/static/media/, where an
+  // imported image would be resizable; revisit when the site first imports an image.
+  images: { localPatterns: [] },
   headers() {
     return [
       {
