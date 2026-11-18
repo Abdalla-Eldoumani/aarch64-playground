@@ -1768,6 +1768,8 @@ mod tests {
             "divert(-1)\n// use divert to switch\ndefine(a, x19)\ndivert\nmov x0, a\n",
             "divert(-1)\n// don`t\ndefine(a, x19)\ndivert\nmov x0, a\n",
             "divert(-1)\ndefine(a, x19) // the counter\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(a, `x19') // use divert to switch\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(a, `x19') // don`t\ndivert\nmov x0, a\n",
             "divert(-1)\n/* switch back with divert */\ndefine(a, x19)\ndivert\nmov x0, a\n",
             "divert(-1)\n/* aliases\n   for the frame */\ndefine(a, x19)\ndivert\nmov x0, a\n",
         ] {
@@ -1784,6 +1786,10 @@ mod tests {
             gnu("\nmov x0, x19", &[4, 5])
         );
         assert_eq!(
+            text_and_map("divert(-1)\ndefine(a, `x19')dnl // use divert to switch\ndivert\nmov x0, a\n"),
+            gnu("\nmov x0, x19", &[3, 4])
+        );
+        assert_eq!(
             text_and_map("changecom(`//')\ndivert(-1)\n// don`t divert\ndefine(a, x19)\ndivert\nmov x0, a\n"),
             gnu("\n\nmov x0, x19", &[1, 5, 6])
         );
@@ -1794,24 +1800,40 @@ mod tests {
         // GNU m4 1.4.19 runs a program's own `dnl` macro, and writes divert
         // and changecom as text once a quoted undefine removed them. The
         // playground refuses each where it would have run the builtin, an
-        // unquoted undefine (after which GNU m4 keeps divert) included.
+        // unquoted undefine (after which GNU m4 keeps divert) included; a
+        // program's own divert or changecom macro runs.
         let dnl = "unsupported m4 construct: dnl once the program defines or undefines it";
         rejects(expand("define(`dnl', `mov x0, 7')\ndnl\nmov x1, 2\n"), dnl);
         rejects(expand("define(`dnl', `mov x0, 7')\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
         rejects(expand("define(`dnl', `divert')\ndivert(-1)\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
         rejects(expand("undefine(`dnl')\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
-        let divert = "unsupported m4 construct: divert once the program defines or undefines it";
+        let divert = "unsupported m4 construct: divert once the program undefines it";
         rejects(expand("undefine(`divert')\ndivert(-1)\nmov x0, 1\n"), divert);
         rejects(expand("undefine(divert)\ndivert(-1)\nmov x0, 1\ndivert\nmov x1, 2\n"), divert);
         rejects(expand("define(`divert', `nop')\nundefine(`divert')\ndivert(-1)\nmov x0, 1\n"), divert);
         rejects(
             expand("undefine(`changecom')\nchangecom\ndefine(n, 4)\nmov x0, #n\n"),
-            "unsupported m4 construct: changecom once the program defines or undefines it",
+            "unsupported m4 construct: changecom once the program undefines it",
         );
         // Without such a use the program builds as it does today, and a
         // quoted define of divert runs as GNU m4 runs it.
         assert_eq!(exp("undefine(`divert')\ndefine(dnl, x19)\nmov dnl, 1\n").text, "\n\nmov x19, 1");
         assert_eq!(exp("define(`divert', `nop')\ndivert(-1)\n").text, "\nnop");
+    }
+
+    #[test]
+    fn an_unquoted_builtin_name_in_a_quoted_define_is_refused() {
+        // On a line with quotes, GNU m4 1.4.19 runs an unquoted divert,
+        // changecom, changequote or dnl among a define's arguments before
+        // the define sees it; the playground refuses that. Quoted, the name
+        // is the program's own macro.
+        for name in ["divert", "changecom", "changequote", "dnl"] {
+            let refusal = format!("unsupported m4 construct: define({name}) with the name unquoted");
+            rejects(expand(&format!("define({name}, `x')\n")), &refusal);
+        }
+        assert_eq!(exp("define( `divert', `nop')\ndivert(-1)\n").text, "\nnop");
+        // A backtick only in a comment leaves the line as it runs today.
+        assert_eq!(exp("define(divert, nop) // it`s\ndivert\n").text, "\nnop");
     }
 
     #[test]
