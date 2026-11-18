@@ -48,26 +48,61 @@ export interface FullLayoutProps {
 }
 
 const FILL = "h-full min-h-0 flex flex-col";
+/** No box of its own: what a host holds lays out as it would in the slot's
+ *  parent. */
+export const PASS_THROUGH = "contents";
 
-/** Where the editor is attached in whichever arrangement is on screen. */
-function EditorSlot({ host }: { host: HTMLElement }) {
+// The control that had the focus when its host left a slot, for the slot that
+// takes the host next, in the same commit.
+const focusLeft = new WeakMap<HTMLElement, HTMLElement>();
+
+/**
+ * Where a host node is attached in whichever arrangement is on screen. Taking
+ * the node out of the page drops its focus on the body, so the slot that takes
+ * it next gives the focus back: React runs the old slot's cleanup before the
+ * new slot's effect in one commit.
+ */
+export function HostSlot({ host, className = FILL }: { host: HTMLElement; className?: string }) {
   const ref = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     const slot = ref.current;
     if (!slot) return;
     slot.appendChild(host);
+    const focused = focusLeft.get(host);
+    if (focused?.isConnected && document.activeElement === document.body) {
+      focused.focus({ preventScroll: true });
+    }
     return () => {
+      const active = document.activeElement;
+      if (active instanceof HTMLElement && host.contains(active)) {
+        focusLeft.set(host, active);
+        queueMicrotask(() => focusLeft.delete(host));
+      }
       if (host.parentNode === slot) slot.removeChild(host);
     };
   }, [host]);
-  return <div ref={ref} className={FILL} />;
+  return <div ref={ref} className={className} />;
+}
+
+/** A node of its own, made once, for content that renders there and is
+ *  attached by a HostSlot; null on the server. */
+export function useHostNode(className = FILL): HTMLElement | null {
+  const [host] = useState(() => {
+    if (typeof document === "undefined") return null;
+    const node = document.createElement("div");
+    node.className = className;
+    return node;
+  });
+  return host;
 }
 
 /**
- * Picks the full playground's arrangement for the screen size. The editor
- * renders once into a node of its own that each arrangement attaches, so a
- * rotation or a resize across a breakpoint moves it without a remount and the
- * caret, scroll, and undo history survive.
+ * Picks the full playground's arrangement for the screen size. The editor,
+ * the disassembly, the registers and the debug column's tabs each render once
+ * into a node of their own that each arrangement attaches, so a resize across
+ * a breakpoint moves them without a remount: the caret, the undo history, the
+ * focused control and a terminal session survive. The phone layout places its
+ * own copies of all but the editor, so crossing into it still remounts them.
  */
 export function FullLayout({
   breakpoint,
@@ -86,13 +121,16 @@ export function FullLayout({
   paneRequest,
   onPaneShown,
 }: FullLayoutProps) {
-  const [host] = useState(() => {
-    if (typeof document === "undefined") return null;
-    const node = document.createElement("div");
-    node.className = FILL;
-    return node;
-  });
-  const placed = host ? <EditorSlot host={host} /> : editor;
+  const editorHost = useHostNode();
+  const disasmHost = useHostNode(PASS_THROUGH);
+  const regsHost = useHostNode(PASS_THROUGH);
+  const tabsHost = useHostNode(PASS_THROUGH);
+  const place = (host: HTMLElement | null, node: ReactNode, className?: string) =>
+    host ? <HostSlot host={host} className={className} /> : node;
+  const placed = place(editorHost, editor);
+  const placedDisasm = place(disasmHost, disassembly, PASS_THROUGH);
+  const placedRegs = place(regsHost, registers, PASS_THROUGH);
+  const placedTabs = place(tabsHost, rightTabs, PASS_THROUGH);
   const showResizable = isAtLeast(breakpoint, "lg");
 
   return (
@@ -125,9 +163,9 @@ export function FullLayout({
                 breakpoint={breakpoint}
                 height={height}
                 editor={placed}
-                disassembly={disassembly}
-                registers={registers}
-                rightTabs={rightTabs}
+                disassembly={placedDisasm}
+                registers={placedRegs}
+                rightTabs={placedTabs}
                 framesOpen={framesOpen}
               />
             ) : (
@@ -139,7 +177,7 @@ export function FullLayout({
                     storageKey={`${breakpoint}-left`}
                     height={height}
                     first={placed}
-                    second={disassembly}
+                    second={placedDisasm}
                   />
                 </div>
                 <div className="w-1/2 min-h-0">
@@ -148,8 +186,8 @@ export function FullLayout({
                     spec={framesOpen ? FRAMES_SPLIT : DEBUG_SPLIT}
                     storageKey={`${breakpoint}-${framesOpen ? "frames" : "right"}`}
                     height={height}
-                    first={registers}
-                    second={rightTabs}
+                    first={placedRegs}
+                    second={placedTabs}
                   />
                 </div>
               </div>
@@ -158,7 +196,12 @@ export function FullLayout({
           {controls}
         </>
       )}
-      {host && createPortal(editor, host)}
+      {editorHost && createPortal(editor, editorHost)}
+      {/* Only where a slot places them: the phone layout mounts its own, and
+          a pane kept mounted out of sight would speak unseen. */}
+      {!phone && disasmHost && createPortal(disassembly, disasmHost)}
+      {!phone && regsHost && createPortal(registers, regsHost)}
+      {!phone && tabsHost && createPortal(rightTabs, tabsHost)}
     </>
   );
 }
