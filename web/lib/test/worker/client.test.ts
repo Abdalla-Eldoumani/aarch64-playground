@@ -328,6 +328,7 @@ describe("WorkerClient protocol round-trips", () => {
     // turning it into undefined.
     { name: "setSnapshotsPaused", invoke: (c) => c.setSnapshotsPaused(true), wire: { kind: "setSnapshotsPaused", paused: true } },
     { name: "setRealTime", invoke: (c) => c.setRealTime(true), wire: { kind: "setRealTime", on: true } },
+    { name: "setWindowSize", invoke: (c) => c.setWindowSize(48, 43), wire: { kind: "setWindowSize", cols: 48, rows: 43 } },
     { name: "clearAllBreakpoints", invoke: (c) => c.clearAllBreakpoints(), wire: { kind: "clearAllBreakpoints" } },
     { name: "isRangeMapped", invoke: (c) => c.isRangeMapped(0x600000, 16), wire: { kind: "isRangeMapped", addr: 0x600000, len: 16 } },
     { name: "lint", invoke: (c) => c.lint("main:\n  ret"), wire: { kind: "lint", source: "main:\n  ret" } },
