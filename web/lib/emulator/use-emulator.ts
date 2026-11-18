@@ -90,11 +90,6 @@ export function useEmulator(): EmulatorState {
   // map signals the legacy source-text line-count fallback (bare-metal,
   // where instruction index and non-label source line are already 1:1).
   const lineMapRef = useRef<LineMap>(emptyLineMap());
-  // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
-  // diff highlighting in the replay scrubber and MemoryPanel. Cleared
-  // whenever a snapshot reports no writes (assemble, reset, or a
-  // non-storing step) so stale ranges never linger.
-  const dirtyAddrsRef = useRef<Array<[number, number]>>([]);
   // Live halted flag for the run() guard. The embed and checker call a
   // `run` captured before their awaited assemble, so a state-closure
   // guard would still see the pre-assemble halt and silently skip the
@@ -186,7 +181,11 @@ export function useEmulator(): EmulatorState {
   const [hostedMode, setHostedMode] = useState(false);
   const [vfsFiles, setVfsFiles] = useState<string[]>([]);
   const [savedStates, setSavedStates] = useState<string[]>([]);
-  const [dirtyAddrsTick, setDirtyAddrsTick] = useState(0);
+  // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
+  // diff highlighting in the replay scrubber and MemoryPanel. Cleared
+  // whenever a snapshot reports no writes (assemble, reset, or a
+  // non-storing step) so stale ranges never linger.
+  const [dirtyAddrs, setDirtyAddrs] = useState<Array<[number, number]>>([]);
 
   const { getMemory, getMemoryMapped, invalidate: invalidateMemory } =
     useMemoryCache(backendRef);
@@ -336,7 +335,7 @@ export function useEmulator(): EmulatorState {
         markCurrentLine(pcToSourceLine(instrIndex, sourceRef.current));
       }
     }
-    // dirtyAddrs are surfaced through a separate ref so the memory
+    // dirtyAddrs are kept apart from the memory cache so the memory
     // panel + replay scrubber can highlight changed cells without
     // forcing a full memory cache invalidation.
     if (snap.dirtyAddrs && snap.dirtyAddrs.length > 0) {
@@ -345,13 +344,11 @@ export function useEmulator(): EmulatorState {
       for (let i = 0; i + 1 < snap.dirtyAddrs.length; i += 2) {
         pairs.push([snap.dirtyAddrs[i], snap.dirtyAddrs[i + 1]]);
       }
-      dirtyAddrsRef.current = pairs;
-      setDirtyAddrsTick((t) => t + 1);
-    } else if (dirtyAddrsRef.current.length > 0) {
+      setDirtyAddrs(pairs);
+    } else {
       // No writes in this snapshot (a non-storing step, or assemble/reset):
       // drop the previous frame's ranges so stale cells stop highlighting.
-      dirtyAddrsRef.current = [];
-      setDirtyAddrsTick((t) => t + 1);
+      setDirtyAddrs((last) => (last.length > 0 ? [] : last));
     }
   }, [
     appendNotes,
@@ -901,15 +898,11 @@ export function useEmulator(): EmulatorState {
     [assembleWith, pushReplayFrame, resetReplayHistory],
   );
 
-  // Both live behind refs, so each memo reads the tick that moves with its ref.
+  // The ring lives behind a ref, so the memo reads the tick that moves with it.
   const replayFrames = useMemo(() => {
     void replayTick;
     return readReplayFrames();
   }, [replayTick, readReplayFrames]);
-  const dirtyAddrs = useMemo(() => {
-    void dirtyAddrsTick;
-    return dirtyAddrsRef.current;
-  }, [dirtyAddrsTick]);
 
   // Memoized return so consumers' useCallback/useMemo dependents don't
   // see a fresh object every render.
