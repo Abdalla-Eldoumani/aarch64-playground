@@ -88,6 +88,7 @@ const ADDRESSES: &[(&str, u64)] = &[
     ("sincos", 0xffff_0420),
     ("__main_return", 0xffff_0430),
     ("__isoc99_scanf", 0xffff_0440),
+    ("atol", 0xffff_0450),
 ];
 
 #[test]
@@ -192,6 +193,7 @@ const CALLS: &[(&str, &str, &str)] = &[
     ("fmod", "fmov d0, 2.5\nfmov d1, 1.0", ""),
     ("sincos", "fmov d0, 0.5\nldr x0, =buf\nadd x1, x0, 8", ""),
     ("__isoc99_scanf", "ldr x0, =infmt\nldr x1, =buf", "34\n"),
+    ("atol", "ldr x0, =num", ""),
 ];
 
 /// Call `name` once from main and describe the step that ran the stub:
@@ -335,6 +337,7 @@ const CALLED: &[&str] = &[
     "fmod: returned, returns d0, x0 0xdeadbeefdeadbeef, d0 0x3fe0000000000000, changed x0-18 d0-31, card []",
     "sincos: returned, returns nothing, x0 0xdeadbeefdeadbeef, d0 0xdeadbeefdeadbeef, changed x0-18 d0-31, card []",
     "__isoc99_scanf: returned, returns x0, x0 0x1, d0 0xdeadbeefdeadbeef, changed x0-18 d0-31, card [2 8 4194320 1 0 1 1 2 2 2 2 0 2 1 0 6291514 0 34 0 4 0 2 3 0 37 100 51 52 98 117 102]",
+    "atol: returned, returns x0, x0 0x2a, d0 0xdeadbeefdeadbeef, changed x0-18 d0-31, card []",
 ];
 
 #[test]
@@ -576,6 +579,16 @@ fn a_program_with_its_own_atol_loads_and_runs_as_it_did() {
     for (got, want) in got.iter().zip(OWN_ATOL_RUNS) {
         assert_eq!(got, want);
     }
+}
+
+/// With no directive and no `atol:` of its own, `bl atol` is the library's
+/// and takes the program to the hosted path.
+#[test]
+fn a_bare_start_program_runs_the_librarys_atol() {
+    let source = "_start: sub     sp, sp, 16\n        mov     x9, 0x3234\n        str     x9, [sp]\n        mov     x0, sp\n        bl      atol\n        mov     x8, 93\n        svc     0\n";
+    let got = load_and_run(source);
+    assert!(got.starts_with("hosted true, trampolines [\"atol\"], exit Some(42), "), "{got}");
+    assert!(got.contains(", error None, "), "{got}");
 }
 
 /// Stubs a program calls that the editor leaves out of its completions on
