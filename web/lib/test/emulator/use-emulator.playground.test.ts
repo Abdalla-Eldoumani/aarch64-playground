@@ -304,3 +304,86 @@ main:
     expect(line).not.toContain("`");
   });
 });
+
+// main calls quit, which ends the program through exit(3). quit's four
+// instructions start the text at 0x400000; with mainFirst, main's six go
+// first and quit starts 24 bytes on, at 0x400018.
+const quits = (mainFirst: boolean) => {
+  const quit = `
+// quit(): never returns
+        .balign 4
+        .global quit
+quit:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 3                       // exit code
+        bl      exit
+`;
+  const main = `
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      quit
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+  return `// Ends the program from inside a function, through exit(3).
+
+define(fp, x29)
+define(lr, x30)
+
+.text
+${mainFirst ? main + quit : quit + main}`;
+};
+
+describe("gdb b across a reset", () => {
+  async function assembled(view: Pick<Hub, "result">, source: string) {
+    await act(async () => {
+      await expect(view.result.current.assemble(source)).resolves.toBe(true);
+    });
+  }
+
+  // gdb keeps a breakpoint when the program starts again and sets it again by
+  // its name; Reset and Assemble are the playground's restart.
+  it("stops at the breakpoint again once the program is assembled after a reset", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    expect(await gdb(view, "b quit")).toEqual(["breakpoint set at 0x0000000000400000 (quit)"]);
+    act(() => view.result.current.reset());
+    await assembled(view, quits(false));
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBeNull();
+    expect(view.result.current.pc).toBe(0x400000);
+  });
+
+  it("finds the label again in the program as it reads now", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    await gdb(view, "b quit");
+    act(() => view.result.current.reset());
+    await assembled(view, quits(true));
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBeNull();
+    expect(view.result.current.pc).toBe(0x400018);
+  });
+
+  // Loading another program clears every breakpoint, the gutter's included.
+  it("drops it when another program is loaded", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    await gdb(view, "b quit");
+    act(() => {
+      view.result.current.clearAllBreakpoints();
+      view.result.current.reset();
+    });
+    await assembled(view, quits(false));
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+  });
+});
