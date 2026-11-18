@@ -697,6 +697,38 @@ fn sp_takes_lsl_as_the_extended_form_gas_emits() {
     }
 }
 
+/// Register 31 means sp in the extended form, so beside sp a shifted xzr
+/// would read or write sp. GNU as 2.42 refuses xzr as the first source
+/// and as the destination of add and sub; the flag-setting forms keep
+/// xzr as their destination, which is how cmp and cmn are spelled.
+#[test]
+fn xzr_beside_sp_with_lsl_is_refused_as_gas_does() {
+    use aarch64_emulator::assembler::assemble;
+
+    for src in [
+        "add xzr, sp, x1, lsl 2",
+        "sub xzr, sp, x1, lsl 2",
+        "add sp, xzr, x1, lsl 2",
+        "sub sp, xzr, x1, lsl 2",
+    ] {
+        let err = match assemble(src) {
+            Ok(words) => panic!("{src} must be refused, encoded {:#010x}", words[0]),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("xzr"), "{src}: the message should name xzr, got: {err}");
+    }
+
+    for (src, expected) in [
+        ("cmp sp, x1, lsl 2", 0xEB21_6BFFu32),
+        ("cmn sp, x1, lsl 2", 0xAB21_6BFF),
+        ("subs xzr, sp, x1, lsl 2", 0xEB21_6BFF),
+        ("adds xzr, sp, x1, lsl 2", 0xAB21_6BFF),
+    ] {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(got[0], expected, "{src}: got {:#010x}, GAS emits {expected:#010x}", got[0]);
+    }
+}
+
 /// A stack array indexed with `add x1, sp, x20, lsl 2`, built with
 /// `sub sp, sp, x21, lsl 4`. GNU as 2.42 and ld under qemu-aarch64 print
 /// this line and exit 0.
