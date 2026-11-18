@@ -31,9 +31,9 @@ export interface CpuView {
   currentLine: number | null;
   currentLineRef: RefObject<number | null>;
   latestSnapRef: RefObject<LatestSnap>;
-  /** Bumped whenever the ring mutates; the hub keeps it in the return
-   *  memo's deps so consumers re-render on a capture they cannot see
-   *  (the ring lives behind a ref whose identity never changes). */
+  /** Bumped whenever the ring mutates; the hub's replayFrames memo is
+   *  keyed on it, since the ring lives behind a ref whose identity never
+   *  changes. */
   replayTick: number;
   /** Apply a snapshot's register file to the view, returning the pc as a
    *  number so the caller can resolve it to a source line. */
