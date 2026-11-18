@@ -1,8 +1,8 @@
 // Pins the interface walkthrough's behaviour: offered once on a first visit
 // without taking focus, walked by buttons and arrow keys, closed at any step
 // with the step kept for a resume, reset once finished, opened at the start by
-// a deep link, put in the top layer where the popover API exists, and stepped
-// aside while a picker's list is open.
+// a deep link, put in the top layer where the popover API exists, stepped
+// aside while a picker's list is open, and settled in one spot.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { InterfaceWalkthrough } from "@/components/playground/InterfaceWalkthrough";
@@ -255,5 +255,47 @@ describe("entry points and the top layer", () => {
     renderOpen(0);
     expect(screen.getByText(/the code tab shows it/)).toBeTruthy();
     tab.remove();
+  });
+});
+
+describe("placement", () => {
+  it("settles in one spot where a narrower card would be taller", () => {
+    // The registers step on a 568x360 turned phone, as measured there: room
+    // left of the registers for a 296 px card, which wraps to 255 px and would
+    // reach the run row, where the 352 px card is 212 px.
+    const rect = (el: Element, top: number, left: number, width: number, height: number) =>
+      vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+        top, left, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+      } as DOMRect);
+    const registers = document.createElement("div");
+    registers.setAttribute("data-walkthrough", "registers");
+    const decHex = document.createElement("div");
+    decHex.setAttribute("aria-label", "integer value format");
+    registers.appendChild(decHex);
+    const assemble = document.createElement("button");
+    assemble.setAttribute("data-walkthrough", "assemble");
+    const back = document.createElement("button");
+    back.setAttribute("aria-label", "back");
+    document.body.append(registers, assemble, back);
+    rect(registers, 89, 312, 256, 218);
+    rect(decHex, 186, 320, 90, 46);
+    rect(assemble, 312, 8, 56, 44);
+    rect(back, 312, 163, 44, 44);
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(568);
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(360);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return parseFloat(this.style.width) < 352 ? 255 : 212;
+    });
+    renderOpen(6);
+    expect(screen.getByRole("heading", { name: "Registers" })).toBeTruthy();
+    const spot = () => `${card().style.top} ${card().style.left} ${card().style.width}`;
+    const first = spot();
+    for (let beat = 1; beat <= 4; beat++) {
+      act(() => vi.advanceTimersByTime(400));
+      expect(spot(), `beat ${beat}`).toBe(first);
+    }
+    registers.remove();
+    assemble.remove();
+    back.remove();
   });
 });
