@@ -263,7 +263,7 @@ describe("placement", () => {
   // The registers step on a 568x360 turned phone, as measured there: room
   // left of the registers for a 296 px card, which wraps to 255 px and would
   // reach the run row, where the 352 px card is 212 px. No room right of them.
-  function turnedPhone(): () => void {
+  function turnedPhone(heightAt: (width: number) => number = (width) => (width < 352 ? 255 : 212)): () => void {
     const rect = (el: Element, top: number, left: number, width: number, height: number) =>
       vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
         top, left, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
@@ -285,7 +285,7 @@ describe("placement", () => {
     vi.spyOn(window, "innerWidth", "get").mockReturnValue(568);
     vi.spyOn(window, "innerHeight", "get").mockReturnValue(360);
     vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
-      return parseFloat(this.style.width) < 352 ? 255 : 212;
+      return heightAt(parseFloat(this.style.width));
     });
     return () => {
       registers.remove();
@@ -321,6 +321,32 @@ describe("placement", () => {
     act(() => vi.advanceTimersByTime(1200));
     expect(measured).toEqual(["352px", "296px"]);
     done();
+  });
+
+  it("drops every measured height when a late font arrives", () => {
+    // The font changes the 296 px card's height while the 352 px card on
+    // screen stays 212 px, so nothing but the font's arrival can tell.
+    let narrow = 255;
+    const done = turnedPhone((width) => (width < 352 ? narrow : 212));
+    const fonts = new EventTarget();
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    try {
+      renderOpen(6);
+      const spot = () => `${card().style.top} ${card().style.left} ${card().style.width}`;
+      expect(spot()).toBe("123px 208px 352px");
+      narrow = 200;
+      act(() => vi.advanceTimersByTime(400));
+      expect(spot()).toBe("123px 208px 352px");
+      act(() => {
+        fonts.dispatchEvent(new Event("loadingdone"));
+        vi.advanceTimersByTime(400);
+      });
+      // At 200 px the 296 px card fits left of the registers, clear of the run row.
+      expect(spot()).toBe("89px 8px 296px");
+    } finally {
+      delete (document as { fonts?: unknown }).fonts;
+      done();
+    }
   });
 
   it("measures without writing to the card, so a capped card's text keeps its scroll", () => {
