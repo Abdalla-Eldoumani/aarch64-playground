@@ -274,4 +274,27 @@ describe("FullLayout", () => {
     rerender(layout("md", "landscape"));
     expect(document.querySelector('textarea[aria-label="EDITOR"]')).toBe(before);
   });
+
+  // A 1440px window zoomed to 150% is 960 CSS px wide: it crosses from the
+  // laptop layout to the tablet one, and a reader focused in the debug column
+  // must not land on the page.
+  it("keeps the register and tab nodes, and the focus in them, from laptop to tablet", () => {
+    const withButtons = (breakpoint: Breakpoint) => (
+      <FullLayout
+        {...layout(breakpoint).props}
+        registers={<button type="button">REGS</button>}
+        rightTabs={<button type="button">TABS</button>}
+      />
+    );
+    const { rerender } = render(withButtons("lg"));
+    const button = (name: string) =>
+      Array.from(document.querySelectorAll("button")).find((b) => b.textContent === name);
+    const regs = button("REGS");
+    const tabs = button("TABS");
+    act(() => tabs?.focus());
+    rerender(withButtons("md"));
+    expect(button("REGS")).toBe(regs);
+    expect(button("TABS")).toBe(tabs);
+    expect(document.activeElement).toBe(tabs);
+  });
 });
