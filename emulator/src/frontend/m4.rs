@@ -131,7 +131,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // keeps only its first, as GNU m4 writes one line for the whole call.
     // The flag marks a line whose newline a `dnl` took, so its text opens
     // the next line.
-    let mut stripped: Vec<(usize, String, bool)> = Vec::new();
+    let mut stripped: Vec<(usize, &str, bool)> = Vec::new();
     // Every define/undefine in source order: (line index, name, body;
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
@@ -153,7 +153,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             for name in names {
                 define_events.push((idx, name, None));
             }
-            stripped.push((idx, text.to_string(), joins));
+            stripped.push((idx, text, joins));
             continue;
         }
         // The other place a quote is legal: a define's arguments, where a
@@ -161,24 +161,21 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
             let (name, body, used, (text, joins)) = parse_quoted_define(&lines[idx..], line_num)?;
             define_events.push((idx, name, Some(body)));
-            stripped.push((idx, text.to_string(), joins));
+            stripped.push((idx, text, joins));
             skip = used - 1;
             continue;
         }
         // A `dnl` line: GNU m4 deletes it, newline and all.
         if let Some((text, true)) = after_call(without_comment) {
-            stripped.push((idx, text.to_string(), true));
+            stripped.push((idx, text, true));
             continue;
         }
         if let Some(kw) = detect_unsupported(trimmed) {
-            return Err(EmuError::PreprocError {
-                line: line_num,
-                message: format!("unsupported m4 construct: {kw}"),
-            });
+            return Err(unsupported(line_num, kw));
         }
         if let Some((name, body, (text, joins))) = parse_define(trimmed) {
             define_events.push((idx, name, Some(body)));
-            stripped.push((idx, text.to_string(), joins));
+            stripped.push((idx, text, joins));
             continue;
         }
         // The line got past both define gates (the keyword and the paren)
@@ -204,10 +201,10 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // a symbol-assignment item at this exact section offset. The
             // expression body may reference `.` or labels whose meaning
             // depends on where the assignment appears in the source.
-            stripped.push((idx, kept.to_string(), false));
+            stripped.push((idx, kept, false));
             continue;
         }
-        stripped.push((idx, kept.to_string(), false));
+        stripped.push((idx, kept, false));
     }
 
     // Find the names defined more than once or undefined, such as
@@ -250,12 +247,12 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
-    // What lines whose newline a `dnl` took wrote, waiting for the next line.
+    // The output line being built: a line whose newline a `dnl` took
+    // leaves its text here for the next line to continue.
     let mut carry = String::new();
     // Under `divert(-1)`, GNU m4 throws its output away.
     let mut discard = false;
-    let mut comment = Some("#".to_string());
-    let mut comment_events = Vec::new();
+    let mut comment_events: Vec<(usize, Option<String>)> = Vec::new();
     for (idx, line, joins) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -272,51 +269,44 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
-        let unsupported = || EmuError::PreprocError {
-            line: line_num,
-            message: format!("unsupported m4 construct: {}", line.trim()),
-        };
-        let (expanded, joins) = if let Some((args, (text, joins))) = builtin_call(line, "divert", &current) {
-            // A numbered diversion goes to the end of GNU m4's output, which
-            // the line-for-line expansion here cannot place.
-            match args.first().map(|n| n.trim()).filter(|n| !n.is_empty()).map_or(Ok(0), str::parse::<i64>) {
-                Ok(n) if n <= 0 => discard = n < 0,
-                _ => return Err(unsupported()),
+        let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
+            // A numbered diversion goes to the end of GNU m4's output, and a
+            // comment that ends anywhere but the line's end can span lines:
+            // the line-for-line expansion here can follow neither. A comma
+            // between the parentheses means more than one argument. Taking
+            // off quotes never lengthens the text, so `args.len()` caps it.
+            let arg = unquote(args.trim_start(), None, args.len()).unwrap_or_default();
+            let supported = !args.contains(',')
+                && if name == "divert" {
+                    let n = arg.trim();
+                    discard = n.strip_prefix('-').is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()));
+                    discard || n.is_empty() || n == "0"
+                } else {
+                    comment_events.push((line_num, Some(arg).filter(|c| !c.is_empty())));
+                    true
+                };
+            if !supported {
+                return Err(unsupported(line_num, line.trim()));
             }
-            (text.to_string(), joins)
-        } else if let Some((args, (text, joins))) = builtin_call(line, "changecom", &current) {
-            // A comment that ends anywhere but the line's end can span lines,
-            // which the line-for-line expansion here cannot follow.
-            if args.len() > 1 {
-                return Err(unsupported());
+            if !discard {
+                carry.push_str(text);
             }
-            comment = args.into_iter().next().filter(|c| !c.is_empty());
-            comment_events.push((line_num, comment.clone()));
-            (text.to_string(), joins)
+            joins
         } else if discard {
             continue;
         } else {
             // Only a line whose own source holds a backtick reads m4 quotes:
             // the playground refused every such line before, so no program
-            // that ran changes. GNU m4 writes the quoted text without its
-            // outer quotes and never reads it again.
+            // that ran changes.
             let quotes = if line.contains('`') { Quotes::Keep } else { Quotes::Plain };
-            let gnu = Gnu { comment: comment.as_deref(), quotes };
-            let settled = expand_recursively(line, &current, line_num, gnu)?;
-            let text = match quotes {
-                Quotes::Keep => substitute_bounded(&settled, &current, line_num, Gnu { quotes: Quotes::Strip, ..gnu })?,
-                _ => settled,
-            };
-            (text, *joins)
+            let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
+            carry.push_str(&expand_recursively(line, &current, line_num, Gnu { comment, quotes })?);
+            *joins
         };
-        if discard {
+        if discard || joins {
             continue;
         }
-        if joins {
-            carry.push_str(&expanded);
-            continue;
-        }
-        let expanded = std::mem::take(&mut carry) + &expanded;
+        let expanded = std::mem::take(&mut carry);
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
@@ -358,23 +348,29 @@ fn expand_recursively(
     gnu: Gnu<'_>,
 ) -> Result<String, EmuError> {
     let mut current = line.to_string();
-    for _ in 0..MAX_RECURSION {
+    let mut rounds = 0;
+    loop {
         let next = substitute_bounded(&current, defines, line_num, gnu)?;
         if next == current {
-            return Ok(current);
+            break;
         }
+        // A line still changing one pass after MAX_RECURSION rounds has a
+        // cycle and will never settle.
+        if rounds == MAX_RECURSION {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!("m4 recursion exceeded {MAX_RECURSION} rounds"),
+            });
+        }
+        rounds += 1;
         current = next;
     }
-    // One more pass: if it still changes after MAX_RECURSION rounds, the
-    // substitution has a cycle and will never settle.
-    let next = substitute_bounded(&current, defines, line_num, gnu)?;
-    if next != current {
-        return Err(EmuError::PreprocError {
-            line: line_num,
-            message: format!("m4 recursion exceeded {MAX_RECURSION} rounds"),
-        });
+    // GNU m4 writes a quoted string without its outer quotes, and never
+    // reads it again.
+    match gnu.quotes {
+        Quotes::Keep => substitute_bounded(&current, defines, line_num, Gnu { quotes: Quotes::Strip, ..gnu }),
+        _ => Ok(current),
     }
-    Ok(current)
 }
 
 /// One expansion round with the per-line byte cap checked while the line
@@ -484,6 +480,7 @@ fn substitute_pass(
     let respect_literals = gnu.is_none();
     let quotes = gnu.map_or(Quotes::Plain, |g| g.quotes);
     let comment = gnu.and_then(|g| g.comment);
+    let comment_start = comment.and_then(|m| m.bytes().next());
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
@@ -494,7 +491,8 @@ fn substitute_pass(
         let b = bytes[i];
         if quotes != Quotes::Plain && b == b'`' {
             let end = i + quote_end(&bytes[i..]).ok_or(Stop::Quote)?;
-            out.push_str(if quotes == Quotes::Strip { &line[i + 1..end - 1] } else { &line[i..end] });
+            let strip = (quotes == Quotes::Strip) as usize;
+            out.push_str(&line[i + strip..end - strip]);
             i = end;
             continue;
         }
@@ -564,7 +562,7 @@ fn substitute_pass(
             if c == b'"'
                 || c == b'\''
                 || c == b'`'
-                || comment.is_some_and(|m| m.as_bytes()[0] == c)
+                || comment_start == Some(c)
                 || is_id_start_byte(c)
             {
                 break;
@@ -903,31 +901,41 @@ fn after_call(tail: &str) -> Option<(&str, bool)> {
     }
     let after = rest.strip_prefix("dnl")?;
     // The line forms the playground refused before: `dnl:` is a label.
-    (after.is_empty() || after.starts_with([' ', '\t'])).then_some((&tail[..tail.len() - rest.len()], true))
+    matches!(after.bytes().next(), None | Some(b' ' | b'\t')).then_some((&tail[..tail.len() - rest.len()], true))
 }
 
-/// A line that is one call to GNU m4's builtin `name`, bare or with its
-/// arguments, and `dnl` after it if any: the arguments (quotes stripped)
-/// and what the line leaves (`after_call`). None for any other line, and
-/// when the program defined `name` itself, so its own macro runs as before.
+/// A line that is one call to GNU m4's `divert` or `changecom`, bare or
+/// with its arguments, and `dnl` after it if any: which one, the text
+/// between its parentheses (empty when bare) and what the line leaves
+/// (`after_call`). None for any other line, and when the program defined
+/// the name itself, so its own macro runs as before.
 fn builtin_call<'a>(
     line: &'a str,
-    name: &str,
     defines: &HashMap<String, String>,
-) -> Option<(Vec<String>, (&'a str, bool))> {
-    let rest = line
-        .trim_start()
-        .strip_prefix(name)
-        .filter(|rest| !rest.starts_with(is_id_continue_char) && !defines.contains_key(name))?;
+) -> Option<(&'static str, &'a str, (&'a str, bool))> {
+    let line = line.trim_start();
+    let name = if line.starts_with("divert") {
+        "divert"
+    } else if line.starts_with("changecom") {
+        "changecom"
+    } else {
+        return None;
+    };
+    let rest = &line[name.len()..];
+    if rest.bytes().next().is_some_and(is_id_continue_byte) || defines.contains_key(name) {
+        return None;
+    }
     if !rest.starts_with('(') {
-        return Some((Vec::new(), after_call(rest)?));
+        return Some((name, "", after_call(rest)?));
     }
     let close = closing_paren(rest, true)?;
-    let args = split_args(&rest[1..close], true)
-        .into_iter()
-        .map(|arg| unquote(arg, None, MAX_EXPANDED_LINE_BYTES).ok())
-        .collect::<Option<_>>()?;
-    Some((args, after_call(&rest[close + 1..])?))
+    Some((name, &rest[1..close], after_call(&rest[close + 1..])?))
+}
+
+/// The refusal of a construct the playground's m4 does not take.
+#[cold]
+fn unsupported(line: usize, what: &str) -> EmuError {
+    EmuError::PreprocError { line, message: format!("unsupported m4 construct: {what}") }
 }
 
 fn parse_define(trimmed: &str) -> Option<(String, String, (&str, bool))> {
