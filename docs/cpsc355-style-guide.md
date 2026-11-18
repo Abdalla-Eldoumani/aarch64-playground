@@ -35,10 +35,23 @@ msg_len = . - msg - 1
 
 Comments strip before substitution: `//` to end of line.
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected with a clear error
-rather than silently ignored, and so is a backtick outside a `define` or
-``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends that
-define's reach at that line, so an alias can be rebound per function.
+These GNU m4 builtins work as they do on the servers:
+
+- `dnl` deletes the rest of its line, newline included, on a line of its
+  own or right after a `define(...)` or `undefine(...)`:
+  `define(fp, x29)dnl` leaves no empty line behind.
+- `divert(-1)` throws away everything m4 writes until `divert` or
+  `divert(0)`, so a block of defines between them writes no lines.
+- `changecom` with no argument turns `#` comments off, so a name after
+  `#` expands; ``changecom(`//')`` makes `//` the comment start instead.
+- A quoted string, `` `text' ``, is written without its quotes and never
+  expanded, and a quoted argument keeps its commas.
+
+`ifdef`, `ifelse`, `forloop`, and a numbered diversion such as `divert(1)`
+are rejected with a clear error rather than silently ignored. A quoted
+string closes on the line that opens it, as a macro's arguments do.
+Undefining a name ends that define's reach at that line, so an alias can
+be rebound per function.
 
 ### Where GNU m4's text-level rules bite
 
@@ -63,7 +76,7 @@ the author meant:
   expanded, here or on the server. `mov x0, #SIZE` with
   `define(SIZE, 40)` never expands and the assembler rejects it. Use an
   equate (`SIZE = 40`), which the assembler itself resolves, for any
-  value used after `#`.
+  value used after `#`, or turn `#` comments off with `changecom`.
 - A defined name immediately followed by `(` is an m4 macro **call**
   on the server, and the parenthesized text is consumed as arguments.
   Put a space before the `(` or rename the macro.
