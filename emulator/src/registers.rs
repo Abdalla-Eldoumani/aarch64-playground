@@ -1133,4 +1133,16 @@ mod tests {
         assert!(rf.clobbered.is_empty(), "no register holds a call's leftovers again");
         assert_eq!(rf.clobber_origin(20).call_pc, 0);
     }
+
+    // No step calls write_sp today, so the step tests cannot see its note.
+    #[test]
+    fn a_write_to_sp_is_in_the_changed_set() {
+        let mut rf = RegisterFile::new();
+        rf.start_changes();
+        rf.write_sp(0x7FF0);
+        let (mut gpr, mut fpr) = (Vec::new(), Vec::new());
+        rf.changed(&mut gpr, &mut fpr);
+        assert_eq!(gpr, [31]);
+        assert!(fpr.is_empty());
+    }
 }
