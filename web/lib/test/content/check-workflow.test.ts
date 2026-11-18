@@ -43,15 +43,16 @@ const key = (lines: string[], name: string) =>
   lines.map((line) => line.match(new RegExp(`^ {4}${name}: (.*)$`))?.[1]).find((value) => value !== undefined);
 
 /**
- * The fns whose `fn` line starts at column 0 right under one or more lines
- * that are each one attribute at column 0, one of them `#[test]` and none
- * holding the text `#[ignore`. In an integration test a top-level test's
+ * The fns whose line starts `fn ` right under a run of stretches that each go
+ * from `#[` at column 0 to a first `]` ending its line, when the run holds
+ * `#[test]` and not `#[ignore`. In an integration test a top-level test's
  * full name is the bare fn name, which is what --exact compares.
- * shortcut: column 0 stands in for top level and the text `#[ignore` for
- * ignored, so a `mod m {` whose body stays at column 0 (cargo names the test
- * `m::...`, which the --exact skip misses) and `#[cfg_attr(..., ignore)]`
- * (cargo ignores the test) both pass; revisit if c_corpus.rs gains an inline
- * module or a conditional ignore.
+ * shortcut: these pass though cargo would not run the fn as the skip expects:
+ * a `mod m {` whose body stays at column 0 (cargo names the test `m::...`,
+ * which the --exact skip misses); `#[cfg_attr(..., ignore)]`; and, above
+ * `#[test]`, `#[ignore = "..."]` with a `]` in its reason or `#[ignore]` with
+ * a comment after it on its line (cargo ignores the fn); revisit if
+ * c_corpus.rs gains an inline module or any of these attribute forms.
  */
 function liveTests(source: string) {
   return [...source.matchAll(/((?:^#\[[^\]]*\]\r?\n)+)^fn (\w+)/gm)]
@@ -119,7 +120,8 @@ describe("check.yml", () => {
   });
 
   it("skips in cargo test only the corpus test the corpus shards run", () => {
-    // Every line but a comment, in any job or key, so a new step cannot slip past.
+    // Every line whose first non-blank character is not `#`, in any job or key:
+    // a new step's --skip without --exact on its line fails.
     const skipping = WORKFLOW.flatMap((line, i) =>
       !line.trimStart().startsWith("#") && line.includes("--skip") ? [{ line, at: `line ${i + 1}: ${line.trim()}` }] : [],
     );
@@ -128,6 +130,12 @@ describe("check.yml", () => {
     for (const { line, at } of skipping) {
       // Without --exact, libtest skips every test in every binary whose name
       // contains the filter; with it, only tests named exactly that.
+      // shortcut: --exact counts anywhere on the line, a trailing comment
+      // included; revisit if a skip line ever carries a comment.
+      // shortcut: a name is read only as word characters and `:` straight
+      // after `--skip ` or `--skip=`, so a quoted name, a ${{ }} expression or
+      // extra spaces are not checked against c_corpus.rs; revisit if a skip
+      // takes one of those forms.
       expect(line, `${at} needs --exact on the same line`).toMatch(/--exact\b/);
       for (const [, skip] of line.matchAll(/--skip[= ]([\w:]+)/g)) {
         expect(live, `${at} skips ${skip}, which is not one of these c_corpus.rs tests`).toContain(skip);
