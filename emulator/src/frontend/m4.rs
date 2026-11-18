@@ -130,8 +130,7 @@ impl Expanded {
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
-    // The lines as written: GNU m4 reads the comments the passes below drop.
-    let written: Vec<&str> = source.lines().collect();
+    let original = source;
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
@@ -284,6 +283,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut discard = false;
     let mut comment_events: Vec<(usize, Option<String>)> = Vec::new();
     let mut quote_lines: Vec<usize> = Vec::new();
+    // The lines as written, collected only once a program uses divert(-1):
+    // GNU m4 reads the comments the passes above drop.
+    let mut written: Vec<&str> = Vec::new();
     for (k, (idx, line, joins)) in stripped.iter().enumerate() {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -305,7 +307,8 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         // divert or changecom the program defines is its own macro here.
         let touched = |name: &str| define_events.iter().any(|(at, n, _)| *at <= idx && n == name);
         let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
-        if line.contains('`') {
+        let quoted = line.contains('`');
+        if quoted {
             quote_lines.push(line_num);
         }
         let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
@@ -356,6 +359,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // with no such comment before a `dnl`, and comments m4 itself
             // opens. An m4 quote's `'` hides a comment from strip_comment, so
             // any `//` or `;` counts, on every line a quoted define spans.
+            if written.is_empty() {
+                written.extend(original.lines());
+            }
             let end = stripped.get(k + 1).map_or(lines.len(), |next| next.0);
             let blank = line.trim().is_empty()
                 && (idx..end).all(|j| {
@@ -370,8 +376,14 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             // Only a line whose own source holds a backtick reads m4 quotes:
             // the playground refused every such line before, so no program
             // that ran changes.
-            let quotes = if line.contains('`') { Quotes::Keep } else { Quotes::Plain };
-            carry.push_str(&expand_recursively(line, &current, line_num, Gnu { comment, quotes })?);
+            let quotes = if quoted { Quotes::Keep } else { Quotes::Plain };
+            let text = expand_recursively(line, &current, line_num, Gnu { comment, quotes })?;
+            // Most lines start an empty carry: move the text in, not a copy.
+            if carry.is_empty() {
+                carry = text;
+            } else {
+                carry.push_str(&text);
+            }
             *joins
         };
         if joins && touched("dnl") {
@@ -571,7 +583,7 @@ fn substitute_pass(
             i = end;
             continue;
         }
-        if comment.is_some_and(|c| bytes[i..].starts_with(c.as_bytes())) {
+        if comment_start == Some(b) && comment.is_some_and(|c| bytes[i..].starts_with(c.as_bytes())) {
             // GNU m4 comment: everything from `#` (or the opener a
             // `changecom` set) to the end of the line passes through
             // unexpanded, which is why the course style writes bare
