@@ -183,10 +183,16 @@ pub const STUBS: &[Stub] = &[
 
 /// The rows through `__isoc99_scanf`, which make a program hosted wherever
 /// `bl <name>` appears in its source (`bl putsx` too). A later row counts
-/// only a whole `bl <name>` that the source does not define itself, so a
-/// stub added after a program was written never moves it off the
-/// bare-metal path (lib.rs `detect_hosted_mode`).
+/// only a whole `bl <name>` in the code the assembler reads, outside every
+/// comment, whose name the source does not define, so a stub added after a
+/// program was written never moves it off the bare-metal path (lib.rs
+/// `detect_hosted_mode`).
 pub const ROWS_DETECTED_ANYWHERE: usize = 69;
+
+const _: () = assert!(
+    matches!(STUBS[ROWS_DETECTED_ANYWHERE - 1].name.as_bytes(), b"__isoc99_scanf"),
+    "ROWS_DETECTED_ANYWHERE ends at __isoc99_scanf"
+);
 
 const _: () = assert!(STUBS.len() as u64 <= HOST_STUB_COUNT, "host stub table full");
 
