@@ -242,7 +242,8 @@ export function useEmulator(): EmulatorState {
     remapBreakpoints,
     clearAllBreakpoints,
     setBreakpointAddress,
-    clearBreakpointAddress,
+    deleteBreakpoints,
+    gdbBreakpoints,
     resolveBreakpointAddr,
     rekeyAfterAssemble,
   } = useBreakpoints({ backendRef, lineMapRef, sourceRef, programLoadedRef, codeBase });
@@ -981,7 +982,8 @@ export function useEmulator(): EmulatorState {
       resolveLabel,
       m4Expand,
       setBreakpointAddress,
-      clearBreakpointAddress,
+      deleteBreakpoints,
+      gdbBreakpoints,
       restoreBookmark,
       clearConsole,
       dirtyAddrs,
@@ -1000,7 +1002,7 @@ export function useEmulator(): EmulatorState {
       deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
       pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, setRealTime, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
-      setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
+      setBreakpointAddress, deleteBreakpoints, gdbBreakpoints, restoreBookmark,
       clearConsole, dirtyAddrs, readReplayFrames, seekReplay,
     ],
   );
