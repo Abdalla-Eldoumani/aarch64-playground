@@ -94,6 +94,9 @@ pub struct Activation {
     /// The latest writes that changed its saved fp and its saved lr.
     pub fp_hit: Hit,
     pub lr_hit: Hit,
+    /// Which call this is, numbered as pushed (main 0): a call made again
+    /// from one bl site at one depth matches the last in everything else.
+    serial: u64,
 }
 
 /// A `ret` that went to no caller's return address, and the call it
@@ -112,6 +115,7 @@ pub struct BadReturn {
     pub flags: u8,
     pub last_ret: u64,
     pub lr_hit: Hit,
+    serial: u64,
 }
 
 /// The calls the program is inside, main first.
@@ -121,6 +125,8 @@ pub struct CallStack {
     /// Calls past `MAX_ACTIVATIONS` not yet returned from.
     uncounted: u64,
     bad_return: BadReturn,
+    /// Calls pushed so far, which numbers each one.
+    pushed: u64,
     /// The calls made so far, returned ones included.
     tree: CallTree,
 }
@@ -133,6 +139,7 @@ pub struct CallStack {
 pub struct FrameUndo {
     len: usize,
     uncounted: u64,
+    pushed: u64,
     /// The bad return a step replaced; copied only then, since it is wide
     /// and almost no step touches it.
     bad_return: Option<BadReturn>,
@@ -215,6 +222,7 @@ impl CallStack {
         self.acts.clear();
         self.uncounted = 0;
         self.bad_return = BadReturn::default();
+        self.pushed = 0;
         self.tree.clear();
     }
 
@@ -237,6 +245,7 @@ impl CallStack {
     pub(crate) fn record_undo(&self, log: &mut FrameUndo) {
         log.len = self.acts.len();
         log.uncounted = self.uncounted;
+        log.pushed = self.pushed;
         log.bad_return = None;
         log.removed.clear();
         log.marked.clear();
@@ -260,6 +269,7 @@ impl CallStack {
             }
         }
         self.uncounted = log.uncounted;
+        self.pushed = log.pushed;
         if let Some(bad) = log.bad_return {
             self.bad_return = bad;
         }
@@ -351,6 +361,8 @@ impl CallStack {
         if let Some(caller) = self.acts.last() {
             a.watch = if caller.record != 0 { self.acts.len() } else { caller.watch };
         }
+        self.pushed += 1;
+        a.serial = self.pushed;
         self.acts.push(a);
     }
 
@@ -412,9 +424,7 @@ impl CallStack {
         // A call already reported astray is over when its caller's return
         // ends it: that is no second bad return.
         let bad = self.bad_return;
-        let reported = self.acts.last().is_some_and(|t| {
-            bad.step != 0 && bad.index == top as u64 && (bad.entry, bad.ret_addr) == (t.entry, t.ret_addr)
-        });
+        let reported = self.acts.last().is_some_and(|t| bad.step != 0 && bad.serial == t.serial);
         if matched != Some(top) && !(matched.is_some() && reported) {
             if let Some(log) = log.as_deref_mut() {
                 log.bad_return = Some(self.bad_return);
@@ -430,6 +440,7 @@ impl CallStack {
                 flags: call.flags,
                 last_ret: call.last_ret,
                 lr_hit: call.lr_hit,
+                serial: call.serial,
             };
         }
         let at = match (matched, self.acts.last()) {
