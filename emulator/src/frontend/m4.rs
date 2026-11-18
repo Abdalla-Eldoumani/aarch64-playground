@@ -2043,6 +2043,11 @@ mod tests {
         let multi = "define(`two', `mov w1, 1\n  mov w0, 4')dnl\ndefine(`one', `two')dnl\nmov w0, 3 // one\n";
         rejects(expand(multi), "unsupported m4 construct: one in a comment");
         rejects(expand("define(`nl', `dnl')dnl\nmov w0, 3 // nl\nmov w0, 5\n"), "unsupported m4 construct: nl in a comment");
+        // A `;` or `/*` inside m4 quotes starts no comment, so what follows
+        // the call is no comment either; after changecom(`;') a `;` is m4's
+        // own comment, as in GNU m4 1.4.19.
+        assert_eq!(exp("changecom(`;')dnl\nmov w0, 3 ; dnl\nmov w0, 5\n").text, "mov w0, 3 ; dnl\nmov w0, 5");
+        assert_eq!(exp("changecom(`/*', `*/')dnl\nmov w0, 3\n").text, "mov w0, 3");
     }
 
     #[test]
