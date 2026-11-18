@@ -80,7 +80,6 @@ function loadWebModules() {
   require(sucrasePath);
   const load = (rel) => require(path.join(webRoot, rel));
   return {
-    handoff: load("lib/playground/playground-handoff.ts"),
     source: load("lib/playground/playground-source.ts"),
     reference: load("lib/content/reference-data.ts"),
     pitfalls: load("lib/content/pitfall-data.ts"),
@@ -95,6 +94,10 @@ function loadWebModules() {
 const { parseArgs: parseArgsLine } = require(
   path.join(webRoot, "lib", "playground", "args.ts"),
 );
+
+// The app's example list, loaded the same way: each multi-file example's
+// helper files, in the order the app pastes them.
+const { EXAMPLES } = require(path.join(webRoot, "lib", "playground", "example-catalog.ts"));
 
 // Mirrors combineSources in web/lib/playground/file-map.ts: main first so
 // line numbers still point at the editor buffer, each helper behind its
@@ -127,7 +130,7 @@ const CONSOLE_FACE_DRIVES = {
   "two-sum": "4\n2\n1000\n7\n11\n15\n9\n",
 };
 
-function enumerateExamples(mods) {
+function enumerateExamples() {
   const root = path.join(webRoot, "public", "examples", "cpsc355");
   const fixtures = path.join(root, "fixtures");
   const readFixture = (stem, ext) => {
@@ -138,7 +141,7 @@ function enumerateExamples(mods) {
   for (const file of fs.readdirSync(root).sort()) {
     if (!file.endsWith(".s")) continue;
     const stem = file.slice(0, -2);
-    const helpers = (mods.handoff.EXAMPLE_FILES[stem] || []).map((name) => ({
+    const helpers = (EXAMPLES.find((ex) => ex.stem === stem)?.files ?? []).map((name) => ({
       name,
       body: fs.readFileSync(path.join(root, stem, name), "utf8"),
     }));
@@ -316,7 +319,7 @@ function enumerateHero(mods) {
 
 function enumerate(mods) {
   const groups = [
-    ["examples", enumerateExamples(mods)],
+    ["examples", enumerateExamples()],
     ["lessons", enumerateLessons()],
     ["exercises", enumerateExercises()],
     ["docs", enumerateDocs()],

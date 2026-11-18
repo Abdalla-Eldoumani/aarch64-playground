@@ -19,7 +19,7 @@ interface RunModeControlProps {
 }
 
 /**
- * Shown only for examples that work both ways (EXAMPLE_INTERACTIVE). The chosen
+ * Shown only for examples that work both ways (`interactive` in the catalog). The chosen
  * cell is cyan, not amber, since nothing is running yet; cells stay 36px so the
  * band keeps its height as programs load and unload.
  */

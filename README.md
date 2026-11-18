@@ -96,7 +96,7 @@ From the repository root:
 
 ```bash
 rustup target add wasm32-unknown-unknown
-cargo install --locked --version 0.15.0 wasm-pack
+cargo install --locked --version 0.15.1 wasm-pack
 wasm-pack build emulator --target web --out-dir ../web/lib/wasm
 wasm-pack build emulator --target nodejs --out-dir ../web/lib/wasm-node
 cd web
