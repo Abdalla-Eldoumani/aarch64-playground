@@ -41,6 +41,8 @@ const nextConfig = {
   // scripts/vercel-build.sh builds twice so the service worker written after
   // the first build ships with the second; both must share one build id.
   generateBuildId: async () => process.env.PLAYGROUND_BUILD_ID || null,
+  // No page uses next/image, so /_next/image refuses instead of spending image transformations.
+  images: { unoptimized: true },
   headers() {
     return [
       {
