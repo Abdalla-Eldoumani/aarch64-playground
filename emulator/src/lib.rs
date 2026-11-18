@@ -57,10 +57,11 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         return true;
     }
     // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
-    // same as `bl printf`. A `bl` to any stub a program calls needs the
-    // hosted pipeline.
+    // same as `bl printf`. A `bl` to one of the stubs detection reads needs
+    // the hosted pipeline; a stub added after them is never read, so it
+    // cannot move a program that already runs from one path to the other.
     let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    for stub in hosted::STUBS.iter().filter(|stub| stub.callable) {
+    for stub in hosted::STUBS[..hosted::ROWS_DETECTED_ANYWHERE].iter().filter(|stub| stub.callable) {
         let pat = format!("bl {}", stub.name);
         if normalized.contains(&pat) {
             return true;
@@ -1290,13 +1291,15 @@ mod hosted_mode_tests {
 
     #[test]
     fn every_callable_stub_is_detected_as_hosted() {
-        // Every name a program calls routes `bl <name>` to the hosted
-        // pipeline (a missed one would resolve to nothing on the bare-metal
-        // path), and the runtime's own two entries do not. Detection
-        // lowercases the source, so this also catches a name it never matches.
-        for stub in crate::hosted::STUBS {
+        // Every name a program calls through the rows detection reads routes
+        // `bl <name>` to the hosted pipeline (a missed one would resolve to
+        // nothing on the bare-metal path); the runtime's own two entries and
+        // the later rows do not. Detection lowercases the source, so this
+        // also catches a name it never matches.
+        for (row, stub) in crate::hosted::STUBS.iter().enumerate() {
             let src = format!("main:\n    bl {}\n    ret\n", stub.name);
-            assert_eq!(detect_hosted_mode(&src), stub.callable, "`bl {}`", stub.name);
+            let read = row < crate::hosted::ROWS_DETECTED_ANYWHERE;
+            assert_eq!(detect_hosted_mode(&src), stub.callable && read, "`bl {}`", stub.name);
         }
     }
 
