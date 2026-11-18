@@ -2,10 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
-// Every route builds to a static file and the site runs no server code: no
-// proxy in front of the pages, no route handlers, no server actions, and
-// nothing that renders a route per request or turns it into ISR. Vitest runs
-// with cwd = web/.
+// Fails on a proxy or middleware file, an app route handler, and the BANNED
+// source lines below. Vitest runs with cwd = web/.
 
 const WEB = process.cwd();
 const SKIP = /^(components\/test|lib\/test|lib\/wasm|lib\/wasm-node)$/;
@@ -28,8 +26,7 @@ const CODE = ["app", "components", "lib"]
 // The service worker's fetches run in the browser and render no route.
 const SERVICE_WORKER = "lib/playground/sw.js";
 
-// The files the searchParams prop reaches. A test file (page.test.tsx) is
-// neither, and sources() leaves tests out as well.
+// App page and layout files; page.test.tsx does not match.
 const PAGE_OR_LAYOUT = /^app\/(.+\/)?(page|layout)\.(ts|tsx|js|jsx|mjs)$/;
 
 const everywhere = () => true;
@@ -45,8 +42,8 @@ const BANNED: [RegExp, string, (file: string) => boolean][] = [
   [/\bcache\s*:\s*["']no-store["']/, "a no-store fetch renders the route per request: fetch once per build with cache: \"force-cache\"", notTheWorker],
   [/from\s+["']next\/(headers|server)["']/, "a request-time API renders the route per request: read the URL in the browser instead", everywhere],
   [
-    /\bsearchParams\b/,
-    "searchParams in a page or layout file (as the page prop, it renders the route per request): read the URL with useSearchParams() in a client component outside the page and layout files",
+    /\b(searchParams|useSearchParams)\b/,
+    "searchParams or useSearchParams in a page or layout file (the searchParams prop renders the route per request): read the URL with useSearchParams() in a client component outside the page and layout files",
     pageOrLayout,
   ],
 ];
@@ -68,15 +65,17 @@ describe("the site is static files only", () => {
     expect(files.filter((file) => /\.test\./.test(file))).toEqual([]);
   });
 
-  it("flags searchParams in a page or layout file only, and no-store everywhere but the service worker", () => {
+  it("flags searchParams and useSearchParams in a page or layout file only, and no-store everywhere but the service worker", () => {
     const flagged = (file: string, ...lines: string[]) => banned(file, lines.join("\n")).length > 0;
-    // A page that takes the prop: destructured and typed, through props, or destructured over lines.
+    // Flagged: the prop, destructured and typed, through props, or destructured over lines.
     expect(flagged("app/(site)/r3/page.tsx", "export default async function Page({ searchParams }: { searchParams: Promise<object> }) {")).toBe(true);
     expect(flagged("app/(site)/r4/page.tsx", 'export default async function Page(props: PageProps<"/r4">) {', "  const { q } = await props.searchParams;")).toBe(true);
     expect(flagged("app/(site)/r5/page.tsx", "export default async function Page({", "  searchParams,", '}: PageProps<"/r5">) {')).toBe(true);
-    // A "use client" page reading the URL is flagged too: the read belongs in a component outside the page file.
+    // Flagged: a "use client" page calling useSearchParams, whatever it names the result.
     expect(flagged("app/(site)/r6/page.tsx", '"use client";', "const searchParams = useSearchParams();")).toBe(true);
-    // A client component outside page and layout files, a route's own test, and the service worker pass.
+    expect(flagged("app/(site)/r6b/page.tsx", '"use client";', "const params = useSearchParams();")).toBe(true);
+    expect(flagged("app/(site)/r6c/page.tsx", '"use client";', 'return <p>{useSearchParams().get("q")}</p>;')).toBe(true);
+    // Not flagged: a client component outside page and layout files, a route's own test, the service worker.
     expect(flagged("app/(site)/learn/UrlChip.tsx", '"use client";', "const searchParams = useSearchParams();")).toBe(false);
     expect(flagged("app/(site)/learn/page.test.tsx", "render(<Page searchParams={{}} />);")).toBe(false);
     expect(flagged(SERVICE_WORKER, 'const res = await fetch(url, { cache: "no-store" });')).toBe(false);
