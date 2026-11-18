@@ -298,9 +298,18 @@ in the picture a student sees:
 - A `bl` or `blr` calls `CallStack::on_call`. It notes where the caller's
   frame record sits and whether `lr` went out unsaved, then pushes the callee
   if the target is the program's own code.
-- A `ret` or `br x30` calls `on_return`, which pops the call it returns from.
-  A return to no caller's return address is recorded and leaves the stack
-  alone.
+- A `ret` or `br x30`, or a `br` through another register that lands in the
+  program, calls `on_return`. A return gives the caller back its `sp` and
+  `x29` as at the `bl`, so `on_return` ends the call whose return address,
+  entry `sp` and entry `x29` the return leaves; a `ret` with no such call ends
+  the nearest one by return address alone. A return that ends more than the
+  innermost call, or reaches no return address, is recorded as a bad return;
+  a stray `ret` still ends its own call when that call saved `lr` and put `sp`
+  and `x29` back. A `br` through another register ends a call only on the
+  full match.
+- A library function that a `b` reached ends the function that made the `b`
+  when it returns (`dispatch_host_stub` in `cpu/system.rs`), on the full
+  match only.
 - A store of `x30` (`str` or `stp`) calls `on_lr_store`.
 
 Every other instruction passes straight through. `watch_frame_records` then
