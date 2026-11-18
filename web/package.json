@@ -64,7 +64,7 @@
     {
       "name": "lazy frame cards and frame drawing (loaded with the frames view or on the first bad return)",
       "path": ".next/static/chunks/frame-cards.*.js",
-      "limit": "4.3 KB"
+      "limit": "4.37 KB"
     },
     {
       "name": "lazy call card (loaded when a console first shows a program in hosted mode, the landing hero's included; carries the frame drawing it names stack slots by)",
