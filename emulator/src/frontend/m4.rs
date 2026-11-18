@@ -1572,6 +1572,16 @@ mod tests {
         assert_eq!(exp("define(`changequote', nop)\nchangequote([,])\n").text, "\nnop");
     }
 
+    #[test]
+    fn include_is_rejected_unless_the_program_defines_it() {
+        // GNU m4 reads the named file in; the playground joins a program's
+        // files itself, so an include line gets m4's refusal, not the
+        // assembler's unknown mnemonic.
+        rejects(expand("include(`p3-load.s')\nmov x0, 1\n"), "unsupported m4 construct: include");
+        // GNU m4 1.4.19 runs a program's own include macro too.
+        assert_eq!(exp("define(include, nop)\ninclude(x)\n").text, "\nnop");
+    }
+
     /// The text and line map, for comparing with GNU m4's output.
     fn text_and_map(src: &str) -> (String, Vec<usize>) {
         let r = exp(src);
