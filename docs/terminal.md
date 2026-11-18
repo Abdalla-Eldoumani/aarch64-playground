@@ -104,7 +104,7 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `gdb n`, `gdb s`, `gdb si` | Step one instruction. |
 | `gdb ni` | Step over: run the call on this line in one go and stop on the next line. On any other instruction it steps one instruction. |
 | `gdb finish` | Step out: run until this function returns to its caller. Out of `main`, it runs to the end of the program. |
-| `gdb c` | Continue to halt or breakpoint. Once the program has exited, it says there is nothing to continue. |
+| `gdb c` | Continue to halt or breakpoint. Once the program has exited, it says the program has finished. |
 | `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). Like gdb, it stays across a reset: the next assemble from the editor finds the label again in the program and sets it there. A terminal build (`gcc`, `./name`) runs past it. |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
