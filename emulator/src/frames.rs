@@ -365,7 +365,8 @@ impl CallStack {
     /// call's own latest call (lr never saved). With `quiet` the jump is one
     /// that may be a return (a `br` through another register, or a library
     /// function a tail call reached coming back, `pc` then the tail call):
-    /// it ends a call only on the full match and is never a bad return.
+    /// it ends a call only on the full match, and is a bad return only when
+    /// that match lies below the innermost call.
     /// `x0_width` is the width of x0's latest write, for the call tree.
     /// Returns the callee-saved registers left changed from what the ended
     /// call's caller had (bit N for xN); main's are its own to keep.
