@@ -4,7 +4,7 @@
 // laptop layout's entries. Also pins that the editor survives a change of
 // arrangement: it is the same node before and after.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { useEffect, type ReactNode } from "react";
 
 type Layout = Record<string, number>;
@@ -378,6 +378,43 @@ describe("FullLayout", () => {
       at.height = 60;
       act(() => reports.forEach((report) => report()));
       expect(box.scrollTop).toBe(50);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // The resize that changes the arrangement reflows the old one first, so by
+  // the time the box moves it may have shrunk away from its end; where its
+  // last scroll left it is what counts.
+  it("keeps a box at its end when the resize shrank it before the move", () => {
+    const reports: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(report: () => void) {
+          reports.push(report);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const withBox = (breakpoint: Breakpoint) => (
+        <FullLayout {...layout(breakpoint).props} rightTabs={<div aria-label="BOX">output</div>} />
+      );
+      const { rerender } = render(withBox("lg"));
+      const box = document.querySelector('[aria-label="BOX"]') as HTMLElement;
+      const at = { top: 100, height: 100 };
+      Object.defineProperties(box, {
+        clientHeight: { configurable: true, get: () => at.height },
+        scrollHeight: { configurable: true, get: () => 200 },
+        scrollTop: { configurable: true, get: () => at.top, set: (v: number) => (at.top = Math.min(v, 200 - at.height)) },
+      });
+      fireEvent.scroll(box);
+      at.height = 40;
+      rerender(withBox("md"));
+      act(() => reports.forEach((report) => report()));
+      expect(box.scrollTop).toBe(160);
     } finally {
       vi.unstubAllGlobals();
     }
