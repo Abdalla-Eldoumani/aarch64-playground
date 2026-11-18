@@ -170,7 +170,15 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             stripped.push((idx, text, true));
             continue;
         }
-        if let Some(kw) = detect_unsupported(trimmed) {
+        // A program's own macro of that name runs, as GNU m4 runs it.
+        let own_macro = |kw: &str| {
+            define_events
+                .iter()
+                .rev()
+                .find(|(_, name, _)| name == kw)
+                .is_some_and(|(_, _, body)| body.is_some())
+        };
+        if let Some(kw) = detect_unsupported(trimmed).filter(|kw| !own_macro(kw)) {
             return Err(unsupported(line_num, kw));
         }
         if let Some((name, body, (text, joins))) = parse_define(trimmed) {
