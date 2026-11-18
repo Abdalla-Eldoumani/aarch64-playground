@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import type {
   BlanksExercise,
   PredictionExercise,
@@ -13,8 +15,18 @@ vi.mock("@/lib/playground/solved-state", () => ({
 import { InteractiveExerciseView } from "@/components/practice/InteractiveExerciseView";
 import { markSolved } from "@/lib/playground/solved-state";
 
+// cleanup() knows nothing of a hydrated root: unmount it here, so a failed
+// case never leaves a second sheet in the page for the next one.
+let hydrated: { root: Root; container: HTMLElement } | null = null;
+
 afterEach(() => {
   cleanup();
+  if (hydrated) {
+    const { root, container } = hydrated;
+    act(() => root.unmount());
+    container.remove();
+    hydrated = null;
+  }
   vi.mocked(markSolved).mockClear();
   window.localStorage.clear();
 });
@@ -235,5 +247,52 @@ describe("InteractiveExerciseView saved answers", () => {
     expect(screen.getByText("0 of 2 correct")).toBeTruthy();
     expect(screen.queryByText(QUIZ.questions[0].explanation)).toBeNull();
     expect(screen.getAllByRole("button", { name: "check answer" })).toHaveLength(2);
+  });
+});
+
+// On a slow phone the server's fields take answers before the page's script
+// runs. Hydration keeps the text, but no change for it reaches the sheet, and
+// the sheet's first render after it writes the empty answer back.
+describe("InteractiveExerciseView answers typed before the page's script ran", () => {
+  /** The server's HTML with `typed` in its text fields, in question order, then hydrated. */
+  async function hydrateTyped(exercise: BlanksExercise | PredictionExercise, typed: string[]): Promise<void> {
+    const container = document.body.appendChild(document.createElement("div"));
+    container.innerHTML = renderToString(<InteractiveExerciseView exercise={exercise} />);
+    container.querySelectorAll("input").forEach((input, index) => {
+      input.value = typed[index] ?? "";
+    });
+    await act(async () => {
+      hydrated = { container, root: hydrateRoot(container, <InteractiveExerciseView exercise={exercise} />) };
+    });
+  }
+
+  const textboxes = () => screen.getAllByRole("textbox") as HTMLInputElement[];
+  const checks = () => screen.getAllByRole("button", { name: "check answer" }) as HTMLButtonElement[];
+
+  it("keeps typed blanks, saves them, and grades them", async () => {
+    await hydrateTyped(BLANKS, ["ldr", "str"]);
+    expect(textboxes().map((input) => input.value)).toEqual(["ldr", "str"]);
+    expect(checks().map((button) => button.disabled)).toEqual([false, false]);
+    expect(storedAnswer("load-store-blanks")).toMatchObject({ kind: "blanks", answers: ["ldr", "str"] });
+    fireEvent.click(checks()[0]);
+    expect(screen.getByText("1 of 2 correct")).toBeTruthy();
+  });
+
+  it("keeps a typed prediction and grades it", async () => {
+    await hydrateTyped(PREDICTION, ["2"]);
+    expect(textboxes()[0].value).toBe("2");
+    fireEvent.click(checks()[0]);
+    expect(screen.getByText("1 of 1 correct")).toBeTruthy();
+    expect(markSolved).toHaveBeenCalledWith("trace-the-adds");
+  });
+
+  it("keeps the saved answers beside a blank typed before the restore", async () => {
+    storeAnswer("load-store-blanks", { kind: "blanks", answers: ["ldr", ""], graded: [0] });
+    await hydrateTyped(BLANKS, ["", "str"]);
+    expect(textboxes().map((input) => input.value)).toEqual(["ldr", "str"]);
+    expect(screen.getByText("1 of 2 correct")).toBeTruthy();
+    expect(storedAnswer("load-store-blanks")).toMatchObject({ kind: "blanks", answers: ["ldr", "str"], graded: [0] });
+    fireEvent.click(checks()[0]);
+    expect(screen.getByText("2 of 2 correct")).toBeTruthy();
   });
 });

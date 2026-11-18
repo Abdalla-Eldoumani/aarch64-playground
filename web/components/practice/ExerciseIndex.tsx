@@ -37,6 +37,7 @@ import {
 } from "@/lib/content/practice-topics";
 import { useToast } from "@/components/ui/Toast";
 import { MAX_BOOKMARK_JSON_BYTES, checkUploadSize } from "@/lib/playground/upload-guard";
+import { useTypedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 
 // useSyncExternalStore needs getSnapshot to return a stable reference until the
 // value actually changes; getSolvedSlugs() reads localStorage and returns a
@@ -334,6 +335,8 @@ export function ExerciseIndex({
   loading?: boolean;
 }): JSX.Element {
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useTypedBeforeHydration(searchRef, query, setQuery);
   const [activeDifficulties, setActiveDifficulties] = useState<Set<string>>(new Set());
   const searchId = useId();
 
@@ -408,6 +411,7 @@ export function ExerciseIndex({
             search exercises
           </label>
           <input
+            ref={searchRef}
             id={searchId}
             type="search"
             value={query}

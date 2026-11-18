@@ -13,8 +13,8 @@ const { classify } = createRequire(import.meta.url)(SCRIPT) as {
   classify: (files: string[]) => Record<string, unknown>;
 };
 
-const NOTHING = { rust: false, static: false, web: false, browser: false };
-const EVERYTHING = { rust: true, static: true, web: true, browser: true };
+const NOTHING = { rust: false, static: false, web: false };
+const EVERYTHING = { rust: true, static: true, web: true };
 
 describe("the path filter", () => {
   it("runs the web jobs and not the Rust ones for a web change", () => {
@@ -62,7 +62,7 @@ describe("the path filter", () => {
     expect(classify(["web/lib/emulator/frame-cards.ts"]).rust).toBe(false);
   });
 
-  it("runs the pin check and not the cargo or browser jobs for a deploy script change", () => {
+  it("runs the pin check and not the cargo jobs for a deploy script change", () => {
     // web-static's check-pins step holds the script's toolchain pins to the workflows.
     expect(classify(["scripts/vercel-build.sh"])).toEqual({
       classes: ["web"],
@@ -81,6 +81,14 @@ describe("the path filter", () => {
     });
     expect(classify(["emulator/tests/c-corpus/78_switch_dense.O2plain.s"]).web).toBe(true);
     expect(classify(["emulator/tests/c-corpus/01_hello.c"]).web).toBe(false);
+    // check-workflow.test holds check.yml's cargo skip to a test in c_corpus.rs.
+    expect(classify(["emulator/tests/c_corpus.rs"])).toEqual({
+      classes: ["emulator"],
+      ...NOTHING,
+      rust: true,
+      web: true,
+    });
+    expect(classify(["emulator/tests/frames.rs"]).web).toBe(false);
   });
 
   it("runs the Rust jobs as well as the web ones for the example catalog", () => {
@@ -106,59 +114,49 @@ describe("the path filter", () => {
     });
   });
 
-  it("runs the browser test only when the build or the wasm can change", () => {
+  it("runs the build and its browser smoke for every file the smoke depends on", () => {
+    // The files that started the separate browser job: the wasm's sources,
+    // the manifests, the build and deploy config, the smoke and what it
+    // loads, and the stack frames view.
     for (const file of [
+      "emulator/src/frames.rs",
+      "emulator/src/frames/layout.rs",
+      "emulator/Cargo.toml",
       "emulator/Cargo.lock",
+      "package.json",
+      "vercel.json",
+      "web/package.json",
       "web/package-lock.json",
       "web/next.config.mjs",
-      "vercel.json",
+      "web/tsconfig.json",
+      "web/tailwind.config.ts",
+      "web/postcss.config.js",
+      "web/lib/playground/share.ts",
+      "web/public/examples/cpsc355/locals.s",
+      "scripts/write-precache-list.js",
       "scripts/browser-smoke.mjs",
       "scripts/smoke-noise.mjs",
-    ]) {
-      expect(classify([file]).browser, file).toBe(true);
-    }
-    for (const file of ["web/components/ui/Button.tsx", "emulator/tests/simd.rs", "docs/DEPLOY.md"]) {
-      expect(classify([file]).browser, file).toBe(false);
-    }
-  });
-
-  it("runs the browser test for a change to the stack frames view or the frame tracker", () => {
-    expect(classify(["web/components/panels/FramesView.tsx"])).toEqual({
-      classes: ["web"],
-      ...NOTHING,
-      static: true,
-      web: true,
-      browser: true,
-    });
-    for (const file of [
       "web/lib/emulator/frame-data.ts",
       "web/lib/emulator/stack-frames.ts",
+      "web/components/panels/FramesView.tsx",
       "web/components/panels/FrameRow.tsx",
       "web/components/playground/lazy-frames.tsx",
       "web/components/playground/StackTab.tsx",
-      "emulator/src/frames.rs",
-      "emulator/src/frames/layout.rs",
     ]) {
-      expect(classify([file]).browser, file).toBe(true);
+      expect(classify([file]).web, file).toBe(true);
     }
-    expect(classify(["emulator/src/frames/layout.rs"]).rust).toBe(true);
-    // The bytes view's slot labels, the lessons' layout, and the frames' tests.
+    // What that job missed: the smoke's other imports and the components
+    // that own the names it clicks.
     for (const file of [
-      "web/lib/emulator/frame-labels.ts",
-      "web/components/playground/EmbedLayout.tsx",
-      "web/components/test/panels/FramesView.test.tsx",
-      "emulator/tests/frames.rs",
+      "web/lib/playground/walkthrough.ts",
+      "web/lib/playground/upload-guard.ts",
+      "web/components/playground/Controls.tsx",
+      "web/components/panels/ConsolePanel.tsx",
     ]) {
-      expect(classify([file]).browser, file).toBe(false);
+      expect(classify([file]).web, file).toBe(true);
     }
-  });
-
-  it("runs the browser test when the share encoder or the example the smoke loads changes", () => {
-    for (const file of ["web/lib/playground/share.ts", "web/public/examples/cpsc355/locals.s"]) {
-      expect(classify([file]).browser, file).toBe(true);
-    }
-    for (const file of ["web/lib/playground/upload-guard.ts", "web/public/examples/cpsc355/hello.s"]) {
-      expect(classify([file]).browser, file).toBe(false);
+    for (const file of ["emulator/tests/simd.rs", "emulator/tests/frames.rs", "docs/DEPLOY.md"]) {
+      expect(classify([file]).web, file).toBe(false);
     }
   });
 
@@ -202,11 +200,11 @@ describe("the path filter as the workflow runs it", () => {
 
   it("reads NUL-separated paths from stdin and writes the step outputs", () => {
     expect(run([], "docs/DEPLOY.md\0emulator/tests/simd.rs\0")).toBe(
-      "classes=docs,emulator\nrust=true\nstatic=false\nweb=false\nbrowser=false\n",
+      "classes=docs,emulator\nrust=true\nstatic=false\nweb=false\n",
     );
   });
 
   it("turns every job on with --all", () => {
-    expect(run(["--all"], "")).toBe("classes=all\nrust=true\nstatic=true\nweb=true\nbrowser=true\n");
+    expect(run(["--all"], "")).toBe("classes=all\nrust=true\nstatic=true\nweb=true\n");
   });
 });

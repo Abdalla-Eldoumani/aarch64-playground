@@ -292,13 +292,22 @@ impl Cpu {
         self.term.virtual_ns = self.term.virtual_ns.saturating_add(ns);
         // Refunds stop at the lifetime cap so a runner that skips the
         // real pauses (a batch fixture run) cannot mint budget forever.
+        // A real-time host gets the four-hour caps, and each refund is
+        // charged only what it credits: a sleep into a full budget is free.
+        let (step_cap, byte_cap, spent_steps, spent_bytes) = if self.real_time {
+            (REAL_TIME_REFUND_STEPS, REAL_TIME_REFUND_OUTPUT_BYTES, self.steps_total, self.output_total)
+        } else {
+            (MAX_REFUND_STEPS, MAX_REFUND_OUTPUT_BYTES, u64::MAX, u64::MAX)
+        };
         let step_refund = (ns / SLEEP_STEP_REFUND_NS_PER_STEP)
-            .min(MAX_REFUND_STEPS.saturating_sub(self.refund_steps_total));
+            .min(step_cap.saturating_sub(self.refund_steps_total))
+            .min(spent_steps);
         self.refund_steps_total += step_refund;
         self.steps_total = self.steps_total.saturating_sub(step_refund);
         if step_refund > 0 {
-            let byte_refund = ((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize)
-                .min(MAX_REFUND_OUTPUT_BYTES.saturating_sub(self.refund_output_total));
+            let byte_refund = (ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE)
+                .min(byte_cap.saturating_sub(self.refund_output_total))
+                .min(spent_bytes);
             self.refund_output_total += byte_refund;
             self.output_total = self.output_total.saturating_sub(byte_refund);
         }
@@ -345,7 +354,8 @@ impl Cpu {
         if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
             self.keep_call(stub.card, outcome.is_err());
         }
-        match outcome? {
+        let outcome = outcome?;
+        match outcome {
             HostOutcome::Continue => {
                 self.clobber_after_call(pc, stub.returns);
                 // Return to caller: pc = lr.
@@ -377,6 +387,13 @@ impl Cpu {
                     self.frames.on_runtime_call(pc, target, &self.regs.snapshot(), log);
                 }
             }
+        }
+        // A library function a tail call (`b printf`) reached returns for
+        // the function that made it, named by the program's last instruction.
+        // shortcut: after qsort or bsearch ran the comparator that is the
+        // comparator's ret, not the b; take the call site once stub entries record it.
+        if matches!(outcome, HostOutcome::Continue | HostOutcome::Sleep(_)) {
+            self.track_return(self.last_program_pc, self.regs.read_pc(), true);
         }
         Ok(())
     }

@@ -324,9 +324,10 @@ describe("WorkerClient protocol round-trips", () => {
     { name: "pause", invoke: (c) => c.pause(), wire: { kind: "pause" }, voidReply: true },
     { name: "reset", invoke: (c) => c.reset(), wire: { kind: "reset" } },
     { name: "closeStdin", invoke: (c) => c.closeStdin(), wire: { kind: "closeStdin" } },
-    // These two relay the worker's ok value (null in practice) rather than
+    // These three relay the worker's ok value (null in practice) rather than
     // turning it into undefined.
     { name: "setSnapshotsPaused", invoke: (c) => c.setSnapshotsPaused(true), wire: { kind: "setSnapshotsPaused", paused: true } },
+    { name: "setRealTime", invoke: (c) => c.setRealTime(true), wire: { kind: "setRealTime", on: true } },
     { name: "clearAllBreakpoints", invoke: (c) => c.clearAllBreakpoints(), wire: { kind: "clearAllBreakpoints" } },
     { name: "isRangeMapped", invoke: (c) => c.isRangeMapped(0x600000, 16), wire: { kind: "isRangeMapped", addr: 0x600000, len: 16 } },
     { name: "lint", invoke: (c) => c.lint("main:\n  ret"), wire: { kind: "lint", source: "main:\n  ret" } },

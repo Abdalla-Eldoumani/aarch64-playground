@@ -35,6 +35,26 @@ describe("Controls", () => {
     expect(screen.getByText("2 steps")).toBeTruthy();
   });
 
+  it("keeps the names the browser smoke finds its buttons and step count by", () => {
+    // scripts/browser-smoke.mjs reads these in a production build; vitest is
+    // where a rename shows first.
+    const props = {
+      ...allHandlers(),
+      canStepBack: false,
+      isRunning: false,
+      isHalted: false,
+      programLoaded: true,
+      error: null,
+    };
+    const { rerender } = render(<Controls {...props} stepCount={1} />);
+    expect(document.querySelectorAll('[data-walkthrough="assemble"]')).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "run" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "step" })).toBeTruthy();
+    expect(screen.getByLabelText("1 instruction executed")).toBeTruthy();
+    rerender(<Controls {...props} stepCount={2} />);
+    expect(screen.getByLabelText("2 instructions executed")).toBeTruthy();
+  });
+
   it("keeps the error out of the button row", () => {
     const h = allHandlers();
     render(

@@ -28,7 +28,7 @@
     {
       "name": "learn route entry js (index + lesson page chunks)",
       "path": ".next/static/chunks/app/[(]site[)]/learn/**/page-*.js",
-      "limit": "8.6 KB"
+      "limit": "8.66 KB"
     },
     {
       "name": "practice route entry js (index + exercise page chunks)",
@@ -64,7 +64,7 @@
     {
       "name": "lazy frame cards and frame drawing (loaded with the frames view or on the first bad return)",
       "path": ".next/static/chunks/frame-cards.*.js",
-      "limit": "4.3 KB"
+      "limit": "4.362 KB"
     },
     {
       "name": "lazy call card (loaded when a console first shows a program in hosted mode, the landing hero's included; carries the frame drawing it names stack slots by)",

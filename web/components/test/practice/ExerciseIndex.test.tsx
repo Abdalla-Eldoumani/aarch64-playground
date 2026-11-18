@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 
 // Control the solved set the ROWS read: only "solved-one" is solved, and
 // subscribe is a no-op. The bundle helpers stay real, so the export payload
@@ -114,6 +116,27 @@ describe("ExerciseIndex", () => {
     fireEvent.change(input, { target: { value: "stack" } });
     expect(screen.getByText("Beta Exercise")).toBeTruthy();
     expect(screen.queryByText("Alpha Exercise")).toBeNull();
+  });
+
+  // On a slow phone the search box takes text before the page's script runs;
+  // hydration keeps the text but no change for it reaches the list, and the
+  // solved set's first render after hydration writes the empty query back.
+  it("filters by a search typed before the page's script ran", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    try {
+      container.innerHTML = renderToString(<ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
+      (within(container).getByLabelText("search exercises") as HTMLInputElement).value = "stack";
+      await act(async () => {
+        root = hydrateRoot(container, <ExerciseIndex exercises={exercises} blurbs={blurbsOf(exercises)} />);
+      });
+      expect((screen.getByLabelText("search exercises") as HTMLInputElement).value).toBe("stack");
+      expect(screen.getByText("Beta Exercise")).toBeTruthy();
+      expect(screen.queryByText("Alpha Exercise")).toBeNull();
+    } finally {
+      act(() => root?.unmount());
+      container.remove();
+    }
   });
 
   it("splits coding exercises and theory sets into two columns, grouped by topic in course order", () => {

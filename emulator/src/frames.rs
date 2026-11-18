@@ -1,6 +1,7 @@
 //! The shadow call stack behind the stack frames view: one record per call
 //! the program is inside, pushed when a `bl` or `blr` enters the program's
-//! own code and popped by the `ret` that comes back. Only calls, returns and
+//! own code and popped by the return that ends it: a `ret`, a `br` that
+//! lands as one, or a library function a tail call reached. Only calls, returns and
 //! a store that lands on a caller's frame record touch it, so a run pays
 //! next to nothing for it on any other step; the frame chain and the view
 //! are worked out once per snapshot (`frame_view`).
@@ -93,11 +94,14 @@ pub struct Activation {
     /// The latest writes that changed its saved fp and its saved lr.
     pub fp_hit: Hit,
     pub lr_hit: Hit,
+    /// Which call this is, numbered as pushed (main 0): a call made again
+    /// from one bl site at one depth matches the last in everything else.
+    serial: u64,
 }
 
-/// A `ret` that went to no caller's return address, and the call it
-/// returned from as that call stood at the `ret`: a later return can pop
-/// the call before a snapshot shows the event.
+/// A return that went to no caller's return address or ended more than its
+/// own call, and the call it returned from as that call stood at the
+/// return: a later return can pop the call before a snapshot shows the event.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct BadReturn {
     /// 0 when no return has gone astray.
@@ -111,6 +115,7 @@ pub struct BadReturn {
     pub flags: u8,
     pub last_ret: u64,
     pub lr_hit: Hit,
+    serial: u64,
 }
 
 /// The calls the program is inside, main first.
@@ -120,6 +125,8 @@ pub struct CallStack {
     /// Calls past `MAX_ACTIVATIONS` not yet returned from.
     uncounted: u64,
     bad_return: BadReturn,
+    /// Calls pushed so far, which numbers each one.
+    pushed: u64,
     /// The calls made so far, returned ones included.
     tree: CallTree,
 }
@@ -132,6 +139,7 @@ pub struct CallStack {
 pub struct FrameUndo {
     len: usize,
     uncounted: u64,
+    pushed: u64,
     /// The bad return a step replaced; copied only then, since it is wide
     /// and almost no step touches it.
     bad_return: Option<BadReturn>,
@@ -214,6 +222,7 @@ impl CallStack {
         self.acts.clear();
         self.uncounted = 0;
         self.bad_return = BadReturn::default();
+        self.pushed = 0;
         self.tree.clear();
     }
 
@@ -236,6 +245,7 @@ impl CallStack {
     pub(crate) fn record_undo(&self, log: &mut FrameUndo) {
         log.len = self.acts.len();
         log.uncounted = self.uncounted;
+        log.pushed = self.pushed;
         log.bad_return = None;
         log.removed.clear();
         log.marked.clear();
@@ -259,6 +269,7 @@ impl CallStack {
             }
         }
         self.uncounted = log.uncounted;
+        self.pushed = log.pushed;
         if let Some(bad) = log.bad_return {
             self.bad_return = bad;
         }
@@ -350,16 +361,28 @@ impl CallStack {
         if let Some(caller) = self.acts.last() {
             a.watch = if caller.record != 0 { self.acts.len() } else { caller.watch };
         }
+        self.pushed += 1;
+        a.serial = self.pushed;
         self.acts.push(a);
     }
 
     /// A `ret` (or `br x30`) at `pc`, step `step`, just sent the program to
-    /// `target`. Pops the call it returns from (unwinding any it skipped);
-    /// a return to no caller is recorded and leaves the stack alone.
+    /// `target`. A return leaves sp, x29 and pc as the caller had them at
+    /// its `bl`, so it ends the call whose entry sp, entry fp and return
+    /// address those match; failing that (a callee that left sp or fp off),
+    /// the nearest by return address alone. A ret that ends more than its
+    /// own call, or reaches no return address, is a bad return; the latter
+    /// still ends its own call when that call stored lr and the ret left sp
+    /// and fp as its caller had them, unless it came back right after the
+    /// call's own latest call (lr never saved). With `quiet` the jump is one
+    /// that may be a return (a `br` through another register, or a library
+    /// function a tail call reached coming back, `pc` then the tail call):
+    /// it ends a call only on the full match, and is a bad return only when
+    /// that match lies below the innermost call.
     /// `x0_width` is the width of x0's latest write, for the call tree.
-    /// Returns the callee-saved registers the returning call left changed
-    /// (bit N for xN), checked only when the return ends one call; main's
-    /// are its own to keep.
+    /// Returns the callee-saved registers left changed from what the ended
+    /// call's caller had (bit N for xN); main's are its own to keep.
+    #[allow(clippy::too_many_arguments)] // the return's facts, then the step's undo log
     pub(crate) fn on_return(
         &mut self,
         pc: u64,
@@ -367,50 +390,79 @@ impl CallStack {
         step: u64,
         regs: &[u64; 32],
         x0_width: u8,
+        quiet: bool,
         mut log: Option<&mut FrameUndo>,
     ) -> u32 {
         if self.uncounted > 0 {
-            self.uncounted -= 1;
-            self.tree.leave(regs[0], x0_width, log.map(|log| &mut log.tree));
+            // Past the cap a ret ends the latest uncounted call by count.
+            if !quiet {
+                self.uncounted -= 1;
+                self.tree.leave(regs[0], x0_width, log.map(|log| &mut log.tree));
+            }
             return 0;
         }
-        // From the top down, so a plain return matches the top first.
+        let (sp, fp) = (regs[31], regs[29]);
+        let left_as_called = |a: &Activation| (a.sp_entry, a.fp_entry) == (sp, fp);
+        // From the top down: the first by return address, unless one below
+        // matches sp and fp too (every call from one bl site shares the address).
         let floor = self.acts.len().saturating_sub(UNWIND_SEARCH);
-        if let Some(at) = self.acts[floor..].iter().rposition(|a| a.ret_addr == target) {
-            let at = floor + at;
-            let changed = match self.acts[at..] {
-                [ended] if ended.call_pc != 0 => {
-                    let now = callee_saved(regs);
-                    (0..10)
-                        .filter(|&j| now[j] != ended.saved[j])
-                        .fold(0, |mask, j| mask | 1 << (19 + j))
+        let (mut exact, mut by_address) = (None, None);
+        for (i, a) in self.acts[floor..].iter().enumerate().rev() {
+            if a.ret_addr == target {
+                if left_as_called(a) {
+                    exact = Some(floor + i);
+                    break;
                 }
-                _ => 0,
-            };
-            for a in self.acts.drain(at..).rev() {
-                if let Some(log) = log.as_deref_mut() {
-                    log.removed.push(a);
-                }
-                self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
+                by_address.get_or_insert(floor + i);
             }
-            return changed;
         }
-        if let Some(log) = log {
-            log.bad_return = Some(self.bad_return);
+        let matched = if quiet { exact } else { exact.or(by_address) };
+        if quiet && matched.is_none() {
+            return 0;
         }
-        let call = self.acts.last().copied().unwrap_or_default();
-        self.bad_return = BadReturn {
-            step,
-            pc,
-            target,
-            index: self.acts.len().saturating_sub(1) as u64,
-            entry: call.entry,
-            ret_addr: call.ret_addr,
-            flags: call.flags,
-            last_ret: call.last_ret,
-            lr_hit: call.lr_hit,
+        let top = self.acts.len().wrapping_sub(1);
+        // A call already reported astray is over when its caller's return
+        // ends it: that is no second bad return.
+        let bad = self.bad_return;
+        let reported = self.acts.last().is_some_and(|t| bad.step != 0 && bad.serial == t.serial);
+        if matched != Some(top) && !(matched.is_some() && reported) {
+            if let Some(log) = log.as_deref_mut() {
+                log.bad_return = Some(self.bad_return);
+            }
+            let call = self.acts.last().copied().unwrap_or_default();
+            self.bad_return = BadReturn {
+                step,
+                pc,
+                target,
+                index: self.acts.len().saturating_sub(1) as u64,
+                entry: call.entry,
+                ret_addr: call.ret_addr,
+                flags: call.flags,
+                last_ret: call.last_ret,
+                lr_hit: call.lr_hit,
+                serial: call.serial,
+            };
+        }
+        let at = match (matched, self.acts.last()) {
+            (Some(at), _) => at,
+            // A stray ret whose call stored lr and is gone from sp and fp.
+            (None, Some(t)) if top > 0 && t.flags & LR_STORED != 0 && left_as_called(t) && target != t.last_ret => top,
+            _ => return 0,
         };
-        0
+        let ended = self.acts[at];
+        let changed = if ended.call_pc == 0 {
+            0
+        } else {
+            let now = callee_saved(regs);
+            (0..10).filter(|&j| now[j] != ended.saved[j]).fold(0, |mask, j| mask | 1 << (19 + j))
+        };
+        for a in self.acts.drain(at..).rev() {
+            if let Some(log) = log.as_deref_mut() {
+                log.removed.push(a);
+            }
+            self.tree.leave(regs[0], x0_width, log.as_deref_mut().map(|log| &mut log.tree));
+        }
+        changed
     }
 
     /// The step's writes (`writes`, from `Memory::step_writes`) against

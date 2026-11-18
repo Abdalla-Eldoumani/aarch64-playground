@@ -115,7 +115,7 @@ pub fn step_ceiling_message() -> String {
 /// counter survives the UI draining the buffers, so it measures what the
 /// program produced, not what happens to be queued. 4 MiB dwarfs any real
 /// course program's output.
-pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Map a Write fault into the calm page-cap message. Stores are the only
 /// writer that faults (memory.rs's cap check is the sole producer), so a
@@ -211,7 +211,21 @@ pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 /// back 20 MB, raising the 4 MiB output wall to 23 MiB. Capping it here
 /// states the real ceiling: a program may print MAX_OUTPUT_BYTES, plus
 /// this much more if it paced itself with real sleeps to earn it.
-pub const MAX_REFUND_OUTPUT_BYTES: usize = MAX_OUTPUT_BYTES;
+pub const MAX_REFUND_OUTPUT_BYTES: u64 = MAX_OUTPUT_BYTES;
+
+/// The lifetime refund caps while the host waits out every sleep in real
+/// time (`Cpu::real_time`, the terminal pane): what four hours of sleeping
+/// earns at the refund rates. They bound a session's total work, not its
+/// length: a refund is charged only what it credits, so a program that
+/// spends less than the refill runs longer.
+pub const REAL_TIME_REFUND_STEPS: u64 =
+    4 * 3600 * 1_000_000_000 / SLEEP_STEP_REFUND_NS_PER_STEP;
+pub const REAL_TIME_REFUND_OUTPUT_BYTES: u64 =
+    4 * 3600 * 1_000_000_000 / SLEEP_OUTPUT_REFUND_NS_PER_BYTE;
+
+/// Calm abort once a real-time session has spent one of those caps.
+pub const SESSION_CAP_MESSAGE: &str =
+    "stopped: the playground ends a program after about four hours";
 
 /// Bytes of guest memory one host stub may move per step it is charged
 /// for. `memset`, `memcpy` and `read` do a whole buffer's work inside a
@@ -335,7 +349,7 @@ pub struct RunResult {
     pub error: Option<String>,
     /// The run's `Until` goal was met.
     pub reached: bool,
-    /// A `ret` went to no caller during a run with a goal.
+    /// A bad return (`CallStack::bad_return`) happened during a run with a goal.
     pub bad_return: bool,
 }
 
@@ -413,6 +427,11 @@ pub struct Cpu {
     /// Transient runner state: not part of any snapshot, cleared on
     /// load/reset.
     pub snapshots_paused: bool,
+    /// The host waits out every sleep in real time (the web's live
+    /// terminal session), so the refund caps are the four-hour ones and a
+    /// refund is charged only what it credits. Batch runners leave it
+    /// off. Runner state like `snapshots_paused`: cleared on load/reset.
+    pub real_time: bool,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -422,7 +441,7 @@ pub struct Cpu {
     refund_steps_total: u64,
     /// Output bytes refunded by sleeping so far, capped at
     /// MAX_REFUND_OUTPUT_BYTES per loaded program.
-    refund_output_total: usize,
+    refund_output_total: u64,
     /// Table of hosted libc stubs reachable by `bl` into the synthetic
     /// 0xFFFF_0000 range: every row of `hosted::STUBS` at its slot. The
     /// linker reads `host.lookup(name)` to resolve external calls.
@@ -452,7 +471,7 @@ pub struct Cpu {
     max_total_steps: u64,
     /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
     /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
-    output_total: usize,
+    output_total: u64,
     /// Bytes ever appended to `stdout` / `stderr`, echo included. DISPLAY
     /// state, not budget: a snapshot carries them and step-back restores
     /// them, so the web can drop exactly the characters a rolled-back step
@@ -525,6 +544,7 @@ impl Cpu {
             strtok_save: 0,
             callbacks: Default::default(),
             snapshots_paused: false,
+            real_time: false,
             pending_sleep_ns: None,
             refund_steps_total: 0,
             refund_output_total: 0,
@@ -720,7 +740,12 @@ impl Cpu {
         self.echo_consumed_stdin(queued);
         self.charge_bulk_work(moved);
         if self.charge_output(out_before, err_before) {
-            return Some(self.halt(output_ceiling_message()));
+            let message = if self.refunds_spent() {
+                SESSION_CAP_MESSAGE.to_string()
+            } else {
+                output_ceiling_message()
+            };
+            return Some(self.halt(message));
         }
         let e = match dispatched {
             Ok(()) => return None,
@@ -771,13 +796,14 @@ impl Cpu {
                 let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
                 self.frames.on_call(pc, target, into_program, &regs, &self.mem, log);
             }
-            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
-                let regs = self.regs.snapshot();
-                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
-                let x0_width = self.regs.write_width(0);
-                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, x0_width, log);
-                if changed != 0 {
-                    self.regs.mark_callee_saved(changed, pc);
+            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, .. } => {
+                let target = self.regs.read_pc();
+                // A br through another register is a return only when it
+                // lands as one; a br out of the program is a library
+                // trampoline's jump into its stub.
+                let quiet = matches!(*instr, I::BrReg { op: BrRegOp::Br, rn } if rn != 30);
+                if !quiet || self.in_program(target) {
+                    self.track_return(pc, target, quiet);
                 }
             }
             I::LdSt { op: LdStOp::Str, rt: 30, size: MemSize::X, .. }
@@ -787,6 +813,19 @@ impl Cpu {
                 self.frames.on_lr_store(log);
             }
             _ => {}
+        }
+    }
+
+    /// A return the instruction or library call at `pc` just made to
+    /// `target` (`quiet`: one that may be a return, `CallStack::on_return`),
+    /// and the callee-saved registers the call it ended left changed.
+    fn track_return(&mut self, pc: u64, target: u64, quiet: bool) {
+        let regs = self.regs.snapshot();
+        let x0_width = self.regs.write_width(0);
+        let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+        let changed = self.frames.on_return(pc, target, self.steps_taken, &regs, x0_width, quiet, log);
+        if changed != 0 {
+            self.regs.mark_callee_saved(changed, pc);
         }
     }
 
