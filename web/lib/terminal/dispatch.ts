@@ -436,7 +436,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   }
   if (sub === "c") {
     // gdb's "The program is not being run.": the run would do nothing silently.
-    if (ctx.exitCode() != null) return { status: "err", lines: ["gdb: nothing to continue: the program has finished"] };
+    if (ctx.exitCode() != null) return { status: "err", lines: ["gdb: the program has finished"] };
     await ctx.runUntilBreak();
     return { status: "ok", lines: [] };
   }
