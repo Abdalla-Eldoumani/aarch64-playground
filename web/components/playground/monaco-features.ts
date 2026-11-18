@@ -8,6 +8,9 @@
  * One feature is left out: inlineCompletions, the grey suggested text an
  * inline completion provider draws after the caret. This editor registers no
  * such provider, and it was by far the largest feature in the monaco chunk.
+ * It was also the only feature that brought the suggestion list's controller
+ * (the suggest feature holds just the list's model), so that one module loads
+ * in its place.
  */
 export const MONACO_FEATURES: ReadonlyArray<() => Promise<unknown>> = [
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/anchorSelect/register"),
@@ -39,6 +42,7 @@ export const MONACO_FEATURES: ReadonlyArray<() => Promise<unknown>> = [
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/hover/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/indentation/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inlayHints/register"),
+  () => import(/* webpackChunkName: "monaco" */ "monaco-editor/editor/contrib/suggest/browser/suggestController"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inlineProgress/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/inPlaceReplace/register"),
   () => import(/* webpackChunkName: "monaco" */ "monaco-editor/features/insertFinalNewLine/register"),
