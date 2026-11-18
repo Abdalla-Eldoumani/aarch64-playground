@@ -1575,10 +1575,10 @@ mod tests {
 
     #[test]
     fn include_is_rejected_unless_the_program_defines_it() {
-        // GNU m4 reads the named file in; the playground joins a program's
-        // files itself, so an include line gets m4's refusal, not the
-        // assembler's unknown mnemonic.
-        rejects(expand("include(`p3-load.s')\nmov x0, 1\n"), "unsupported m4 construct: include");
+        // GNU m4 reads the named file in at that line; the playground's m4
+        // reads no other file, so an include line gets m4's refusal, not
+        // the assembler's unknown mnemonic.
+        rejects(expand("include(`helpers.s')\nmov x0, 1\n"), "unsupported m4 construct: include");
         // GNU m4 1.4.19 runs a program's own include macro too.
         assert_eq!(exp("define(include, nop)\ninclude(x)\n").text, "\nnop");
     }
@@ -1624,8 +1624,8 @@ mod tests {
         // write nothing, defines among them still bind, and the `divert` or
         // `divert(0)` that ends them writes an empty line, or none with `dnl`.
         assert_eq!(
-            text_and_map("divert(-1)\ndefine(fp, x29)\nstray text\ndivert\nmov x0, fp\n"),
-            gnu("\nmov x0, x29", &[4, 5])
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert\nmov x0, fp\n"),
+            gnu("\nmov x0, x29", &[3, 4])
         );
         assert_eq!(
             text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)dnl\nmov x0, fp\n"),
@@ -1639,7 +1639,7 @@ mod tests {
             text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)\nmov x0, fp\n"),
             gnu("\nmov x0, x29", &[3, 4])
         );
-        assert_eq!(text_and_map("divert(-2)\nstray\ndivert\nmov x0, 1\n"), gnu("\nmov x0, 1", &[3, 4]));
+        assert_eq!(text_and_map("divert(-2)\ndefine(a, x1)\ndivert\nmov x0, a\n"), gnu("\nmov x0, x1", &[3, 4]));
         // GNU m4 writes a numbered diversion at the end of its output; the
         // playground refuses one.
         rejects(expand("divert(1)\nmov x0, 1\ndivert\nmov x1, 2\n"), "unsupported m4 construct: divert(1)");
@@ -1647,6 +1647,96 @@ mod tests {
         // is not `divert`.
         assert_eq!(exp("define(divert, nop)\ndivert\n").text, "\nnop");
         assert_eq!(exp("divertdnl\n").text, "divertdnl");
+    }
+
+    #[test]
+    fn divert_reads_its_number_like_gnu_m4() {
+        // GNU m4 1.4.19 reads the number as strtol does: blanks, a sign and
+        // digits with nothing after them. `-0` is diversion 0, and anything
+        // else, a blank before the `)` included, leaves the diversion as is.
+        let kept = gnu("\nmov x0, 1\n\nmov x1, 2", &[1, 2, 3, 4]);
+        assert_eq!(text_and_map("divert(-0)\nmov x0, 1\ndivert\nmov x1, 2\n"), kept);
+        assert_eq!(text_and_map("divert(-1 )\nmov x0, 1\ndivert\nmov x1, 2\n"), kept);
+        for arg in ["-00", "+0", "-", "--1", "1x"] {
+            let src = format!("divert({arg})\nmov x0, 1\n");
+            assert_eq!(text_and_map(&src), gnu("\nmov x0, 1", &[1, 2]), "{arg}");
+        }
+        for arg in ["` -1'", "-0001", "-999999999"] {
+            let src = format!("divert({arg})\ndefine(a, x1)\ndivert\nmov x0, a\n");
+            assert_eq!(text_and_map(&src), gnu("\nmov x0, x1", &[3, 4]), "{arg}");
+        }
+        assert_eq!(
+            text_and_map("divert(-1)\ndivert(-1 )\ndefine(a, x1)\ndivert\nmov x0, a\n"),
+            gnu("\nmov x0, x1", &[4, 5])
+        );
+        // GNU m4 expands a name there, reads a comment there on past the
+        // `)`, and wraps a number past nine digits into another diversion;
+        // the playground refuses each.
+        rejects(expand("define(off, -1)\ndivert(off)\n"), "unsupported m4 construct: divert(off)");
+        rejects(expand("divert(x)\nmov x0, 1\n"), "unsupported m4 construct: divert(x)");
+        rejects(expand("divert(#)\nmov x0, 1\nmov x1, 2)\n"), "unsupported m4 construct: divert(#)");
+        rejects(expand("divert(-4294967295)\n"), "unsupported m4 construct: divert(-4294967295)");
+        rejects(expand("divert(4294967296)\n"), "unsupported m4 construct: divert(4294967296)");
+        rejects(expand("divert(+1)\n"), "unsupported m4 construct: divert(+1)");
+    }
+
+    #[test]
+    fn text_under_divert_minus_one_is_refused() {
+        // GNU m4 reads every line it throws away: a backtick there opens a
+        // quote, and a `divert` mid-line, even in a `//` or `/* */` comment,
+        // ends the discard. The playground reads only define, undefine and
+        // dnl lines there, and comments its m4 knows, and refuses the rest.
+        for src in [
+            "divert(-1)\ndefine(fp, x29)\nstray text\ndivert\nmov x0, fp\n",
+            "divert(-1)\nThis file`s helpers\ndivert\nmov x0, 1\n",
+            "divert(-1)\nuse divert to switch\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\n// use divert to switch\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\n// don`t\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(a, x19) // the counter\ndivert\nmov x0, a\n",
+            "divert(-1)\n/* switch back with divert */\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\n/* aliases\n   for the frame */\ndefine(a, x19)\ndivert\nmov x0, a\n",
+        ] {
+            rejects(expand(src), "unsupported m4 construct: text or a comment under divert(-1)");
+        }
+        // What it does read there comes out as GNU m4 1.4.19 writes it.
+        assert_eq!(
+            text_and_map("divert(-1)\n\n  \ndefine(a, x19)\nundefine(`a')\ndefine(`b', `x20')\ndivert\nmov x0, b\n"),
+            gnu("\nmov x0, x20", &[7, 8])
+        );
+        assert_eq!(text_and_map("divert(-1)\n# aliases\ndefine(a, x19)\ndivert\nmov x0, a\n"), gnu("\nmov x0, x19", &[4, 5]));
+        assert_eq!(
+            text_and_map("divert(-1)\ndnl aliases; a semicolon\ndefine(a, x19)dnl ; x\ndivert\nmov x0, a\n"),
+            gnu("\nmov x0, x19", &[4, 5])
+        );
+        assert_eq!(
+            text_and_map("changecom(`//')\ndivert(-1)\n// don`t divert\ndefine(a, x19)\ndivert\nmov x0, a\n"),
+            gnu("\n\nmov x0, x19", &[1, 5, 6])
+        );
+    }
+
+    #[test]
+    fn a_builtin_the_program_defines_or_undefines_is_refused_where_it_would_run() {
+        // GNU m4 1.4.19 runs a program's own `dnl` macro, and writes divert
+        // and changecom as text once a quoted undefine removed them. The
+        // playground refuses each where it would have run the builtin, an
+        // unquoted undefine (after which GNU m4 keeps divert) included.
+        let dnl = "unsupported m4 construct: dnl once the program defines or undefines it";
+        rejects(expand("define(`dnl', `mov x0, 7')\ndnl\nmov x1, 2\n"), dnl);
+        rejects(expand("define(`dnl', `mov x0, 7')\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
+        rejects(expand("define(`dnl', `divert')\ndivert(-1)\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
+        rejects(expand("undefine(`dnl')\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
+        let divert = "unsupported m4 construct: divert once the program defines or undefines it";
+        rejects(expand("undefine(`divert')\ndivert(-1)\nmov x0, 1\n"), divert);
+        rejects(expand("undefine(divert)\ndivert(-1)\nmov x0, 1\ndivert\nmov x1, 2\n"), divert);
+        rejects(expand("define(`divert', `nop')\nundefine(`divert')\ndivert(-1)\nmov x0, 1\n"), divert);
+        rejects(
+            expand("undefine(`changecom')\nchangecom\ndefine(n, 4)\nmov x0, #n\n"),
+            "unsupported m4 construct: changecom once the program defines or undefines it",
+        );
+        // Without such a use the program builds as it does today, and a
+        // quoted define of divert runs as GNU m4 runs it.
+        assert_eq!(exp("undefine(`divert')\ndefine(dnl, x19)\nmov dnl, 1\n").text, "\n\nmov x19, 1");
+        assert_eq!(exp("define(`divert', `nop')\ndivert(-1)\n").text, "\nnop");
     }
 
     #[test]
@@ -1663,6 +1753,11 @@ mod tests {
         // GNU m4 ends a comment at any string it is given; the playground's
         // end at the line's end.
         rejects(expand("changecom(`@', `!')\n"), "unsupported m4 construct: changecom(`@', `!')");
+        // GNU m4 expands a name in the parentheses (`@` here), and a `#`
+        // there opens a comment that hides the `)`; the playground refuses
+        // both.
+        rejects(expand("define(c, @)\nchangecom(c)\n"), "unsupported m4 construct: changecom(c)");
+        rejects(expand("changecom(#)\nmov x1, 2)\n"), "unsupported m4 construct: changecom(#)");
     }
 
     #[test]
