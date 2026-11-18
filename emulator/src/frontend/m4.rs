@@ -86,6 +86,8 @@ pub struct Expanded {
     /// Every `changecom` in source order: its 1-based line and the comment
     /// opener from there on (None: comments off).
     comment_events: Vec<(usize, Option<String>)>,
+    /// The 1-based source lines m4 read with quotes, in order.
+    quote_lines: Vec<usize>,
 }
 
 impl Expanded {
@@ -116,6 +118,12 @@ impl Expanded {
             .rev()
             .find(|(at, _)| *at <= line)
             .map_or(Some("#"), |(_, opener)| opener.as_deref())
+    }
+
+    /// Whether m4 read quotes on 1-based source `line`: only a line whose
+    /// text outside comments holds a backtick does.
+    pub fn reads_quotes(&self, line: usize) -> bool {
+        self.quote_lines.binary_search(&line).is_ok()
     }
 }
 
@@ -268,6 +276,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // Under `divert(-1)`, GNU m4 throws its output away.
     let mut discard = false;
     let mut comment_events: Vec<(usize, Option<String>)> = Vec::new();
+    let mut quote_lines: Vec<usize> = Vec::new();
     for (idx, line, joins) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -289,6 +298,9 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         let touched = |name: &str| define_events.iter().any(|(at, n, _)| *at <= idx && n == name);
         let gone = |name: &str| unsupported(line_num, &format!("{name} once the program defines or undefines it"));
         let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
+        if line.contains('`') {
+            quote_lines.push(line_num);
+        }
         let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
             if touched(name) {
                 return Err(gone(name));
@@ -387,6 +399,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             .collect(),
         windowed,
         comment_events,
+        quote_lines,
     })
 }
 
