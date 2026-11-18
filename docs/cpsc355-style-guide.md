@@ -47,8 +47,8 @@ These GNU m4 builtins work as they do on the servers:
 - A quoted string, `` `text' ``, is written without its quotes and never
   expanded, and a quoted argument keeps its commas.
 
-`ifdef`, `ifelse`, `forloop`, and a numbered diversion such as `divert(1)`
-are rejected with a clear error rather than silently ignored. A quoted
+`ifdef`, `ifelse`, `forloop`, `changequote`, and a numbered diversion such
+as `divert(1)` are rejected with a clear error rather than silently ignored. A quoted
 string closes on the line that opens it, as a macro's arguments do.
 Undefining a name ends that define's reach at that line, so an alias can
 be rebound per function.
