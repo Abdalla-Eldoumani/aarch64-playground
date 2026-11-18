@@ -104,48 +104,18 @@ pub fn fmod(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 mod tests {
     use super::*;
     use crate::hosted::HostFn;
-    use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
+    use crate::test_support::Host;
     use std::f64::consts::{E, PI, SQRT_2};
 
     /// Call a math stub with `d0` and `d1` preloaded and return the
     /// double it leaves in `d0`. These stubs touch nothing but the
     /// register file, so the rest of the host context is scratch.
     fn call2(f: HostFn, x: f64, y: f64) -> f64 {
-        let mut regs = RegisterFile::new();
-        let mut mem = Memory::new();
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        let mut stdin = Vec::new();
-        let mut vfs = HashMap::new();
-        let mut open_files = HashMap::new();
-        let mut next_fd = 3u32;
-        let mut rand_state = crate::hosted::libc::RandState::default();
-        let mut term = crate::cpu::TermState::default();
-        let mut heap = crate::hosted::heap::HeapState::default();
-        let mut strtok_save = 0u64;
-        regs.write_fpr_f64(0, x);
-        regs.write_fpr_f64(1, y);
-        let mut ctx = HostContext {
-            regs: &mut regs,
-            mem: &mut mem,
-            stdout: &mut stdout,
-            stderr: &mut stderr,
-            stdin: &mut stdin,
-            stdin_closed: false,
-            vfs: &mut vfs,
-            open_files: &mut open_files,
-            next_fd: &mut next_fd,
-            rand_state: &mut rand_state,
-            term: &mut term,
-            heap: &mut heap,
-            strtok_save: &mut strtok_save,
-            callbacks: &mut Default::default(),
-            call: None,
-        };
-        f(&mut ctx).unwrap();
-        ctx.regs.read_fpr_f64(0)
+        let mut h = Host::new();
+        h.regs.write_fpr_f64(0, x);
+        h.regs.write_fpr_f64(1, y);
+        f(&mut h.ctx()).unwrap();
+        h.regs.read_fpr_f64(0)
     }
 
     /// One-argument call. `d1` is loaded with a value the stub must
