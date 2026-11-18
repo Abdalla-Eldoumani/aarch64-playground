@@ -35,6 +35,7 @@ function makeMachine(overrides: Partial<TerminalDriveMachine> = {}): TerminalDri
     setOutputTap: vi.fn(),
     setSnapshotsPaused: vi.fn(),
     setRealTime: vi.fn(),
+    setWindowSize: vi.fn(),
     ...overrides,
   };
   return machine;
