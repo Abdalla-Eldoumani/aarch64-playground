@@ -184,6 +184,14 @@ pub struct TermState {
     pub stdin_is_file: bool,
 }
 
+/// The terminal pane's size in character cells, as ioctl TIOCGWINSZ
+/// reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowSize {
+    pub rows: u16,
+    pub cols: u16,
+}
+
 /// Pacing credit for sleeping programs: each nanosecond a program asks
 /// nanosleep to pause refunds step and output budget at these rates
 /// (one step per microsecond slept, one output byte per ten
@@ -432,6 +440,11 @@ pub struct Cpu {
     /// refund is charged only what it credits. Batch runners leave it
     /// off. Runner state like `snapshots_paused`: cleared on load/reset.
     pub real_time: bool,
+    /// The terminal pane's size while it drives the program. Runner state
+    /// like `real_time`: in no snapshot, cleared on load/reset. TIOCGWINSZ
+    /// answers it only while `snapshots_paused` holds (`host_context`), so
+    /// no step the ring records ever sees it.
+    pub window_size: Option<WindowSize>,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -545,6 +558,7 @@ impl Cpu {
             callbacks: Default::default(),
             snapshots_paused: false,
             real_time: false,
+            window_size: None,
             pending_sleep_ns: None,
             refund_steps_total: 0,
             refund_output_total: 0,
@@ -595,6 +609,12 @@ impl Cpu {
         crate::hosted::stdio::write_stdio_globals(&mut cpu.mem)
             .expect("the stdio globals page is freshly mapped");
         cpu
+    }
+
+    /// The terminal pane's size in columns and rows; a zero in either
+    /// means the pane has no size to report.
+    pub fn set_window_size(&mut self, cols: u16, rows: u16) {
+        self.window_size = (cols > 0 && rows > 0).then_some(WindowSize { rows, cols });
     }
 
     /// Snapshot CPU state before we touch anything so `step_back` can

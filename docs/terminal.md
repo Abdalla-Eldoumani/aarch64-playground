@@ -105,21 +105,26 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | `gdb ni` | Step over: run the call on this line in one go and stop on the next line. On any other instruction it steps one instruction. |
 | `gdb finish` | Step out: run until this function returns to its caller. Out of `main`, it runs to the end of the program. |
 | `gdb c` | Continue to halt or breakpoint. |
-| `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). |
+| `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table) and print its number, as gdb does (`breakpoint 1 at 0x0000000000400000 (quit)`); numbers are never given twice. Like gdb, it stays across a reset: the next assemble from the editor finds the label again in the program and sets it there. When the label is gone, the next `gdb` command says `gdb: error in re-setting breakpoint N: unknown label 'quit'`. A terminal build (`gcc`, `./name`) runs past it. Taking the last gutter dot off its instruction deletes it, as gdb's `clear` deletes every breakpoint on a line. |
+| `gdb delete [N...]` | Delete breakpoints N..., or with no number every `gdb b` breakpoint. A number no breakpoint has says `gdb: no breakpoint number N`. A gutter breakpoint on the same instruction keeps its stop. |
+| `gdb info breakpoints` | List the `gdb b` breakpoints: number, address and label (`pending` when the program in the machine has no such label). |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
 | `gdb x/Ni $pc` | Show N words of memory at the PC, or at the address in a register (`$x0`). N is at most 1024. |
 | `gdb x/Ngx $sp` | Show N 8-byte words in hex, two to a line, from `$sp`, `$fp`, any register, or an address (`0x7ffffff0`). N is at most 1024. |
 | `gdb bt` | The call stack: `#0` is the function the program is in and its line, `#1` its caller at the line of the call, and so on down to `main`. Past 20 frames the rest, apart from `main`, fold into one line (`... 3 more calls ...`). A program deeper than the 16,384 calls the playground records starts with one line for the calls it did not record (`(#0 to #4: 5 deeper frames, not recorded)`). |
-| `gdb info frame` | This function's frame: its size and the addresses it spans, who called it, then each box from the top down (locals by name with their values, padding, the saved lr and what it returns to, the saved fp and whose frame it points at). |
+| `gdb info frame` | This function's frame: its size and the addresses it spans, who called it, then each box from the top down (locals by name with their values, or by name with "reached only through its address" for a local the program only passes by address, such as a buffer for `scanf` or `read`; padding, the saved lr and what it returns to, the saved fp and whose frame it points at). |
 
 `ni`, `finish`, `bt` and `info frame` read the same call stack the stack
 tab's frames view draws. `ni` and `finish` stop early at a breakpoint, at a
 read waiting for input, when the program ends, or at a `ret` that does not
 go back to a caller (an overwritten saved lr), and print why they stopped.
 After 1,000,000 steps they pause and say so; the same command again goes on
-to the same place. With no frame left (the program has finished), `bt` and
-`info frame` say so.
+to the same place. Once the program has finished, `bt` and `info frame` say
+so, even when it exited from inside a function (`bl exit`, or a `_start`
+ending with `svc`) and left frames on the stack, and `c`, `n`, `s`, `si`,
+`ni` and `finish` say `gdb: the program has finished` instead of doing
+nothing. A program stopped by a fault has not finished: its stack stays.
 
 In real gdb, `n` and `s` step a whole source line. Here they step one
 instruction, as they always have, and keep doing so until after the

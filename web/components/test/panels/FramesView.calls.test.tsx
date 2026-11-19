@@ -95,19 +95,30 @@ describe("FramesView's list of calls", () => {
     expect(row("main").className).toContain("inset_3px_0_0_0_var(--amber)");
   });
 
+  // main, rec(0), then 7,940 more rec calls folded; three calls past the
+  // list's end, the current one among them.
+  const FOLDED = [
+    3, 3, 1, 3, 8,
+    ...node(0, MAIN, 1, 1, 0, 1, 0, 0),
+    ...node(1, ADD_TWO, 1, 1, 8, 0, 0, 0),
+    ...node(2, ADD_TWO, 7940, 7940, 8, 1, 0, 0),
+  ];
+
   it("shows a folded run's count, says it in words, and counts the calls left out", () => {
-    // main, rec(0), then 7,940 more rec calls folded, the current one among
-    // them; three calls past the list's end.
-    const tree = [
-      3, 3, 1, 3, 8,
-      ...node(0, MAIN, 1, 1, 0, 1, 0, 0),
-      ...node(1, ADD_TWO, 1, 1, 8, 0, 0, 0),
-      ...node(2, ADD_TWO, 7940, 7940, 8, 1, 0, 0),
-    ];
-    render(<FramesView {...props({ frames: frames(true, 8, tree) })} />);
+    // No row is the current call, and the note names it from the innermost
+    // frame.
+    render(<FramesView {...props({ frames: frames(true, 8, FOLDED) })} />);
     const fold = row("add_two × 7,940");
     expect(within(fold).getByText("7,940 calls of add_two").className).toBe("sr-only");
-    expect(fold.textContent).toContain(", the current call");
+    expect(fold.textContent).toContain(", waiting for its call to return");
+    expect(screen.getByText("3 more calls not shown, the current one, add_two, among them")).toBeTruthy();
+  });
+
+  it("names no current call in the note while calls run deeper than the frames record", () => {
+    // The innermost frame row is then not the current call.
+    const numbers = frames(true, 8, FOLDED);
+    numbers[1] = 2;
+    render(<FramesView {...props({ frames: numbers })} />);
     expect(screen.getByText("3 more calls not shown, the current one among them")).toBeTruthy();
   });
 

@@ -1154,3 +1154,51 @@ describe("set_real_time", () => {
     });
   });
 });
+
+describe("set_window_size", () => {
+  it("is on the build under the name the worker and the wrapper probe for, columns first", () => {
+    // Both feature-detect it, so a rename here would quietly leave a program
+    // in the terminal pane guessing its size. 48 columns by 43 rows reads
+    // back from TIOCGWINSZ (0x5413) as ws_row 0x2b, then ws_col 0x30. The
+    // machine answers a size only while the step-back ring is paused, as
+    // the pane pauses it.
+    withEmulator((emu) => {
+      const set = (emu as { set_window_size?: (cols: number, rows: number) => void })
+        .set_window_size;
+      expect(typeof set).toBe("function");
+      assemble(
+        emu,
+        `
+        .data
+        .balign 8
+ws:     .quad   0
+fmt:    .string "%ld %016lx\\n"
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     x0, 1
+        mov     x1, 0x5413
+        ldr     x2, =ws
+        mov     x8, 29
+        svc     0
+        mov     x1, x0
+        ldr     x9, =ws
+        ldr     x2, [x9]
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+`,
+      );
+      emu.set_snapshots_paused(true);
+      set?.call(emu, 48, 43);
+      const run = emu.run_until_break(100_000) as RawRun;
+      expect(run.halted).toBe(true);
+      expect(emu.take_stdout()).toBe("0 000000000030002b\n");
+    });
+  });
+});

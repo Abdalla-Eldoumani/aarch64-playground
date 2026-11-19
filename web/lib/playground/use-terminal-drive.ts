@@ -23,6 +23,7 @@ export type TerminalDriveMachine = {
   setOutputTap: (tap: ((text: string) => void) | null) => void;
   setSnapshotsPaused: (paused: boolean) => void;
   setRealTime: (on: boolean) => void;
+  setWindowSize: (cols: number, rows: number) => void;
 };
 
 export type TerminalDrive = {
@@ -261,6 +262,9 @@ export function useTerminalDrive(opts: {
           cancelled = true;
           machine.current.pause();
         },
+        // The pane calls this inside setForeground, so the size lands after
+        // the ring paused above, where the machine answers it.
+        resize: (cols, rows) => machine.current.setWindowSize(cols, rows),
       });
       try {
         {
@@ -319,6 +323,7 @@ export function useTerminalDrive(opts: {
         }
       } finally {
         machine.current.setRealTime(false);
+        machine.current.setWindowSize(0, 0);
         machine.current.setSnapshotsPaused(false);
         machine.current.setOutputTap(null);
         io.setForeground(null);

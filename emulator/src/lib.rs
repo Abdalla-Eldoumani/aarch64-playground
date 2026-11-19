@@ -1070,6 +1070,14 @@ impl Emulator {
         self.cpu.real_time = on;
     }
 
+    /// The terminal pane's columns and rows, sent when a program takes the
+    /// pane over and on every resize; (0, 0) takes the size away. Load and
+    /// reset clear it, and TIOCGWINSZ answers it only while the ring is
+    /// paused.
+    pub fn set_window_size(&mut self, cols: u16, rows: u16) {
+        self.cpu.set_window_size(cols, rows);
+    }
+
     /// True once the running program has put the terminal in raw mode
     /// (ioctl TCSETS clearing ICANON/ECHO): the UI treats it as a
     /// terminal program and hands it the terminal pane.

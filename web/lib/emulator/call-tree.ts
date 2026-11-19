@@ -51,6 +51,7 @@ export function drawCalls(
   // x0 comes as its high and low 32 bits, read at the width it was written.
   const value = (hi: number, lo: number, width: number) =>
     typed((BigInt(hi) << 32n) | BigInt(lo), width, false, regions).value;
+  const nameOf = (entry: number) => layout?.functions.find((f) => f.entry === entry)?.name ?? hex(entry);
   const rows: CallRow[] = [];
   const all: CallRow[] = [];
   for (let i = 0; i < count; i++) {
@@ -58,11 +59,12 @@ export function drawCalls(
       at + HEAD + i * NODE,
       at + HEAD + (i + 1) * NODE,
     );
-    const name = layout?.functions.find((f) => f.entry === entry)?.name ?? hex(entry);
+    const name = nameOf(entry);
     // A fold holding one call so far reads as that call.
     const fold = calls > 1;
     const call = fold ? `${name} × ${COUNT.format(calls)}` : width ? `${name}(${value(argHi, argLo, width)})` : name;
-    const state = i + 1 === current ? "current" : open > 0 ? "running" : "returned";
+    // Inside calls the list leaves out, no row is the current call.
+    const state = i + 1 === current && !outside ? "current" : open > 0 ? "running" : "returned";
     const row: CallRow = {
       call,
       said: fold ? `${plural(calls, "call")} of ${name}` : call,
@@ -73,8 +75,11 @@ export function drawCalls(
     all.push(row);
     (parent ? all[parent - 1].children : rows).push(row);
   }
+  // The innermost frame row is the current call, when the machine recorded
+  // every frame.
+  const innermost = n[1] === 0 && n[8] > 0 ? nameOf(n[FRAMES_HEADER + (n[8] - 1) * FRAME_ROW + 1]) : null;
   const hidden = dropped
-    ? `${plural(dropped, "more call")} not shown${outside ? ", the current one among them" : ""}`
+    ? `${plural(dropped, "more call")} not shown${outside ? `, the current one${innermost ? `, ${innermost},` : ""} among them` : ""}`
     : null;
   return { rows, hidden, x0Width };
 }

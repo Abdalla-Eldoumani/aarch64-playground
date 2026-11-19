@@ -195,9 +195,10 @@ describe("the list of calls", () => {
     expect(calls(emu).rows[0].children[1].result).toBe(`returned ${printed}`);
   });
 
-  it("keeps 200 calls and counts the rest in plain words", () => {
+  it("keeps 200 calls and counts the rest in plain words, naming the current one", () => {
     // tick and tock in turn, 150 times each: no run to fold, so main and
-    // the first 199 calls fill the list and 101 calls are left out.
+    // the first 199 calls fill the list and 101 calls are left out. Inside
+    // the 100th tock, the first left out, main waits on a call with no row.
     const source = [
       ".text",
       "        .balign 4",
@@ -230,12 +231,59 @@ describe("the list of calls", () => {
     runTo(emu, labelPc(emu, source, "tock"), 100);
     const inside = calls(emu);
     expect(lines(inside)).toHaveLength(200);
-    expect(inside.hidden).toBe("1 more call not shown, the current one among them");
+    expect(lines(inside)[0]).toBe("main ...");
+    expect(inside.hidden).toBe("1 more call not shown, the current one, tock, among them");
     finish(emu);
     const after = calls(emu);
     expect(lines(after)).toHaveLength(200);
     expect(lines(after).at(-1)).toBe("  tick · returned 1");
     expect(after.hidden).toBe("101 more calls not shown");
+  });
+
+  it("marks no call current while the current call is nested past the list's twelve levels", () => {
+    // down(n) calls over(n), which calls down(n - 1): 21 calls deep from
+    // down(10) to down(0). main and down(10) to down(5) fill twelve levels;
+    // over(5) to down(0), ten calls, are left out, the current one among them.
+    const source = [
+      ".text",
+      "        .balign 4",
+      "        .global down",
+      "down:",
+      "        stp     x29, x30, [sp, -16]!",
+      "        mov     x29, sp",
+      "        cmp     w0, 0",
+      "        b.le    down_done",
+      "        bl      over",
+      "down_done:",
+      "        mov     w0, 0",
+      "        ldp     x29, x30, [sp], 16",
+      "        ret",
+      "        .balign 4",
+      "        .global over",
+      "over:",
+      "        stp     x29, x30, [sp, -16]!",
+      "        mov     x29, sp",
+      "        sub     w0, w0, 1",
+      "        bl      down",
+      "        ldp     x29, x30, [sp], 16",
+      "        ret",
+      "        .balign 4",
+      "        .global main",
+      "main:",
+      "        stp     x29, x30, [sp, -16]!",
+      "        mov     x29, sp",
+      "        mov     w0, 10",
+      "        bl      down",
+      "        ldp     x29, x30, [sp], 16",
+      "        ret",
+    ].join("\n");
+    const emu = load(source);
+    runTo(emu, labelPc(emu, source, "down_done"));
+    const drawn = calls(emu);
+    expect(lines(drawn)).toHaveLength(12);
+    expect(lines(drawn).filter((l) => l.endsWith(" *"))).toEqual([]);
+    expect(lines(drawn).at(-1)).toBe(`${"  ".repeat(11)}down(5) ...`);
+    expect(drawn.hidden).toBe("10 more calls not shown, the current one, down, among them");
   });
 
   it("is back exactly as it was after Back, at every step across a return and a fold", () => {

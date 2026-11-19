@@ -7,6 +7,7 @@ import { cleanup, render, screen } from "@testing-library/react";
 type KeyHandler = (e: { key: string; domEvent: KeyboardEvent }) => void;
 type DataHandler = (data: string) => void;
 type CustomKeyHandler = (e: KeyboardEvent) => boolean;
+type ResizeHandler = (size: { cols: number; rows: number }) => void;
 const instances = vi.hoisted(
   () =>
     [] as Array<{
@@ -16,6 +17,9 @@ const instances = vi.hoisted(
       keyCb: KeyHandler | null;
       dataCb: DataHandler | null;
       customKeyCb: CustomKeyHandler | null;
+      resizeCb: ResizeHandler | null;
+      cols: number;
+      rows: number;
       textarea: HTMLTextAreaElement;
       options: { theme?: { background?: string }; fontSize?: number };
     }>,
@@ -25,9 +29,13 @@ vi.mock("@xterm/xterm", () => ({
     writes: string[] = [];
     dispose = vi.fn();
     blur = vi.fn();
+    focus = vi.fn();
     keyCb: KeyHandler | null = null;
     dataCb: DataHandler | null = null;
     customKeyCb: CustomKeyHandler | null = null;
+    resizeCb: ResizeHandler | null = null;
+    cols = 80;
+    rows = 24;
     textarea = document.createElement("textarea");
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown> = {}) {
@@ -56,6 +64,10 @@ vi.mock("@xterm/xterm", () => ({
       this.dataCb = cb;
       return { dispose: vi.fn() };
     }
+    onResize(cb: ResizeHandler) {
+      this.resizeCb = cb;
+      return { dispose: vi.fn() };
+    }
   },
 }));
 // The pane's width in pixels, and a cell 0.6 of the font size wide, which is
@@ -76,7 +88,7 @@ vi.mock("@xterm/addon-fit", () => ({
 }));
 
 import { TerminalPane } from "@/components/panels/TerminalPane";
-import type { DispatchContext } from "@/lib/terminal/dispatch";
+import type { DispatchContext, TerminalProgramIO } from "@/lib/terminal/dispatch";
 
 function makeContext(overrides: Partial<DispatchContext> = {}): DispatchContext {
   return {
@@ -91,13 +103,16 @@ function makeContext(overrides: Partial<DispatchContext> = {}): DispatchContext 
     runUntil: vi.fn(async () => null),
     frameStack: vi.fn(async () => null),
     lineLabel: vi.fn(() => null),
-    setBreakpoint: vi.fn(async () => {}),
-    clearBreakpoint: vi.fn(async () => {}),
+    setBreakpoint: vi.fn(async () => 1),
+    deleteBreakpoints: vi.fn(async () => true),
+    breakpoints: vi.fn((): [number, string][] => []),
+    unsetBreakpoints: vi.fn((): [number, string][] => []),
     resolveLabel: vi.fn(async () => null),
     readRegister: vi.fn(() => 0n),
     readRegisters: vi.fn(() => ({})),
     readMemory: vi.fn(async () => new Uint8Array()),
     pcAddress: vi.fn(() => 0x400000),
+    exitCode: vi.fn(() => null),
     m4Expand: async (source: string) => ({ success: true, text: source }),
     assembleSource: async () => ({ success: true, errors: [] }),
     runSource: async () => ({ stdout: "", stderr: "", exitCode: 0 }),
@@ -366,5 +381,30 @@ describe("TerminalPane keyboard", () => {
     const hint = screen.getByText(/then Tab, leaves the terminal/);
     expect(hint.textContent).toBe("Ctrl+M, then Tab, leaves the terminal");
     expect(instances[0].textarea.getAttribute("aria-describedby")).toBe(hint.id);
+  });
+});
+
+describe("TerminalPane size", () => {
+  it("hands a program that takes the pane its columns and rows, then each resize until it lets go", () => {
+    let io: TerminalProgramIO | null = null;
+    render(
+      <TerminalPane
+        buildContext={() => makeContext()}
+        onRegisterIO={(registered) => {
+          io = registered;
+        }}
+      />,
+    );
+    const term = instances[0];
+    term.cols = 48;
+    term.rows = 43;
+    const resize = vi.fn();
+    io!.setForeground({ pushInput: vi.fn(), cancel: vi.fn(), resize });
+    expect(resize).toHaveBeenCalledWith(48, 43);
+    term.resizeCb?.({ cols: 80, rows: 24 });
+    expect(resize).toHaveBeenLastCalledWith(80, 24);
+    io!.setForeground(null);
+    term.resizeCb?.({ cols: 100, rows: 30 });
+    expect(resize).toHaveBeenCalledTimes(2);
   });
 });

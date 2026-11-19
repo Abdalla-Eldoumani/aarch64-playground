@@ -373,3 +373,44 @@ main:
     assert!(resumed.halted);
     assert_eq!(cpu.exit_code, Some(0));
 }
+
+#[test]
+fn tcgets_answer_stays_byte_for_byte_for_terminal_programs_that_adapt_their_output_to_the_playground() {
+    // Terminal programs tell this terminal from a real one by its TCGETS
+    // answer: every control character in c_cc reads 0, which a real terminal
+    // shows only when its user cleared them all by hand. flappy-a64 picks the
+    // frame rate the step and output refills can carry that way, so a change
+    // here flips such a program to output the playground cannot keep up with.
+    let src = r#"
+        .data
+tio:    .skip 60, 0x55
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     x0, 0
+        mov     x1, 0x5401
+        ldr     x2, =tio
+        mov     x8, 29
+        svc     0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let mut cpu = load(src);
+    let r = cpu.run_until_break(1_000_000).expect("run");
+    assert!(r.halted);
+    assert_eq!(cpu.exit_code, Some(0), "TCGETS on the console answers 0");
+    let tio = cpu.symbols["tio"];
+    let got: Vec<u8> = (0..60).map(|i| cpu.mem.read_u8(tio + i).expect("read tio")).collect();
+    let mut want = vec![
+        0x00, 0x05, 0x00, 0x00, // c_iflag ICRNL|IXON
+        0x05, 0x00, 0x00, 0x00, // c_oflag OPOST|ONLCR
+        0xbf, 0x00, 0x00, 0x00, // c_cflag CS8|CREAD|B38400
+        0x3b, 0x8a, 0x00, 0x00, // c_lflag ISIG|ICANON|ECHO|ECHOE|ECHOK|ECHOCTL|ECHOKE|IEXTEN
+        0x00, // c_line
+    ];
+    want.extend([0x00; 19]); // c_cc: no control character at all
+    want.extend([0x55; 24]); // past the kernel's 36-byte termios: untouched
+    assert_eq!(got, want);
+}

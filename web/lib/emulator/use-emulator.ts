@@ -207,6 +207,7 @@ export function useEmulator(): EmulatorState {
     closeStdin,
     setSnapshotsPaused,
     setRealTime,
+    setWindowSize,
     lint,
     uploadVfsFile,
     readVfsFile,
@@ -243,6 +244,7 @@ export function useEmulator(): EmulatorState {
     clearAllBreakpoints,
     setBreakpointAddress,
     clearBreakpointAddress,
+    gdbLabels,
     resolveBreakpointAddr,
     rekeyAfterAssemble,
   } = useBreakpoints({ backendRef, lineMapRef, sourceRef, programLoadedRef, codeBase });
@@ -511,7 +513,12 @@ export function useEmulator(): EmulatorState {
           // The gutter dots are re-keyed through the FRESH map; lines that
           // no longer resolve lose their dot, and the editor says which.
           const dropped = await rekeyAfterAssemble({ base, source, map });
-          if (surfaceErrors && dropped.length > 0) setDroppedBreakpoints(dropped);
+          if (surfaceErrors) {
+            if (dropped.length > 0) setDroppedBreakpoints(dropped);
+            // `gdb b`'s labels come back only for the editor's assemble: a
+            // terminal build (gcc, ./name) has always run past them.
+            await gdbLabels.current?.assembled();
+          }
           // The post-assemble snapshot was applied while the loaded flag was
           // still down (and before this map existed), so it left no marker.
           // Recompute the entry marker from the live PC now: through the map
@@ -556,6 +563,7 @@ export function useEmulator(): EmulatorState {
       latestSnapRef,
       markCurrentLine,
       rekeyAfterAssemble,
+      gdbLabels,
       resetReplayHistory,
       markProgramLoaded,
     ],
@@ -973,6 +981,7 @@ export function useEmulator(): EmulatorState {
       closeStdin,
       setSnapshotsPaused,
       setRealTime,
+      setWindowSize,
       lint,
       uploadVfsFile,
       readVfsFile,
@@ -981,6 +990,7 @@ export function useEmulator(): EmulatorState {
       m4Expand,
       setBreakpointAddress,
       clearBreakpointAddress,
+      gdbLabels,
       restoreBookmark,
       clearConsole,
       dirtyAddrs,
@@ -998,8 +1008,8 @@ export function useEmulator(): EmulatorState {
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
-      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, setRealTime, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
-      setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
+      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, setRealTime, setWindowSize, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
+      setBreakpointAddress, clearBreakpointAddress, gdbLabels, restoreBookmark,
       clearConsole, dirtyAddrs, readReplayFrames, seekReplay,
     ],
   );
