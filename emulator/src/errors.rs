@@ -17,7 +17,8 @@ pub enum EmuError {
         address: u64,
         access: MemAccess,
     },
-    /// Access requires natural alignment that the address does not satisfy.
+    /// An instruction fetch from a pc that is not a multiple of `required`
+    /// (4), which the course servers kill with a bus error.
     UnalignedAccess {
         address: u64,
         required: u8,
@@ -117,9 +118,12 @@ impl fmt::Display for EmuError {
             Self::UnalignedAccess { address, required } => {
                 write!(
                     f,
-                    "unaligned access at 0x{address:016x}: this instruction needs an \
-                     address that is a multiple of {required}. Check the offset added \
-                     to the base register"
+                    "Bus error\nthe program jumped to 0x{address:x}, which is not a \
+                     multiple of {required}, so no instruction starts there. Usually a \
+                     `ret` read a return address that a store overwrote on the stack, or \
+                     a `br`/`blr` went through a register holding a number instead of a \
+                     code address: keep each store inside its own variable, and load a \
+                     function's address with `ldr xN, =label`"
                 )
             }
             Self::StackOverflow => write!(
