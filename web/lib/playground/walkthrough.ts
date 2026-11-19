@@ -282,7 +282,9 @@ export function placeOverBar(target: Box, cardWidth: number, view: { width: numb
  */
 export function placeCard(
   target: Box,
-  card: { width: number; height: number },
+  /** `heightAt` gives the card's height at a narrower width, where its text
+   *  wraps onto more lines; without it a narrowed card keeps `height`. */
+  card: { width: number; height: number; heightAt?: (width: number) => number },
   view: { width: number; height: number },
   avoid: Box[] = [],
 ): Placement {
@@ -381,15 +383,21 @@ export function placeCard(
 
   // Nothing holds the whole card: the side with the most usable area takes
   // a shrunk one.
-  const options: { side: Placement["side"]; area: number; w: number; h: number }[] = [];
+  // `full` is the card's whole height at the option's width.
+  const options: { side: Placement["side"]; area: number; w: number; h: number; full: number }[] = [];
   for (const side of ["below", "above"] as const) {
     const h = Math.min(card.height, room[side]);
-    if (h >= MIN_HEIGHT) options.push({ side, area: width * h, w: width, h });
+    if (h >= MIN_HEIGHT) options.push({ side, area: width * h, w: width, h, full: card.height });
   }
   for (const side of ["right", "left"] as const) {
     const w = Math.min(width, room[side]);
-    const h = Math.min(card.height, fullHeight);
-    if (w >= MIN_WIDTH && h >= MIN_HEIGHT) options.push({ side, area: w * h, w, h });
+    // Tested first, since measuring a narrower card costs the page a layout.
+    if (w < MIN_WIDTH) continue;
+    // Judged by the wide card's height, a narrowed card outgrew its spot once
+    // placed, and the next beat moved it back.
+    const full = w < width && card.heightAt ? card.heightAt(w) : card.height;
+    const h = Math.min(full, fullHeight);
+    if (h >= MIN_HEIGHT) options.push({ side, area: w * h, w, h, full });
   }
   const best = options
     .filter((o) => {
@@ -403,13 +411,12 @@ export function placeCard(
   const holdsCard =
     (avoid.length ? regionBottom - regionTop : shownBottom - shownTop - 2 * GAP) >= card.height &&
     target.width >= width;
-  if (best && (best.h === card.height || !holdsCard)) {
-    return at(best.side, best.w, best.h, best.h < card.height ? best.h : null);
+  if (best && (best.h === best.full || !holdsCard)) {
+    return at(best.side, best.w, best.h, best.h < best.full ? best.h : null);
   }
 
   const h = Math.min(card.height, avoid.length ? regionBottom - regionTop : fullHeight);
-  // Cut this short the card's buttons fall out of it, and with them out it
-  // measures short enough to lift its own cap, on every other beat.
+  // Cut this short the card's buttons fall out of it.
   if (avoid.length && h < MIN_HEIGHT) return placeCard(target, card, view, avoid.slice(1));
   return at("over", width, h, h < card.height ? h : null);
 }
