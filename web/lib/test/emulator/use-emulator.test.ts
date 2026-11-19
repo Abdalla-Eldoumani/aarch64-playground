@@ -1767,17 +1767,18 @@ describe("useEmulator real-time sleeps", () => {
   });
 
   it("drops the time a stall lost instead of catching it up", async () => {
-    // One timer 10 s late, as a hidden tab's are.
+    // One timer 10 s late, as a hidden tab's are. Sleeps of 100 ms, so one
+    // served with no wait would show as more than a tick short.
     const { result, called, answered, results, advance } = await paced(
-      (k) => (k < 200 ? SLEEP : HALT),
+      (k) => (k < 100 ? { ...STOP, sleep_ms: 100 } : HALT),
       3,
       (k) => (k === 20 ? 10_000 : 0),
     );
     act(() => {
       void result.current.run();
     });
-    await advance(20_000);
-    expect(results).toHaveLength(201);
+    await advance(30_000);
+    expect(results).toHaveLength(101);
     expect(called[21] - answered[20]).toBeGreaterThanOrEqual(10_000);
     expect(worstShortfall(called, answered, results)).toBeLessThanOrEqual(TICK);
   });
