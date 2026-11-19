@@ -30,6 +30,10 @@ export class WorkerClient implements EmulatorBackend {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
   private listeners = new Set<SnapshotListener>();
+  // The worker keeps its own run epoch in its thread (emulator.worker.ts),
+  // out of synchronous reach; this one moves as each request that bumps it
+  // is sent, so the page sees the machine replaced before the worker does.
+  private runEpoch = 0;
 
   constructor(worker: Worker) {
     this.worker = worker;
@@ -64,6 +68,10 @@ export class WorkerClient implements EmulatorBackend {
     });
   }
 
+  get epoch(): number {
+    return this.runEpoch;
+  }
+
   onSnapshot(listener: SnapshotListener): () => void {
     this.listeners.add(listener);
     return () => {
@@ -79,6 +87,7 @@ export class WorkerClient implements EmulatorBackend {
     source: string,
     args: string[] = [],
   ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     return this.send({ id: 0, kind: "assemble", source, args });
   }
 
@@ -87,6 +96,7 @@ export class WorkerClient implements EmulatorBackend {
   }
 
   stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     return this.send({ id: 0, kind: "stepBack" });
   }
 
@@ -102,6 +112,7 @@ export class WorkerClient implements EmulatorBackend {
   }
 
   reset(): Promise<StateSnapshot> {
+    this.runEpoch++;
     return this.send<StateSnapshot>({ id: 0, kind: "reset" });
   }
 
@@ -170,6 +181,7 @@ export class WorkerClient implements EmulatorBackend {
   }
 
   loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     return this.send({ id: 0, kind: "loadState", name });
   }
 
@@ -231,6 +243,7 @@ export class WorkerClient implements EmulatorBackend {
   // a catch, and its owner is gone, so a rejection would only surface as an
   // unhandled error.
   dispose(): void {
+    this.runEpoch++;
     this.worker.terminate();
     this.pending.clear();
     this.listeners.clear();
