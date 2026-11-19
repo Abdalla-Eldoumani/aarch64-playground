@@ -67,6 +67,25 @@ describe("WorkerClient", () => {
     expect(backend).toBeInstanceOf(WorkerClient);
   });
 
+  // The worker moves its own epoch on these four kinds (emulator.worker.ts);
+  // the page's count has to move on the same ones, as each is sent.
+  test("moves its run epoch on each request that cancels a run", () => {
+    const client = new WorkerClient(makeMockWorker().w);
+    const moved = (send: () => unknown) => {
+      const before = client.epoch;
+      void send();
+      return client.epoch - before;
+    };
+    expect(moved(() => client.assemble("ret"))).toBe(1);
+    expect(moved(() => client.stepBack())).toBe(1);
+    expect(moved(() => client.reset())).toBe(1);
+    expect(moved(() => client.loadState("a"))).toBe(1);
+    expect(moved(() => client.step())).toBe(0);
+    expect(moved(() => client.runUntilBreak(10))).toBe(0);
+    expect(moved(() => client.pause())).toBe(0);
+    expect(moved(() => client.dispose())).toBe(1);
+  });
+
   test("step request resolves with the matching ok response", async () => {
     const { w, posted, fire } = makeMockWorker();
     const client = new WorkerClient(w);
