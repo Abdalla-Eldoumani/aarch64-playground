@@ -164,27 +164,28 @@ describe("a ret through an overwritten lr", () => {
   });
 
   // The crate's words stay as they are; the web keeps their first sentence
-  // and puts the card where they guess at a base register.
+  // and puts the card where they guess at the cause.
   it("takes the place of the fault's guess in the run row and in the explainer", () => {
     const m = load(OVERRUN);
     const { error, steps } = m.run();
     expect(steps).toBe(60);
+    const first =
+      "Bus error\nthe program jumped to 0x700000006, which is not a multiple of 4, so no instruction starts there.";
     expect(error).toBe(
-      "memory fault: the program tried to read 0x0000000700000006, which no section covers. The base " +
-        "register (the first one inside the brackets, or a pointer passed to a call) does not hold an " +
-        "address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) " +
-        "or a `mov` was written where `ldr xN, =label` was meant",
+      `${first} Usually a \`ret\` read a return address that a store overwrote on the stack, or a ` +
+        "`br`/`blr` went through a register holding a number instead of a code address: keep each store " +
+        "inside its own variable, and load a function's address with `ldr xN, =label`",
     );
     const said = faultText(error!, m.context(), m.lr(), m.pc());
     expect(said).toEqual({
-      error: `memory fault: the program tried to read 0x0000000700000006, which no section covers. ${BAD_RETURN}`,
+      error: `${first} ${BAD_RETURN}`,
       card: { event: retEvent(m, 21, 14), text: BAD_RETURN, cause: "overwritten" },
     });
     const explained = explainError(said!.error, said!.card)!;
     expect(explained.why).toBe(BAD_RETURN);
     expect(explained.fix).not.toContain("=");
-    // A fault with no bad return behind it keeps the old explanation.
-    expect(explainError(error!)!.why).toContain("`ldr xN, label` written without its `=`");
+    // With no bad return behind it, the crate's words stand alone.
+    expect(explainError(error!)).toBeNull();
     m.emu.free();
   });
 
@@ -296,7 +297,7 @@ main:
 `);
     const { error, steps } = m.run();
     expect(steps).toBe(6);
-    expect(error).toBe(`memory fault: the program tried to read 0x4141414141414141, which no section covers. ${GUESS}`);
+    expect(error).toMatch(/^Bus error\nthe program jumped to 0x4141414141414141, which is not a multiple of 4, /);
     expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
     expect(faultText(error!, m.context(), m.lr(), m.pc())).toBeNull();
     m.emu.free();
