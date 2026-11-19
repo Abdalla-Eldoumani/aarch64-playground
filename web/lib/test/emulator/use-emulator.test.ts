@@ -1946,6 +1946,28 @@ describe("useEmulator real-time sleeps", () => {
       expect(result.current.stepCount).toBe(5 * (called.length - asked));
     });
 
+    it("a save loaded in a sleep lets a Run pressed at once drive alone", async () => {
+      const { result, called, advance } = await intoWait();
+      act(() => {
+        result.current.loadState("a");
+      });
+      const asked = called.length;
+      act(() => {
+        result.current.run();
+      });
+      expect(result.current.isRunning).toBe(true);
+      // One drive asks for about 10 chunks a second.
+      await advance(1000);
+      act(() => {
+        result.current.pause();
+      });
+      await advance(200);
+      const ran = called.length - asked;
+      expect(ran).toBeGreaterThanOrEqual(9);
+      expect(ran).toBeLessThanOrEqual(11);
+      expect(result.current.stepCount).toBe(5 * ran);
+    });
+
     it("a step back while the run is on is refused, so the counter keeps the machine's steps", async () => {
       // Three steps by hand, then a run of two 5-step chunks that sleep and
       // one that stops at a breakpoint.
