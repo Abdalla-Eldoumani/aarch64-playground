@@ -303,6 +303,47 @@ main:
     assert_eq!(out, "42\n");
 }
 
+// Every instruction starts at a multiple of 4, so a `ret` to any other
+// address is a bus error on the servers (exit 135), after the output the
+// program printed; one to an unmapped multiple of 4, such as 0, stays a
+// segmentation fault (exit 139).
+#[test]
+fn a_return_to_an_address_not_a_multiple_of_4_is_a_bus_error() {
+    for (lr, pc, bus_error) in [("9", 0x9, true), ("-1", u64::MAX, true), ("0", 0, false)] {
+        let source = format!(
+            r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "x1 = %ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x1, 1
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        mov     lr, {lr}
+        ret
+"#
+        );
+        let (mut cpu, message) = run_expect_halt_message(&source);
+        assert_eq!(
+            message.starts_with("Bus error\n") && message.contains("not a multiple of 4"),
+            bus_error,
+            "lr = {lr}: {message}"
+        );
+        assert_eq!(cpu.regs.read_pc(), pc, "lr = {lr}: stops at the address the ret went to");
+        assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "x1 = 1\n", "lr = {lr}: the output stays");
+    }
+}
+
 // rand() must give glibc's exact sequence: programs print unseeded draws
 // and students compare the playground's output with a run on the
 // servers. The values below were captured there.
