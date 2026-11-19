@@ -231,8 +231,11 @@ beforeEach(() => {
   setWidth(800);
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  // RAW still waits for its key: the drive stands down at its next 32 ms poll
+  // and puts the machine back, so the machines are freed after that.
+  await new Promise((done) => setTimeout(done, 100));
   localStorage.clear();
   window.matchMedia = realMatchMedia;
   vi.unstubAllGlobals();
