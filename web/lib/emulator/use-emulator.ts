@@ -440,6 +440,10 @@ export function useEmulator(start = true): EmulatorState {
       }
       sourceRef.current = source;
       workspaceRef.current = workspace;
+      // A run on the old program ends here, as a reset ends it, so a Run
+      // pressed after the assemble starts on the new one.
+      runningRef.current = false;
+      setIsRunning(false);
       runBlockedRef.current = false;
       setStopAt(-1);
       stdinLogRef.current = "";
