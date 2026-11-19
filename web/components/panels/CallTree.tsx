@@ -39,8 +39,9 @@ function Rows({ rows }: { rows: CallRow[] }) {
 }
 
 /** The calls made so far, main first, each call's own calls nested under
- *  it in the order it made them. Nothing moves while a program runs or
- *  steps: a call is a new row, a return dims its row. */
+ *  it in the order it made them. A call is a new row and a return dims its
+ *  row; rows move only when a call finds 200 of them, and about 100 of the
+ *  oldest returned ones leave the top at once. */
 export function CallTree({ calls }: { calls: DrawnCalls }) {
   const label = useId();
   return (
