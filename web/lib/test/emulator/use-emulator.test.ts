@@ -1783,6 +1783,21 @@ describe("useEmulator real-time sleeps", () => {
     expect(worstShortfall(called, answered, results)).toBeLessThanOrEqual(TICK);
   });
 
+  it("drops only the part of a slow tick past the 16 ms carry", async () => {
+    // Every chunk takes 20 ms, 4 ms past the carry: a tick should last its
+    // sleep plus those 4 ms, not its sleep plus all 20 (and the fake timers
+    // round a wait under 1 ms up to 1).
+    const { result, answered, results, advance } = await paced((k) => (k < 100 ? SLEEP : HALT), 20, () => 0);
+    act(() => {
+      void result.current.run();
+    });
+    await advance(10_000);
+    expect(results).toHaveLength(101);
+    const period = (answered[100] - answered[1]) / 99;
+    expect(period).toBeGreaterThanOrEqual(20);
+    expect(period).toBeLessThanOrEqual(TICK + 20 - 16 + 1);
+  });
+
   it("starts each run's sleeps afresh", async () => {
     const { result, called, answered, advance } = await paced(
       (k) => (k === 5 ? STOP : k === 7 ? HALT : SLEEP),
