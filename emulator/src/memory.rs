@@ -3,7 +3,7 @@ use std::rc::Rc;
 
 use crate::errors::{EmuError, MemAccess};
 
-const PAGE_SIZE: usize = 4096;
+pub(crate) const PAGE_SIZE: usize = 4096;
 const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 
 /// Most 4 KiB pages a program may have mapped at once. A write that would
