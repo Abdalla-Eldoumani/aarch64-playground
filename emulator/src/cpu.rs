@@ -1,8 +1,9 @@
 //! The CPU: the `Cpu` state and `step`, which fetches, decodes and
 //! executes one instruction and records what changed. This file also
-//! holds the memory-layout and limit constants and the result types a
-//! host reads back. Loading, the limit checks, system calls and I/O, and
-//! run control between steps live in the child modules below.
+//! holds the limit constants and the result types a host reads back, and
+//! re-exports the address layout from `layout`. Loading, the limit checks,
+//! system calls and I/O, and run control between steps live in the child
+//! modules below.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -38,42 +39,10 @@ const SNAPSHOT_CAPACITY: usize = 128;
 /// step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
 
-/// Base address where assembled code is loaded.
-pub const CODE_BASE: u64 = 0x0040_0000;
-
-/// Read-only data section base.
-pub const RODATA_BASE: u64 = 0x0050_0000;
-
-/// Initialized read-write data section base.
-pub const DATA_BASE: u64 = 0x0060_0000;
-
-/// Uninitialized data section base (zero-filled).
-pub const BSS_BASE: u64 = 0x0070_0000;
-
-/// Address space each section owns. The bases above sit exactly one window
-/// apart, so the linker bounds every section to it: a data block or `.skip`
-/// that outgrew its window would land on the next section's addresses.
-pub const SECTION_WINDOW: u64 = 1024 * 1024;
-
-/// Initial stack pointer (grows downward).
-pub const STACK_BASE: u64 = 0x8000_0000;
-
-/// Lowest address sp may legally reach: 8 MiB of stack, matching
-/// `ulimit -s` on the course servers so a deep-but-legal recursion that
-/// runs there runs here. Only unbounded recursion (or a garbage sp) gets
-/// past it, and that deserves a stack-overflow message, not the
-/// memory-cap one, which is why this floor stays well under
-/// `memory::MAX_MAPPED_PAGES` in page terms.
-pub const STACK_FLOOR: u64 = STACK_BASE - 8 * 1024 * 1024;
-
-/// Base address of the synthetic host-function stubs. `BL` targets inside
-/// this range are intercepted by the executor and dispatched to a Rust
-/// implementation (printf, scanf, etc.) instead of being executed as real
-/// instructions. 256 slots of 16 bytes gives room for every libc symbol
-/// the corpus references and leaves space for future additions.
-pub const HOST_STUB_BASE: u64 = 0xFFFF_0000;
-pub const HOST_STUB_STRIDE: u64 = 16;
-pub const HOST_STUB_COUNT: u64 = 256;
+pub use crate::layout::{
+    BSS_BASE, CODE_BASE, DATA_BASE, HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE,
+    RODATA_BASE, SECTION_WINDOW, STACK_BASE, STACK_FLOOR,
+};
 
 /// Cumulative executed-instruction ceiling (the runaway-loop wall). Once a
 /// loaded program has executed this many steps (counted across every
