@@ -17,7 +17,7 @@ import {
 import { EXAMPLES } from "@/lib/playground/example-catalog";
 import { parseDeepLink } from "@/lib/hooks/use-deep-link";
 import { validateFileName } from "@/lib/playground/file-map";
-import { buildShareHash } from "@/lib/playground/share";
+import { buildShareHash, readShareHash } from "@/lib/playground/share";
 import { decodeBundle, encodeBundle } from "@/lib/playground/diagnostic-bundle";
 import {
   MAX_ARGS_CHARS,
@@ -32,11 +32,13 @@ const SHARE_HASH = buildShareHash({
   cursor: { line: 2, column: 3 },
 });
 
-const BUNDLE_QUERY = `?bundle=${encodeBundle({
+const BUNDLE_VALUE = encodeBundle({
   source: "mov x1, 9",
   args: "x",
   stdin: "y\n",
-})}`;
+});
+const BUNDLE_QUERY = `?bundle=${BUNDLE_VALUE}`;
+const BUNDLE_HASH = `#bundle=${BUNDLE_VALUE}`;
 
 describe("resolveBoot", () => {
   it("prefers a bundle deep-link over everything", () => {
@@ -171,6 +173,62 @@ describe("resolveHandoff", () => {
 
   it("returns nothing for a bare playground URL", () => {
     expect(resolveHandoff({ fromShare: false, fromBundle: false }, "", "")).toBeNull();
+  });
+});
+
+// Diagnostic links carry the bundle in the fragment, which no request sends;
+// links made before that carry it in the query and must keep loading.
+describe("a diagnostic link in the fragment", () => {
+  const unconsumed = { fromShare: false, fromBundle: false };
+
+  it("boots the same program and input as the query form, ahead of a share and the autosave", () => {
+    const boot = resolveBoot("", BUNDLE_HASH, "saved", "default", decodeBundle);
+    expect(boot).toEqual(resolveBoot(BUNDLE_QUERY, "", "saved", "default", decodeBundle));
+    expect(boot.source).toBe("mov x1, 9");
+    expect(boot.args).toBe("x");
+    expect(boot.stdin).toBe("y\n");
+    expect(boot.fromBundle).toBe(true);
+  });
+
+  it("is delivered after mount the same way as the query form", () => {
+    const decision = resolveHandoff(unconsumed, "", BUNDLE_HASH, decodeBundle);
+    expect(decision).toEqual(resolveHandoff(unconsumed, BUNDLE_QUERY, "", decodeBundle));
+    expect(decision).toEqual({
+      kind: "bundle",
+      payload: { source: "mov x1, 9", args: "x", stdin: "y\n", label: "diagnostic bundle" },
+    });
+  });
+
+  it("loads the decoder for either form, and for neither a share link nor a bare URL", async () => {
+    expect(await loadBundleDecoder("", BUNDLE_HASH)).toBe(decodeBundle);
+    expect(await loadBundleDecoder(BUNDLE_QUERY, "")).toBe(decodeBundle);
+    expect(await loadBundleDecoder("", SHARE_HASH)).toBeUndefined();
+    expect(await loadBundleDecoder("", "")).toBeUndefined();
+  });
+
+  it("reports a damaged fragment link as a bundle failure, not a share failure", () => {
+    const boot = resolveBoot("", "#bundle=not-a-payload", "saved", "default", decodeBundle);
+    expect(boot.source).toBe("saved");
+    expect(boot.bundleError).toBe("corrupt");
+    expect(boot.shareError).toBeUndefined();
+    expect(resolveHandoff(unconsumed, "", "#bundle=not-a-payload", decodeBundle)).toEqual({
+      kind: "bundle-error",
+      reason: "corrupt",
+    });
+  });
+
+  it("is never read as a share link, and a share link still loads as one", () => {
+    expect(readShareHash(BUNDLE_HASH)).toEqual({ kind: "none" });
+    // The render pass has no decoder, so it boots the autosave quietly and
+    // the pass after mount delivers the bundle.
+    const render = resolveBoot("", BUNDLE_HASH, "saved", "default");
+    expect(render.source).toBe("saved");
+    expect(render.shareError).toBeUndefined();
+    expect(render.bundleError).toBeUndefined();
+    const shared = resolveBoot("", SHARE_HASH, "saved", "default", decodeBundle);
+    expect(shared.source).toBe("mov x0, 7");
+    expect(shared.fromShare).toBe(true);
+    expect(shared.fromBundle).toBe(false);
   });
 });
 
