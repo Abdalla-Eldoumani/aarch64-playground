@@ -197,6 +197,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_stack_overflow_reads_in_full() {
+        assert_eq!(
+            EmuError::StackOverflow.to_string(),
+            "stack overflow: sp has moved more than 8 MiB below the stack base. Check the \
+             recursion's base case first, then check that every prologue has a matching \
+             epilogue with the same size, and that sp was never loaded from a register that \
+             had not been set up"
+        );
+    }
+
+    #[test]
+    fn the_sizes_the_messages_quote_are_the_layout_sizes() {
+        // The text spells the sizes out rather than formatting them, so this keeps it true.
+        let stack = crate::cpu::STACK_BASE - crate::cpu::STACK_FLOOR;
+        assert_eq!(stack % (1024 * 1024), 0, "the stack is a whole number of MiB");
+        let overflow = EmuError::StackOverflow.to_string();
+        assert!(overflow.contains(&format!("more than {} MiB below", stack / (1024 * 1024))));
+
+        let argv = crate::argv::ARGV_MAX_BYTES;
+        assert_eq!(argv % 1024, 0, "the argv page is a whole number of KiB");
+        let too_large = EmuError::ArgvTooLarge { bytes: 5035 }.to_string();
+        assert!(too_large.contains(&format!("the {} KiB the", argv / 1024)));
+    }
+
+    #[test]
     fn an_assembly_error_hands_back_its_line_and_bare_message() {
         let e = EmuError::AssemblyError { line: 5, message: "MOV requires 2 operands".into() };
         assert_eq!(e.into_line_and_message(), (Some(5), "MOV requires 2 operands".to_string()));
