@@ -1838,6 +1838,27 @@ describe("useEmulator real-time sleeps", () => {
     expect(result.current.isRunning).toBe(false);
   });
 
+  it("a run pressed again inside the paused run's sleep drives alone", async () => {
+    const { result, called, answered, advance } = await paced(() => SLEEP, 3, () => 1);
+    act(() => {
+      result.current.run();
+    });
+    await advance(90);
+    while (answered.length < called.length) await advance(1);
+    const asked = called.length;
+    act(() => {
+      result.current.pause();
+      result.current.run();
+    });
+    // One drive asks for about 30 chunks in 500 ms; two would ask for 60.
+    await advance(500);
+    expect(called.length - asked).toBeGreaterThanOrEqual(27);
+    expect(called.length - asked).toBeLessThanOrEqual(33);
+    expect(result.current.isRunning).toBe(true);
+    // The paused run ended, and only its steps are on the counter so far.
+    expect(result.current.stepCount).toBe(5 * asked);
+  });
+
   it("lets a pause land when no sleep has time left to wait", async () => {
     // Chunks that cost the 2 ms they sleep and answer in microtasks, as the
     // main-thread backend does: after the first sleep no wait is positive.
