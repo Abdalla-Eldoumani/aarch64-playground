@@ -469,7 +469,7 @@ main:   stp     x29, x30, [sp, -16]!
         p.stub("printf"),
         &format!(
             "Bus error\nsp is 0x{sp:x} at this call, which is not a multiple of 16: round the \
-             frame size above it up to a multiple of 16 (32 instead of 24), or size it with \
+             frame size above it up to a multiple of 16, or size it with \
              `alloc = -(16 + locals) & -16`"
         ),
     );
