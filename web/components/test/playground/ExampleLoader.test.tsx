@@ -82,9 +82,9 @@ describe("ExampleLoader", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
     // 14 course programs, 2 stage fillers, the program the playground opens
-    // with, the 6 vector demonstrations, and the 6 playable extras under
+    // with, the 6 vector demonstrations, and the 7 playable extras under
     // Miscellaneous.
-    expect(labels.length).toBe(29);
+    expect(labels.length).toBe(30);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
@@ -98,6 +98,7 @@ describe("ExampleLoader", () => {
     expect(labels).toContain("temperature converter");
     expect(labels).toContain("two sum");
     expect(labels).toContain("deadzone");
+    expect(labels).toContain("flappy");
     expect(labels).toContain("uppercase a line");
     expect(labels).toContain("mean of floats");
   });
@@ -198,6 +199,7 @@ describe("ExampleLoader", () => {
           ["temperature converter", "temp-convert"],
           ["two sum", "two-sum"],
           ["deadzone", "deadzone"],
+          ["flappy", "flappy"],
         ],
       ],
     ];
