@@ -120,6 +120,15 @@ pub(super) fn exec_ldst_pair(
     imm7: i16, mode: IndexMode,
     regs: &mut RegisterFile, mem: &mut Memory,
 ) -> Result<ExecResult, EmuError> {
+    // The servers' cores refuse this before any access (SIGILL); GAS only warns.
+    if op == LdStPairOp::Ldp && rt == rt2 {
+        return Err(EmuError::RuntimeError {
+            message: "Illegal instruction\nthis `ldp` loads both values into the same register, \
+                      which the servers refuse to run. Load into two different registers, such \
+                      as `ldp x1, x2`"
+                .into(),
+        });
+    }
     check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
 
