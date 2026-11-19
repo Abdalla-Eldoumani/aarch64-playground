@@ -58,7 +58,7 @@ reaches React, the editor, or the emulator.
 
 | Input | Checked by | Refuses |
 | --- | --- | --- |
-| `?bundle=` diagnostic link | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
+| `#bundle=` diagnostic link, and `?bundle=` in links made before the bundle moved to the fragment | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
 | `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a source that is not text or does not match its checksum, a file name the **+** tab would refuse, more than 16 KiB compressed or 1 MiB decompressed. Any other field of the wrong type, or a files list of the wrong shape or over 16 files, is dropped, and the program still opens |
 | Checks in a `#p2=` link | `web/lib/playground/program-checks.ts` (`parseChecks`) | more than 32 checks, a name over 100 characters, args over 1000 characters, stdin or expected output over 100 KiB, an exit code that is not a whole number from 0 to 255, a field of the wrong type. One bad check drops the whole list, and the program still opens |
 | `?example=` | `web/lib/hooks/use-deep-link.ts`, regex `/^[\w.-]+$/` | paths and special characters |
