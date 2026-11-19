@@ -351,13 +351,15 @@ fn a_local_reached_only_through_add_is_named_by_the_name_its_offset_is_written_a
 }
 
 /// main and addup each keep a long at fp + 16 under a name of their own,
-/// both reached only through `add`.
+/// both reached only through `add`. decoy_s comes first with the same value,
+/// so a name looked up by value would not be either of theirs.
 const SHARED_OFFSET: &str = r#"
 // main reads a long and passes its address to addup, which keeps that
 // address in a long of its own.
 
 define(fp, x29)
 define(lr, x30)
+decoy_s = 16
 main_sum_s = 16
 addup_sum_s = 16
 
