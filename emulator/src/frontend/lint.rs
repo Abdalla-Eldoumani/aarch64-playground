@@ -368,6 +368,19 @@ pub(crate) fn split_functions(text: &str) -> Vec<FunctionSegment> {
     segments
 }
 
+/// An instruction's text with runs of blanks as one space and none just
+/// inside its brackets or before a comma, the way the shapes below are
+/// written.
+fn compact(text: &str) -> String {
+    text.split_whitespace().fold(String::new(), |mut out, word| {
+        if !out.is_empty() && !out.ends_with('[') && !word.starts_with([']', ',']) {
+            out.push(' ');
+        }
+        out.push_str(word);
+        out
+    })
+}
+
 /// Evaluate an offset operand (after `#` stripping) against the folded
 /// assignment constants. None means "cannot fold" and disables analysis.
 fn fold_offset(text: &str, symbols: &HashMap<String, i64>) -> Option<i64> {
@@ -459,7 +472,7 @@ enum StackEffect {
 /// Classify one instruction's effect on sp, or None when it has none (or
 /// cannot be folded, and the caller then checks for unmodeled sp writes).
 fn stack_effect(text: &str, symbols: &HashMap<String, i64>) -> Option<StackEffect> {
-    let compact: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let compact = compact(text);
     // Pre-indexed push: `stp a, b, [sp, N]!` or `str a, [sp, N]!`.
     if (compact.starts_with("stp ") || compact.starts_with("str "))
         && compact.contains("[sp,")
@@ -502,7 +515,7 @@ fn stack_effect(text: &str, symbols: &HashMap<String, i64>) -> Option<StackEffec
 
 /// Does this instruction write sp in a way `stack_effect` does not model?
 fn writes_sp_unmodeled(text: &str) -> bool {
-    let compact: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let compact = compact(text);
     if compact.starts_with("mov sp,") {
         return true;
     }
