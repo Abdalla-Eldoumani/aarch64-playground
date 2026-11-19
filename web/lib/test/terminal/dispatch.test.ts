@@ -643,18 +643,32 @@ describe("gdb-lite edges", () => {
     expect(deleteBreakpoints.mock.calls).toEqual([[1], [7], [2]]);
   });
 
-  it("gdb delete stops at the first token that is not a number, as gdb does", async () => {
-    // gdb: "delete 4 abc" deletes 4; "delete abc 4" and "delete -1 2" delete nothing.
-    const deleteBreakpoints = vi.fn(async () => true);
-    const ctx = makeCtx({ deleteBreakpoints });
-    for (const [command, bad] of [
-      ["gdb delete 4 abc 2", "abc"],
-      ["gdb delete abc 4", "abc"],
-      ["gdb delete -1 2", "-1"],
-    ]) {
-      expect(await dispatchCommand(command, ctx)).toEqual({ status: "err", lines: [`gdb: bad breakpoint number '${bad}'`] });
+  it("gdb delete takes plain decimal numbers left to right and stops at any other token", async () => {
+    // Each row: the tokens, what gdb-lite says, and the numbers it asks to delete
+    // (breakpoint 7 does not exist).
+    const rows: [string, string, number[]][] = [
+      ["4 abc", "gdb: bad breakpoint number 'abc'", [4]],
+      ["4 abc 2", "gdb: bad breakpoint number 'abc'", [4]],
+      ["abc 4", "gdb: bad breakpoint number 'abc'", []],
+      ["-1 2", "gdb: bad breakpoint number '-1'", []],
+      ["2 -1", "gdb: bad breakpoint number '-1'", [2]],
+      ["1 -3", "gdb: bad breakpoint number '-3'", [1]],
+      ["1-3", "gdb: bad breakpoint number '1-3'", []],
+      ["02 3", "gdb: bad breakpoint number '02'", []],
+      ["0x2 3", "gdb: bad breakpoint number '0x2'", []],
+      ["2abc 3", "gdb: bad breakpoint number '2abc'", []],
+      ["00 2", "gdb: bad breakpoint number '00'", []],
+      ["0 2", "gdb: bad breakpoint number '0'", [2]],
+      ["7 2", "gdb: no breakpoint number 7", [7, 2]],
+    ];
+    for (const [tokens, said, asked] of rows) {
+      const deleteBreakpoints = vi.fn(async (n?: number) => n !== 7);
+      expect(await dispatchCommand(`gdb delete ${tokens}`, makeCtx({ deleteBreakpoints }))).toEqual({
+        status: "err",
+        lines: [said],
+      });
+      expect(deleteBreakpoints.mock.calls.map(([n]) => n)).toEqual(asked);
     }
-    expect(deleteBreakpoints.mock.calls).toEqual([[4]]);
   });
 
   it("the first gdb command after an assemble names the breakpoints it could not set again", async () => {
