@@ -309,10 +309,14 @@ describe("gdb-lite's reads", () => {
     // The machine's own read: the panels' cache answers zeros until it lands.
     hub.readMemory = vi.fn(async () => new Uint8Array([1, 2]));
     hub.resolveLabel = vi.fn(async () => 0x420000);
-    await ctx.setBreakpoint(0x400010);
-    await ctx.clearBreakpoint(0x400010);
+    // gdb b's numbers and labels stay in the terminal; the hub sets and clears addresses.
+    expect(await ctx.setBreakpoint(0x400010, "loop")).toBe(1);
+    expect(ctx.breakpoints()).toEqual([[1, "loop"]]);
+    expect(await ctx.deleteBreakpoints(1)).toBe(true);
+    expect(ctx.breakpoints()).toEqual([]);
     await ctx.reset();
     expect(hub.setBreakpointAddress).toHaveBeenCalledWith(0x400010);
+    // The instruction it was set on, not where the label reads now.
     expect(hub.clearBreakpointAddress).toHaveBeenCalledWith(0x400010);
     expect(hub.reset).toHaveBeenCalledTimes(1);
     expect(await ctx.resolveLabel("main")).toBe(0x420000);

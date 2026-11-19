@@ -64,13 +64,16 @@ function makeCtx(over: Partial<DispatchContext> = {}): DispatchContext {
     runUntil: async () => null,
     frameStack: async () => null,
     lineLabel: () => null,
-    setBreakpoint: async (_addr) => {},
-    clearBreakpoint: async (_addr) => {},
+    setBreakpoint: async (_addr) => 1,
+    deleteBreakpoints: async () => true,
+    breakpoints: () => [],
+    unsetBreakpoints: () => [],
     resolveLabel: (_label) => null,
     readRegister: (_name) => null,
     readRegisters: () => ({}),
     readMemory: async (_addr, _len) => new Uint8Array(),
     pcAddress: () => 0x400000,
+    exitCode: () => null,
     reset: async () => {},
     ...over,
   };
@@ -246,7 +249,7 @@ describe("dispatchCommand", () => {
     const set: number[] = [];
     const ctx = makeCtx({
       resolveLabel: (l) => (l === "main" ? 0x400044 : null),
-      setBreakpoint: async (addr) => { set.push(addr); },
+      setBreakpoint: async (addr) => { set.push(addr); return 1; },
     });
     const r = await dispatchCommand("gdb b main", ctx);
     expect(r.status).toBe("ok");
@@ -607,10 +610,11 @@ describe("gdb-lite edges", () => {
     expect(unknown.lines[0]).toBe("gdb: unknown label 'nowhere'");
   });
 
-  it("gdb b echoes the resolved address and the label", async () => {
-    const ctx = makeCtx({ resolveLabel: (l) => (l === "loop" ? 0x400014 : null) });
+  it("gdb b echoes the breakpoint's number, the resolved address and the label", async () => {
+    // gdb: "Breakpoint 2 at 0x4007b8".
+    const ctx = makeCtx({ resolveLabel: (l) => (l === "loop" ? 0x400014 : null), setBreakpoint: async () => 2 });
     const r = await dispatchCommand("gdb b loop", ctx);
-    expect(r.lines).toEqual(["breakpoint set at 0x0000000000400014 (loop)"]);
+    expect(r.lines).toEqual(["breakpoint 2 at 0x0000000000400014 (loop)"]);
   });
 
   it("gdb x/2i $pc prints two little-endian words from memory", async () => {
