@@ -47,6 +47,8 @@ const DEADZONE_HELPERS = [
   "abilities.s",
 ];
 
+const FLAPPY_HELPERS = ["tty.s", "sim.s", "art.s", "gfx.s", "term.s", "save.s"];
+
 describe("verify-corpus's example discovery", () => {
   it("runs each fixture stem against the main file of the same name", () => {
     const targets = corpus
@@ -99,6 +101,7 @@ describe("verify-corpus's example discovery", () => {
       { stem: "dsav", helpers: DSAV_HELPERS },
       { stem: "echo", helpers: [] },
       { stem: "find-max", helpers: [] },
+      { stem: "flappy", helpers: FLAPPY_HELPERS },
       { stem: "globals", helpers: [] },
       { stem: "hello", helpers: [] },
       { stem: "is-prime", helpers: [] },
