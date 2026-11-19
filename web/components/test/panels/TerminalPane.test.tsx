@@ -549,6 +549,22 @@ describe("TerminalPane full screen", () => {
     expect(fireEvent.keyDown(last, { key: "Tab", shiftKey: true })).toBe(true);
   });
 
+  it("brings Tab back to the pane after Ctrl+M in full screen, Shift+Tab to its last control", async () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    // Outside full screen a Tab from the page is the page's.
+    expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    // Ctrl+M leaves xterm for the page's body, behind the pane.
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    expect(fireEvent.keyDown(document.body, { key: "Tab", shiftKey: true })).toBe(false);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "zoom in" }));
+    act(() => (document.activeElement as HTMLElement).blur());
+    expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(false);
+    expect(document.activeElement).toBe(fullScreen());
+  });
+
   it("puts its controls after the terminal, where Ctrl+M then Tab lands", () => {
     render(<TerminalPane buildContext={() => makeContext()} />);
     const order = [
