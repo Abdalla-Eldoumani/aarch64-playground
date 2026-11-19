@@ -2089,7 +2089,35 @@ fn the_frame_check_counts_both_registers_of_a_pair() {
     // is not; an x pair cannot sit off a multiple of 8 at all, since its
     // offset is encoded in units of 8.
     assert_eq!(frame_check(INT_PAIR), (1, 0, vec![]));
+    assert_eq!(frame_check(PAIR_SECOND_NAMED), (1, 0, vec![]));
 }
+
+/// x19_s and x20_s name the two registers one pair store saves; reading
+/// x20 back through its own name is no overlap.
+const PAIR_SECOND_NAMED: &str = r#"
+// Saves x19 and x20 with one pair store and reads x20 back by its own name.
+
+define(fp, x29)
+define(lr, x30)
+
+x19_s = 16
+x20_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, x19_s]
+        ldr     x20, [fp, x20_s]
+        ldr     x19, [fp, x19_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
 
 /// main's call to square shares line 18 with a label, and nothing else
 /// names square a function, so square's frame (line 28, 24 bytes) is read as
