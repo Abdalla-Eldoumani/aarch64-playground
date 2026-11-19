@@ -530,7 +530,9 @@ describe("EmbeddablePlayground", () => {
     render(<EmbeddablePlayground chrome="checker" startSource="mov x0, 1" onCheck={vi.fn()} />);
     expect(screen.queryByLabelText("args")).toBeNull();
     cleanup();
-    // A frame reads its start props when it mounts.
+    // A frame reads its start props when it mounts, as useState seeds do, so
+    // new ones need a new frame (hosts key theirs); a re-render keeps the box's
+    // text (next case).
     const { container } = render(
       <EmbeddablePlayground
         chrome="checker"
@@ -544,6 +546,24 @@ describe("EmbeddablePlayground", () => {
     const box = screen.getByLabelText("args") as HTMLInputElement;
     expect(box.value).toBe("12 7");
     fireEvent.change(box, { target: { value: "5 -3 8" } });
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
+  });
+
+  it("keeps args typed before the engage through a re-render of the frame", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    // A fresh onCheck each time, as a host's re-render passes.
+    const frame = () => (
+      <EmbeddablePlayground chrome="checker" startSource="mov x0, 1" startArgs="12 7" showArgs onCheck={vi.fn()} />
+    );
+    const { container, rerender } = render(frame());
+    fireEvent.change(screen.getByLabelText("args"), { target: { value: "5 -3 8" } });
+    rerender(frame());
+    expect((screen.getByLabelText("args") as HTMLInputElement).value).toBe("5 -3 8");
+    engage(container);
+    expect((screen.getByLabelText("args") as HTMLInputElement).value).toBe("5 -3 8");
     fireEvent.click(screen.getByLabelText("run"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
   });
