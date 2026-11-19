@@ -1687,6 +1687,174 @@ describe("useEmulator stepping and running", () => {
   });
 });
 
+// A run that sleeps waits in real time. Here the only time is a fake clock
+// behind both setTimeout and performance.now: the fake backend answers each
+// chunk `rt` ms after the call, and every timer the hub sets fires `late(k)`
+// ms late, k being the last sleep answered.
+describe("useEmulator real-time sleeps", () => {
+  const TICK = 1000 / 60;
+  const STOP: RunResultPayload = { pc: CODE_BASE, halted: false, steps_executed: 5, hit_breakpoint: false, error: null };
+  const SLEEP: RunResultPayload = { ...STOP, sleep_ms: TICK };
+  const HALT: RunResultPayload = { ...STOP, halted: true };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  async function fakeClock(fake: ReturnType<typeof makeBackend>) {
+    const view = await mountAssembled(fake);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const t = performance.now();
+    vi.advanceTimersByTime(1);
+    expect(performance.now()).toBe(t + 1);
+    return view;
+  }
+
+  async function paced(script: (k: number) => RunResultPayload, rt: number, late: (k: number) => number) {
+    const fake = makeBackend();
+    const view = await fakeClock(fake);
+    const timeout = globalThis.setTimeout;
+    const called: number[] = [];
+    const answered: number[] = [];
+    const results: RunResultPayload[] = [];
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms = 0) => timeout(fn, ms + late(answered.length - 1))) as typeof setTimeout);
+    fake.backend.runUntilBreak = () => {
+      called.push(performance.now());
+      const runResult = script(called.length - 1);
+      return new Promise((resolve) =>
+        timeout(() => {
+          answered.push(performance.now());
+          results.push(runResult);
+          resolve({ runResult, snapshot: fake.fire() });
+        }, rt),
+      );
+    };
+    const advance = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    return { ...view, called, answered, results, advance };
+  }
+
+  // The worst shortfall of real time against the time slept, over every
+  // stretch from a sleep's answer to a later chunk's call.
+  function worstShortfall(called: number[], answered: number[], results: RunResultPayload[]): number {
+    const slept = [0];
+    for (const r of results) slept.push(slept[slept.length - 1] + (r.sleep_ms ?? 0));
+    let worst = 0;
+    for (let i = 0; i < answered.length; i++) {
+      for (let j = i + 1; j < called.length; j++) {
+        worst = Math.max(worst, slept[j] - slept[i] - (called[j] - answered[i]));
+      }
+    }
+    return worst;
+  }
+
+  it("keeps 60 sleeps a second against a round trip and late timers", async () => {
+    const { result, called, answered, results, advance } = await paced(
+      (k) => (k < 600 ? SLEEP : HALT),
+      3,
+      (k) => 1 + ((k * 5) % 7),
+    );
+    act(() => {
+      void result.current.run();
+    });
+    await advance(20_000);
+    expect(results).toHaveLength(601);
+    expect(answered[600] - called[0]).toBeLessThanOrEqual(600 * TICK + TICK);
+    expect(worstShortfall(called, answered, results)).toBeLessThanOrEqual(TICK);
+  });
+
+  it("drops the time a stall lost instead of catching it up", async () => {
+    // One timer 10 s late, as a hidden tab's are.
+    const { result, called, answered, results, advance } = await paced(
+      (k) => (k < 200 ? SLEEP : HALT),
+      3,
+      (k) => (k === 20 ? 10_000 : 0),
+    );
+    act(() => {
+      void result.current.run();
+    });
+    await advance(20_000);
+    expect(results).toHaveLength(201);
+    expect(called[21] - answered[20]).toBeGreaterThanOrEqual(10_000);
+    expect(worstShortfall(called, answered, results)).toBeLessThanOrEqual(TICK);
+  });
+
+  it("starts each run's sleeps afresh", async () => {
+    const { result, called, answered, advance } = await paced(
+      (k) => (k === 5 ? STOP : k === 7 ? HALT : SLEEP),
+      3,
+      () => 2,
+    );
+    act(() => {
+      result.current.run();
+    });
+    // On to the moment the first run ends, then straight into a second, so
+    // no idle time could hide a timeline carried over.
+    while (result.current.isRunning) await advance(1);
+    act(() => {
+      result.current.run();
+    });
+    await advance(1000);
+    expect(called).toHaveLength(8);
+    // The second run's first sleep (answer 6) waits at least in full.
+    expect(called[7] - answered[6]).toBeGreaterThan(TICK);
+  });
+
+  it("a pause during a sleep ends the run", async () => {
+    const { result, called, answered, advance } = await paced(() => SLEEP, 3, () => 1);
+    act(() => {
+      result.current.run();
+    });
+    // A few sleeps in, then on to the next answer: the drive is inside a wait.
+    await advance(90);
+    while (answered.length < called.length) await advance(1);
+    const asked = called.length;
+    act(() => {
+      result.current.pause();
+    });
+    await advance(1000);
+    expect(called).toHaveLength(asked);
+    // The run ended the usual way: its steps landed on the counter.
+    expect(result.current.stepCount).toBe(5 * asked);
+    expect(result.current.isRunning).toBe(false);
+  });
+
+  it("lets a pause land when no sleep has time left to wait", async () => {
+    // Chunks that cost the 2 ms they sleep and answer in microtasks, as the
+    // main-thread backend does: after the first sleep no wait is positive.
+    const fake = makeBackend();
+    const { result } = await fakeClock(fake);
+    let calls = 0;
+    fake.backend.runUntilBreak = () => {
+      if (++calls > 5000) return Promise.reject(new Error("the run never gave the page a turn"));
+      vi.advanceTimersByTime(2);
+      return Promise.resolve({ runResult: { ...SLEEP, sleep_ms: 2 }, snapshot: fake.fire() });
+    };
+    const turn = () =>
+      act(async () => {
+        await new Promise((settle) => setImmediate(settle));
+      });
+    act(() => {
+      result.current.run();
+    });
+    // The first sleep waits its 2 ms.
+    await turn();
+    vi.advanceTimersByTime(2);
+    // The pause comes from the event loop, as a click does.
+    setImmediate(() => {
+      result.current.pause();
+      vi.advanceTimersByTime(2);
+    });
+    for (let i = 0; i < 1000 && result.current.stepCount === 0; i++) await turn();
+    expect(result.current.error).toBeNull();
+    expect(calls).toBeLessThan(5000);
+    expect(result.current.stepCount).toBe(5 * calls);
+  });
+});
+
 describe("useEmulator reset", () => {
   it("clears execution state and calls the backend", async () => {
     const fake = makeBackend();
