@@ -8,7 +8,8 @@
  *   node scripts/audit-deps.js                   # production deps + dev
  *   node scripts/audit-deps.js --omit=dev        # production only
  *
- * Exits 0 when no advisory at moderate or higher is present.
+ * Exits 0 when no advisory at moderate or higher is present, and 2 when
+ * npm audit gives no report to judge.
  */
 
 const { execFileSync } = require("node:child_process");
@@ -62,7 +63,15 @@ try {
   process.exit(2);
 }
 
-const summary = report.metadata?.vulnerabilities ?? {};
+// npm prints JSON even when the audit itself fails (registry unreachable):
+// an error and no counts, which is no verdict, not a clean one.
+const summary = report?.metadata?.vulnerabilities;
+if (report?.error || !summary) {
+  console.error("npm audit returned an error instead of a report:");
+  console.error(stdout.slice(0, 500));
+  process.exit(2);
+}
+
 console.log("npm audit summary (web/):");
 for (const [sev, count] of Object.entries(summary)) {
   console.log(`  ${sev.padEnd(10)} ${count}`);
