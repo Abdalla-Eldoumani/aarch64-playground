@@ -91,6 +91,9 @@ const saying = (text: string) => (last: string | null) => (last === text ? text 
 export function useEmulator(start = true): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
+  // Bumped by every run, so a drive woken from a sleep knows whether a newer
+  // run has taken over.
+  const driveRef = useRef(0);
   const sourceRef = useRef("");
   // The files that source joins: the notes name lines per file.
   const workspaceRef = useRef<Workspace>({ main: "", extras: [] });
@@ -725,6 +728,7 @@ export function useEmulator(start = true): EmulatorState {
     setError(null);
     setIsRunning(true);
     runningRef.current = true;
+    const mine = ++driveRef.current;
     const drive = async (): Promise<string | null> => {
       let total = 0;
       // Where this run's sleeps have reached on the clock; the first anchors it.
@@ -740,8 +744,8 @@ export function useEmulator(start = true): EmulatorState {
         // so a chunk's round trip and a late timer come out of the next
         // wait. The timeline never trails now by more than SLEEP_CARRY_MS.
         // No time left still yields once, so a main-thread run cannot hold
-        // the page. Pause, reset or an unmount stands the drive down; the
-        // steps so far land on the counter below.
+        // the page. Pause, reset, an unmount or a newer run stands the drive
+        // down; the steps so far land on the counter below.
         if (
           runResult.sleep_ms != null &&
           !runResult.halted &&
@@ -755,7 +759,7 @@ export function useEmulator(start = true): EmulatorState {
           deadline += Math.max(1, Math.min(runResult.sleep_ms, 2000));
           const wait = deadline - now;
           await (wait > 0 ? new Promise<void>((resolve) => setTimeout(resolve, wait)) : yieldToEventLoop());
-          if (runningRef.current) continue;
+          if (runningRef.current && driveRef.current === mine) continue;
         }
         // The snapshot this result carries has already landed, so the ref
         // says whether the run stopped at a read rather than for good.
@@ -815,6 +819,8 @@ export function useEmulator(start = true): EmulatorState {
         return null;
       })
       .finally(() => {
+        // Once a newer run has started, the running flags are its own.
+        if (driveRef.current !== mine) return;
         setIsRunning(false);
         runningRef.current = false;
       });
