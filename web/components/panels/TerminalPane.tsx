@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Terminal, type ITheme } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -14,6 +14,7 @@ import {
 import { TerminalInputState, splitPasteLines } from "@/lib/terminal/input-state";
 import { isThemeId } from "@/lib/theme/themes";
 import { xtermTheme } from "@/lib/theme/editor-themes";
+import { useStoredSetting } from "@/lib/hooks/use-stored-setting";
 
 // With no known data-theme the page paints dark, so the terminal does too.
 function currentXtermTheme(): ITheme {
@@ -57,6 +58,19 @@ function isLeaveKey(e: KeyboardEvent): boolean {
   return e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "m";
 }
 
+// The text size is a scale of the 13px default, kept per viewer in the
+// panels' zoom family: 60% to 180% in tenths, anything else read as 100%.
+const ZOOM_KEY = "aarch64-playground:zoom:terminal";
+function parseZoom(raw: string | null): number {
+  const scale = Number(raw);
+  return scale >= 0.6 && scale <= 1.8 ? scale : 1;
+}
+
+// The bottom line's controls stay one 16px line on a mouse, so full screen
+// keeps the rows a game needs; a touch screen gets 44px targets.
+const CONTROL =
+  "touch-target h-4 px-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)] focus:outline-none focus-visible:[box-shadow:var(--ring)]";
+
 /**
  * The xterm.js shell pane. lazy-panels.tsx loads it on demand so the xterm
  * bundle ships only when the student opens the terminal tab.
@@ -71,6 +85,13 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
   // While set, keystrokes bypass the shell's line editing and stream to
   // the program's stdin verbatim (arrow-key CSI sequences included).
   const foregroundRef = useRef<TerminalForegroundProgram | null>(null);
+  // Full screen, read by the key handlers the terminal was built with, and
+  // where the focus goes back when it ends.
+  const fullRef = useRef(false);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  // The text size the next fit uses, and that fit, once the terminal exists.
+  const scaleRef = useRef(1);
+  const refitRef = useRef<(() => void) | null>(null);
   // One stable I/O surface handed to dispatch for `./name` runs; writes
   // land in this pane's xterm and survive context-builder churn.
   const terminalIORef = useRef<TerminalProgramIO>({
@@ -91,6 +112,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       termRef.current?.reset();
     },
     focus: () => termRef.current?.focus(),
+    altScreen: () => termRef.current?.buffer.active.type === "alternate",
     sessionEnded: (exitCode: number | null) => {
       const t = termRef.current;
       if (!t) return;
@@ -184,18 +206,23 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
-    // Full-screen programs draw for an 80-column terminal. A pane too narrow
-    // for 80 columns at 13px drops to 12px, the smallest text the site uses.
+    // Full-screen programs draw for an 80-column terminal. At the default
+    // size a pane too narrow for 80 columns at 13px drops to 12px, the
+    // smallest text the site uses; a size the student picked holds.
     const fitColumns = () => {
-      term.options.fontSize = 13;
-      const at13 = fit.proposeDimensions();
-      if (at13 && at13.cols < 80) term.options.fontSize = 12;
+      const size = Math.round(13 * scaleRef.current);
+      term.options.fontSize = size;
+      const at = fit.proposeDimensions();
+      if (size === 13 && at && at.cols < 80) term.options.fontSize = 12;
       fit.fit();
     };
     fitColumns();
     // Screen readers hear the way out on entering, as they do in the editor.
     term.textarea?.setAttribute("aria-describedby", leaveHintId);
     term.attachCustomKeyEventHandler((e) => {
+      // Full screen without the browser's own takes Esc as the browser's
+      // does: the page hears it and leaves, the program does not.
+      if (e.key === "Escape" && fullRef.current && !document.fullscreenElement) return false;
       if (isLeaveKey(e)) {
         if (e.type === "keydown") {
           e.preventDefault();
@@ -328,8 +355,9 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     });
 
     // Refit on container resize, which the parent panel does when it
-    // resizes (PanelGroup drag, mobile keyboard show/hide).
-    const ro = new ResizeObserver(() => {
+    // resizes (PanelGroup drag, mobile keyboard show/hide), and on a new
+    // text size.
+    const refit = () => {
       // A hidden pane (the tab strip keeps a live session mounted behind
       // `display:none`) reports no layout box, and the fit addon would
       // read the computed "100%" as 100px and resize the live buffer to
@@ -338,7 +366,9 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       const el = containerRef.current;
       if (!el || el.clientWidth === 0 || el.clientHeight === 0) return;
       try { fitColumns(); } catch { /* xterm may be torn down */ }
-    });
+    };
+    refitRef.current = refit;
+    const ro = new ResizeObserver(refit);
     ro.observe(containerRef.current);
 
     return () => {
@@ -351,17 +381,71 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       term.dispose();
       termRef.current = null;
       fitRef.current = null;
+      refitRef.current = null;
     };
     // Every dependency here is a stable useCallback, so the terminal is
     // allocated exactly once per mount and survives machine re-renders.
   }, [repaintInput, runLine, writeLines, writePrompt, leaveHintId]);
 
+  const [zoom, saveZoom] = useStoredSetting(ZOOM_KEY, parseZoom);
+  const stepZoom = (by: number) =>
+    saveZoom(String(Math.min(1.8, Math.max(0.6, Math.round((zoom + by) * 10) / 10))));
+  useEffect(() => {
+    scaleRef.current = zoom;
+    refitRef.current?.();
+  }, [zoom]);
+
+  const [full, setFull] = useState(false);
+  // Leaving puts the pane back in its slot (the refit hands a running program
+  // its old size) and the focus back where it was before full screen.
+  const leaveFull = useCallback(() => {
+    if (!fullRef.current) return;
+    fullRef.current = false;
+    setFull(false);
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    returnFocusRef.current?.focus({ preventScroll: true });
+    returnFocusRef.current = null;
+  }, []);
+  const toggleFull = () => {
+    if (fullRef.current) return leaveFull();
+    fullRef.current = true;
+    returnFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setFull(true);
+    // The page's full screen with the pane drawn over it, not the pane's
+    // own: a layout crossing moves the pane's node, which ends an element's
+    // full screen. Without the API (iPhone Safari) the pane fills the window.
+    void document.documentElement.requestFullscreen?.().catch(() => {});
+    termRef.current?.focus();
+  };
+  useEffect(() => {
+    // The browser's own way out (Esc) ends the page's full screen.
+    const follow = () => {
+      if (!document.fullscreenElement) leaveFull();
+    };
+    document.addEventListener("fullscreenchange", follow);
+    return () => {
+      document.removeEventListener("fullscreenchange", follow);
+      // A pane unmounted in full screen (a crossing into the phone layout)
+      // hands the screen back.
+      if (fullRef.current && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+  }, [leaveFull]);
+  const pct = Math.round(zoom * 100);
+
   // The padding sits on a wrapper: the fit addon sizes the grid from the
   // terminal's parent box, which would count padding of its own as columns.
   // The hint stays put rather than showing on focus, since a pane that
   // changed height on focus would reflow the running program's screen.
+  // In full screen the pane is drawn over the page's chrome (z-10) and under
+  // its dialogs (z-50), so one a shortcut opens still shows.
   return (
-    <div className="flex h-full w-full flex-col bg-[var(--bg-base)]">
+    <div
+      className={`flex h-full w-full flex-col bg-[var(--bg-base)]${full ? " fixed inset-0" : ""}`}
+      style={full ? { zIndex: 45 } : undefined}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && fullRef.current && !document.fullscreenElement) leaveFull();
+      }}
+    >
       <div className="min-h-0 flex-1 overflow-hidden pl-2 pt-1">
         <div
           className="h-full w-full overflow-hidden"
@@ -370,12 +454,45 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
           role="application"
         />
       </div>
-      <p
-        id={leaveHintId}
-        className="shrink-0 border-t border-[var(--border)] px-2 py-0.5 font-mono text-[12px] leading-4 text-[var(--text-tertiary)] [@media(pointer:coarse)]:hidden"
-      >
-        <kbd className="font-mono text-[var(--text-secondary)]">Ctrl+M</kbd>, then Tab, leaves the terminal
-      </p>
+      <div className="flex shrink-0 items-center gap-2 border-t border-[var(--border)] px-2 py-0.5 font-mono text-[12px] leading-4">
+        <p id={leaveHintId} className="text-[var(--text-tertiary)] [@media(pointer:coarse)]:hidden">
+          <kbd className="font-mono text-[var(--text-secondary)]">Ctrl+M</kbd>, then Tab, leaves the terminal
+        </p>
+        <div className="ml-auto flex items-center">
+          <button type="button" aria-pressed={full} onClick={toggleFull} className={CONTROL}>
+            full screen
+          </button>
+          <div role="group" aria-label="zoom" className="flex items-center">
+            <button type="button" aria-label="zoom out" onClick={() => stepZoom(-0.1)} className={CONTROL}>
+              -
+            </button>
+            <button
+              type="button"
+              aria-label={`reset zoom (currently ${pct} percent)`}
+              onClick={() => saveZoom("1")}
+              className={CONTROL}
+            >
+              {pct}%
+            </button>
+            <button
+              type="button"
+              aria-label="zoom in"
+              onClick={() => stepZoom(0.1)}
+              // Full screen covers the page, so Tab off the last control goes
+              // back to the terminal instead of to a control no one can see.
+              onKeyDown={(e) => {
+                if (full && e.key === "Tab" && !e.shiftKey) {
+                  e.preventDefault();
+                  termRef.current?.focus();
+                }
+              }}
+              className={CONTROL}
+            >
+              +
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
