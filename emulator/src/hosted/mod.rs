@@ -457,6 +457,14 @@ impl HostTable {
             && (address - HOST_STUB_BASE).is_multiple_of(HOST_STUB_STRIDE)
     }
 
+    /// The instruction a step at `pc` is charged to: a library function's
+    /// work belongs to the `bl` that called it, the word before `lr`, and
+    /// anything else to `pc` itself. The caller samples `lr`, because
+    /// qsort and bsearch rewrite x30 inside the call.
+    pub(crate) fn call_site(&self, pc: u64, lr: u64) -> u64 {
+        if self.contains_address(pc) { lr.wrapping_sub(4) } else { pc }
+    }
+
     /// The stub at `address`, or `None` when no entry lives there.
     pub fn stub_at(&self, address: u64) -> Option<Stub> {
         if !self.contains_address(address) {
