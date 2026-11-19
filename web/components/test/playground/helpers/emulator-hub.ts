@@ -92,6 +92,7 @@ export function makeHub(overrides: Partial<EmulatorState> = {}): EmulatorState {
     m4Expand: vi.fn(async () => null),
     setBreakpointAddress: vi.fn(async () => {}),
     clearBreakpointAddress: vi.fn(async () => {}),
+    gdbLabels: { current: null },
     restoreBookmark: vi.fn(async () => ({ success: true, stepped: 0 })),
     clearConsole: vi.fn(),
     dirtyAddrs: [],

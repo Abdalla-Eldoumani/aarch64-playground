@@ -1,8 +1,10 @@
+import type { RefObject } from "react";
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
 import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
+import type { GdbLabels } from "@/lib/emulator/use-breakpoints";
 import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -229,7 +231,11 @@ export interface EmulatorState {
    *  label resolves. The line-based `toggleBreakpoint` stays the
    *  primary path for the gutter UI. */
   setBreakpointAddress: (addr: number) => Promise<void>;
+  /** Leaves the stop when a gutter dot is on the same instruction. */
   clearBreakpointAddress: (addr: number) => Promise<void>;
+  /** Where the terminal keeps `gdb b`'s breakpoints for this machine; the
+   *  editor's assemble sets them again and loading a program clears them. */
+  gdbLabels: RefObject<GdbLabels | null>;
   /** Rebuild a bookmark: assemble its source and args, queue its stdin, and
    *  step to `stepCount`. `success` is false when the source no longer
    *  assembles; `stepped` is how far it got before a halt, fault, or read. */
