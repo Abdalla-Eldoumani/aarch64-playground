@@ -8,7 +8,7 @@ use std::collections::HashMap;
 
 use crate::decoder::{
     self, BitfieldOp, BrRegOp, CondCmpOperand, DpOp, ExtendType, IndexMode, Instruction as I, LdStOffset, LdStOp,
-    LdStPairOp, MemSize, MulWideOp, RegExtend,
+    LdStPairOp, MemSize, MulWideOp,
 };
 use crate::frontend::lexer::{lex, TokenKind};
 use crate::frontend::lint::split_functions;
@@ -472,13 +472,10 @@ fn x0_use(instr: &I) -> Option<u8> {
         I::Bitfield { op: BitfieldOp::Sbfm | BitfieldOp::Ubfm, rn: 0, immr: 0, imms: imms @ (7 | 15 | 31), .. } => {
             Some(imms / 8 + 1)
         }
-        // An extended operand reads as much of w0 or x0 as its extend takes.
-        I::DpRegExt { rn, rm: 0, extend, .. } if rn != 0 => Some(match extend {
-            RegExtend::Uxtb | RegExtend::Sxtb => 1,
-            RegExtend::Uxth | RegExtend::Sxth => 2,
-            RegExtend::Uxtw | RegExtend::Sxtw => 4,
-            RegExtend::Uxtx | RegExtend::Sxtx => 8,
-        }),
+        // An extended operand reads as much of w0 or x0 as its extend takes;
+        // RegExtend is in the encoding's option order, whose low two bits
+        // are the size (b, h, w, x).
+        I::DpRegExt { rn, rm: 0, extend, .. } if rn != 0 => Some(1 << (extend as u8 & 3)),
         // bfi and bfxil into x0 keep bits the caller left: as a write, they
         // claim nothing.
         I::DpImm { sf, rd, rn, .. }
