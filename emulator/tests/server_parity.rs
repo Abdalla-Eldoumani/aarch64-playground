@@ -696,6 +696,48 @@ main:
     assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "before\n");
 }
 
+// GAS only warns about an `ldp` that names one register as both
+// destinations; the servers kill it as an illegal instruction (exit 132)
+// before it loads anything or moves sp. A store pair of one register and
+// a load pair of two run as usual.
+#[test]
+fn ldp_into_one_register_twice_is_an_illegal_instruction() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "%ld %ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        mov     x1, 7
+        stp     x1, x1, [sp, -16]!
+        ldp     x1, x2, [sp]
+        ldr     x0, =fmt
+        bl      printf
+        mov     x1, 5
+        ldp     x1, x1, [sp], 16
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(message.starts_with("Illegal instruction\n"), "message was: {message}");
+    assert!(
+        message.contains("same register") && message.contains("two different registers"),
+        "message says what is wrong and what to write: {message}"
+    );
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "7 7\n");
+    assert_eq!(cpu.regs.read_gpr(1, true), 5, "x1 is not loaded");
+    assert_eq!(cpu.regs.read_sp(), cpu.regs.read_gpr(29, true) - 16, "sp is not moved");
+}
+
 // LONG_MIN has no positive twin, so gcc writes it as the negative decimal
 // literal `-9223372036854775808` in both `mov` and `.quad`. GAS takes it;
 // the lexer read the digits as a positive i64 first and overflowed.
