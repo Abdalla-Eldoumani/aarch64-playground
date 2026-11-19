@@ -63,7 +63,7 @@ try {
   process.exit(2);
 }
 
-// npm prints JSON even when the audit itself fails (registry unreachable):
+// npm prints JSON even when npm audit itself fails (registry unreachable):
 // an error and no counts, which is no verdict, not a clean one.
 const summary = report?.metadata?.vulnerabilities;
 if (report?.error || !summary) {
