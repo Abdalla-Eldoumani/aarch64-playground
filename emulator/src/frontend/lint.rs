@@ -302,6 +302,8 @@ pub(crate) fn split_functions(text: &str) -> Vec<FunctionSegment> {
         if let Some(rest) = t.strip_prefix(".global").or_else(|| t.strip_prefix(".globl")) {
             globals.insert(rest.trim().to_string());
         }
+        // A call can share its line with a label: `again: bl helper`.
+        let t = t.rsplit_once(':').map_or(t, |(_, call)| call.trim());
         let lower = t.to_ascii_lowercase();
         if let Some(rest) = lower.strip_prefix("bl ").or_else(|| lower.strip_prefix("bl\t")) {
             bl_targets.insert(rest.trim().to_string());
