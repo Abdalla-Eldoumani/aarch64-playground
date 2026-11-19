@@ -37,9 +37,11 @@ function frames(called: boolean, step: number, tree: number[] | null): number[] 
 }
 
 // main, which reads no argument, calls add_two(5), which returns 7 in w0.
-// The tree's header ends with the width of x0's last write.
-const IN_ADD_TWO = [2, 2, 0, 0, 4, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 1, 4, 5, 0, 0)];
-const BACK_IN_MAIN = [2, 1, 0, 0, 4, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 7, 4)];
+// The tree's header: nodes, current, calls past the list's ends that the
+// machine is inside, calls with no row, the earlier ones among those, and
+// the width of x0's last write.
+const IN_ADD_TWO = [2, 2, 0, 0, 0, 4, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 1, 4, 5, 0, 0)];
+const BACK_IN_MAIN = [2, 1, 0, 0, 0, 4, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 7, 4)];
 
 const LAYOUT = {
   numbers: [2, MAIN, ADD_TWO, 0, 32, 1, 0, 0, ADD_TWO, 0x400048, 1, 0, 0, 0, 0],
@@ -98,7 +100,7 @@ describe("FramesView's list of calls", () => {
   // main, rec(0), then 7,940 more rec calls folded; three calls past the
   // list's end, the current one among them.
   const FOLDED = [
-    3, 3, 1, 3, 8,
+    3, 3, 1, 3, 0, 8,
     ...node(0, MAIN, 1, 1, 0, 1, 0, 0),
     ...node(1, ADD_TWO, 1, 1, 8, 0, 0, 0),
     ...node(2, ADD_TWO, 7940, 7940, 8, 1, 0, 0),
@@ -112,6 +114,14 @@ describe("FramesView's list of calls", () => {
     expect(within(fold).getByText("7,940 calls of add_two").className).toBe("sr-only");
     expect(fold.textContent).toContain(", waiting for its call to return");
     expect(screen.getByText("3 more calls not shown, the current one, add_two, among them")).toBeTruthy();
+  });
+
+  it("counts the earlier calls the list dropped before the calls past its end", () => {
+    // Two of the three calls with no row returned and were dropped to make
+    // room; the other one is the current call.
+    const dropped = [3, 3, 1, 3, 2, 8, ...FOLDED.slice(6)];
+    render(<FramesView {...props({ frames: frames(true, 8, dropped) })} />);
+    expect(screen.getByText("2 earlier calls not shown; 1 more call not shown, the current one, add_two, among them")).toBeTruthy();
   });
 
   it("names no current call in the note while calls run deeper than the frames record", () => {
@@ -142,7 +152,7 @@ describe("FramesView's list of calls", () => {
       [4, "-2147483648"],
     ] as const;
     for (const [width, value] of reads) {
-      const back = [2, 1, 0, 0, width, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 0x8000_0000, width)];
+      const back = [2, 1, 0, 0, 0, width, ...node(0, MAIN, 1, 1, 0, 1, 0, 0), ...node(1, ADD_TWO, 1, 0, 4, 5, 0x8000_0000, width)];
       const { rerender, unmount } = render(<FramesView {...props()} />);
       rerender(<FramesView {...props({ frames: frames(false, 9, back), registers })} />);
       expect(said()).toBe(`add_two returned ${value}`);
