@@ -1661,11 +1661,21 @@ fn strip_leading_labels(line: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        is_branch_mnemonic, redirect_bl_to_trampoline_tokens, split_top_level_commas,
-        stringify_tokens, strip_leading_labels,
+        is_branch_mnemonic, is_host_address, redirect_bl_to_trampoline_tokens,
+        split_top_level_commas, stringify_tokens, strip_leading_labels,
     };
     use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn a_host_address_is_anywhere_in_the_64_kib_window_above_the_stubs() {
+        // 0xFFFF_1000 is past the 4 KiB stub table yet inside the window.
+        assert!(!is_host_address(0xFFFE_FFFF));
+        assert!(is_host_address(0xFFFF_0000));
+        assert!(is_host_address(0xFFFF_1000));
+        assert!(is_host_address(0xFFFF_FFFF));
+        assert!(!is_host_address(0x1_0000_0000));
+    }
 
     #[test]
     fn every_label_taking_mnemonic_is_recognised_as_a_branch() {
