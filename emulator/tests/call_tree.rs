@@ -1,8 +1,9 @@
 //! The call tree behind the stack frames view's list of calls: every call
 //! a program makes, returned ones included, with runs of one function
-//! folded past their first four, at most 200 nodes and 12 deep, counted
-//! past that. Read through the crate's public surface (the call stack's
-//! tree, the frame layout, the frames view's numbers). Every expected tree
+//! folded past their first four, at most 200 nodes (the latest calls, the
+//! earlier ones counted) and 12 deep (deeper calls counted). Read through
+//! the crate's public surface (the call stack's tree, the frame layout,
+//! the frames view's numbers). Every expected tree
 //! is worked out by hand from the program's text; the C programs' values
 //! come from their printed output and from the stack's own arithmetic.
 //!
@@ -112,6 +113,21 @@ impl Loaded {
                 format!("{}{call}{state}", "  ".repeat(depth[i]))
             })
             .collect()
+    }
+
+    /// The tree's header in the frames view's numbers: nodes, current,
+    /// outside, dropped, earlier (the returned calls dropped to make room)
+    /// and x0's width.
+    fn tree_head(&self) -> Vec<f64> {
+        let n = view_numbers(&frame_view(&self.cpu, &self.layout));
+        let at = 17 + 18 * n[8] as usize + 2 * n[9] as usize;
+        n[at..at + 6].to_vec()
+    }
+
+    /// The calls the nodes stand for plus the calls with none: every call
+    /// made.
+    fn calls_counted(&self) -> u64 {
+        self.tree().nodes().iter().map(|n| n.calls).sum::<u64>() + self.tree().dropped()
     }
 }
 
@@ -334,21 +350,121 @@ tt_test:
 ";
 
 #[test]
-fn the_tree_keeps_two_hundred_nodes_and_counts_the_calls_past_them() {
+fn the_tree_keeps_the_latest_calls_and_counts_the_earlier_ones() {
     let mut p = load(TICK_TOCK);
     // main, then tick and tock in turn: 199 calls fill the 200 nodes (100
-    // ticks, 99 tocks), so the 100th tock is the first call with no node.
-    let tock = p.label("tock");
-    p.run_to(tock, 100);
-    let tree = p.tree();
-    assert_eq!(tree.nodes().len(), MAX_TREE_NODES);
-    assert_eq!((tree.current(), tree.outside(), tree.dropped()), (Some(0), 1, 1));
+    // ticks, 99 tocks). The 100th tock, the 200th call, finds them full:
+    // the oldest returned calls, 1 to 99, go, and it takes a node as the
+    // current call. Call 100 was the 50th tock.
+    let (tick, tock) = (p.label("tick"), p.label("tock"));
+    p.run_to(tick, 100);
+    assert_eq!(p.tree().nodes().len(), MAX_TREE_NODES);
+    p.run_to(tock, 1);
+    let outline = p.outline();
+    assert_eq!((outline.len(), &*outline[0], &*outline[1], &*outline[101]), (102, "main ...", "  tock -> 2", "  tock *"));
+    assert_eq!(p.tree_head(), [102.0, 102.0, 0.0, 99.0, 99.0, 4.0], "nodes, current, outside, dropped, earlier, x0's width");
+    assert_eq!(p.calls_counted(), 201, "main and 200 calls");
+    // The 299th call finds them full again, and calls 100 to 198 go: main
+    // and calls 199 (the 100th tick) to 300 are left.
     p.run_to_end();
-    let tree = p.tree();
-    assert_eq!(tree.nodes().len(), 200);
-    assert_eq!(tree.dropped(), 300 - 199);
-    assert_eq!((tree.current(), tree.outside()), (None, 0));
-    assert_eq!(p.outline()[199], "  tick -> 1", "the 199th call, a tick, has the last node");
+    let outline = p.outline();
+    assert_eq!((outline.len(), &*outline[0], &*outline[1], &*outline[102]), (103, "main -> 0", "  tick -> 1", "  tock -> 2"));
+    assert_eq!(p.tree_head(), [103.0, 0.0, 0.0, 198.0, 198.0, 4.0]);
+    assert_eq!(p.calls_counted(), 301);
+}
+
+/// rec(5) recurses down to rec(0), which calls tick and tock in turn 144
+/// times: rec(1) and rec(0) fold into one node, so those 288 calls hang
+/// seven levels down, under an open fold. Then main calls tick once more.
+const DEEP_TICK_TOCK: &str = "\
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+.text
+// tick() -> w0 = 1
+        .balign 4
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+
+// tock() -> w0 = 2
+        .balign 4
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+
+// rec(w0 = n) -> w0 = 0, by way of rec(n - 1) down to rec(0)
+        .balign 4
+        .global rec
+rec:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     x19, [fp, 16]
+        cmp     w0, 0
+        b.le    rec_base
+        sub     w0, w0, 1
+        bl      rec
+        b       rec_done
+rec_base:
+        mov     i_r, 0
+        b       rec_test
+rec_loop:
+        bl      tick
+        bl      tock
+        add     i_r, i_r, 1
+rec_test:
+        cmp     i_r, 144
+        b.lt    rec_loop
+        mov     w0, 0
+rec_done:
+        ldr     x19, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 5
+        bl      rec
+        bl      tick
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+
+#[test]
+fn a_full_tree_keeps_the_open_calls_and_drops_whole_returned_calls() {
+    let mut p = load(DEEP_TICK_TOCK);
+    let tick = p.label("tick");
+    // main, rec(5) to rec(2), and the fold of rec(1) and rec(0) are open
+    // at nodes 0 to 5, and the ticks and tocks hang under the fold from
+    // node 6. The 194th fills the 200 nodes; the 195th, the 98th tick,
+    // drops the oldest returned calls, ticks and tocks 1 to 94, keeps the
+    // open six above them, and is the current call.
+    p.run_to(tick, 98);
+    let outline = p.outline();
+    let open = ["main ...", "  rec(5) ...", "    rec(4) ...", "      rec(3) ...", "        rec(2) ...", "          rec × 2 ..."];
+    assert_eq!(outline[..6], open);
+    let (first, last) = (format!("{}tick -> 1", "  ".repeat(6)), format!("{}tick *", "  ".repeat(6)));
+    assert_eq!((outline.len(), &outline[6], &outline[106]), (107, &first, &last), "the 95th call to the 195th");
+    assert_eq!(p.tree_head(), [107.0, 107.0, 0.0, 94.0, 94.0, 4.0]);
+    assert_eq!(p.calls_counted(), 202, "main, six rec calls and 195 ticks and tocks");
+    // The 288th, the last tock, fills the 200 nodes again. rec returns to
+    // main, so every node but main's is a returned one under rec(5), and
+    // main's tick drops them all: rec's six calls and ticks and tocks 95 to
+    // 288, 200 calls on top of the 94.
+    p.run_to(tick, 47);
+    assert_eq!(p.outline(), ["main ...", "  tick *"]);
+    assert_eq!(p.tree_head(), [2.0, 2.0, 0.0, 294.0, 294.0, 4.0]);
+    p.run_to_end();
+    assert_eq!(p.outline(), ["main -> 0", "  tick -> 1"]);
+    assert_eq!(p.tree_head(), [2.0, 0.0, 0.0, 294.0, 294.0, 4.0]);
+    assert_eq!(p.calls_counted(), 296);
 }
 
 /// down(n) calls over(n), which calls down(n - 1), until n is 0: two
@@ -879,7 +995,7 @@ fn back_restores_the_tree_exactly_across_calls_returns_folds_and_the_caps() {
     let tick = p.label("tick");
     p.run_to(tick, 100);
     back_retraces(&mut p, 40, "the node cap");
-    assert!(p.tree().dropped() > 0, "the window went past the last node");
+    assert_eq!(p.tree_head()[3..5], [99.0, 99.0], "the window dropped calls 1 to 99 for the 200th");
     // Past twelve levels and back up.
     let mut p = load(DOWN_OVER);
     let over = p.label("over");
@@ -904,6 +1020,46 @@ fn back_restores_the_tree_exactly_across_calls_returns_folds_and_the_caps() {
         p.cpu.step_back();
     }
     back_retraces(&mut p, 10, "a comparator qsort calls");
+}
+
+#[test]
+fn back_restores_the_tree_exactly_across_each_drop_of_earlier_calls() {
+    // Into the 195th call, which drops returned calls under the open fold
+    // while six open calls sit before them: from six steps before its bl.
+    let mut p = load(DEEP_TICK_TOCK);
+    let tick = p.label("tick");
+    p.run_to(tick, 98);
+    for _ in 0..6 {
+        p.cpu.step_back();
+    }
+    back_retraces(&mut p, 10, "a drop under open calls");
+    assert_eq!(p.tree_head()[3..5], [94.0, 94.0], "the window dropped ticks and tocks 1 to 94");
+    // From the 286th call's bl, three short of full nodes with the fold
+    // current, through rec's returns to main's tick, which drops every
+    // returned node.
+    p.run_to(tick, 47);
+    for _ in 0..40 {
+        p.cpu.step_back();
+    }
+    assert_eq!(p.tree_head()[..2], [197.0, 6.0], "the window starts three calls short of full nodes");
+    back_retraces(&mut p, 44, "a drop of every returned node");
+    assert_eq!(p.tree_head()[3..5], [294.0, 294.0], "the window dropped all 200");
+}
+
+#[test]
+fn a_named_save_and_a_reset_put_back_the_earlier_calls() {
+    let mut p = load(DEEP_TICK_TOCK);
+    let tick = p.label("tick");
+    p.run_to(tick, 98);
+    let saved = p.tree().clone();
+    p.cpu.save_state("first drop");
+    p.run_to_end();
+    assert_eq!(p.tree_head()[4], 294.0);
+    assert!(p.cpu.load_state("first drop"));
+    assert_eq!(*p.tree(), saved);
+    assert_eq!(p.tree_head(), [107.0, 107.0, 0.0, 94.0, 94.0, 4.0]);
+    p.cpu.reset();
+    assert_eq!(*p.tree(), CallTree::default(), "a reset clears the count of earlier calls too");
 }
 
 #[test]
@@ -960,9 +1116,9 @@ impl Loaded {
     ///   entry fp, record, state, flags, then the fp and lr hits (step, pc,
     ///   element, array name);
     /// - a leftover: register, the ret that left it;
-    /// - the tree: nodes, current, outside, dropped, x0's width; a node:
-    ///   caller, entry, calls, open, argument width, x0 at the call and at
-    ///   the latest return (high and low halves), the return's width.
+    /// - the tree: nodes, current, outside, dropped, earlier, x0's width;
+    ///   a node: caller, entry, calls, open, argument width, x0 at the call
+    ///   and at the latest return (high and low halves), the return's width.
     fn numbers(&self) -> Vec<String> {
         let n = view_numbers(&frame_view(&self.cpu, &self.layout));
         let text = self.image.text_base..self.image.text_end;
@@ -989,8 +1145,8 @@ impl Loaded {
         let mut out = vec![line(&n[..17])];
         out.extend(rows.chunks(18).map(line));
         out.extend(left.chunks(2).map(line));
-        out.push(line(&tree[..5]));
-        out.extend(tree[5..].chunks(10).map(line));
+        out.push(line(&tree[..6]));
+        out.extend(tree[6..].chunks(10).map(line));
         out
     }
 
@@ -1040,7 +1196,7 @@ fn a_leaf_calls_return_pops_it_and_mains_return_ends_the_program() {
         [
             "6 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
-            "2 1 0 0 4",
+            "2 1 0 0 0 4",
             "0 main 1 1 0 0 1 0 0 0",
             "1 square 1 0 4 0 3 0 9 4",
         ]
@@ -1049,7 +1205,7 @@ fn a_leaf_calls_return_pops_it_and_mains_return_ends_the_program() {
     p.run_to_end();
     assert_eq!(
         p.numbers(),
-        ["10 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0", "2 0 0 0 4", "0 main 1 0 0 0 1 0 0 4", "1 square 1 0 4 0 3 0 9 4"]
+        ["10 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0", "2 0 0 0 0 4", "0 main 1 0 0 0 1 0 0 4", "1 square 1 0 4 0 3 0 9 4"]
     );
     assert!(p.cpu.take_clobber_notes().is_empty());
     back_retraces(&mut load(SQUARE), 8, "a leaf's call and return");
@@ -1107,7 +1263,7 @@ fn nested_returns_pop_one_call_each_and_mark_what_each_left_in_x19() {
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "1 outer main+12 main+16 top-16 top-32 top-16 top-32 0 4 0 0 -1 -1 0 0 -1 -1",
             "19 inner+8",
-            "3 2 0 0 4",
+            "3 2 0 0 0 4",
             "0 main 1 1 0 0 1 0 0 0",
             "1 outer 1 1 0 0 1 0 0 0",
             "2 inner 1 0 0 0 1 0 5 4",
@@ -1120,7 +1276,7 @@ fn nested_returns_pop_one_call_each_and_mark_what_each_left_in_x19() {
             "13 0 0 0 1 0 0 0 1 1 0 0 0 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "19 outer+20",
-            "3 1 0 0 4",
+            "3 1 0 0 0 4",
             "0 main 1 1 0 0 1 0 0 0",
             "1 outer 1 0 0 0 1 0 10 4",
             "2 inner 1 0 0 0 1 0 5 4",
@@ -1135,7 +1291,7 @@ fn nested_returns_pop_one_call_each_and_mark_what_each_left_in_x19() {
         [
             "17 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0",
             "19 outer+20",
-            "3 0 0 0 4",
+            "3 0 0 0 0 4",
             "0 main 1 0 0 0 1 0 0 4",
             "1 outer 1 0 0 0 1 0 10 4",
             "2 inner 1 0 0 0 1 0 5 4",
@@ -1203,7 +1359,7 @@ fn a_recursions_returns_pop_one_call_each() {
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
             "2 sum sum+28 sum+32 top-48 top-80 top-48 top-80 0 4 0 0 -1 -1 0 0 -1 -1",
-            "4 3 0 0 8",
+            "4 3 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 1 8 0 2 0 0 0",
             "2 sum 1 1 8 0 1 0 0 0",
@@ -1217,7 +1373,7 @@ fn a_recursions_returns_pop_one_call_each() {
             "33 0 0 0 1 0 0 0 2 0 0 0 0 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
-            "4 2 0 0 8",
+            "4 2 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 1 8 0 2 0 0 0",
             "2 sum 1 0 8 0 1 0 1 8",
@@ -1230,7 +1386,7 @@ fn a_recursions_returns_pop_one_call_each() {
         [
             "37 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
-            "4 1 0 0 8",
+            "4 1 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 0 8 0 2 0 3 8",
             "2 sum 1 0 8 0 1 0 1 8",
@@ -1305,7 +1461,7 @@ fn tail_calls_return_for_the_caller_that_made_them() {
         [
             "11 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
-            "2 1 0 0 4",
+            "2 1 0 0 0 4",
             "0 main 1 1 0 0 1 0 0 0",
             "1 twice 1 0 4 0 21 0 42 4",
         ]
@@ -1319,7 +1475,7 @@ fn tail_calls_return_for_the_caller_that_made_them() {
         [
             "18 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
-            "3 1 0 0 8",
+            "3 1 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 twice 1 0 4 0 21 0 42 4",
             "1 show 1 0 0 0 42 0 3 8",
@@ -1330,7 +1486,7 @@ fn tail_calls_return_for_the_caller_that_made_them() {
         p.numbers_after(main + 32, 1),
         [
             "21 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0",
-            "3 0 0 0 4",
+            "3 0 0 0 0 4",
             "0 main 1 0 0 0 1 0 0 4",
             "1 twice 1 0 4 0 21 0 42 4",
             "1 show 1 0 0 0 42 0 3 8",
@@ -1463,7 +1619,7 @@ fn a_ret_that_skips_its_caller_is_a_bad_return_and_marks_the_x19_its_caller_is_o
             "11 0 0 0 1 11 skip+12 main+16 1 1 2 skip jump+12 0 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "19 skip+12",
-            "3 1 0 0 4",
+            "3 1 0 0 0 4",
             "0 main 1 1 0 0 1 0 0 0",
             "1 jump 1 0 0 0 1 0 7 4",
             "2 skip 1 0 0 0 1 0 7 4",
@@ -1545,7 +1701,7 @@ fn a_ret_that_skips_its_caller_under_one_bl_site_is_caught_by_sp_and_fp() {
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
             "19 sum_base+16",
-            "4 2 0 0 8",
+            "4 2 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 1 8 0 2 0 0 0",
             "2 sum 1 0 8 0 1 0 0 8",
@@ -1574,7 +1730,7 @@ fn a_stray_ret_ends_the_call_it_came_from_and_leaves_no_false_mark() {
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
             "2 sum sum+24 sum+28 top-48 top-80 top-48 top-80 0 4 0 0 -1 -1 0 0 -1 -1",
-            "4 3 0 0 8",
+            "4 3 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 1 8 0 2 0 0 0",
             "2 sum 1 1 8 0 1 0 0 0",
@@ -1589,7 +1745,7 @@ fn a_stray_ret_ends_the_call_it_came_from_and_leaves_no_false_mark() {
             "31 0 0 0 1 28 sum_base+16 sum_out 2 0 3 sum sum+28 4 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
             "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
-            "4 2 0 0 8",
+            "4 2 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 1 8 0 2 0 0 0",
             "2 sum 1 0 8 0 1 0 0 8",
@@ -1602,7 +1758,7 @@ fn a_stray_ret_ends_the_call_it_came_from_and_leaves_no_false_mark() {
         [
             "35 0 0 0 1 28 sum_base+16 sum_out 1 0 3 sum sum+28 4 0 0 0",
             "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
-            "4 1 0 0 8",
+            "4 1 0 0 0 8",
             "0 main 1 1 0 0 1 0 0 0",
             "1 sum 1 0 8 0 2 0 2 8",
             "2 sum 1 0 8 0 1 0 0 8",
@@ -1661,7 +1817,7 @@ fn a_ret_that_skips_main_is_a_bad_return_though_the_program_then_exits() {
         p.numbers_after(bump + 8, 1),
         [
             "7 0 0 0 1 7 bump+8 __main_return 0 0 1 bump main+16 0 0 0 0",
-            "2 0 0 0 4",
+            "2 0 0 0 0 4",
             "0 main 1 0 0 0 1 0 11 4",
             "1 bump 1 0 4 0 10 0 11 4",
         ]
