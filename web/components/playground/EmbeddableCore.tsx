@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -54,18 +55,20 @@ function nameForRecents(source: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Inner core: mounted only once engaged, so the hub and its worker never start
-// early. useEmulator cannot be called conditionally, so the gate lives outside.
+// Inner core: mounted from the first render, so a press or text that engages a
+// frame lands on the control it was aimed at. The hub's worker and wasm wait
+// for `engaged`, which the outer component sets.
 // ---------------------------------------------------------------------------
 
-export type FirstPress = "run" | "step" | "check";
+/** An embed control that needs the machine loaded. */
+type Press = "run" | "step" | "check" | StepGoal;
 
 type EmbeddableCoreProps = EmbeddablePlaygroundProps & {
   registerHandle: (handle: EmbeddablePlaygroundHandle | null) => void;
   /** The outer wrapper, which the autoplay walk watches to hold off screen. */
   frameRef: RefObject<HTMLDivElement | null>;
-  /** The control pressed before the hub existed, done once it loads. */
-  firstPress?: FirstPress | null;
+  /** False until a press, focus or scroll asks for the machine. */
+  engaged?: boolean;
 };
 
 export function EmbeddableCore({
@@ -99,9 +102,11 @@ export function EmbeddableCore({
   onToggleTheme,
   registerHandle,
   frameRef,
-  firstPress = null,
+  engaged = true,
 }: EmbeddableCoreProps) {
-  const emu = useEmulator();
+  const emu = useEmulator(engaged);
+  // Engaged as well as loaded: the hub's test fake reports loaded from the start.
+  const ready = engaged && emu.isLoaded;
   // The hub as a latest-value ref (synced in the effect further down, with
   // the other such refs). Declared here because callbacks and hooks all the
   // way through the body read the machine through it: the hub is a NEW object
@@ -236,7 +241,7 @@ export function EmbeddableCore({
     isHome: chrome === "full",
     startStdin,
     machine: emuRef,
-    machineLoaded: emu.isLoaded,
+    machineLoaded: ready,
   });
 
 
@@ -441,8 +446,11 @@ export function EmbeddableCore({
 
   // Latest-value refs so the imperative handle stays a stable object while
   // still reading live editor / hub state when the host calls a method. The
-  // refs are synced in an effect; the react-hooks rules forbid writing a ref
-  // during render.
+  // react-hooks rules forbid writing a ref during render, so they are synced
+  // in a layout effect: every layout effect in a commit runs before any
+  // passive one, so a child's effect reads this render's hub. Synced in a
+  // passive effect, they lagged the terminal's self-attach in the same
+  // commit, which then missed the chunk that turned raw mode on.
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
   const checksRef = useRef(checks);
@@ -454,7 +462,7 @@ export function EmbeddableCore({
   const buildCommandsRef = useRef(buildCommands);
   const toggleBreakpointRef = useRef(toggleBreakpointAtCaret);
   const runUntilRef = useRef(runUntil);
-  useEffect(() => {
+  useLayoutEffect(() => {
     emuRef.current = emu;
     sourceRef.current = source;
     extraFilesRef.current = extraFiles;
@@ -494,7 +502,7 @@ export function EmbeddableCore({
   const walk = useAutoplay({
     enabled: Boolean(autoplay),
     steps: autoplaySteps,
-    machineLoaded: emu.isLoaded,
+    machineLoaded: ready,
     machine: emuRef,
     source,
     args: argsText,
@@ -600,35 +608,51 @@ export function EmbeddableCore({
     [loadSource, runProgram, resetMachine, toast, handleStepBack, walk],
   );
 
-  // A press on run, step or check before the frame engaged is that action:
-  // the swap to these live panes took the pressed button away before its
-  // click landed, so a phone needed a second tap. Done once, when the hub
-  // can run it.
-  const firstPressDone = useRef(false);
+  // A press that needs the machine before it has loaded (the press that
+  // engaged the frame, or one while the hub starts) is done once it can be.
+  // The last such press wins.
+  const queuedRef = useRef<Press | null>(null);
+  const doPress = useCallback(
+    (press: Press) => {
+      if (press === "run") void runEmbed();
+      else if (press === "step") void stepEmbed();
+      else if (press === "check") void checkEmbed();
+      else void runUntil(press);
+    },
+    [runEmbed, stepEmbed, checkEmbed, runUntil],
+  );
+  const pressWhenReady = useCallback(
+    (press: Press) => {
+      if (ready) doPress(press);
+      else queuedRef.current = press;
+    },
+    [ready, doPress],
+  );
   useEffect(() => {
-    if (!firstPress || firstPressDone.current || !emu.isLoaded) return;
-    firstPressDone.current = true;
-    if (firstPress === "run") void runEmbed();
-    else if (firstPress === "step") void stepEmbed();
-    else void checkEmbed();
-  }, [firstPress, emu.isLoaded, runEmbed, stepEmbed, checkEmbed]);
+    const press = queuedRef.current;
+    if (!ready || press === null) return;
+    queuedRef.current = null;
+    doPress(press);
+  }, [ready, doPress]);
 
   // Register the handle only once the hub is loaded, so a queued host action
   // (flushed by the outer component on registration) lands on a live backend.
   // Full chrome waits for the surface's bridge too: a queued loadProgram that
   // arrived first would adopt no launch mode and drop no watermark.
   useEffect(() => {
-    if (!emu.isLoaded) return;
+    if (!ready) return;
     if (chrome === "full" && !fullReady) return;
     registerHandle(handle);
     return () => registerHandle(null);
-  }, [chrome, emu.isLoaded, fullReady, handle, registerHandle]);
+  }, [chrome, ready, fullReady, handle, registerHandle]);
 
 
 
   // 400ms: long enough that a typing burst lints once, short enough that a
-  // paused student sees warnings.
+  // paused student sees warnings. A frame nobody has used has no editor yet,
+  // and each frame on the page would re-render for nothing.
   useEffect(() => {
+    if (!engaged) return;
     const handle = window.setTimeout(() => {
       void emuRef.current
         .lint(combineSources(source, extraFiles))
@@ -636,7 +660,7 @@ export function EmbeddableCore({
         .catch(() => setLintWarnings([]));
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [source, extraFiles]);
+  }, [engaged, source, extraFiles]);
 
 
   if (emu.loadError) {
@@ -699,13 +723,13 @@ export function EmbeddableCore({
           emu.programLoaded && emu.canStepBack && !emu.isRunning && !emu.blocked
         }
         error={emu.error}
-        onRun={() => void runEmbed()}
+        onRun={() => pressWhenReady("run")}
         onReset={emu.reset}
-        onStep={() => void stepEmbed()}
+        onStep={() => pressWhenReady("step")}
         onStepBack={handleStepBack}
-        onRunUntil={(goal) => void runUntil(goal)}
+        onRunUntil={pressWhenReady}
         stopReason={emu.stopReason}
-        onCheck={() => void checkEmbed()}
+        onCheck={() => pressWhenReady("check")}
         runStatus={{
           programLoaded: emu.programLoaded,
           isRunning: emu.isRunning,
@@ -727,6 +751,12 @@ export function EmbeddableCore({
               currentLine={emu.currentLine}
               holdScroll={holdScroll}
             />
+          ) : !engaged ? (
+            // The lazy editor's own placeholder: Monaco loads only once the
+            // frame is in use.
+            <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)] text-sm">
+              loading editor...
+            </div>
           ) : (
             <Editor
               value={source}

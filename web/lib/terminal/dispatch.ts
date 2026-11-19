@@ -113,6 +113,9 @@ export interface TerminalProgramIO {
   /** Put the keyboard back on the pane (returning to the terminal tab
    *  mid-session; hiding the pane blurs its textarea). */
   focus?(): void;
+  /** Whether a program left the pane on its alternate screen, which the
+   *  session's end leaves only then: leaving it moves the cursor. */
+  altScreen?(): boolean;
 }
 
 /**

@@ -187,11 +187,11 @@ describe("EmbeddablePlayground", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     // An embed waits until it scrolls into view or is pressed; jsdom has no
     // IntersectionObserver, so the emulator must not start on mount.
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
     expect(screen.queryByTestId("editor")).toBeNull();
 
     engage(container);
-    expect(useEmulatorMock).toHaveBeenCalled();
+    expect(useEmulatorMock).toHaveBeenLastCalledWith(true);
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
@@ -233,7 +233,7 @@ describe("EmbeddablePlayground", () => {
     vi.stubGlobal("cancelIdleCallback", vi.fn());
 
     render(<EmbeddablePlayground chrome="embed" />);
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
 
     // Two intersections, one queued engage: the observer reports every change.
     act(() => {
@@ -242,11 +242,11 @@ describe("EmbeddablePlayground", () => {
     });
     expect(requestIdle).toHaveBeenCalledTimes(1);
     expect(idleOptions).toEqual({ timeout: 1200 });
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
     expect(screen.queryByTestId("editor")).toBeNull();
 
     act(() => runIdle());
-    expect(useEmulatorMock).toHaveBeenCalled();
+    expect(useEmulatorMock).toHaveBeenLastCalledWith(true);
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
@@ -527,11 +527,13 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
-    const { container, rerender } = render(
-      <EmbeddablePlayground chrome="checker" startSource="mov x0, 1" onCheck={vi.fn()} />,
-    );
+    render(<EmbeddablePlayground chrome="checker" startSource="mov x0, 1" onCheck={vi.fn()} />);
     expect(screen.queryByLabelText("args")).toBeNull();
-    rerender(
+    cleanup();
+    // A frame reads its start props when it mounts, as useState seeds do, so
+    // new ones need a new frame (hosts key theirs); a re-render keeps the box's
+    // text (next case).
+    const { container } = render(
       <EmbeddablePlayground
         chrome="checker"
         startSource="mov x0, 1"
@@ -544,6 +546,24 @@ describe("EmbeddablePlayground", () => {
     const box = screen.getByLabelText("args") as HTMLInputElement;
     expect(box.value).toBe("12 7");
     fireEvent.change(box, { target: { value: "5 -3 8" } });
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
+  });
+
+  it("keeps args typed before the engage through a re-render of the frame", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    // A fresh onCheck each time, as a host's re-render passes.
+    const frame = () => (
+      <EmbeddablePlayground chrome="checker" startSource="mov x0, 1" startArgs="12 7" showArgs onCheck={vi.fn()} />
+    );
+    const { container, rerender } = render(frame());
+    fireEvent.change(screen.getByLabelText("args"), { target: { value: "5 -3 8" } });
+    rerender(frame());
+    expect((screen.getByLabelText("args") as HTMLInputElement).value).toBe("5 -3 8");
+    engage(container);
+    expect((screen.getByLabelText("args") as HTMLInputElement).value).toBe("5 -3 8");
     fireEvent.click(screen.getByLabelText("run"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
   });

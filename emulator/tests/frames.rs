@@ -1216,10 +1216,10 @@ fn a_call_out_before_lr_is_saved_is_flagged_and_its_return_goes_astray() {
     // greet's last call is the bl printf on line 16, so it returns to the
     // ret: the header's bad-return call carries it as its 15th number, and
     // main's row and greet's follow the header's 17, 18 numbers each, then
-    // the call tree's 5 and 10 for each of its two calls.
+    // the call tree's 6 and 10 for each of its two calls.
     assert_eq!(acts[1].last_ret, ret);
     let n = view_numbers(&p.view());
-    assert_eq!((n[14], n.len()), (ret as f64, 17 + 2 * 18 + 5 + 2 * 10));
+    assert_eq!((n[14], n.len()), (ret as f64, 17 + 2 * 18 + 6 + 2 * 10));
 }
 
 /// keep saves lr with its stp but never sets fp, and pushes x19 it never
@@ -2054,6 +2054,250 @@ sum:
 #[test]
 fn the_frame_check_is_silent_on_a_correct_frame() {
     assert_eq!(frame_check(WELL_LAID_OUT), (2, 0, vec![]));
+}
+
+/// A 32-byte frame covers fp + 0 to 31; the pair store at 24 (line 18)
+/// writes x19 to 24 to 31 and x20 to 32 to 39, past the frame's end.
+const PAIR_PAST_THE_FRAME: &str = r#"
+// Saves x19 and x20 with one pair store whose second register lands past
+// the end of main's 32-byte frame.
+
+define(fp, x29)
+define(lr, x30)
+
+pair_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, pair_s]
+        mov     w0, 0
+        ldp     x19, x20, [fp, pair_s]
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// The pair store at 16 covers 16 to 31, so count_s (24 to 27, line 21)
+/// lands on the saved x20.
+const PAIR_UNDER_A_COUNT: &str = r#"
+// Saves x19 and x20 with one pair store at 16, then keeps a count at 24,
+// inside the pair's second register.
+
+define(fp, x29)
+define(lr, x30)
+
+pair_s = 16
+count_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, pair_s]
+        mov     w9, 3
+        str     w9, [fp, count_s]
+        ldp     x19, x20, [fp, pair_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Two ints stored with one pair at 20: 8 bytes at an offset that is not a
+/// multiple of 8, but each int is 4 bytes, so nothing is off its size.
+const INT_PAIR: &str = r#"
+// Keeps two ints in main's frame, stored with one pair store.
+
+define(fp, x29)
+define(lr, x30)
+
+ints_s = 20
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 1
+        mov     w10, 2
+        stp     w9, w10, [fp, ints_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_counts_both_registers_of_a_pair() {
+    assert_eq!(
+        frame_check(PAIR_PAST_THE_FRAME),
+        (1, 0, vec![row(OUTSIDE, 18, "main", 32, &[("pair_s", 24, 16)])])
+    );
+    assert_eq!(
+        frame_check(PAIR_UNDER_A_COUNT),
+        (1, 0, vec![row(OVERLAP, 21, "main", 32, &[("pair_s", 16, 16), ("count_s", 24, 4)])])
+    );
+    // The multiple-of-8 rule is about one 8-byte value, which a pair of ints
+    // is not; an x pair cannot sit off a multiple of 8 at all, since its
+    // offset is encoded in units of 8.
+    assert_eq!(frame_check(INT_PAIR), (1, 0, vec![]));
+    assert_eq!(frame_check(PAIR_SECOND_NAMED), (1, 0, vec![]));
+}
+
+/// INT_PAIR's two ints also read or written as one 8-byte value: that value
+/// sits at 20, off a multiple of 8, whichever access comes first.
+#[test]
+fn a_pair_of_ints_also_used_as_one_long_is_off_a_multiple_of_8_in_either_order() {
+    let pair = "        stp     w9, w10, [fp, ints_s]
+";
+    for long in ["        ldr     x0, [fp, ints_s]
+", "        str     x9, [fp, ints_s]
+"] {
+        let after = INT_PAIR.replace(pair, &format!("{pair}{long}"));
+        assert_eq!(frame_check(&after), (1, 0, vec![row(UNALIGNED, 20, "main", 32, &[("ints_s", 20, 8)])]), "{long}");
+        let before = INT_PAIR.replace(pair, &format!("{long}{pair}"));
+        assert_eq!(frame_check(&before), (1, 0, vec![row(UNALIGNED, 19, "main", 32, &[("ints_s", 20, 8)])]), "{long}");
+    }
+}
+
+/// x19_s and x20_s name the two registers one pair store saves; reading
+/// x20 back through its own name is no overlap.
+const PAIR_SECOND_NAMED: &str = r#"
+// Saves x19 and x20 with one pair store and reads x20 back by its own name.
+
+define(fp, x29)
+define(lr, x30)
+
+x19_s = 16
+x20_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, x19_s]
+        ldr     x20, [fp, x20_s]
+        ldr     x19, [fp, x19_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// main's call to square shares line 18 with a label, and nothing else
+/// names square a function, so square's frame (line 28, 24 bytes) is read as
+/// part of main's.
+const LABEL_THEN_CALL: &str = r#"
+// main prints 5 squared; its call to square shares a line with a label,
+// and square's 24-byte frame is never rounded up to 16.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 5
+call:   bl      square
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+// square(w0 = n) -> w0 = n * n
+square:
+        stp     fp, lr, [sp, -24]!
+        mov     fp, sp
+        mul     w0, w0, w0
+        ldp     fp, lr, [sp], 24
+        ret
+"#;
+
+#[test]
+fn the_frame_check_finds_a_function_called_on_a_labelled_line() {
+    assert_eq!(frame_check(LABEL_THEN_CALL), (2, 0, vec![row(ODD_FRAME, 28, "square", 24, &[])]));
+}
+
+/// The function splitter the lint and the frames view share, at three
+/// edges: a gcc dotted local label on its own line, a tab after `bl`, and
+/// code after `.section .text`.
+const SPLITTER_EDGES: &str = concat!(
+    r#"
+// main squares 3, 2 and 1 in a loop on a gcc-style label, then calls
+// helper, which sits after `.section .text`.
+
+        .text
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w19, 3
+.L2:
+        mov     w0, w19
+"#,
+    "        bl\tsquare\n",
+    r#"        subs    w19, w19, 1
+        b.ne    .L2
+        bl      helper
+        ldp     x29, x30, [sp], 16
+        ret
+
+square: stp     x29, x30, [sp, -24]!
+        mul     w0, w0, w0
+        ldp     x29, x30, [sp], 24
+        ret
+
+        .section .text
+        .global helper
+helper: stp     x29, x30, [sp, -24]!
+        ldp     x29, x30, [sp], 24
+        ret
+"#
+);
+
+#[test]
+fn the_function_splitter_keeps_its_reading_of_a_dotted_label_a_tab_and_section_text() {
+    let p = load(SPLITTER_EDGES);
+    let name = |f: &aarch64_emulator::frames::layout::FunctionLayout| f.name.map(|n| p.layout.names[n as usize].clone());
+    let functions: Vec<_> = p.layout.functions.iter().map(|f| (name(f), f.frame_bytes, f.course_frame)).collect();
+    // helper, after `.section .text`, is none of them.
+    assert_eq!(functions, vec![(Some("main".to_string()), 16, true), (Some("square".to_string()), 24, false)]);
+    let lint: Vec<_> = aarch64_emulator::frontend::lint::lint(SPLITTER_EDGES).into_iter().map(|w| (w.line, w.message)).collect();
+    // square's push is marked; helper's, after `.section .text`, is not.
+    let odd = "this pushes 24 bytes, which is not a multiple of 16. sp must stay 16-byte aligned, so round the frame up (`stp x29, x30, [sp, -16]!`, `sub sp, sp, 32`, ...)";
+    assert_eq!(lint, vec![(20, odd.to_string())]);
+}
+
+/// Every shipped example runs to its end, so a "never pushed" on any of
+/// them is false. dsav's read_int gives its scanf space back once on each
+/// of two exits.
+#[test]
+fn no_shipped_example_pops_what_it_never_pushed() {
+    for (stem, source) in &shipped_examples() {
+        let never: Vec<_> = aarch64_emulator::frontend::lint::lint(source).into_iter().filter(|w| w.message.contains("never pushed")).collect();
+        assert_eq!(never, vec![], "{stem}");
+    }
 }
 
 /// Precision over every program the site ships and the tests hold: each

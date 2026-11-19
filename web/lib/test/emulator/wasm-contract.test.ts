@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { wordLint } from "@/lib/emulator/frame-check";
-import { readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
+import { FRAME_ROW, FRAMES_HEADER, readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
 import { decodeFrameLayout, decodeFrames, FRAME_STATE } from "@/lib/emulator/stack-frames";
 
 // Pins the emulator calls the web layer relies on, against the real node
@@ -1133,6 +1133,62 @@ main:
       expect(fault).toMatchObject({ halted: true, error: WORDS_FAULT });
       const back = emu.step_back() as RawRun;
       expect(back.pc).toBe(Number(0x4141_4141_4141_4141n));
+    });
+  });
+
+  // tick and tock in turn: main and the first 199 calls fill the call
+  // tree's 200 nodes, and the 200th call, the 100th tock, drops the
+  // returned calls 1 to 99 to make room.
+  const TICK_TOCK = `        .text
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w19, 0
+loop:
+        bl      tick
+        bl      tock
+        add     w19, w19, 1
+        cmp     w19, 150
+        b.lt    loop
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+`;
+
+  it("steps back over the call that drops the earliest calls and forward again to the same numbers", () => {
+    withEmulator((emu) => {
+      assemble(emu, TICK_TOCK);
+      const tock = Number(emu.resolve_label("tock"));
+      emu.set_breakpoint(tock);
+      for (let i = 0; i < 100; i++) {
+        emu.step();
+        emu.run_until_break(10_000_000);
+      }
+      emu.clear_breakpoint(tock);
+      // The tree's header: nodes, current, outside, dropped, earlier, and
+      // the width of x0's last write (tick's mov w0).
+      const head = (n: number[]) => {
+        const at = FRAMES_HEADER + n[8] * FRAME_ROW + n[9] * 2;
+        return n.slice(at, at + 6);
+      };
+      const dropped = Array.from(emu.frames());
+      expect(head(dropped)).toEqual([102, 102, 0, 99, 99, 4]);
+      emu.step_back();
+      const full = Array.from(emu.frames());
+      expect(head(full)).toEqual([200, 1, 0, 0, 0, 4]);
+      emu.step();
+      expect(Array.from(emu.frames())).toEqual(dropped);
+      emu.step_back();
+      expect(Array.from(emu.frames())).toEqual(full);
     });
   });
 

@@ -71,6 +71,8 @@ vi.mock("@xterm/xterm", () => ({
     dataCb: ((data: string) => void) | null = null;
     cols = 80;
     rows = 24;
+    // The pane reads which screen a program left it on when a session ends.
+    buffer = { active: { type: "normal" } };
     constructor(options: Record<string, unknown> = {}) {
       this.options = { ...options };
       this.textarea.addEventListener("keydown", (e) => {

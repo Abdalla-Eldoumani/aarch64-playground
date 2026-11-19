@@ -108,8 +108,10 @@ the call, with a plain message instead of a crash:
 
 The stack view caps its own records, so a deep recursion cannot use up memory
 through them either. It records at most 16,384 calls
-(`frames::MAX_ACTIVATIONS`), and the call tree keeps at most 200 entries.
-Calls past either cap are counted, not stored. The view draws at most 64
+(`frames::MAX_ACTIVATIONS`); deeper calls are counted, not stored. The call
+tree keeps at most 200 entries: a call that finds them full drops the oldest
+finished calls and counts them, and calls nested past 12 levels are counted,
+not stored. The view draws at most 64
 frames. Past 64, the frames between main and the newest 63 fold into one line
 that counts them. None of the three caps stops the program.
 

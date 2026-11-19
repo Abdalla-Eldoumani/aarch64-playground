@@ -469,11 +469,36 @@ main:   stp     x29, x30, [sp, -16]!
         p.stub("printf"),
         &format!(
             "Bus error\nsp is 0x{sp:x} at this call, which is not a multiple of 16: round the \
-             frame size above it up to a multiple of 16 (32 instead of 24), or size it with \
+             frame size above it up to a multiple of 16, or size it with \
              `alloc = -(16 + locals) & -16`"
         ),
     );
     assert!(p.cpu.stdout.is_empty());
+}
+
+#[test]
+fn a_forty_byte_frames_bus_error_names_no_other_frames_size() {
+    // 40 leaves sp 8 off a multiple of 16, as 24 does, and the course's
+    // formula rounds it to 48: telling this program "32 instead of 24"
+    // points at a frame it does not have.
+    let mut p = load(
+        r#"
+        .rodata
+fmt:    .string "hi\n"
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -40]!
+        mov     x29, sp
+        ldr     x0, =fmt
+        bl      printf
+        ldp     x29, x30, [sp], 40
+        ret
+"#,
+    );
+    let r = p.halt();
+    let message = r.error.as_deref().expect("a halt message");
+    assert!(message.starts_with("Bus error\n") && message.contains("not a multiple of 16"), "{message}");
+    assert!(!message.contains("instead of 24"), "{message}");
 }
 
 #[test]
@@ -864,7 +889,7 @@ cmp:    ldr     w0, [x0]
         4.0, 0.0, 0.0, -1.0, -1.0, 0.0, 0.0, -1.0, -1.0,
         1.0, 4194348.0, 4294902608.0, 4294902608.0, 2147483632.0, 2147483632.0, 2147483632.0,
         0.0, 1.0, 2.0, 0.0, 0.0, -1.0, -1.0, 0.0, 0.0, -1.0, -1.0,
-        2.0, 2.0, 0.0, 0.0, 8.0, 0.0,
+        2.0, 2.0, 0.0, 0.0, 0.0, 8.0, 0.0,
         4194304.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0,
         4194348.0, 1.0, 1.0, 0.0, 0.0, 6291460.0, 0.0, 0.0, 0.0,
     ];
