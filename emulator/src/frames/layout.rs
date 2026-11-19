@@ -86,7 +86,7 @@ pub struct NamedSlot {
     /// The widest access to it, both registers of a pair.
     pub width: u8,
     pub name: u32,
-    /// The first access at that width.
+    /// The first access at that width, a single register's before a pair's.
     pub pc: u64,
     /// Some access writes it.
     pub stored: bool,
@@ -356,7 +356,9 @@ impl Scan<'_> {
 /// here).
 fn add_named(named: &mut Vec<NamedSlot>, names: &mut Vec<String>, access: NamedSlot, name: &str) {
     if let Some(s) = named.iter_mut().find(|s| s.offset == access.offset && names[s.name as usize] == name) {
-        if s.width < access.width {
+        // A wider access wins, and at one width so does a single register
+        // over a pair: two ints also used as one long are checked as the long.
+        if (s.width, !s.pair) < (access.width, !access.pair) {
             (s.width, s.pc, s.pair) = (access.width, access.pc, access.pair);
         }
         s.stored |= access.stored;
