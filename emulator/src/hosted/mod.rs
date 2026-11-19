@@ -460,6 +460,17 @@ impl HostTable {
             && (address - HOST_STUB_BASE).is_multiple_of(HOST_STUB_STRIDE)
     }
 
+    /// A stub's step belongs to the `bl` that called it. Callers sample
+    /// `lr`, since qsort and bsearch rewrite x30 mid-call.
+    pub(crate) fn call_site(&self, pc: u64, lr: u64) -> u64 {
+        if self.contains_address(pc) { Self::bl_before(lr) } else { pc }
+    }
+
+    /// The `bl` that set `lr`.
+    pub(crate) fn bl_before(lr: u64) -> u64 {
+        lr.wrapping_sub(4)
+    }
+
     /// The stub at `address`, or `None` when no entry lives there.
     pub fn stub_at(&self, address: u64) -> Option<Stub> {
         if !self.contains_address(address) {
