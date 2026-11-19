@@ -16,15 +16,18 @@
 //!     rewrite does, because it is almost never what the author meant.
 //!
 //! Everything here is heuristic and fails open: an offset that cannot be
-//! folded to a constant, a function with several `ret`s, or any write to
-//! sp the tracker does not model simply disables analysis for that
-//! function. Prefer a missed warning to a false one.
+//! folded to a constant, or any write to sp the tracker does not model,
+//! simply disables analysis for that function. A function without exactly
+//! one `ret`, or with a second path the walk cannot follow, keeps only the
+//! check that each push is a multiple of 16. Prefer a missed warning to a
+//! false one.
 
 use std::collections::{HashMap, HashSet};
 
 use super::expr::evaluate;
 use super::lexer::lex;
 use super::m4;
+use super::pipeline::is_branch_mnemonic;
 
 /// One pre-assembly warning: advisory, line-anchored, with the remedy in
 /// the message. Never blocks assembling.
@@ -396,23 +399,35 @@ fn analyze_segment(
     symbols: &HashMap<String, i64>,
     warnings: &mut Vec<LintWarning>,
 ) {
-    // Flow-insensitive tracking is only sound over one entry and one
-    // exit; a function with several `ret`s (early returns, multiple
-    // epilogues) is skipped rather than guessed at.
+    // The walk reads top to bottom, so the balance warnings need one exit:
+    // a function with other than one `ret` gets none. A push off 16 is
+    // wrong on every path, so it is checked everywhere, `_start` included.
     let ret_count = segment
         .lines
         .iter()
         .filter(|(_, text)| text == "ret" || text.starts_with("ret "))
         .count();
-    if ret_count != 1 {
-        return;
-    }
+    let mut balance = ret_count == 1;
 
     let name = &segment.name;
     let mut delta: i64 = 0;
+    // The depths conditional branches left at. A `b` leaving at a depth
+    // other than all of them means the lines after it start a path at a
+    // depth the walk cannot see (space given back once on each of two
+    // exits), so the balance warnings stop there.
+    let mut forks = Vec::new();
     for (line, text) in &segment.lines {
         let line = *line;
+        match text.split_whitespace().next().unwrap_or("") {
+            "b" => balance &= forks.iter().all(|&depth| depth == delta),
+            "bl" => {}
+            op if is_branch_mnemonic(op) => forks.push(delta),
+            _ => {}
+        }
         if text == "ret" || text.starts_with("ret ") {
+            if !balance {
+                continue;
+            }
             if delta < 0 {
                 warnings.push(LintWarning {
                     line,
@@ -451,7 +466,7 @@ fn analyze_segment(
         }
         if let StackEffect::Pop { bytes } = effect {
             delta += bytes;
-            if delta > 0 {
+            if balance && delta > 0 {
                 warnings.push(LintWarning {
                     line,
                     message: format!(
@@ -642,7 +657,7 @@ mod tests {
     }
 
     #[test]
-    fn multi_ret_functions_are_skipped() {
+    fn multi_ret_functions_get_no_balance_warning() {
         let src = ".text\nmain:\nstp x29, x30, [sp, -16]!\ncbz x0, out\nldp x29, x30, [sp], 16\nret\nout:\nldp x29, x30, [sp], 16\nret\n";
         // Two epilogues, two rets: flow-insensitive tracking would lie.
         assert_eq!(lint(src), Vec::new());
