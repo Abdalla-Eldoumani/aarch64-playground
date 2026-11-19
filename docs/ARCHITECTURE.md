@@ -179,11 +179,11 @@ address maps its page. A named save shares pages with the live machine, and a
 page is copied only when it is written while a save still holds it. Step back
 does not copy pages at all: each step logs the bytes its writes replaced.
 
-Unaligned loads and stores work, as they do for Linux programs. The one
-alignment rule is on `sp`: a load or store through `sp`, or a library call,
-while `sp` is not a multiple of 16 stops the program with the bus error Linux
-gives. A load or store in the first page (a null pointer) stops it with a
-segmentation fault.
+Unaligned loads and stores work, as they do for Linux programs. Two alignment
+rules stop the program with the bus error Linux gives: a load or store through
+`sp`, or a library call, while `sp` is not a multiple of 16, and a jump to an
+address that is not a multiple of 4, where no instruction can start. A load or
+store in the first page (a null pointer) stops it with a segmentation fault.
 
 The `memoryMap` export in `lib.rs` lists the address bands, built from the
 same constants the loader uses, so the memory panel's labels cannot drift
