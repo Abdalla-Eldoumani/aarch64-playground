@@ -46,9 +46,25 @@ export type TerminalDrive = {
   /** The shared drive itself, for the `./name` path that owns its own exit. */
   driveForeground: (
     io: TerminalProgramIO,
-    opts?: { clearAtStart?: boolean; replayFrom?: number },
+    opts?: { clearAtStart?: boolean; replayAfter?: string },
   ) => Promise<number | null>;
 };
+
+/** How much of a mark's end is looked up once the console has dropped its head. */
+const MARK_TAIL = 256;
+
+/**
+ * The console's text after `mark`, text it held earlier in the run. The
+ * console only appends until it is full, then drops its head: there the
+ * mark's end is found at its first match, so a repeated line replays more,
+ * never less, and a mark dropped whole leaves all the console holds.
+ */
+function heldAfter(held: string, mark: string): string {
+  if (held.startsWith(mark)) return held.slice(mark.length);
+  const tail = mark.slice(-MARK_TAIL);
+  const at = held.indexOf(tail);
+  return at < 0 ? held : held.slice(at + tail.length);
+}
 
 /**
  * One foreground drive for every way a program takes over the terminal pane:
@@ -161,14 +177,15 @@ export function useTerminalDrive(opts: {
     termIORef.current?.focus?.();
   }, [terminalTabActive, foregroundLive]);
 
-  // What a self-attach replays: the console from where it stood before the
+  // What a self-attach replays: the console after the text it held before the
   // chunk that turned raw mode on, which carries the program's terminal setup.
   // Marked on that edge only when no session already drives the program, and
   // taken by the first attach, so a pane remounted mid-session gets nothing
   // and no other run's text (a terminal build keeps the editor's as history)
-  // is ever replayed.
-  const notRawLengthRef = useRef(0);
-  const replayFromRef = useRef<number | null>(null);
+  // is ever replayed. The mark is that text, not its length: a full console
+  // drops as much off its head as a chunk adds, so its length stops moving.
+  const notRawStdoutRef = useRef("");
+  const replayAfterRef = useRef<string | null>(null);
 
   // A program that switches the terminal to raw mode is a terminal
   // program: hand it the terminal pane on the false->true edge, the same
@@ -177,7 +194,7 @@ export function useTerminalDrive(opts: {
   useEffect(() => {
     if (wantsTerminal && !lastWantsTermRef.current) {
       lastWantsTermRef.current = true;
-      replayFromRef.current = foregroundActiveRef.current ? null : notRawLengthRef.current;
+      replayAfterRef.current = foregroundActiveRef.current ? null : notRawStdoutRef.current;
       // For a raw-mode program this edge is the session start, and it paints
       // frames through the renders the tab switch and pane mount take.
       // Pinning the watermark here keeps those frames out of the console;
@@ -188,15 +205,15 @@ export function useTerminalDrive(opts: {
       });
     } else if (!wantsTerminal) {
       lastWantsTermRef.current = false;
-      notRawLengthRef.current = stdout.length;
-      replayFromRef.current = null;
+      notRawStdoutRef.current = stdout;
+      replayAfterRef.current = null;
     }
   }, [wantsTerminal, stdout, requestPane]);
 
   const driveForeground = useCallback(
     async (
       io: TerminalProgramIO,
-      driveOpts?: { clearAtStart?: boolean; replayFrom?: number },
+      driveOpts?: { clearAtStart?: boolean; replayAfter?: string },
     ): Promise<number | null> => {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
@@ -218,10 +235,7 @@ export function useTerminalDrive(opts: {
         // A self-attached program set its terminal up (alternate screen, mouse
         // reporting, palette) in the chunk that turned raw mode on, so those
         // bytes reached the console before the pane could attach.
-        // shortcut: the mark is an offset, so a console that trims its head
-        // (MAX_CONSOLE_CHARS) between the mark and the attach replays from the
-        // wrong place; only a run writing that much in that moment meets it.
-        const replay = driveOpts?.replayFrom == null ? "" : machine.current.stdout.slice(driveOpts.replayFrom);
+        const replay = driveOpts?.replayAfter == null ? "" : heldAfter(machine.current.stdout, driveOpts.replayAfter);
         if (replay) io.write(replay);
       }
       // Live sessions skip the step-back ring: stepping back mid-session
@@ -385,9 +399,9 @@ export function useTerminalDrive(opts: {
     if (!termIO || foregroundActiveRef.current) return;
     const io = termIO;
     // The first attach takes the replay; a remount later in the run finds none.
-    const replayFrom = replayFromRef.current ?? undefined;
-    replayFromRef.current = null;
-    void driveForeground(io, { replayFrom }).then((exitCode) => {
+    const replayAfter = replayAfterRef.current ?? undefined;
+    replayAfterRef.current = null;
+    void driveForeground(io, { replayAfter }).then((exitCode) => {
       io.sessionEnded?.(exitCode);
     });
   }, [wantsTerminal, termIO, driveForeground]);
