@@ -325,6 +325,23 @@ describe("gdb-lite's reads", () => {
     await ctx.m4Expand("define(`N', 4)");
     expect(hub.m4Expand).toHaveBeenCalledWith("define(`N', 4)");
   });
+
+  it("drops gdb b's breakpoints on a cleared instruction and names each one an assemble could not set, once", async () => {
+    const { hub, ctx } = setup();
+    await ctx.setBreakpoint(0x400000, "quit");
+    await ctx.setBreakpoint(0x400010, "main");
+    const labels = hub.gdbLabels.current;
+    if (!labels) throw new Error("gdb b left nothing on the hub");
+    // gdb's clear: the last gutter dot on quit's instruction went.
+    labels.cleared(0x400000);
+    expect(ctx.breakpoints()).toEqual([[2, "main"]]);
+    hub.resolveLabel = vi.fn(async () => null);
+    await labels.assembled();
+    expect(ctx.unsetBreakpoints()).toEqual([[2, "main"]]);
+    expect(ctx.unsetBreakpoints()).toEqual([]);
+    labels.cleared();
+    expect(ctx.breakpoints()).toEqual([]);
+  });
 });
 
 describe("gcc's assemble channel", () => {
