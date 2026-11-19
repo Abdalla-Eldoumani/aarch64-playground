@@ -278,6 +278,36 @@ describe("progress bundle answers", () => {
     expect(readAnswer("older-here")).toMatchObject({ source: "theirs" });
   });
 
+  it("lets a record saved after the import win over a file dated in the future", () => {
+    const now = vi.spyOn(Date, "now");
+    try {
+      putAnswer("demo", { version: 1, kind: "write", source: "MY WORK", updatedAt: 1_700_000_000_000 });
+
+      now.mockReturnValue(1_700_000_001_000);
+      const future = importProgressBundle({
+        version: 1,
+        solved: [],
+        answers: { demo: { version: 1, kind: "write", source: "REPLACED", updatedAt: 8.64e15 } },
+      });
+      expect(future).toMatchObject({ ok: true, answersAdded: 1 });
+      expect(readAnswer("demo")).toMatchObject({ source: "REPLACED" });
+
+      // The student's own record, saved a second after that import.
+      now.mockReturnValue(1_700_000_002_000);
+      const own = importProgressBundle({
+        version: 1,
+        solved: [],
+        answers: {
+          demo: { version: 1, kind: "write", source: "MY WORK", updatedAt: 1_700_000_002_000 },
+        },
+      });
+      expect(own).toMatchObject({ ok: true, answersAdded: 1 });
+      expect(readAnswer("demo")).toMatchObject({ source: "MY WORK" });
+    } finally {
+      now.mockRestore();
+    }
+  });
+
   it("skips a malformed answer and lands the rest of the file", () => {
     const result = importProgressBundle({
       version: 1,
