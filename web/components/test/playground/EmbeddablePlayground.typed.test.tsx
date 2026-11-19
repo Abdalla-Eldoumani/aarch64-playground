@@ -5,7 +5,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
-import { act, cleanup, fireEvent, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 
@@ -100,5 +100,19 @@ describe("text typed before the frame engages", () => {
         }) as MediaQueryList,
     );
     expect(await typeBeforeScript(LESSON_FRAME, "Standard input", "42")).toEqual({ hydrated: "42", engaged: "42" });
+  });
+
+  // A host that re-renders the frame (a fresh callback each time) before it engages.
+  it("keeps Standard input typed before the engage through a re-render of the frame", () => {
+    const frame = () => <EmbeddablePlayground chrome="embed" startSource={SRC} onStateChange={() => {}} />;
+    const box = () => (screen.getByLabelText("Standard input") as HTMLInputElement).value;
+    const { container, rerender } = render(frame());
+    fireEvent.change(screen.getByLabelText("Standard input"), { target: { value: "42" } });
+    rerender(frame());
+    expect(box()).toBe("42");
+    act(() => {
+      fireEvent.mouseDown(container.firstChild as Element);
+    });
+    expect(box()).toBe("42");
   });
 });
