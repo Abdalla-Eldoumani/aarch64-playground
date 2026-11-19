@@ -1987,6 +1987,46 @@ describe("useEmulator breakpoints", () => {
     });
     expect(fake.calls.clearBreakpoint).toEqual([0x401234]);
   });
+
+  it("keeps a gutter dot's stop when an address clear names its instruction", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    await act(async () => {
+      await result.current.clearBreakpointAddress(CODE_BASE);
+    });
+    expect(fake.calls.clearBreakpoint).toEqual([]);
+  });
+
+  // gdb sets a breakpoint again by name when the program restarts.
+  it("hands the terminal's gdb b breakpoints the editor's assemble and every clear, not a terminal build", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    const labels = { assembled: vi.fn(async () => {}), cleared: vi.fn() };
+    result.current.gdbLabels.current = labels;
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+      await result.current.assembleForTool(HOSTED_SOURCE);
+    });
+    expect(labels.assembled).toHaveBeenCalledTimes(1);
+    // The last gutter dot on an instruction takes its gdb b with it, as gdb's clear does.
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    expect(labels.cleared.mock.calls).toEqual([[CODE_BASE]]);
+    act(() => {
+      result.current.clearAllBreakpoints();
+    });
+    expect(labels.cleared.mock.calls).toEqual([[CODE_BASE], []]);
+  });
 });
 
 describe("useEmulator backend passthroughs", () => {
