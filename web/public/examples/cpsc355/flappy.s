@@ -12,7 +12,8 @@
 // starts a round and plays again; p pauses, d shows the debug numbers,
 // and q, esc or ctrl-c quits.  --autopilot in the args box lets it play
 // by itself, and --size 48x43 makes it draw for that many columns and
-// rows.  The best score is kept in the file .flappy_best.
+// rows.  The best score is written to the file .flappy_best, which here
+// lasts until the next run.
 //
 // The shared definitions come first, then main; the files under flappy/
 // follow in the order the repo's one-file bundle pastes them.
