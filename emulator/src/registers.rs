@@ -273,6 +273,12 @@ pub struct RegisterFile {
     /// Bit N set while xN's latest write was a 32-bit one (to wN), so a
     /// call's result can be read the way it was written: w0 or x0.
     narrow: u32,
+    /// Registers written since `start_changes` (bit N for xN, 31 for sp,
+    /// 32 + N for vN), each with its value at the first write, so a step's
+    /// changed set compares only what the step wrote.
+    written: u64,
+    before_gpr: [u64; 32],
+    before_fpr: [u128; 32],
     /// While `recording`, what the running step overwrote, so its
     /// step-back frame can put it back; between steps a spare buffer (see
     /// `record_undo`).
@@ -317,6 +323,9 @@ impl Clone for RegisterFile {
             clobbered_reads: self.clobbered_reads.clone(),
             clobber_origins: self.clobber_origins,
             narrow: self.narrow,
+            written: 0,
+            before_gpr: [0; 32],
+            before_fpr: [0; 32],
             undo: RegUndo::default(),
             recording: false,
         }
@@ -336,6 +345,9 @@ impl RegisterFile {
             clobbered_reads: Cell::new(RegMask::default()),
             clobber_origins: [ClobberOrigin::default(); 64],
             narrow: 0,
+            written: 0,
+            before_gpr: [0; 32],
+            before_fpr: [0; 32],
             undo: RegUndo::default(),
             recording: false,
         }
@@ -388,14 +400,57 @@ impl RegisterFile {
         self.narrow = log.narrow;
     }
 
+    /// Start a step's changed set.
+    pub fn start_changes(&mut self) {
+        self.written = 0;
+    }
+
+    /// Keep register `bit`'s value (numbered as in `written`) from before
+    /// the step's first write to it. Every write a step can make to gpr, sp
+    /// or fpr calls this first.
+    fn note_write(&mut self, bit: u32) {
+        if self.written & (1 << bit) == 0 {
+            self.written |= 1 << bit;
+            match bit {
+                0..=30 => self.before_gpr[bit as usize] = self.gpr[bit as usize],
+                31 => self.before_gpr[31] = self.sp,
+                _ => {
+                    let i = (bit - 32) as usize & 31;
+                    self.before_fpr[i] = self.fpr[i];
+                }
+            }
+        }
+    }
+
+    /// The registers written since `start_changes` that now hold another
+    /// value, ascending: x0-x30 and sp (31) into `gpr`, v0-v31 into `fpr`.
+    pub fn changed(&self, gpr: &mut Vec<u8>, fpr: &mut Vec<u8>) {
+        gpr.clear();
+        fpr.clear();
+        let mut bits = self.written;
+        while bits != 0 {
+            let bit = bits.trailing_zeros() as usize;
+            bits &= bits - 1;
+            match bit {
+                0..=30 if self.gpr[bit] != self.before_gpr[bit] => gpr.push(bit as u8),
+                31 if self.sp != self.before_gpr[31] => gpr.push(31),
+                32..=63 if self.fpr[(bit - 32) & 31] != self.before_fpr[(bit - 32) & 31] => {
+                    fpr.push((bit - 32) as u8)
+                }
+                _ => {}
+            }
+        }
+    }
+
     fn log(&mut self, edit: RegEdit) {
         if self.recording {
             self.undo.edits.push(edit);
         }
     }
 
-    /// Log `fpr[index]` before a write replaces it.
+    /// Note and log `fpr[index]` before a write replaces it.
     fn log_fpr(&mut self, index: u8) {
+        self.note_write(32 + u32::from(index & 31));
         self.log(RegEdit::Fpr(index, self.fpr[usize::from(index & 31)]));
     }
 
@@ -417,6 +472,9 @@ impl RegisterFile {
             }
         }
         let first = usize::from(keep_x0);
+        for bit in (first as u32..=18).chain(32..64) {
+            self.note_write(bit);
+        }
         for reg in &mut self.gpr[first..=18] {
             *reg = CLOBBER_PATTERN;
         }
@@ -574,6 +632,7 @@ impl RegisterFile {
         }
         self.clobbered.x &= !(1 << index);
         self.narrow = (self.narrow & !(1 << index)) | (u32::from(!sf) << index);
+        self.note_write(u32::from(index));
         self.log(RegEdit::Gpr(index, self.gpr[index as usize]));
         self.gpr[index as usize] = if sf { value } else { value & 0xFFFF_FFFF };
     }
@@ -590,6 +649,7 @@ impl RegisterFile {
 
     /// Write the stack pointer.
     pub fn write_sp(&mut self, value: u64) {
+        self.note_write(31);
         self.sp = value;
     }
 
@@ -604,6 +664,7 @@ impl RegisterFile {
     /// Write a register where index 31 means SP instead of XZR.
     pub fn write_gpr_or_sp(&mut self, index: u8, sf: bool, value: u64) {
         if index >= 31 {
+            self.note_write(31);
             self.sp = if sf { value } else { value & 0xFFFF_FFFF };
         } else {
             self.write_gpr(index, sf, value);
@@ -768,12 +829,6 @@ impl RegisterFile {
     /// everything above the low 32 bits.
     pub fn write_fpr_f32(&mut self, index: u8, value: f32) {
         self.write_fpr_scalar(index, 4, u64::from(value.to_bits()));
-    }
-
-    /// Snapshot all 32 FP registers, full 128-bit width, for change
-    /// detection alongside GPRs.
-    pub fn snapshot_fpr(&self) -> [u128; 32] {
-        self.fpr
     }
 }
 
@@ -1077,5 +1132,17 @@ mod tests {
         assert_eq!(rf.nzcv, NzcvFlags::default());
         assert!(rf.clobbered.is_empty(), "no register holds a call's leftovers again");
         assert_eq!(rf.clobber_origin(20).call_pc, 0);
+    }
+
+    // No step calls write_sp today, so the step tests cannot see its note.
+    #[test]
+    fn a_write_to_sp_is_in_the_changed_set() {
+        let mut rf = RegisterFile::new();
+        rf.start_changes();
+        rf.write_sp(0x7FF0);
+        let (mut gpr, mut fpr) = (Vec::new(), Vec::new());
+        rf.changed(&mut gpr, &mut fpr);
+        assert_eq!(gpr, [31]);
+        assert!(fpr.is_empty());
     }
 }

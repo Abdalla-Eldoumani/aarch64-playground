@@ -402,7 +402,7 @@ fn seen(cpu: &Cpu) -> Seen {
     use aarch64_emulator::hosted::heap::HEAP_BASE;
     Seen {
         gpr: cpu.regs.snapshot(),
-        fpr: cpu.regs.snapshot_fpr(),
+        fpr: std::array::from_fn(|i| cpu.regs.read_fpr_q(i as u8)),
         pc: cpu.regs.read_pc(),
         flags: cpu.regs.nzcv.pack(),
         origins: (0..64)
