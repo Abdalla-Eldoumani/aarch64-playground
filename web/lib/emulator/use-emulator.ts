@@ -61,10 +61,11 @@ const loadFrameCards = () =>
 // the same array and its drop notice does not re-fire.
 const NO_LINES: number[] = [];
 
-// How far real time may trail a run's slept time before the debt is dropped.
-// Above a tick's measured overhead (a chunk's round trip plus a late timer,
-// 3 to 11 ms) so a paced game keeps its rate, and under one 60 Hz tick so a
-// stall (a hidden tab's throttled timers) is never made up by more than that.
+// How far real time may trail a run's slept time. A tick's overhead (a
+// chunk's round trip plus a late timer) up to this comes out of the next
+// waits; past it only the excess is dropped, never caught up. Under one
+// 60 Hz tick, so a stall (a hidden tab's throttled timers) is made up by at
+// most this much.
 const SLEEP_CARRY_MS = 16;
 
 // x16 and x17 (ip0, ip1) are the linker's scratch registers: the stub a `bl
@@ -727,7 +728,7 @@ export function useEmulator(start = true): EmulatorState {
     const drive = async (): Promise<string | null> => {
       let total = 0;
       // Where this run's sleeps have reached on the clock; the first anchors it.
-      let deadline = -Infinity;
+      let deadline: number | null = null;
       for (;;) {
         const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
         // A run cancelled by reset/assemble describes a machine that no
@@ -737,10 +738,10 @@ export function useEmulator(start = true): EmulatorState {
         total += runResult.steps_executed;
         // A pacing pause (nanosleep): wait until the deadline it moves on,
         // so a chunk's round trip and a late timer come out of the next
-        // wait. Trailing it by more than SLEEP_CARRY_MS restarts the
-        // timeline at now. No time left still yields once, so a main-thread
-        // run cannot hold the page. Pause, reset or an unmount stands the
-        // drive down; the steps so far land on the counter below.
+        // wait. The timeline never trails now by more than SLEEP_CARRY_MS.
+        // No time left still yields once, so a main-thread run cannot hold
+        // the page. Pause, reset or an unmount stands the drive down; the
+        // steps so far land on the counter below.
         if (
           runResult.sleep_ms != null &&
           !runResult.halted &&
@@ -750,7 +751,7 @@ export function useEmulator(start = true): EmulatorState {
           !runResult.bad_return
         ) {
           const now = performance.now();
-          if (now - deadline > SLEEP_CARRY_MS) deadline = now;
+          deadline = deadline == null ? now : Math.max(deadline, now - SLEEP_CARRY_MS);
           deadline += Math.max(1, Math.min(runResult.sleep_ms, 2000));
           const wait = deadline - now;
           await (wait > 0 ? new Promise<void>((resolve) => setTimeout(resolve, wait)) : yieldToEventLoop());
