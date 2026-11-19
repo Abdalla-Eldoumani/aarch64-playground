@@ -96,8 +96,9 @@ describe("FramesView's list of calls", () => {
   });
 
   it("shows a folded run's count, says it in words, and counts the calls left out", () => {
-    // main, rec(0), then 7,940 more rec calls folded, the current one among
-    // them; three calls past the list's end.
+    // main, rec(0), then 7,940 more rec calls folded; three calls past the
+    // list's end, the current one among them, so no row is the current call
+    // and the note names it from the innermost frame.
     const tree = [
       3, 3, 1, 3, 8,
       ...node(0, MAIN, 1, 1, 0, 1, 0, 0),
@@ -107,8 +108,8 @@ describe("FramesView's list of calls", () => {
     render(<FramesView {...props({ frames: frames(true, 8, tree) })} />);
     const fold = row("add_two × 7,940");
     expect(within(fold).getByText("7,940 calls of add_two").className).toBe("sr-only");
-    expect(fold.textContent).toContain(", the current call");
-    expect(screen.getByText("3 more calls not shown, the current one among them")).toBeTruthy();
+    expect(fold.textContent).toContain(", waiting for its call to return");
+    expect(screen.getByText("3 more calls not shown, the current one, add_two, among them")).toBeTruthy();
   });
 
   it("says a return with the value the call left in w0, once, after the step", () => {
