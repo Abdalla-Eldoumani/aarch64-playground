@@ -73,6 +73,8 @@ vi.mock("@xterm/xterm", () => ({
     rows = 24;
     // The pane reads which screen a program left it on when a session ends.
     buffer = { active: { type: "normal" } };
+    // The pane clamps control-sequence counts through the core's parser.
+    _core = { registerCsiHandler: () => ({ dispose() {} }) };
     constructor(options: Record<string, unknown> = {}) {
       this.options = { ...options };
       this.textarea.addEventListener("keydown", (e) => {
