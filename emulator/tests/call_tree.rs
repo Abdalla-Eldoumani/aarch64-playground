@@ -546,10 +546,12 @@ fn an_index_register_reads_w0_under_sxtw_or_uxtw_and_else_x0() {
     let widths = arg_widths([
         ("reads_w", "ldr     w9, [x1, w0, uxtw 2]"),
         ("reads_x", "ldr     x9, [x1, x0, lsl 3]"),
+        ("sign_extends", "ldrsw   x9, [x1, w0, sxtw 2]"),
+        ("loads_fp", "ldr     d9, [x1, x0, lsl 3]"),
         ("writes", "ldr     x0, [x1, x2, lsl 3]"),
         ("neither", "ldr     w9, [x1, x2, lsl 2]\ncmp     w0, 1"),
     ]);
-    assert_eq!(widths, [4, 8, 0, 4]);
+    assert_eq!(widths, [4, 8, 4, 8, 0, 4]);
 }
 
 #[test]
