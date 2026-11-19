@@ -22,12 +22,7 @@ use crate::memory::Memory;
 pub const FILE_HANDLE_BASE: u64 = 0xFFFF_2000;
 const FILE_HANDLE_STRIDE: u64 = 16;
 
-/// The loader-written `stdin`, `stdout` and `stderr` words (+0, +8, +16),
-/// each holding that stream's FILE* handle. glibc's `stdout` is a word that
-/// holds a FILE*, which code loads out of memory (`ldr x0, =stdout` then
-/// `ldr x0, [x0]`), so the symbols must point at real memory. The page
-/// sits in the gap `ARGV_BASE` left above the argv page, below the heap.
-pub const STDIO_GLOBALS_BASE: u64 = 0x0080_1000;
+pub use crate::layout::{CTYPE_CONV_BASE, STDIO_GLOBALS_BASE};
 
 /// The word `__ctype_b_loc` returns the address OF: it holds a pointer
 /// to the character-class table. Same page as the stream handles because
@@ -42,12 +37,7 @@ pub const CTYPE_B_TABLE: u64 = STDIO_GLOBALS_BASE + 32;
 /// pointer, just past that table's 768 bytes.
 pub const CTYPE_TOUPPER_PTR: u64 = STDIO_GLOBALS_BASE + 800;
 pub const CTYPE_TOLOWER_PTR: u64 = STDIO_GLOBALS_BASE + 808;
-/// The conversion tables live on the NEXT page: two 384-entry int32
-/// arrays are 3072 bytes and the first globals page is already spoken
-/// for by the stream words and the character-class table. Still far
-/// below `heap::HEAP_BASE`, and the page above argv's is otherwise
-/// unclaimed.
-pub const CTYPE_CONV_BASE: u64 = STDIO_GLOBALS_BASE + 4096;
+/// The two conversion tables share the page at `CTYPE_CONV_BASE`.
 pub const CTYPE_TOUPPER_TABLE: u64 = CTYPE_CONV_BASE;
 pub const CTYPE_TOLOWER_TABLE: u64 = CTYPE_CONV_BASE + 1536;
 
