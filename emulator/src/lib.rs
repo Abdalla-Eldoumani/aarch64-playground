@@ -8,6 +8,7 @@ pub mod fpu;
 pub mod frames;
 pub mod frontend;
 pub mod hosted;
+pub mod layout;
 pub mod memory;
 pub mod registers;
 pub mod snapshot;
