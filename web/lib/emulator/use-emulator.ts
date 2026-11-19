@@ -691,6 +691,9 @@ export function useEmulator(start = true): EmulatorState {
   const loadState = useCallback((name: string) => {
     const backend = backendRef.current;
     if (!backend) return;
+    // A live run ends here, as reset and assemble end it.
+    runningRef.current = false;
+    setIsRunning(false);
     runBlockedRef.current = false;
     setStopAt(-1);
     // A restored save is a live machine with a program in memory, so the
