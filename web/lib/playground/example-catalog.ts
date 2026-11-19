@@ -109,4 +109,12 @@ export const EXAMPLES: Example[] = [
       "abilities.s",
     ],
   },
+  {
+    stem: "flappy",
+    terminal: true,
+    interactive: true,
+    // flappy.s holds the shared definitions and main, so the helpers follow
+    // in the order the repo's one-file bundle pastes them.
+    files: ["tty.s", "sim.s", "art.s", "gfx.s", "term.s", "save.s"],
+  },
 ];
