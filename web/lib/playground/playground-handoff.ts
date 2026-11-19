@@ -1,6 +1,6 @@
 "use client";
 
-import { parseDeepLink, type BundleDecoder } from "@/lib/hooks/use-deep-link";
+import { bundleValue, parseDeepLink, type BundleDecoder } from "@/lib/hooks/use-deep-link";
 import { EXAMPLES, type Example } from "@/lib/playground/example-catalog";
 import { validateFileName, type SourceFile } from "@/lib/playground/file-map";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
@@ -81,26 +81,26 @@ export interface PlaygroundBoot {
    *  boot fell back to autosave or the default, and the page must say so,
    *  since nobody notices a missing "loaded from a share link" banner. */
   shareError?: "corrupt" | "too-large";
-  /** Same idea for a `?bundle=` deep-link that failed to decode. */
+  /** Same idea for a diagnostic link that failed to decode. */
   bundleError?: "corrupt" | "too-large";
 }
 
 /**
- * The bundle decoder, loaded only for a URL that has `?bundle=`. A static
- * import would put lz-string on every page that reaches this module, the
- * landing hero included.
+ * The bundle decoder, loaded only for a URL that carries a diagnostic link
+ * (`#bundle=`, or `?bundle=` from older links). A static import would put
+ * lz-string on every page that reaches this module, the landing hero included.
  */
 export async function loadBundleDecoder(
   search: string,
+  hash = "",
 ): Promise<BundleDecoder | undefined> {
-  const trimmed = search.startsWith("?") ? search.slice(1) : search;
-  if (!new URLSearchParams(trimmed).has("bundle")) return undefined;
+  if (bundleValue(search, hash) === null) return undefined;
   const { decodeBundle } = await import("@/lib/playground/diagnostic-bundle");
   return decodeBundle;
 }
 
 /**
- * The starting program at render time: a `?bundle=` link, then a share link,
+ * The starting program at render time: a diagnostic link, then a share link,
  * then the autosave, then the default. Render cannot await loadBundleDecoder,
  * so the playground route boots without it and the pass after mount delivers
  * the bundle.
@@ -112,7 +112,7 @@ export function resolveBoot(
   fallback: string,
   decode?: BundleDecoder,
 ): PlaygroundBoot {
-  const dl = parseDeepLink(search, decode);
+  const dl = parseDeepLink(search, decode, hash);
   if (dl.bundle) {
     return {
       source: dl.bundle.source,
@@ -157,7 +157,7 @@ export type HandoffDecision =
 /**
  * What the pass after mount must still deliver: a bundle or share the boot
  * missed, or an example (only this pass fetches, and a bundle or share in the
- * same URL wins). It can await the decoder, so a `?bundle=` link lands here.
+ * same URL wins). It can await the decoder, so a diagnostic link lands here.
  */
 export function resolveHandoff(
   boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError" | "bundleError">,
@@ -165,7 +165,7 @@ export function resolveHandoff(
   hash: string,
   decode?: BundleDecoder,
 ): HandoffDecision {
-  const dl = parseDeepLink(search, decode);
+  const dl = parseDeepLink(search, decode, hash);
   if (dl.bundle) {
     if (boot.fromBundle) return null;
     return {
