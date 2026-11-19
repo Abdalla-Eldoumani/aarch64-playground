@@ -59,6 +59,13 @@ describe("wordLint", () => {
     );
   });
 
+  it("suggests no multiple of 8 when no local fits the frame", () => {
+    // A 16-byte frame is only the saved fp and lr; the slot's outside mark
+    // already says to make alloc cover it.
+    const rows = [{ line: 14, check: [3, 16, 12, 8, 0, 0], names: ["main", "t_s", ""] }];
+    expect(wordLint(rows)[0].message).toBe("frame check: t_s holds 8 bytes at 12, which is not a multiple of 8." + TAIL);
+  });
+
   it("rounds a frame size up to the next multiple of 16", () => {
     const rows = [{ line: 15, check: [4, 24, 0, 0, 0, 0], names: ["main", "", ""] }];
     expect(wordLint(rows)[0].message).toBe(
