@@ -46,7 +46,7 @@ one kind of instruction or one job. All paths below are under
 | m4, labels, directives, and linking | `frontend/`: `m4.rs`, `lexer.rs`, `parser.rs`, `expr.rs`, `sections.rs`, `pipeline.rs` |
 | A library function such as `printf` or `malloc` | `hosted/`, one file per family: `printf.rs`, `scanf.rs`, `libc.rs`, `stdio.rs`, `heap.rs`, `math.rs`, `ctype.rs`, `callback.rs` |
 | A system call or the virtual files | `hosted/syscalls.rs` |
-| The step loop and the memory layout | `cpu.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints, step back, and the runs behind step over, step out, and run to cursor (`run_until`) in `cpu/control.rs` |
+| The step loop and the memory layout | `cpu.rs`, with every fixed address in `layout.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints, step back, and the runs behind step over, step out, and run to cursor (`run_until`) in `cpu/control.rs` |
 | Registers or memory pages | `registers.rs`, `memory.rs` |
 | The call stack behind the stack frames view | `frames.rs`; each function's slots in `frames/layout.rs`, the frame check in `frames/check.rs`, the call tree in `frames/tree.rs` (see [The stack frames view](#the-stack-frames-view)) |
 | What the site can call | `lib.rs` |
