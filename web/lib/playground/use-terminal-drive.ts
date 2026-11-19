@@ -46,7 +46,7 @@ export type TerminalDrive = {
   /** The shared drive itself, for the `./name` path that owns its own exit. */
   driveForeground: (
     io: TerminalProgramIO,
-    opts?: { clearAtStart?: boolean },
+    opts?: { clearAtStart?: boolean; replay?: boolean },
   ) => Promise<number | null>;
 };
 
@@ -184,7 +184,7 @@ export function useTerminalDrive(opts: {
   const driveForeground = useCallback(
     async (
       io: TerminalProgramIO,
-      driveOpts?: { clearAtStart?: boolean },
+      driveOpts?: { clearAtStart?: boolean; replay?: boolean },
     ): Promise<number | null> => {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
@@ -196,17 +196,21 @@ export function useTerminalDrive(opts: {
       // Set once the pane we are driving has registered itself; after that,
       // losing the registration means the pane went away.
       let sawPane = false;
-      // Wipe the pane once, the moment the program claims the terminal
-      // (already true on self-attach; flips mid-run for ./name), so the
-      // takeover starts on a clean screen with no earlier scrollback.
-      let cleared = false;
-      const clearOnce = () => {
-        if (!cleared) {
-          cleared = true;
-          io.clear?.();
-        }
-      };
-      if (driveOpts?.clearAtStart || machine.current.wantsTerminal) clearOnce();
+      // Wipe the pane as the program takes it, before its first byte here, so
+      // the takeover starts on a clean screen. A ./name program that turns raw
+      // mid-run is left alone, as a real terminal leaves it: a wipe then came
+      // after its first chunk and took what it drew and the mouse reporting it
+      // had turned on, which it sends only once.
+      if (driveOpts?.clearAtStart || machine.current.wantsTerminal) {
+        io.clear?.();
+        // A self-attached program set its terminal up (alternate screen, mouse
+        // reporting, palette) in the chunk that turned raw mode on, so those
+        // bytes reached the console before the pane could attach. The console
+        // holds this run's output from its start: an editor assemble or a
+        // reset empties it, and it keeps at most MAX_CONSOLE_CHARS, with its
+        // note when it dropped older output.
+        if (driveOpts?.replay && machine.current.stdout) io.write(machine.current.stdout);
+      }
       // Live sessions skip the step-back ring: stepping back mid-session
       // has no meaning.
       machine.current.setSnapshotsPaused(true);
@@ -297,7 +301,6 @@ export function useTerminalDrive(opts: {
           if (termIORef.current === io) sawPane = true;
           else if (sawPane || termIORef.current !== null) break;
           const e = machine.current;
-          if (e.wantsTerminal) clearOnce();
           if (cancelled || e.isHalted || e.error) break;
           // An assemble or a reset mid-session drops the loaded flag: the
           // program this drive was running no longer exists, and the resume
@@ -326,6 +329,12 @@ export function useTerminalDrive(opts: {
         machine.current.setWindowSize(0, 0);
         machine.current.setSnapshotsPaused(false);
         machine.current.setOutputTap(null);
+        // Whatever ended the session, the pane gets back what a stopped
+        // program may have left set: its alternate screen (left only while it
+        // is still up, since leaving it moves the cursor), then a soft reset
+        // (cursor shown, wrapping on, plain text), mouse reporting off, and
+        // the theme's palette (OSC 104).
+        io.write(`${io.altScreen?.() ? "\x1b[?1049l" : ""}\x1b[!p\x1b[?1000l\x1b[?1006l\x1b]104\x07`);
         io.setForeground(null);
         foregroundActiveRef.current = false;
         setForegroundLive(false);
@@ -362,7 +371,7 @@ export function useTerminalDrive(opts: {
     if (!wantsTerminal) return;
     if (!termIO || foregroundActiveRef.current) return;
     const io = termIO;
-    void driveForeground(io).then((exitCode) => {
+    void driveForeground(io, { replay: true }).then((exitCode) => {
       io.sessionEnded?.(exitCode);
     });
   }, [wantsTerminal, termIO, driveForeground]);
