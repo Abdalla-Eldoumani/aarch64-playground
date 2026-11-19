@@ -6,13 +6,7 @@
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
 
-/// The heap window sits above the argv page and far below the stack.
-pub const HEAP_BASE: u64 = 0x0090_0000;
-/// One 16 MiB window: big enough for anything a course program allocates
-/// (a 1 MiB malloc succeeds the way it does on the servers), and bounded
-/// so a runaway allocator hits NULL returns, not the page cap. Pages back
-/// lazily, so an untouched allocation costs address space only.
-pub const HEAP_LIMIT: u64 = HEAP_BASE + 16 * 1024 * 1024;
+pub use crate::layout::{HEAP_BASE, HEAP_LIMIT};
 
 const ALIGN: u64 = 16;
 
