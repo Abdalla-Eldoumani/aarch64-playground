@@ -71,7 +71,7 @@ impl Cpu {
         let (read_by, read_pc) = if pc == MAIN_RETURN_ADDR {
             (READ_BY_MAIN_RETURN, pc)
         } else if self.host.contains_address(pc) {
-            (READ_BY_CALL, lr.wrapping_sub(4))
+            (READ_BY_CALL, self.host.call_site(pc, lr))
         } else {
             (READ_BY_INSTRUCTION, pc)
         };
@@ -138,7 +138,7 @@ impl Cpu {
         self.regs.clobber_caller_saved(
             returns == Returns::X0,
             returns == Returns::D0,
-            lr.wrapping_sub(4),
+            HostTable::bl_before(lr),
         );
     }
 

@@ -304,3 +304,225 @@ main:
     expect(line).not.toContain("`");
   });
 });
+
+// main calls quit, which ends the program through exit(3). quit's four
+// instructions start the text at 0x400000; with mainFirst, main's six go
+// first and quit starts 24 bytes on, at 0x400018.
+const quits = (mainFirst: boolean) => {
+  const quit = `
+// quit(): never returns
+        .balign 4
+        .global quit
+quit:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 3                       // exit code
+        bl      exit
+`;
+  const main = `
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      quit
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+  return `// Ends the program from inside a function, through exit(3).
+
+define(fp, x29)
+define(lr, x30)
+
+.text
+${mainFirst ? main + quit : quit + main}`;
+};
+
+async function assembled(view: Pick<Hub, "result">, source: string) {
+  await act(async () => {
+    await expect(view.result.current.assemble(source)).resolves.toBe(true);
+  });
+}
+
+describe("gdb b across a reset", () => {
+  // gdb keeps a breakpoint when the program starts again and sets it again by
+  // its name; Reset and Assemble are the playground's restart.
+  it("stops at the breakpoint again once the program is assembled after a reset", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    expect(await gdb(view, "b quit")).toEqual(["breakpoint 1 at 0x0000000000400000 (quit)"]);
+    act(() => view.result.current.reset());
+    await assembled(view, quits(false));
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBeNull();
+    expect(view.result.current.pc).toBe(0x400000);
+  });
+
+  it("finds the label again in the program as it reads now", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    await gdb(view, "b quit");
+    act(() => view.result.current.reset());
+    await assembled(view, quits(true));
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBeNull();
+    expect(view.result.current.pc).toBe(0x400018);
+  });
+
+  it("says once, at the next gdb command, which breakpoint it could not set again", async () => {
+    // gdb: 'Error in re-setting breakpoint 1: Function "quit" not defined.'
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    await gdb(view, "b quit");
+    act(() => view.result.current.reset());
+    await assembled(view, quits(false).replaceAll("quit", "leave"));
+    const listed = ["Num  Address             What", "1    pending             quit"];
+    expect(await gdb(view, "info breakpoints")).toEqual([
+      "gdb: error in re-setting breakpoint 1: unknown label 'quit'",
+      ...listed,
+    ]);
+    expect(await gdb(view, "info breakpoints")).toEqual(listed);
+  });
+
+  // Loading another program clears every breakpoint, the gutter's included.
+  it("drops it when another program is loaded", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, quits(false));
+    await gdb(view, "b quit");
+    act(() => {
+      view.result.current.clearAllBreakpoints();
+      view.result.current.reset();
+    });
+    await assembled(view, quits(false));
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+  });
+});
+
+// gdb numbers each breakpoint ("Breakpoint 1 at 0x4007b8"), never gives a
+// number twice, and deletes one by number or all with a bare delete, printing
+// nothing; a deleted breakpoint no longer stops the run.
+describe("gdb delete on the real hub", () => {
+  async function hubWith(source: string) {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, source);
+    return view;
+  }
+
+  it("deletes one breakpoint by its number, and the run goes past it", async () => {
+    const view = await hubWith(quits(false));
+    expect(await gdb(view, "b quit")).toEqual(["breakpoint 1 at 0x0000000000400000 (quit)"]);
+    // quit's four instructions come first, so main starts at 0x400010.
+    expect(await gdb(view, "b main")).toEqual(["breakpoint 2 at 0x0000000000400010 (main)"]);
+    expect(await gdb(view, "delete 1")).toEqual([]);
+    expect(await gdb(view, "info breakpoints")).toEqual([
+      "Num  Address             What",
+      "2    0x0000000000400010  main",
+    ]);
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+  });
+
+  it("deletes every breakpoint with no number, and numbers the next one on from there", async () => {
+    const view = await hubWith(quits(false));
+    await gdb(view, "b quit");
+    await gdb(view, "b quit");
+    expect(await gdb(view, "delete")).toEqual([]);
+    expect(await gdb(view, "info breakpoints")).toEqual(["no breakpoints"]);
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+    expect(await gdb(view, "b quit")).toEqual(["breakpoint 3 at 0x0000000000400000 (quit)"]);
+  });
+
+  it("says gdb's words for a number it does not have, and keeps the breakpoints it has", async () => {
+    const view = await hubWith(quits(false));
+    await gdb(view, "b quit");
+    expect(await gdb(view, "delete 7")).toEqual(["gdb: no breakpoint number 7"]);
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBeNull();
+    expect(view.result.current.pc).toBe(0x400000);
+  });
+
+  it("stays deleted after the next assemble and Run", async () => {
+    const view = await hubWith(quits(false));
+    await gdb(view, "b quit");
+    await gdb(view, "delete 1");
+    await assembled(view, quits(false));
+    act(() => {
+      void view.result.current.run();
+    });
+    await waitFor(() => expect(view.result.current.exitCode).toBe(3));
+  });
+
+  it("does nothing and says nothing when there are none", async () => {
+    const view = await hubWith(quits(false));
+    expect(await gdb(view, "delete")).toEqual([]);
+    expect(await gdb(view, "info breakpoints")).toEqual(["no breakpoints"]);
+  });
+
+  // A gutter dot on the same instruction is a stop of its own.
+  it("leaves a gutter dot's stop on the instruction it shared", async () => {
+    const view = await hubWith(quits(false));
+    // Line 12 is quit's stp, the instruction gdb b quit names.
+    act(() => view.result.current.toggleBreakpoint(12));
+    await gdb(view, "b quit");
+    await gdb(view, "delete 1");
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBeNull();
+    expect(view.result.current.pc).toBe(0x400000);
+  });
+
+  // gdb's clear deletes every breakpoint on a line, so the list never shows a
+  // stop the machine no longer has.
+  it("deletes the gdb b on an instruction whose last gutter dot is taken off", async () => {
+    const view = await hubWith(quits(false));
+    await gdb(view, "b quit");
+    act(() => view.result.current.toggleBreakpoint(12));
+    act(() => view.result.current.toggleBreakpoint(12));
+    expect(await gdb(view, "info breakpoints")).toEqual(["no breakpoints"]);
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+  });
+
+  it("deletes every number it is given", async () => {
+    const view = await hubWith(quits(false));
+    await gdb(view, "b quit");
+    await gdb(view, "b main");
+    await gdb(view, "b quit");
+    expect(await gdb(view, "delete 1 2")).toEqual([]);
+    expect(await gdb(view, "info breakpoints")).toEqual([
+      "Num  Address             What",
+      "3    0x0000000000400000  quit",
+    ]);
+  });
+});
+
+describe("gdb-lite once the program has exited, on the real hub", () => {
+  // bt and c read the exit code, so a step back from the exit, which brings
+  // the program back, must bring them back too.
+  it("lists the frames again and continues after a step back from the exit", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await act(async () => {
+      await expect(view.result.current.assemble(quits(false))).resolves.toBe(true);
+    });
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+    expect(await gdb(view, "bt")).toEqual(["gdb: no frames: the program has finished"]);
+    await act(async () => {
+      view.result.current.stepBack();
+    });
+    await waitFor(() => expect(view.result.current.exitCode).toBeNull());
+    // Back inside exit, called from quit: the pc is in the library, so quit
+    // has no line; main is at its bl quit on line 22.
+    expect(await gdb(view, "bt")).toEqual(["#0  quit", "#1  main at line 22"]);
+    await gdb(view, "c");
+    expect(view.result.current.exitCode).toBe(3);
+  });
+});

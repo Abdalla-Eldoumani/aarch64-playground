@@ -158,6 +158,7 @@ pub struct HostCallContext {
 /// call site of a function.
 pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext> {
     let name = cpu.host_call_name(cpu.regs.read_pc())?.to_string();
+    // Not `HostTable::call_site`: the two trampoline words are inside the call too.
     let call_site_pc = cpu.regs.read_gpr(30, true).wrapping_sub(4);
     let call_site_line = line_at(line_map, call_site_pc);
     Some(HostCallContext { name, call_site_pc, call_site_line })
@@ -610,12 +611,7 @@ impl Emulator {
         if self.cpu.text_end() == Some(pc) {
             return self.line_map.chunks_exact(2).last().map(|pair| pair[1]);
         }
-        let lookup = if self.cpu.host.contains_address(pc) {
-            self.cpu.regs.read_gpr(30, true).wrapping_sub(4)
-        } else {
-            pc
-        };
-        let target = lookup as u32;
+        let target = self.cpu.host.call_site(pc, self.cpu.regs.read_gpr(30, true)) as u32;
         self.line_map
             .chunks_exact(2)
             .find(|pair| pair[0] == target)
