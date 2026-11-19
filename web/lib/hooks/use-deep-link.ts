@@ -16,28 +16,43 @@ export interface DeepLink {
    *  so an older `?example=` link resolves the same way it always did. */
   run?: LaunchMode;
   embed: boolean;
-  /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
+  /** Decoded diagnostic bundle, when present and well-formed. */
   bundle?: DiagnosticBundle;
-  /** Set when a `?bundle=` was present but failed to decode, so the boot
-   *  can report it instead of silently loading a different buffer. */
+  /** Set when a diagnostic bundle was present but failed to decode, so the
+   *  boot can report it instead of silently loading a different buffer. */
   bundleError?: "corrupt" | "too-large";
 }
 
 /**
  * The bundle codec's read, taken as an argument rather than imported: share.ts
  * and playground-handoff import this module, and neither should carry the
- * codec (diagnostic-bundle.ts), which loads only for a `?bundle=` URL.
+ * codec (diagnostic-bundle.ts), which loads only for a diagnostic link.
  */
 export type BundleDecoder = (value: string | null) => BundleReadResult;
 
+/** A diagnostic link's fragment starts with this, after the `#`. It cannot
+ *  be read as a share link's `p2=` or `p=`. */
+export const BUNDLE_PREFIX = "bundle=";
+
 /**
- * Parse the URL query string into a deep-link record. Pure so that
- * tests don't need a window. Unknown values for typed params are
- * dropped (treated as undefined) rather than passing through. With no
- * decoder supplied a `?bundle=` is left undecoded, so `bundle` and
- * `bundleError` stay absent.
+ * A diagnostic link's payload, or null when the URL carries none. Links put
+ * it in the fragment, which no request carries; links made before that put
+ * it in the `?bundle=` query.
  */
-export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink {
+export function bundleValue(search: string, hash: string): string | null {
+  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (fragment.startsWith(BUNDLE_PREFIX)) return fragment.slice(BUNDLE_PREFIX.length);
+  return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("bundle");
+}
+
+/**
+ * Parse the URL query string, and the fragment for a diagnostic link, into a
+ * deep-link record. Pure so that tests don't need a window. Unknown values
+ * for typed params are dropped (treated as undefined) rather than passing
+ * through. With no decoder supplied a bundle is left undecoded, so `bundle`
+ * and `bundleError` stay absent.
+ */
+export function parseDeepLink(search: string, decode?: BundleDecoder, hash = ""): DeepLink {
   const trimmed = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(trimmed);
   const result: DeepLink = { embed: false };
@@ -55,7 +70,7 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
 
   result.embed = params.get("embed") === "1";
 
-  const bundle = decode?.(params.get("bundle"));
+  const bundle = decode?.(bundleValue(search, hash));
   if (bundle?.kind === "ok") {
     result.bundle = bundle.bundle;
   } else if (bundle?.kind === "corrupt" || bundle?.kind === "too-large") {
