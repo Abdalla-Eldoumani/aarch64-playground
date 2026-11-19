@@ -46,7 +46,7 @@ export type TerminalDrive = {
   /** The shared drive itself, for the `./name` path that owns its own exit. */
   driveForeground: (
     io: TerminalProgramIO,
-    opts?: { clearAtStart?: boolean; replay?: boolean },
+    opts?: { clearAtStart?: boolean; replayFrom?: number },
   ) => Promise<number | null>;
 };
 
@@ -161,6 +161,15 @@ export function useTerminalDrive(opts: {
     termIORef.current?.focus?.();
   }, [terminalTabActive, foregroundLive]);
 
+  // What a self-attach replays: the console from where it stood before the
+  // chunk that turned raw mode on, which carries the program's terminal setup.
+  // Marked on that edge only when no session already drives the program, and
+  // taken by the first attach, so a pane remounted mid-session gets nothing
+  // and no other run's text (a terminal build keeps the editor's as history)
+  // is ever replayed.
+  const notRawLengthRef = useRef(0);
+  const replayFromRef = useRef<number | null>(null);
+
   // A program that switches the terminal to raw mode is a terminal
   // program: hand it the terminal pane on the false->true edge, the same
   // way blocked hands scanf programs the console.
@@ -168,6 +177,7 @@ export function useTerminalDrive(opts: {
   useEffect(() => {
     if (wantsTerminal && !lastWantsTermRef.current) {
       lastWantsTermRef.current = true;
+      replayFromRef.current = foregroundActiveRef.current ? null : notRawLengthRef.current;
       // For a raw-mode program this edge is the session start, and it paints
       // frames through the renders the tab switch and pane mount take.
       // Pinning the watermark here keeps those frames out of the console;
@@ -178,13 +188,15 @@ export function useTerminalDrive(opts: {
       });
     } else if (!wantsTerminal) {
       lastWantsTermRef.current = false;
+      notRawLengthRef.current = stdout.length;
+      replayFromRef.current = null;
     }
   }, [wantsTerminal, stdout, requestPane]);
 
   const driveForeground = useCallback(
     async (
       io: TerminalProgramIO,
-      driveOpts?: { clearAtStart?: boolean; replay?: boolean },
+      driveOpts?: { clearAtStart?: boolean; replayFrom?: number },
     ): Promise<number | null> => {
       if (foregroundActiveRef.current) return null;
       foregroundActiveRef.current = true;
@@ -205,11 +217,12 @@ export function useTerminalDrive(opts: {
         io.clear?.();
         // A self-attached program set its terminal up (alternate screen, mouse
         // reporting, palette) in the chunk that turned raw mode on, so those
-        // bytes reached the console before the pane could attach. The console
-        // holds this run's output from its start: an editor assemble or a
-        // reset empties it, and it keeps at most MAX_CONSOLE_CHARS, with its
-        // note when it dropped older output.
-        if (driveOpts?.replay && machine.current.stdout) io.write(machine.current.stdout);
+        // bytes reached the console before the pane could attach.
+        // shortcut: the mark is an offset, so a console that trims its head
+        // (MAX_CONSOLE_CHARS) between the mark and the attach replays from the
+        // wrong place; only a run writing that much in that moment meets it.
+        const replay = driveOpts?.replayFrom == null ? "" : machine.current.stdout.slice(driveOpts.replayFrom);
+        if (replay) io.write(replay);
       }
       // Live sessions skip the step-back ring: stepping back mid-session
       // has no meaning.
@@ -371,7 +384,10 @@ export function useTerminalDrive(opts: {
     if (!wantsTerminal) return;
     if (!termIO || foregroundActiveRef.current) return;
     const io = termIO;
-    void driveForeground(io, { replay: true }).then((exitCode) => {
+    // The first attach takes the replay; a remount later in the run finds none.
+    const replayFrom = replayFromRef.current ?? undefined;
+    replayFromRef.current = null;
+    void driveForeground(io, { replayFrom }).then((exitCode) => {
       io.sessionEnded?.(exitCode);
     });
   }, [wantsTerminal, termIO, driveForeground]);
