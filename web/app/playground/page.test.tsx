@@ -66,6 +66,7 @@ const toastError = () => handle.notifyError as ReturnType<typeof vi.fn>;
 
 import Home from "./page";
 import { buildShareHash } from "@/lib/playground/share";
+import { encodeBundle } from "@/lib/playground/diagnostic-bundle";
 
 afterEach(() => {
   cleanup();
@@ -400,5 +401,48 @@ describe("page delivery on a URL change without a remount", () => {
     await waitFor(() => expect(toastError()).toHaveBeenCalledTimes(1), { timeout: 2000 });
     expect(String(toastError().mock.calls[0][0])).toContain("damaged");
     expect(handle.loadProgram).not.toHaveBeenCalled();
+  });
+});
+
+// A diagnostic link keeps its bundle in the fragment, so opening one sends
+// the program to no server; links made before that put it in the query.
+describe("page delivery of a diagnostic link", () => {
+  const encoded = encodeBundle({
+    source: "bl helper",
+    files: [{ name: "util.s", body: "helper:\n    ret\n" }],
+    args: "a b",
+    stdin: "7\n",
+  });
+  const delivered = {
+    source: "bl helper",
+    files: [{ name: "util.s", body: "helper:\n    ret\n" }],
+    args: "a b",
+    stdin: "7\n",
+    label: "diagnostic bundle",
+  };
+
+  it("delivers a #bundle= link on a cold load", async () => {
+    window.history.replaceState({}, "", `/playground#bundle=${encoded}`);
+    render(<Home />);
+    await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
+    expect(handle.loadProgram.mock.calls[0][0]).toEqual(delivered);
+    expect(receivedPropsRef.current.fromShare).toBe(false);
+  });
+
+  it("delivers a #bundle= link pasted into an open tab", async () => {
+    render(<Home />);
+    window.history.replaceState({}, "", `/playground#bundle=${encoded}`);
+    act(() => {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    });
+    await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
+    expect(handle.loadProgram.mock.calls[0][0]).toEqual(delivered);
+  });
+
+  it("still delivers an older ?bundle= link on a cold load", async () => {
+    window.history.replaceState({}, "", `/playground?bundle=${encoded}`);
+    render(<Home />);
+    await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
+    expect(handle.loadProgram.mock.calls[0][0]).toEqual(delivered);
   });
 });
