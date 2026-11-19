@@ -10,7 +10,7 @@
 use std::collections::HashMap;
 
 use crate::assembler;
-use crate::cpu::{CODE_BASE, SECTION_WINDOW};
+use crate::cpu::{CODE_BASE, HOST_STUB_BASE, SECTION_WINDOW};
 use crate::errors::EmuError;
 use crate::frontend::expr::evaluate;
 use crate::frontend::lexer::{lex, parse_char_literal, TokenKind};
@@ -18,6 +18,7 @@ use crate::frontend::linker::encode_ldr_literal;
 use crate::frontend::parser::parse;
 use crate::frontend::sections::{align_padding, Item, Program, SectionKind};
 use crate::hosted::HostTable;
+use crate::layout::HOST_STUB_WINDOW;
 
 /// Result of a hosted-assembly run. `writes` is an ordered list of
 /// (address, bytes) pairs that the loader applies verbatim.
@@ -1584,8 +1585,7 @@ fn extract_call_target(tokens: &[crate::frontend::lexer::Token], tail: bool) -> 
 }
 
 fn is_host_address(addr: u64) -> bool {
-    const HOST_STUB_BASE: u64 = 0xFFFF_0000;
-    (HOST_STUB_BASE..HOST_STUB_BASE + 0x1_0000).contains(&addr)
+    (HOST_STUB_BASE..HOST_STUB_BASE + HOST_STUB_WINDOW).contains(&addr)
 }
 
 /// Point `bl <name>` (or the tail call `b <name>`) at `__tramp_<name>` when
