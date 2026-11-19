@@ -241,6 +241,27 @@ ret
 }
 
 #[test]
+fn the_window_messages_quote_the_section_window() {
+    // The texts spell the size out rather than formatting it, so this keeps them true.
+    use aarch64_emulator::cpu::SECTION_WINDOW;
+    const MIB: u64 = 1024 * 1024;
+    assert_eq!(SECTION_WINDOW % MIB, 0, "the window is a whole number of MiB");
+    let n = SECTION_WINDOW / MIB;
+    let main = ".text\n.global main\nmain:\nret\n";
+
+    let fill = assemble_err(&format!(".data\n.space {}, 1\n{main}", SECTION_WINDOW + 1));
+    assert!(fill.contains(&format!("the section's {n} MiB window")), "message was: {fill}");
+
+    let data = assemble_err(&format!(".data\n.skip {}\n.word 7\n{main}", SECTION_WINDOW));
+    assert!(data.contains(&format!("past its {n} MiB window")), "message was: {data}");
+
+    // .text alone fits; its pool slot and printf trampoline carry the image past the window.
+    let code = ".text\n.global main\nmain:\nldr x0, =5\nbl printf\nret\n.skip";
+    let text = assemble_err(&format!("{code} {}\n", SECTION_WINDOW - 16));
+    assert!(text.contains(&format!("the {n} MiB code window")), "message was: {text}");
+}
+
+#[test]
 fn a_typod_macro_name_in_an_operand_names_the_symbol() {
     // The evaluator's `unknown symbol` was swallowed into "invalid
     // immediate", pointing the student at ranges instead of the typo.
