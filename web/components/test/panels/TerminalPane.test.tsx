@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 
 // Minimal xterm stand-in: records every allocation and exposes the
 // onKey / onData callbacks so tests can drive keys and pastes without a
@@ -21,6 +21,8 @@ const instances = vi.hoisted(
       cols: number;
       rows: number;
       textarea: HTMLTextAreaElement;
+      focus: ReturnType<typeof vi.fn>;
+      buffer: { active: { type: "normal" | "alternate" } };
       options: { theme?: { background?: string }; fontSize?: number };
     }>,
 );
@@ -37,12 +39,16 @@ vi.mock("@xterm/xterm", () => ({
     cols = 80;
     rows = 24;
     textarea = document.createElement("textarea");
+    buffer = { active: { type: "normal" } };
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown> = {}) {
       this.options = { ...options };
       instances.push(this as never);
     }
-    open() {}
+    // xterm puts its input textarea inside the element it opens in.
+    open(element: HTMLElement) {
+      element.appendChild(this.textarea);
+    }
     loadAddon(addon: { activate?: (term: unknown) => void }) {
       addon.activate?.(this);
     }
@@ -406,5 +412,204 @@ describe("TerminalPane size", () => {
     io!.setForeground(null);
     term.resizeCb?.({ cols: 100, rows: 30 });
     expect(resize).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe("TerminalPane after a program", () => {
+  // Leaving the alternate screen moves the cursor, so the session's end does
+  // it only while a program has left the pane there.
+  it("says whether a program left it on the alternate screen", () => {
+    let io: TerminalProgramIO | null = null;
+    render(
+      <TerminalPane
+        buildContext={() => makeContext()}
+        onRegisterIO={(registered) => {
+          io = registered;
+        }}
+      />,
+    );
+    expect(io!.altScreen?.()).toBe(false);
+    instances[0].buffer.active.type = "alternate";
+    expect(io!.altScreen?.()).toBe(true);
+  });
+});
+
+describe("TerminalPane full screen", () => {
+  // The page's full screen, with the pane drawn over it: the pane's own
+  // element would lose full screen when a layout crossing moves its node.
+  let held: Element | null = null;
+  const root = document.documentElement as HTMLElement & { requestFullscreen?: () => Promise<void> };
+  const doc = document as Document & { exitFullscreen?: () => Promise<void> };
+  const fullscreenChange = () => document.dispatchEvent(new Event("fullscreenchange"));
+
+  function withBrowserFullScreen() {
+    Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => held });
+    root.requestFullscreen = vi.fn(async () => {
+      held = root;
+      fullscreenChange();
+    });
+    doc.exitFullscreen = vi.fn(async () => {
+      held = null;
+      fullscreenChange();
+    });
+  }
+
+  afterEach(() => {
+    held = null;
+    delete (root as Partial<HTMLElement>).requestFullscreen;
+    delete (doc as Partial<Document>).exitFullscreen;
+    delete (document as { fullscreenElement?: Element | null }).fullscreenElement;
+  });
+
+  const fullScreen = () => screen.getByRole("button", { name: "full screen" });
+  const paneRoot = () => screen.getByRole("application", { name: "shell terminal" }).parentElement!.parentElement!;
+
+  it("is a labelled toggle that draws the pane over the page and hands the keyboard to the terminal", async () => {
+    withBrowserFullScreen();
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect(fullScreen().getAttribute("aria-pressed")).toBe("false");
+    expect(paneRoot().className).not.toContain("fixed");
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    expect(root.requestFullscreen).toHaveBeenCalledTimes(1);
+    expect(fullScreen().getAttribute("aria-pressed")).toBe("true");
+    expect(paneRoot().className).toContain("fixed");
+    expect(instances[0].focus).toHaveBeenCalled();
+  });
+
+  it("gives the pane its place and the focus back, from the control or the browser's Esc", async () => {
+    withBrowserFullScreen();
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    fullScreen().focus();
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    expect(doc.exitFullscreen).toHaveBeenCalledTimes(1);
+    expect(fullScreen().getAttribute("aria-pressed")).toBe("false");
+    expect(paneRoot().className).not.toContain("fixed");
+    expect(document.activeElement).toBe(fullScreen());
+
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    // The browser leaves full screen on Esc and says so with an event.
+    await act(async () => {
+      held = null;
+      fullscreenChange();
+    });
+    expect(fullScreen().getAttribute("aria-pressed")).toBe("false");
+    expect(paneRoot().className).not.toContain("fixed");
+    expect(document.activeElement).toBe(fullScreen());
+  });
+
+  it("fills the window where the browser has no full screen, and Esc leaves it there", async () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    expect(fullScreen().getAttribute("aria-pressed")).toBe("true");
+    expect(paneRoot().className).toContain("fixed");
+    // xterm hands Esc to the page instead of the program, as a browser's
+    // full screen takes it.
+    const esc = new KeyboardEvent("keydown", { key: "Escape", cancelable: true });
+    expect(instances[0].customKeyCb!(esc)).toBe(false);
+    fireEvent.keyDown(instances[0].textarea, { key: "Escape" });
+    expect(fullScreen().getAttribute("aria-pressed")).toBe("false");
+    expect(paneRoot().className).not.toContain("fixed");
+    // Outside full screen Esc is the program's again.
+    expect(instances[0].customKeyCb!(new KeyboardEvent("keydown", { key: "Escape" }))).toBe(true);
+  });
+
+  it("hands the screen back when the pane unmounts in full screen", async () => {
+    withBrowserFullScreen();
+    const { unmount } = render(<TerminalPane buildContext={() => makeContext()} />);
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    unmount();
+    expect(doc.exitFullscreen).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Tab inside the pane in full screen, so focus never lands on the covered page", async () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    const last = screen.getByRole("button", { name: "zoom in" });
+    // Outside full screen Tab goes on to the page.
+    expect(fireEvent.keyDown(last, { key: "Tab" })).toBe(true);
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    instances[0].focus.mockClear();
+    expect(fireEvent.keyDown(last, { key: "Tab" })).toBe(false);
+    expect(instances[0].focus).toHaveBeenCalledTimes(1);
+    // Shift+Tab walks back through the controls as usual.
+    expect(fireEvent.keyDown(last, { key: "Tab", shiftKey: true })).toBe(true);
+  });
+
+  it("puts its controls after the terminal, where Ctrl+M then Tab lands", () => {
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    const order = [
+      instances[0].textarea,
+      fullScreen(),
+      screen.getByRole("button", { name: "zoom out" }),
+      screen.getByRole("button", { name: "reset zoom (currently 100 percent)" }),
+      screen.getByRole("button", { name: "zoom in" }),
+    ];
+    for (let i = 1; i < order.length; i++) {
+      expect(order[i - 1].compareDocumentPosition(order[i]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
+  });
+});
+
+describe("TerminalPane text size", () => {
+  // A pane on screen: the refit after a size change skips a hidden pane.
+  beforeEach(() => {
+    vi.spyOn(Element.prototype, "clientWidth", "get").mockImplementation(() => pane.width);
+    vi.spyOn(Element.prototype, "clientHeight", "get").mockImplementation(() => 400);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    localStorage.clear();
+    pane.width = 600;
+  });
+
+  const KEY = "aarch64-playground:zoom:terminal";
+
+  it("steps the text by tenths of 13px, keeps it for the viewer, and refits", async () => {
+    pane.width = 700; // 89 columns at 13px
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    expect(instances[0].options.fontSize).toBe(13);
+    fireEvent.click(screen.getByRole("button", { name: "zoom in" }));
+    await vi.waitFor(() => expect(instances[0].options.fontSize).toBe(14));
+    expect(localStorage.getItem(KEY)).toBe("1.1");
+    expect(screen.getByRole("button", { name: "reset zoom (currently 110 percent)" }).textContent).toBe("110%");
+    cleanup();
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    await vi.waitFor(() => expect(instances[1].options.fontSize).toBe(14));
+  });
+
+  it("goes down to 60 percent and no further, and its reset is today's 13px with the 12px fit", async () => {
+    pane.width = 600; // 76 columns at 13px, 83 at 12px
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    for (let i = 0; i < 6; i++) fireEvent.click(screen.getByRole("button", { name: "zoom out" }));
+    await vi.waitFor(() => expect(instances[0].options.fontSize).toBe(8));
+    expect(localStorage.getItem(KEY)).toBe("0.6");
+    fireEvent.click(screen.getByRole("button", { name: "zoom out" }));
+    expect(localStorage.getItem(KEY)).toBe("0.6");
+    fireEvent.click(screen.getByRole("button", { name: "reset zoom (currently 60 percent)" }));
+    await vi.waitFor(() => expect(instances[0].options.fontSize).toBe(12));
+    expect(localStorage.getItem(KEY)).toBe("1");
+  });
+
+  it("ignores a stored value it cannot use", async () => {
+    pane.width = 700;
+    localStorage.setItem(KEY, "9");
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    await new Promise((r) => setTimeout(r, 0));
+    expect(instances[0].options.fontSize).toBe(13);
+    expect(screen.getByRole("button", { name: "reset zoom (currently 100 percent)" })).toBeTruthy();
   });
 });
