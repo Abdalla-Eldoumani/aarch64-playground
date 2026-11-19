@@ -69,6 +69,8 @@ vi.mock("@xterm/xterm", () => ({
     options: Record<string, unknown>;
     keyCb: ((e: { key: string; domEvent: KeyboardEvent }) => void) | null = null;
     dataCb: ((data: string) => void) | null = null;
+    cols = 80;
+    rows = 24;
     constructor(options: Record<string, unknown> = {}) {
       this.options = { ...options };
       this.textarea.addEventListener("keydown", (e) => {
@@ -106,6 +108,9 @@ vi.mock("@xterm/xterm", () => ({
     }
     onData(cb: (data: string) => void) {
       this.dataCb = cb;
+      return { dispose: () => {} };
+    }
+    onResize() {
       return { dispose: () => {} };
     }
   },

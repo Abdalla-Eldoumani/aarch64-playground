@@ -16,6 +16,7 @@ export type RequestKind =
   | "closeStdin"
   | "setSnapshotsPaused"
   | "setRealTime"
+  | "setWindowSize"
   | "takeStdout"
   | "takeStderr"
   | "getMemory"
@@ -58,6 +59,7 @@ export type Request =
   | BaseRequest<"closeStdin">
   | (BaseRequest<"setSnapshotsPaused"> & { paused: boolean })
   | (BaseRequest<"setRealTime"> & { on: boolean })
+  | (BaseRequest<"setWindowSize"> & { cols: number; rows: number })
   | BaseRequest<"takeStdout">
   | BaseRequest<"takeStderr">
   | (BaseRequest<"getMemory"> & { addr: number; len: number })

@@ -753,12 +753,12 @@ finishes on the next step.
 | 93 | exit        | `x0=status`                              |
 | 94 | exit_group  | `x0=status` (what glibc's `exit()` issues; same effect as 93) |
 | 25 | fcntl       | `x0=fd`, `x1=cmd`, `x2=arg` (F_GETFL / F_SETFL with O_NONBLOCK on stdin) |
-| 29 | ioctl       | `x0=fd`, `x1=request`, `x2=argp` (TCGETS / TCSETS termios, the raw-mode handshake) |
+| 29 | ioctl       | `x0=fd`, `x1=request`, `x2=argp` (TCGETS / TCSETS termios, the raw-mode handshake; TIOCGWINSZ gives the terminal pane's rows and columns while the pane runs the program) |
 | 101 | nanosleep  | `x0=req`, `x1=rem` (pauses the run; the virtual clock advances) |
 | 113 | clock_gettime | `x0=clock_id`, `x1=timespec`            |
 | 278 | getrandom  | `x0=buf`, `x1=buflen`, `x2=flags` (deterministic, so replay matches) |
 
-A call that fails puts a negative Linux error number in `x0`, as on the server: -2 for a file that does not exist, -9 for a descriptor that is not open, -22 for a bad argument, and -25 when ioctl asks a file whether it is a terminal (stdin is a file under `./program < input`).
+A call that fails puts a negative Linux error number in `x0`, as on the server: -2 for a file that does not exist, -9 for a descriptor that is not open, -22 for a bad argument, and -25 when ioctl asks a file whether it is a terminal (stdin is a file under `./program < input`), or asks TIOCGWINSZ outside the terminal pane.
 
 ## NZCV flags
 

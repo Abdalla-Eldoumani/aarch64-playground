@@ -26,6 +26,7 @@ impl Cpu {
         self.refund_output_total = 0;
         self.snapshots_paused = false;
         self.real_time = false;
+        self.window_size = None;
         // The writes above ran outside any step, so no frame's undo log
         // holds them: frames left from before the load cannot undo it.
         self.snapshots.clear();
@@ -78,6 +79,7 @@ impl Cpu {
         self.refund_output_total = 0;
         self.snapshots_paused = false;
         self.real_time = false;
+        self.window_size = None;
         // The image is written outside any step, so no frame's undo log
         // will hold it: frames left from before the load cannot undo it.
         self.snapshots.clear();

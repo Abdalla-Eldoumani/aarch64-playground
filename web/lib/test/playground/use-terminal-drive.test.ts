@@ -35,6 +35,7 @@ function makeMachine(overrides: Partial<TerminalDriveMachine> = {}): TerminalDri
     setOutputTap: vi.fn(),
     setSnapshotsPaused: vi.fn(),
     setRealTime: vi.fn(),
+    setWindowSize: vi.fn(),
     ...overrides,
   };
   return machine;
@@ -542,5 +543,106 @@ describe("standing down", () => {
     expect(exit).toBeNull();
     expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
     expectRealTimeInsideThePause(machine);
+  });
+});
+
+describe("the pane's size", () => {
+  async function startSession(machine: TerminalDriveMachine) {
+    const h = setup({}, machine);
+    const io = makeIO();
+    let session!: Promise<number | null>;
+    act(() => {
+      session = h.drive().driveForeground(io as TerminalProgramIO);
+    });
+    return { io, session };
+  }
+
+  /** Every size the machine got went in after the ring paused, and the last
+   *  one, which takes the size away, before the ring resumed: no step the
+   *  ring records ever asked for the pane's size. */
+  function expectSizeInsideThePause(machine: TerminalDriveMachine) {
+    const pause = vi.mocked(machine.setSnapshotsPaused).mock;
+    const size = vi.mocked(machine.setWindowSize).mock;
+    expect(size.calls.at(-1)).toEqual([0, 0]);
+    expect(pause.invocationCallOrder[0]).toBeLessThan(size.invocationCallOrder[0]);
+    expect(size.invocationCallOrder.at(-1)).toBeLessThan(pause.invocationCallOrder[1]);
+  }
+
+  it("hands the machine the size the pane gives the program, and every resize after it", async () => {
+    const machine = makeMachine({ exitCode: 0 });
+    const { io, session } = await startSession(machine);
+    // The pane hands its columns and rows over as the program takes it.
+    foregroundOf(io).resize(48, 43);
+    foregroundOf(io).resize(80, 24);
+    await halt(machine, session);
+    expect(vi.mocked(machine.setWindowSize).mock.calls).toEqual([[48, 43], [80, 24], [0, 0]]);
+    expectSizeInsideThePause(machine);
+  });
+
+  it("takes the size away when ctrl+c stops a program that stays loaded", async () => {
+    // The paused program can still be stepped or run on in the console,
+    // where no pane answers for its size.
+    const machine = makeMachine();
+    const { io, session } = await startSession(machine);
+    foregroundOf(io).resize(48, 43);
+    await act(async () => {
+      foregroundOf(io).cancel();
+      await session;
+    });
+    expectSizeInsideThePause(machine);
+  });
+
+  it("lets a new session's size stand after an assemble ends the old one", async () => {
+    // An assemble mid-session ends the old drive on its next poll, and a run
+    // press right after asks for a new one. Had the new session started
+    // first, the old one's (0, 0) would land on the new program, and nothing
+    // would send the size again until the pane next resized. The machine is
+    // modelled here: what it holds when each run starts is what the
+    // program's first ask answers.
+    let size: [number, number] | null = null;
+    let paused = false;
+    const atRun: Array<{ size: [number, number] | null; paused: boolean }> = [];
+    const machine = makeMachine({
+      setWindowSize: vi.fn((cols: number, rows: number) => {
+        size = cols > 0 && rows > 0 ? [cols, rows] : null;
+      }),
+      setSnapshotsPaused: vi.fn((p: boolean) => {
+        paused = p;
+      }),
+    });
+    machine.run = vi.fn(() => {
+      machine.isRunning = true;
+      atRun.push({ size, paused });
+    });
+    const h = setup({}, machine, "terminal");
+    const io = makeIO();
+    // The pane hands every program that takes it over its size.
+    vi.mocked(io.setForeground).mockImplementation((fg) => fg?.resize(48, 43));
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+      h.drive().requestTerminalRun();
+    });
+    await waitFor(() => expect(machine.run).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 40));
+    // The assemble drops the loaded flag, and the run press comes at once.
+    machine.isRunning = false;
+    machine.programLoaded = false;
+    await act(async () => {
+      h.drive().requestTerminalRun();
+    });
+    await waitFor(() => expect(machine.setSnapshotsPaused).toHaveBeenCalledWith(false), {
+      timeout: 2000,
+    });
+    // The new program is loaded by the time the old drive has let go.
+    machine.programLoaded = true;
+    await waitFor(() => expect(machine.run).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    expect(atRun).toEqual([
+      { size: [48, 43], paused: true },
+      { size: [48, 43], paused: true },
+    ]);
+    expect(vi.mocked(machine.setWindowSize).mock.calls).toEqual([[48, 43], [0, 0], [48, 43]]);
+    machine.isRunning = false;
+    machine.isHalted = true;
+    await waitFor(() => expect(h.drive().foregroundLive).toBe(false), { timeout: 2000 });
   });
 });

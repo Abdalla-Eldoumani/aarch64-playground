@@ -121,6 +121,10 @@ export class WorkerClient implements EmulatorBackend {
     return this.send<void>({ id: 0, kind: "setRealTime", on });
   }
 
+  setWindowSize(cols: number, rows: number): Promise<void> {
+    return this.send<void>({ id: 0, kind: "setWindowSize", cols, rows });
+  }
+
   clearAllBreakpoints(): Promise<void> {
     return this.send<void>({ id: 0, kind: "clearAllBreakpoints" });
   }

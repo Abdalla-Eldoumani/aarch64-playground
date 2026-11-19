@@ -88,10 +88,12 @@ export function parseCommandLine(line: string): ParsedCommandLine {
 }
 
 /** A running foreground program's input surface: the pane forwards raw
- *  keystrokes here and Ctrl+C cancels. */
+ *  keystrokes here, Ctrl+C cancels, and the pane's size in columns and rows
+ *  arrives as the program takes the pane over and on every resize. */
 export interface TerminalForegroundProgram {
   pushInput(data: string): void;
   cancel(): void;
+  resize(cols: number, rows: number): void;
 }
 
 /** The terminal pane's I/O surface for interactive program runs: output
