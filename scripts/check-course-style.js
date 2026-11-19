@@ -22,7 +22,7 @@ const ROOT = path.join(__dirname, "..");
 // (examples/cpsc355/README.md), so a fix lands upstream first. Each rule
 // skips only the ones that break it today; two-sum and temp-convert follow both.
 const UPSTREAM = {
-  balign: /^web\/public\/examples\/cpsc355\/(snake|calc|dsav|deadzone)(\.s$|\/)/,
+  balign: /^web\/public\/examples\/cpsc355\/(snake|calc|dsav|deadzone|flappy)(\.s$|\/)/,
   adrp: /^web\/public\/examples\/cpsc355\/deadzone(\.s$|\/)/,
 };
 // Each entry is a folder (read recursively) or a file, and the ending of the

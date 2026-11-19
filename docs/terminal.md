@@ -35,8 +35,8 @@ follows the terminal modes a real tty would apply:
   no echo: it draws its own screen.
 - Ctrl+C stops the program and returns the prompt.
 
-Six examples (snake, the data structures visualizer, calc, temp-convert,
-two-sum, and deadzone) can run in the terminal: set the `console | terminal`
+Seven examples (snake, the data structures visualizer, calc, temp-convert,
+two-sum, deadzone, and flappy) can run in the terminal: set the `console | terminal`
 switch in the header to terminal, and **run** opens the term tab, clears it,
 and starts the program there. Step back is off while such a session runs and
 comes back when it ends.

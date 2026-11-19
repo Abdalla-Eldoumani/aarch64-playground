@@ -34,6 +34,15 @@ function assertClean(file: string, raw: string): void {
   ).toBeNull();
 }
 
+// flappy is a copy of its own repository (public/examples/cpsc355/README.md),
+// which keeps its read-only data in `.section .rodata`; a fix lands upstream
+// first. Only that spelling, and only in flappy's files, is let through.
+const FLAPPY = /^public[\\/]examples[\\/]cpsc355[\\/]flappy(\.s$|[\\/])/;
+
+function excuseUpstream(file: string, raw: string): string {
+  return FLAPPY.test(file) ? raw.replaceAll(".section .rodata", "") : raw;
+}
+
 /** Every file under dir (recursively) whose name ends with ext. */
 function walk(dir: string, ext: string): string[] {
   const out: string[] = [];
@@ -71,8 +80,15 @@ describe("authored programs stay inside the course directive vocabulary", () => 
     const files = walk(path.join(process.cwd(), "public/examples"), ".s");
     expect(files.length).toBeGreaterThanOrEqual(14);
     for (const file of files) {
-      assertClean(rel(file), fs.readFileSync(file, "utf8"));
+      assertClean(rel(file), excuseUpstream(rel(file), fs.readFileSync(file, "utf8")));
     }
+  });
+
+  it("lets through only flappy's `.section .rodata`", () => {
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/flappy/art.s", ".section .rodata"))).toBe(false);
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/flappy.s", ".section .rodata"))).toBe(false);
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/flappy/art.s", ".section .data"))).toBe(true);
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/deadzone.s", ".section .rodata"))).toBe(true);
   });
 
   it("exercise reference solutions carry no banned directive", () => {

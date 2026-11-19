@@ -57,6 +57,8 @@ const DEADZONE_FILES = [
   "abilities.s",
 ];
 
+const FLAPPY_FILES = ["tty.s", "sim.s", "art.s", "gfx.s", "term.s", "save.s"];
+
 const EXPECTED: Record<string, Facts> = {
   basics: {},
   distance: {},
@@ -95,6 +97,7 @@ const EXPECTED: Record<string, Facts> = {
     modeArgs: ["console", "", "./two-sum console"],
   },
   deadzone: { files: DEADZONE_FILES, interactive: true },
+  flappy: { launch: "terminal", files: FLAPPY_FILES, interactive: true },
 };
 
 const ALIASES: [string, string][] = [

@@ -429,18 +429,19 @@ function stemsWith(flag: "terminal" | "interactive" | "modeArgs"): string[] {
 }
 
 describe("launch flags", () => {
-  it("names exactly the two default-terminal examples", () => {
-    // Both redraw the whole screen with terminal escape codes, which the
+  it("names exactly the three default-terminal examples", () => {
+    // Each redraws the whole screen with terminal escape codes, which the
     // plain-text console would show as garbage. Every other example starts in
     // the console.
-    expect(stemsWith("terminal")).toEqual(["dsav", "two-sum"]);
+    expect(stemsWith("terminal")).toEqual(["dsav", "flappy", "two-sum"]);
   });
 
-  it("names the six stems the run-mode control is offered for", () => {
+  it("names the seven stems the run-mode control is offered for", () => {
     expect(stemsWith("interactive")).toEqual([
       "calc",
       "deadzone",
       "dsav",
+      "flappy",
       "snake",
       "temp-convert",
       "two-sum",
