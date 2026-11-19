@@ -1268,7 +1268,7 @@ fn lower_operands(
     Ok(format!("{mnemonic} {rewritten}"))
 }
 
-fn is_branch_mnemonic(mn: &str) -> bool {
+pub(super) fn is_branch_mnemonic(mn: &str) -> bool {
     let lower = mn.to_ascii_lowercase();
     // Unconditional and link branches, conditional branches (both the
     // `b.cond` and dotless `bcond` spellings), CBZ/CBNZ and TBZ/TBNZ

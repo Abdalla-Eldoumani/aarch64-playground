@@ -783,6 +783,68 @@ fn a_library_calls_write_is_stamped_with_the_steps_taken_not_the_budget() {
     assert_eq!((bad.step, bad.pc, bad.target), (17, main_ret, 0x4141_4141_4141_4141));
 }
 
+const QSORT_OVERRUN: &str = r#"
+// sort3 keeps two longs but asks qsort to sort three: the third is main's
+// saved fp, just above sort3's frame.
+
+define(fp, x29)
+define(lr, x30)
+
+first_s = 16                            // long pair[2]: fp + 16 to fp + 31
+second_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+// cmp_longs(x0 = &a, x1 = &b) -> w0 = a - b (the values are small)
+        .balign 4
+cmp_longs:
+        ldr     x9, [x0]
+        ldr     x10, [x1]
+        sub     w0, w9, w10
+        ret
+
+// sort3() sorts pair (bug: three elements, pair holds two)
+        .balign 4
+sort3:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     x9, 7
+        str     x9, [fp, first_s]
+        mov     x9, 5
+        str     x9, [fp, second_s]
+        add     x0, fp, first_s
+        mov     x1, 3                   // bug: pair holds 2
+        mov     x2, 8
+        ldr     x3, =cmp_longs
+        bl      qsort
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      sort3
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// A library call's write is charged to the instruction that made the
+/// call, worked out from the lr the step began with. qsort's last move
+/// lands on main's saved fp on the step qsort returns, when that lr still
+/// holds qsort's own address from the comparator's ret, so the hit names
+/// the word before qsort rather than `bl qsort`.
+#[test]
+fn qsorts_last_move_is_charged_through_the_lr_its_step_began_with() {
+    let mut p = load(QSORT_OVERRUN);
+    let qsort = p.cpu.host.lookup("qsort").expect("qsort");
+    p.run_to_line(36); // sort3's ldp: qsort has returned
+    assert_eq!(p.view().frames[0].activation.fp_hit.pc, qsort - 4);
+}
+
 const PASS_ARRAY: &str = r#"
 // helper keeps four ints and has fill store i into eight of them: the
 // last four land on main's frame record, two records above fill's.
@@ -1992,6 +2054,250 @@ sum:
 #[test]
 fn the_frame_check_is_silent_on_a_correct_frame() {
     assert_eq!(frame_check(WELL_LAID_OUT), (2, 0, vec![]));
+}
+
+/// A 32-byte frame covers fp + 0 to 31; the pair store at 24 (line 18)
+/// writes x19 to 24 to 31 and x20 to 32 to 39, past the frame's end.
+const PAIR_PAST_THE_FRAME: &str = r#"
+// Saves x19 and x20 with one pair store whose second register lands past
+// the end of main's 32-byte frame.
+
+define(fp, x29)
+define(lr, x30)
+
+pair_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, pair_s]
+        mov     w0, 0
+        ldp     x19, x20, [fp, pair_s]
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// The pair store at 16 covers 16 to 31, so count_s (24 to 27, line 21)
+/// lands on the saved x20.
+const PAIR_UNDER_A_COUNT: &str = r#"
+// Saves x19 and x20 with one pair store at 16, then keeps a count at 24,
+// inside the pair's second register.
+
+define(fp, x29)
+define(lr, x30)
+
+pair_s = 16
+count_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, pair_s]
+        mov     w9, 3
+        str     w9, [fp, count_s]
+        ldp     x19, x20, [fp, pair_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// Two ints stored with one pair at 20: 8 bytes at an offset that is not a
+/// multiple of 8, but each int is 4 bytes, so nothing is off its size.
+const INT_PAIR: &str = r#"
+// Keeps two ints in main's frame, stored with one pair store.
+
+define(fp, x29)
+define(lr, x30)
+
+ints_s = 20
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     w9, 1
+        mov     w10, 2
+        stp     w9, w10, [fp, ints_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+#[test]
+fn the_frame_check_counts_both_registers_of_a_pair() {
+    assert_eq!(
+        frame_check(PAIR_PAST_THE_FRAME),
+        (1, 0, vec![row(OUTSIDE, 18, "main", 32, &[("pair_s", 24, 16)])])
+    );
+    assert_eq!(
+        frame_check(PAIR_UNDER_A_COUNT),
+        (1, 0, vec![row(OVERLAP, 21, "main", 32, &[("pair_s", 16, 16), ("count_s", 24, 4)])])
+    );
+    // The multiple-of-8 rule is about one 8-byte value, which a pair of ints
+    // is not; an x pair cannot sit off a multiple of 8 at all, since its
+    // offset is encoded in units of 8.
+    assert_eq!(frame_check(INT_PAIR), (1, 0, vec![]));
+    assert_eq!(frame_check(PAIR_SECOND_NAMED), (1, 0, vec![]));
+}
+
+/// INT_PAIR's two ints also read or written as one 8-byte value: that value
+/// sits at 20, off a multiple of 8, whichever access comes first.
+#[test]
+fn a_pair_of_ints_also_used_as_one_long_is_off_a_multiple_of_8_in_either_order() {
+    let pair = "        stp     w9, w10, [fp, ints_s]
+";
+    for long in ["        ldr     x0, [fp, ints_s]
+", "        str     x9, [fp, ints_s]
+"] {
+        let after = INT_PAIR.replace(pair, &format!("{pair}{long}"));
+        assert_eq!(frame_check(&after), (1, 0, vec![row(UNALIGNED, 20, "main", 32, &[("ints_s", 20, 8)])]), "{long}");
+        let before = INT_PAIR.replace(pair, &format!("{long}{pair}"));
+        assert_eq!(frame_check(&before), (1, 0, vec![row(UNALIGNED, 19, "main", 32, &[("ints_s", 20, 8)])]), "{long}");
+    }
+}
+
+/// x19_s and x20_s name the two registers one pair store saves; reading
+/// x20 back through its own name is no overlap.
+const PAIR_SECOND_NAMED: &str = r#"
+// Saves x19 and x20 with one pair store and reads x20 back by its own name.
+
+define(fp, x29)
+define(lr, x30)
+
+x19_s = 16
+x20_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        stp     x19, x20, [fp, x19_s]
+        ldr     x20, [fp, x20_s]
+        ldr     x19, [fp, x19_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#;
+
+/// main's call to square shares line 18 with a label, and nothing else
+/// names square a function, so square's frame (line 28, 24 bytes) is read as
+/// part of main's.
+const LABEL_THEN_CALL: &str = r#"
+// main prints 5 squared; its call to square shares a line with a label,
+// and square's 24-byte frame is never rounded up to 16.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "%d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 5
+call:   bl      square
+        mov     w1, w0
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+// square(w0 = n) -> w0 = n * n
+square:
+        stp     fp, lr, [sp, -24]!
+        mov     fp, sp
+        mul     w0, w0, w0
+        ldp     fp, lr, [sp], 24
+        ret
+"#;
+
+#[test]
+fn the_frame_check_finds_a_function_called_on_a_labelled_line() {
+    assert_eq!(frame_check(LABEL_THEN_CALL), (2, 0, vec![row(ODD_FRAME, 28, "square", 24, &[])]));
+}
+
+/// The function splitter the lint and the frames view share, at three
+/// edges: a gcc dotted local label on its own line, a tab after `bl`, and
+/// code after `.section .text`.
+const SPLITTER_EDGES: &str = concat!(
+    r#"
+// main squares 3, 2 and 1 in a loop on a gcc-style label, then calls
+// helper, which sits after `.section .text`.
+
+        .text
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w19, 3
+.L2:
+        mov     w0, w19
+"#,
+    "        bl\tsquare\n",
+    r#"        subs    w19, w19, 1
+        b.ne    .L2
+        bl      helper
+        ldp     x29, x30, [sp], 16
+        ret
+
+square: stp     x29, x30, [sp, -24]!
+        mul     w0, w0, w0
+        ldp     x29, x30, [sp], 24
+        ret
+
+        .section .text
+        .global helper
+helper: stp     x29, x30, [sp, -24]!
+        ldp     x29, x30, [sp], 24
+        ret
+"#
+);
+
+#[test]
+fn the_function_splitter_keeps_its_reading_of_a_dotted_label_a_tab_and_section_text() {
+    let p = load(SPLITTER_EDGES);
+    let name = |f: &aarch64_emulator::frames::layout::FunctionLayout| f.name.map(|n| p.layout.names[n as usize].clone());
+    let functions: Vec<_> = p.layout.functions.iter().map(|f| (name(f), f.frame_bytes, f.course_frame)).collect();
+    // helper, after `.section .text`, is none of them.
+    assert_eq!(functions, vec![(Some("main".to_string()), 16, true), (Some("square".to_string()), 24, false)]);
+    let lint: Vec<_> = aarch64_emulator::frontend::lint::lint(SPLITTER_EDGES).into_iter().map(|w| (w.line, w.message)).collect();
+    // square's push is marked; helper's, after `.section .text`, is not.
+    let odd = "this pushes 24 bytes, which is not a multiple of 16. sp must stay 16-byte aligned, so round the frame up (`stp x29, x30, [sp, -16]!`, `sub sp, sp, 32`, ...)";
+    assert_eq!(lint, vec![(20, odd.to_string())]);
+}
+
+/// Every shipped example runs to its end, so a "never pushed" on any of
+/// them is false. dsav's read_int gives its scanf space back once on each
+/// of two exits.
+#[test]
+fn no_shipped_example_pops_what_it_never_pushed() {
+    for (stem, source) in &shipped_examples() {
+        let never: Vec<_> = aarch64_emulator::frontend::lint::lint(source).into_iter().filter(|w| w.message.contains("never pushed")).collect();
+        assert_eq!(never, vec![], "{stem}");
+    }
 }
 
 /// Precision over every program the site ships and the tests hold: each

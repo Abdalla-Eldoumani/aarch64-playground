@@ -83,13 +83,15 @@ pub struct Slot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NamedSlot {
     pub offset: i64,
-    /// The widest access to it.
+    /// The widest access to it, both registers of a pair.
     pub width: u8,
     pub name: u32,
-    /// The first access at that width.
+    /// The first access at that width, a single register's before a pair's.
     pub pc: u64,
     /// Some access writes it.
     pub stored: bool,
+    /// That widest access is a pair.
+    pub pair: bool,
 }
 
 /// A register set by `add xN, x29, base` and indexed by a register
@@ -273,7 +275,8 @@ impl Scan<'_> {
                                 | I::LdStPair { op: LdStPairOp::Stp, .. }
                                 | I::FpLdStPair { op: LdStPairOp::Stp, .. }
                         );
-                        add_named(&mut f.named, names, NamedSlot { offset: off, width, name: 0, pc: at, stored }, name);
+                        let width = width << u8::from(pair);
+                        add_named(&mut f.named, names, NamedSlot { offset: off, width, name: 0, pc: at, stored, pair }, name);
                     }
                     // Through x29 the written offset names the slot; through
                     // an array base it names a field of the array's.
@@ -353,8 +356,10 @@ impl Scan<'_> {
 /// here).
 fn add_named(named: &mut Vec<NamedSlot>, names: &mut Vec<String>, access: NamedSlot, name: &str) {
     if let Some(s) = named.iter_mut().find(|s| s.offset == access.offset && names[s.name as usize] == name) {
-        if s.width < access.width {
-            (s.width, s.pc) = (access.width, access.pc);
+        // A wider access wins, and at one width so does a single register
+        // over a pair: two ints also used as one long are checked as the long.
+        if (s.width, !s.pair) < (access.width, !access.pair) {
+            (s.width, s.pc, s.pair) = (access.width, access.pc, access.pair);
         }
         s.stored |= access.stored;
     } else if named.len() < MAX_SLOTS {
