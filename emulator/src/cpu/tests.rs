@@ -994,6 +994,24 @@ fn host_stub_write_past_page_cap_aborts_calmly() {
 }
 
 #[test]
+fn the_memory_cap_message_reads_in_full_and_quotes_the_layout_sizes() {
+    assert_eq!(
+        MEMORY_CAP_MESSAGE,
+        "stopped: the program asked for more memory than the playground gives it (8 MiB of \
+         stack and 16 MiB of heap). Check for a loop that stores past the end of an array, a \
+         malloc inside a loop with no free, or a frame size computed from a value that was \
+         never initialized"
+    );
+    // The text spells the sizes out rather than formatting them, so this keeps it true.
+    use crate::hosted::heap::{HEAP_BASE, HEAP_LIMIT};
+    const MIB: u64 = 1024 * 1024;
+    let (stack, heap) = (STACK_BASE - STACK_FLOOR, HEAP_LIMIT - HEAP_BASE);
+    assert_eq!((stack % MIB, heap % MIB), (0, 0), "both are a whole number of MiB");
+    let sizes = format!("({} MiB of stack and {} MiB of heap)", stack / MIB, heap / MIB);
+    assert!(MEMORY_CAP_MESSAGE.contains(&sizes));
+}
+
+#[test]
 fn syscall_write_past_page_cap_aborts_calmly() {
     use crate::memory::MAX_MAPPED_PAGES;
     let mut cpu = Cpu::new();
