@@ -78,7 +78,9 @@ interface Goal {
 // The same words again would leave a status's text unchanged, so unsaid.
 const saying = (text: string) => (last: string | null) => (last === text ? text + " " : text);
 
-export function useEmulator(): EmulatorState {
+/** `start` false holds the worker and the wasm back (an embed frame before it
+ *  engages); the backend starts the first render it is true. */
+export function useEmulator(start = true): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
   const sourceRef = useRef("");
@@ -371,8 +373,9 @@ export function useEmulator(): EmulatorState {
     setProgramLoaded(loaded);
   }, []);
 
-  // Load backend on mount.
+  // Load the backend once `start` is true.
   useEffect(() => {
+    if (!start) return;
     let cancelled = false;
     const backend = pickBackend();
     backendRef.current = backend;
@@ -411,7 +414,7 @@ export function useEmulator(): EmulatorState {
     };
     // applySnapshot depends on codeBase but we want this to run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [start]);
 
   const assembleWith = useCallback(
     (
