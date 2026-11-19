@@ -89,6 +89,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
   // where the focus goes back when it ends.
   const fullRef = useRef(false);
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   // The text size the next fit uses, and that fit, once the terminal exists.
   const scaleRef = useRef(1);
   const refitRef = useRef<(() => void) | null>(null);
@@ -430,6 +431,21 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       if (fullRef.current && document.fullscreenElement) void document.exitFullscreen().catch(() => {});
     };
   }, [leaveFull]);
+  useEffect(() => {
+    if (!full) return;
+    // Ctrl+M leaves xterm for the page's body, behind the pane, where Tab
+    // would walk the covered page: Tab lands on the pane's first control,
+    // Shift+Tab on its last.
+    const back = (e: KeyboardEvent) => {
+      const root = rootRef.current;
+      if (e.key !== "Tab" || !root || root.contains(document.activeElement)) return;
+      const controls = root.querySelectorAll<HTMLElement>("button");
+      e.preventDefault();
+      controls[e.shiftKey ? controls.length - 1 : 0]?.focus();
+    };
+    document.addEventListener("keydown", back);
+    return () => document.removeEventListener("keydown", back);
+  }, [full]);
   const pct = Math.round(zoom * 100);
 
   // The padding sits on a wrapper: the fit addon sizes the grid from the
@@ -440,6 +456,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
   // its dialogs (z-50), so one a shortcut opens still shows.
   return (
     <div
+      ref={rootRef}
       className={`flex h-full w-full flex-col bg-[var(--bg-base)]${full ? " fixed inset-0" : ""}`}
       style={full ? { zIndex: 45 } : undefined}
       onKeyDown={(e) => {
