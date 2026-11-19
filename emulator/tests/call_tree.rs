@@ -538,8 +538,9 @@ fn arg_widths<const N: usize>(functions: [(&str, &str); N]) -> [u8; N] {
 }
 
 // Each kind of instruction the scan reads on past: one that reads x0 gives
-// the width it reads it at, one that writes x0 first leaves no argument, and
-// one that touches neither lets the scan go on to the `cmp` after it.
+// the width it reads it at, one that writes x0 first leaves no argument (a
+// `cmp` after it would read x0 if the scan missed the write), and one that
+// touches neither lets the scan go on to the `cmp` after it.
 
 #[test]
 fn an_index_register_reads_w0_under_sxtw_or_uxtw_and_else_x0() {
@@ -548,7 +549,7 @@ fn an_index_register_reads_w0_under_sxtw_or_uxtw_and_else_x0() {
         ("reads_x", "ldr     x9, [x1, x0, lsl 3]"),
         ("sign_extends", "ldrsw   x9, [x1, w0, sxtw 2]"),
         ("loads_fp", "ldr     d9, [x1, x0, lsl 3]"),
-        ("writes", "ldr     x0, [x1, x2, lsl 3]"),
+        ("writes", "ldr     x0, [x1, x2, lsl 3]\ncmp     w0, 1"),
         ("neither", "ldr     w9, [x1, x2, lsl 2]\ncmp     w0, 1"),
     ]);
     assert_eq!(widths, [4, 8, 4, 8, 0, 4]);
@@ -562,7 +563,7 @@ fn sxtb_sxth_sxtw_uxtb_and_uxth_read_the_bytes_they_extend() {
         ("reads_int", "sxtw    x9, w0"),
         ("reads_byte", "uxtb    w9, w0"),
         ("reads_half", "uxth    w9, w0"),
-        ("writes", "sxtw    x0, w1"),
+        ("writes", "sxtw    x0, w1\ncmp     w0, 1"),
         ("neither", "sxtb    x9, w1\ncmp     x0, 1"),
     ]);
     assert_eq!(widths, [1, 2, 4, 1, 2, 0, 8]);
@@ -574,13 +575,14 @@ fn a_one_source_operation_reads_its_source_at_its_own_width() {
         ("shifts", "lsl     w9, w0, 2"),
         ("masks", "and     x9, x0, 0xff"),
         ("reverses", "rev     x9, x0"),
-        ("writes", "lsr     x0, x1, 3"),
+        ("writes", "lsr     x0, x1, 3\ncmp     w0, 1"),
+        ("writes_rev", "rev     x0, x1\ncmp     w0, 1"),
         // bfi keeps the bits of x0 it does not insert into: a write that
         // claims no argument either way.
-        ("inserts", "bfi     x0, x1, 0, 8"),
+        ("inserts", "bfi     x0, x1, 0, 8\ncmp     w0, 1"),
         ("neither", "clz     x9, x1\ncmp     w0, 1"),
     ]);
-    assert_eq!(widths, [4, 8, 8, 0, 0, 4]);
+    assert_eq!(widths, [4, 8, 8, 0, 0, 0, 4]);
 }
 
 #[test]
@@ -591,10 +593,16 @@ fn a_two_source_operation_reads_either_source_at_its_own_width() {
         ("shifts_by", "lsl     x9, x1, x0"),
         ("divides", "sdiv    w9, w1, w0"),
         ("extracts", "extr    x9, x1, x0, 8"),
-        ("writes", "sdiv    x0, x1, x2"),
+        ("writes", "sdiv    x0, x1, x2\ncmp     w0, 1"),
         ("neither", "orr     x9, x1, x2\ncmp     w0, 1"),
+        ("shifts_into", "lsl     x0, x1, x2\ncmp     w0, 1"),
+        ("shifts_neither", "lsl     x9, x1, x2\ncmp     w0, 1"),
+        ("extracts_into", "extr    x0, x1, x2, 8\ncmp     w0, 1"),
+        ("extracts_neither", "extr    x9, x1, x2, 8\ncmp     w0, 1"),
+        ("carries_into", "adc     x0, x1, x2\ncmp     w0, 1"),
+        ("carries_neither", "adc     x9, x1, x2\ncmp     w0, 1"),
     ]);
-    assert_eq!(widths, [8, 4, 8, 4, 8, 0, 4]);
+    assert_eq!(widths, [8, 4, 8, 4, 8, 0, 4, 0, 4, 0, 4, 0, 4]);
 }
 
 #[test]
@@ -604,7 +612,7 @@ fn an_extended_operand_reads_as_much_of_x0_as_its_extend_takes() {
         ("reads_half", "add     x9, x1, w0, uxth"),
         ("reads_int", "add     x9, x1, w0, sxtw"),
         ("reads_long", "add     x9, x1, x0, sxtx"),
-        ("writes", "add     x0, x1, w2, sxtw"),
+        ("writes", "add     x0, x1, w2, sxtw\ncmp     w0, 1"),
         ("neither", "add     x9, x1, w2, sxtw\ncmp     x0, 1"),
     ]);
     assert_eq!(widths, [1, 2, 4, 8, 0, 8]);
@@ -626,7 +634,7 @@ fn a_widening_multiply_reads_w0_as_a_factor_and_x0_as_the_sum() {
         ("factor", "smull   x9, w0, w1"),
         ("high", "smulh   x9, x0, x1"),
         ("sum", "smaddl  x9, w1, w2, x0"),
-        ("writes", "umull   x0, w1, w2"),
+        ("writes", "umull   x0, w1, w2\ncmp     w0, 1"),
         ("neither", "umull   x9, w1, w2\ncmp     w0, 1"),
     ]);
     assert_eq!(widths, [4, 8, 8, 0, 4]);
@@ -638,11 +646,11 @@ fn an_address_or_a_constant_into_x0_claims_no_argument() {
     // bits a caller may never have set), and into another register the
     // scan goes on.
     let widths = arg_widths([
-        ("adrp_first", "adrp    x0, fmt"),
-        ("literal_first", "ldr     x0, =fmt"),
-        ("adr_first", "adr     x0, helper"),
-        ("mov_first", "mov     x0, 5"),
-        ("movk_first", "movk    x0, 1, lsl 16"),
+        ("adrp_first", "adrp    x0, fmt\ncmp     w0, 1"),
+        ("literal_first", "ldr     x0, =fmt\ncmp     w0, 1"),
+        ("adr_first", "adr     x0, helper\ncmp     w0, 1"),
+        ("mov_first", "mov     x0, 5\ncmp     w0, 1"),
+        ("movk_first", "movk    x0, 1, lsl 16\ncmp     w0, 1"),
         ("via_adrp", "adrp    x9, fmt\nldr     w10, [x0]"),
         ("via_literal", "ldr     x9, =fmt\nadd     w0, w0, 1"),
         ("via_constant", "mov     x9, 0x1234\nmovk    x9, 0x5678, lsl 16\ncmp     x0, x9"),
@@ -660,7 +668,7 @@ fn a_move_into_fp_reads_x0_and_any_other_fp_work_ends_the_scan() {
         ("moves_long", "fmov    d0, x0"),
         ("converts_other", "scvtf   d0, w9\ncmp     w0, 1"),
         ("fp_first", "fmov    d1, 1.0\ncmp     w0, 1"),
-        ("from_fp", "fcvtzs  w0, d0"),
+        ("from_fp", "fcvtzs  w0, d0\ncmp     w0, 1"),
     ]);
     assert_eq!(widths, [4, 8, 8, 0, 0, 0]);
 }
@@ -674,13 +682,16 @@ fn every_control_transfer_ends_the_argument_scan() {
         ("branches", "b       1f\n1:\ncmp     w0, 1"),
         ("branches_if", "cmp     w1, 0\nb.ne    1f\n1:\ncmp     w0, 1"),
         ("tests_other", "cbz     x1, 1f\n1:\ncmp     w0, 1"),
+        ("tests_other_nonzero", "cbnz    x1, 1f\n1:\ncmp     w0, 1"),
         ("tests_bit", "tbnz    w1, 0, 1f\n1:\ncmp     w0, 1"),
+        ("tests_bit_clear", "tbz     x1, 3, 1f\n1:\ncmp     w0, 1"),
         ("calls", "bl      helper\ncmp     w0, 1"),
         ("calls_through", "adrp    x9, helper\nblr     x9\ncmp     w0, 1"),
         ("jumps_through", "adrp    x9, helper\nbr      x9\ncmp     w0, 1"),
         ("traps", "svc     0\ncmp     w0, 1"),
+        ("breaks", "brk     0\ncmp     w0, 1"),
     ]);
-    assert_eq!(widths, [0; 9]);
+    assert_eq!(widths, [0; 12]);
 }
 
 #[test]
