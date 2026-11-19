@@ -29,6 +29,7 @@ import { useConsoleOutput } from "@/lib/emulator/use-console-output";
 import { useCpuView } from "@/lib/emulator/use-cpu-view";
 import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
 import { formatSteps } from "@/lib/emulator/format-steps";
+import { yieldToEventLoop } from "@/lib/emulator/run-loop";
 import { parseArgs } from "@/lib/playground/args";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Workspace } from "@/lib/playground/file-map";
@@ -59,6 +60,12 @@ const loadFrameCards = () =>
 // One frozen empty list, so an assemble that dropped nothing hands the shell
 // the same array and its drop notice does not re-fire.
 const NO_LINES: number[] = [];
+
+// How far real time may trail a run's slept time before the debt is dropped.
+// Above a tick's measured overhead (a chunk's round trip plus a late timer,
+// 3 to 11 ms) so a paced game keeps its rate, and under one 60 Hz tick so a
+// stall (a hidden tab's throttled timers) is never made up by more than that.
+const SLEEP_CARRY_MS = 16;
 
 // x16 and x17 (ip0, ip1) are the linker's scratch registers: the stub a `bl
 // printf` runs through writes them, the program does not. Inside a call they
@@ -719,6 +726,8 @@ export function useEmulator(start = true): EmulatorState {
     runningRef.current = true;
     const drive = async (): Promise<string | null> => {
       let total = 0;
+      // Where this run's sleeps have reached on the clock; the first anchors it.
+      let deadline = -Infinity;
       for (;;) {
         const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
         // A run cancelled by reset/assemble describes a machine that no
@@ -726,9 +735,12 @@ export function useEmulator(start = true): EmulatorState {
         // 0x00000000` right after the student pressed Reset.
         if (runResult.cancelled) return null;
         total += runResult.steps_executed;
-        // A pacing pause (nanosleep): honor it in real time and keep the
-        // same run going, unless pause, reset or an unmount stood the drive
-        // down while it waited. The steps so far still land on the counter below.
+        // A pacing pause (nanosleep): wait until the deadline it moves on,
+        // so a chunk's round trip and a late timer come out of the next
+        // wait. Trailing it by more than SLEEP_CARRY_MS restarts the
+        // timeline at now. No time left still yields once, so a main-thread
+        // run cannot hold the page. Pause, reset or an unmount stands the
+        // drive down; the steps so far land on the counter below.
         if (
           runResult.sleep_ms != null &&
           !runResult.halted &&
@@ -737,8 +749,11 @@ export function useEmulator(start = true): EmulatorState {
           !runResult.reached &&
           !runResult.bad_return
         ) {
-          const ms = Math.max(1, Math.min(runResult.sleep_ms, 2000));
-          await new Promise<void>((resolve) => setTimeout(resolve, ms));
+          const now = performance.now();
+          if (now - deadline > SLEEP_CARRY_MS) deadline = now;
+          deadline += Math.max(1, Math.min(runResult.sleep_ms, 2000));
+          const wait = deadline - now;
+          await (wait > 0 ? new Promise<void>((resolve) => setTimeout(resolve, wait)) : yieldToEventLoop());
           if (runningRef.current) continue;
         }
         // The snapshot this result carries has already landed, so the ref
