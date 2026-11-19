@@ -216,6 +216,12 @@ pub fn line_at(lines: &[(u64, u32)], pc: u64) -> u32 {
 }
 
 impl Scan<'_> {
+    /// Whether `name`, written as an offset, can stand for `offset`: a label
+    /// written there is an address, not an offset.
+    fn is_offset_name(&self, name: &str, offset: i64) -> bool {
+        self.symbols.get(name).is_none_or(|&v| v as i64 == offset)
+    }
+
     fn text(&self, pc: u64) -> &str {
         let line = line_at(self.lines, pc) as usize;
         line.checked_sub(1).and_then(|l| self.source.get(l)).copied().unwrap_or("")
@@ -259,8 +265,7 @@ impl Scan<'_> {
                 if let Some((rn, off, size, float, pair)) = fixed_access(&instr) {
                     let width = size.bytes() as u8;
                     let written_name = offset_name(text);
-                    // A label written there is an address, not an offset.
-                    if let Some(name) = written_name.as_deref().filter(|n| rn == 29 && self.symbols.get(*n).is_none_or(|&v| v as i64 == off)) {
+                    if let Some(name) = written_name.as_deref().filter(|n| rn == 29 && self.is_offset_name(n, off)) {
                         let stored = matches!(
                             instr,
                             I::LdSt { op: LdStOp::Str, .. }
@@ -316,8 +321,7 @@ impl Scan<'_> {
                 if let Some(slot) = bases.get_mut(usize::from(rd)) {
                     let offset = i64::from(imm) << shift;
                     let written = last_operand_name(text);
-                    // A label written there is an address, not an offset.
-                    let names_offset = written.as_deref().is_some_and(|n| self.symbols.get(n).is_none_or(|&v| v as i64 == offset));
+                    let names_offset = written.as_deref().is_some_and(|n| self.is_offset_name(n, offset));
                     let name = written.map(|n| add_name(names, n));
                     *slot = Some((offset, name));
                     if let Some(name) = name.filter(|_| names_offset) {
