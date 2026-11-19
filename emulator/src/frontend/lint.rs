@@ -805,10 +805,12 @@ mod tests {
     }
 
     #[test]
-    fn every_push_and_pop_spelling_gnu_as_takes_reads_as_the_crate_encodes_it() {
-        // Each spelling GNU as takes for these operands (blanks, tabs, `#`,
-        // hex, upper case): the lint's reading must be the sp change of the
-        // word the crate assembles from it.
+    fn seventeen_push_and_pop_spellings_read_as_the_crate_encodes_them() {
+        // Seventeen spellings GNU as 2.42 takes for these operands (blanks,
+        // tabs, `#`, hex, upper case, a blank before a comma): the lint's
+        // reading must be the sp change of the word the crate assembles from
+        // each. Not every spelling: `[sp, -16] !`, a blank before the `!`,
+        // still reads as no push.
         let spellings = [
             "stp x29, x30, [sp, -16]!",
             "stp x29, x30, [ sp, -16 ]!",
