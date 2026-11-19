@@ -73,6 +73,21 @@ pub enum EmuError {
     RuntimeError { message: String },
 }
 
+impl EmuError {
+    /// The editor line and message an assemble result shows. The line
+    /// already names where, so the four variants with one hand back their
+    /// bare message; any other error is its whole text, with no line.
+    pub fn into_line_and_message(self) -> (Option<usize>, String) {
+        match self {
+            Self::AssemblyError { line, message }
+            | Self::PreprocError { line, message }
+            | Self::ParseError { line, message }
+            | Self::LinkError { line, message } => (Some(line), message),
+            other => (None, other.to_string()),
+        }
+    }
+}
+
 impl fmt::Display for EmuError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -176,3 +191,49 @@ impl fmt::Debug for EmuError {
 }
 
 impl std::error::Error for EmuError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_assembly_error_hands_back_its_line_and_bare_message() {
+        let e = EmuError::AssemblyError { line: 5, message: "MOV requires 2 operands".into() };
+        assert_eq!(e.into_line_and_message(), (Some(5), "MOV requires 2 operands".to_string()));
+    }
+
+    #[test]
+    fn a_preprocess_error_hands_back_its_line_and_bare_message() {
+        let e = EmuError::PreprocError { line: 2, message: "unsupported m4 construct: ifdef".into() };
+        assert_eq!(e.into_line_and_message(), (Some(2), "unsupported m4 construct: ifdef".to_string()));
+    }
+
+    #[test]
+    fn a_parse_error_hands_back_its_line_and_bare_message() {
+        let e = EmuError::ParseError { line: 7, message: "expected an expression, found end of input".into() };
+        assert_eq!(
+            e.into_line_and_message(),
+            (Some(7), "expected an expression, found end of input".to_string())
+        );
+    }
+
+    #[test]
+    fn a_link_error_at_line_0_hands_back_line_0_and_bare_message() {
+        let e = EmuError::LinkError { line: 0, message: "undefined reference to `main'".into() };
+        assert_eq!(e.into_line_and_message(), (Some(0), "undefined reference to `main'".to_string()));
+    }
+
+    #[test]
+    fn any_other_error_hands_back_its_whole_text_and_no_line() {
+        let e = EmuError::ArgvTooLarge { bytes: 5035 };
+        assert_eq!(
+            e.into_line_and_message(),
+            (
+                None,
+                "the arguments need 5035 bytes, more than the 4 KiB the playground reserves for \
+                 argv. Shorten the args box above the editor, or pass fewer arguments"
+                    .to_string()
+            )
+        );
+    }
+}

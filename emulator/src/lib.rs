@@ -456,6 +456,24 @@ impl Emulator {
     /// pipeline; everything else keeps the legacy single-`.text` path so
     /// the bare-metal examples retain their exact byte-for-byte layout.
     pub fn assemble_and_load(&mut self, source: &str) -> JsValue {
+        self.load(source, &[])
+    }
+
+    /// `assemble_and_load`, plus argc/argv written at `argv::ARGV_BASE` for
+    /// `main(int argc, char **argv)`. `args` is argv[1..]: the loader
+    /// supplies argv[0] (`./program`) itself. Bare-metal sources ignore
+    /// args, since only a hosted `main` reads them.
+    pub fn assemble_and_load_with_args(
+        &mut self,
+        source: &str,
+        args: Vec<String>,
+    ) -> JsValue {
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.load(source, &arg_refs)
+    }
+
+    /// Both load exports' one body, so a hosted change lands once.
+    fn load(&mut self, source: &str, args: &[&str]) -> JsValue {
         // Each assemble replaces the line map; clear it up front so a
         // failed assemble or the bare-metal path leaves it empty and the
         // web layer falls back to the legacy line-count heuristic.
@@ -467,7 +485,7 @@ impl Emulator {
                 Ok(image) => {
                     let count = image.instruction_count;
                     self.line_map = flatten_line_map(&image.line_map);
-                    match self.cpu.load_linked_image(&image) {
+                    match self.cpu.load_linked_image_with_args(&image, args) {
                         Ok(()) => {
                             self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
                             serde_wasm_bindgen::to_value(&AssembleResultJs {
@@ -488,13 +506,7 @@ impl Emulator {
                     }
                 }
                 Err(e) => {
-                    let (line, message) = match e {
-                        errors::EmuError::AssemblyError { line, message }
-                        | errors::EmuError::PreprocError { line, message }
-                        | errors::EmuError::ParseError { line, message }
-                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
-                        other => (None, other.to_string()),
-                    };
+                    let (line, message) = e.into_line_and_message();
                     serde_wasm_bindgen::to_value(&AssembleResultJs {
                         success: false,
                         error: Some(message),
@@ -534,68 +546,6 @@ impl Emulator {
                     }).unwrap()
                 }
             }
-        }
-    }
-
-    /// `assemble_and_load`, plus argc/argv written at `argv::ARGV_BASE` for
-    /// `main(int argc, char **argv)`. `args` is argv[1..]: the loader
-    /// supplies argv[0] (`./program`) itself. Bare-metal sources ignore
-    /// args, since only a hosted `main` reads them.
-    pub fn assemble_and_load_with_args(
-        &mut self,
-        source: &str,
-        args: Vec<String>,
-    ) -> JsValue {
-        // Clear the map up front for the same reason as assemble_and_load.
-        self.line_map.clear();
-        self.frame_layout = Default::default();
-        if detect_hosted_mode(source) {
-            self.cpu.reset();
-            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
-                Ok(image) => {
-                    let count = image.instruction_count;
-                    self.line_map = flatten_line_map(&image.line_map);
-                    match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
-                        Ok(()) => {
-                            self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
-                            serde_wasm_bindgen::to_value(&AssembleResultJs {
-                                success: true,
-                                error: None,
-                                error_line: None,
-                                instruction_count: count,
-                            })
-                            .unwrap()
-                        }
-                        Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
-                            success: false,
-                            error: Some(e.to_string()),
-                            error_line: None,
-                            instruction_count: 0,
-                        })
-                        .unwrap(),
-                    }
-                }
-                Err(e) => {
-                    let (line, message) = match e {
-                        errors::EmuError::AssemblyError { line, message }
-                        | errors::EmuError::PreprocError { line, message }
-                        | errors::EmuError::ParseError { line, message }
-                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
-                        other => (None, other.to_string()),
-                    };
-                    serde_wasm_bindgen::to_value(&AssembleResultJs {
-                        success: false,
-                        error: Some(message),
-                        error_line: line,
-                        instruction_count: 0,
-                    })
-                    .unwrap()
-                }
-            }
-        } else {
-            // Bare-metal path: args have no caller, just delegate.
-            self.assemble_and_load(source)
         }
     }
 
@@ -900,17 +850,12 @@ impl Emulator {
             })
             .unwrap(),
             Err(err) => {
-                let (message, line) = match &err {
-                    errors::EmuError::PreprocError { line, message } => {
-                        (message.clone(), Some(*line as u32))
-                    }
-                    other => (other.to_string(), None),
-                };
+                let (line, message) = err.into_line_and_message();
                 serde_wasm_bindgen::to_value(&M4ResultJs {
                     success: false,
                     text: None,
                     error: Some(message),
-                    error_line: line,
+                    error_line: line.map(|line| line as u32),
                 })
                 .unwrap()
             }
