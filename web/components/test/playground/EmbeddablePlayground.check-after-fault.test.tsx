@@ -94,7 +94,9 @@ describe("an exercise check after a Run that faulted", () => {
     render(<EmbeddablePlayground chrome="checker" startSource={READS} onCheck={onCheck} />);
     // The exercise gives no input. The Run keeps input open, waits at the
     // read, and the student types 0, which the program loads through.
-    fireEvent.mouseDown(await screen.findByRole("button", { name: "run" }, { timeout: 5000 }));
+    const run = await screen.findByRole("button", { name: "run" }, { timeout: 5000 });
+    fireEvent.mouseDown(run);
+    fireEvent.click(run);
     const input = await screen.findByLabelText("Standard input", {}, { timeout: 5000 });
     await act(() => new Promise((done) => setTimeout(done, 300)));
     fireEvent.change(input, { target: { value: "0" } });
