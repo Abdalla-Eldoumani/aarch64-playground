@@ -1110,6 +1110,27 @@ mod memory_map_tests {
     }
 
     #[test]
+    fn every_row_sits_at_its_fixed_address() {
+        // Literals, because the tests below read the same constants the map does.
+        let map = memory_map();
+        let rows: Vec<(&str, u32, u32)> =
+            map.iter().map(|region| (region.name, region.start, region.end)).collect();
+        assert_eq!(
+            rows,
+            vec![
+                (".text", 0x0040_0000, 0x0050_0000),
+                (".rodata", 0x0050_0000, 0x0060_0000),
+                (".data", 0x0060_0000, 0x0070_0000),
+                (".bss", 0x0070_0000, 0x0080_0000),
+                ("argv", 0x0080_0000, 0x0080_1000),
+                ("heap", 0x0090_0000, 0x0190_0000),
+                ("stack", 0x7F80_0000, 0x8000_0000),
+                ("host stubs", 0xFFFF_0000, 0xFFFF_1000),
+            ],
+        );
+    }
+
+    #[test]
     fn section_rows_span_their_window_from_the_loader_bases() {
         let rows = memory_map();
         for (name, base) in [
