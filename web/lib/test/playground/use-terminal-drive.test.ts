@@ -819,6 +819,87 @@ describe("what a raw-mode program wrote before the pane took it", () => {
     await halt(named, session);
   });
 
+  it("replays nothing into a pane that remounts during a session it already took over", async () => {
+    // A crossing into the phone layout remounts the pane mid-session: the
+    // self-attach comes again, but the run's setup already went to the pane.
+    const stdout = "\x1b[?1000hRAWFRAME";
+    const machine = makeMachine({ wantsTerminal: true, stdout });
+    const h = setup({ wantsTerminal: true, stdout }, machine);
+    const first = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(first as TerminalProgramIO);
+    });
+    await waitFor(() => expect(first.write).toHaveBeenCalledWith(stdout));
+    await new Promise((r) => setTimeout(r, 50));
+    const second = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(null);
+      await new Promise((r) => setTimeout(r, 80));
+      h.drive().registerTermIO(second as TerminalProgramIO);
+    });
+    await waitFor(() => expect(second.setForeground).toHaveBeenCalled());
+    expect(second.write).not.toHaveBeenCalledWith(stdout);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(second.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("replays nothing into a pane that remounts during a ./name session", async () => {
+    // The console still holds an earlier editor run's text: a terminal build
+    // keeps it as history. The program turns raw while ./name drives it, and a
+    // remount then attaches a new pane to that same program.
+    const stdout = "the editor's run printed this\n";
+    const machine = makeMachine({ stdout, exitCode: 0 });
+    const h = setup({ stdout }, machine);
+    const first = makeIO();
+    let session!: Promise<number | null>;
+    await act(async () => {
+      h.drive().registerTermIO(first as TerminalProgramIO);
+      session = h.drive().driveForeground(first as TerminalProgramIO);
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    machine.wantsTerminal = true;
+    await h.update({ wantsTerminal: true });
+    const second = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(null);
+      await session;
+      h.drive().registerTermIO(second as TerminalProgramIO);
+    });
+    await waitFor(() => expect(second.setForeground).toHaveBeenCalled());
+    expect(second.write).not.toHaveBeenCalledWith(stdout);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(second.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("replays only what the run wrote from the chunk that turned raw mode on", async () => {
+    // Text the console held before that chunk (an earlier run's, or this
+    // program's own before raw mode) stays in the console.
+    const before = "kept from a terminal build\n";
+    const raw = "\x1b[?1000hRAWFRAME";
+    const machine = makeMachine({ stdout: before });
+    const h = setup({ stdout: before }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    machine.wantsTerminal = true;
+    machine.stdout = before + raw;
+    await h.update({ wantsTerminal: true, stdout: before + raw });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    expect(io.write.mock.calls[0]).toEqual([raw]);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
   it("leaves a ./name program's screen alone when it turns raw mid-run", async () => {
     // A wipe there came after the program's first chunk: it blanked a size
     // notice and dropped the mouse reporting the program had just turned on.
