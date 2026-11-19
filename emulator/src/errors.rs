@@ -157,8 +157,8 @@ impl fmt::Display for EmuError {
                 write!(
                     f,
                     "Bus error\nsp is 0x{sp:x}{place}, which is not a multiple of 16: \
-                     round the frame size above it up to a multiple of 16 (32 instead \
-                     of 24), or size it with `alloc = -(16 + locals) & -16`"
+                     round the frame size above it up to a multiple of 16, or size it \
+                     with `alloc = -(16 + locals) & -16`"
                 )
             }
             Self::RuntimeError { message } => write!(f, "{message}"),
