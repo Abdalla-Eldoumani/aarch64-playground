@@ -376,3 +376,59 @@ describe("label arrays step by the element size", () => {
     expect(watchLabelName("x0")).toBeNull();
   });
 });
+
+describe("frame-slot arrays named by an = line", () => {
+  // The loaded program's symbol table holds every `=` name, so the label
+  // lookup answers `sum_s` with its value, 16, as if it were an address.
+  const source = "sum_s = 16\n.text\nmain:\n";
+  const ctx: EvalContext = {
+    readRegister: (name) => (name === "fp" ? 0x8000_0000n : name === "w1" ? 1n : null),
+    readMemory: (addr, size) => (addr === 0x8000_0018n && size === 8 ? 7n : "unmapped"),
+    resolveSlotOffset: (name) => (name === "sum_s" ? 16n : null),
+    resolveLabelAddress: (name) => (name === "sum_s" ? 16n : null),
+    labelElementSize: (name) => labelElementSize(source, name),
+  };
+
+  it("reads sum_s[1] as the 8 bytes at fp + 16 + 8", () => {
+    const r = ok(evaluateWatch("sum_s[1]", ctx));
+    expect(r.value).toBe(7n);
+    expect(r.size).toBe(8);
+    expect(ok(evaluateWatch("sum_s[w1]", ctx)).value).toBe(7n);
+  });
+
+  it("waits while the label lookup is still in flight", () => {
+    const waiting: EvalContext = { ...ctx, resolveLabelAddress: () => "pending" };
+    expect(evaluateWatch("sum_s[1]", waiting)).toEqual({ pending: true });
+  });
+
+  // The panel's slots come from the editor's text line by line, so an
+  // `arr = 16` inside a block comment names a slot the assembler never saw.
+  it("reads a sized data label before a frame slot of the same name", () => {
+    const both: EvalContext = {
+      ...ctx,
+      readMemory: (addr, size) =>
+        addr === 0x70_0004n && size === 4 ? 20n : addr === 0x8000_0018n && size === 8 ? 99n : "unmapped",
+      resolveSlotOffset: (name) => (name === "arr" ? 16n : null),
+      resolveLabelAddress: (name) => (name === "arr" ? 0x70_0000n : null),
+      labelElementSize: (name) => labelElementSize("/*\narr = 16\n*/\n.data\narr: .word 10, 20\n", name),
+    };
+    const r = ok(evaluateWatch("arr[1]", both));
+    expect(r.value).toBe(20n);
+    expect(r.size).toBe(4);
+  });
+
+  // A label resolves to an address, an `=` name to its own value, so only a
+  // value equal to the slot's offset is the `=` line the slot came from.
+  it("refuses an unsized data label beside a commented-out = line of the same name", () => {
+    const unsized: EvalContext = {
+      ...ctx,
+      readMemory: (addr, size) => (addr === 0x8000_0010n && size === 8 ? 0x77n : "unmapped"),
+      resolveSlotOffset: (name) => (name === "buf" ? 16n : null),
+      resolveLabelAddress: (name) => (name === "buf" ? 0x60_0000n : null),
+      labelElementSize: (name) => labelElementSize("/*\nbuf = 16\n*/\n.data\nbuf: .skip 16\n", name),
+    };
+    expect(evaluateWatch("buf[0]", unsized)).toEqual({
+      error: "can't tell the element size of buf: no .byte, .hword, .word or .dword after its label",
+    });
+  });
+});
