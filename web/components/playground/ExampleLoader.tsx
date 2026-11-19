@@ -103,6 +103,7 @@ export const GROUPS: ExampleGroup[] = [
       { name: "temperature converter", stem: "temp-convert" },
       { name: "two sum", stem: "two-sum" },
       { name: "deadzone", stem: "deadzone" },
+      { name: "flappy", stem: "flappy" },
     ],
   },
 ];
