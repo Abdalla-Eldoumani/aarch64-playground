@@ -1868,6 +1868,21 @@ describe("useEmulator real-time sleeps", () => {
     expect(result.current.stepCount).toBe(5 * asked);
   });
 
+  it("a reset while the run's last chunk is out lands none of its steps", async () => {
+    // A 50 ms chunk that stops at a breakpoint, not cancelled: the worker
+    // finished it before the reset reached it. The reset lands 10 ms in.
+    const { result, advance } = await paced(() => ({ ...STOP, hit_breakpoint: true }), 50, () => 0);
+    act(() => {
+      result.current.run();
+    });
+    await advance(10);
+    act(() => {
+      result.current.reset();
+    });
+    await advance(200);
+    expect(result.current.stepCount).toBe(0);
+  });
+
   describe("a machine replaced during a sleep", () => {
     const NAP: RunResultPayload = { ...STOP, sleep_ms: 100 };
 
