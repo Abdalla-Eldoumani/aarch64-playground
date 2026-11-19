@@ -138,7 +138,7 @@ impl Cpu {
         self.regs.clobber_caller_saved(
             returns == Returns::X0,
             returns == Returns::D0,
-            self.host.call_site(stub_pc, lr),
+            HostTable::bl_before(lr),
         );
     }
 
