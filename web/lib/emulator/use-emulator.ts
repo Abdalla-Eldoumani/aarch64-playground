@@ -61,11 +61,8 @@ const loadFrameCards = () =>
 // the same array and its drop notice does not re-fire.
 const NO_LINES: number[] = [];
 
-// How far real time may trail a run's slept time. A tick's overhead (a
-// chunk's round trip plus a late timer) up to this comes out of the next
-// waits; past it only the excess is dropped, never caught up. Under one
-// 60 Hz tick, so a stall (a hidden tab's throttled timers) is made up by at
-// most this much.
+// How far real time may trail a run's slept time: under one 60 Hz tick, so a
+// stall (a hidden tab's throttled timers) is made up by at most this much.
 const SLEEP_CARRY_MS = 16;
 
 // x16 and x17 (ip0, ip1) are the linker's scratch registers: the stub a `bl
