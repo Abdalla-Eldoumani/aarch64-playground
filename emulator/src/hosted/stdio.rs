@@ -361,6 +361,13 @@ mod tests {
     const BUF: u64 = 0x0060_0000;
     const TEXT: u64 = 0x0050_0000;
 
+    #[test]
+    fn the_globals_pages_sit_at_their_fixed_addresses() {
+        // Neither page is a memory-map row, so nothing else pins them.
+        assert_eq!(STDIO_GLOBALS_BASE, 0x0080_1000);
+        assert_eq!(CTYPE_CONV_BASE, 0x0080_2000);
+    }
+
     impl Host {
         /// fgets(BUF, n, stream) -> (outcome, what x0 came back as).
         fn fgets(&mut self, n: u64, stream: u64) -> (HostOutcome, u64) {
