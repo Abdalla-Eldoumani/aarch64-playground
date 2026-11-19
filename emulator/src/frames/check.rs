@@ -71,7 +71,10 @@ pub fn check(layout: &FrameLayout, lines: &[(u64, u32)]) -> FrameCheck {
             // One overlap per slot, with a slot that starts below it (or at
             // it, listed first) and reaches into it, so a crowded frame
             // gives one mark a slot.
-            let below = f.named.iter().enumerate().find(|&(j, b)| (b.offset, j) < (s.offset, i) && b.offset + i64::from(b.width) > s.offset);
+            // A name for exactly a pair's second register is that register's
+            // own slot, not an overlap.
+            let second = |b: &NamedSlot| b.pair && s.width == b.width / 2 && s.offset == b.offset + i64::from(s.width);
+            let below = f.named.iter().enumerate().find(|&(j, b)| (b.offset, j) < (s.offset, i) && b.offset + i64::from(b.width) > s.offset && !second(b));
             if let Some((_, &below)) = below {
                 add(OVERLAP, s.pc, Some(below), Some(s));
             }
@@ -83,7 +86,9 @@ pub fn check(layout: &FrameLayout, lines: &[(u64, u32)]) -> FrameCheck {
             if s.stored && (s.offset < 0 || end > frame) {
                 add(OUTSIDE, s.pc, Some(s), None);
             }
-            if s.width == 8 && s.offset % 8 != 0 {
+            // A pair of 4-byte registers is not one 8-byte value, and GNU as
+            // takes an 8-byte register's pair only at a multiple of 8.
+            if s.width == 8 && !s.pair && s.offset % 8 != 0 {
                 add(UNALIGNED, s.pc, Some(s), None);
             }
         }
