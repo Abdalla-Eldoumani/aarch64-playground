@@ -11,6 +11,7 @@ use super::lexer::{lex, Token, TokenKind};
 use super::m4::expand;
 use super::sections::{Item, Program, SectionKind, SymbolValue};
 use crate::errors::EmuError;
+use crate::layout::SECTION_WINDOW;
 
 /// Parse a cpsc 355 source string end to end: m4 expansion, the `.req`
 /// register-alias pass, lexing, then statement-per-line dispatch into
@@ -588,7 +589,7 @@ fn parse_directive(
                 // allocated here, ahead of the linker's 1 MiB window
                 // check, and on wasm32 a giant Vec is an allocation
                 // abort rather than an error message.
-                if n as u64 > 1024 * 1024 {
+                if n as u64 > SECTION_WINDOW {
                     return Err(err(
                         line,
                         "the fill would outgrow the section's 1 MiB window. \
