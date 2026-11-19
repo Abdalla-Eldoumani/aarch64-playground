@@ -660,8 +660,9 @@ export function useEmulator(start = true): EmulatorState {
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
     // Past the oldest kept frame the machine does not move, and the counter
-    // must not move without it.
-    if (!backend || !programLoadedRef.current || !canStepBackRef.current) return;
+    // must not move without it. A live run would lose its steps to the step
+    // back, so it is refused then, as the Back button is.
+    if (!backend || !programLoadedRef.current || !canStepBackRef.current || runningRef.current) return;
     runBlockedRef.current = false;
     setStopAt(-1);
     pausedAtRef.current = -1;
