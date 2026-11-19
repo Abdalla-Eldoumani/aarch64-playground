@@ -52,7 +52,8 @@ function frameCheckText({ check, names }: FrameCheckRow): string {
     }
     case UNALIGNED: {
       // The next multiple of 8 at 16 or above, or the last one that still
-      // fits the frame; none when no local fits (the OUTSIDE mark says so).
+      // fits the frame; none when no local fits (a stored slot there also
+      // gets the OUTSIDE mark, a slot only read does not).
       const last = Math.floor((frame - width) / 8) * 8;
       const hint = last < 16 ? "" : ` Move it to a multiple of 8, such as ${Math.max(16, Math.min(Math.ceil(offset / 8) * 8, last))}.`;
       return `${name} holds 8 bytes at ${offset}, which is not a multiple of 8.${hint}`;
