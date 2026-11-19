@@ -157,7 +157,7 @@ export interface RunResultPayload {
   cancelled?: boolean;
   /**
    * Milliseconds the program's last nanosleep asked to pause, when the
-   * run stopped for one. The driver waits this out in real time and
+   * run stopped for one. The driver waits the sleep out in real time and
    * resumes; absent on wasm builds that predate pacing.
    */
   sleep_ms?: number | null;
