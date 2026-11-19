@@ -1743,7 +1743,7 @@ describe("useEmulator real-time sleeps", () => {
       act(async () => {
         await vi.advanceTimersByTimeAsync(ms);
       });
-    return { ...view, called, answered, results, advance };
+    return { ...view, fake, called, answered, results, advance };
   }
 
   // The worst shortfall of real time against the time slept, over every
@@ -1944,6 +1944,38 @@ describe("useEmulator real-time sleeps", () => {
       });
       await advance(200);
       expect(result.current.stepCount).toBe(5 * (called.length - asked));
+    });
+
+    it("a step back while the run is on is refused, so the counter keeps the machine's steps", async () => {
+      // Three steps by hand, then a run of two 5-step chunks that sleep and
+      // one that stops at a breakpoint.
+      const BREAK: RunResultPayload = { ...STOP, hit_breakpoint: true };
+      const { result, fake, called, answered, advance } = await paced((k) => (k < 2 ? NAP : BREAK), 3, () => 0);
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          result.current.step();
+        });
+      }
+      act(() => {
+        result.current.run();
+      });
+      await advance(150);
+      while (answered.length < called.length) await advance(1);
+      act(() => {
+        fake.fire({ canStepBack: true });
+      });
+      act(() => {
+        result.current.stepBack();
+      });
+      expect(fake.calls.stepBack).toBe(0);
+      await advance(200);
+      expect(result.current.isRunning).toBe(false);
+      expect(result.current.stepCount).toBe(3 + 5 * called.length);
+      act(() => {
+        result.current.run();
+      });
+      await advance(200);
+      expect(result.current.stepCount).toBe(3 + 5 * called.length);
     });
   });
 
