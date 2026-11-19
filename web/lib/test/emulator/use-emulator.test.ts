@@ -217,6 +217,8 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
   let listener: ((s: StateSnapshot) => void) | null = null;
   let frame = 0;
   let runResolve: (() => void) | null = null;
+  // Moved by every call that replaces the machine, as the real backends' is.
+  let epoch = 0;
 
   const calls: BackendCalls = {
     assemble: [],
@@ -248,7 +250,10 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     return s;
   }
 
-  const backend: EmulatorBackend = {
+  const backend: EmulatorBackend & { readonly epoch: number } = {
+    get epoch() {
+      return epoch;
+    },
     onSnapshot(l) {
       listener = l;
       return () => {
@@ -275,6 +280,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve(cfg.memBytes);
     },
     assemble(source, args) {
+      epoch++;
       calls.assemble.push([source, args]);
       if (cfg.assembleThrows) return Promise.reject(new Error("boom"));
       const result: AssembleResultPayload = cfg.assembleSuccess
@@ -296,6 +302,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve({ stepResult: cfg.stepResult, snapshot: s });
     },
     stepBack() {
+      epoch++;
       calls.stepBack++;
       if (cfg.stepBackThrows) return Promise.reject(new Error("stepback boom"));
       const s = fire({ canStepBack: true });
@@ -328,6 +335,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve();
     },
     reset() {
+      epoch++;
       calls.reset++;
       return Promise.resolve(fire());
     },
@@ -371,6 +379,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve(fire({ savedStates: [name] }));
     },
     loadState(name) {
+      epoch++;
       calls.loadState.push(name);
       return Promise.resolve({ ok: cfg.loadStateOk, snapshot: fire() });
     },
@@ -1857,6 +1866,85 @@ describe("useEmulator real-time sleeps", () => {
     expect(result.current.isRunning).toBe(true);
     // The paused run ended, and only its steps are on the counter so far.
     expect(result.current.stepCount).toBe(5 * asked);
+  });
+
+  describe("a machine replaced during a sleep", () => {
+    const NAP: RunResultPayload = { ...STOP, sleep_ms: 100 };
+
+    // Two sleeps in, then on to the next answer: the drive is inside a wait.
+    async function intoWait() {
+      const view = await paced(() => NAP, 3, () => 0);
+      act(() => {
+        view.result.current.run();
+      });
+      await view.advance(250);
+      while (view.answered.length < view.called.length) await view.advance(1);
+      return view;
+    }
+
+    it("a reset lands no steps afterwards", async () => {
+      const { result, called, advance } = await intoWait();
+      const asked = called.length;
+      act(() => {
+        result.current.reset();
+      });
+      await advance(1000);
+      expect(result.current.stepCount).toBe(0);
+      expect(called).toHaveLength(asked);
+    });
+
+    it("an assemble ends the old drive", async () => {
+      const { result, called, advance } = await intoWait();
+      await act(async () => {
+        await result.current.assemble(HOSTED_SOURCE);
+      });
+      const asked = called.length;
+      await advance(1000);
+      expect(called).toHaveLength(asked);
+      expect(result.current.stepCount).toBe(0);
+    });
+
+    it("a run pressed after an assemble drives the new program alone, counting from zero", async () => {
+      const { result, called, advance } = await intoWait();
+      await act(async () => {
+        await result.current.assemble(HOSTED_SOURCE);
+      });
+      const asked = called.length;
+      act(() => {
+        result.current.run();
+      });
+      expect(result.current.isRunning).toBe(true);
+      // One drive asks for about 10 chunks a second.
+      await advance(1000);
+      act(() => {
+        result.current.pause();
+      });
+      await advance(200);
+      const ran = called.length - asked;
+      expect(ran).toBeGreaterThanOrEqual(9);
+      expect(ran).toBeLessThanOrEqual(11);
+      expect(result.current.stepCount).toBe(5 * ran);
+    });
+
+    it("a paused run's steps never land on the program assembled and run in its wait", async () => {
+      const { result, called, advance } = await intoWait();
+      act(() => {
+        result.current.pause();
+      });
+      await act(async () => {
+        await result.current.assemble(HOSTED_SOURCE);
+      });
+      const asked = called.length;
+      act(() => {
+        result.current.run();
+      });
+      await advance(1000);
+      act(() => {
+        result.current.pause();
+      });
+      await advance(200);
+      expect(result.current.stepCount).toBe(5 * (called.length - asked));
+    });
   });
 
   it("lets a pause land when no sleep has time left to wait", async () => {
