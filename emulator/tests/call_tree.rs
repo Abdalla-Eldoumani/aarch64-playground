@@ -523,6 +523,90 @@ fn a_drop_moves_the_open_calls_up_with_their_calls_under_them() {
     assert_eq!(p.calls_counted(), 203);
 }
 
+/// main calls work 150 times, and work calls tick, then tock.
+const FOLD_TICK_TOCK: &str = "\
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+.text
+// tick() -> w0 = 1
+        .balign 4
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+
+// tock() -> w0 = 2
+        .balign 4
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+
+// work() -> w0 = 2, what tock returns
+        .balign 4
+        .global work
+work:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      tick
+        bl      tock
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     i_r, 0
+        b       main_test
+main_loop:
+        bl      work
+        add     i_r, i_r, 1
+main_test:
+        cmp     i_r, 150
+        b.lt    main_loop
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+
+#[test]
+fn a_fold_keeps_counting_its_calls_across_each_drop() {
+    let mut p = load(FOLD_TICK_TOCK);
+    let tick = p.label("tick");
+    // Works 1 to 4 take a node each, with their tick and tock under them
+    // (nodes 1 to 12); work 5 makes the fold at node 13, and from there on
+    // each work joins it and adds its tick and tock. Work 97's tock fills
+    // the 200 nodes, so work 98's tick drops works 1 to 4 and their calls
+    // (12) and the fold's ticks and tocks up to node 99 (86): the fold, now
+    // node 1, holds works 5 to 98 with ticks and tocks from work 48's on.
+    p.run_to(tick, 98);
+    let outline = p.outline();
+    let (first, last) = ("    tick -> 1".to_string(), "    tick *".to_string());
+    assert_eq!(outline[..2], ["main ...", "  work × 94 ..."]);
+    assert_eq!((outline.len(), &outline[2], &outline[102]), (103, &first, &last));
+    assert_eq!(p.tree_head(), [103.0, 103.0, 0.0, 98.0, 98.0, 4.0]);
+    // Work 99 joins the fold again, though the drop moved it.
+    for _ in 0..6 {
+        p.cpu.step_back();
+    }
+    back_retraces(&mut p, 10, "a drop under an open fold");
+    p.run_to(tick, 1);
+    assert_eq!(p.outline()[1], "  work × 95 ...");
+    // Work 146's tock fills the nodes again and work 147's tick drops 98
+    // more. At the end the fold counts works 5 to 150, and the ticks and
+    // tocks from work 97's on stay: every one of the 451 calls is counted.
+    p.run_to_end();
+    let outline = p.outline();
+    assert_eq!(outline[..4], ["main -> 0", "  work × 146 -> 2", "    tick -> 1", "    tock -> 2"]);
+    assert_eq!(outline.len(), 110);
+    assert_eq!(p.tree_head(), [110.0, 0.0, 0.0, 196.0, 196.0, 4.0]);
+    assert_eq!(p.calls_counted(), 451);
+}
+
 #[test]
 fn a_full_tree_keeps_the_open_calls_and_drops_whole_returned_calls() {
     let mut p = load(DEEP_TICK_TOCK);
