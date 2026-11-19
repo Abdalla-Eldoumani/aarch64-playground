@@ -65,9 +65,10 @@ steps in [Run it locally](#run-it-locally).
 - Only some system calls exist (`read`, `write`, `openat`, `close`, `lseek`,
   `exit`, and a few that terminal programs use). Files live in a small virtual
   filesystem in the browser: at most 16 files and 4 MiB.
-- The m4 pass handles `define`, macros with arguments, and `undefine`. It
-  refuses `ifdef`, `ifelse`, `forloop`, and `dnl`, and a macro's arguments
-  must close on the line that uses it.
+- The m4 pass handles `define`, macros with arguments, `undefine`, `dnl`,
+  `divert(-1)`, `changecom`, and quoted strings. It refuses `ifdef`, `ifelse`,
+  `forloop`, `changequote`, `include`, and numbered diversions, and a macro's
+  arguments and a quoted string must close on the line that opens them.
 - Output from `gcc -S` needs a few edits before it assembles, such as deleting
   the `.cfi_` lines. The [instruction reference](docs/instruction-reference.md#gcc-output-compatibility)
   lists them.

@@ -35,10 +35,54 @@ msg_len = . - msg - 1
 
 Comments strip before substitution: `//` to end of line.
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected with a clear error
-rather than silently ignored, and so is a backtick outside a `define` or
-``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends that
-define's reach at that line, so an alias can be rebound per function.
+These GNU m4 builtins work here as on the servers, in the forms below:
+
+- `dnl` followed by a blank or the end of its line deletes the rest of
+  that line, newline included, on a line of its own or right after a
+  `define`, `undefine`, `divert` or `changecom` call: `define(fp, x29)dnl`
+  leaves no empty line behind. A label named `dnl:` stays a label here.
+- `divert(-1)` throws away everything m4 writes until `divert` or
+  `divert(0)`, so a block of defines between them writes no lines. Only
+  blank lines, `dnl` lines with no `/* */` comment, `divert` and
+  `changecom` calls, `define` and `undefine` calls with no `/* */` comment
+  on their lines and, unless `dnl` follows the call, no `//` or `;` there,
+  and m4's own comments (`#`, unless `changecom` moved it) may sit between
+  them: GNU m4 still reads any other text there, comments included, so it
+  is rejected.
+- `changecom` with no argument turns `#` comments off, so a name after
+  `#` expands; ``changecom(`//')`` makes `//` the comment start instead.
+- A quoted string, `` `text' ``, is written without its quotes and never
+  expanded, and a quoted argument keeps its commas.
+
+The playground reads these with the same m4 pass it has always used for
+`define`, so where that pass already differs from GNU m4 on the servers,
+it still does: an m4 word such as `dnl` or `len(` inside a `.string`, a
+label named after an m4 builtin (`dnl:`, `traceon:`), quotes nested inside
+a define's body, an unquoted macro name in a define's body (GNU m4 takes
+that macro's value when the define runs, the playground when the new
+macro is used), and a second define of a name that is already a macro
+(GNU m4 expands the name before it defines it).
+
+`ifdef`, `ifelse`, `forloop`, `changequote`, `include`, and a numbered
+diversion such as `divert(1)` are rejected with a clear error rather than
+silently ignored, unless the program defines that name itself. `include`
+is not supported: copy the included file's lines into this file where the
+include was. A quoted string closes on the line that opens it, as a
+macro's arguments do. GNU m4 reads `//`, `;` and `/* */` comments as
+text, so in a program that uses `dnl`, `divert`, `changecom` or quotes, a
+comment holding `dnl`, `changecom`, `m4exit`, an unclosed quote, a macro
+or builtin called with `(`, or a macro that expands to more than one line
+or to one of these, ahead of m4's own comment start (`#`, unless
+`changecom` moved it), is rejected: each acts past the comment's line
+there. That holds for a comment inside a quoted define's body too, which
+GNU m4 reads where the macro is used. So is a `/* */` comment that GNU m4
+reads inside an m4 quote, or that leaves one open, as in
+``changecom(`/*', `*/')``: GNU m4 pairs its quote marks with text outside
+it. In such a program, a builtin such as `divert`, `divnum` or `dnl` used
+unquoted as a define's name is rejected too: GNU m4 runs the builtin
+before define sees the name.
+Undefining a name ends that define's reach at that line, so an alias can
+be rebound per function.
 
 ### Where GNU m4's text-level rules bite
 
@@ -63,7 +107,7 @@ the author meant:
   expanded, here or on the server. `mov x0, #SIZE` with
   `define(SIZE, 40)` never expands and the assembler rejects it. Use an
   equate (`SIZE = 40`), which the assembler itself resolves, for any
-  value used after `#`.
+  value used after `#`, or turn `#` comments off with `changecom`.
 - A defined name immediately followed by `(` is an m4 macro **call**
   on the server, and the parenthesized text is consumed as arguments.
   Put a space before the `(` or rename the macro.

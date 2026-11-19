@@ -11,12 +11,37 @@
 //!     the address of that line, not of wherever msg_len is used.
 //!   * Expansion repeats until nothing changes, capped at 32 rounds so a
 //!     loop fails with an error instead of hanging.
-//!   * Comments are stripped first, so comment text never expands.
+//!   * Comments are stripped first, so comment text never expands; a line
+//!     that uses m4 quotes keeps its comments, as GNU m4 reads them.
 //!   * Every output line maps back to the source line that produced it;
 //!     they stay equal until a define or a macro body spans lines.
+//!   * `dnl` deletes through the newline where the playground refused it
+//!     before: on a line of its own, or after a define, undefine, divert
+//!     or changecom call. Elsewhere it is an ordinary name (a `dnl:` label
+//!     runs as it did).
+//!   * `divert(-1)` throws the output away until `divert` or `divert(0)`;
+//!     only blank, dnl, define, undefine, divert and changecom lines and m4
+//!     comments may sit in between. A numbered diversion is refused.
+//!   * `changecom` turns comments off, and `changecom(`//')` moves the
+//!     opener; a comment still ends at the line's end.
+//!   * On a line whose source holds a backtick, `` `text' `` is written as
+//!     `text`, unexpanded, and a quoted argument loses its quotes. The quote
+//!     closes on its line. Other lines read a backtick as plain text, as
+//!     they always have.
 //!
-//! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting outside a
-//! define) fails with an "unsupported m4 construct" error at its line.
+//! Anything else (ifdef, ifelse, forloop, changequote, include) fails with
+//! an "unsupported m4 construct" error at its line, unless the program
+//! defined that name itself. So do divert, changecom and dnl where they
+//! would run once the program has undefined them, and dnl once it has
+//! defined it. In a program that uses dnl, divert, changecom or quotes,
+//! so do a builtin GNU m4 runs bare (divert, dnl and the like) as a
+//! define's unquoted name, a comment whose text GNU m4 carries past its
+//! line (a comment in a quoted define's body included), and a `/* */`
+//! comment GNU m4 reads inside a quote or that leaves one open; any other
+//! program keeps the output it had. The new forms go through define's
+//! pass, so its other differences from GNU m4 (an m4 word in a string, a
+//! label named after a builtin, quotes nested in a body, a body's unquoted
+//! macro expanded at use, a define of a defined name) stay.
 
 use std::collections::HashMap;
 
@@ -36,6 +61,10 @@ pub(crate) const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
 /// gigabytes and trap the instance. 8 MiB is far above any real course
 /// program (source itself is capped at 1 MiB upstream).
 pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
+
+/// A piece of a source line the playground drops as a comment: its 0-based
+/// line and byte range in the line as written.
+type Dropped = (usize, usize, usize);
 
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
@@ -66,6 +95,15 @@ pub struct Expanded {
     /// Names whose bindings are windowed (redefined or undefined) rather
     /// than file-wide. For every other name `defines` is exact everywhere.
     pub windowed: std::collections::HashSet<String>,
+    /// Every `changecom` in source order: its 1-based line and the comment
+    /// opener from there on (None: comments off).
+    comment_events: Vec<(usize, Option<String>)>,
+    /// The 1-based source lines m4 read with quotes, in order.
+    quote_lines: Vec<usize>,
+    /// What the playground drops as comments, which the comment check
+    /// reads: pass 0's `/* */` pieces in line order, then each `//` or `;`
+    /// comment, which runs to `usize::MAX`.
+    drops: Vec<Dropped>,
 }
 
 impl Expanded {
@@ -87,15 +125,34 @@ impl Expanded {
         }
         body
     }
+
+    /// What opens an m4 comment at 1-based source `line`: `#` until a
+    /// `changecom` moves or ends it.
+    pub fn comment_at(&self, line: usize) -> Option<&str> {
+        self.comment_events
+            .iter()
+            .rev()
+            .find(|(at, _)| *at <= line)
+            .map_or(Some("#"), |(_, opener)| opener.as_deref())
+    }
+
+    /// Whether m4 read quotes on 1-based source `line`: only a line whose
+    /// text outside comments holds a backtick does.
+    pub fn reads_quotes(&self, line: usize) -> bool {
+        self.quote_lines.binary_search(&line).is_ok()
+    }
 }
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
+    let original = source;
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
-    let source = strip_block_comments(source)?;
+    let (source, mut drops) = strip_block_comments(source)?;
     let source = source.as_str();
+    // The comments the passes below drop follow pass 0's blocks in `drops`.
+    let blocks = drops.len();
     // Pass 1: collect `define()` aliases for substitution, record `name =
     // expr` assignments separately (they stay inline so the parser can
     // pin them to a section offset), and strip comments. Walking the
@@ -104,7 +161,16 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut assignments: HashMap<String, String> = HashMap::new();
     // Each kept line with its 0-based source line: a define spanning lines
     // keeps only its first, as GNU m4 writes one line for the whole call.
-    let mut stripped: Vec<(usize, String)> = Vec::new();
+    // The flag marks a line whose newline a `dnl` took, so its text opens
+    // the next line.
+    let mut stripped: Vec<(usize, &str, bool)> = Vec::new();
+    // Whether the program uses a form the playground refused before: a dnl,
+    // divert or changecom that acts, m4 quotes, or its own ifdef, ifelse or
+    // forloop. Only such a program has its comments checked below.
+    let mut new_forms = false;
+    let mut unquoted_name: Option<(usize, String)> = None;
+    // Each quoted define body that held a comment, as written, by its line.
+    let mut bodies: Vec<(usize, String)> = Vec::new();
     // Every define/undefine in source order: (line index, name, body;
     // None body = undefine). Order is what makes sequential redefinition
     // work below.
@@ -120,33 +186,79 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         }
         let without_comment = strip_comment(raw);
         let trimmed = without_comment.trim();
+        // A quoted define and a line read with quotes lose their comments
+        // elsewhere, and take this back.
+        let cut = without_comment.len() < raw.len();
+        if cut {
+            drops.push((idx, as_written(&drops[..blocks], idx, without_comment.len()), usize::MAX));
+        }
         // undefine parses before the backtick gate: GNU m4 requires its
         // argument quoted (`undefine(`name')`), so the quote is legal here.
-        if let Some(names) = parse_undefine(trimmed) {
+        if let Some((names, (text, joins))) = parse_undefine(trimmed) {
             for name in names {
                 define_events.push((idx, name, None));
             }
-            stripped.push((idx, String::new()));
+            stripped.push((idx, text, joins));
             continue;
         }
         // The other place a quote is legal: a define's arguments, where a
         // quoted body keeps its commas and may run over several lines.
         if raw.contains('`') && is_attempted_define(raw.trim_start()) {
-            let (name, body, used) = parse_quoted_define(&lines[idx..], line_num)?;
-            define_events.push((idx, name, Some(body)));
-            stripped.push((idx, String::new()));
+            let (name, body, used, (text, joins), tail) = parse_quoted_define(&lines[idx..], line_num)?;
+            let quoted = raw[raw.find('(').map_or(0, |i| i + 1)..].trim_start().starts_with('`');
+            if !quoted && bare_builtin(&name) {
+                unquoted_name.get_or_insert((line_num, name.clone()));
+            }
+            if cut {
+                drops.pop();
+            }
+            let last = idx + used - 1;
+            if tail < lines[last].len() {
+                drops.push((last, as_written(&drops[..blocks], last, tail), usize::MAX));
+            }
+            // Comments leave the body here, as they leave every other line;
+            // GNU m4 reads them where the macro is used.
+            let mut kept = String::with_capacity(body.len());
+            for (j, part) in body.split('\n').enumerate() {
+                if j > 0 {
+                    kept.push('\n');
+                }
+                kept.push_str(strip_comment(part));
+            }
+            if kept.len() < body.len() {
+                bodies.push((idx, body));
+            }
+            define_events.push((idx, name, Some(kept)));
+            stripped.push((idx, text, joins));
             skip = used - 1;
             continue;
         }
-        if let Some(kw) = detect_unsupported(trimmed) {
-            return Err(EmuError::PreprocError {
-                line: line_num,
-                message: format!("unsupported m4 construct: {kw}"),
-            });
+        // A `dnl` line: GNU m4 deletes it, newline and all.
+        if let Some((text, true)) = after_call(without_comment) {
+            stripped.push((idx, text, true));
+            continue;
         }
-        if let Some((name, body)) = parse_define(trimmed) {
+        // A program's own macro of that name runs, as GNU m4 runs it.
+        let own_macro = |kw: &str| {
+            define_events
+                .iter()
+                .rev()
+                .find(|(_, name, _)| name == kw)
+                .is_some_and(|(_, _, body)| body.is_some())
+        };
+        if let Some(kw) = detect_unsupported(trimmed) {
+            if !own_macro(kw) {
+                return Err(unsupported(line_num, kw));
+            }
+            // The playground refused these before, a program's own included.
+            new_forms |= kw.starts_with("if") || kw == "forloop";
+        }
+        if let Some((name, body, (text, joins))) = parse_define(trimmed) {
+            if bare_builtin(&name) {
+                unquoted_name.get_or_insert((line_num, name.clone()));
+            }
             define_events.push((idx, name, Some(body)));
-            stripped.push((idx, String::new()));
+            stripped.push((idx, text, joins));
             continue;
         }
         // The line got past both define gates (the keyword and the paren)
@@ -162,16 +274,27 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
                 ),
             });
         }
+        // A line that uses m4 quotes keeps its comments, as GNU m4 reads it:
+        // the `//` in changecom(`//') is quoted text. The assembler strips
+        // them after m4. Every such line was refused before.
+        let kept = if without_comment.contains('`') {
+            if cut {
+                drops.pop();
+            }
+            *raw
+        } else {
+            without_comment
+        };
         if let Some((name, body)) = parse_assignment(trimmed) {
             assignments.insert(name, body);
             // Keep the assignment line intact so the parser can produce
             // a symbol-assignment item at this exact section offset. The
             // expression body may reference `.` or labels whose meaning
             // depends on where the assignment appears in the source.
-            stripped.push((idx, without_comment.to_string()));
+            stripped.push((idx, kept, false));
             continue;
         }
-        stripped.push((idx, without_comment.to_string()));
+        stripped.push((idx, kept, false));
     }
 
     // Find the names defined more than once or undefined, such as
@@ -214,7 +337,17 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
-    for (idx, line) in &stripped {
+    // The output line being built: a line whose newline a `dnl` took
+    // leaves its text here for the next line to continue.
+    let mut carry = String::new();
+    // Under `divert(-1)`, GNU m4 throws its output away.
+    let mut discard = false;
+    let mut comment_events: Vec<(usize, Option<String>)> = Vec::new();
+    let mut quote_lines: Vec<usize> = Vec::new();
+    // The lines as written, collected only once a program uses divert(-1):
+    // GNU m4 reads the comments the passes above drop.
+    let mut written: Vec<&str> = Vec::new();
+    for (k, (idx, line, joins)) in stripped.iter().enumerate() {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
             if *event_idx > idx {
@@ -230,7 +363,107 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
-        let expanded = expand_recursively(line, &current, line_num)?;
+        // GNU m4 drops a builtin for good once a define or undefine names
+        // it; where the playground would run it, it refuses instead. A
+        // divert or changecom the program defines is its own macro here.
+        let touched = |name: &str| define_events.iter().any(|(at, n, _)| *at <= idx && n == name);
+        let comment = comment_events.last().map_or(Some("#"), |(_, opener)| opener.as_deref());
+        let quoted = line.contains('`');
+        if quoted {
+            quote_lines.push(line_num);
+        }
+        let joins = if let Some((name, args, (text, joins))) = builtin_call(line, &current) {
+            if touched(name) {
+                return Err(unsupported(line_num, &format!("{name} once the program undefines it")));
+            }
+            new_forms = true;
+            // A numbered diversion goes to the end of GNU m4's output, and a
+            // comment that ends anywhere but the line's end can span lines:
+            // the line-for-line expansion here can follow neither, nor a name
+            // GNU m4 would expand between the parentheses, nor a comment
+            // there that hides the `)`. A comma means more than one
+            // argument. Taking off quotes never lengthens the text, so
+            // `args.len()` caps it.
+            let arg = unquote(c_blanks(args), None, args.len()).unwrap_or_default();
+            let supported = !args.contains(',')
+                && !reads_on(args, comment)
+                && if name == "divert" {
+                    // GNU m4 reads the number as strtol does: blanks, a sign,
+                    // then digits only; anything else leaves the diversion as
+                    // it is. Past nine digits it wraps into another diversion.
+                    let n = c_blanks(&arg);
+                    let (minus, digits) = match n.strip_prefix('-') {
+                        Some(digits) => (true, digits),
+                        None => (false, n.strip_prefix('+').unwrap_or(n)),
+                    };
+                    let number = digits.trim_start_matches('0');
+                    let numeric = arg.is_empty() || (!digits.is_empty() && digits.bytes().all(|b| b.is_ascii_digit()));
+                    if numeric {
+                        discard = minus && !number.is_empty();
+                    }
+                    !numeric || number.is_empty() || (minus && number.len() < 10)
+                } else {
+                    comment_events.push((line_num, Some(arg).filter(|c| !c.is_empty())));
+                    true
+                };
+            if !supported {
+                return Err(unsupported(line_num, line.trim()));
+            }
+            if !discard {
+                carry.push_str(text);
+            }
+            joins
+        } else if discard {
+            // GNU m4 reads the text it throws away, comments the playground
+            // drops first included: a backtick there opens a quote, and a
+            // `divert` ends the discard. The lines read alike here are blank
+            // ones, define, undefine and dnl lines (pass 1 left them blank)
+            // with no such comment before a `dnl`, and comments m4 itself
+            // opens. An m4 quote's `'` hides a comment from strip_comment, so
+            // any `//` or `;` counts, on every line a quoted define spans.
+            if written.is_empty() {
+                written.extend(original.lines());
+            }
+            let end = stripped.get(k + 1).map_or(lines.len(), |next| next.0);
+            let blank = line.trim().is_empty()
+                && (idx..end).all(|j| {
+                    let raw = lines[j];
+                    written[j] == raw && (*joins || !(raw.contains("//") || raw.contains(';')))
+                });
+            if !blank && !comment.is_some_and(|c| written[idx].trim_start().starts_with(c)) {
+                return Err(unsupported(line_num, "text or a comment under divert(-1)"));
+            }
+            *joins
+        } else {
+            // Only a line whose own source holds a backtick reads m4 quotes:
+            // the playground refused every such line before, so no program
+            // that ran changes.
+            let quotes = if quoted {
+                let cut = unquoted_cut(line);
+                if cut < line.len() {
+                    drops.push((idx, as_written(&drops[..blocks], idx, cut), usize::MAX));
+                }
+                Quotes::Keep
+            } else {
+                Quotes::Plain
+            };
+            let text = expand_recursively(line, &current, line_num, Gnu { comment, quotes })?;
+            // Most lines start an empty carry: move the text in, not a copy.
+            if carry.is_empty() {
+                carry = text;
+            } else {
+                carry.push_str(&text);
+            }
+            *joins
+        };
+        if joins && touched("dnl") {
+            return Err(unsupported(line_num, "dnl once the program defines or undefines it"));
+        }
+        new_forms |= joins || quoted;
+        if discard || joins {
+            continue;
+        }
+        let expanded = std::mem::take(&mut carry);
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
@@ -251,7 +484,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         out.push(expanded);
     }
 
-    Ok(Expanded {
+    let expanded = Expanded {
         text: out.join("\n"),
         line_map,
         defines,
@@ -261,32 +494,192 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             .map(|(idx, name, body)| (idx + 1, name, body))
             .collect(),
         windowed,
+        comment_events,
+        quote_lines,
+        drops,
+    };
+    // GNU m4 reads the comments the passes above drop. In a program that
+    // relies on a form the playground refused before, a comment whose text
+    // GNU m4 carries past its own line is refused; others keep today's output.
+    if new_forms {
+        if let Some((line, name)) = unquoted_name {
+            return Err(unsupported(line, &format!("define({name}) with the name unquoted")));
+        }
+        if written.is_empty() {
+            written.extend(original.lines());
+        }
+        // Each line is read from the first byte the passes above drop, and
+        // each quoted define body from its comments, as GNU m4 reads the
+        // body where the macro is used. GNU m4 pairs a quote mark in a
+        // `/* */` block with one outside it, so a block it reads inside a
+        // quote, or one that leaves a quote open, is refused.
+        let mut first = vec![usize::MAX; written.len()];
+        for &(idx, from, _) in &expanded.drops {
+            first[idx] = first[idx].min(from);
+        }
+        // The next block piece and body to read; both come in line order.
+        let (mut piece, mut body) = (0, 0);
+        for (idx, w) in written.iter().enumerate() {
+            let (b, mut at, mut depth) = (w.as_bytes(), 0, 0);
+            while piece < blocks && expanded.drops[piece].0 == idx {
+                let (_, from, to) = expanded.drops[piece];
+                let open = quote_depth(b.get(at..from).unwrap_or_default(), depth);
+                depth = quote_depth(b.get(from..to.min(b.len())).unwrap_or_default(), open);
+                if open + depth > 0 {
+                    return Err(unsupported(idx + 1, "an m4 quote across a /* */ comment"));
+                }
+                (at, piece) = (to, piece + 1);
+            }
+            let mut token = if first[idx] < w.len() { escapes(w, first[idx], &expanded, idx + 1, 0) } else { None };
+            while body < bodies.len() && bodies[body].0 == idx {
+                for part in bodies[body].1.split('\n') {
+                    token = token.or_else(|| escapes(part, strip_comment(part).len(), &expanded, idx + 1, 0));
+                }
+                body += 1;
+            }
+            if let Some(token) = token {
+                return Err(unsupported(idx + 1, &format!("{token} in a comment")));
+            }
+        }
+    }
+    Ok(expanded)
+}
+
+/// Where the assembler cuts the comment off a line m4 reads quotes on: in
+/// the text m4 writes, which has each quote's outer marks taken off.
+fn unquoted_cut(line: &str) -> usize {
+    let b = line.as_bytes();
+    // Where each byte m4 writes sits in `line`.
+    let mut at = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'`' {
+            if let Some(n) = quote_end(&b[i..]) {
+                at.extend(i + 1..i + n - 1);
+                i += n;
+                continue;
+            }
+        }
+        at.push(i);
+        i += 1;
+    }
+    // Only ASCII marks left, so the text is still UTF-8.
+    let text: Vec<u8> = at.iter().map(|&k| b[k]).collect();
+    let kept = std::str::from_utf8(&text).map_or(0, |t| strip_comment(t).len());
+    at.get(kept).copied().unwrap_or(usize::MAX)
+}
+
+/// Byte `at` of source line `line` with pass 0's `blocks` (in line order)
+/// taken out, as a byte of the line as written.
+fn as_written(blocks: &[Dropped], line: usize, at: usize) -> usize {
+    let first = blocks.partition_point(|b| b.0 < line);
+    blocks[first..].iter().take_while(|b| b.0 == line).fold(at, |at, &(_, from, to)| if from <= at { at + to - from } else { at })
+}
+
+/// How many m4 quotes GNU m4 has open after `text`, with `depth` open
+/// before it.
+fn quote_depth(text: &[u8], depth: usize) -> usize {
+    text.iter().fold(depth, |depth, b| match b {
+        b'`' => depth + 1,
+        b'\'' => depth.saturating_sub(1),
+        _ => depth,
     })
+}
+
+/// GNU m4 1.4.19's builtin macros, as its `dumpdef` lists them.
+const GNU_BUILTINS: &str = "__file__ __gnu__ __line__ __program__ __unix__ builtin changecom changequote \
+    debugfile debugmode decr define defn divert divnum dnl dumpdef errprint esyscmd eval format ifdef ifelse \
+    include incr index indir len m4exit m4wrap maketemp mkstemp patsubst popdef pushdef regexp shift sinclude \
+    substr syscmd sysval traceoff traceon translit undefine undivert";
+
+/// GNU m4 1.4.19's builtins that run with no arguments, so that, named
+/// unquoted as define's first argument, they run before define sees them
+/// (each checked with GNU m4 1.4.19).
+fn bare_builtin(name: &str) -> bool {
+    "__file__ __gnu__ __line__ __program__ __unix__ changecom changequote debugfile debugmode divert divnum dnl \
+     dumpdef m4exit sysval traceoff traceon undivert"
+        .split(' ')
+        .any(|n| n == name)
+}
+
+/// The first thing GNU m4 carries past the comment's line in `text` from
+/// byte `from` on (each checked against GNU m4 1.4.19): an unclosed quote;
+/// dnl, changecom or m4exit; a builtin or macro called with `(`; or a macro
+/// whose expansion spans lines or reaches one of these. GNU m4's own
+/// comment opener, outside its quotes, ends the search.
+fn escapes<'a>(text: &'a str, from: usize, expanded: &Expanded, line: usize, depth: usize) -> Option<&'a str> {
+    let b = text.as_bytes();
+    let opener = expanded.comment_at(line);
+    let mut i = 0;
+    while i < b.len() {
+        if opener.is_some_and(|o| b[i..].starts_with(o.as_bytes())) {
+            return None;
+        }
+        if b[i] == b'`' {
+            match quote_end(&b[i..]) {
+                Some(n) => i += n,
+                None => return (i >= from).then_some("`"),
+            }
+            continue;
+        }
+        if !is_id_start_byte(b[i]) {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < b.len() && is_id_continue_byte(b[i]) {
+            i += 1;
+        }
+        if start < from {
+            continue;
+        }
+        let name = &text[start..i];
+        let body = expanded.define_body_at(name, line);
+        if b.get(i) == Some(&b'(') && (body.is_some() || GNU_BUILTINS.split(' ').any(|n| n == name)) {
+            return Some(&text[start..=i]);
+        }
+        // A bare macro expands where it stands, and GNU m4 reads its text
+        // again; a chain past the recursion cap never settles there either.
+        let reaches = body.is_some_and(|body| {
+            body.contains('\n') || depth == MAX_RECURSION || escapes(body, 0, expanded, line, depth + 1).is_some()
+        });
+        if matches!(name, "dnl" | "changecom" | "m4exit") || reaches {
+            return Some(name);
+        }
+    }
+    None
 }
 
 fn expand_recursively(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
+    gnu: Gnu<'_>,
 ) -> Result<String, EmuError> {
     let mut current = line.to_string();
-    for _ in 0..MAX_RECURSION {
-        let next = substitute_bounded(&current, defines, line_num)?;
+    let mut rounds = 0;
+    loop {
+        let next = substitute_bounded(&current, defines, line_num, gnu)?;
         if next == current {
-            return Ok(current);
+            break;
         }
+        // A line still changing one pass after MAX_RECURSION rounds has a
+        // cycle and will never settle.
+        if rounds == MAX_RECURSION {
+            return Err(EmuError::PreprocError {
+                line: line_num,
+                message: format!("m4 recursion exceeded {MAX_RECURSION} rounds"),
+            });
+        }
+        rounds += 1;
         current = next;
     }
-    // One more pass: if it still changes after MAX_RECURSION rounds, the
-    // substitution has a cycle and will never settle.
-    let next = substitute_bounded(&current, defines, line_num)?;
-    if next != current {
-        return Err(EmuError::PreprocError {
-            line: line_num,
-            message: format!("m4 recursion exceeded {MAX_RECURSION} rounds"),
-        });
+    // GNU m4 writes a quoted string without its outer quotes, and never
+    // reads it again.
+    match gnu.quotes {
+        Quotes::Keep => substitute_bounded(&current, defines, line_num, Gnu { quotes: Quotes::Strip, ..gnu }),
+        _ => Ok(current),
     }
-    Ok(current)
 }
 
 /// One expansion round with the per-line byte cap checked while the line
@@ -298,9 +691,10 @@ fn substitute_bounded(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
+    gnu: Gnu<'_>,
 ) -> Result<String, EmuError> {
     let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
-    substitute_once_gnu(line, defines, limit).map_err(|stop| EmuError::PreprocError {
+    substitute_once_gnu(line, defines, limit, gnu).map_err(|stop| EmuError::PreprocError {
         line: line_num,
         message: match stop {
             Stop::Cap => format!(
@@ -309,6 +703,9 @@ fn substitute_bounded(
             ),
             Stop::Unclosed => "a macro's arguments run past the end of the line: the \
                                playground's m4 needs the closing `)` on the same line"
+                .to_string(),
+            Stop::Quote => "an m4 quote runs past the end of the line: the playground's \
+                            m4 needs its closing quote on the same line"
                 .to_string(),
         },
     })
@@ -320,6 +717,29 @@ pub(crate) enum Stop {
     Cap,
     /// A macro call's argument list has no `)` on its line.
     Unclosed,
+    /// A quoted string has no closing quote on its line.
+    Quote,
+}
+
+/// How GNU m4 reads a line, which the `.req` pass does not share.
+#[derive(Clone, Copy)]
+struct Gnu<'a> {
+    /// What opens a comment that runs to the line's end: `#` until a
+    /// `changecom`, None once comments are off.
+    comment: Option<&'a str>,
+    quotes: Quotes,
+}
+
+/// What a backtick means on a line.
+#[derive(Clone, Copy, PartialEq)]
+enum Quotes {
+    /// Plain text: the line's own source holds none.
+    Plain,
+    /// It opens a quoted string, copied whole and never expanded.
+    Keep,
+    /// The same, less its outer quotes: GNU m4's output, and an argument
+    /// as GNU m4 collects it.
+    Strip,
 }
 
 /// One token-boundary substitution pass over a line, refusing to build
@@ -333,7 +753,7 @@ pub(crate) fn substitute_once(
     defines: &HashMap<String, String>,
     limit: usize,
 ) -> Option<String> {
-    substitute_pass(line, defines, limit, true).ok()
+    substitute_pass(line, defines, limit, None).ok()
 }
 
 /// GNU m4's view of a line: double quotes, single quotes, and backslashes
@@ -343,26 +763,33 @@ pub(crate) fn substitute_once(
 /// `"\n"` below `define(n, w19)` becomes `"\w19"`. A `#` starts an m4
 /// comment: the rest of the line is copied verbatim, unexpanded. All
 /// three behaviors verified against GNU m4 on the course toolchain. A
-/// name with `(` right after it takes arguments, as in GNU m4.
-pub(crate) fn substitute_once_gnu(
+/// name with `(` right after it takes arguments, as in GNU m4. m4's own
+/// quotes (backtick, then `'`) are read as `gnu.quotes` says.
+fn substitute_once_gnu(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
+    gnu: Gnu<'_>,
 ) -> Result<String, Stop> {
-    substitute_pass(line, defines, limit, false)
+    substitute_pass(line, defines, limit, Some(gnu))
 }
 
 /// Text outside an identifier is copied as a byte slice of the input, never
 /// through `as char`, which re-encodes a byte >= 0x80 as two UTF-8 bytes:
 /// one pasted accented letter then doubled every round and expansion never
 /// settled. Slices start and end on ASCII bytes or the line end, so
-/// slicing stays UTF-8 safe while the scan walks raw bytes.
+/// slicing stays UTF-8 safe while the scan walks raw bytes. `gnu` is None
+/// for the `.req` pass.
 fn substitute_pass(
     line: &str,
     defines: &HashMap<String, String>,
     limit: usize,
-    respect_literals: bool,
+    gnu: Option<Gnu<'_>>,
 ) -> Result<String, Stop> {
+    let respect_literals = gnu.is_none();
+    let quotes = gnu.map_or(Quotes::Plain, |g| g.quotes);
+    let comment = gnu.and_then(|g| g.comment);
+    let comment_start = comment.and_then(|m| m.bytes().next());
     let bytes = line.as_bytes();
     let mut out = String::with_capacity(line.len());
     let mut i = 0;
@@ -371,11 +798,19 @@ fn substitute_pass(
             return Err(Stop::Cap);
         }
         let b = bytes[i];
-        if !respect_literals && b == b'#' {
-            // GNU m4 comment: everything from `#` to the end of the line
-            // passes through unexpanded, which is why the course style
-            // writes bare immediates (`mov x0, 5`, never `#alloc`). A
-            // macro body can put several lines into one.
+        if quotes != Quotes::Plain && b == b'`' {
+            let end = i + quote_end(&bytes[i..]).ok_or(Stop::Quote)?;
+            let strip = (quotes == Quotes::Strip) as usize;
+            out.push_str(&line[i + strip..end - strip]);
+            i = end;
+            continue;
+        }
+        if comment_start == Some(b) && comment.is_some_and(|c| bytes[i..].starts_with(c.as_bytes())) {
+            // GNU m4 comment: everything from `#` (or the opener a
+            // `changecom` set) to the end of the line passes through
+            // unexpanded, which is why the course style writes bare
+            // immediates (`mov x0, 5`, never `#alloc`). A macro body can
+            // put several lines into one.
             let end = line[i..].find('\n').map_or(line.len(), |n| i + n);
             out.push_str(&line[i..end]);
             i = end;
@@ -412,10 +847,13 @@ fn substitute_pass(
                 // GNU m4 takes arguments whenever `(` follows the name
                 // directly, whether or not the body uses them.
                 Some(body) if !respect_literals => {
-                    let mut args: Vec<&str> = Vec::new();
+                    let quoted = quotes != Quotes::Plain;
+                    let mut args: Vec<String> = Vec::new();
                     if bytes.get(i) == Some(&b'(') {
-                        let close = closing_paren(&line[i..]).ok_or(Stop::Unclosed)?;
-                        args = split_args(&line[i + 1..i + close]);
+                        let close = closing_paren(&line[i..], quoted).ok_or(Stop::Unclosed)?;
+                        for arg in split_args(&line[i + 1..i + close], quoted) {
+                            args.push(if quoted { unquote(arg, comment, limit)? } else { arg.to_string() });
+                        }
                         i += close + 1;
                     }
                     fill_args(body, ident, &args, &mut out, limit)?;
@@ -430,7 +868,12 @@ fn substitute_pass(
         i += 1;
         while i < bytes.len() {
             let c = bytes[i];
-            if c == b'"' || c == b'\'' || c == b'#' || is_id_start_byte(c) {
+            if c == b'"'
+                || c == b'\''
+                || c == b'`'
+                || comment_start == Some(c)
+                || is_id_start_byte(c)
+            {
                 break;
             }
             i += 1;
@@ -440,11 +883,42 @@ fn substitute_pass(
     Ok(out)
 }
 
-/// Where the `)` closing the `(` that `s` starts with sits, if on this line.
-fn closing_paren(s: &str) -> Option<usize> {
+/// Where the m4 quote that `b` opens with a backtick ends: just past its
+/// matching `'`, counting the pairs nested inside. None when it never closes.
+pub(super) fn quote_end(b: &[u8]) -> Option<usize> {
     let mut depth = 0usize;
-    for (i, c) in s.bytes().enumerate() {
+    for (i, &c) in b.iter().enumerate() {
         match c {
+            b'`' => depth += 1,
+            b'\'' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i + 1);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// `text` less one level of m4 quotes, as GNU m4 collects an argument.
+fn unquote(text: &str, comment: Option<&str>, limit: usize) -> Result<String, Stop> {
+    substitute_pass(text, &HashMap::new(), limit, Some(Gnu { comment, quotes: Quotes::Strip }))
+}
+
+/// Where the `)` closing the `(` that `s` starts with sits, if on this line.
+/// With `quoted`, a parenthesis inside m4 quotes does not count.
+fn closing_paren(s: &str, quoted: bool) -> Option<usize> {
+    let b = s.as_bytes();
+    let mut depth = 0usize;
+    let mut i = 0;
+    while i < b.len() {
+        match b[i] {
+            b'`' if quoted => {
+                i += quote_end(&b[i..])?;
+                continue;
+            }
             b'(' => depth += 1,
             b')' => {
                 depth -= 1;
@@ -455,17 +929,25 @@ fn closing_paren(s: &str) -> Option<usize> {
             b'\n' => return None,
             _ => {}
         }
+        i += 1;
     }
     None
 }
 
-/// A call's arguments: split at the commas outside nested parentheses,
-/// each without its leading whitespace. `f()` has one, empty, argument.
-fn split_args(inside: &str) -> Vec<&str> {
+/// A call's arguments: split at the commas outside nested parentheses (and,
+/// with `quoted`, outside m4 quotes), each without its leading whitespace.
+/// `f()` has one, empty, argument.
+fn split_args(inside: &str, quoted: bool) -> Vec<&str> {
+    let b = inside.as_bytes();
     let mut args = Vec::new();
-    let (mut depth, mut start) = (0usize, 0);
-    for (i, c) in inside.bytes().enumerate() {
-        match c {
+    let (mut depth, mut start, mut i) = (0usize, 0, 0);
+    while i < b.len() {
+        match b[i] {
+            // `closing_paren` already found each quote here closed.
+            b'`' if quoted => {
+                i += quote_end(&b[i..]).unwrap_or(b.len() - i);
+                continue;
+            }
             b'(' => depth += 1,
             b')' => depth -= 1,
             b',' if depth == 0 => {
@@ -474,6 +956,7 @@ fn split_args(inside: &str) -> Vec<&str> {
             }
             _ => {}
         }
+        i += 1;
     }
     args.push(inside[start..].trim_start());
     args
@@ -482,7 +965,7 @@ fn split_args(inside: &str) -> Vec<&str> {
 /// A macro body with a call's arguments put in, as GNU m4 does it: `$1`,
 /// `$2` and on (`$10` is the tenth), `$0` the name, `$#` how many, `$*` and
 /// `$@` all of them joined by commas. An argument not given is empty.
-fn fill_args(body: &str, name: &str, args: &[&str], out: &mut String, limit: usize) -> Result<(), Stop> {
+fn fill_args(body: &str, name: &str, args: &[String], out: &mut String, limit: usize) -> Result<(), Stop> {
     let b = body.as_bytes();
     let mut i = 0;
     while i < b.len() {
@@ -495,7 +978,7 @@ fn fill_args(body: &str, name: &str, args: &[&str], out: &mut String, limit: usi
             let digits = b[i..].iter().take_while(|c| c.is_ascii_digit()).count();
             if digits > 0 {
                 let n: usize = body[i..i + digits].parse().unwrap_or(usize::MAX);
-                out.push_str(if n == 0 { name } else { args.get(n - 1).copied().unwrap_or("") });
+                out.push_str(if n == 0 { name } else { args.get(n - 1).map_or("", String::as_str) });
                 i += digits;
                 continue;
             }
@@ -522,10 +1005,11 @@ fn fill_args(body: &str, name: &str, args: &[&str], out: &mut String, limit: usi
 /// newlines so line numbers match the editor. A `/*` inside a literal or a
 /// `//` comment (left for `strip_comment`) never opens a block. Literal
 /// state resets at each newline because assembly literals are single-line,
-/// so one stray quote cannot swallow the rest of the file.
-fn strip_block_comments(source: &str) -> Result<String, EmuError> {
+/// so one stray quote cannot swallow the rest of the file. Also gives each
+/// piece of a line a block takes: its 0-based line and byte range there.
+fn strip_block_comments(source: &str) -> Result<(String, Vec<Dropped>), EmuError> {
     if !source.contains("/*") {
-        return Ok(source.to_string());
+        return Ok((source.to_string(), Vec::new()));
     }
     let bytes = source.as_bytes();
     let mut out: Vec<u8> = Vec::with_capacity(bytes.len());
@@ -533,22 +1017,31 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
     let mut in_string = false;
     let mut in_char = false;
     let mut in_block = false;
-    let mut line = 1usize;
+    let mut blocks = Vec::new();
+    // The 0-based line, where it starts, and where the open block's piece
+    // of it starts.
+    let (mut line, mut line_start, mut from) = (0, 0, 0);
     let mut block_open_line = 0usize;
     while i < bytes.len() {
         let b = bytes[i];
         if b == b'\n' {
+            if in_block {
+                blocks.push((line, from, i - line_start));
+                from = 0;
+            }
             in_string = false;
             in_char = false;
             out.push(b'\n');
             i += 1;
             line += 1;
+            line_start = i;
             continue;
         }
         if in_block {
             if b == b'*' && i + 1 < bytes.len() && bytes[i + 1] == b'/' {
                 in_block = false;
                 i += 2;
+                blocks.push((line, from, i - line_start));
                 continue;
             }
             i += 1;
@@ -573,7 +1066,8 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
             }
             b'/' if !in_string && !in_char && i + 1 < bytes.len() && bytes[i + 1] == b'*' => {
                 in_block = true;
-                block_open_line = line;
+                block_open_line = line + 1;
+                from = i - line_start;
                 i += 2;
                 continue;
             }
@@ -592,8 +1086,7 @@ fn strip_block_comments(source: &str) -> Result<String, EmuError> {
         });
     }
     // Only ASCII spans were removed, so the bytes are still valid UTF-8.
-    Ok(String::from_utf8(out)
-        .unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()))
+    Ok((String::from_utf8(out).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned()), blocks))
 }
 
 /// Shared by the legacy assembler's preprocess and the pipeline's
@@ -681,7 +1174,7 @@ fn diagnose_define(trimmed: &str, raw: &str) -> String {
         }
         return "the closing `)` is missing".to_string();
     };
-    if !after.trim().is_empty() {
+    if after_call(after).is_none() {
         return format!("unexpected text after the closing `)`: `{}`", after.trim());
     }
     let Some((name, _body)) = split_top_level_comma(inside) else {
@@ -716,16 +1209,89 @@ fn comment_inside_define_body(raw: &str) -> Option<&'static str> {
     }
 }
 
-fn parse_define(trimmed: &str) -> Option<(String, String)> {
+/// What a line leaves after a builtin call: the text to write, and whether
+/// a `dnl` took the line's newline.
+type Leaves<'a> = (&'a str, bool);
+
+/// What a call to a builtin leaves of its line, given the text after its
+/// closing `)`: nothing, or GNU m4's `dnl`, which deletes through the
+/// newline, so the blanks before it open the next line. None for any other
+/// text.
+fn after_call(tail: &str) -> Option<Leaves<'_>> {
+    let rest = tail.trim_start();
+    if rest.is_empty() {
+        return Some(("", false));
+    }
+    let after = rest.strip_prefix("dnl")?;
+    // The line forms the playground refused before: `dnl:` is a label.
+    matches!(after.bytes().next(), None | Some(b' ' | b'\t')).then_some((&tail[..tail.len() - rest.len()], true))
+}
+
+/// A line that is one call to GNU m4's `divert` or `changecom`, bare or
+/// with its arguments, and `dnl` after it if any: which one, the text
+/// between its parentheses (empty when bare) and what the line leaves
+/// (`after_call`). None for any other line, and when the program defined
+/// the name itself, so its own macro runs as before.
+fn builtin_call<'a>(
+    line: &'a str,
+    defines: &HashMap<String, String>,
+) -> Option<(&'static str, &'a str, Leaves<'a>)> {
+    let line = line.trim_start();
+    let name = if line.starts_with("divert") {
+        "divert"
+    } else if line.starts_with("changecom") {
+        "changecom"
+    } else {
+        return None;
+    };
+    let rest = &line[name.len()..];
+    if rest.bytes().next().is_some_and(is_id_continue_byte) || defines.contains_key(name) {
+        return None;
+    }
+    if !rest.starts_with('(') {
+        return Some((name, "", after_call(rest)?));
+    }
+    let close = closing_paren(rest, true)?;
+    Some((name, &rest[1..close], after_call(&rest[close + 1..])?))
+}
+
+/// The blanks C's isspace knows, which GNU m4 skips before an argument.
+fn c_blanks(s: &str) -> &str {
+    s.trim_start_matches(|c: char| c.is_ascii_whitespace() || c == '\x0b')
+}
+
+/// Whether GNU m4 would read a builtin's arguments past their own text: a
+/// name outside quotes it may expand, or a comment that hides the `)`.
+fn reads_on(args: &str, comment: Option<&str>) -> bool {
+    let b = args.as_bytes();
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'`' {
+            i += quote_end(&b[i..]).unwrap_or(b.len() - i);
+            continue;
+        }
+        if is_id_start_byte(b[i]) || comment.is_some_and(|c| b[i..].starts_with(c.as_bytes())) {
+            return true;
+        }
+        i += 1;
+    }
+    false
+}
+
+/// The refusal of a construct the playground's m4 does not take.
+#[cold]
+fn unsupported(line: usize, what: &str) -> EmuError {
+    EmuError::PreprocError { line, message: format!("unsupported m4 construct: {what}") }
+}
+
+fn parse_define(trimmed: &str) -> Option<(String, String, Leaves<'_>)> {
     // Tolerate `define (...)` with whitespace; bare "define" alone is not
     // a define so require the opening paren.
     let rest = trimmed.strip_prefix("define")?;
     let rest = rest.trim_start();
     let inside_plus = rest.strip_prefix('(')?;
     let (inside, after) = split_outer_parens(inside_plus)?;
-    if !after.trim().is_empty() {
-        return None;
-    }
+    let tail = after_call(after)?;
     let (name, body) = split_top_level_comma(inside)?;
     // GNU m4 ignores arguments past the body, with a warning.
     let body = split_top_level_comma(body).map_or(body, |(body, _)| body);
@@ -734,16 +1300,20 @@ fn parse_define(trimmed: &str) -> Option<(String, String)> {
     if name.is_empty() || !is_valid_ident(&name) {
         return None;
     }
-    Some((name, body))
+    Some((name, body, tail))
 }
 
 /// A define whose arguments carry m4 quotes, read as GNU m4 reads them: a
 /// quoted piece keeps its commas, parentheses and line breaks and loses one
 /// level of quotes, unquoted leading whitespace is dropped, and arguments
 /// past the body are ignored (GNU m4 warns and carries on). `lines` starts
-/// at the define; the result is the name, the body with its comments
-/// stripped, and how many lines the call spans.
-fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, String, usize), EmuError> {
+/// at the define; the result is the name, the body as written, how many
+/// lines the call spans, what the line after the `)` leaves (`after_call`),
+/// and where on that line its comment starts.
+fn parse_quoted_define<'a>(
+    lines: &[&'a str],
+    line_num: usize,
+) -> Result<(String, String, usize, Leaves<'a>, usize), EmuError> {
     let bad = |why: &str| EmuError::PreprocError {
         line: line_num,
         message: format!("malformed m4 define: {why}. Write it as `define(NAME, body)`"),
@@ -776,24 +1346,19 @@ fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, Strin
                 _ if quotes > 0 => arg.push(c),
                 _ if leading && c.is_whitespace() => {}
                 ')' if parens == 0 => {
-                    if !strip_comment(&text[i + 1..]).trim().is_empty() {
+                    let after = strip_comment(&text[i + 1..]);
+                    let Some(tail) = after_call(after) else {
                         return Err(bad("unexpected text after the closing `)`"));
-                    }
+                    };
                     let [name, body, ..] = args.as_slice() else {
                         return Err(bad("the comma between the name and the body is missing"));
                     };
                     if !is_valid_ident(name.trim_end()) {
                         return Err(bad(&format!("`{}` is not a valid macro name", name.trim_end())));
                     }
-                    // Comments leave here, as they leave every other line.
-                    let mut kept = String::with_capacity(body.len());
-                    for (j, part) in body.split('\n').enumerate() {
-                        if j > 0 {
-                            kept.push('\n');
-                        }
-                        kept.push_str(strip_comment(part));
-                    }
-                    return Ok((name.trim_end().to_string(), kept, used + 1));
+                    // `text` ends `line`, so this is where its comment starts.
+                    let cut = line.len() - text.len() + i + 1 + after.len();
+                    return Ok((name.trim_end().to_string(), body.clone(), used + 1, tail, cut));
                 }
                 ',' if parens == 0 => {
                     args.push(String::new());
@@ -815,9 +1380,10 @@ fn parse_quoted_define(lines: &[&str], line_num: usize) -> Result<(String, Strin
 }
 
 /// `undefine(`name')` (the GNU-required quoted form) or `undefine(name)`,
-/// with one or more comma-separated names. Returns None when the line is
-/// not an undefine call at all.
-fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
+/// with one or more comma-separated names, and what the line after the `)`
+/// leaves (`after_call`). Returns None when the line is not an undefine
+/// call at all.
+fn parse_undefine(trimmed: &str) -> Option<(Vec<String>, Leaves<'_>)> {
     let rest = trimmed.strip_prefix("undefine")?;
     let rest = rest.trim_start();
     let inside_plus = rest.strip_prefix('(')?;
@@ -825,9 +1391,7 @@ fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
     // an unterminated char literal to it. Undefine arguments are bare
     // (possibly quoted) names, so the last ')' is the call's close.
     let close = inside_plus.rfind(')')?;
-    if !inside_plus[close + 1..].trim().is_empty() {
-        return None;
-    }
+    let tail = after_call(&inside_plus[close + 1..])?;
     let inside = &inside_plus[..close];
     let mut names = Vec::new();
     for part in inside.split(',') {
@@ -840,7 +1404,7 @@ fn parse_undefine(trimmed: &str) -> Option<Vec<String>> {
         }
         names.push(part.to_string());
     }
-    Some(names)
+    Some((names, tail))
 }
 
 fn parse_assignment(trimmed: &str) -> Option<(String, String)> {
@@ -973,19 +1537,12 @@ fn take_ident(s: &str) -> Option<(&str, &str)> {
 }
 
 fn detect_unsupported(line: &str) -> Option<&'static str> {
-    // Backtick is m4 open-quote; never legal in this subset.
-    if line.contains('`') {
-        return Some("backtick-quoted string");
-    }
-    for kw in &["ifdef", "ifelse", "forloop"] {
+    for kw in &["ifdef", "ifelse", "forloop", "changequote", "include"] {
         if let Some(after) = line.strip_prefix(kw) {
             if after.trim_start().starts_with('(') {
                 return Some(kw);
             }
         }
-    }
-    if line == "dnl" || line.starts_with("dnl ") || line.starts_with("dnl\t") {
-        return Some("dnl");
     }
     None
 }
@@ -1336,13 +1893,452 @@ mod tests {
     }
 
     #[test]
-    fn dnl_is_rejected() {
-        rejects(expand("dnl skip to end of line\n"), "unsupported m4 construct: dnl");
+    fn changequote_is_rejected_unless_the_program_defines_it() {
+        // Read as text, the quotes it names reach the assembler as data.
+        rejects(expand("changequote([,])\n"), "unsupported m4 construct: changequote");
+        // A program's own changequote macro runs, as it did before and as
+        // GNU m4 1.4.19 runs it.
+        assert_eq!(exp("define(`changequote', nop)\nchangequote([,])\n").text, "\nnop");
     }
 
     #[test]
-    fn backtick_is_rejected() {
-        rejects(expand("mov x0, `foo'\n"), "unsupported m4 construct: backtick-quoted string");
+    fn include_is_rejected_unless_the_program_defines_it() {
+        // GNU m4 reads the named file in at that line; the playground's m4
+        // reads no other file, so an include line gets m4's refusal, not
+        // the assembler's unknown mnemonic.
+        rejects(expand("include(`helpers.s')\nmov x0, 1\n"), "unsupported m4 construct: include");
+        // GNU m4 1.4.19 runs a program's own include macro too.
+        assert_eq!(exp("define(include, nop)\ninclude(x)\n").text, "\nnop");
+    }
+
+    /// The text and line map, for comparing with GNU m4's output.
+    fn text_and_map(src: &str) -> (String, Vec<usize>) {
+        let r = exp(src);
+        (r.text, r.line_map)
+    }
+
+    /// GNU m4's output (its last newline dropped) and the source line of
+    /// each of its lines.
+    fn gnu(text: &str, map: &[usize]) -> (String, Vec<usize>) {
+        (text.to_string(), map.to_vec())
+    }
+
+    #[test]
+    fn dnl_deletes_through_the_newline_like_gnu_m4() {
+        // GNU m4 1.4.19's output for each source: a `dnl` line, and a define,
+        // undefine or quoted define followed by `dnl`, write no line, and
+        // the blanks before `dnl` start the next line.
+        assert_eq!(text_and_map("define(fp, x29)dnl\nmov x0, fp\n"), gnu("mov x0, x29", &[2]));
+        assert_eq!(text_and_map("dnl a whole-line comment\nmov x0, 1\n"), gnu("mov x0, 1", &[2]));
+        assert_eq!(text_and_map("  dnl indented\nmov x0, 1\n"), gnu("  mov x0, 1", &[2]));
+        assert_eq!(text_and_map("define(`fp', `x29')dnl\nmov x0, fp\n"), gnu("mov x0, x29", &[2]));
+        assert_eq!(
+            text_and_map("define(`two', `add x0, x0, 1\n  add x0, x0, 2')dnl\ntwo\nmov x1, 3\n"),
+            gnu("add x0, x0, 1\n  add x0, x0, 2\nmov x1, 3", &[3, 3, 4])
+        );
+        assert_eq!(
+            text_and_map("define(fp, x29)\nundefine(`fp')dnl\nmov x0, fp\n"),
+            gnu("\nmov x0, fp", &[1, 3])
+        );
+        assert_eq!(
+            text_and_map("define(fp, x29) dnl trailing words\nmov x0, fp\n"),
+            gnu(" mov x0, x29", &[2])
+        );
+    }
+
+    #[test]
+    fn divert_minus_one_discards_until_divert_like_gnu_m4() {
+        // GNU m4 1.4.19: the lines under `divert(-1)` (any negative number)
+        // write nothing, defines among them still bind, and the `divert` or
+        // `divert(0)` that ends them writes an empty line, or none with `dnl`.
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert\nmov x0, fp\n"),
+            gnu("\nmov x0, x29", &[3, 4])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)dnl\nmov x0, fp\n"),
+            gnu("mov x0, x29", &[4])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)dnl back to fp, lr\nmov x0, fp\n"),
+            gnu("mov x0, x29", &[4])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(fp, x29)\ndivert(0)\nmov x0, fp\n"),
+            gnu("\nmov x0, x29", &[3, 4])
+        );
+        assert_eq!(text_and_map("divert(-2)\ndefine(a, x1)\ndivert\nmov x0, a\n"), gnu("\nmov x0, x1", &[3, 4]));
+        // GNU m4 writes a numbered diversion at the end of its output; the
+        // playground refuses one.
+        rejects(expand("divert(1)\nmov x0, 1\ndivert\nmov x1, 2\n"), "unsupported m4 construct: divert(1)");
+        // A program's own `divert` macro runs as it did, and a longer name
+        // is not `divert`.
+        assert_eq!(exp("define(divert, nop)\ndivert\n").text, "\nnop");
+        assert_eq!(exp("divertdnl\n").text, "divertdnl");
+    }
+
+    #[test]
+    fn divert_reads_its_number_like_gnu_m4() {
+        // GNU m4 1.4.19 reads the number as strtol does: blanks, a sign and
+        // digits with nothing after them. `-0` is diversion 0, and anything
+        // else, a blank before the `)` included, leaves the diversion as is.
+        let kept = gnu("\nmov x0, 1\n\nmov x1, 2", &[1, 2, 3, 4]);
+        assert_eq!(text_and_map("divert(-0)\nmov x0, 1\ndivert\nmov x1, 2\n"), kept);
+        assert_eq!(text_and_map("divert(-1 )\nmov x0, 1\ndivert\nmov x1, 2\n"), kept);
+        for arg in ["-00", "+0", "-", "--1"] {
+            let src = format!("divert({arg})\nmov x0, 1\n");
+            assert_eq!(text_and_map(&src), gnu("\nmov x0, 1", &[1, 2]), "{arg}");
+        }
+        for arg in ["` -1'", "-0001", "-999999999"] {
+            let src = format!("divert({arg})\ndefine(a, x1)\ndivert\nmov x0, a\n");
+            assert_eq!(text_and_map(&src), gnu("\nmov x0, x1", &[3, 4]), "{arg}");
+        }
+        assert_eq!(
+            text_and_map("divert(-1)\ndivert(-1 )\ndefine(a, x1)\ndivert\nmov x0, a\n"),
+            gnu("\nmov x0, x1", &[4, 5])
+        );
+        // GNU m4 expands a name there, reads a comment there on past the
+        // `)`, and wraps a number past nine digits into another diversion;
+        // the playground refuses each.
+        rejects(expand("define(off, -1)\ndivert(off)\n"), "unsupported m4 construct: divert(off)");
+        rejects(expand("divert(x)\nmov x0, 1\n"), "unsupported m4 construct: divert(x)");
+        rejects(expand("divert(1x)\nmov x0, 1\n"), "unsupported m4 construct: divert(1x)");
+        rejects(expand("divert(#)\nmov x0, 1\nmov x1, 2)\n"), "unsupported m4 construct: divert(#)");
+        rejects(expand("divert(-4294967295)\n"), "unsupported m4 construct: divert(-4294967295)");
+        rejects(expand("divert(4294967296)\n"), "unsupported m4 construct: divert(4294967296)");
+        rejects(expand("divert(+1)\n"), "unsupported m4 construct: divert(+1)");
+    }
+
+    #[test]
+    fn text_under_divert_minus_one_is_refused() {
+        // GNU m4 reads every line it throws away: a backtick there opens a
+        // quote, and a `divert` mid-line, even in a `//` or `/* */` comment,
+        // ends the discard. The playground reads only define, undefine and
+        // dnl lines there, and comments its m4 knows, and refuses the rest.
+        for src in [
+            "divert(-1)\ndefine(fp, x29)\nstray text\ndivert\nmov x0, fp\n",
+            "divert(-1)\nThis file`s helpers\ndivert\nmov x0, 1\n",
+            "divert(-1)\nuse divert to switch\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\n// use divert to switch\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\n// don`t\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(a, x19) // the counter\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(a, `x19') // use divert to switch\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(a, `x19') // don`t\ndivert\nmov x0, a\n",
+            "divert(-1)\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2') // use divert to switch\ndivert\nmov x0, 1\n",
+            "divert(-1)\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2') // don`t\ndivert\nmov x0, 1\n",
+            "divert(-1)\n/* switch back with divert */\ndefine(a, x19)\ndivert\nmov x0, a\n",
+            "divert(-1)\n/* aliases\n   for the frame */\ndefine(a, x19)\ndivert\nmov x0, a\n",
+        ] {
+            rejects(expand(src), "unsupported m4 construct: text or a comment under divert(-1)");
+        }
+        // What it does read there comes out as GNU m4 1.4.19 writes it.
+        assert_eq!(
+            text_and_map("divert(-1)\n\n  \ndefine(a, x19)\nundefine(`a')\ndefine(`b', `x20')\ndivert\nmov x0, b\n"),
+            gnu("\nmov x0, x20", &[7, 8])
+        );
+        assert_eq!(text_and_map("divert(-1)\n# aliases\ndefine(a, x19)\ndivert\nmov x0, a\n"), gnu("\nmov x0, x19", &[4, 5]));
+        assert_eq!(
+            text_and_map("divert(-1)\ndnl aliases; a semicolon\ndefine(a, x19)dnl ; x\ndivert\nmov x0, a\n"),
+            gnu("\nmov x0, x19", &[4, 5])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(a, `x19')dnl // use divert to switch\ndivert\nmov x0, a\n"),
+            gnu("\nmov x0, x19", &[3, 4])
+        );
+        assert_eq!(
+            text_and_map("divert(-1)\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2')\ndivert\nmov x0, 1\n"),
+            gnu("\nmov x0, 1", &[4, 5])
+        );
+        assert_eq!(text_and_map("divert( -1)\ndefine(a, x1)\ndivert\nmov x0, a\n"), gnu("\nmov x0, x1", &[3, 4]));
+        assert_eq!(
+            text_and_map("changecom(`//')\ndivert(-1)\n// don`t divert\ndefine(a, x19)\ndivert\nmov x0, a\n"),
+            gnu("\n\nmov x0, x19", &[1, 5, 6])
+        );
+    }
+
+    #[test]
+    fn a_builtin_the_program_defines_or_undefines_is_refused_where_it_would_run() {
+        // GNU m4 1.4.19 runs a program's own `dnl` macro, and writes divert
+        // and changecom as text once a quoted undefine removed them. The
+        // playground refuses each where it would have run the builtin, an
+        // unquoted undefine (after which GNU m4 keeps divert) included; a
+        // program's own divert or changecom macro runs.
+        let dnl = "unsupported m4 construct: dnl once the program defines or undefines it";
+        rejects(expand("define(`dnl', `mov x0, 7')\ndnl\nmov x1, 2\n"), dnl);
+        rejects(expand("define(`dnl', `mov x0, 7')\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
+        rejects(expand("define(`dnl', `divert')\ndivert(-1)\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
+        rejects(expand("undefine(`dnl')\ndefine(a, x1)dnl\nmov a, 2\n"), dnl);
+        let divert = "unsupported m4 construct: divert once the program undefines it";
+        rejects(expand("undefine(`divert')\ndivert(-1)\nmov x0, 1\n"), divert);
+        rejects(expand("undefine(divert)\ndivert(-1)\nmov x0, 1\ndivert\nmov x1, 2\n"), divert);
+        rejects(expand("define(`divert', `nop')\nundefine(`divert')\ndivert(-1)\nmov x0, 1\n"), divert);
+        rejects(
+            expand("undefine(`changecom')\nchangecom\ndefine(n, 4)\nmov x0, #n\n"),
+            "unsupported m4 construct: changecom once the program undefines it",
+        );
+        // Without such a use the program builds as it does today, and a
+        // quoted define of divert runs as GNU m4 runs it.
+        assert_eq!(exp("undefine(`divert')\ndefine(dnl, x19)\nmov dnl, 1\n").text, "\n\nmov x19, 1");
+        assert_eq!(exp("define(`divert', `nop')\ndivert(-1)\n").text, "\nnop");
+    }
+
+    #[test]
+    fn an_unquoted_builtin_name_in_a_quoted_define_is_refused() {
+        // On a line with quotes, GNU m4 1.4.19 runs an unquoted divert,
+        // changecom, changequote or dnl among a define's arguments before
+        // the define sees it; the playground refuses that in a program that
+        // uses dnl, divert, changecom or quotes. Quoted, the name is the
+        // program's own macro.
+        for name in ["divert", "changecom", "changequote", "dnl"] {
+            let refusal = format!("unsupported m4 construct: define({name}) with the name unquoted");
+            rejects(expand(&format!("define({name}, `x')\nmov x0, `a'\n")), &refusal);
+        }
+        assert_eq!(exp("define( `divert', `nop')\ndivert(-1)\n").text, "\nnop");
+        // Any other program builds as it does today: a quoted define is no
+        // new form, nor is a backtick only in a comment.
+        assert_eq!(exp("define(dnl, `x19')\nmov dnl, 1\n").text, "\nmov x19, 1");
+        assert_eq!(exp("define(divert, nop) // it`s\ndivert\n").text, "\nnop");
+    }
+
+    #[test]
+    fn a_comment_gnu_m4_reads_past_its_line_is_refused_once_a_program_uses_the_new_forms() {
+        // GNU m4 1.4.19 reads `//`, `;` and `/* */` comments as text, and
+        // each comment below acts past its own line there. A program that
+        // uses dnl, divert, changecom or quotes is refused at that comment.
+        let new = "define(n, 4)dnl\ndefine(`two', `add x0, x0, 1\n  add x0, x0, 2')dnl\n";
+        for (comment, token) in [
+            ("// don`t", "`"),
+            ("// dnl here", "dnl"),
+            ("; dnl here", "dnl"),
+            ("/* dnl here */", "dnl"),
+            ("// changecom here", "changecom"),
+            ("// m4exit here", "m4exit"),
+            ("// divert(-1) here", "divert("),
+            ("// undefine(`n') here", "undefine("),
+            ("// len(abc here", "len("),
+            ("// n(1 here", "n("),
+            ("// two adds", "two"),
+        ] {
+            let refusal = format!("unsupported m4 construct: {token} in a comment");
+            rejects(expand(&format!("{new}mov x0, 1 {comment}\nmov x1, 2\n")), &refusal);
+        }
+        // What stays on its line in GNU m4 builds.
+        for comment in ["// use `n' here", "// n is the count", "// printf(fmt here", "// divert here", "// see # dnl here"] {
+            assert!(expand(&format!("{new}mov x0, 1 {comment}\nmov x1, 2\n")).is_ok(), "{comment}");
+        }
+        // A program without those forms keeps today's output; a quoted
+        // define, which the playground took before, is none of them.
+        assert_eq!(exp("define(n, 4)\nmov x0, 1 // dnl here\nmov x1, 2\n").text, "\nmov x0, 1 \nmov x1, 2");
+        let quoted_define = "define(`two', `add x0, x0, 1\n  add x0, x0, 2')\ntwo // two adds, dnl\n";
+        assert_eq!(exp(quoted_define).text, "\nadd x0, x0, 1\n  add x0, x0, 2 ");
+    }
+
+    #[test]
+    fn what_gnu_m4_reads_in_a_define_name_or_past_a_quoted_hash_is_refused_in_a_new_form_program() {
+        // GNU m4 1.4.19 runs a builtin named unquoted as define's first
+        // argument, quotes or not on the line: dnl stops at the end of the
+        // file, divert writes `mov , 2` and divnum `mov 0, 2`.
+        for name in ["dnl", "divert", "divnum"] {
+            let src = format!("define({name}, w0)\nchangecom(`//')\nmov {name}, 2\n");
+            let refusal = format!("unsupported m4 construct: define({name}) with the name unquoted");
+            rejects(expand(&src), &refusal);
+        }
+        // A program without the new forms keeps today's output.
+        assert_eq!(exp("define(divert, w0)\nmov divert, 2\n").text, "\nmov w0, 2");
+        // A quoted `#` opens no comment, so GNU m4 reads the `//` comment
+        // after it, and its dnl takes the next line.
+        rejects(expand("define(a, w0)dnl\nmov a, `#'3 // dnl\nmov w0, 5\n"), "unsupported m4 construct: dnl in a comment");
+        // A one-line macro in a comment expands there to what it names: a
+        // macro that spans lines, or dnl.
+        let multi = "define(`two', `mov w1, 1\n  mov w0, 4')dnl\ndefine(`one', `two')dnl\nmov w0, 3 // one\n";
+        rejects(expand(multi), "unsupported m4 construct: one in a comment");
+        rejects(expand("define(`nl', `dnl')dnl\nmov w0, 3 // nl\nmov w0, 5\n"), "unsupported m4 construct: nl in a comment");
+        // A `;` inside a call's m4 quotes starts no comment, so what follows
+        // the call is no comment either; after changecom(`;') a `;` is m4's
+        // own comment, as in GNU m4 1.4.19 (whose text keeps the comment
+        // the playground drops).
+        assert_eq!(exp("changecom(`;')dnl\nmov w0, 3 ; dnl\nmov w0, 5\n").text, "mov w0, 3 \nmov w0, 5");
+        // The `/* */` comment the playground drops holds quote marks GNU m4
+        // reads.
+        rejects(expand("changecom(`/*', `*/')dnl\nmov w0, 3\n"), "unsupported m4 construct: an m4 quote across a /* */ comment");
+    }
+
+    /// The first byte of line `j` of `src` the playground drops, read off
+    /// what the strippers leave: pass 0 deletes `/* */` blocks, then
+    /// strip_comment cuts a `//` or `;` comment, on the text m4 hands the
+    /// assembler for a line that reads quotes (the outer quote marks gone).
+    fn dropped_at(src: &str, j: usize) -> Option<usize> {
+        let w = src.lines().nth(j)?;
+        let blanked = strip_block_comments(src).ok()?.0;
+        let raw = blanked.lines().nth(j)?;
+        // Before pass 0's first cut the line is unchanged, and the block it
+        // deletes starts with `/*`, unless the line opens inside one.
+        let open_above = j > 0 && strip_block_comments(&src.lines().take(j).collect::<Vec<_>>().join("\n")).is_err();
+        let same = w.bytes().zip(raw.bytes()).take_while(|(a, b)| a == b).count();
+        let block = if open_above {
+            Some(0)
+        } else if w == raw {
+            None
+        } else {
+            Some(same - (same > 0 && w[same - 1..].starts_with("/*")) as usize)
+        };
+        let kept = strip_comment(raw);
+        let cut = if after_call(kept).is_some_and(|(_, joins)| joins) || !kept.contains('`') {
+            (kept.len() < raw.len()).then_some(kept.len())
+        } else {
+            let b = raw.as_bytes();
+            let mut at = Vec::new();
+            let mut i = 0;
+            while i < b.len() {
+                if b[i] == b'`' {
+                    if let Some(n) = quote_end(&b[i..]) {
+                        at.extend(i + 1..i + n - 1);
+                        i += n;
+                        continue;
+                    }
+                }
+                at.push(i);
+                i += 1;
+            }
+            let seen: String = at.iter().map(|&k| b[k] as char).collect();
+            at.get(strip_comment(&seen).len()).copied()
+        };
+        [block, cut].into_iter().flatten().min()
+    }
+
+    /// Where the comment check starts reading each line of `src`, None for a
+    /// line it skips, or None for all when m4 refuses the program.
+    fn check_reads_from(src: &str) -> Option<Vec<Option<usize>>> {
+        let mut from = vec![None; src.lines().count()];
+        for (line, start, _) in expand(src).ok()?.drops {
+            from[line] = Some(from[line].map_or(start, |f: usize| f.min(start)));
+        }
+        Some(from)
+    }
+
+    #[test]
+    fn the_comment_check_reads_every_comment_the_playground_drops() {
+        // Every line of up to five of these tokens, and every line of up to
+        // three after a line of up to two that leaves a `/*` open, with a
+        // `*/` line to close it: 454,571 programs, a few seconds.
+        let tokens = ["\"", "'", "\\", "`", "#", "//", ";", "/*", "*/", "\t", "dnl", "m", "x"];
+        let mut lines: Vec<String> = vec![String::new()];
+        let mut by_len = vec![1];
+        for _ in 0..5 {
+            let start = lines.len() - by_len[by_len.len() - 1];
+            let longer: Vec<String> =
+                lines[start..].iter().flat_map(|l| tokens.iter().map(move |t| format!("{l}{t}"))).collect();
+            by_len.push(longer.len());
+            lines.extend(longer);
+        }
+        let upto = |n: usize| &lines[1..by_len[..=n].iter().sum::<usize>()];
+        let mut programs: Vec<String> = upto(5).iter().map(|l| format!("define(m, w0)\n{l}\n*/\n")).collect();
+        for open in upto(2).iter().filter(|l| strip_block_comments(l).is_err()) {
+            programs.extend(upto(3).iter().map(|l| format!("define(m, w0)\n{open}\n{l}\n*/\n")));
+        }
+        // The verifier's five: a `'"'` literal before the comment.
+        let q = [
+            "define(a, w0)dnl\nmain:\n\tmov a, '\"'\t// dnl\n\tmov w0, 5\n\tret\n",
+            "define(a, w0)dnl\nv:\t.byte '\"'\t// dnl\n\t.byte 7\n",
+            "define(a, w0)dnl\nmain:\n\tmov a, '\"'\t; dnl\n\tmov w0, 5\n\tret\n",
+            "define(`nl', `dnl')dnl\nmain:\n\tmov w0, '\"'\t// nl\n\tmov w0, 5\n\tret\n",
+            "define(a, w0)dnl\nmain:\n\tmov a, '\"'\t// it`s\n\tmov w0, 5\n\tret\n",
+        ];
+        programs.extend(q.iter().map(|p| p.to_string()));
+        let mut missed = Vec::new();
+        for src in &programs {
+            let Some(from) = check_reads_from(src) else { continue };
+            for (j, from) in from.iter().enumerate().skip(1) {
+                if let Some(drop) = dropped_at(src, j) {
+                    if !from.is_some_and(|f| f <= drop) {
+                        missed.push(format!("{:?} line {} dropped from {drop}, read from {from:?}", src, j + 1));
+                    }
+                }
+            }
+        }
+        assert!(missed.is_empty(), "{} lines drop text the check does not read:\n{}", missed.len(), missed[..missed.len().min(30)].join("\n"));
+        rejects(expand(q[0]), "unsupported m4 construct: dnl in a comment");
+        rejects(expand(q[1]), "unsupported m4 construct: dnl in a comment");
+        rejects(expand(q[2]), "unsupported m4 construct: dnl in a comment");
+        rejects(expand(q[3]), "unsupported m4 construct: nl in a comment");
+        rejects(expand(q[4]), "unsupported m4 construct: ` in a comment");
+        // The assembler cuts at a `;` m4 hands it out of a quote, and a line
+        // inside a block is dropped from its start; GNU m4 runs each dnl.
+        rejects(expand("define(a, w0)dnl\nmov a, `5;'dnl\nmov w0, 5\n"), "unsupported m4 construct: dnl in a comment");
+        rejects(expand("define(a, w0)dnl\nmov a, 1 /* c\ndnl */ /* d */\nmov w0, 5\n"), "unsupported m4 construct: dnl in a comment");
+        // GNU m4 pairs quote marks inside a dropped block with marks outside it.
+        for line in ["`/*`*/'", "mov a, `1 /* it's */ 2'", "mov a, /* ` */ '1'"] {
+            let src = format!("define(a, w0)dnl\n{line}\nmov w0, 5\n");
+            rejects(expand(&src), "unsupported m4 construct: an m4 quote across a /* */ comment");
+        }
+        // GNU m4 reads a comment in a quoted define's body where the macro
+        // is used; without the new forms the program keeps today's output.
+        let body = "define(`x', `mov w0, 1 // dnl')\nx\nmov w0, 5\n";
+        rejects(expand(&format!("define(a, w0)dnl\n{body}")), "unsupported m4 construct: dnl in a comment");
+        assert_eq!(exp(body).text, "\nmov w0, 1 \nmov w0, 5");
+        // A line of 200,000 blocks is read once, not once per block.
+        let long = format!("define(a, w0)dnl\nmov a, 1 {}// c\n", "/**/".repeat(200_000));
+        let started = std::time::Instant::now();
+        assert_eq!(exp(&long).text, "mov w0, 1 ");
+        assert!(started.elapsed() < std::time::Duration::from_secs(2), "took {:?}", started.elapsed());
+    }
+
+    #[test]
+    fn changecom_moves_or_ends_the_comment_like_gnu_m4() {
+        // GNU m4 1.4.19: once `#` opens no comment, the name after it
+        // expands; after changecom(`@') an `@` opens one instead.
+        for (first, opener) in [("changecom", None), ("changecom()", None), ("changecom(`//')", Some("//"))] {
+            let src = format!("{first}\ndefine(n, 4)\nmov x0, #n\n");
+            assert_eq!(text_and_map(&src), gnu("\n\nmov x0, #4", &[1, 2, 3]), "{first}");
+            assert_eq!(exp(&src).comment_at(3), opener, "{first}");
+        }
+        assert_eq!(exp("changecom(`@')\ndefine(n, 4)\nmov x0, #n @ n\n").text, "\n\nmov x0, #4 @ n");
+        assert_eq!(exp("mov x0, 1\n").comment_at(1), Some("#"));
+        // GNU m4 ends a comment at any string it is given; the playground's
+        // end at the line's end.
+        rejects(expand("changecom(`@', `!')\n"), "unsupported m4 construct: changecom(`@', `!')");
+        // GNU m4 expands a name in the parentheses (`@` here), and a `#`
+        // there opens a comment that hides the `)`; the playground refuses
+        // both.
+        rejects(expand("define(c, @)\nchangecom(c)\n"), "unsupported m4 construct: changecom(c)");
+        rejects(expand("changecom(#)\nmov x1, 2)\n"), "unsupported m4 construct: changecom(#)");
+    }
+
+    #[test]
+    fn dnl_as_a_label_keeps_todays_output() {
+        // GNU m4 deletes from each `dnl` here (`main:\n  b.ge   ret`), so
+        // gcc refuses the program; it runs here today, so it stays as is.
+        let src = "main:\n  b.ge dnl\ndnl:\n  ret\n";
+        assert_eq!(exp(src).text, "main:\n  b.ge dnl\ndnl:\n  ret");
+    }
+
+    #[test]
+    fn a_quoted_string_loses_one_level_of_quotes_like_gnu_m4() {
+        // GNU m4 1.4.19: quoted text is written without its outer quotes and
+        // never expanded, a quoted argument is collected without them (and
+        // its body is read again), and a comment keeps its quotes.
+        let fp = "define(fp, x29)\n";
+        let after = |line: &str| exp(&format!("{fp}{line}\n")).text;
+        assert_eq!(after("mov x0, `fp'"), "\nmov x0, fp");
+        assert_eq!(after("mov x0, ``fp''"), "\nmov x0, `fp'");
+        assert_eq!(after("mov x0, fp`'x"), "\nmov x0, x29x");
+        assert_eq!(after(".string \"`fp' is fp\""), "\n.string \"fp is x29\"");
+        assert_eq!(after("mov x0, 1 # `fp' fp"), "\nmov x0, 1 # `fp' fp");
+        assert_eq!(after("define(q, `$1')\nmov x0, q(`fp')"), "\n\nmov x0, x29");
+        assert_eq!(exp("define(f, `[$1|$2]')\nf(`a,b', c)\n").text, "\n[a,b|c]");
+        assert_eq!(exp("define(f, `[$1]')\nf(`)')\n").text, "\n[)]");
+        // GNU m4 reads on to a closing quote on a later line; the playground
+        // needs it on the same line, as it does a macro's `)`.
+        rejects(expand("mov x0, `fp\nmov x1, 2'\n"), "closing quote on the same line");
+    }
+
+    #[test]
+    fn lines_with_no_quote_of_their_own_keep_todays_output() {
+        // GNU m4 strips the quotes a define's body still holds (`a b c`) and
+        // reads quotes inside `//` comments; both run here today as below,
+        // so they stay.
+        assert_eq!(exp("define(x, `a `b' c')\nx\n").text, "\na `b' c");
+        assert_eq!(exp("mov x0, 1 // don`t\n").text, "mov x0, 1 ");
     }
 
     #[test]
@@ -1440,8 +2436,6 @@ mod tests {
     fn a_define_may_quote_its_name_and_body() {
         let r = exp("define(`fp', `x29')\nmov x0, fp\n");
         assert_eq!(r.text, "\nmov x0, x29");
-        // Anywhere else a quote is still refused.
-        rejects(expand("mov x0, `fp'\n"), "backtick");
     }
 
     #[test]
@@ -1556,11 +2550,11 @@ mod tests {
 
     #[test]
     fn unsupported_construct_error_carries_its_line_number() {
-        let err = expand("mov x0, 1\nmov x1, 2\ndnl skip the rest\n").unwrap_err();
+        let err = expand("mov x0, 1\nmov x1, 2\nforloop(i, 0, 5, foo)\n").unwrap_err();
         match err {
             EmuError::PreprocError { line, message } => {
-                assert_eq!(line, 3, "the error points at the dnl line");
-                assert!(message.contains("dnl"), "message was: {message}");
+                assert_eq!(line, 3, "the error points at the forloop line");
+                assert!(message.contains("forloop"), "message was: {message}");
             }
             other => panic!("expected PreprocError, got {other:?}"),
         }

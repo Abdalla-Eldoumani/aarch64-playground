@@ -231,11 +231,17 @@ describe("error guidance for the messages the emulator really sends", () => {
     expect(e.fix).not.toContain("line above");
   });
 
-  it("names the m4 traps: recursion, a backtick, and an unsupported macro", () => {
+  it("names the m4 traps: recursion, an unclosed quote, and an unsupported macro", () => {
     const loop = explained(`define(one_r, two_r)\ndefine(two_r, one_r)\n${withBody("        mov     x0, one_r")}`);
     expect(loop.styleSection).toBe("m4 preprocessing");
     expect(loop.why).toContain("define(x29, x29)");
-    expect(explained(withBody("        mov     x0, `one'")).fix).toContain("end of file in string");
+    expect(explained(withBody("        mov     x0, `one")).why).toContain("end of file in string");
     expect(explained(`ifelse(a, b, c, d)\n${withBody("")}`).styleSection).toBe("m4 preprocessing");
+    const include = explained(`include(\`helpers.s')\n${withBody("")}`).fix;
+    expect(include).toContain("copy the included file's lines into this file where the include was");
+    expect(include).not.toContain("add the file");
+    const comment = explained(`define(a, x1)dnl\n${withBody("        mov     x0, 1 // dnl here")}`);
+    // The one sentence for this refusal leads, so the box's first lines show it.
+    expect(comment.fix.startsWith("Reword a comment the message names.")).toBe(true);
   });
 });

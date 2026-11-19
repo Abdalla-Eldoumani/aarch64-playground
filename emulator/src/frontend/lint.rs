@@ -145,6 +145,8 @@ fn scan_line_for_hygiene(
     let mut in_string = false;
     let mut in_char = false;
     let mut after_hash = false;
+    let hash_comments = expanded.comment_at(line) == Some("#");
+    let quotes = expanded.reads_quotes(line);
     while i < bytes.len() {
         let b = bytes[i];
         match b {
@@ -161,9 +163,15 @@ fn scan_line_for_hygiene(
                 i += 1;
                 continue;
             }
+            // On a line m4 reads quotes on, it never expands quoted text, and
+            // the closing `'` is no character literal.
+            b'`' if quotes => {
+                i += m4::quote_end(&bytes[i..]).unwrap_or(bytes.len() - i);
+                continue;
+            }
             b'"' if !in_char => in_string = !in_string,
             b'\'' if !in_string => in_char = !in_char,
-            b'#' if !in_string && !in_char => after_hash = true,
+            b'#' if !in_string && !in_char && hash_comments => after_hash = true,
             _ => {}
         }
         if b.is_ascii_alphabetic() || b == b'_' {
@@ -687,6 +695,44 @@ mod tests {
         assert_eq!(w[0].0, 4);
         assert!(w[0].1.contains("comment"), "{}", w[0].1);
         assert!(w[0].1.contains("equate"), "{}", w[0].1);
+    }
+
+    #[test]
+    fn a_hash_after_changecom_opens_no_comment() {
+        // After `changecom`, GNU m4 expands the name after `#` (`#40`).
+        let src = "changecom\n\
+                   define(size, 40)\n\
+                   .text\n\
+                   main:\n\
+                   mov x0, #size\n\
+                   ret\n";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
+    fn an_m4_quote_is_no_character_literal() {
+        // m4 writes `size' as size, unexpanded, and the second size as 40:
+        // the quote's closing `'` opens no character literal.
+        let src = "define(size, 40)\n\
+                   .text\n\
+                   main:\n\
+                   mov x0, `size' + size\n\
+                   ret\n";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
+    fn a_backtick_m4_never_reads_opens_no_quote() {
+        // m4 never reads the text of a block comment, so its backtick opens
+        // no quote and the rows for the `#` and the string in it stay.
+        let src = "define(size, 40)\n\
+                   /* don`t write #size here,\n   or \"size\" in a string */\n\
+                   .text\n\
+                   .global main\n\
+                   main: mov x0, 0\n\
+                   ret\n";
+        let lines: Vec<usize> = lint_lines(src).into_iter().map(|(line, _)| line).collect();
+        assert_eq!(lines, [2, 3]);
     }
 
     #[test]

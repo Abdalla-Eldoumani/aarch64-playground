@@ -183,9 +183,17 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
 
   if (detail.includes("unsupported m4 construct")) {
     return {
-      what: "m4 saw a construct outside the playground's narrow subset (define + name=expr only).",
-      why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop. Those expand at the macro level; the playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. A backtick is the one to take seriously: GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and then swallows the rest of the source (`ERROR: end of file in string`). Use plain quotes in comments.",
+      what: "m4 reached a construct the playground's m4 does not take; the message names it.",
+      why: "It refuses what it cannot run the way GNU m4 on the course servers does: ifdef, ifelse, forloop, changequote and include; a numbered divert; a second argument, an unquoted name or a comment inside divert's or changecom's parentheses; text or a comment between divert(-1) and divert; divert, changecom or dnl after the program undefines it, or dnl after it defines it; and, in a program using dnl, divert, changecom or quotes, a builtin such as divert, divnum or dnl as a define's unquoted name, a comment GNU m4 reads past its line (the message names what it holds), or a /* */ comment with an m4 quote across it.",
+      fix: "Reword a comment the message names. Expand an ifdef, ifelse or forloop into plain code. include is not supported; copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and put a numbered divert's text where it should appear. Give divert -1, 0 or nothing and changecom one quoted argument, keep only define, undefine and dnl lines, without comments, between divert(-1) and divert, and leave builtin names such as divert, divnum, changequote and dnl to m4.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("m4 quote runs past the end of the line")) {
+    return {
+      what: "m4 read a backtick as an opening quote and found no closing quote (`'`) on the same line.",
+      why: "GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and keeps reading to its closing quote. With none, it swallows the rest of the source (`ERROR: end of file in string`).",
+      fix: "Close the quote on the line that opens it, and keep backticks out of comments and strings: write plain quotes there.",
       styleSection: "m4 preprocessing",
     };
   }
