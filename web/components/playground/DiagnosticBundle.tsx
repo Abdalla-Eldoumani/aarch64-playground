@@ -67,7 +67,7 @@ function BundleDialog({
     request.then(
       (bundle) => {
         if (!live) return;
-        // The link is this page with the bundle as its only query, so nothing
+        // The link is this page with the bundle as its fragment, so nothing
         // else in the address bar travels with the report.
         const link = bundleShareUrl(`${window.location.origin}${window.location.pathname}`, bundle);
         setReport({ markdown: bundleToMarkdown(bundle, link ?? undefined), link });
