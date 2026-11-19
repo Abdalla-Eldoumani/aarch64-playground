@@ -734,6 +734,8 @@ export function useEmulator(start = true): EmulatorState {
       // Where this run's sleeps have reached on the clock; the first anchors it.
       let deadline: number | null = null;
       for (;;) {
+        // Noted before the chunk, so a reset or assemble sent while it ran counts.
+        const epoch = backend.epoch;
         const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
         // A run cancelled by reset/assemble describes a machine that no
         // longer exists; acting on it painted `unknown instruction:
@@ -744,7 +746,8 @@ export function useEmulator(start = true): EmulatorState {
         // so a chunk's round trip and a late timer come out of the next
         // wait. The timeline never trails now by more than SLEEP_CARRY_MS.
         // No time left still yields once, so a main-thread run cannot hold
-        // the page. Pause, reset, an unmount or a newer run stands the drive
+        // the page. A machine replaced meanwhile ends the drive as a
+        // cancelled run does. Pause, an unmount or a newer run stands it
         // down; the steps so far land on the counter below.
         if (
           runResult.sleep_ms != null &&
@@ -759,6 +762,7 @@ export function useEmulator(start = true): EmulatorState {
           deadline += Math.max(1, Math.min(runResult.sleep_ms, 2000));
           const wait = deadline - now;
           await (wait > 0 ? new Promise<void>((resolve) => setTimeout(resolve, wait)) : yieldToEventLoop());
+          if (backend.epoch !== epoch) return null;
           if (runningRef.current && driveRef.current === mine) continue;
         }
         // The snapshot this result carries has already landed, so the ref
