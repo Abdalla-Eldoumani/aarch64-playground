@@ -2,6 +2,8 @@
 //! order. The modules that own a region re-export its constants from here,
 //! and the checks at the bottom fail the build if two regions overlap.
 
+use crate::memory::PAGE_SIZE;
+
 /// Base address where assembled code is loaded.
 pub const CODE_BASE: u64 = 0x0040_0000;
 
@@ -26,9 +28,6 @@ pub const ARGV_BASE: u64 = 0x0080_0000;
 /// plenty for any realistic command-line on this playground.
 pub const ARGV_MAX_BYTES: usize = 4096;
 
-/// The loader maps each libc globals page whole.
-const PAGE_BYTES: u64 = 4096;
-
 /// The loader-written `stdin`, `stdout` and `stderr` words (+0, +8, +16),
 /// each holding that stream's FILE* handle. glibc's `stdout` is a word that
 /// holds a FILE*, which code loads out of memory (`ldr x0, =stdout` then
@@ -39,7 +38,7 @@ pub const STDIO_GLOBALS_BASE: u64 = ARGV_BASE + ARGV_MAX_BYTES as u64;
 /// The ctype conversion tables live on the NEXT page: two 384-entry int32
 /// arrays are 3072 bytes and the first globals page is already spoken
 /// for by the stream words and the character-class table.
-pub const CTYPE_CONV_BASE: u64 = STDIO_GLOBALS_BASE + PAGE_BYTES;
+pub const CTYPE_CONV_BASE: u64 = STDIO_GLOBALS_BASE + PAGE_SIZE as u64;
 
 /// The heap window sits above the globals pages and far below the stack.
 pub const HEAP_BASE: u64 = 0x0090_0000;
@@ -69,8 +68,7 @@ pub const HOST_STUB_BASE: u64 = 0xFFFF_0000;
 pub const HOST_STUB_STRIDE: u64 = 16;
 pub const HOST_STUB_COUNT: u64 = 256;
 
-/// What the linker counts as a libc address when it decides a `bl` needs a
-/// trampoline: the whole 64 KiB above `HOST_STUB_BASE`, wider than the table.
+/// Where the linker takes a `bl` target to be libc; wider than the table.
 pub const HOST_STUB_WINDOW: u64 = 0x1_0000;
 
 /// Every region as [start, end), in address order.
@@ -80,8 +78,8 @@ const REGIONS: [(u64, u64); 10] = [
     (DATA_BASE, DATA_BASE + SECTION_WINDOW),
     (BSS_BASE, BSS_BASE + SECTION_WINDOW),
     (ARGV_BASE, ARGV_BASE + ARGV_MAX_BYTES as u64),
-    (STDIO_GLOBALS_BASE, STDIO_GLOBALS_BASE + PAGE_BYTES),
-    (CTYPE_CONV_BASE, CTYPE_CONV_BASE + PAGE_BYTES),
+    (STDIO_GLOBALS_BASE, STDIO_GLOBALS_BASE + PAGE_SIZE as u64),
+    (CTYPE_CONV_BASE, CTYPE_CONV_BASE + PAGE_SIZE as u64),
     (HEAP_BASE, HEAP_LIMIT),
     (STACK_FLOOR, STACK_BASE),
     (HOST_STUB_BASE, HOST_STUB_BASE + HOST_STUB_WINDOW),
