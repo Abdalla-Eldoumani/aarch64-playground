@@ -435,10 +435,12 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
     if (!full) return;
     // Ctrl+M leaves xterm for the page's body, behind the pane, where Tab
     // would walk the covered page: Tab lands on the pane's first control,
-    // Shift+Tab on its last.
+    // Shift+Tab on its last. Any other focus (an open dialog traps Tab
+    // itself) and a pane hidden behind another tab leave Tab alone.
     const back = (e: KeyboardEvent) => {
       const root = rootRef.current;
-      if (e.key !== "Tab" || !root || root.contains(document.activeElement)) return;
+      const onBody = !document.activeElement || document.activeElement === document.body;
+      if (e.key !== "Tab" || !root || !onBody || root.clientWidth === 0) return;
       const controls = root.querySelectorAll<HTMLElement>("button");
       e.preventDefault();
       controls[e.shiftKey ? controls.length - 1 : 0]?.focus();
