@@ -32,6 +32,35 @@ function monoFontFamily(): string {
   return `${mono ? `${mono}, ` : ""}"JetBrains Mono", Consolas, monospace`;
 }
 
+// xterm loops once per unit of these counts (REP allocates its cells first),
+// and a program can print a count of 2^31, so each stops at what the screen shows.
+const COUNT_LIMITS: Record<string, (t: Terminal) => number> = {
+  S: (t) => t.rows, // SU, scroll up
+  T: (t) => t.rows, // SD, scroll down
+  L: (t) => t.rows, // IL, insert lines
+  M: (t) => t.rows, // DL, delete lines
+  I: (t) => t.cols, // CHT, tab forward
+  Z: (t) => t.cols, // CBT, tab back
+  b: (t) => t.rows * t.cols, // REP, repeat the last character
+};
+
+type CsiCore = {
+  registerCsiHandler(id: { final: string }, handler: (p: { params: Int32Array }) => boolean): void;
+};
+
+// term.parser hands handlers a copy of the counts; the core's hook hands the
+// parser's own, and returning false runs xterm's handler on the lowered count.
+// shortcut: reads xterm's private _core, as the fit addon does; recheck on an xterm upgrade.
+function clampCounts(term: Terminal): void {
+  const core = (term as unknown as { _core: CsiCore })._core;
+  for (const [final, limit] of Object.entries(COUNT_LIMITS)) {
+    core.registerCsiHandler({ final }, ({ params }) => {
+      params[0] = Math.min(params[0], limit(term));
+      return false;
+    });
+  }
+}
+
 export interface TerminalPaneProps {
   /** Build a fresh DispatchContext on demand (each command may snapshot state). */
   buildContext: () => DispatchContext;
@@ -204,6 +233,7 @@ export function TerminalPane({ buildContext, onUploadRequest, onRegisterIO }: Te
       fontSize: 13,
       theme: currentXtermTheme(),
     });
+    clampCounts(term);
     const fit = new FitAddon();
     term.loadAddon(fit);
     term.open(containerRef.current);
