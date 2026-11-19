@@ -48,6 +48,7 @@ function makeIO() {
     clear: vi.fn(),
     focus: vi.fn(),
     sessionEnded: vi.fn(),
+    altScreen: vi.fn(() => false),
   };
 }
 
@@ -644,5 +645,195 @@ describe("the pane's size", () => {
     machine.isRunning = false;
     machine.isHalted = true;
     await waitFor(() => expect(h.drive().foregroundLive).toBe(false), { timeout: 2000 });
+  });
+});
+
+describe("putting the pane back when a session ends", () => {
+  // What a stopped program may have left set in the pane: its alternate
+  // screen (left only while it is still up, since leaving it moves the
+  // cursor), then a soft reset (cursor shown, wrapping on, plain text),
+  // mouse reporting off, and the theme's palette (OSC 104).
+  const MAIN_SCREEN = "\x1b[?1049l";
+  const PUT_BACK = "\x1b[!p\x1b[?1000l\x1b[?1006l\x1b]104\x07";
+
+  type Started = {
+    h: ReturnType<typeof setup>;
+    machine: TerminalDriveMachine;
+    io: IO;
+  };
+  const ends: Array<[string, (s: Started) => void | Promise<void>]> = [
+    [
+      "the program exits",
+      ({ machine }) => {
+        machine.isRunning = false;
+        machine.isHalted = true;
+      },
+    ],
+    [
+      "the program faults",
+      ({ machine }) => {
+        machine.isRunning = false;
+        machine.error = "memory fault: the program tried to read 0x0000000000000000";
+      },
+    ],
+    ["ctrl+c stops it", ({ io }) => foregroundOf(io).cancel()],
+    [
+      "the pause button stops it",
+      ({ machine }) => {
+        machine.isRunning = false;
+      },
+    ],
+    [
+      "an assemble or a reset replaces it",
+      ({ machine }) => {
+        machine.isRunning = false;
+        machine.programLoaded = false;
+      },
+    ],
+    [
+      "the pane goes away",
+      async ({ h, io }) => {
+        h.drive().registerTermIO(io as TerminalProgramIO);
+        await new Promise((r) => setTimeout(r, 50));
+        h.drive().registerTermIO(null);
+      },
+    ],
+    ["the host surface unmounts", ({ h }) => h.rendered.unmount()],
+  ];
+
+  async function runToEnd(end: (s: Started) => void | Promise<void>, altScreen: boolean) {
+    const machine = makeMachine({ exitCode: 0 });
+    const h = setup({}, machine);
+    const io = makeIO();
+    io.altScreen.mockReturnValue(altScreen);
+    let session!: Promise<number | null>;
+    act(() => {
+      session = h.drive().driveForeground(io as TerminalProgramIO);
+    });
+    // One poll sees the program running before it ends.
+    await new Promise((r) => setTimeout(r, 40));
+    await act(async () => {
+      await end({ h, machine, io });
+      await session;
+    });
+    return { machine, io };
+  }
+
+  it.each(ends)("writes it once when %s, after the program's last byte", async (_, end) => {
+    const { machine, io } = await runToEnd(end, true);
+    const writes = io.write.mock.calls.map(([text]) => text);
+    expect(writes.filter((text) => text.includes("]104"))).toEqual([MAIN_SCREEN + PUT_BACK]);
+    // The tap lets go first, so no byte of the program's lands after it.
+    expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
+    const at = io.write.mock.invocationCallOrder[writes.indexOf(MAIN_SCREEN + PUT_BACK)];
+    expect(vi.mocked(machine.setOutputTap).mock.invocationCallOrder.at(-1)).toBeLessThan(at);
+  });
+
+  it("leaves the screen and the cursor where a program that put them back left them", async () => {
+    // A program that left its alternate screen itself may have printed below
+    // it since: a second exit from it would move the cursor back over that.
+    const { io } = await runToEnd(ends[0][1], false);
+    const writes = io.write.mock.calls.map(([text]) => text);
+    expect(writes.filter((text) => text.includes("]104"))).toEqual([PUT_BACK]);
+    expect(writes.some((text) => text.includes("?1049"))).toBe(false);
+  });
+
+  it("puts the pane back before it prints the exit line", async () => {
+    const machine = makeMachine({ wantsTerminal: true, exitCode: 0 });
+    const h = setup({ wantsTerminal: true }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalledWith(0));
+    });
+    const index = io.write.mock.calls.findIndex(([text]) => text === PUT_BACK);
+    expect(io.write.mock.invocationCallOrder[index]).toBeLessThan(
+      io.sessionEnded.mock.invocationCallOrder[0],
+    );
+  });
+});
+
+describe("what a raw-mode program wrote before the pane took it", () => {
+  // A program run in the console sets its terminal up (alternate screen,
+  // mouse reporting, palette) in the same chunk that turns raw mode on, so
+  // those bytes reach the console before the pane can attach.
+  async function selfAttach(stdout: string) {
+    const machine = makeMachine({ wantsTerminal: true, stdout, exitCode: 0 });
+    const h = setup({ wantsTerminal: true, stdout }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    const end = () =>
+      act(async () => {
+        machine.isRunning = false;
+        machine.isHalted = true;
+        await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+      });
+    return { machine, io, end };
+  }
+
+  it("replays the run's console output into the pane after the wipe, before any new byte", async () => {
+    const before = "\x1b[?1049h\x1b[?1000h\x1b[?1006hterminal is 80x24";
+    const { machine, io, end } = await selfAttach(before);
+    vi.mocked(machine.setOutputTap).mock.calls[0][0]!("frame");
+    expect(io.write.mock.calls.slice(0, 2)).toEqual([[before], ["frame"]]);
+    expect(io.clear.mock.invocationCallOrder[0]).toBeLessThan(io.write.mock.invocationCallOrder[0]);
+    await end();
+  });
+
+  it("never replays the console into a requested run or a ./name session", async () => {
+    // Only the self-attach starts where the console's run starts: a terminal
+    // build keeps the editor's console as history, and ./name starts right
+    // after one, where the hub can still say raw mode from a paused program.
+    const stdout = "the editor's run printed this\n";
+    const requested = makeMachine({ stdout, exitCode: 0 });
+    const h = setup({}, requested, "terminal");
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+      h.drive().requestTerminalRun();
+    });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    expect(io.write).not.toHaveBeenCalledWith(stdout);
+    await act(async () => {
+      requested.isRunning = false;
+      requested.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+    });
+
+    const named = makeMachine({ stdout, wantsTerminal: true, exitCode: 0 });
+    const n = setup({}, named);
+    const io2 = makeIO();
+    let session!: Promise<number | null>;
+    act(() => {
+      session = n.drive().driveForeground(io2 as TerminalProgramIO);
+    });
+    expect(io2.write).not.toHaveBeenCalledWith(stdout);
+    await halt(named, session);
+  });
+
+  it("leaves a ./name program's screen alone when it turns raw mid-run", async () => {
+    // A wipe there came after the program's first chunk: it blanked a size
+    // notice and dropped the mouse reporting the program had just turned on.
+    const machine = makeMachine({ exitCode: 0 });
+    const h = setup({}, machine);
+    const io = makeIO();
+    let session!: Promise<number | null>;
+    act(() => {
+      session = h.drive().driveForeground(io as TerminalProgramIO);
+    });
+    vi.mocked(machine.setOutputTap).mock.calls[0][0]!("\x1b[?1000hterminal is 81x5");
+    machine.wantsTerminal = true;
+    await new Promise((r) => setTimeout(r, 80));
+    expect(io.clear).not.toHaveBeenCalled();
+    expect(io.write.mock.calls.filter(([t]) => t === "\x1b[?1000hterminal is 81x5")).toHaveLength(1);
+    await halt(machine, session);
   });
 });
