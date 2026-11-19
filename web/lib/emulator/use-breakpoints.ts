@@ -12,7 +12,10 @@ export interface Breakpoints {
   remapBreakpoints: (remap: (line: number) => number | null) => void;
   clearAllBreakpoints: () => void;
   setBreakpointAddress: (addr: number) => Promise<void>;
+  /** Leaves the stop when a gutter dot is on the same instruction. */
   clearBreakpointAddress: (addr: number) => Promise<void>;
+  /** Where the terminal keeps `gdb b`'s breakpoints for this machine. */
+  gdbLabels: RefObject<GdbLabels | null>;
   /** The instruction a line stands for: its own, or the next one after a
    *  label, blank or comment line; null past the last. */
   resolveBreakpointAddr: (line: number) => number | null;
@@ -28,6 +31,19 @@ export interface Breakpoints {
     source: string;
     map: LineMap;
   }) => Promise<number[]>;
+}
+
+/**
+ * `gdb b`'s breakpoints, which the terminal keeps by label. gdb sets a
+ * breakpoint again by name when the program restarts, so the hub calls
+ * `assembled` once the editor's assemble has re-armed the gutter. It calls
+ * `cleared` when another program drops every breakpoint, and with an
+ * address when the last gutter dot on that instruction goes, as gdb's
+ * `clear` deletes every breakpoint on a line.
+ */
+export interface GdbLabels {
+  assembled(): Promise<void>;
+  cleared(addr?: number): void;
 }
 
 /**
@@ -56,6 +72,7 @@ export function useBreakpoints({
   const linesRef = useRef<Set<number>>(new Set());
   // Which gutter LINES share each armed CPU address.
   const bpLinesByAddrRef = useRef<Map<number, Set<number>>>(new Map());
+  const gdbLabels = useRef<GdbLabels | null>(null);
 
   const commit = useCallback((next: Set<number>) => {
     linesRef.current = next;
@@ -103,6 +120,7 @@ export function useBreakpoints({
         if (lines.size === 0) {
           byAddr.delete(addr);
           void backend.clearBreakpoint(addr);
+          gdbLabels.current?.cleared(addr);
         } else {
           byAddr.set(addr, lines);
         }
@@ -147,6 +165,7 @@ export function useBreakpoints({
   const clearAllBreakpoints = useCallback(() => {
     bpLinesByAddrRef.current = new Map();
     commit(new Set());
+    gdbLabels.current?.cleared();
     const backend = backendRef.current;
     if (backend) void backend.clearAllBreakpoints();
   }, [backendRef, commit]);
@@ -163,7 +182,7 @@ export function useBreakpoints({
   const clearBreakpointAddress = useCallback(
     async (addr: number) => {
       const backend = backendRef.current;
-      if (!backend) return;
+      if (!backend || bpLinesByAddrRef.current.has(addr)) return;
       await backend.clearBreakpoint(addr);
     },
     [backendRef],
@@ -211,6 +230,7 @@ export function useBreakpoints({
     clearAllBreakpoints,
     setBreakpointAddress,
     clearBreakpointAddress,
+    gdbLabels,
     resolveBreakpointAddr,
     rekeyAfterAssemble,
   };
