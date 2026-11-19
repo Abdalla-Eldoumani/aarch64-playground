@@ -2133,6 +2133,56 @@ fn the_frame_check_finds_a_function_called_on_a_labelled_line() {
     assert_eq!(frame_check(LABEL_THEN_CALL), (2, 0, vec![row(ODD_FRAME, 28, "square", 24, &[])]));
 }
 
+/// The function splitter the lint and the frames view share, at three
+/// edges: a gcc dotted local label on its own line, a tab after `bl`, and
+/// code after `.section .text`.
+const SPLITTER_EDGES: &str = concat!(
+    r#"
+// main squares 3, 2 and 1 in a loop on a gcc-style label, then calls
+// helper, which sits after `.section .text`.
+
+        .text
+        .balign 4
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w19, 3
+.L2:
+        mov     w0, w19
+"#,
+    "        bl\tsquare\n",
+    r#"        subs    w19, w19, 1
+        b.ne    .L2
+        bl      helper
+        ldp     x29, x30, [sp], 16
+        ret
+
+square: stp     x29, x30, [sp, -24]!
+        mul     w0, w0, w0
+        ldp     x29, x30, [sp], 24
+        ret
+
+        .section .text
+        .global helper
+helper: stp     x29, x30, [sp, -24]!
+        ldp     x29, x30, [sp], 24
+        ret
+"#
+);
+
+#[test]
+fn the_function_splitter_keeps_its_reading_of_a_dotted_label_a_tab_and_section_text() {
+    let p = load(SPLITTER_EDGES);
+    let name = |f: &aarch64_emulator::frames::layout::FunctionLayout| f.name.map(|n| p.layout.names[n as usize].clone());
+    let functions: Vec<_> = p.layout.functions.iter().map(|f| (name(f), f.frame_bytes, f.course_frame)).collect();
+    // helper, after `.section .text`, is none of them.
+    assert_eq!(functions, vec![(Some("main".to_string()), 16, true), (Some("square".to_string()), 24, false)]);
+    let lint: Vec<_> = aarch64_emulator::frontend::lint::lint(SPLITTER_EDGES).into_iter().map(|w| (w.line, w.message)).collect();
+    // square's push is marked; helper's, after `.section .text`, is not.
+    let odd = "this pushes 24 bytes, which is not a multiple of 16. sp must stay 16-byte aligned, so round the frame up (`stp x29, x30, [sp, -16]!`, `sub sp, sp, 32`, ...)";
+    assert_eq!(lint, vec![(20, odd.to_string())]);
+}
+
 /// Precision over every program the site ships and the tests hold: each
 /// assembles, and no function on the pattern gets a mark.
 #[test]
