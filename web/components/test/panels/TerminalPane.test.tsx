@@ -40,6 +40,8 @@ vi.mock("@xterm/xterm", () => ({
     rows = 24;
     textarea = document.createElement("textarea");
     buffer = { active: { type: "normal" } };
+    // The pane clamps control-sequence counts through the core's parser.
+    _core = { registerCsiHandler: () => ({ dispose() {} }) };
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown> = {}) {
       this.options = { ...options };
