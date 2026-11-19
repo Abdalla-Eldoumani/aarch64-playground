@@ -942,6 +942,10 @@ impl Cpu {
         if self.in_program(pc) {
             self.last_program_pc = pc;
         }
+        // Checked before the read, so it wins over an unmapped address.
+        if !pc.is_multiple_of(4) {
+            return Ok(self.halt(EmuError::UnalignedAccess { address: pc, required: 4 }.to_string()));
+        }
         let word = match self.mem.read_u32(pc) {
             Ok(w) => w,
             Err(e) => return Ok(self.halt(e.to_string())),
