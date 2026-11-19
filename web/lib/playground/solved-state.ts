@@ -89,15 +89,18 @@ export function buildProgressBundle(): ProgressBundle {
 
 /**
  * A file's answer replaces a local one only when strictly newer, so importing
- * an old export keeps the work in front of the student. A bad entry is
- * skipped; the rest of the file still lands.
+ * an old export keeps the work in front of the student. A file's date is
+ * capped at the import, so work saved here afterwards still counts as newer.
+ * A bad entry is skipped; the rest of the file still lands.
  */
 function mergeAnswers(raw: Record<string, unknown>): number {
+  const now = Date.now();
   let added = 0;
   for (const [slug, entry] of Object.entries(raw)) {
     if (slug.length === 0 || slug.length > MAX_SLUG_CHARS) continue;
     const answer = validateAnswer(entry);
     if (!answer) continue;
+    answer.updatedAt = Math.min(answer.updatedAt, now);
     if (JSON.stringify(answer).length > MAX_ANSWER_CHARS) continue;
     const local = readAnswer(slug);
     if (local && local.updatedAt >= answer.updatedAt) continue;
