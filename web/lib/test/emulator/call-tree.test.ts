@@ -195,10 +195,11 @@ describe("the list of calls", () => {
     expect(calls(emu).rows[0].children[1].result).toBe(`returned ${printed}`);
   });
 
-  it("keeps 200 calls and counts the rest in plain words, naming the current one", () => {
+  it("keeps the latest calls, the current one among them, and counts the earlier ones in plain words", () => {
     // tick and tock in turn, 150 times each: no run to fold, so main and
-    // the first 199 calls fill the list and 101 calls are left out. Inside
-    // the 100th tock, the first left out, main waits on a call with no row.
+    // the first 199 calls fill the list's 200 rows. A call that finds it
+    // full leaves out the oldest returned calls down to 100 rows, then joins
+    // it: the 200th call leaves out calls 1 to 99, and the 299th the next 99.
     const source = [
       ".text",
       "        .balign 4",
@@ -229,15 +230,20 @@ describe("the list of calls", () => {
     ].join("\n");
     const emu = load(source);
     runTo(emu, labelPc(emu, source, "tock"), 100);
+    // The 100th tock, the 200th call, is in the list and is the current
+    // call: main, then calls 100 (the 50th tock) to 200.
     const inside = calls(emu);
-    expect(lines(inside)).toHaveLength(200);
-    expect(lines(inside)[0]).toBe("main ...");
-    expect(inside.hidden).toBe("1 more call not shown, the current one, tock, among them");
+    expect(lines(inside)).toHaveLength(102);
+    expect(lines(inside).slice(0, 2)).toEqual(["main ...", "  tock · returned 2"]);
+    expect(lines(inside).at(-1)).toBe("  tock *");
+    expect(inside.hidden).toBe("99 earlier calls not shown");
     finish(emu);
+    // main, then calls 199 (the 100th tick) to 300.
     const after = calls(emu);
-    expect(lines(after)).toHaveLength(200);
-    expect(lines(after).at(-1)).toBe("  tick · returned 1");
-    expect(after.hidden).toBe("101 more calls not shown");
+    expect(lines(after)).toHaveLength(103);
+    expect(lines(after).slice(0, 2)).toEqual(["main · returned 0", "  tick · returned 1"]);
+    expect(lines(after).at(-1)).toBe("  tock · returned 2");
+    expect(after.hidden).toBe("198 earlier calls not shown");
   });
 
   it("marks no call current while the current call is nested past the list's twelve levels", () => {
