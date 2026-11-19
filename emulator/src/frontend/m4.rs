@@ -20,8 +20,8 @@
 //!     or changecom call. Elsewhere it is an ordinary name (a `dnl:` label
 //!     runs as it did).
 //!   * `divert(-1)` throws the output away until `divert` or `divert(0)`;
-//!     only define, undefine and dnl lines and m4 comments may sit in
-//!     between. A numbered diversion is refused.
+//!     only blank, dnl, define, undefine, divert and changecom lines and m4
+//!     comments may sit in between. A numbered diversion is refused.
 //!   * `changecom` turns comments off, and `changecom(`//')` moves the
 //!     opener; a comment still ends at the line's end.
 //!   * On a line whose source holds a backtick, `` `text' `` is written as
@@ -36,12 +36,12 @@
 //! defined it. In a program that uses dnl, divert, changecom or quotes,
 //! so do a builtin GNU m4 runs bare (divert, dnl and the like) as a
 //! define's unquoted name, a comment whose text GNU m4 carries past its
-//! line, and a `/* */` comment GNU m4 reads inside a quote or that leaves
-//! one open; any other program keeps the output it had. The new forms go
-//! through define's pass, so its other differences from GNU m4 (an m4 word
-//! in a string, a label named after a builtin, quotes nested in a body, a
-//! comment in a quoted body, a body's unquoted macro expanded at use, a
-//! define of a defined name) stay.
+//! line (a comment in a quoted define's body included), and a `/* */`
+//! comment GNU m4 reads inside a quote or that leaves one open; any other
+//! program keeps the output it had. The new forms go through define's
+//! pass, so its other differences from GNU m4 (an m4 word in a string, a
+//! label named after a builtin, quotes nested in a body, a body's unquoted
+//! macro expanded at use, a define of a defined name) stay.
 
 use std::collections::HashMap;
 
