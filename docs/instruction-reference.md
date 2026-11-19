@@ -110,7 +110,7 @@ which is why none of them accepts `AL` or `NV`.
 | `STRB`   | same                                                  | Byte store.                        |
 | `LDRH`   | same                                                  | Halfword load.                     |
 | `STRH`   | same                                                  | Halfword store.                    |
-| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` / `LDP Qt1, Qt2, ...` (+ pre/post index) | Load pair, general or SIMD&FP registers. X and D pairs scale by 8, W and S pairs by 4, Q pairs by 16. |
+| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` / `LDP Qt1, Qt2, ...` (+ pre/post index) | Load pair, general or SIMD&FP registers. X and D pairs scale by 8, W and S pairs by 4, Q pairs by 16. A general pair that names one register twice (`ldp x1, x1, [sp], 16`) stops the program with `Illegal instruction`, as it does on the servers. |
 | `STP`    | same                                                  | Store pair. `stp d8, d9, [sp, -16]!` is the AAPCS64 callee-saved FP prologue. |
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
