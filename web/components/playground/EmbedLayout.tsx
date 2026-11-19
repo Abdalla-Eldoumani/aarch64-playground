@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MAX_ARGS_CHARS } from "@/lib/playground/upload-guard";
 import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
+import { useTypedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 import { PointerContext, useSlotPointer } from "@/components/panels/slot-pointer";
 import type { StepGoal } from "@/lib/emulator/emulator-state";
 import { PaneSwitch } from "@/components/playground/PaneSwitch";
@@ -130,6 +131,8 @@ export function EmbedLayout({
     const runFinished = seen.running && !isRunning && runStatus.isHalted && hasOutput;
     if (readBlocked || runFinished) setPane("console");
   }
+  const argsRef = useRef<HTMLInputElement>(null);
+  useTypedBeforeHydration(argsRef, args?.value ?? "", (typed) => args?.onChange(typed));
 
   return (
     <div className="embed-layout flex flex-col flex-1 min-h-0">
@@ -201,6 +204,7 @@ export function EmbedLayout({
             <label className="inline-flex shrink-0 basis-full items-center gap-1.5 font-mono text-[12px] text-[var(--text-secondary)] sm:basis-auto">
               args
               <input
+                ref={argsRef}
                 type="text"
                 value={args.value}
                 onChange={(event) => args.onChange(event.target.value)}
