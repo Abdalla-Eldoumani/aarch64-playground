@@ -52,6 +52,18 @@ function setup(opts: {
   return { machine, set, rendered };
 }
 
+/** Makes the next store read wait; the returned function resolves it. */
+function deferRead(): (files: Record<string, string> | null) => void {
+  let resolve: (files: Record<string, string> | null) => void = () => {};
+  persistMock.loadPersistedVfs.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  return (files) => resolve(files);
+}
+
 beforeEach(() => {
   persistMock.loadPersistedVfs.mockImplementation(async () => null);
 });
@@ -255,6 +267,32 @@ describe("rehydrating the home directory", () => {
       ["old.txt", "still here"],
       ["shared.txt", "the link's copy"],
     ]);
+  });
+
+  it("stores a handoff that lands before the read-back only after it, with the stored files", async () => {
+    const resolveRead = deferRead();
+    const { set } = setup({ isHome: true });
+    // A bundle link's payload carries no files.
+    act(() => set().seedFromPayload({}));
+    expect(persistMock.savePersistedVfs).not.toHaveBeenCalled();
+    await act(async () => resolveRead({ "input.txt": "mine" }));
+    await waitFor(() => expect(persistMock.savePersistedVfs).toHaveBeenCalled());
+    expect(persistMock.savePersistedVfs.mock.calls).toEqual([[{ "input.txt": "mine" }]]);
+  });
+
+  it("still stores a held write when the store is empty or unavailable", async () => {
+    for (const stored of [{}, null]) {
+      persistMock.savePersistedVfs.mockClear();
+      const resolveRead = deferRead();
+      const { set } = setup({ isHome: true });
+      act(() => set().seedFromPayload({ vfs: { "numbers.txt": "1 2 3\n" } }));
+      await act(async () => resolveRead(stored));
+      await waitFor(() =>
+        expect(persistMock.savePersistedVfs.mock.calls).toEqual([
+          [{ "numbers.txt": "1 2 3\n" }],
+        ]),
+      );
+    }
   });
 
   it("uploads nothing when the store is empty or unavailable", async () => {
