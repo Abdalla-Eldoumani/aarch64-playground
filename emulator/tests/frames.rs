@@ -7,7 +7,8 @@
 //!
 //! Cases: every shipped example and ten C programs against the frame chain
 //! at every step; the slides' locals frame and hand-worked padded and
-//! recursive frames; Back across a call, a return and a corruption, and a
+//! recursive frames; locals reached only through their address, named in
+//! every spelling of an offset and nowhere outside the frame; Back across a call, a return and a corruption, and a
 //! named save; overruns onto the nearest caller's and a grand-caller's
 //! saved fp and lr, through an array base and through a passed pointer,
 //! with the ring recording, paused, and stopped by its side budget; a
@@ -292,6 +293,196 @@ fn a_padded_frame_matches_the_hand_worked_layout() {
     assert_eq!((p.mem_u32(fp + 16), p.mem_u64(fp + 24), p.mem_u32(fp + 32)), (3, 1000, 1));
     p.step(2); // mov, ldp: the frame is released and ret comes next
     assert_eq!(state(&p), ENTERED);
+}
+
+/// Three ints that only scanf fills, each reached by `add xN, <fp>, name`
+/// and never by a load or store of main's own, their offsets written with
+/// m4's define, `=` and `.equ`; `<fp>` is fp or x29.
+fn reached_by_add(fp: &str) -> String {
+    format!(
+        r#"
+// Reads three ints into main's frame; nothing reads them back.
+
+define(fp, x29)
+define(lr, x30)
+define(b_s, 20)                         // int b: bytes 20 to 23
+a_s = 16                                // int a: bytes 16 to 19
+        .equ    c_s, 24                 // int c: bytes 24 to 27
+alloc = -(16 + 12) & -16                // 12 bytes of locals, rounded up: -32
+dealloc = -alloc
+
+        .data
+fmt_in:     .string "%d %d %d"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_in
+        add     x1, {fp}, a_s           // &a
+        add     x2, {fp}, b_s           // &b
+        add     x3, {fp}, c_s           // &c
+        bl      scanf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+"#
+    )
+}
+
+/// The layout's slots of the function entered at `entry`: offset, width and
+/// name.
+fn slots_of(p: &Loaded, entry: u64) -> Vec<(i64, u8, &str)> {
+    let f = p.layout.function_at(entry).expect("a function's layout");
+    f.slots.iter().map(|s| (s.offset, s.width, p.name(s.name))).collect()
+}
+
+#[test]
+fn a_local_reached_only_through_add_is_named_by_the_name_its_offset_is_written_as() {
+    // Width 0: the code never says how big such a local is.
+    for fp in ["fp", "x29"] {
+        let p = load(&reached_by_add(fp));
+        assert_eq!(slots_of(&p, p.image.symbols["main"]), [(16, 0, "a_s"), (20, 0, "b_s"), (24, 0, "c_s")], "through {fp}");
+    }
+}
+
+/// main and addup each keep a long at fp + 16 under a name of their own,
+/// both reached only through `add`.
+const SHARED_OFFSET: &str = r#"
+// main reads a long and passes its address to addup, which keeps that
+// address in a long of its own.
+
+define(fp, x29)
+define(lr, x30)
+main_sum_s = 16
+addup_sum_s = 16
+
+        .data
+fmt_in:     .string "%ld"
+
+        .text
+        .balign 4
+        .global addup
+addup:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        mov     x9, x0
+        add     x0, fp, addup_sum_s     // addup's own long
+        str     x9, [x0]
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        ldr     x0, =fmt_in
+        add     x1, fp, main_sum_s      // main's long
+        bl      scanf
+        add     x0, fp, main_sum_s
+        bl      addup
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+
+#[test]
+fn each_function_names_its_own_local_at_an_offset_two_names_share() {
+    let p = load(SHARED_OFFSET);
+    // addup stores through x0 at offset 0 from its base, which already
+    // names the slot after the base; main's long is reached only by add.
+    assert_eq!(slots_of(&p, p.image.symbols["addup"]), [(16, 8, "addup_sum_s")]);
+    assert_eq!(slots_of(&p, p.image.symbols["main"]), [(16, 0, "main_sum_s")]);
+}
+
+/// Adds from x29 that name no local of this frame: into sp, into the frame
+/// record, and the caller's ninth argument one frame size up.
+const ADDS_OUTSIDE_THE_FRAME: &str = r#"
+// ninth(...) hands on the address of its ninth argument and of its frame
+// record, and puts sp back from fp; none is a local of its own.
+
+define(fp, x29)
+define(lr, x30)
+alloc = -16
+dealloc = -alloc
+record_s = 8
+
+        .text
+        .balign 4
+        .global ninth
+ninth:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        add     x9, fp, dealloc         // the ninth argument, in the caller's frame
+        mov     x0, x9
+        add     x1, fp, record_s        // the saved lr
+        mov     sp, x29
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        mov     w0, 0
+        ret
+"#;
+
+#[test]
+fn an_add_names_nothing_outside_the_frames_locals() {
+    let p = load(ADDS_OUTSIDE_THE_FRAME);
+    assert_eq!(slots_of(&p, p.image.symbols["ninth"]), []);
+}
+
+/// A local both added and loaded, the load before the add in one function
+/// and after it in the other.
+const ADDED_AND_LOADED: &str = r#"
+// Each function reads an int into n through scanf and loads it back.
+
+define(fp, x29)
+define(lr, x30)
+n_s = 16
+
+        .data
+fmt_in:     .string "%d"
+
+        .text
+        .balign 4
+        .global load_first
+load_first:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        ldr     w9, [fp, n_s]
+        ldr     x0, =fmt_in
+        add     x1, fp, n_s
+        bl      scanf
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        ldr     x0, =fmt_in
+        add     x1, fp, n_s
+        bl      scanf
+        ldr     w9, [fp, n_s]
+        mov     w0, 0
+        ldp     fp, lr, [sp], 32
+        ret
+"#;
+
+#[test]
+fn a_local_also_loaded_keeps_the_loads_width_and_name() {
+    let p = load(ADDED_AND_LOADED);
+    for f in ["load_first", "main"] {
+        assert_eq!(slots_of(&p, p.image.symbols[f]), [(16, 4, "n_s")], "{f}");
+    }
 }
 
 const RECURSION: &str = r#"
