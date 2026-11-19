@@ -250,7 +250,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     return s;
   }
 
-  const backend: EmulatorBackend & { readonly epoch: number } = {
+  const backend: EmulatorBackend = {
     get epoch() {
       return epoch;
     },
