@@ -437,6 +437,92 @@ main:
         ret
 ";
 
+/// main calls hello, which returns, then work, which calls tick and tock in
+/// turn 100 times.
+const SIBLING_TICK_TOCK: &str = "\
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+.text
+// tick() -> w0 = 1
+        .balign 4
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+
+// tock() -> w0 = 2
+        .balign 4
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+
+// hello() -> w0 = 7
+        .balign 4
+        .global hello
+hello:
+        mov     w0, 7
+        ret
+
+// work() -> w0 = 0, after tick and tock in turn 100 times
+        .balign 4
+        .global work
+work:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     x19, [fp, 16]
+        mov     i_r, 0
+        b       work_test
+work_loop:
+        bl      tick
+        bl      tock
+        add     i_r, i_r, 1
+work_test:
+        cmp     i_r, 100
+        b.lt    work_loop
+        mov     w0, 0
+        ldr     x19, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      hello
+        bl      work
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+
+#[test]
+fn a_drop_moves_the_open_calls_up_with_their_calls_under_them() {
+    let mut p = load(SIBLING_TICK_TOCK);
+    // main, hello (returned) and work hold nodes 0 to 2, and work's ticks
+    // and tocks follow from node 3. The 197th of them fills the 200 nodes;
+    // the 198th, the 99th tock, drops hello and ticks and tocks 1 to 97, so
+    // work moves up from node 2 to node 1 and its calls 98 to 198 hang
+    // under it from node 2.
+    let tock = p.label("tock");
+    p.run_to(tock, 99);
+    let outline = p.outline();
+    let (first, last) = ("    tock -> 2".to_string(), "    tock *".to_string());
+    assert_eq!(outline[..2], ["main ...", "  work ..."]);
+    assert_eq!((outline.len(), &outline[2], &outline[102]), (103, &first, &last), "the 98th call to the 198th");
+    assert_eq!(p.tree_head(), [103.0, 103.0, 0.0, 98.0, 98.0, 4.0]);
+    assert_eq!(p.calls_counted(), 201, "main, hello, work and 198 ticks and tocks");
+    p.run_to_end();
+    let outline = p.outline();
+    assert_eq!(outline[..3], ["main -> 0", "  work -> 0", "    tock -> 2"]);
+    assert_eq!((outline.len(), &*outline[104]), (105, "    tock -> 2"));
+    assert_eq!(p.tree_head(), [105.0, 0.0, 0.0, 98.0, 98.0, 4.0]);
+    assert_eq!(p.calls_counted(), 203);
+}
+
 #[test]
 fn a_full_tree_keeps_the_open_calls_and_drops_whole_returned_calls() {
     let mut p = load(DEEP_TICK_TOCK);
@@ -1044,6 +1130,16 @@ fn back_restores_the_tree_exactly_across_each_drop_of_earlier_calls() {
     assert_eq!(p.tree_head()[..2], [197.0, 6.0], "the window starts three calls short of full nodes");
     back_retraces(&mut p, 44, "a drop of every returned node");
     assert_eq!(p.tree_head()[3..5], [294.0, 294.0], "the window dropped all 200");
+    // Into the 198th of work's calls, which moves work and its calls up a
+    // node: from six steps before its bl.
+    let mut p = load(SIBLING_TICK_TOCK);
+    let tock = p.label("tock");
+    p.run_to(tock, 99);
+    for _ in 0..6 {
+        p.cpu.step_back();
+    }
+    back_retraces(&mut p, 10, "a drop that moves the open calls");
+    assert_eq!(p.tree_head()[3..5], [98.0, 98.0], "the window dropped hello and ticks and tocks 1 to 97");
 }
 
 #[test]
