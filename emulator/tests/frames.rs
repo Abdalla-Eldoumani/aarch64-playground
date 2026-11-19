@@ -2211,6 +2211,17 @@ fn the_function_splitter_keeps_its_reading_of_a_dotted_label_a_tab_and_section_t
     assert_eq!(lint, vec![(20, odd.to_string())]);
 }
 
+/// Every shipped example runs to its end, so a "never pushed" on any of
+/// them is false. dsav's read_int gives its scanf space back once on each
+/// of two exits.
+#[test]
+fn no_shipped_example_pops_what_it_never_pushed() {
+    for (stem, source) in &shipped_examples() {
+        let never: Vec<_> = aarch64_emulator::frontend::lint::lint(source).into_iter().filter(|w| w.message.contains("never pushed")).collect();
+        assert_eq!(never, vec![], "{stem}");
+    }
+}
+
 /// Precision over every program the site ships and the tests hold: each
 /// assembles, and no function on the pattern gets a mark.
 #[test]
