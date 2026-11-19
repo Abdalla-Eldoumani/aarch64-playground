@@ -2092,6 +2092,22 @@ fn the_frame_check_counts_both_registers_of_a_pair() {
     assert_eq!(frame_check(PAIR_SECOND_NAMED), (1, 0, vec![]));
 }
 
+/// INT_PAIR's two ints also read or written as one 8-byte value: that value
+/// sits at 20, off a multiple of 8, whichever access comes first.
+#[test]
+fn a_pair_of_ints_also_used_as_one_long_is_off_a_multiple_of_8_in_either_order() {
+    let pair = "        stp     w9, w10, [fp, ints_s]
+";
+    for long in ["        ldr     x0, [fp, ints_s]
+", "        str     x9, [fp, ints_s]
+"] {
+        let after = INT_PAIR.replace(pair, &format!("{pair}{long}"));
+        assert_eq!(frame_check(&after), (1, 0, vec![row(UNALIGNED, 20, "main", 32, &[("ints_s", 20, 8)])]), "{long}");
+        let before = INT_PAIR.replace(pair, &format!("{long}{pair}"));
+        assert_eq!(frame_check(&before), (1, 0, vec![row(UNALIGNED, 19, "main", 32, &[("ints_s", 20, 8)])]), "{long}");
+    }
+}
+
 /// x19_s and x20_s name the two registers one pair store saves; reading
 /// x20 back through its own name is no overlap.
 const PAIR_SECOND_NAMED: &str = r#"
