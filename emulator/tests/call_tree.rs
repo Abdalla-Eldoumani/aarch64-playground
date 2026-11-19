@@ -508,12 +508,190 @@ main:
         f.arg_width
     };
     // A compare of w0 reads an int, a copy of x0 a long, a byte store a
-    // char, and a load through x0 a pointer; writing w0 first, a branch
-    // first, and an index register leave no argument to show.
+    // char, a load through x0 a pointer, and w0 as an index an int;
+    // writing w0 first and a branch first leave no argument to show.
     assert_eq!(
         ["compares", "copies", "stores_byte", "loads_through", "sets", "branches", "indexes", "main"].map(width),
-        [4, 8, 1, 8, 0, 0, 0, 0]
+        [4, 8, 1, 8, 0, 0, 4, 0]
     );
+}
+
+/// The argument width of each function, given as its name and its body
+/// (one instruction a line, before a closing `ret`), in a program with
+/// `fmt` in .data, a `helper` to call and a main.
+fn arg_widths<const N: usize>(functions: [(&str, &str); N]) -> [u8; N] {
+    let mut source = String::from(".data\nfmt:    .string \"%d\"\n.text\n");
+    for (name, body) in functions {
+        source += &format!("        .balign 4\n        .global {name}\n{name}:\n");
+        for line in body.lines() {
+            source += &format!("        {line}\n");
+        }
+        source += "        ret\n";
+    }
+    source += "        .balign 4\n        .global helper\nhelper:\n        ret\n";
+    source += "        .balign 4\n        .global main\nmain:\n        mov     w0, 0\n        ret\n";
+    let p = load(&source);
+    functions.map(|(name, _)| {
+        let f = p.layout.functions.iter().find(|f| p.layout.names[f.name.unwrap() as usize] == name).expect(name);
+        f.arg_width
+    })
+}
+
+// Each kind of instruction the scan reads on past: one that reads x0 gives
+// the width it reads it at, one that writes x0 first leaves no argument (a
+// `cmp` after it would read x0 if the scan missed the write), and one that
+// touches neither lets the scan go on to the `cmp` after it.
+
+#[test]
+fn an_index_register_reads_w0_under_sxtw_or_uxtw_and_else_x0() {
+    let widths = arg_widths([
+        ("reads_w", "ldr     w9, [x1, w0, uxtw 2]"),
+        ("reads_x", "ldr     x9, [x1, x0, lsl 3]"),
+        ("sign_extends", "ldrsw   x9, [x1, w0, sxtw 2]"),
+        ("loads_fp", "ldr     d9, [x1, x0, lsl 3]"),
+        ("writes", "ldr     x0, [x1, x2, lsl 3]\ncmp     w0, 1"),
+        ("neither", "ldr     w9, [x1, x2, lsl 2]\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 4, 8, 0, 4]);
+}
+
+#[test]
+fn sxtb_sxth_sxtw_uxtb_and_uxth_read_the_bytes_they_extend() {
+    let widths = arg_widths([
+        ("reads_char", "sxtb    x9, w0"),
+        ("reads_short", "sxth    w9, w0"),
+        ("reads_int", "sxtw    x9, w0"),
+        ("reads_byte", "uxtb    w9, w0"),
+        ("reads_half", "uxth    w9, w0"),
+        ("writes", "sxtw    x0, w1\ncmp     w0, 1"),
+        ("neither", "sxtb    x9, w1\ncmp     x0, 1"),
+    ]);
+    assert_eq!(widths, [1, 2, 4, 1, 2, 0, 8]);
+}
+
+#[test]
+fn a_one_source_operation_reads_its_source_at_its_own_width() {
+    let widths = arg_widths([
+        ("shifts", "lsl     w9, w0, 2"),
+        ("masks", "and     x9, x0, 0xff"),
+        ("reverses", "rev     x9, x0"),
+        ("writes", "lsr     x0, x1, 3\ncmp     w0, 1"),
+        ("writes_rev", "rev     x0, x1\ncmp     w0, 1"),
+        // bfi keeps the bits of x0 it does not insert into: a write that
+        // claims no argument either way.
+        ("inserts", "bfi     x0, x1, 0, 8\ncmp     w0, 1"),
+        ("neither", "clz     x9, x1\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8, 0, 0, 0, 4]);
+}
+
+#[test]
+fn a_two_source_operation_reads_either_source_at_its_own_width() {
+    let widths = arg_widths([
+        ("carries", "adds    x9, x1, x2\nadc     x10, x0, x3"),
+        ("selects", "csel    w9, w1, w0, eq"),
+        ("shifts_by", "lsl     x9, x1, x0"),
+        ("divides", "sdiv    w9, w1, w0"),
+        ("extracts", "extr    x9, x1, x0, 8"),
+        ("writes", "sdiv    x0, x1, x2\ncmp     w0, 1"),
+        ("neither", "orr     x9, x1, x2\ncmp     w0, 1"),
+        ("shifts_into", "lsl     x0, x1, x2\ncmp     w0, 1"),
+        ("shifts_neither", "lsl     x9, x1, x2\ncmp     w0, 1"),
+        ("extracts_into", "extr    x0, x1, x2, 8\ncmp     w0, 1"),
+        ("extracts_neither", "extr    x9, x1, x2, 8\ncmp     w0, 1"),
+        ("carries_into", "adc     x0, x1, x2\ncmp     w0, 1"),
+        ("carries_neither", "adc     x9, x1, x2\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [8, 4, 8, 4, 8, 0, 4, 0, 4, 0, 4, 0, 4]);
+}
+
+#[test]
+fn an_extended_operand_reads_as_much_of_x0_as_its_extend_takes() {
+    let widths = arg_widths([
+        ("reads_byte", "add     x9, x1, w0, uxtb"),
+        ("reads_half", "add     x9, x1, w0, uxth"),
+        ("reads_int", "add     x9, x1, w0, sxtw"),
+        ("reads_long", "add     x9, x1, x0, sxtx"),
+        ("writes", "add     x0, x1, w2, sxtw\ncmp     w0, 1"),
+        ("neither", "add     x9, x1, w2, sxtw\ncmp     x0, 1"),
+    ]);
+    assert_eq!(widths, [1, 2, 4, 8, 0, 8]);
+}
+
+#[test]
+fn a_conditional_compare_reads_x0_and_writes_only_the_flags() {
+    let widths = arg_widths([
+        ("reads_int", "cmp     w1, 0\nccmp    w0, 5, 0, ne"),
+        ("reads_long", "cmp     x1, 0\nccmp    x1, x0, 0, eq"),
+        ("neither", "cmp     w1, 0\nccmp    w1, 5, 0, ne\ncmp     x0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8]);
+}
+
+#[test]
+fn a_widening_multiply_reads_w0_as_a_factor_and_x0_as_the_sum() {
+    let widths = arg_widths([
+        ("factor", "smull   x9, w0, w1"),
+        ("high", "smulh   x9, x0, x1"),
+        ("sum", "smaddl  x9, w1, w2, x0"),
+        ("writes", "umull   x0, w1, w2\ncmp     w0, 1"),
+        ("neither", "umull   x9, w1, w2\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8, 0, 4]);
+}
+
+#[test]
+fn an_address_or_a_constant_into_x0_claims_no_argument() {
+    // These read no register: into x0 they write it first (a movk keeps
+    // bits a caller may never have set), and into another register the
+    // scan goes on.
+    let widths = arg_widths([
+        ("adrp_first", "adrp    x0, fmt\ncmp     w0, 1"),
+        ("literal_first", "ldr     x0, =fmt\ncmp     w0, 1"),
+        ("adr_first", "adr     x0, helper\ncmp     w0, 1"),
+        ("mov_first", "mov     x0, 5\ncmp     w0, 1"),
+        ("movk_first", "movk    x0, 1, lsl 16\ncmp     w0, 1"),
+        ("via_adrp", "adrp    x9, fmt\nldr     w10, [x0]"),
+        ("via_literal", "ldr     x9, =fmt\nadd     w0, w0, 1"),
+        ("via_constant", "mov     x9, 0x1234\nmovk    x9, 0x5678, lsl 16\ncmp     x0, x9"),
+    ]);
+    assert_eq!(widths, [0, 0, 0, 0, 0, 8, 4, 8]);
+}
+
+#[test]
+fn a_move_into_fp_reads_x0_and_any_other_fp_work_ends_the_scan() {
+    // A function whose first argument is a double takes it in d0, so FP
+    // work that does not read x0 leaves no argument to show.
+    let widths = arg_widths([
+        ("converts_int", "scvtf   d0, w0"),
+        ("converts_long", "ucvtf   s0, x0"),
+        ("moves_long", "fmov    d0, x0"),
+        ("converts_other", "scvtf   d0, w9\ncmp     w0, 1"),
+        ("fp_first", "fmov    d1, 1.0\ncmp     w0, 1"),
+        ("from_fp", "fcvtzs  w0, d0\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8, 0, 0, 0]);
+}
+
+#[test]
+fn every_control_transfer_ends_the_argument_scan() {
+    // A cbz or tbz on x0 reads it (the test above); on another register it
+    // is a branch like the rest.
+    let widths = arg_widths([
+        ("returns", "ret\ncmp     w0, 1"),
+        ("branches", "b       1f\n1:\ncmp     w0, 1"),
+        ("branches_if", "cmp     w1, 0\nb.ne    1f\n1:\ncmp     w0, 1"),
+        ("tests_other", "cbz     x1, 1f\n1:\ncmp     w0, 1"),
+        ("tests_other_nonzero", "cbnz    x1, 1f\n1:\ncmp     w0, 1"),
+        ("tests_bit", "tbnz    w1, 0, 1f\n1:\ncmp     w0, 1"),
+        ("tests_bit_clear", "tbz     x1, 3, 1f\n1:\ncmp     w0, 1"),
+        ("calls", "bl      helper\ncmp     w0, 1"),
+        ("calls_through", "adrp    x9, helper\nblr     x9\ncmp     w0, 1"),
+        ("jumps_through", "adrp    x9, helper\nbr      x9\ncmp     w0, 1"),
+        ("traps", "svc     0\ncmp     w0, 1"),
+        ("breaks", "brk     0\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [0; 12]);
 }
 
 #[test]

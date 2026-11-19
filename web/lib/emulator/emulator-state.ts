@@ -211,6 +211,10 @@ export interface EmulatorState {
   /** Wait out sleeps in real time: the four-hour refund caps (terminal
    *  sessions). A load or reset turns it off. */
   setRealTime: (on: boolean) => void;
+  /** The terminal pane's columns and rows for TIOCGWINSZ, answered only
+   *  while the step-back ring is paused; (0, 0) takes the size away, and
+   *  a load or reset clears it. */
+  setWindowSize: (cols: number, rows: number) => void;
   /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;

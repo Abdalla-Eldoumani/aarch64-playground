@@ -152,6 +152,15 @@ export class EmulatorInstance {
     if (typeof set === "function") set.call(this.inner, on);
   }
 
+  /** The terminal pane's columns and rows for TIOCGWINSZ; (0, 0) takes the
+   *  size away. Feature-detected so an older wasm build keeps answering
+   *  ENOTTY. */
+  setWindowSize(cols: number, rows: number): void {
+    const set = (this.inner as { set_window_size?: (cols: number, rows: number) => void })
+      .set_window_size;
+    if (typeof set === "function") set.call(this.inner, cols, rows);
+  }
+
   /** Queue stdin. `interactive` marks a line the student typed at a
    *  prompt: the machine echoes it into stdout when a read consumes it, so
    *  the transcript reads like a cooked-mode terminal. A redirect stays

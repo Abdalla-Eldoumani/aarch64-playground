@@ -285,6 +285,7 @@ describe("EmulatorInstance feature detection", () => {
     expect(() => emu.closeStdin()).not.toThrow();
     expect(() => emu.setSnapshotsPaused(true)).not.toThrow();
     expect(() => emu.setRealTime(true)).not.toThrow();
+    expect(() => emu.setWindowSize(48, 43)).not.toThrow();
     expect(() => emu.clearAllBreakpoints()).not.toThrow();
   });
 
@@ -318,6 +319,7 @@ describe("EmulatorInstance feature detection", () => {
     const receivers: unknown[] = [];
     const paused: boolean[] = [];
     const realTime: boolean[] = [];
+    const sizes: Array<[number, number]> = [];
     const args: Array<[number, number]> = [];
     const inner = {
       ...baseInner(),
@@ -331,6 +333,10 @@ describe("EmulatorInstance feature detection", () => {
       set_real_time(on: boolean) {
         receivers.push(this);
         realTime.push(on);
+      },
+      set_window_size(cols: number, rows: number) {
+        receivers.push(this);
+        sizes.push([cols, rows]);
       },
       clear_all_breakpoints() {
         receivers.push(this);
@@ -347,11 +353,13 @@ describe("EmulatorInstance feature detection", () => {
     emu.closeStdin();
     emu.setSnapshotsPaused(true);
     emu.setRealTime(true);
+    emu.setWindowSize(48, 43);
     emu.clearAllBreakpoints();
     emu.isRangeMapped(0x400000, 16);
-    expect(receivers).toEqual([inner, inner, inner, inner]);
+    expect(receivers).toEqual([inner, inner, inner, inner, inner]);
     expect(paused).toEqual([true]);
     expect(realTime).toEqual([true]);
+    expect(sizes).toEqual([[48, 43]]);
     expect(args).toEqual([[4194304, 16]]);
     expect(emu.lintSource("abcd")).toEqual([{ line: 4, message: "seen" }]);
   });

@@ -258,6 +258,9 @@ impl Cpu {
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
             term: &mut self.term,
+            // Only while the ring is paused: a step it records never sees the
+            // pane's size, so Back then forward over the ioctl answers alike.
+            window_size: self.window_size.filter(|_| self.snapshots_paused),
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
             callbacks: &mut self.callbacks,

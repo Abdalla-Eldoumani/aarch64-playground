@@ -53,6 +53,9 @@ export interface EmulatorBackend {
   /** Live terminal sessions wait out every sleep in real time, so the
    *  machine may give a paced program four hours of refunds. */
   setRealTime(on: boolean): Promise<void>;
+  /** The terminal pane's columns and rows while it drives the program;
+   *  (0, 0) takes the size away. */
+  setWindowSize(cols: number, rows: number): Promise<void>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   /** Whether every page in the range is mapped (watch fault display). */
   isRangeMapped(addr: number, len: number): Promise<boolean>;
@@ -218,6 +221,10 @@ class MainThreadBackend implements EmulatorBackend {
 
   async setRealTime(on: boolean): Promise<void> {
     this.requireEmu().setRealTime(on);
+  }
+
+  async setWindowSize(cols: number, rows: number): Promise<void> {
+    this.requireEmu().setWindowSize(cols, rows);
   }
 
   async getMemory(addr: number, len: number): Promise<Uint8Array> {

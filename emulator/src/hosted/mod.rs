@@ -227,6 +227,9 @@ pub struct HostContext<'a> {
     /// mode, fd 0 O_NONBLOCK, the virtual clock). Lives on the `Cpu`
     /// and in every snapshot, like `rand_state`.
     pub term: &'a mut crate::cpu::TermState,
+    /// The terminal pane's size, for ioctl TIOCGWINSZ: `None` unless the
+    /// host set one and paused the step-back ring (`Cpu::host_context`).
+    pub window_size: Option<crate::cpu::WindowSize>,
     /// malloc/free allocator state. Lives on the `Cpu` and in every
     /// snapshot, like `rand_state`.
     pub heap: &'a mut crate::hosted::heap::HeapState,

@@ -9,6 +9,7 @@ export interface BackendPassthroughs {
   closeStdin: () => void;
   setSnapshotsPaused: (paused: boolean) => void;
   setRealTime: (on: boolean) => void;
+  setWindowSize: (cols: number, rows: number) => void;
   lint: (source: string) => Promise<LintWarning[]>;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   readVfsFile: (path: string) => Promise<Uint8Array>;
@@ -69,6 +70,16 @@ export function useBackendPassthroughs(
       const backend = backendRef.current;
       if (!backend) return;
       void backend.setRealTime(on);
+    },
+    [backendRef],
+  );
+
+  // The terminal pane's size for TIOCGWINSZ, while the pane drives a program.
+  const setWindowSize = useCallback(
+    (cols: number, rows: number) => {
+      const backend = backendRef.current;
+      if (!backend) return;
+      void backend.setWindowSize(cols, rows);
     },
     [backendRef],
   );
@@ -165,6 +176,7 @@ export function useBackendPassthroughs(
     closeStdin,
     setSnapshotsPaused,
     setRealTime,
+    setWindowSize,
     lint,
     uploadVfsFile,
     readVfsFile,
