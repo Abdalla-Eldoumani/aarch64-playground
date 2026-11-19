@@ -590,6 +590,68 @@ fn a_library_calls_write_is_stamped_with_the_steps_taken_not_the_budget() {
     assert_eq!((bad.step, bad.pc, bad.target), (17, main_ret, 0x4141_4141_4141_4141));
 }
 
+const QSORT_OVERRUN: &str = r#"
+// sort3 keeps two longs but asks qsort to sort three: the third is main's
+// saved fp, just above sort3's frame.
+
+define(fp, x29)
+define(lr, x30)
+
+first_s = 16                            // long pair[2]: fp + 16 to fp + 31
+second_s = 24
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .text
+// cmp_longs(x0 = &a, x1 = &b) -> w0 = a - b (the values are small)
+        .balign 4
+cmp_longs:
+        ldr     x9, [x0]
+        ldr     x10, [x1]
+        sub     w0, w9, w10
+        ret
+
+// sort3() sorts pair (bug: three elements, pair holds two)
+        .balign 4
+sort3:
+        stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        mov     x9, 7
+        str     x9, [fp, first_s]
+        mov     x9, 5
+        str     x9, [fp, second_s]
+        add     x0, fp, first_s
+        mov     x1, 3                   // bug: pair holds 2
+        mov     x2, 8
+        ldr     x3, =cmp_longs
+        bl      qsort
+        ldp     fp, lr, [sp], dealloc
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      sort3
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// A library call's write is charged to the instruction that made the
+/// call, worked out from the lr the step began with. qsort's last move
+/// lands on main's saved fp on the step qsort returns, when that lr still
+/// holds qsort's own address from the comparator's ret, so the hit names
+/// the word before qsort rather than `bl qsort`.
+#[test]
+fn qsorts_last_move_is_charged_through_the_lr_its_step_began_with() {
+    let mut p = load(QSORT_OVERRUN);
+    let qsort = p.cpu.host.lookup("qsort").expect("qsort");
+    p.run_to_line(36); // sort3's ldp: qsort has returned
+    assert_eq!(p.view().frames[0].activation.fp_hit.pc, qsort - 4);
+}
+
 const PASS_ARRAY: &str = r#"
 // helper keeps four ints and has fill store i into eight of them: the
 // last four land on main's frame record, two records above fill's.
