@@ -124,8 +124,9 @@ pub(super) fn exec_ldst_pair(
     if op == LdStPairOp::Ldp && rt == rt2 {
         return Err(EmuError::RuntimeError {
             message: "Illegal instruction\nthis `ldp` loads both values into the same register, \
-                      which the servers refuse to run. Load into two different registers, such \
-                      as `ldp x1, x2`"
+                      which the processor does not allow, so the servers stop the program here: \
+                      load into two different registers, such as `ldp x1, x2, [sp], 16`, or \
+                      take back one value with `ldr x1, [sp], 16`"
                 .into(),
         });
     }
