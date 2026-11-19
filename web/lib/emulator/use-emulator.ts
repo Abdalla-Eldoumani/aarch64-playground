@@ -742,10 +742,11 @@ export function useEmulator(start = true): EmulatorState {
         // Noted before the chunk, so a reset or assemble sent while it ran counts.
         const epoch = backend.epoch;
         const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
-        // A run cancelled by reset/assemble describes a machine that no
-        // longer exists; acting on it painted `unknown instruction:
-        // 0x00000000` right after the student pressed Reset.
-        if (runResult.cancelled) return null;
+        // A run cancelled by reset/assemble, or one that finished as the
+        // machine was replaced, describes a machine that no longer exists;
+        // acting on it painted `unknown instruction: 0x00000000` right after
+        // the student pressed Reset.
+        if (runResult.cancelled || backend.epoch !== epoch) return null;
         total += runResult.steps_executed;
         // A pacing pause (nanosleep): wait until the deadline it moves on,
         // so a chunk's round trip and a late timer come out of the next
