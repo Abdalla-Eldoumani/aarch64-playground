@@ -459,9 +459,12 @@ describe("TerminalPane full screen", () => {
     delete (root as Partial<HTMLElement>).requestFullscreen;
     delete (doc as Partial<Document>).exitFullscreen;
     delete (document as { fullscreenElement?: Element | null }).fullscreenElement;
+    vi.restoreAllMocks();
   });
 
   const fullScreen = () => screen.getByRole("button", { name: "full screen" });
+  // jsdom lays nothing out; a pane on screen has a width, one hidden behind another tab has none.
+  const onScreen = (px: number) => vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(px);
   const paneRoot = () => screen.getByRole("application", { name: "shell terminal" }).parentElement!.parentElement!;
 
   it("is a labelled toggle that draws the pane over the page and hands the keyboard to the terminal", async () => {
@@ -550,6 +553,7 @@ describe("TerminalPane full screen", () => {
   });
 
   it("brings Tab back to the pane after Ctrl+M in full screen, Shift+Tab to its last control", async () => {
+    onScreen(600);
     render(<TerminalPane buildContext={() => makeContext()} />);
     // Outside full screen a Tab from the page is the page's.
     expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
@@ -563,6 +567,40 @@ describe("TerminalPane full screen", () => {
     act(() => (document.activeElement as HTMLElement).blur());
     expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(false);
     expect(document.activeElement).toBe(fullScreen());
+  });
+
+  it("leaves Tab to a dialog open over it in full screen", async () => {
+    // The command palette and the shortcuts dialog keep Tab inside themselves.
+    onScreen(600);
+    render(
+      <>
+        <TerminalPane buildContext={() => makeContext()} />
+        <div role="dialog" aria-label="commands">
+          <input aria-label="search commands" />
+        </div>
+      </>,
+    );
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    const field = screen.getByRole("textbox", { name: "search commands" });
+    act(() => field.focus());
+    expect(fireEvent.keyDown(field, { key: "Tab" })).toBe(true);
+    expect(fireEvent.keyDown(field, { key: "Tab", shiftKey: true })).toBe(true);
+    expect(document.activeElement).toBe(field);
+  });
+
+  it("leaves Tab to the page while the pane is hidden in full screen", async () => {
+    // A palette command that switches the right tab hides the pane behind it.
+    onScreen(600);
+    render(<TerminalPane buildContext={() => makeContext()} />);
+    await act(async () => {
+      fireEvent.click(fullScreen());
+    });
+    onScreen(0);
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    expect(fireEvent.keyDown(document.body, { key: "Tab" })).toBe(true);
+    expect(document.activeElement).toBe(document.body);
   });
 
   it("puts its controls after the terminal, where Ctrl+M then Tab lands", () => {
