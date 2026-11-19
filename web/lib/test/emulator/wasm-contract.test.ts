@@ -810,6 +810,75 @@ main:
   });
 });
 
+describe("error lines inside a library call", () => {
+  interface RawRunWithLine extends RawRun {
+    error_line?: number | null;
+  }
+
+  it("puts a fault in a tail-called printf on the bl that entered its caller", () => {
+    // say leaves 5 in x0 and branches to printf, which faults reading its
+    // format there. lr still holds main's way back from `bl say` (line 18),
+    // and the error line is the word before it.
+    const TAIL_CALL_FAULT = `define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+say:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 5
+        ldp     fp, lr, [sp], 16
+        b       printf
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      say
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+    withEmulator((emu) => {
+      assemble(emu, TAIL_CALL_FAULT);
+      const run = emu.run_until_break(1000) as RawRunWithLine;
+      expect(run.error).toMatch(/^Segmentation fault/);
+      expect(run.error_line).toBe(18);
+    });
+  });
+
+  it("puts the step ceiling on `bl __main_return` when the run stops at __main_return", () => {
+    // The ldr is one step and each pass of the loop two, so `bl
+    // __main_return` (line 8) starts with 1 + 2 * 4999998 = 9999997 steps
+    // spent. It and the two trampoline words make 10 million as the pc
+    // reaches __main_return, where the ceiling stops the run.
+    const CEILING_AT_MAIN_RETURN = `        .text
+        .global main
+main:
+        ldr     x19, =4999998
+spin:
+        subs    x19, x19, 1
+        b.ne    spin
+        bl      __main_return
+`;
+    withEmulator((emu) => {
+      assemble(emu, CEILING_AT_MAIN_RETURN);
+      // Back plays no part here, and with the ring paused the run takes half the time.
+      emu.set_snapshots_paused(true);
+      const run = emu.run_until_break(20_000_000) as RawRunWithLine;
+      expect(run.error).toMatch(/^stopped after 10 million steps/);
+      const stubs = (memoryMap() as Array<{ name: string; start: number; end: number }>).find(
+        (r) => r.name === "host stubs",
+      )!;
+      const pc = Number(run.pc);
+      expect(pc >= stubs.start && pc < stubs.end).toBe(true);
+      expect(run.error_line).toBe(8);
+    });
+  }, 60_000);
+});
+
 describe("m4 expansion", () => {
   // define(total, x19) collapses to a blank line (line numbers must hold)
   // and every later `total` token becomes x19. Lines join with \n and no
