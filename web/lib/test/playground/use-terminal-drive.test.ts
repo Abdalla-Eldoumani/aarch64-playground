@@ -8,6 +8,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { TerminalProgramIO } from "@/lib/terminal/dispatch";
 import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
+import { appendBounded } from "@/lib/emulator/use-emulator";
 import {
   useTerminalDrive,
   type TerminalDriveMachine,
@@ -891,6 +892,32 @@ describe("what a raw-mode program wrote before the pane took it", () => {
     machine.wantsTerminal = true;
     machine.stdout = before + raw;
     await h.update({ wantsTerminal: true, stdout: before + raw });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    expect(io.write.mock.calls[0]).toEqual([raw]);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("still replays that chunk when the console is full and drops as much as it adds", async () => {
+    // A program that printed past the console's 256 KB before raw mode: the
+    // chunk that turns raw mode on trims its own length off the head, so the
+    // console's length does not move.
+    const before = appendBounded("", Array.from({ length: 30_000 }, (_, i) => `line ${i}\n`).join(""));
+    const raw = "\x1b[?1000hRAWFRAME";
+    const after = appendBounded(before, raw);
+    expect(after.length).toBe(before.length);
+    const machine = makeMachine({ stdout: before });
+    const h = setup({ stdout: before }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    machine.wantsTerminal = true;
+    machine.stdout = after;
+    await h.update({ wantsTerminal: true, stdout: after });
     await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
     expect(io.write.mock.calls[0]).toEqual([raw]);
     await act(async () => {
