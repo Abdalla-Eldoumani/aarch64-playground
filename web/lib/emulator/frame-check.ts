@@ -50,8 +50,13 @@ function frameCheckText({ check, names }: FrameCheckRow): string {
             : `lr (bytes 8 to 15), which ${who} needs to return`;
       return `${slot(name, offset, width)} sits on the saved ${saved}. Locals start at 16, above the saved fp and lr.`;
     }
-    case UNALIGNED:
-      return `${name} holds 8 bytes at ${offset}, which is not a multiple of 8. Move it to a multiple of 8, such as ${Math.max(16, Math.ceil(offset / 8) * 8)}.`;
+    case UNALIGNED: {
+      // The next multiple of 8 at 16 or above, or the last one that still
+      // fits the frame; none when no local fits (the OUTSIDE mark says so).
+      const last = Math.floor((frame - width) / 8) * 8;
+      const hint = last < 16 ? "" : ` Move it to a multiple of 8, such as ${Math.max(16, Math.min(Math.ceil(offset / 8) * 8, last))}.`;
+      return `${name} holds 8 bytes at ${offset}, which is not a multiple of 8.${hint}`;
+    }
     default:
       return `${owner} frame is ${frame} bytes, which leaves sp off a multiple of 16. Round it up to ${Math.ceil(frame / 16) * 16}, as alloc = -(16 + locals) & -16 does.`;
   }
