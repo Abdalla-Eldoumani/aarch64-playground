@@ -3,6 +3,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -441,8 +442,11 @@ export function EmbeddableCore({
 
   // Latest-value refs so the imperative handle stays a stable object while
   // still reading live editor / hub state when the host calls a method. The
-  // refs are synced in an effect; the react-hooks rules forbid writing a ref
-  // during render.
+  // react-hooks rules forbid writing a ref during render, so they are synced
+  // in a layout effect: every layout effect in a commit runs before any
+  // passive one, so a child's effect reads this render's hub. Synced in a
+  // passive effect, they lagged the terminal's self-attach in the same
+  // commit, which then missed the chunk that turned raw mode on.
   const argsRef = useRef(argsText);
   const cursorRef = useRef(cursor);
   const checksRef = useRef(checks);
@@ -454,7 +458,7 @@ export function EmbeddableCore({
   const buildCommandsRef = useRef(buildCommands);
   const toggleBreakpointRef = useRef(toggleBreakpointAtCaret);
   const runUntilRef = useRef(runUntil);
-  useEffect(() => {
+  useLayoutEffect(() => {
     emuRef.current = emu;
     sourceRef.current = source;
     extraFilesRef.current = extraFiles;
