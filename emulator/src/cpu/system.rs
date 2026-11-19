@@ -318,8 +318,8 @@ impl Cpu {
     }
 
     /// Consume the pause the last nanosleep requested, if any. The
-    /// runner calls this once per run result and waits the returned
-    /// duration in real time; batch runners simply ignore it.
+    /// runner calls this once per run result and waits the pause out in
+    /// real time; batch runners simply ignore it.
     pub fn take_pending_sleep_ns(&mut self) -> Option<u64> {
         self.pending_sleep_ns.take()
     }
