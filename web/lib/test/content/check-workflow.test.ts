@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
 // two conditions that read the branch, the vitest shard count, the corpus
 // test the cargo job skips by name, and the skip on web-build's browser
 // smoke. The workflow is read as text one level above web/ (vitest's cwd),
-// as .github/scripts/check-pins.js reads it.
+// as .github/scripts/check-pins.js reads it. The last block pins the
+// triggers of refresh-stars.yml, whose every run starts a production build.
 const ROOT = path.join(process.cwd(), "..");
 const read = (file: string) => readFileSync(path.join(ROOT, file), "utf8");
 const WORKFLOW = read(".github/workflows/check.yml").split(/\r?\n/);
@@ -171,5 +172,15 @@ describe("check.yml", () => {
         expect(live, `${at} skips ${skip}, which is not one of these c_corpus.rs tests`).toContain(skip);
       }
     }
+  });
+});
+
+describe("refresh-stars.yml", () => {
+  it("runs on the weekly schedule and by hand, not on a star", () => {
+    const lines = read(".github/workflows/refresh-stars.yml").split(/\r?\n/);
+    const from = lines.indexOf("on:") + 1;
+    const to = lines.findIndex((line, i) => i >= from && /^\S/.test(line));
+    const triggers = lines.slice(from, to).flatMap((line) => line.match(/^ {2}([\w-]+):/)?.[1] ?? []);
+    expect(triggers, "the events under on:").toEqual(["schedule", "workflow_dispatch"]);
   });
 });
