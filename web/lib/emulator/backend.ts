@@ -85,6 +85,10 @@ export interface EmulatorBackend {
   /** The last assemble's frame layout (lib/emulator/frame-data); null on
    *  a wasm build that predates it. */
   frameLayout(): Promise<FrameLayoutPayload | null>;
+  /** Moved by every operation that cancels a run in flight (assemble,
+   *  stepBack, reset, loadState, dispose): a drive that saw it move is
+   *  driving a machine that no longer exists. */
+  readonly epoch: number;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
   /** Release the machine when its owner unmounts. */
@@ -106,6 +110,10 @@ class MainThreadBackend implements EmulatorBackend {
   private runEpoch = 0;
   private pauseRequested = false;
   private listeners = new Set<(snap: StateSnapshot) => void>();
+
+  get epoch(): number {
+    return this.runEpoch;
+  }
 
   async init(): Promise<StateSnapshot> {
     this.emu = await loadEmulator();
