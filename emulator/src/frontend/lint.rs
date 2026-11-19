@@ -733,6 +733,166 @@ mod tests {
     }
 
     #[test]
+    fn space_given_back_twice_on_one_path_still_warns() {
+        // No branch between them: the second `add` gives back what nothing
+        // took, the double deallocation the lint is for.
+        let src = ".text\n.global main\nmain:\nsub sp, sp, 16\nadd sp, sp, 32\nret\n";
+        let w = lint_lines(src);
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 5);
+        assert!(w[0].1.contains("never pushed"), "{}", w[0].1);
+    }
+
+    #[test]
+    fn a_retry_loop_that_gives_its_space_back_on_both_exits_is_balanced() {
+        // dsav's read_int: the loop takes 16 bytes for scanf, the success path
+        // gives them back and jumps to the end, the failure path gives them
+        // back and either loops or falls through to the end.
+        let src = ".text\n.global read_int\nread_int:\n\
+                   stp x29, x30, [sp, -32]!\nmov x29, sp\nstr x19, [sp, 16]\n\
+                   retry:\nsub sp, sp, 16\nmov x1, sp\nbl scanf\ncmp w0, 1\nb.ne no_value\n\
+                   ldr w19, [sp]\nadd sp, sp, 16\nmov w0, w19\nb done\n\
+                   no_value:\nadd sp, sp, 16\ncmp w0, 0\nb.lt eof\nbl complain\nb retry\n\
+                   eof:\nmov w0, 0\n\
+                   done:\nldr x19, [sp, 16]\nldp x29, x30, [sp], 32\nret\n";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
+    fn a_push_off_16_warns_whatever_way_the_function_ends() {
+        // A tail call, two `ret`s, and a call that never returns: the
+        // balance walk reads none of them, the push check reads all three.
+        let ends = ["ldp x29, x30, [sp], 24\nb helper", "cbz x0, early\nldp x29, x30, [sp], 24\nret\nearly:\nldp x29, x30, [sp], 24\nret", "bl exit"];
+        for end in ends {
+            let src = format!(".text\n.global main\nmain:\nstp x29, x30, [sp, -24]!\nmov x29, sp\n{end}\n.global helper\nhelper:\nret\n");
+            let w = lint_lines(&src);
+            assert_eq!(w.len(), 1, "{end}: {w:?}");
+            assert_eq!(w[0].0, 4, "{end}");
+            assert!(w[0].1.contains("pushes 24 bytes"), "{end}: {}", w[0].1);
+            // The same shapes with a 16-byte push are quiet.
+            assert_eq!(lint(&src.replace("24", "16")), Vec::new(), "{end}");
+        }
+    }
+
+    #[test]
+    fn every_push_and_pop_spelling_gnu_as_takes_reads_as_the_crate_encodes_it() {
+        // Each spelling GNU as takes for these operands (blanks, tabs, `#`,
+        // hex, upper case): the lint's reading must be the sp change of the
+        // word the crate assembles from it.
+        let spellings = [
+            "stp x29, x30, [sp, -16]!",
+            "stp x29, x30, [ sp, -16 ]!",
+            "stp\tx29,\tx30,\t[sp,\t-16]!",
+            "stp x29, x30, [sp, #-16]!",
+            "stp x29, x30, [sp, #-0x10]!",
+            "STP X29, X30, [SP, #-16]!",
+            "stp x29, x30, [sp , -16]!",
+            "stp x29, x30, [sp,-16]!",
+            "ldp x29, x30, [sp], 16",
+            "ldp x29, x30, [ sp ], 16",
+            "ldp x29, x30, [sp], #0x10",
+            "LDP X29, X30, [SP], #16",
+            "ldp x29, x30, [sp] , 16",
+            "sub sp, sp, 32",
+            "sub sp, sp, #0x20",
+            "SUB SP, SP, #32",
+            "add\tsp,\tsp,\t32",
+        ];
+        for s in spellings {
+            let source = format!(".text\n.global main\nmain:\n{s}\nret\n");
+            let image = crate::frontend::pipeline::assemble_hosted(&source, &crate::cpu::Cpu::new().host).expect(s);
+            let at = image.writes.iter().find(|(base, _)| *base == image.text_base).expect(s);
+            let word = u32::from_le_bytes(at.1[..4].try_into().unwrap());
+            let encoded = match crate::decoder::decode(word).expect(s) {
+                crate::decoder::Instruction::LdStPair { imm7, .. } => i64::from(imm7),
+                crate::decoder::Instruction::DpImm { op, imm, shift, .. } => {
+                    let n = i64::from(imm) << shift;
+                    if op == crate::decoder::DpOp::Sub { -n } else { n }
+                }
+                other => panic!("{s}: {other:?}"),
+            };
+            let read = match stack_effect(&s.to_ascii_lowercase(), &HashMap::new()) {
+                Some(StackEffect::Push { bytes, .. }) => -bytes,
+                Some(StackEffect::Pop { bytes }) => bytes,
+                None => 0,
+            };
+            assert_eq!(read, encoded, "{s}");
+        }
+    }
+
+    #[test]
+    fn space_freed_on_two_paths_with_a_test_between_is_not_freed_twice() {
+        // The first path tests again after giving its space back and before
+        // its `b`, so the last conditional branch left at the `b`'s depth;
+        // an earlier one left 16 bytes deeper.
+        let src = ".text
+.global main
+main:
+                   stp x29, x30, [sp, -32]!
+mov x29, sp
+sub sp, sp, 16
+cmp w0, 1
+b.eq none
+                   add sp, sp, 16
+mov w1, 2
+cmp w0, 3
+b.ne done
+mov w1, 3
+b done
+                   none:
+add sp, sp, 16
+mov w1, 1
+                   done:
+mov w0, 0
+ldp x29, x30, [sp], 32
+ret
+";
+        assert_eq!(lint(src), Vec::new());
+    }
+
+    #[test]
+    fn a_loop_and_an_if_else_keep_their_balance_warnings() {
+        // Every branch here leaves at the frame's own depth, so the walk still
+        // follows one path: a missing epilogue and a double deallocation are
+        // both found.
+        let body = "stp x29, x30, [sp, -16]!
+mov x29, sp
+mov w19, 0
+b test
+                    top:
+cmp w19, 5
+b.lt small
+mov w0, 1
+b next
+                    small:
+mov w0, 0
+next:
+add w19, w19, 1
+                    test:
+cmp w19, 10
+b.lt top
+";
+        let w = lint_lines(&format!(".text
+.global main
+main:
+{body}ret
+"));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 20);
+        assert!(w[0].1.contains("still holds 16 bytes"), "{}", w[0].1);
+        let w = lint_lines(&format!(".text
+.global main
+main:
+{body}add sp, sp, 16
+ldp x29, x30, [sp], 16
+ret
+"));
+        assert_eq!(w.len(), 1, "{w:?}");
+        assert_eq!(w[0].0, 21);
+        assert!(w[0].1.contains("never pushed"), "{}", w[0].1);
+    }
+
+    #[test]
     fn macro_name_inside_a_string_warns_with_the_server_behavior() {
         let src = "define(register, w19)\n\
                    .data\n\
