@@ -850,17 +850,12 @@ impl Emulator {
             })
             .unwrap(),
             Err(err) => {
-                let (message, line) = match &err {
-                    errors::EmuError::PreprocError { line, message } => {
-                        (message.clone(), Some(*line as u32))
-                    }
-                    other => (other.to_string(), None),
-                };
+                let (line, message) = err.into_line_and_message();
                 serde_wasm_bindgen::to_value(&M4ResultJs {
                     success: false,
                     text: None,
                     error: Some(message),
-                    error_line: line,
+                    error_line: line.map(|line| line as u32),
                 })
                 .unwrap()
             }
