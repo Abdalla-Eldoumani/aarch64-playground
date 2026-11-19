@@ -471,9 +471,9 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
       await ctx.deleteBreakpoints();
       return { status: "ok", lines: [] };
     }
-    // Left to right, as gdb goes: it warns at 0 ("bad breakpoint number") and
-    // at a missing number ("No breakpoint number 7.") and goes on, but stops
-    // at the first token that is not a number, deleting nothing after it.
+    // Plain decimal numbers, left to right: a 0 or a missing number says so
+    // and goes on; any other token says so and stops there, deleting nothing
+    // after it.
     const lines: string[] = [];
     for (const n of args.slice(1)) {
       if (n !== "0" && !/^[1-9]\d*$/.test(n)) {
