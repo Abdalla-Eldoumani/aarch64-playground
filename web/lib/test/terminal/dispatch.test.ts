@@ -643,6 +643,20 @@ describe("gdb-lite edges", () => {
     expect(deleteBreakpoints.mock.calls).toEqual([[1], [7], [2]]);
   });
 
+  it("gdb delete stops at the first token that is not a number, as gdb does", async () => {
+    // gdb: "delete 4 abc" deletes 4; "delete abc 4" and "delete -1 2" delete nothing.
+    const deleteBreakpoints = vi.fn(async () => true);
+    const ctx = makeCtx({ deleteBreakpoints });
+    for (const [command, bad] of [
+      ["gdb delete 4 abc 2", "abc"],
+      ["gdb delete abc 4", "abc"],
+      ["gdb delete -1 2", "-1"],
+    ]) {
+      expect(await dispatchCommand(command, ctx)).toEqual({ status: "err", lines: [`gdb: bad breakpoint number '${bad}'`] });
+    }
+    expect(deleteBreakpoints.mock.calls).toEqual([[4]]);
+  });
+
   it("the first gdb command after an assemble names the breakpoints it could not set again", async () => {
     // gdb: 'Error in re-setting breakpoint 1: Function "quit" not defined.'
     const unsetBreakpoints = (): [number, string][] => [[1, "quit"]];
