@@ -838,10 +838,7 @@ impl Cpu {
             return;
         }
         // A library call's write names the `bl` that made the call.
-        let writer = || {
-            let at = if self.host.contains_address(pc) { lr.wrapping_sub(4) } else { pc };
-            (at, self.regs.snapshot()[29])
-        };
+        let writer = || (self.host.call_site(pc, lr), self.regs.snapshot()[29]);
         let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
         self.frames.watch_writes(writes, self.steps_taken, &self.mem, writer, log);
     }
