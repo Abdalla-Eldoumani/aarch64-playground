@@ -50,7 +50,7 @@ describe("the dependency gate", () => {
     expect(stdout).not.toContain("clean");
   });
 
-  it("fails on an answer with no vulnerability counts", () => {
+  it("fails on an answer with no counts", () => {
     expect(audit({}, 0).code).toBe(2);
   });
 
