@@ -77,6 +77,8 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
   const rootRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const textRef = useRef<HTMLDivElement>(null);
+  // The card's measured heights by width, good while `key` holds.
+  const heightsRef = useRef({ key: "", byWidth: new Map<number, number>() });
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const focusPendingRef = useRef(false);
   const titleId = useId();
@@ -97,6 +99,18 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     }, OFFER_DELAY_MS);
     return () => clearTimeout(timer);
   }, [deepLinked]);
+
+  // A font that arrives late changes the card's height at every width, not
+  // only the one it shows, so its arrival drops every measured height.
+  useEffect(() => {
+    const fonts = document.fonts;
+    if (!fonts) return;
+    const drop = () => {
+      heightsRef.current = { key: "", byWidth: new Map() };
+    };
+    fonts.addEventListener("loadingdone", drop);
+    return () => fonts.removeEventListener("loadingdone", drop);
+  }, []);
 
   const goTo = useCallback((step: number) => {
     saveProgress({ offered: true, step });
@@ -155,14 +169,31 @@ export function InterfaceWalkthrough({ openRequest }: InterfaceWalkthroughProps)
     const targets = mode.kind === "offer" ? OFFER_TARGETS : WALKTHROUGH_STEPS[mode.step].targets;
     const found = hidden ? null : resolveTarget(targets);
     const view = { width: window.innerWidth, height: window.innerHeight };
-    // The text's full length, not the capped box: measuring the capped card
-    // would call it short enough to lift the cap, and the two would take
-    // turns on every beat.
+    // Each copy below costs a layout, so its heights are kept while the card's
+    // content and its own full height as it stands are unchanged: an idle
+    // card forces no layout.
     const text = textRef.current;
-    const hiddenText = text ? text.scrollHeight - text.clientHeight : 0;
-    const size = { width: CARD_WIDTH, height: card.offsetHeight + hiddenText };
+    const key = `${card.offsetHeight + (text ? text.scrollHeight - text.clientHeight : 0)} ${card.innerHTML}`;
+    if (heightsRef.current.key !== key) heightsRef.current = { key, byWidth: new Map() };
+    const { byWidth } = heightsRef.current;
+    // Measured on a hidden copy at a set width with no cap. Placed by its own
+    // capped or narrowed height, the card moved on every other beat, and
+    // lifting its own cap scrolled its text back to the top.
+    const heightAt = (w: number) => {
+      const known = byWidth.get(w);
+      if (known !== undefined) return known;
+      const copy = card.cloneNode(true) as HTMLElement;
+      copy.setAttribute("aria-hidden", "true");
+      Object.assign(copy.style, { width: `${w}px`, maxHeight: "none", visibility: "hidden" });
+      card.after(copy);
+      const height = copy.offsetHeight;
+      copy.remove();
+      byWidth.set(w, height);
+      return height;
+    };
+    const width = Math.min(CARD_WIDTH, view.width - 16);
+    const size = { width: CARD_WIDTH, height: heightAt(width), heightAt };
     if (!found) {
-      const width = Math.min(CARD_WIDTH, view.width - 16);
       const next: Layout = {
         ring: null,
         hidden,

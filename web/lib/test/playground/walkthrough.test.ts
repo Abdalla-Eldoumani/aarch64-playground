@@ -250,6 +250,42 @@ describe("placeCard", () => {
     expect(overlaps(runRow, p, 243)).toBe(false);
   });
 
+  it("judges a card narrowed beside a short turned phone's registers by its own height", () => {
+    // Measured on the registers step: the registers right of the editor, dec
+    // and hex halfway down them and the run row at the editor's foot. A
+    // narrower card wraps onto more lines: at 568x360, 255 px at 296 wide
+    // against 212 px at 352. Placed by the wide card's height, the narrow one
+    // reached the run row, and the page's next measure moved it back.
+    const cases = [
+      {
+        view: { width: 568, height: 360 },
+        registers: { top: 89, left: 312, width: 256, height: 218 },
+        decHex: { top: 186, left: 320, width: 90, height: 46 },
+        runRow: [
+          { top: 312, left: 8, width: 56, height: 44 },
+          { top: 312, left: 163, width: 44, height: 44 },
+        ],
+        heightAt: (w: number) => (w === 352 ? 212 : 255),
+      },
+      {
+        view: { width: 480, height: 360 },
+        registers: { top: 89, left: 264, width: 216, height: 218 },
+        decHex: { top: 186, left: 272, width: 78, height: 24 },
+        runRow: [
+          { top: 312, left: 8, width: 44, height: 44 },
+          { top: 312, left: 132, width: 35, height: 44 },
+        ],
+        heightAt: (w: number) => (w === 352 ? 204 : 289),
+      },
+    ];
+    for (const { view, registers, decHex, runRow, heightAt } of cases) {
+      const p = placeCard(registers, { width: 352, height: heightAt(352), heightAt }, view, [decHex, ...runRow]);
+      const height = p.maxHeight ?? heightAt(p.width);
+      expect(runRow.some((b) => overlaps(b, p, height)), `${view.width}`).toBe(false);
+      expect(p.top + height, `${view.width}`).toBeLessThanOrEqual(view.height - 8);
+    }
+  });
+
   it("puts the offer under a phone's menu past the files strip", () => {
     const menu = { top: 0, left: 268, width: 52, height: 44 };
     const files = { top: 45, left: 0, width: 320, height: 53 };
