@@ -1104,15 +1104,16 @@ main:
   });
 
   // Steps 1 to 32 run to main's ret (run_to's count above); step 33 fetches
-  // at 0x4141414141414141, which no page covers: the memory fault errors.rs
-  // words for a read, address in 16 hex digits.
+  // at 0x4141414141414141, which is not a multiple of 4: the bus error
+  // errors.rs words for a jump there.
   const WORDS_FAULT =
-    "memory fault: the program tried to read 0x4141414141414141, which no section covers. " +
-    "The base register (the first one inside the brackets, or a pointer passed to a call) " +
-    "does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the " +
-    "value stored at the label) or a `mov` was written where `ldr xN, =label` was meant";
+    "Bus error\nthe program jumped to 0x4141414141414141, which is not a multiple of 4, so no " +
+    "instruction starts there. Usually a `ret` read a return address that a store overwrote on " +
+    "the stack, or a `br`/`blr` went through a register holding a number instead of a code " +
+    "address: keep each store inside its own variable, and load a function's address with " +
+    "`ldr xN, =label`";
 
-  it("ends a run through a garbage return with the memory fault, not a trap", () => {
+  it("ends a run through a garbage return with the bus error, not a trap", () => {
     withEmulator((emu) => {
       assemble(emu, WORDS);
       const r = emu.run_until_break(10_000) as RawRun;
