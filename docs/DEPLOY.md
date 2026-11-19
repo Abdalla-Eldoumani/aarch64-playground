@@ -78,13 +78,13 @@ one is there, are in [security.md](security.md).
 ## The star count
 
 The GitHub star count in the site's menu is read once per build, so every page
-stays a static file. `.github/workflows/refresh-stars.yml` starts a new
-production build through a Vercel deploy hook each time the repository gets a
-star, every Monday at 07:17 UTC to catch removed stars, and when it is run by
-hand. The hook's address is a repository secret named `VERCEL_DEPLOY_HOOK_URL`; without
-it the workflow fails and the count stays as it was. Each of these builds
-becomes the newest production deployment, which matters for rollback (see
-[Releasing](#releasing)).
+stays a static file, and the count moves only with a new production build: a
+release, every Monday at 07:17 UTC, and a manual run of
+`.github/workflows/refresh-stars.yml`. That workflow starts the Monday and
+manual builds through a Vercel deploy hook. The hook's address is a repository
+secret named `VERCEL_DEPLOY_HOOK_URL`; without it the workflow fails and the
+count stays as it was. Each of these builds becomes the newest production
+deployment, which matters for rollback (see [Releasing](#releasing)).
 
 ## When a deploy goes wrong
 
@@ -155,8 +155,8 @@ and [Instant Rollback](https://vercel.com/docs/instant-rollback).
    it back on.
 
 The star count limits how far back a rollback reaches. With auto-assignment
-on, every build `refresh-stars.yml` starts (a new star, or Monday at
-07:17 UTC) goes live and becomes the current deployment. After the first
+on, every build `refresh-stars.yml` starts (Monday at 07:17 UTC, or a manual
+run) goes live and becomes the current deployment. After the first
 such build, the deployment before it is the new release itself, so the
 previous release is out of a rollback's reach. From then on, the way back is
 a pull request that reverts the release on `main`. With auto-assignment off,
