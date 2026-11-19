@@ -93,17 +93,17 @@ export function evaluateWatch(expr: string, ctx: EvalContext): EvalOutcome {
     if (idx == null) return { error: `unknown index ${index}` };
     const label = ctx.resolveLabelAddress(name);
     if (label === "pending") return { pending: true };
+    const slot = ctx.resolveSlotOffset(name);
     if (label != null) {
       const element = ctx.labelElementSize?.(name) ?? { error: "no source to read" };
-      if ("error" in element) {
-        return { error: `can't tell the element size of ${name}: ${element.error}` };
-      }
-      return readAt(ctx, label + idx * BigInt(element.size), element.size);
+      if ("size" in element) return readAt(ctx, label + idx * BigInt(element.size), element.size);
+      // The lookup answers an `=` name with its own value, so only a value
+      // equal to the slot's offset is that `=` line; a label is refused.
+      if (label !== slot) return { error: `can't tell the element size of ${name}: ${element.error}` };
     }
     // A frame-slot name is an OFFSET from fp, never an address; resolve
     // it against the live frame pointer so `a_s[0]` reads the array on
     // the stack instead of dereferencing the offset as low memory.
-    const slot = ctx.resolveSlotOffset(name);
     if (slot != null) {
       const fp = ctx.readRegister("fp");
       if (fp == null) return { error: "fp is not available" };
