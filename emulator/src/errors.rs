@@ -177,24 +177,19 @@ impl fmt::Display for EmuError {
                      after `ldr x19, =arr` overwrites the pointer)"
                 )
             }
-            Self::StoreFault { address, code, call } => {
-                let who = call.unwrap_or("this store");
-                write!(f, "Segmentation fault\n{who} tried to write to 0x{address:x}, ")?;
+            Self::StoreFault { address, code, call } => write!(
+                f,
+                "Segmentation fault\n{} tried to write to 0x{address:x}, {}",
+                call.unwrap_or("this store"),
                 if *code {
-                    write!(
-                        f,
-                        "the program's own code: the label it used is in .text, or is the \
-                         wrong label. Put each variable the program changes under .data or .bss"
-                    )
+                    "the program's own code: its label is in .text, or is the wrong one. \
+                     Put each variable the program changes under .data or .bss"
                 } else {
-                    write!(
-                        f,
-                        "memory the program never set up: it was given a value instead of an \
-                         address. Load the address with `ldr x1, =var`, or `add x1, x29, \
-                         offset` for a local"
-                    )
+                    "memory the program never set up: it was given a value, not an \
+                     address. Load the address with `ldr x1, =var`, or `add x1, x29, \
+                     offset` for a local"
                 }
-            }
+            ),
             // "Bus error" is what the servers' shell prints for SIGBUS, the
             // signal this fault raises there; the fix is stated here once.
             Self::SpAlignmentFault { sp, at_call } => {
