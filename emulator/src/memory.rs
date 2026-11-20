@@ -168,8 +168,7 @@ impl Memory {
     /// the pages they mapped. The changed-byte log empties too: the memory
     /// is back where it was before anything changed.
     pub fn undo(&mut self, log: MemUndo) {
-        // A system call may have written into the code, and putting those
-        // bytes back must not be refused.
+        // A system call may have written into the code; putting it back must not fault.
         let guard = std::mem::take(&mut self.guard);
         let mut end = log.old.len();
         for &(addr, len) in log.runs.iter().rev() {
