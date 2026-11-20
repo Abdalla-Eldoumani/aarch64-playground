@@ -171,7 +171,9 @@ export function callCard(numbers: readonly number[], input: CallCardInput): Call
   if (conversions > rowCount) rows.push({ text: `and ${conversions - rowCount} more conversions`, problem: null });
   const outcome =
     kind === SCANF
-      ? `returned ${result} in w0${result < 0 ? ": the input ended before anything was read" : ""}`
+      ? failed
+        ? "stopped the program before it returned"
+        : `returned ${result} in w0${result < 0 ? ": the input ended before anything was read" : ""}`
       : failed
         ? "stopped the program, so nothing was printed"
         : `printed ${literal(text, textLen > text.length)}`;
