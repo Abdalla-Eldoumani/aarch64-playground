@@ -401,15 +401,16 @@ fn a_percent_s_keeps_the_bytes_it_read_apart_from_its_padding_and_past_the_text_
 }
 
 #[test]
-fn a_scanf_handed_a_value_stores_at_that_value() {
+fn a_scanf_handed_a_value_stops_at_that_conversion() {
     let mut p = load(&fixture("scanf-value.s"));
     p.cpu.push_stdin(b"7\n");
-    let c = p.after_call(24);
-    assert_eq!(c.rows, [stored("%d", 1, 0, 7, 4, "7")]);
-    // What the program does is untouched: a_s was never written.
     let r = p.cpu.run_until_break(1_000_000).expect("run");
     assert!(r.halted);
-    assert_eq!(p.cpu.take_stdout(), b"a = 0\n");
+    assert!(r.error.as_deref().unwrap_or("").starts_with("Segmentation fault\nscanf tried to write to 0x0, "));
+    let c = card(&p.cpu).expect("the faulting step made the call");
+    assert_eq!((c.kind, c.failed, c.call_pc), (CALL_SCANF, true, p.pc_of(24)));
+    assert_eq!(c.rows, [Row { code: CALL_STOPPED, ..printed("%d", -1, 0, "") }]);
+    assert_eq!(p.cpu.take_stdout(), b"");
 }
 
 #[test]
