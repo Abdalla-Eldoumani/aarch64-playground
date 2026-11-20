@@ -30,14 +30,12 @@ export interface DeepLink {
  */
 export type BundleDecoder = (value: string | null) => BundleReadResult;
 
-/** A diagnostic link's fragment starts with this, after the `#`. It cannot
- *  be read as a share link's `p2=` or `p=`. */
+/** Not a share prefix (p2=, p=). */
 export const BUNDLE_PREFIX = "bundle=";
 
 /**
- * A diagnostic link's payload, or null when the URL carries none. Links put
- * it in the fragment, which no request carries; links made before that put
- * it in the `?bundle=` query.
+ * A diagnostic link's payload, or null if none. Links put it in the fragment,
+ * which the page's request line leaves out; older links use `?bundle=`.
  */
 export function bundleValue(search: string, hash: string): string | null {
   const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
