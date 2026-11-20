@@ -151,7 +151,7 @@ export function EmbeddableCore({
   useEffect(() => {
     if (startFiles === undefined || startFilesApplied.current) return;
     startFilesApplied.current = true;
-    setExtraFiles(startFiles);
+    setExtraFiles(startFiles, { load: true });
   }, [startFiles, setExtraFiles]);
 
   // Jump to the first error in the file that owns it. The nonce re-fires the
@@ -268,8 +268,8 @@ export function EmbeddableCore({
       setSource(payload.source);
       // A program handoff replaces the whole workspace: stale helper
       // files from earlier work must not concatenate into the new
-      // program at its next assemble.
-      setExtraFiles(payload.files ?? []);
+      // program at its next assemble. The load keeps them restorable.
+      setExtraFiles(payload.files ?? [], { load: true });
       setActiveFile(-1);
       setChecks(payload.checks ?? []);
       // The launch mode, the console watermark and the shared-program banner
