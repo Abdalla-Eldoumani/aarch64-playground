@@ -51,7 +51,7 @@ function writeStrip(files: SourceFile[], backup: SourceFile[], keep: number): So
   let left = backup;
   while (!writeStore(STORE_KEY, files)) {
     if (left.length <= keep || !writeStore(BACKUP_KEY, left.slice(1))) {
-      if (left !== backup) writeStore(BACKUP_KEY, backup);
+      writeStore(BACKUP_KEY, backup);
       return null;
     }
     left = left.slice(1);
@@ -72,12 +72,14 @@ function displacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
 }
 
 /**
- * A file a program load is about to lose: its body does not come back. A
- * name the program reuses is no match, since the program's file is not the
- * student's.
+ * A file a program load is about to lose that the backup does not already
+ * hold: its body does not come back. A name the program reuses is no match,
+ * since the program's file is not the student's.
  */
-function replacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
-  return stored.filter((f) => !next.some((n) => n.body === f.body));
+function replacedBy(stored: SourceFile[], next: SourceFile[], kept: SourceFile[]): SourceFile[] {
+  return stored.filter(
+    (f) => !next.some((n) => n.body === f.body) && !kept.some((k) => sameFile(k, f)),
+  );
 }
 
 function sameFile(a: SourceFile, b: SourceFile): boolean {
@@ -86,9 +88,8 @@ function sameFile(a: SourceFile, b: SourceFile): boolean {
 
 /** `name`, or a free name for it when the strip uses it: stack.s comes back as 2-stack.s. */
 function freeName(name: string, files: SourceFile[]): string {
-  const taken = new Set(files.map((f) => f.name));
   let candidate = name;
-  for (let i = 2; taken.has(candidate); i++) {
+  for (let i = 2; files.some((f) => f.name === candidate); i++) {
     // A digit-led prefix keeps a valid name valid; the slice keeps it within the cap.
     candidate = `${i}-${name}`.slice(0, MAX_FILE_NAME_CHARS);
   }
@@ -131,7 +132,7 @@ export function useSourceFiles(): [
       // A load adds to the backup, so a second load cannot push out what the
       // first displaced; any other write displaces into it alone.
       const displaced = how?.load
-        ? replacedBy(filesRef.current, next).filter((f) => !kept.some((k) => sameFile(k, f)))
+        ? replacedBy(filesRef.current, next, kept)
         : displacedBy(filesRef.current, next);
       let nextBackup = kept;
       if (displaced.length > 0) {
@@ -159,7 +160,7 @@ export function useSourceFiles(): [
     filesRef.current = next;
     setFiles(next);
     // The backup goes only once the strip holds its files.
-    if (writeStrip(next, backupRef.current, 0) !== null) {
+    if (writeStrip(next, backupRef.current, 0)) {
       writeStore(BACKUP_KEY, []);
       keepBackup([]);
     }
