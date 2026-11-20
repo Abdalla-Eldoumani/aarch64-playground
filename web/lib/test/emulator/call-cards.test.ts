@@ -429,16 +429,13 @@ main:
     expect(card.outcome).toBe(`printed "${" ".repeat(256)}…"`);
   });
 
-  it("a scanf handed a value where an address belongs stores at that value", () => {
-    const card = after(load(fixture("scanf-value.s"), "7\n"), 24);
-    expect(card.rows).toEqual([
-      {
-        text: "%d stored 7 at 0x0, which is not one of your variables",
-        problem:
-          "x1 should hold the address of a variable (add x1, fp, its offset for a local, or ldr x1, =its label), " +
-          "not its value. On the course server this stops the program.",
-      },
-    ]);
+  it("a scanf handed a value where an address belongs stops at that conversion", () => {
+    const p = load(fixture("scanf-value.s"), "7\n");
+    p.emu.run_until_break(1_000_000);
+    expect(p.emu.is_halted()).toBe(true);
+    const card = cardNow(p);
+    expect(card?.line).toBe("line 24");
+    expect(card?.rows).toEqual([{ text: "scanf stopped at %d", problem: null }]);
   });
 
   it("input that does not fit stops scanf at that conversion", () => {
