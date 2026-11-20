@@ -102,9 +102,11 @@ the call, with a plain message instead of a crash:
 - In the virtual filesystem: 4 MiB per file, 4 MiB in total, and 16 files. A
   call past a limit fails as on a full Linux disk: a system call returns a
   negative error number, a library call -1 or NULL.
-- A load or store in the first page, or a memory access through `sp` or a
-  library call while `sp` is not a multiple of 16, stops the program, as a
-  segmentation fault or bus error would on the course server.
+- A load or store in the first page, a store into the program's own code, a
+  library call's store into the host stub window just under 4 GiB, or a memory
+  access through `sp` or a library call while `sp` is not a multiple of 16,
+  stops the program, as a segmentation fault or bus error would on the course
+  server.
 
 The stack view caps its own records, so a deep recursion cannot use up memory
 through them either. It records at most 16,384 calls
