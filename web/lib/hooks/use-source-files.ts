@@ -159,11 +159,10 @@ export function useSourceFiles(): [
     }
     filesRef.current = next;
     setFiles(next);
-    // The backup goes only once the strip holds its files.
-    if (writeStrip(next, backupRef.current, 0)) {
-      writeStore(BACKUP_KEY, []);
-      keepBackup([]);
-    }
+    // The backup goes only once the strip holds its files, and the count
+    // then shows what a reload would offer.
+    if (writeStrip(next, backupRef.current, 0)) writeStore(BACKUP_KEY, []);
+    keepBackup(loadBackup());
   }, [keepBackup]);
   return [files, save, { count: backup.length, restore }];
 }
