@@ -6,7 +6,7 @@
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use aarch64_emulator::cpu::{Cpu, CODE_BASE, DATA_BASE, STACK_BASE, STACK_FLOOR};
-use aarch64_emulator::decoder::{self, Instruction};
+use aarch64_emulator::decoder;
 use aarch64_emulator::registers::NzcvFlags;
 
 const SEED: u64 = 0x0A64_D0DE_5EED_0001;
@@ -56,18 +56,6 @@ fn register_value(rng: &mut Rng) -> u64 {
     }
 }
 
-/// shortcut: an ldp or stp whose base plus offset leaves i64's range trips
-/// the overflow check in `exec_ldst_pair` (a release build wraps), so its
-/// step is skipped; remove this when that add wraps.
-fn pair_offset_overflows(instr: &Instruction, cpu: &Cpu) -> bool {
-    match *instr {
-        Instruction::LdStPair { rn, imm7, .. } => {
-            (cpu.regs.read_gpr_or_sp(rn, true) as i64).checked_add(i64::from(imm7)).is_none()
-        }
-        _ => false,
-    }
-}
-
 /// The case's word, its disassembly, and one step of it with every
 /// register set from the case's own stream.
 fn one_case(cpu: &mut Cpu, case: u64) {
@@ -88,9 +76,6 @@ fn one_case(cpu: &mut Cpu, case: u64) {
         cpu.regs.write_fpr_q(v, u128::from(rng.next()) << 64 | u128::from(rng.next()));
     }
     cpu.regs.nzcv = NzcvFlags::unpack(rng.below(16) as u8);
-    if instr.is_ok_and(|instr| pair_offset_overflows(&instr, cpu)) {
-        return;
-    }
     let _ = cpu.step();
 }
 
