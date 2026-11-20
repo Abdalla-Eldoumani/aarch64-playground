@@ -26,10 +26,10 @@ pub fn putchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 pub fn getchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     if ctx.stdin.is_empty() {
-        // Closed stdin means EOF (-1), so the canonical read-until-EOF
-        // loop can terminate.
+        // Closed stdin means EOF, which ends a read-until-EOF loop: the int
+        // -1 in w0, with x0's upper half clear, as glibc returns it.
         if ctx.stdin_closed {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            ctx.regs.write_gpr(0, false, (-1i64) as u64);
             return Ok(HostOutcome::Continue);
         }
         return Ok(HostOutcome::NeedInput);
@@ -1223,7 +1223,7 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.stdin_closed = true;
         getchar(&mut ctx).unwrap();
-        assert_eq!(ctx.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(ctx.regs.read_gpr(0, true), 0xFFFF_FFFF);
     }
 
     #[test]
