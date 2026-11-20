@@ -364,6 +364,7 @@ fn stall(
     // With stdin closed no more input can ever arrive: finish the call
     // with the fields that matched, or C's EOF (-1) when none did, and
     // keep what was read (the whitespace before EOF stays read in glibc).
+    // Either is an int in w0, so x0's upper half is clear, as in glibc.
     if ctx.stdin_closed {
         if let Some(call) = ctx.call.as_deref_mut() {
             if let Some(row) = call.current().filter(|row| row.code == CALL_NO_MATCH) {
@@ -373,7 +374,7 @@ fn stall(
         }
         ctx.stdin.drain(..in_pos);
         let ret = if matched > 0 { matched } else { -1 };
-        ctx.regs.write_gpr(0, true, ret as u64);
+        ctx.regs.write_gpr(0, false, ret as u64);
         return Ok(HostOutcome::Continue);
     }
     Ok(HostOutcome::NeedInput)
@@ -715,7 +716,7 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0060_0000);
         let outcome = scanf(&mut closed_ctx(&mut h)).unwrap();
         assert_eq!(outcome, HostOutcome::Continue);
-        assert_eq!(h.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(h.regs.read_gpr(0, true), 0xFFFF_FFFF);
     }
 
     #[test]
