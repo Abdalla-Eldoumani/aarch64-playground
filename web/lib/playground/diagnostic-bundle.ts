@@ -88,10 +88,9 @@ export function encodeBundle(bundle: DiagnosticBundle): string {
 
 /**
  * The link that reopens this program, or null when even the program alone is
- * too long. The bundle rides in the fragment, which the browser never sends,
- * so opening the link gives the student's program and output to no server. A
- * reopen reads only the program and its input, so the link falls back to
- * those when the whole bundle does not fit.
+ * too long. The bundle rides in the fragment, which is not in the request for
+ * the page. A reopen reads only the program and its input, so the link falls
+ * back to those when the whole bundle does not fit.
  */
 export function bundleShareUrl(originUrl: string, bundle: DiagnosticBundle): string | null {
   const { source, files, args, stdin } = bundle;
