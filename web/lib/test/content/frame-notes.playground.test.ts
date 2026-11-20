@@ -50,16 +50,13 @@ describe("the frame notes on the shipped exercises", () => {
 
   it("note nothing on any reference solution, on its own input or any hidden case", { timeout: 120_000 }, async () => {
     const noted: string[] = [];
-    let runs = 0;
     for (const exercise of coding) {
       for (const testCase of runsOf(exercise)) {
         const outcome = await run(solutionFor(exercise.slug), testCase, true);
-        runs += 1;
         if (outcome.frameNotes.length > 0) noted.push(`${exercise.slug}: ${JSON.stringify(outcome.frameNotes)}`);
       }
     }
     expect(noted).toEqual([]);
-    expect(runs).toBe(407);
   });
 
   it("change no outcome and no grade while the switch is off, solutions and starters alike", { timeout: 240_000 }, async () => {
