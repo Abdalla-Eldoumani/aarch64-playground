@@ -560,7 +560,12 @@ fn parse_directive(
                     "`.zero` takes a size only. Use `.space size, fill` to fill with a byte",
                 ));
             }
-            let count = groups[0];
+            let Some(&count) = groups.first() else {
+                return Err(err(
+                    line,
+                    &format!("{name} needs a size: the number of bytes to reserve, as in `{name} 8`"),
+                ));
+            };
             let fill = match groups.get(1) {
                 Some(g) => (eval_const(g, line)? & 0xFF) as u8,
                 None => 0,

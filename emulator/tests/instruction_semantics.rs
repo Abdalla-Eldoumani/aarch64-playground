@@ -273,6 +273,29 @@ main:
     assert!(r.halted);
 }
 
+#[test]
+fn a_pair_offset_past_i64_max_wraps_in_every_index_mode() {
+    // A 64-bit adder wraps; the sum used to trip Rust's overflow check instead.
+    let step_pair = |line: &str| {
+        let mut cpu = assemble(&format!(
+            ".text\n.global main\nmain:\n    mov x3, 0x7fffffffffffffff\n    {line}\n    ret\n"
+        ));
+        cpu.step().expect("mov steps");
+        let _ = cpu.step();
+        cpu
+    };
+    let cpu = step_pair("stp x13, x4, [x3], 200");
+    assert_eq!(cpu.regs.read_gpr(3, true), 0x8000_0000_0000_00c7, "{:?}", cpu.abort_message);
+    for (line, at) in [
+        ("ldp w1, w2, [x3, 244]!", "0x80000000000000f3"),
+        ("ldp w27, w17, [x3, 92]", "0x800000000000005b"),
+    ] {
+        let cpu = step_pair(line);
+        let msg = cpu.abort_message.clone().unwrap_or_default();
+        assert!(msg.contains(&format!("tried to read {at}")), "{line}: {msg}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // single precision (S registers) through the full pipeline: the course
 // teaches s/d as two views of one register file, with fcvt bridging them

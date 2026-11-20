@@ -3,6 +3,7 @@
 //! never panic, silently mis-encode, or report success.
 
 use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frames::check::check_source;
 use aarch64_emulator::frontend::lint::lint;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
@@ -259,6 +260,38 @@ fn the_window_messages_quote_the_section_window() {
     let code = ".text\n.global main\nmain:\nldr x0, =5\nbl printf\nret\n.skip";
     let text = assemble_err(&format!("{code} {}\n", SECTION_WINDOW - 16));
     assert!(text.contains(&format!("the {n} MiB code window")), "message was: {text}");
+}
+
+#[test]
+fn a_fill_directive_without_a_size_asks_for_one() {
+    // An empty operand list used to index past its end and panic.
+    for name in [".skip", ".zero", ".space"] {
+        let src = format!(".data\n{name}\n.text\n.global main\nmain:\nret\n");
+        let msg = assemble_err(&src);
+        assert!(msg.contains(&format!("{name} needs a size")), "message was: {msg}");
+        assert!(msg.contains("line 2"), "message was: {msg}");
+        // The frame check assembles the source again on its own path.
+        check_source(&src, &Cpu::new().host);
+    }
+}
+
+/// The distance to the target used to overflow before the range check.
+fn assert_target_at_i64_min_is_out_of_range(op: &str) {
+    let msg = assemble_err(&format!(
+        ".text\n.global main\nmain:\n    {op} x0, -9223372036854775808\n    ret\n"
+    ));
+    assert!(msg.contains("ADR/ADRP target out of"), "{op}: message was: {msg}");
+    assert!(msg.contains("line 4"), "{op}: message was: {msg}");
+}
+
+#[test]
+fn an_adrp_target_past_the_signed_range_is_out_of_range() {
+    assert_target_at_i64_min_is_out_of_range("adrp");
+}
+
+#[test]
+fn an_adr_target_past_the_signed_range_is_out_of_range() {
+    assert_target_at_i64_min_is_out_of_range("adr");
 }
 
 #[test]
