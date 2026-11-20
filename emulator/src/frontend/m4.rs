@@ -1041,6 +1041,40 @@ mod tests {
     }
 
     #[test]
+    fn expansion_work_is_bounded_across_lines() {
+        // Each `P1 G)` line grows to 60 KB in its first round, carries that
+        // through a 29-name rename chain, then becomes `Z( 00..0)`, a call
+        // whose empty body leaves an empty line. The output cap never sees
+        // the ~1.8 MB each line builds; only a budget on every round can.
+        let mut head = String::from("define(Z,)\ndefine(P30, `Z(')\n");
+        for k in 1..30 {
+            head.push_str(&format!("define(P{k}, P{})\n", k + 1));
+        }
+        head.push_str(&format!("define(G, {})\n", "0".repeat(60_000)));
+        let calls = |n: usize| format!("{head}{}", "P1 G)\n".repeat(n));
+        assert!(exp(&calls(16)).text.trim().is_empty(), "each line settles to nothing");
+        let mut stopped_at = Vec::new();
+        for n in [48, 96, 192] {
+            let started = std::time::Instant::now();
+            match expand(&calls(n)) {
+                Ok(r) => panic!("{n} calls expanded to {} bytes with no error", r.text.len()),
+                Err(EmuError::PreprocError { line, message }) => {
+                    assert!(message.contains("m4 expansion built more than"), "message was: {message}");
+                    stopped_at.push(line);
+                }
+                Err(other) => panic!("expected a PreprocError, got {other}"),
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(10),
+                "{n} calls took {:?}",
+                started.elapsed()
+            );
+        }
+        // One budget for the whole program: every size stops on the same line.
+        assert!(stopped_at.iter().all(|&l| l == stopped_at[0]), "stopped at {stopped_at:?}");
+    }
+
+    #[test]
     fn the_line_cap_fires_before_the_expansion_is_materialized() {
         // A length test on the finished string would build the full
         // expansion first. One round can multiply its input by the body
