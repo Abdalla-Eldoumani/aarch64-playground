@@ -219,8 +219,10 @@ program the web tests read, and `c_corpus.rs` (a web test holds the name
 `web/lib/emulator/call-cards.ts`, `stack-frames.ts` and `clobber-note.ts`,
 also run `rust`. A change to
 `scripts/vercel-build.sh` runs none of the Rust jobs:
-CI never runs that script, and `web-static` checks its
-toolchain pins against the workflows. A change to a workflow, or to a file no
+CI never runs that script, `web-static` checks its
+toolchain pins against the workflows, and `web-test` runs
+`vercel-build.test.ts`, which checks that the script holds every download to
+a pinned hash. A change to a workflow, or to a file no
 rule names, runs everything, and so do a push to `main`, the weekly run, and
 the pull request from `integration` to `main`.
 The example catalog, `web/lib/playground/example-catalog.ts`, also runs
