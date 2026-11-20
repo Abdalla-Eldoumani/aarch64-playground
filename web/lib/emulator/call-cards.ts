@@ -27,9 +27,6 @@ const NO_INPUT = 3;
 /** Sources: xN is N, dN is 32 + N, the stack is 64 + its 8-byte slot. */
 const FP_SOURCE = 32;
 const STACK_SOURCE = 64;
-/** The first page: no program may use it, and the course server stops one
- *  that tries. */
-const FIRST_PAGE = 4096;
 
 export interface CallRow {
   /** What the conversion did, starting with the conversion as written. */
@@ -273,9 +270,7 @@ function scanfRow(conv: string, a: ScanfArg, input: CallCardInput): CallRow {
   const reg = sourceName(a.source, 8);
   return {
     text: `${conv} stored ${value} at ${hex(a.arg)}, which is not one of your variables`,
-    problem:
-      `${reg} should hold the address of a variable (add ${reg}, fp, its offset for a local, or ldr ${reg}, =its label), not its value.` +
-      (a.arg < BigInt(FIRST_PAGE) ? " On the course server this stops the program." : ""),
+    problem: `${reg} should hold the address of a variable (add ${reg}, fp, its offset for a local, or ldr ${reg}, =its label), not its value.`,
   };
 }
 
