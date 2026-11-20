@@ -59,6 +59,12 @@ vi.mock("@/components/playground/ShortcutsHelp", () => ({
 }));
 vi.mock("@/components/playground/ShareDialog", () => ({ ShareDialog: () => null }));
 vi.mock("@/components/chrome/SiteNav", () => ({ SiteNav: () => null }));
+// The real decoder loader, so a test can make it reject the way its chunk
+// import does when the chunk fails to load.
+vi.mock("@/lib/playground/playground-handoff", async (importOriginal) => {
+  const real = await importOriginal<typeof import("@/lib/playground/playground-handoff")>();
+  return { ...real, loadBundleDecoder: vi.fn(real.loadBundleDecoder) };
+});
 
 // Boot failures go through the handle's notifyError, because in production
 // the page's own toast import is a separate copy no Toaster listens to.
@@ -67,6 +73,7 @@ const toastError = () => handle.notifyError as ReturnType<typeof vi.fn>;
 import Home from "./page";
 import { buildShareHash } from "@/lib/playground/share";
 import { encodeBundle } from "@/lib/playground/diagnostic-bundle";
+import { loadBundleDecoder } from "@/lib/playground/playground-handoff";
 
 afterEach(() => {
   cleanup();
@@ -458,4 +465,53 @@ describe("page delivery of a diagnostic link", () => {
     await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
     expect(handle.loadProgram.mock.calls[0][0]).toEqual(delivered);
   });
+});
+
+// One link can carry an older ?bundle= query beside a share fragment. Every
+// pairing of a good or damaged bundle with a good or damaged share, with the
+// decoder's chunk loading or failing, ends on the program and the notices the
+// page gave when it booted the share at render. The one difference: a good
+// bundle beside a good share now arrives alone, not after the share.
+describe("page delivery of a link with both a bundle and a share", () => {
+  const SAVED = "// my saved work";
+  const BUNDLE = `?bundle=${encodeBundle({ source: "// bundle", files: [{ name: "b.s", body: "// b" }] })}`;
+  const SHARE = buildShareHash({ source: "// share", files: [{ name: "s.s", body: "// s" }] });
+  const DAMAGED_BUNDLE = "?bundle=not-a-payload";
+  const DAMAGED_SHARE = "#p2=z";
+  const SHARE_NOTICE =
+    "that share link is damaged, usually a partial copy. your own code is still here; ask the sender for the link again";
+  const BUNDLE_NOTICE =
+    "that diagnostic-bundle link is damaged, usually a partial copy. your own code is still here; ask the sender for the link again";
+
+  it.each([
+    // link, decoder chunk, program the student ends on, search, hash, notices, programs written
+    ["a good bundle and a good share", "loads", "// bundle", BUNDLE, SHARE, [], 1],
+    ["a good bundle and a damaged share", "loads", "// bundle", BUNDLE, DAMAGED_SHARE, [SHARE_NOTICE], 1],
+    ["a damaged bundle and a good share", "loads", "// share", DAMAGED_BUNDLE, SHARE, [], 1],
+    ["a damaged bundle and a damaged share", "loads", SAVED, DAMAGED_BUNDLE, DAMAGED_SHARE, [SHARE_NOTICE, BUNDLE_NOTICE], 0],
+    ["a good bundle and a good share", "fails", "// share", BUNDLE, SHARE, [], 1],
+    ["a good bundle and a damaged share", "fails", SAVED, BUNDLE, DAMAGED_SHARE, [SHARE_NOTICE], 0],
+    ["a damaged bundle and a good share", "fails", "// share", DAMAGED_BUNDLE, SHARE, [], 1],
+    ["a damaged bundle and a damaged share", "fails", SAVED, DAMAGED_BUNDLE, DAMAGED_SHARE, [SHARE_NOTICE], 0],
+    ["a good bundle and an example", "fails", SAVED, `${BUNDLE}&example=echo`, "", [], 0],
+  ] as const)(
+    "%s, decoder chunk %s: ends on %s",
+    async (_link, chunk, program, search, hash, notices, written) => {
+      window.localStorage.setItem("aarch64-playground:auto-save:current", SAVED);
+      vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 404, statusText: "", text: async () => "" })));
+      if (chunk === "fails") vi.mocked(loadBundleDecoder).mockRejectedValueOnce(new Error("chunk failed to load"));
+      window.history.replaceState({}, "", `/playground${search}${hash}`);
+      render(<Home />);
+      // Past the pass after mount and the 1.5 s delay on every notice.
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 1700));
+      });
+      const loads = handle.loadProgram.mock.calls.map((call) => (call[0] as { source: string }).source);
+      const booted = receivedPropsRef.current.fromShare ? 1 : 0;
+      expect(loads.at(-1) ?? receivedPropsRef.current.startSource).toBe(program);
+      expect(toastError().mock.calls.map((call) => call[0])).toEqual(notices);
+      expect(booted + loads.length).toBe(written);
+    },
+    5000,
+  );
 });
