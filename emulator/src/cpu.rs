@@ -13,7 +13,7 @@ use crate::executor::{self, ExecResult};
 use crate::frames::CallStack;
 use crate::frontend::sections::{align_padding, Item, Program};
 use crate::hosted::{CallRecord, HostContext, HostOutcome, HostTable, Returns, MAIN_RETURN_ADDR};
-use crate::memory::Memory;
+use crate::memory::{Memory, StoreGuard};
 use crate::registers::RegisterFile;
 use crate::snapshot::{SavedState, Snapshot, SnapshotRing};
 
@@ -710,7 +710,8 @@ impl Cpu {
     /// Run a library call or a system call (`dispatch`) with what every
     /// host-side call owes the walls: the input it read echoes, the bytes
     /// it moved and printed are charged, and a failure is a calm halt. A
-    /// write fault there is the page cap, as in normal code; a read fault
+    /// write fault there is the page cap, as in normal code; a library
+    /// call's store the servers would kill names the call; a read fault
     /// through x0 at a library call names the missing `ldr x0, =fmt`, while
     /// a syscall's keeps the plain text, even from an `svc` a program wrote
     /// over a trampoline. `Some` is the halt `step` hands back.
@@ -723,7 +724,17 @@ impl Cpu {
         let err_before = self.stderr.len();
         let moved = self.mem.bytes_written();
         let queued = self.stdin.len();
+        let guard = self.mem.store_guard();
+        self.mem.set_store_guard(match guard {
+            StoreGuard::Code { text_end } if self.host.contains_address(pc) => {
+                StoreGuard::Library { text_end }
+            }
+            // A system call writes as before: Linux fails one given a bad
+            // buffer with an error rather than killing the program.
+            _ => StoreGuard::Off,
+        });
         let dispatched = dispatch(self);
+        self.mem.set_store_guard(guard);
         // Echo before the charge so echoed bytes count against the
         // output wall and the display counters like any other output.
         self.echo_consumed_stdin(queued);
@@ -743,6 +754,11 @@ impl Cpu {
             {
                 self.libc_read_fault(pc, address)
             }
+            Err(EmuError::StoreFault { address, code, .. }) => EmuError::StoreFault {
+                address,
+                code,
+                call: self.host.stub_at(pc).map(|stub| stub.name),
+            },
             Err(e) => map_write_fault(e),
         };
         Some(self.halt(e.to_string()))
