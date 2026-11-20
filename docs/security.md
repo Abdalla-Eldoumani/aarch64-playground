@@ -182,6 +182,13 @@ built JavaScript states and fails if any is older than the one in
 `overrides`. A later monaco-editor update cannot bring the old copy back
 without that check failing.
 
+The production build, `scripts/vercel-build.sh`, downloads the Rust
+toolchain, wasm-pack, the wasm-bindgen CLI and `wasm-opt`. Each is pinned to
+an exact version and a sha256 written in the script, and the build stops
+before it runs any file whose hash differs. The emulator builds with cargo's
+`--locked`, so its crates are the ones `emulator/Cargo.lock` names, each
+checked against the hash recorded there.
+
 ## Check the headers
 
 `scripts/check-headers.js` requests a page and checks every header above. Run
