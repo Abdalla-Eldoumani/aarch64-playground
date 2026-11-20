@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  FRAME_NOTES_COUNT,
   checkExercise,
   checkHiddenCase,
+  frameNoteText,
   type CheckerSnapshot,
   type HiddenRunOutcome,
 } from "@/lib/content/exercise-checker";
@@ -437,6 +439,7 @@ describe("checkHiddenCase", () => {
       exitCode: 0,
       stackBalanced: true,
       frameIntact: true,
+      frameNotes: [],
       ...over,
     };
   }
@@ -460,5 +463,41 @@ describe("checkHiddenCase", () => {
     expect(checkHiddenCase(testCase, run({ exitCode: 3 })).detail).toBe("3");
     expect(checkHiddenCase(testCase, run({ stackBalanced: false })).miss).toBe("stack");
     expect(checkHiddenCase(testCase, run({ frameIntact: false })).miss).toBe("frame");
+  });
+
+  // A call made with sp off a multiple of 16, the note the run makes for it.
+  const noted = run({ frameNotes: [{ kind: "sp", fn: "bump", line: 24 }] });
+
+  it("leaves the frame notes out of pass and fail until the switch is turned on", () => {
+    expect(FRAME_NOTES_COUNT).toBe(false);
+    expect(checkHiddenCase(testCase, noted)).toEqual({ pass: true, miss: null, detail: "" });
+  });
+
+  it("fails a case for its frame notes once the switch is on, after every other cause, in the first note's words", () => {
+    expect(checkHiddenCase(testCase, noted, true)).toEqual({
+      pass: false,
+      miss: "calls",
+      detail: "line 24 calls bump with sp not a multiple of 16",
+    });
+    expect(checkHiddenCase(testCase, run(), true).pass).toBe(true);
+    expect(checkHiddenCase(testCase, { ...noted, frameIntact: false }, true).miss).toBe("frame");
+  });
+});
+
+describe("frameNoteText", () => {
+  it("names each call by its line and the function it entered", () => {
+    expect(frameNoteText({ kind: "sp", fn: "0x00400034", line: 22 })).toBe(
+      "line 22 calls 0x00400034 with sp not a multiple of 16",
+    );
+    expect(frameNoteText({ kind: "fp", fn: "main", line: null, at: 28 })).toBe("line 28 writes over the saved fp of main");
+    expect(frameNoteText({ kind: "lr", fn: "tidy", line: 53, at: 20 })).toBe(
+      "line 20 writes over the saved lr of the call to tidy on line 53",
+    );
+    expect(frameNoteText({ kind: "fpChanged", fn: "set_up", line: 36 })).toBe(
+      "the call to set_up on line 36 returns with fp changed",
+    );
+    expect(frameNoteText({ kind: "callee", fn: "double_it", line: 42, register: 20 })).toBe(
+      "the call to double_it on line 42 returns with x20 changed",
+    );
   });
 });
