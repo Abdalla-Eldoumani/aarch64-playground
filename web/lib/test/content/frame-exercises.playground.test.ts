@@ -75,9 +75,9 @@ describe("the draw-the-frame exercises", () => {
   );
 
   it.each(frames.map((exercise) => [exercise.slug, exercise] as const))(
-    "%s: the whole program runs clean, returns from main with sp where it started and its caller's frame untouched, and prints what was worked out",
+    "%s: the whole program runs clean, returns from main with sp where it started and its caller's frame untouched, breaks no call's frame, and prints what was worked out",
     async (slug, exercise) => {
-      const outcome = await runHeadless(machine, exercise.program, [], undefined);
+      const outcome = await runHeadless(machine, exercise.program, [], undefined, {}, true);
       expect(outcome).toMatchObject({
         error: null,
         finished: true,
@@ -85,6 +85,7 @@ describe("the draw-the-frame exercises", () => {
         stdout: BY_HAND[slug].stdout,
         stackBalanced: true,
         frameIntact: true,
+        frameNotes: [],
       });
     },
   );
