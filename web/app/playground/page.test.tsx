@@ -404,8 +404,8 @@ describe("page delivery on a URL change without a remount", () => {
   });
 });
 
-// A diagnostic link keeps its bundle in the fragment, so opening one sends
-// the program to no server; links made before that put it in the query.
+// A diagnostic link keeps its bundle in the fragment, so the request for the
+// page does not carry it; links made before that put it in the query.
 describe("page delivery of a diagnostic link", () => {
   const encoded = encodeBundle({
     source: "bl helper",
