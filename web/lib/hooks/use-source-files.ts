@@ -5,10 +5,9 @@ import { MAX_FILE_NAME_CHARS, type SourceFile } from "@/lib/playground/file-map"
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
-// Helper files writes displaced. Loading a program REPLACES the strip on
+// Helper files that writes displaced. Loading a program REPLACES the strip on
 // purpose (a new program must not link another workspace's helpers), so the
-// displaced files are kept here, every load's until a restore, and can be
-// restored.
+// displaced files are kept here, from every load since the last restore.
 const BACKUP_KEY = "aarch64-playground:multi-files-backup";
 
 function readStore(key: string): SourceFile[] {
@@ -78,7 +77,7 @@ function freeName(name: string, files: SourceFile[]): string {
   return candidate;
 }
 
-/** How many helper files the last replacement displaced, and the call that
+/** How many displaced helper files the backup holds, and the call that
  * restores them. */
 export interface SourceFilesBackup {
   count: number;
