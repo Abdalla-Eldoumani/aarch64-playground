@@ -54,6 +54,8 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
     // expect a section to be present.
     prog.section_or_insert(SectionKind::Text);
     let mut current = SectionKind::Text;
+    // Filled `.space`/`.skip` bytes built so far, indexed by section kind.
+    let mut filled = [0u64; 4];
     // ld throws `.note.GNU-stack` away with whatever is in it, so once the
     // note opens, a line that places bytes, defines a label or sets an
     // equate is refused until a section line ends the note. The parser sees
@@ -79,7 +81,7 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
                 }
             }
         }
-        parse_line(line_tokens, &mut prog, &mut current)?;
+        parse_line(line_tokens, &mut prog, &mut current, &mut filled)?;
     }
     Ok(prog)
 }
@@ -313,6 +315,7 @@ fn parse_line(
     line_tokens: &[Token],
     prog: &mut Program,
     current: &mut SectionKind,
+    filled: &mut [u64; 4],
 ) -> Result<(), EmuError> {
     // Labels can stack on one line (`a: b: c: ret`). Peel them in a loop,
     // not by recursion: a stack frame per label overflows the wasm stack
@@ -375,7 +378,7 @@ fn parse_line(
             Ok(())
         }
         TokenKind::DirectiveIdent(name) => {
-            parse_directive(name, &line_tokens[1..], prog, current, first.line)
+            parse_directive(name, &line_tokens[1..], prog, current, filled, first.line)
         }
         TokenKind::Ident(name)
             if line_tokens
@@ -454,6 +457,7 @@ fn parse_directive(
     rest: &[Token],
     prog: &mut Program,
     current: &mut SectionKind,
+    filled: &mut [u64; 4],
     line: usize,
 ) -> Result<(), EmuError> {
     match name {
@@ -588,12 +592,16 @@ fn parse_directive(
                 // Refuse before materializing: the filled bytes are
                 // allocated here, ahead of the linker's 1 MiB window
                 // check, and on wasm32 a giant Vec is an allocation
-                // abort rather than an error message.
-                if n as u64 > SECTION_WINDOW {
+                // abort rather than an error message. The total is per
+                // section, so many lines cannot add up past it either.
+                let total = &mut filled[*current as usize];
+                *total += n as u64;
+                if *total > SECTION_WINDOW {
                     return Err(err(
                         line,
-                        "the fill would outgrow the section's 1 MiB window. \
-                         Shrink the size",
+                        "the filled .space and .skip lines here would outgrow the \
+                         section's 1 MiB window. The usual cause is a size with a \
+                         digit too many: shrink it",
                     ));
                 }
                 prog.section_or_insert(*current)
