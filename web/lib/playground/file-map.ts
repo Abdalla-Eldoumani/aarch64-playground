@@ -67,7 +67,7 @@ const lineCount = countLines;
 const MAIN_NAMES = /^main\.(asm|s)$/i;
 
 /** Longest file name the strip accepts. */
-const MAX_FILE_NAME_CHARS = 64;
+export const MAX_FILE_NAME_CHARS = 64;
 
 /**
  * Letters, digits, dot, dash, and underscore, starting with a letter or digit.
