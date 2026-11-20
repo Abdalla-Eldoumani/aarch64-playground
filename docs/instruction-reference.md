@@ -8,7 +8,7 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form                             | Notes                                    |
 | -------- | -------------------------------- | ---------------------------------------- |
-| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. A negative immediate lowers to `MOVN`, so `mov x0, #-5` and `movn x0, #4` produce the identical word. |
+| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. A negative immediate lowers to `MOVN`, so `mov x0, #-5` and `movn x0, #4` produce the identical word. Both registers have one width, as GAS requires: `mov x1, w3` and `mov w1, x24` are refused with its "operand mismatch" (`sxtw x1, w3` widens a signed 32-bit value). |
 | `MOVZ`   | `MOVZ Xd, #imm, LSL #shift`      | Zero upper bits, shift is 0/16/32/48.    |
 | `MOVK`   | `MOVK Xd, #imm, LSL #shift`      | Keep other halfwords.                    |
 | `MOVN`   | `MOVN Xd, #imm, LSL #shift`      | Bitwise NOT, same shifts.                |
