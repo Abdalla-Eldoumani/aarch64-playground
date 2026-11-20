@@ -86,12 +86,27 @@ pub(super) fn encode_mov(ops: &[&str], ln: usize) -> Result<u32, EmuError> {
     // to index 31, so this has to be detected textually.
     let dst_is_sp = ops[0].trim().eq_ignore_ascii_case("SP");
     let src_is_sp = op2.eq_ignore_ascii_case("SP");
+    // Every form has one width, so GAS refuses a w register beside an x one
+    // (sp, xzr and fp included); taking `mov x1, w3` copied all of x3.
+    let (rm, rm_sf) = parse_register(op2, ln)?;
+    if rm_sf != sf {
+        let (x, w) = if sf { (ops[0].trim(), op2) } else { (op2, ops[0].trim()) };
+        return asm_err(
+            ln,
+            &format!(
+                "operand mismatch -- `{}'\n`{x}` is a 64-bit register and `{w}` a 32-bit one, and \
+                 mov copies between registers of one width: write both the same, as in \
+                 `mov w1, w24` for 32 bits or `mov x1, x24` for 64. To widen a signed 32-bit \
+                 value, write `sxtw x1, w3` (`mov w1, w3` already clears the top half of x1)",
+                gas_echo("mov", &ops.join(","))
+            ),
+        );
+    }
     if dst_is_sp || src_is_sp {
         return encode_dp(&[ops[0], op2, "#0"], 0, 0, ln);
     }
 
     // MOV Xd, Xn -> ORR Xd, XZR, Xn
-    let (rm, _) = parse_register(op2, ln)?;
     let sf_bit = if sf { 1u32 } else { 0 };
     // ORR <Xd>, XZR, <Xm>
     Ok((sf_bit << 31) | (0b01 << 29) | (0b01010 << 24) | ((rm as u32) << 16)
