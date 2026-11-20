@@ -729,8 +729,7 @@ impl Cpu {
             StoreGuard::Code { text_end } if self.host.contains_address(pc) => {
                 StoreGuard::Library { text_end }
             }
-            // A system call writes as before: Linux fails one given a bad
-            // buffer with an error rather than killing the program.
+            // A system call stays unguarded: Linux fails a bad buffer with an error.
             _ => StoreGuard::Off,
         });
         let dispatched = dispatch(self);
