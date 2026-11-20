@@ -142,6 +142,21 @@ describe("useSourceFiles", () => {
       expect(result.current[0]).toEqual([{ name: "mine.s", body: "// mine" }]);
     });
 
+    // The free name stays inside the strip's 64-character cap, or a share
+    // link holding it would be refused.
+    it("keeps a restored helper's free name within the name length cap", () => {
+      const long = `${"a".repeat(62)}.s`;
+      seed([{ name: long, body: "// student work" }]);
+      const { result } = renderHook(() => useSourceFiles());
+      act(() => {
+        result.current[1]([{ name: long, body: "// example" }], { load: true });
+      });
+      act(() => {
+        result.current[2].restore();
+      });
+      expect(result.current[0][1]).toEqual({ name: `2-${"a".repeat(62)}`, body: "// student work" });
+    });
+
     it("does not restore a second copy of a helper the strip already holds unchanged", () => {
       seed([{ name: "util.s", body: "// util" }]);
       const { result } = renderHook(() => useSourceFiles());
