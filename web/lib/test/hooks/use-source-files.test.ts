@@ -307,4 +307,22 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count(), "the restore count is what is stored").toBe(1);
     expect(mount().count()).toBe(1);
   });
+
+  // Blocked site data refuses every write: the tab still restores, and the
+  // count clears as it always did, since no reload could offer the files.
+  it("clears the restore count when storage refuses every write", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([{ name: "mine.s", body: "// mine" }]));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("site data is blocked", "SecurityError");
+    });
+    const h = mount();
+    h.save([{ name: "zz.s", body: "// zz" }], { load: true });
+    expect(h.count()).toBe(1);
+    h.restore();
+    expect(h.files()).toEqual([
+      { name: "zz.s", body: "// zz" },
+      { name: "mine.s", body: "// mine" },
+    ]);
+    expect(h.count()).toBe(0);
+  });
 });
