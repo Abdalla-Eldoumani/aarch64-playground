@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SourceFile } from "@/lib/playground/file-map";
+import { fileNameShapeError, type SourceFile } from "@/lib/playground/file-map";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
-// Helper files the last write displaced. Loading a program REPLACES the strip
-// on purpose (a new program must not link another workspace's helpers), so
-// the displaced files are kept here and can be restored.
+// Helper files writes displaced. Loading a program REPLACES the strip on
+// purpose (a new program must not link another workspace's helpers), so the
+// displaced files are kept here, every load's until a restore, and can be
+// restored.
 const BACKUP_KEY = "aarch64-playground:multi-files-backup";
 
 function readStore(key: string): SourceFile[] {
@@ -53,6 +54,31 @@ function displacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
   );
 }
 
+/**
+ * A file a program load is about to lose: its body does not come back. A
+ * name the program reuses is no match, since the program's file is not the
+ * student's.
+ */
+function replacedBy(stored: SourceFile[], next: SourceFile[]): SourceFile[] {
+  return stored.filter((f) => !next.some((n) => n.body === f.body));
+}
+
+function sameFile(a: SourceFile, b: SourceFile): boolean {
+  return a.name === b.name && a.body === b.body;
+}
+
+/** `name`, or a free name for it when the strip uses it: stack.s comes back as 2-stack.s. */
+function freeName(name: string, files: SourceFile[]): string {
+  const taken = new Set(files.map((f) => f.name));
+  let candidate = name;
+  for (let i = 2; taken.has(candidate); i++) {
+    candidate = `${i}-${name}`;
+    // The digit prefix keeps the shape valid; trimming the end keeps the length cap.
+    while (fileNameShapeError(candidate)) candidate = candidate.slice(0, -1);
+  }
+  return candidate;
+}
+
 /** How many helper files the last replacement displaced, and the call that
  * restores them. */
 export interface SourceFilesBackup {
@@ -62,12 +88,13 @@ export interface SourceFilesBackup {
 
 /**
  * The multi-file workspace's persisted state: the extra source files beside
- * main.asm, the write that replaces them, and the backup of whatever the
- * last write discarded. MultiFileTabs renders this state; it does not own it.
+ * main.asm, the write that replaces them (`{ load: true }` for a program
+ * load), and the backup of whatever writes discarded. MultiFileTabs renders
+ * this state; it does not own it.
  */
 export function useSourceFiles(): [
   SourceFile[],
-  (next: SourceFile[]) => void,
+  (next: SourceFile[], how?: { load: boolean }) => void,
   SourceFilesBackup,
 ] {
   const [files, setFiles] = useState<SourceFile[]>(loadFiles);
@@ -76,30 +103,41 @@ export function useSourceFiles(): [
   // the incoming set against this, at the moment of the write, not in an
   // effect, where the comparison would be a cascading render.
   const filesRef = useRef<SourceFile[]>(files);
+  // The backup as the last write left it, read at the write for the same reason.
+  const backupRef = useRef<SourceFile[]>(backup);
   useEffect(() => {
     writeStore(STORE_KEY, files);
   }, [files]);
-  const save = useCallback((next: SourceFile[]) => {
-    const displaced = displacedBy(filesRef.current, next);
-    filesRef.current = next;
-    if (displaced.length > 0) {
-      writeStore(BACKUP_KEY, displaced);
-      setBackup(displaced);
-    }
-    setFiles(next);
+  const keepBackup = useCallback((next: SourceFile[]) => {
+    backupRef.current = next;
+    writeStore(BACKUP_KEY, next);
+    setBackup(next);
   }, []);
+  const save = useCallback(
+    (next: SourceFile[], how?: { load: boolean }) => {
+      const kept = backupRef.current;
+      // A load adds to the backup, so a second load cannot push out what the
+      // first displaced; any other write displaces into it alone.
+      const displaced = how?.load
+        ? replacedBy(filesRef.current, next).filter((f) => !kept.some((k) => sameFile(k, f)))
+        : displacedBy(filesRef.current, next);
+      filesRef.current = next;
+      if (displaced.length > 0) keepBackup(how?.load ? [...kept, ...displaced] : displaced);
+      setFiles(next);
+    },
+    [keepBackup],
+  );
   // Restoring APPENDS: the program that replaced the strip may need its own
-  // helpers, so bringing the old ones back must not take theirs away.
+  // helpers, so bringing the old ones back must not take theirs away. One
+  // whose name the strip now uses comes back under a free name.
   const restore = useCallback(() => {
-    const taken = new Set(filesRef.current.map((f) => f.name));
-    const next = [
-      ...filesRef.current,
-      ...backup.filter((f) => !taken.has(f.name)),
-    ];
+    const next = [...filesRef.current];
+    for (const f of backupRef.current) {
+      if (!next.some((n) => sameFile(n, f))) next.push({ name: freeName(f.name, next), body: f.body });
+    }
     filesRef.current = next;
     setFiles(next);
-    writeStore(BACKUP_KEY, []);
-    setBackup([]);
-  }, [backup]);
+    keepBackup([]);
+  }, [keepBackup]);
   return [files, save, { count: backup.length, restore }];
 }
