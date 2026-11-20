@@ -168,7 +168,8 @@ through Next.js, and `minimatch`, for the copy
 `@typescript-eslint/typescript-estree` uses in the lint tools. ESLint and its
 plugins keep minimatch 3, whose API differs, so that override applies
 to that one package. The root `package.json` holds the same `postcss`
-override for the copy of Next.js that Vercel installs there.
+override for the copy of Next.js that Vercel installs there, from the root
+`package-lock.json` with `npm ci`. Dependabot watches the root and `web/`.
 
 monaco-editor also bundles its own, older copy of DOMPurify, a file inside
 its package that `overrides` cannot change. The editor uses it to clean the
