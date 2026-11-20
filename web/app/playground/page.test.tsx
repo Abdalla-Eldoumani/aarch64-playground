@@ -445,4 +445,17 @@ describe("page delivery of a diagnostic link", () => {
     await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
     expect(handle.loadProgram.mock.calls[0][0]).toEqual(delivered);
   });
+
+  // Each program written into the helper strip moves what was there into the
+  // restore slot, so one link must write it once, not boot the share's files
+  // and then load the bundle's over them.
+  it("loads only the bundle when an older ?bundle= link also carries a share", async () => {
+    const share = buildShareHash({ source: "// s", files: [{ name: "zz.s", body: "// zz" }] });
+    window.history.replaceState({}, "", `/playground?bundle=${encoded}${share}`);
+    render(<Home />);
+    expect(receivedPropsRef.current.startFiles).toBeUndefined();
+    expect(receivedPropsRef.current.fromShare).toBe(false);
+    await waitFor(() => expect(handle.loadProgram).toHaveBeenCalledTimes(1));
+    expect(handle.loadProgram.mock.calls[0][0]).toEqual(delivered);
+  });
 });
