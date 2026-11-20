@@ -337,6 +337,11 @@ impl Cpu {
         call.call_pc = self.last_program_pc;
         call.result = regs[0];
         call.failed = failed;
+        // A call that faulted stopped at the conversion it was making, such
+        // as a scanf store the servers would kill.
+        if let Some(row) = call.current().filter(|_| failed) {
+            row.code = crate::hosted::CALL_STOPPED;
+        }
         let old = std::mem::replace(&mut self.last_call, std::mem::take(&mut self.call_scratch));
         match self.snapshots.newest_mut() {
             Some(frame) => frame.call = Some(old),
