@@ -441,6 +441,40 @@ main:
     expect(spokenCard(card)).toBe('scanf("%d") on line 24 stopped the program before it returned. scanf stopped at %d.');
   });
 
+  it("a scanf handed a number past the first page stores there and says it is not a variable", () => {
+    const p = load(`// Reads an int with scanf into 0x1000, a number where a variable's address belongs.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_in:     .string "%d"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_in
+        mov     x1, 0x1000                  // a number, not an address
+        bl      scanf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`, "7\n");
+    const card = after(p, 18);
+    expect(card.rows).toEqual([
+      {
+        text: "%d stored 7 at 0x1000, which is not one of your variables",
+        problem: "x1 should hold the address of a variable (add x1, fp, its offset for a local, or ldr x1, =its label), not its value.",
+      },
+    ]);
+    expect(card.outcome).toBe("returned 1 in w0");
+  });
+
   it("input that does not fit stops scanf at that conversion", () => {
     const card = after(load(LOCALS, "x 4\n"), 36);
     expect(texts(card)).toEqual(['%d stored nothing: the input "x" does not fit it, so scanf stopped there']);
