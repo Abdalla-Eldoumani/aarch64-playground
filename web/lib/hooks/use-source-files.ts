@@ -1,13 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { MAX_FILE_NAME_CHARS, type SourceFile } from "@/lib/playground/file-map";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
 // Helper files that writes displaced. Loading a program REPLACES the strip on
 // purpose (a new program must not link another workspace's helpers), so the
-// displaced files are kept here, from every load since the last restore.
+// displaced files are kept here, from every load since the last restore that
+// storage has room for.
 const BACKUP_KEY = "aarch64-playground:multi-files-backup";
 
 function readStore(key: string): SourceFile[] {
@@ -37,8 +38,25 @@ function loadBackup(): SourceFile[] {
   return readStore(BACKUP_KEY);
 }
 
-function writeStore(key: string, files: SourceFile[]): void {
-  safeSetItem(key, JSON.stringify(files));
+function writeStore(key: string, files: SourceFile[]): boolean {
+  return safeSetItem(key, JSON.stringify(files));
+}
+
+/**
+ * Write the strip. When storage is full, the oldest backup entries make room,
+ * down to the last `keep`; if the strip still does not fit, the backup is put
+ * back as it was. Returns the backup now stored, or null if the strip failed.
+ */
+function writeStrip(files: SourceFile[], backup: SourceFile[], keep: number): SourceFile[] | null {
+  let left = backup;
+  while (!writeStore(STORE_KEY, files)) {
+    if (left.length <= keep || !writeStore(BACKUP_KEY, left.slice(1))) {
+      if (left !== backup) writeStore(BACKUP_KEY, backup);
+      return null;
+    }
+    left = left.slice(1);
+  }
+  return left;
 }
 
 /**
@@ -103,12 +121,8 @@ export function useSourceFiles(): [
   const filesRef = useRef<SourceFile[]>(files);
   // The backup as the last write left it, read at the write for the same reason.
   const backupRef = useRef<SourceFile[]>(backup);
-  useEffect(() => {
-    writeStore(STORE_KEY, files);
-  }, [files]);
   const keepBackup = useCallback((next: SourceFile[]) => {
     backupRef.current = next;
-    writeStore(BACKUP_KEY, next);
     setBackup(next);
   }, []);
   const save = useCallback(
@@ -119,8 +133,17 @@ export function useSourceFiles(): [
       const displaced = how?.load
         ? replacedBy(filesRef.current, next).filter((f) => !kept.some((k) => sameFile(k, f)))
         : displacedBy(filesRef.current, next);
+      let nextBackup = kept;
+      if (displaced.length > 0) {
+        nextBackup = how?.load ? [...kept, ...displaced] : displaced;
+        // Full storage drops the oldest entries first, never this write's own.
+        while (!writeStore(BACKUP_KEY, nextBackup) && nextBackup.length > displaced.length) {
+          nextBackup = nextBackup.slice(1);
+        }
+      }
+      nextBackup = writeStrip(next, nextBackup, displaced.length) ?? nextBackup;
       filesRef.current = next;
-      if (displaced.length > 0) keepBackup(how?.load ? [...kept, ...displaced] : displaced);
+      if (nextBackup !== kept) keepBackup(nextBackup);
       setFiles(next);
     },
     [keepBackup],
@@ -135,7 +158,11 @@ export function useSourceFiles(): [
     }
     filesRef.current = next;
     setFiles(next);
-    keepBackup([]);
+    // The backup goes only once the strip holds its files.
+    if (writeStrip(next, backupRef.current, 0) !== null) {
+      writeStore(BACKUP_KEY, []);
+      keepBackup([]);
+    }
   }, [keepBackup]);
   return [files, save, { count: backup.length, restore }];
 }
