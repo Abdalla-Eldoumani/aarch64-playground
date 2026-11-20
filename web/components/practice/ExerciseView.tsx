@@ -191,6 +191,8 @@ function hiddenMiss(check: HiddenCaseCheck): string {
       return "main returns with sp moved: take the frame down by exactly what you put up";
     case "frame":
       return "it writes above main's frame, over values its caller saved there";
+    case "calls":
+      return `a call in it breaks a stack rule: ${check.detail}`;
     case null:
       return "";
     default: {
