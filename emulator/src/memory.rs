@@ -59,11 +59,22 @@ pub struct Memory {
     guard: StoreGuard,
 }
 
-/// Stores the servers kill: into the code below `text_end` (0: none) and, by a `library` call, page 0 or the stubs.
+/// Which stores fault where the course servers kill the program with a
+/// segmentation fault, since a write here otherwise maps any page.
 #[derive(Clone, Copy, Default)]
-pub struct StoreGuard {
-    pub text_end: u64,
-    pub library: bool,
+pub enum StoreGuard {
+    /// Every store maps its page: nothing is loaded, the program is bare,
+    /// or a system call is writing (Linux fails one given a bad buffer
+    /// with an error instead).
+    #[default]
+    Off,
+    /// The program's own stores: its code, `[CODE_BASE, text_end)`.
+    Code { text_end: u64 },
+    /// A library call's stores: the code, page 0, and the stub window just
+    /// under 4 GiB, where the program owns nothing. Past 4 GiB stays open:
+    /// such an address comes from the value a call leaves in a register,
+    /// which differs on the servers.
+    Library { text_end: u64 },
 }
 
 /// What a step's writes replaced: each run of written bytes with the bytes
@@ -128,7 +139,7 @@ impl Memory {
             zero_fill: Vec::new(),
             undo: MemUndo::default(),
             recording: false,
-            guard: StoreGuard::default(),
+            guard: StoreGuard::Off,
         }
     }
 
@@ -303,7 +314,7 @@ impl Memory {
     /// blamed.
     pub fn clear(&mut self) {
         self.zero_fill.clear();
-        self.guard = StoreGuard::default();
+        self.guard = StoreGuard::Off;
         let Self { pages, free, .. } = self;
         for (_, page) in pages.drain() {
             // A page a named save still shares cannot be recycled:
@@ -338,7 +349,11 @@ impl Memory {
     /// page on first write and logging what they replace when an undo log
     /// is open.
     fn write_in_page(&mut self, addr: u64, bytes: &[u8]) -> Result<(), EmuError> {
-        let StoreGuard { text_end, library } = self.guard;
+        let (text_end, library) = match self.guard {
+            StoreGuard::Off => (CODE_BASE, false),
+            StoreGuard::Code { text_end } => (text_end, false),
+            StoreGuard::Library { text_end } => (text_end, true),
+        };
         let code = (CODE_BASE..text_end).contains(&addr);
         let stubs = (HOST_STUB_BASE..HOST_STUB_BASE + HOST_STUB_WINDOW).contains(&addr);
         if code || library && (addr < PAGE_SIZE as u64 || stubs) {
