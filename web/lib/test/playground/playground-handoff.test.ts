@@ -176,7 +176,7 @@ describe("resolveHandoff", () => {
   });
 });
 
-// Diagnostic links carry the bundle in the fragment, which no request sends;
+// Diagnostic links carry the bundle in the fragment, outside the request line;
 // links made before that carry it in the query and must keep loading.
 describe("a diagnostic link in the fragment", () => {
   const unconsumed = { fromShare: false, fromBundle: false };
