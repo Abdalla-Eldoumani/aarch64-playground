@@ -54,7 +54,7 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
     // expect a section to be present.
     prog.section_or_insert(SectionKind::Text);
     let mut current = SectionKind::Text;
-    // Filled `.space`/`.skip` bytes built so far, indexed by section kind.
+    // Filled `.space`/`.skip` bytes built so far, indexed by `section_slot`.
     let mut filled = [0u64; 4];
     // ld throws `.note.GNU-stack` away with whatever is in it, so once the
     // note opens, a line that places bytes, defines a label or sets an
@@ -594,7 +594,7 @@ fn parse_directive(
                 // check, and on wasm32 a giant Vec is an allocation
                 // abort rather than an error message. The total is per
                 // section, so many lines cannot add up past it either.
-                let total = &mut filled[*current as usize];
+                let total = &mut filled[section_slot(*current)];
                 *total += n as u64;
                 if *total > SECTION_WINDOW {
                     return Err(err(
@@ -924,6 +924,17 @@ fn stringify_tokens_space(tokens: &[Token]) -> String {
         out.push(' ');
     }
     out.trim().to_string()
+}
+
+/// A section's index into the parser's per-section totals. Exhaustive, so a
+/// new section kind fails to compile here rather than index past the array.
+fn section_slot(kind: SectionKind) -> usize {
+    match kind {
+        SectionKind::Text => 0,
+        SectionKind::Data => 1,
+        SectionKind::Rodata => 2,
+        SectionKind::Bss => 3,
+    }
 }
 
 #[cfg(test)]
