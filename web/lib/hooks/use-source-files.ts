@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fileNameShapeError, type SourceFile } from "@/lib/playground/file-map";
+import { MAX_FILE_NAME_CHARS, type SourceFile } from "@/lib/playground/file-map";
 import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
@@ -72,9 +72,8 @@ function freeName(name: string, files: SourceFile[]): string {
   const taken = new Set(files.map((f) => f.name));
   let candidate = name;
   for (let i = 2; taken.has(candidate); i++) {
-    candidate = `${i}-${name}`;
-    // The digit prefix keeps the shape valid; trimming the end keeps the length cap.
-    while (fileNameShapeError(candidate)) candidate = candidate.slice(0, -1);
+    // A digit-led prefix keeps a valid name valid; the slice keeps it within the cap.
+    candidate = `${i}-${name}`.slice(0, MAX_FILE_NAME_CHARS);
   }
   return candidate;
 }
