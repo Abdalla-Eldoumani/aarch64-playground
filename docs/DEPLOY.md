@@ -13,8 +13,10 @@ framework, the install and build commands, and the output folder
 
 ## What the build does
 
-The install command installs the root `package.json` (which exists only so
-Vercel detects Next.js) and then runs `npm ci` in `web/`. The build command is
+The install command runs `npm ci` at the root, which installs the root
+`package.json` (it exists only so Vercel detects Next.js) from the committed
+root `package-lock.json`, and then runs `npm ci` in `web/`. Both installs fail
+rather than resolve anything their lockfile does not name. The build command is
 [`scripts/vercel-build.sh`](../scripts/vercel-build.sh). It:
 
 1. Installs rustup if it is missing, then the Rust toolchain pinned at the top
@@ -100,8 +102,9 @@ deployment, which matters for rollback (see [Releasing](#releasing)).
 ## Releasing
 
 A release is its own pull request that bumps every version together:
-`web/package.json` and `web/package-lock.json`, the root `package.json`,
-`emulator/Cargo.toml` with `emulator/Cargo.lock`, and `CITATION.cff`
+`web/package.json` and `web/package-lock.json`, the root `package.json` and
+`package-lock.json`, `emulator/Cargo.toml` with `emulator/Cargo.lock`, and
+`CITATION.cff`
 (`version` and `date-released`). Before it, run the dependency audit on what
 ships, from the repository root:
 
