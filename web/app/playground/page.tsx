@@ -213,7 +213,9 @@ export default function Home() {
     const bootSearch = window.location.search;
     const bootHash = window.location.hash;
     void (async () => {
-      const decode = await loadBundleDecoder(bootSearch, bootHash);
+      // A decoder chunk that fails to load still lets the share the boot left
+      // for the bundle arrive.
+      const decode = await loadBundleDecoder(bootSearch, bootHash).catch(() => undefined);
       const handoff = resolveHandoff(boot, bootSearch, bootHash, decode);
       if (handoff?.kind === "share-error") {
         toastSoon(

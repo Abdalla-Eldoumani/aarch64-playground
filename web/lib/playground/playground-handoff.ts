@@ -103,7 +103,7 @@ export async function loadBundleDecoder(
  * The starting program at render time: a diagnostic link, then a share link,
  * then the autosave, then the default. Render cannot await loadBundleDecoder,
  * so the playground route boots without it and the pass after mount delivers
- * the bundle.
+ * the bundle, or the share in the same URL if the bundle does not decode.
  */
 export function resolveBoot(
   search: string,
@@ -123,8 +123,11 @@ export function resolveBoot(
       fromBundle: true,
     };
   }
+  // A bundle still to be decoded outranks the share, so booting the share now
+  // would load a second program over it after mount.
+  const bundlePending = !decode && bundleValue(search, hash) !== null;
   const shared = readShareHash(hash);
-  if (shared.kind === "ok") {
+  if (shared.kind === "ok" && !bundlePending) {
     return {
       source: shared.state.source,
       files: shared.state.files,
@@ -208,6 +211,8 @@ export function resolveHandoff(
     // navigation reaches it only here.
     return boot.shareError ? null : { kind: "share-error", reason: shared.kind };
   }
+  // A bundle whose decoder failed to load still outranks an example.
+  if (!decode && bundleValue(search, hash) !== null) return null;
   if (dl.example) {
     return { kind: "example", stem: resolveExampleStem(dl.example) };
   }

@@ -50,7 +50,10 @@ const ROUTES = [
     // 225.12 kB brotli measured (2026-10-28). Raised 125 B (2026-11-18) for the
     // window-size request, the largest growth measured: +96 to +125 B by
     // checkout path (225,939 -> 226,064 B at one), 225.99 -> 226.10 kB in CI.
-    limit: 226_125,
+    // Raised 88 B (2026-11-19) for keeping every helper a program load
+    // replaces and loading one program from a bundle-and-share link:
+    // 226,005 -> 226,213 B locally.
+    limit: 226_213,
   },
 ];
 

@@ -447,6 +447,51 @@ describe("importing a program's files", () => {
   });
 });
 
+// A program that brings a helper under a name the student already uses must
+// leave the student's text restorable, whether it arrives after the page
+// opened or as the page opens.
+describe("a program load over the student's helpers", () => {
+  const STUDENT = { name: "stack.s", body: "// student work" };
+  const PROGRAM_FILE = { name: "stack.s", body: "// example" };
+
+  it("offers back a helper a later load replaced under the same name", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+
+    act(() => ref.current!.loadProgram({ source: MAIN, files: [PROGRAM_FILE] }));
+    fireEvent.click(await screen.findByText("restore 1 file"));
+
+    await waitFor(() =>
+      expect(ref.current!.getFiles()).toEqual([
+        PROGRAM_FILE,
+        { name: "2-stack.s", body: "// student work" },
+      ]),
+    );
+  });
+
+  it("offers back a helper the page's opening program replaced under the same name", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} startFiles={[PROGRAM_FILE]} />,
+    );
+    engage(container);
+
+    fireEvent.click(await screen.findByText("restore 1 file"));
+
+    await waitFor(() =>
+      expect(ref.current!.getFiles()).toEqual([
+        PROGRAM_FILE,
+        { name: "2-stack.s", body: "// student work" },
+      ]),
+    );
+  });
+});
+
 describe("the error line under the run row", () => {
   async function mountWithError(message: string, line: number) {
     useEmulatorMock.mockReturnValue(
