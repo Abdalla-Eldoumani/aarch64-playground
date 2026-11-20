@@ -344,6 +344,162 @@ main:
     }
 }
 
+// The servers map .text read-only, so a store into the program's own code
+// is a segmentation fault (exit 139) after the output the program printed.
+#[test]
+fn a_store_into_the_programs_code_is_a_segmentation_fault() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "x1 = %ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x1, 1
+        ldr     x0, =fmt
+        bl      printf
+        adr     x1, main
+        mov     x2, 5
+store:  str     x2, [x1]
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+    let (mut cpu, message) = run_expect_halt_message(source);
+    assert!(message.starts_with("Segmentation fault\n"), "message was: {message}");
+    assert!(
+        message.contains("the program's own code") && message.contains(".data or .bss"),
+        "message says what the store hit and what to write: {message}"
+    );
+    assert_eq!(cpu.regs.read_pc(), cpu.resolve_label("store").unwrap(), "stops on the store");
+    let main = cpu.resolve_label("main").unwrap();
+    assert_ne!(cpu.mem.read_u64(main).unwrap(), 5, "the code is not changed");
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "x1 = 1\n");
+}
+
+// A library call that stores into the program's code, into page 0, or into
+// the 64 KiB just under 4 GiB (where an address built from sp twice lands)
+// is a segmentation fault on the servers, after the output the program
+// printed.
+#[test]
+fn a_library_call_storing_where_the_program_has_no_memory_is_a_segmentation_fault() {
+    let targets = [
+        ("adr     x1, main", None),
+        ("mov     x1, 0", Some(0)),
+        ("mov     x1, 0xffb8\n        movk    x1, 0xffff, lsl 16", Some(0xffff_ffb8)),
+    ];
+    for (load, address) in targets {
+        let source = format!(
+            r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:            .string "x1 = %ld\n"
+infmt:          .string "%ld"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x1, 1
+        ldr     x0, =fmt
+        bl      printf
+        ldr     x0, =infmt
+        {load}
+        bl      scanf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#
+        );
+        let mut cpu = Cpu::new();
+        let image = assemble_hosted(&source, &cpu.host).expect("assemble");
+        cpu.load_linked_image(&image).expect("load");
+        cpu.push_stdin(b"5\n");
+        cpu.close_stdin();
+        assert!(cpu.run_until_break(2_000_000).expect("run").halted, "{load}: halts");
+        let message = cpu.abort_message.clone().unwrap_or_default();
+        let code = address.is_none();
+        let address = address.unwrap_or_else(|| cpu.resolve_label("main").unwrap());
+        assert!(
+            message.starts_with(&format!("Segmentation fault\nscanf tried to write to 0x{address:x}, ")),
+            "{load}: {message}"
+        );
+        let says = if code { "the program's own code" } else { "`ldr x1, =var`" };
+        assert!(message.contains(says), "{load}: {message}");
+        assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "x1 = 1\n", "{load}: the output stays");
+    }
+}
+
+// What the servers map past what a program asked for: a library call's
+// store 8 bytes past the end of .bss, 64 bytes past a 16-byte malloc, and
+// 1 MiB below sp all land, and the program runs on.
+#[test]
+fn library_stores_into_memory_the_servers_map_still_run() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "%ld %ld %ld\n"
+infmt:  .string "%ld"
+
+        .bss
+        .balign 8
+last:   .skip   8
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -48]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        str     x21, [sp, 32]
+
+        ldr     x19, =last
+        add     x19, x19, 8
+        ldr     x0, =infmt
+        mov     x1, x19
+        bl      scanf
+
+        mov     x0, 16
+        bl      malloc
+        add     x20, x0, 64
+        ldr     x0, =infmt
+        mov     x1, x20
+        bl      scanf
+
+        sub     x21, sp, 256, lsl 12
+        ldr     x0, =infmt
+        mov     x1, x21
+        bl      scanf
+
+        ldr     x0, =fmt
+        ldr     x1, [x19]
+        ldr     x2, [x20]
+        ldr     x3, [x21]
+        bl      printf
+
+        mov     w0, 0
+        ldr     x21, [sp, 32]
+        ldp     x19, x20, [sp, 16]
+        ldp     fp, lr, [sp], 48
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "7 8 9\n");
+    assert_eq!(out, "7 8 9\n");
+}
+
 // rand() must give glibc's exact sequence: programs print unseeded draws
 // and students compare the playground's output with a run on the
 // servers. The values below were captured there.
