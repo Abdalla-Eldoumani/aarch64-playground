@@ -1354,6 +1354,63 @@ main:   stp     x29, x30, [sp, -16]!
     assert_eq!((line, message.lines().next()), (12, Some(gas)), "the editor");
 }
 
+// GAS refuses a register `mov` between a w and an x register with "operand
+// mismatch" at its line, as csarm did for `mov w1,x24` on line 164 of a
+// recorded program. The playground took both directions, and `mov x1, w3`
+// copied all 64 bits of x3. sp, xzr/wzr and fp/lr have a width like any other
+// register; GNU as 2.42 gave the verdict and the word for every form below.
+#[test]
+fn a_mov_between_a_w_and_an_x_register_is_refused_like_gas() {
+    use aarch64_emulator::assembler::assemble;
+    use aarch64_emulator::errors::EmuError;
+
+    let program = |ins: &str| {
+        format!("        .text\n        .balign 4\n        .global main\nmain:   {ins}\n        mov     w0, 0\n        ret\n")
+    };
+    let refusal = |ins: &str| match assemble_hosted(&program(ins), &Cpu::new().host).err() {
+        Some(EmuError::AssemblyError { line, message }) => (line, message),
+        other => panic!("{ins}: GAS refuses this line, the playground gave {other:?}"),
+    };
+    for (ins, gas) in [
+        ("mov     w1, x24", "mov w1,x24"),
+        ("mov     x1, w3", "mov x1,w3"),
+        ("MOV     X19, W23", "mov X19,W23"),
+        ("mov     w0, sp", "mov w0,sp"),
+        ("mov     sp, w0", "mov sp,w0"),
+        ("mov     x0, wzr", "mov x0,wzr"),
+        ("mov     wzr, x0", "mov wzr,x0"),
+        ("mov     w0, fp", "mov w0,fp"),
+        ("mov     lr, w1", "mov lr,w1"),
+    ] {
+        let (line, message) = refusal(ins);
+        let first = format!("operand mismatch -- `{gas}'");
+        assert_eq!((line, message.lines().next()), (4, Some(first.as_str())), "{ins}");
+        assert_eq!(message.lines().count(), 2, "{ins}: GAS's line and one guidance line\n{message}");
+    }
+    let (_, message) = refusal("mov     x1, w3");
+    for fix in ["`x1` is a 64-bit register and `w3` a 32-bit one", "`mov w1, w24`", "`mov x1, x24`", "`sxtw x1, w3`"] {
+        assert!(message.contains(fix), "{fix} is missing from: {message}");
+    }
+
+    // The forms GAS takes keep GAS's word.
+    for (ins, word) in [
+        ("mov w1, w24", 0x2a1803e1),
+        ("mov x1, x24", 0xaa1803e1),
+        ("mov x0, sp", 0x910003e0),
+        ("mov sp, x0", 0x9100001f),
+        ("mov sp, sp", 0x910003ff),
+        ("mov x0, xzr", 0xaa1f03e0),
+        ("mov w0, wzr", 0x2a1f03e0),
+        ("mov xzr, x0", 0xaa0003ff),
+        ("mov wzr, w0", 0x2a0003ff),
+        ("mov fp, sp", 0x910003fd),
+        ("mov x0, fp", 0xaa1d03e0),
+        ("mov sp, fp", 0x910003bf),
+    ] {
+        assert_eq!(assemble(ins).ok(), Some(vec![word]), "{ins}");
+    }
+}
+
 // A known difference, kept on purpose. csarm assembles each file on its own,
 // so a label without `.global` stays in its file and this pair fails to link:
 // "undefined reference to `helper'". The playground joins a program's files
