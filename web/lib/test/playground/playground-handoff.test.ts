@@ -232,6 +232,31 @@ describe("a diagnostic link in the fragment", () => {
   });
 });
 
+// An older ?bundle= link can also carry a share fragment. The render pass
+// cannot decode the bundle, so it must leave the share alone too: one
+// program arrives, once, after mount.
+describe("a link with both a ?bundle= query and a share fragment", () => {
+  it("boots neither at render, and the pass after mount delivers the bundle", () => {
+    const boot = resolveBoot(BUNDLE_QUERY, SHARE_HASH, "saved", "default");
+    expect(boot.source).toBe("saved");
+    expect(boot.files).toBeUndefined();
+    expect(boot.fromShare).toBe(false);
+    expect(resolveHandoff(boot, BUNDLE_QUERY, SHARE_HASH, decodeBundle)).toEqual({
+      kind: "bundle",
+      payload: { source: "mov x1, 9", args: "x", stdin: "y\n", label: "diagnostic bundle" },
+    });
+  });
+
+  it("delivers the share after mount when the bundle does not decode", () => {
+    const boot = resolveBoot("?bundle=not-a-payload", SHARE_HASH, "saved", "default");
+    expect(boot.fromShare).toBe(false);
+    expect(resolveHandoff(boot, "?bundle=not-a-payload", SHARE_HASH, decodeBundle)).toMatchObject({
+      kind: "share",
+      payload: { source: "mov x0, 7", fromShare: true },
+    });
+  });
+});
+
 describe("parseVfsFixture", () => {
   it("accepts a flat name-to-content object", () => {
     expect(parseVfsFixture('{"input.txt": "hello\\n"}')).toEqual({
