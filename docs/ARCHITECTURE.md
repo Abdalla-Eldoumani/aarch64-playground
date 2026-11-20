@@ -183,7 +183,10 @@ Unaligned loads and stores work, as they do for Linux programs. Two alignment
 rules stop the program with the bus error Linux gives: a load or store through
 `sp`, or a library call, while `sp` is not a multiple of 16, and a jump to an
 address that is not a multiple of 4, where no instruction can start. A load or
-store in the first page (a null pointer) stops it with a segmentation fault.
+store in the first page (a null pointer) stops it with a segmentation fault, and
+so does a store into the program's own code. A library call's store stops there
+too, and also in the host stub window just under 4 GiB; a system call given
+such a buffer writes as before, since Linux fails that call with an error.
 
 The `memoryMap` export in `lib.rs` lists the address bands, built from the
 same constants the loader uses, so the memory panel's labels cannot drift
