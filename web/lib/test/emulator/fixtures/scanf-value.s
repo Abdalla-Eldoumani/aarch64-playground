@@ -1,5 +1,5 @@
 // Reads an int with scanf but hands it the int's value instead of its
-// address: x1 holds what a_s holds (0), so scanf stores at address 0.
+// address: x1 holds what a_s holds (0), so scanf's store at 0 faults.
 
 define(fp, x29)
 define(lr, x30)
