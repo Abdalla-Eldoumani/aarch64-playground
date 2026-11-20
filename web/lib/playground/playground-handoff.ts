@@ -126,8 +126,8 @@ export function resolveBoot(
   // A bundle still to be decoded outranks the share, so booting the share now
   // would load a second program over it after mount.
   const bundlePending = !decode && bundleValue(search, hash) !== null;
-  const shared = bundlePending ? ({ kind: "none" } as const) : readShareHash(hash);
-  if (shared.kind === "ok") {
+  const shared = readShareHash(hash);
+  if (shared.kind === "ok" && !bundlePending) {
     return {
       source: shared.state.source,
       files: shared.state.files,
@@ -211,6 +211,8 @@ export function resolveHandoff(
     // navigation reaches it only here.
     return boot.shareError ? null : { kind: "share-error", reason: shared.kind };
   }
+  // A bundle whose decoder failed to load still outranks an example.
+  if (!decode && bundleValue(search, hash) !== null) return null;
   if (dl.example) {
     return { kind: "example", stem: resolveExampleStem(dl.example) };
   }
