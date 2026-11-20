@@ -725,14 +725,9 @@ impl Cpu {
         let moved = self.mem.bytes_written();
         let queued = self.stdin.len();
         let guard = self.mem.store_guard();
-        self.mem.set_store_guard(match guard {
-            StoreGuard::Code { text_end } if self.host.contains_address(pc) => {
-                StoreGuard::Library { text_end }
-            }
-            // A system call writes as before: Linux fails one given a bad
-            // buffer with an error rather than killing the program.
-            _ => StoreGuard::Off,
-        });
+        // A system call stays unguarded: Linux fails a bad buffer with an error.
+        let library = guard.text_end != 0 && self.host.contains_address(pc);
+        self.mem.set_store_guard(StoreGuard { text_end: if library { guard.text_end } else { 0 }, library });
         let dispatched = dispatch(self);
         self.mem.set_store_guard(guard);
         // Echo before the charge so echoed bytes count against the
