@@ -1129,6 +1129,43 @@ mod tests {
         assert!(e.to_string().contains("1 MiB"), "got: {e}");
     }
 
+    fn filled_bytes(items: &[Item]) -> usize {
+        items.iter().map(|i| if let Item::Bytes(b) = i { b.len() } else { 0 }).sum()
+    }
+
+    #[test]
+    fn space_fills_stop_where_the_section_total_passes_the_window() {
+        // Each line fits the window alone; only a per-section running total
+        // stops every later line from building another MiB before the
+        // linker's window check runs.
+        let line = ".space 1048576, 1\n";
+        let mut built = Vec::new();
+        for k in [2, 4, 8] {
+            let started = std::time::Instant::now();
+            match parse(&format!(".data\n{}", line.repeat(k))) {
+                Ok(p) => built.push((k, filled_bytes(&p.section(SectionKind::Data).unwrap().items))),
+                Err(e) => assert!(matches!(e, EmuError::ParseError { line: 3, .. }), "{k} lines: {e}"),
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "{k} lines took {:?}",
+                started.elapsed()
+            );
+        }
+        assert!(built.is_empty(), "parsed, building (lines, filled bytes) {built:?}");
+        // Leaving the section and coming back keeps its total.
+        let r = parse(&format!(".data\n{line}.text\n.data\n.space 1, 1\n"));
+        assert!(matches!(r, Err(EmuError::ParseError { line: 5, .. })), "got: {:?}", r.err());
+    }
+
+    #[test]
+    fn space_fills_may_fill_each_section_window_exactly() {
+        let p = parse_ok(".data\n.space 524288, 1\n.space 524288, 2\n.rodata\n.space 1048576, 3\n");
+        for kind in [SectionKind::Data, SectionKind::Rodata] {
+            assert_eq!(filled_bytes(&p.section(kind).unwrap().items), 1 << 20, "{kind:?}");
+        }
+    }
+
     #[test]
     fn space_symbolic_size_with_fill_names_the_fix() {
         let e = parse("SZ = 8\n.data\n.space SZ, 1\n").unwrap_err();
