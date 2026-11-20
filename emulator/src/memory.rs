@@ -59,21 +59,15 @@ pub struct Memory {
     guard: StoreGuard,
 }
 
-/// Which stores fault where the course servers kill the program with a
-/// segmentation fault, since a write here otherwise maps any page.
+/// Stores the servers kill with a segmentation fault; any other write maps its page.
 #[derive(Clone, Copy, Default)]
 pub enum StoreGuard {
-    /// Every store maps its page: nothing is loaded, the program is bare,
-    /// or a system call is writing (Linux fails one given a bad buffer
-    /// with an error instead).
+    /// None: nothing is loaded, the program is bare, or a system call is writing.
     #[default]
     Off,
     /// The program's own stores: its code, `[CODE_BASE, text_end)`.
     Code { text_end: u64 },
-    /// A library call's stores: the code, page 0, and the stub window just
-    /// under 4 GiB, where the program owns nothing. Past 4 GiB stays open:
-    /// such an address comes from the value a call leaves in a register,
-    /// which differs on the servers.
+    /// A library call's: the code, page 0 and the stub window (past 4 GiB the servers differ).
     Library { text_end: u64 },
 }
 
