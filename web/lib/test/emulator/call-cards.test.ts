@@ -433,9 +433,12 @@ main:
     const p = load(fixture("scanf-value.s"), "7\n");
     p.emu.run_until_break(1_000_000);
     expect(p.emu.is_halted()).toBe(true);
-    const card = cardNow(p);
-    expect(card?.line).toBe("line 24");
-    expect(card?.rows).toEqual([{ text: "scanf stopped at %d", problem: null }]);
+    const card = cardNow(p)!;
+    expect(card.line).toBe("line 24");
+    expect(card.rows).toEqual([{ text: "scanf stopped at %d", problem: null }]);
+    // x0 still holds the format's address: scanf never returned a count.
+    expect(card.outcome).toBe("stopped the program before it returned");
+    expect(spokenCard(card)).toBe('scanf("%d") on line 24 stopped the program before it returned. scanf stopped at %d.');
   });
 
   it("input that does not fit stops scanf at that conversion", () => {
