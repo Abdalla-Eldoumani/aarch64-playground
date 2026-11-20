@@ -2220,3 +2220,75 @@ taken:\tldp\tx29, x30, [sp], 16
     assert_eq!(out, "");
     assert_eq!(cpu.exit_code(), Some(1));
 }
+
+// glibc's getchar, getc and scanf return an int, so at the end of input w0
+// is -1 and x0's upper half is clear: x0 reads 0x00000000ffffffff. A
+// program that multiplies by all of x0 there prints 12884901887 on csarm,
+// not -1. Checked with glibc 2.39 under qemu for each call below.
+#[test]
+fn end_of_input_returns_an_int_minus_one() {
+    let source = r#"
+define(fp, x29)
+define(lr, x30)
+define(got_getchar, x19)
+define(got_getc, x20)
+define(got_scanf, x21)
+define(got_file, x22)
+
+        .data
+fmt:    .string "getchar %016lx\ngetc %016lx\nscanf %016lx\ngetc file %016lx\n"
+infmt:  .string "%d"
+name:   .string "empty.txt"
+mode:   .string "w+"
+
+        .bss
+        .balign 8
+v:      .skip 8
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -48]!
+        mov     fp, sp
+        stp     x19, x20, [sp, 16]
+        stp     x21, x22, [sp, 32]
+
+        bl      getchar
+        mov     got_getchar, x0
+
+        ldr     x0, =stdin
+        ldr     x0, [x0]
+        bl      getc
+        mov     got_getc, x0
+
+        ldr     x0, =infmt
+        ldr     x1, =v
+        bl      scanf
+        mov     got_scanf, x0
+
+        ldr     x0, =name
+        ldr     x1, =mode
+        bl      fopen
+        bl      getc
+        mov     got_file, x0
+
+        ldr     x0, =fmt
+        mov     x1, got_getchar
+        mov     x2, got_getc
+        mov     x3, got_scanf
+        mov     x4, got_file
+        bl      printf
+
+        mov     w0, 0
+        ldp     x21, x22, [sp, 32]
+        ldp     x19, x20, [sp, 16]
+        ldp     fp, lr, [sp], 48
+        ret
+"#;
+    let (_, out) = run_with_stdin(source, "");
+    assert_eq!(
+        out,
+        "getchar 00000000ffffffff\ngetc 00000000ffffffff\nscanf 00000000ffffffff\ngetc file 00000000ffffffff\n"
+    );
+}
