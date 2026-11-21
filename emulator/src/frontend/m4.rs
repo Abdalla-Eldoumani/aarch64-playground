@@ -37,6 +37,12 @@ pub(crate) const MAX_EXPANDED_LINE_BYTES: usize = 64 * 1024;
 /// program (source itself is capped at 1 MiB upstream).
 pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 
+/// Cap on the bytes every round builds, summed over the whole source. The
+/// total cap sees only each line's settled text, so a line that grows for
+/// 30 rounds and then settles to nothing would cost it nothing. The
+/// largest shipped example builds about 0.5 MiB.
+const MAX_EXPANSION_WORK_BYTES: usize = 32 * 1024 * 1024;
+
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
 pub struct Expanded {
@@ -214,6 +220,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
+    let mut work: usize = 0;
     for (idx, line) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -230,7 +237,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
-        let expanded = expand_recursively(line, &current, line_num)?;
+        let expanded = expand_recursively(line, &current, line_num, &mut work)?;
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
@@ -268,10 +275,11 @@ fn expand_recursively(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
+    work: &mut usize,
 ) -> Result<String, EmuError> {
     let mut current = line.to_string();
     for _ in 0..MAX_RECURSION {
-        let next = substitute_bounded(&current, defines, line_num)?;
+        let next = substitute_bounded(&current, defines, line_num, work)?;
         if next == current {
             return Ok(current);
         }
@@ -279,7 +287,7 @@ fn expand_recursively(
     }
     // One more pass: if it still changes after MAX_RECURSION rounds, the
     // substitution has a cycle and will never settle.
-    let next = substitute_bounded(&current, defines, line_num)?;
+    let next = substitute_bounded(&current, defines, line_num, work)?;
     if next != current {
         return Err(EmuError::PreprocError {
             line: line_num,
@@ -293,14 +301,16 @@ fn expand_recursively(
 /// is built. Measuring the finished line would let a chain that multiplies
 /// every round allocate gigabytes first, which aborts wasm instead of
 /// giving an error. The cap never drops below the input's length, so a long
-/// line that does not grow still passes.
+/// line that does not grow still passes. What the round builds is added to
+/// `work`, the whole source's running total.
 fn substitute_bounded(
     line: &str,
     defines: &HashMap<String, String>,
     line_num: usize,
+    work: &mut usize,
 ) -> Result<String, EmuError> {
     let limit = MAX_EXPANDED_LINE_BYTES.max(line.len());
-    substitute_once_gnu(line, defines, limit).map_err(|stop| EmuError::PreprocError {
+    let next = substitute_once_gnu(line, defines, limit).map_err(|stop| EmuError::PreprocError {
         line: line_num,
         message: match stop {
             Stop::Cap => format!(
@@ -311,7 +321,21 @@ fn substitute_bounded(
                                playground's m4 needs the closing `)` on the same line"
                 .to_string(),
         },
-    })
+    })?;
+    *work += next.len();
+    if *work > MAX_EXPANSION_WORK_BYTES {
+        return Err(EmuError::PreprocError {
+            line: line_num,
+            message: format!(
+                "m4 expansion built more than {} MiB of text, counting every round of \
+                 every line, which is the playground's ceiling. The usual cause is a \
+                 define() chain that takes many rounds to settle, used on many lines: \
+                 shorten the chain or use it on fewer lines",
+                MAX_EXPANSION_WORK_BYTES / (1024 * 1024)
+            ),
+        });
+    }
+    Ok(next)
 }
 
 /// Why a substitution round stopped short.
@@ -1038,6 +1062,40 @@ mod tests {
         }
         let err = expand(&src).unwrap_err();
         assert!(err.to_string().contains("MiB"), "was: {err}");
+    }
+
+    #[test]
+    fn expansion_work_is_bounded_across_lines() {
+        // Each `P1 G)` line grows to 60 KB in its first round, carries that
+        // through a 29-name rename chain, then becomes `Z( 00..0)`, a call
+        // whose empty body leaves an empty line. The output cap never sees
+        // the ~1.8 MB each line builds; only a budget on every round can.
+        let mut head = String::from("define(Z,)\ndefine(P30, `Z(')\n");
+        for k in 1..30 {
+            head.push_str(&format!("define(P{k}, P{})\n", k + 1));
+        }
+        head.push_str(&format!("define(G, {})\n", "0".repeat(60_000)));
+        let calls = |n: usize| format!("{head}{}", "P1 G)\n".repeat(n));
+        assert!(exp(&calls(16)).text.trim().is_empty(), "each line settles to nothing");
+        let mut stopped_at = Vec::new();
+        for n in [48, 96, 192] {
+            let started = std::time::Instant::now();
+            match expand(&calls(n)) {
+                Ok(r) => panic!("{n} calls expanded to {} bytes with no error", r.text.len()),
+                Err(EmuError::PreprocError { line, message }) => {
+                    assert!(message.contains("m4 expansion built more than"), "message was: {message}");
+                    stopped_at.push(line);
+                }
+                Err(other) => panic!("expected a PreprocError, got {other}"),
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(10),
+                "{n} calls took {:?}",
+                started.elapsed()
+            );
+        }
+        // One budget for the whole program: every size stops on the same line.
+        assert!(stopped_at.iter().all(|&l| l == stopped_at[0]), "stopped at {stopped_at:?}");
     }
 
     #[test]
