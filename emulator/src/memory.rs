@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -46,6 +47,9 @@ pub struct Memory {
     free: Vec<Vec<u8>>,
     dirty: Vec<(u64, usize)>,
     written: u64,
+    /// `note_host_work`'s total. A `Cell` because the string walks that
+    /// add to it only read.
+    host_work: Cell<u64>,
     /// `[start, end)` spans that read as zeros before their first write:
     /// the data sections the loader placed. Linux maps a whole `.bss`, so a
     /// read of an untouched page there answers 0 rather than faulting.
@@ -110,6 +114,7 @@ impl Clone for Memory {
             free: Vec::new(),
             dirty: Vec::new(),
             written: self.written,
+            host_work: self.host_work.clone(),
             zero_fill: self.zero_fill.clone(),
             undo: MemUndo::default(),
             recording: false,
@@ -130,6 +135,7 @@ impl Memory {
             free: Vec::new(),
             dirty: Vec::new(),
             written: 0,
+            host_work: Cell::new(0),
             zero_fill: Vec::new(),
             undo: MemUndo::default(),
             recording: false,
@@ -244,6 +250,20 @@ impl Memory {
     /// megabytes of work per step the runaway budget never saw.
     pub fn note_bulk_read(&mut self, len: u64) {
         self.written = self.written.saturating_add(len);
+    }
+
+    /// Count work a library call did over a guest-chosen size that the
+    /// step budget does not charge: a string walked, a buffer read, a
+    /// free list scanned. `Cpu::run_until` hands control back once one
+    /// call's share passes `MAX_HOST_WORK_PER_RUN`, so Pause and Reset
+    /// land however much work each step does.
+    pub fn note_host_work(&self, units: u64) {
+        self.host_work.set(self.host_work.get().saturating_add(units));
+    }
+
+    /// Running total of `note_host_work`.
+    pub fn host_work(&self) -> u64 {
+        self.host_work.get()
     }
 
     /// Record a write for the UI's changed-byte tint and the bulk-work
