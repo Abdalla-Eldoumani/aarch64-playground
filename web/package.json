@@ -122,7 +122,7 @@
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.6",
     "jsdom": "31.0.1",
-    "lighthouse": "13.5.0",
+    "lighthouse": "13.6.0",
     "playwright": "1.65.1",
     "postcss": "8.5.33",
     "size-limit": "14.3.0",
