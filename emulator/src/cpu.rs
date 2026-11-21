@@ -39,6 +39,14 @@ const SNAPSHOT_CAPACITY: usize = 128;
 /// step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
 
+/// Budget for what the ring's memory undo logs hold together. A frame's log
+/// costs about what its step wrote, a few bytes on almost every step, but
+/// one library call can write megabytes (a memset, a memmove), and 128 such
+/// frames could hold gigabytes. Past the budget the oldest frames are
+/// dropped, so step-back reaches fewer steps behind such calls. The site's
+/// programs hold at most about 1 MiB.
+pub const MAX_SNAPSHOT_LOG_BYTES: usize = 32 * 1024 * 1024;
+
 pub use crate::layout::{
     BSS_BASE, CODE_BASE, DATA_BASE, HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE,
     RODATA_BASE, SECTION_WINDOW, STACK_BASE, STACK_FLOOR,
@@ -539,7 +547,7 @@ impl Cpu {
             refund_steps_total: 0,
             refund_output_total: 0,
             host: HostTable::new(),
-            snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
+            snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY, MAX_SNAPSHOT_LOG_BYTES),
             symbols: HashMap::new(),
             steps_total: 0,
             steps_taken: 0,
@@ -683,15 +691,18 @@ impl Cpu {
         }
     }
 
-    /// Give the frame this step pushed the undo logs the step filled. A
-    /// step that recorded nothing leaves every frame as it is. Recording
-    /// starts only once the frame is in the ring, and nothing in a step
-    /// empties the ring, so the newest frame is the one to fill.
+    /// Give the frame this step pushed the undo logs the step filled, then
+    /// hold the ring to its budget. A step that recorded nothing leaves
+    /// every frame as it is. Recording starts only once the frame is in the
+    /// ring, and nothing in a step empties the ring, so the newest frame is
+    /// the one to fill.
     fn close_step_frame(&mut self) {
-        if let Some(frame) = self.snapshots.newest_mut() {
-            self.regs.finish_undo(&mut frame.regs);
-            self.mem.finish_undo(&mut frame.mem);
-            self.heap.finish_undo(&mut frame.heap);
+        let Some(frame) = self.snapshots.newest_mut() else { return };
+        self.regs.finish_undo(&mut frame.regs);
+        let logged = self.mem.finish_undo(&mut frame.mem);
+        self.heap.finish_undo(&mut frame.heap);
+        if let Some(held) = logged {
+            self.snapshots.close_newest(held);
         }
     }
 

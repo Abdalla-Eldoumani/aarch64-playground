@@ -86,14 +86,23 @@ pub struct Snapshot<R, M, H, F> {
     pub call: Option<CallRecord>,
 }
 
+/// 128 frames of this are a quarter of the budget `Cpu` gives the ring.
+const REUSED_LOG_BYTES: usize = 64 * 1024;
+
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
-/// buffer is full; newest frame is popped on `step_back`. A full ring
+/// buffer is full, or when the frames' memory logs together pass the
+/// ring's budget; newest frame is popped on `step_back`. A full ring
 /// hands its oldest frame back to be refilled in place (`push_slot`).
 /// Frames are boxed so that costs a pointer move, not a frame copy, and a
 /// frame's log buffers are reused instead of allocated on every step.
 pub struct SnapshotRing {
     frames: VecDeque<Box<StepFrame>>,
     capacity: usize,
+    /// The most the frames' memory logs may hold together, and what they
+    /// hold. A log is counted once its step is over and stays as it was
+    /// until its frame leaves.
+    budget: usize,
+    held: usize,
     /// Named save states: keyed checkpoints the user explicitly stashed.
     /// Separate from the ring because these persist across step-back;
     /// the ring holds only the sliding-window pre-step history.
@@ -101,34 +110,61 @@ pub struct SnapshotRing {
 }
 
 impl SnapshotRing {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize, budget: usize) -> Self {
         Self {
             frames: VecDeque::with_capacity(capacity),
             capacity,
+            budget,
+            held: 0,
             named: HashMap::new(),
         }
     }
 
     #[cfg(test)]
     pub fn push(&mut self, snap: StepFrame) {
+        let held = snap.mem.held;
         *self.push_slot() = snap;
+        self.close_newest(held);
     }
 
     pub fn pop(&mut self) -> Option<Box<StepFrame>> {
-        self.frames.pop_back()
+        let frame = self.frames.pop_back()?;
+        self.held -= frame.mem.held;
+        Some(frame)
     }
 
     /// The slot for a new newest frame, for the caller to fill: the oldest
-    /// frame once the ring is full, a blank one before that.
+    /// frame once the ring is full, a blank one before that. A memory log
+    /// past `REUSED_LOG_BYTES` is given back rather than reused, so a bulk
+    /// step's buffers stay only while the ring holds that step.
     pub fn push_slot(&mut self) -> &mut StepFrame {
         let slot = if self.frames.len() == self.capacity {
-            self.frames.pop_front()
+            self.frames.pop_front().map(|mut frame| {
+                let held = frame.mem.held;
+                self.held -= held;
+                if held > REUSED_LOG_BYTES {
+                    frame.mem = MemUndo::default();
+                }
+                frame
+            })
         } else {
             None
         };
         self.frames.push_back(slot.unwrap_or_default());
         let newest = self.frames.len() - 1;
         &mut self.frames[newest]
+    }
+
+    /// Count the `held` bytes of the newest frame's memory log once its step
+    /// is over, then drop the oldest frames until the logs fit the budget.
+    /// A frame over it on its own goes too, and the history starts again
+    /// after its step, as after a step the ring did not record.
+    pub fn close_newest(&mut self, held: usize) {
+        self.held += held;
+        while self.held > self.budget {
+            let Some(frame) = self.frames.pop_front() else { break };
+            self.held -= frame.mem.held;
+        }
     }
 
     /// The frame pushed last, which the running step's undo logs belong to.
@@ -146,6 +182,7 @@ impl SnapshotRing {
 
     pub fn clear(&mut self) {
         self.frames.clear();
+        self.held = 0;
         // Named saves survive `reset()` intentionally so a student can
         // stash a checkpoint, reassemble, then restore it.
     }
@@ -206,7 +243,7 @@ mod tests {
     #[test]
     fn push_and_pop_lifo() {
         // A frame's registers are a log, so `next_fd` tells frames apart.
-        let mut ring = SnapshotRing::new(4);
+        let mut ring = SnapshotRing::new(4, usize::MAX);
         let mut a = empty_snap();
         a.next_fd = 1;
         let mut b = empty_snap();
@@ -223,7 +260,7 @@ mod tests {
 
     #[test]
     fn push_past_capacity_drops_oldest() {
-        let mut ring = SnapshotRing::new(2);
+        let mut ring = SnapshotRing::new(2, usize::MAX);
         for i in 0..5u32 {
             let mut s = empty_snap();
             s.next_fd = i;
@@ -236,7 +273,7 @@ mod tests {
 
     #[test]
     fn clear_empties_the_ring() {
-        let mut ring = SnapshotRing::new(4);
+        let mut ring = SnapshotRing::new(4, usize::MAX);
         ring.push(empty_snap());
         ring.clear();
         assert!(ring.is_empty());
@@ -247,7 +284,7 @@ mod tests {
     fn popped_frame_preserves_registers_and_memory() {
         // A frame holds registers and memory as logs of what its step
         // overwrote, so the round trip goes through a step's writes.
-        let mut ring = SnapshotRing::new(2);
+        let mut ring = SnapshotRing::new(2, usize::MAX);
         let mut regs = RegisterFile::new();
         regs.write_gpr(5, true, 0xABCD);
         regs.write_sp(0x8000_0000);
@@ -270,9 +307,71 @@ mod tests {
         assert_eq!(mem.read_u32(0x1000).unwrap(), 0xDEAD_BEEF);
     }
 
+    /// A frame whose step wrote `bytes` bytes, told apart by `next_fd`.
+    fn wrote(mem: &mut Memory, bytes: usize, fd: u32) -> StepFrame {
+        let mut s: StepFrame = empty_snap();
+        s.next_fd = fd;
+        mem.record_undo(&mut s.mem);
+        mem.write_bytes(0x1000, &vec![fd as u8; bytes]).unwrap();
+        mem.finish_undo(&mut s.mem);
+        s
+    }
+
+    #[test]
+    fn past_the_budget_the_oldest_frames_go() {
+        let mut mem = Memory::new();
+        mem.map_page(0x1000);
+        let one = wrote(&mut mem, 4096, 0).mem.held;
+        let mut ring = SnapshotRing::new(8, 3 * one);
+        for fd in 1..=5 {
+            ring.push(wrote(&mut mem, 4096, fd));
+        }
+        assert_eq!(ring.len(), 3, "three frames fit the budget");
+        assert_eq!(ring.held, 3 * one);
+        // The newest frames stay, so stepping back goes through them in order.
+        assert_eq!(ring.pop().unwrap().next_fd, 5);
+        assert_eq!(ring.held, 2 * one);
+        ring.push(wrote(&mut mem, 16, 6));
+        assert_eq!(ring.len(), 3, "a small frame fits beside two big ones");
+        // A frame over the budget on its own ends the history.
+        ring.push(wrote(&mut mem, 4 * 4096, 7));
+        assert!(ring.is_empty());
+        assert_eq!(ring.held, 0);
+        ring.push(wrote(&mut mem, 16, 8));
+        assert_eq!(ring.pop().unwrap().next_fd, 8, "the history starts again");
+    }
+
+    #[test]
+    fn a_full_ring_counts_the_frame_it_recycles_out() {
+        let mut mem = Memory::new();
+        let mut ring = SnapshotRing::new(2, usize::MAX);
+        for fd in 0..4 {
+            ring.push(wrote(&mut mem, 4096, fd));
+        }
+        let left: usize = ring.frames.iter().map(|frame| frame.mem.held).sum();
+        assert_eq!(ring.held, left);
+        ring.clear();
+        assert_eq!(ring.held, 0);
+    }
+
+    #[test]
+    fn a_recycled_frame_gives_back_a_bulk_steps_log() {
+        let mut mem = Memory::new();
+        let mut ring = SnapshotRing::new(1, usize::MAX);
+        ring.push(wrote(&mut mem, 2 * REUSED_LOG_BYTES, 0));
+        assert!(ring.held > 2 * REUSED_LOG_BYTES);
+        // The frame comes round again for a step that writes one byte.
+        let slot = ring.push_slot();
+        mem.record_undo(&mut slot.mem);
+        mem.write_u8(0x1000, 2).unwrap();
+        let held = mem.finish_undo(&mut slot.mem).expect("a log was open");
+        ring.close_newest(held);
+        assert!(ring.held < REUSED_LOG_BYTES, "held {}", ring.held);
+    }
+
     #[test]
     fn named_saves_survive_clear() {
-        let mut ring = SnapshotRing::new(2);
+        let mut ring = SnapshotRing::new(2, usize::MAX);
         let mut s: SavedState = empty_snap();
         s.regs.write_gpr(0, true, 7);
         ring.save_named("checkpoint", s);
@@ -286,7 +385,7 @@ mod tests {
 
     #[test]
     fn save_named_overwrites_and_keys_stay_sorted() {
-        let mut ring = SnapshotRing::new(2);
+        let mut ring = SnapshotRing::new(2, usize::MAX);
         ring.save_named("beta", empty_snap());
         ring.save_named("alpha", empty_snap());
         let mut newer: SavedState = empty_snap();
@@ -298,7 +397,7 @@ mod tests {
 
     #[test]
     fn remove_named_reports_whether_an_entry_existed() {
-        let mut ring = SnapshotRing::new(2);
+        let mut ring = SnapshotRing::new(2, usize::MAX);
         ring.save_named("slot", empty_snap());
         assert!(ring.remove_named("slot"));
         assert!(!ring.remove_named("slot"));
