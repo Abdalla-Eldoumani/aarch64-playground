@@ -1534,6 +1534,27 @@ mod tests {
     }
 
     #[test]
+    fn numbering_local_labels_takes_time_in_line_with_their_count() {
+        // n distinct numbers against n definitions of ten numbers. A lookup
+        // that walks every number seen so far makes the first quadratic in
+        // n while the second stays linear, so the two must stay close.
+        let time = |numbers: usize, n: usize| {
+            let text: String = (0..n).map(|k| format!("{}:\n", k % numbers)).collect();
+            let started = std::time::Instant::now();
+            name_local_labels(&text).unwrap();
+            started.elapsed()
+        };
+        let mut slow = Vec::new();
+        for n in [10_000, 20_000, 40_000] {
+            let (distinct, ten) = (time(n, n), time(10, n));
+            if distinct > ten * 5 + std::time::Duration::from_millis(50) {
+                slow.push((n, distinct, ten));
+            }
+        }
+        assert!(slow.is_empty(), "(labels, distinct numbers, ten numbers) {slow:?}");
+    }
+
+    #[test]
     fn numeric_local_labels_name_the_nearest_definition() {
         let text = name_local_labels("1: b 1f\n1: b.ne 1b\n  cbz x0, 1b\n2:\n.quad 2b, 1f\n1:").unwrap();
         assert_eq!(
