@@ -135,6 +135,8 @@ pub(crate) fn format_into(
     if let Some(call) = ctx.call.as_deref_mut() {
         call.set_text(&out);
     }
+    // snprintf with size 0, or a refused fprintf, keeps none of it.
+    ctx.mem.note_host_work(out.len() as u64);
     Ok(out)
 }
 
@@ -176,6 +178,7 @@ fn read_c_prefix(mem: &crate::memory::Memory, addr: u64, max: usize) -> Result<V
         out.push(b);
         a = a.wrapping_add(1);
     }
+    mem.note_host_work(out.len() as u64);
     Ok(out)
 }
 
