@@ -70,11 +70,10 @@ a pull request tests the compiler that ships. A Rust bump changes the script
 and all four workflows together; a wasm-pack bump changes the script,
 `check.yml`, and `browser.yml`.
 
-Every job in `.github/workflows/` runs on `ubuntu-24.04`, not
-`ubuntu-latest`. `ubuntu-latest` now means Ubuntu 26.04, where the pinned
-Playwright cannot install its browsers, so the smoke tests would fail there.
-`check-pins.js` does not check the runner, so a new job copies the pin by
-hand.
+Every job in `.github/workflows/` runs on `ubuntu-latest` except the two in
+`corpus.yml`, which stay on `ubuntu-24.04`: the C corpus references come from
+that image's gcc, and a newer image brings a newer gcc. `check-pins.js` does
+not check the runner.
 
 ## Addresses
 
