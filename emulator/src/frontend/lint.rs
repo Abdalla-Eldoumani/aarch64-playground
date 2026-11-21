@@ -108,7 +108,7 @@ struct Hygiene<'a> {
     kept: usize,
     bytes: usize,
     left_out: usize,
-    /// Line of the first warning left out, where the closing line goes.
+    /// Lowest line among the warnings left out, where the closing line goes.
     from_line: usize,
 }
 
@@ -125,7 +125,8 @@ impl Hygiene<'_> {
                 return;
             }
         }
-        if self.left_out == 0 {
+        // Define sites are pushed before the source walk, so not in line order.
+        if self.left_out == 0 || line < self.from_line {
             self.from_line = line;
         }
         self.left_out += 1;
