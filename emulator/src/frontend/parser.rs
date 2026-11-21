@@ -560,7 +560,10 @@ fn parse_directive(
                     "`.zero` takes a size only. Use `.space size, fill` to fill with a byte",
                 ));
             }
-            let count = groups[0];
+            // GAS builds a line with no size as zero bytes, with no message.
+            let Some(&count) = groups.first() else {
+                return Ok(());
+            };
             let fill = match groups.get(1) {
                 Some(g) => (eval_const(g, line)? & 0xFF) as u8,
                 None => 0,
