@@ -29,12 +29,13 @@ pub(super) fn encode_adr(
             .ok_or_else(|| undefined_label(ln, target))?
     };
 
+    // A distance past i64 is out of range too; i64::MAX fails the check below.
     let imm: i64 = if adrp {
         let pc_page = (pc & !0xFFF) as i64;
         let target_page = (target_addr & !0xFFF) as i64;
-        (target_page - pc_page) >> 12
+        target_page.checked_sub(pc_page).map_or(i64::MAX, |d| d >> 12)
     } else {
-        target_addr as i64 - pc as i64
+        (target_addr as i64).checked_sub(pc as i64).unwrap_or(i64::MAX)
     };
     if !(-(1 << 20)..(1 << 20)).contains(&imm) {
         return asm_err(ln, "ADR/ADRP target out of +/-1MiB (or +/-4GiB page) range");
