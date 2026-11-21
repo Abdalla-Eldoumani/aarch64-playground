@@ -97,10 +97,46 @@ fn is_reserved_name(name: &str) -> bool {
     )
 }
 
+/// Caps on the macro warnings one lint keeps: real programs stay far below
+/// them, but every use of a macro can get its own warning quoting the body.
+const MAX_HYGIENE_WARNINGS: usize = 1000;
+const MAX_HYGIENE_BYTES: usize = 256 * 1024;
+
+/// The macro warnings kept under the caps, and how many were left out.
+struct Hygiene<'a> {
+    warnings: &'a mut Vec<LintWarning>,
+    kept: usize,
+    bytes: usize,
+    left_out: usize,
+    /// Line of the first warning left out, where the closing line goes.
+    from_line: usize,
+}
+
+impl Hygiene<'_> {
+    /// Past either cap a warning is only counted, so its message, which
+    /// can quote a long body, is never built.
+    fn push(&mut self, line: usize, message: std::fmt::Arguments<'_>) {
+        if self.left_out == 0 && self.kept < MAX_HYGIENE_WARNINGS {
+            let message = std::fmt::format(message);
+            if self.bytes + message.len() <= MAX_HYGIENE_BYTES {
+                self.kept += 1;
+                self.bytes += message.len();
+                self.warnings.push(LintWarning { line, message });
+                return;
+            }
+        }
+        if self.left_out == 0 {
+            self.from_line = line;
+        }
+        self.left_out += 1;
+    }
+}
+
 fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintWarning>) {
     if expanded.defines.is_empty() {
         return;
     }
+    let mut hygiene = Hygiene { warnings, kept: 0, bytes: 0, left_out: 0, from_line: 0 };
     // One warning per define SITE, quoting that site's own body. The
     // collapsed `defines` map holds only the last body a redefined macro
     // ever had, so a windowed alias would be reported against the wrong
@@ -113,21 +149,36 @@ fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintW
         let canonical = (name == "fp" && body.trim().eq_ignore_ascii_case("x29"))
             || (name == "lr" && body.trim().eq_ignore_ascii_case("x30"));
         if !canonical && is_reserved_name(name) {
-            warnings.push(LintWarning {
-                line: *line,
-                message: format!(
+            hygiene.push(
+                *line,
+                format_args!(
                     "the macro name `{name}` is also a register or instruction \
                      name: every later use of `{name}` becomes `{body}`; \
                      rename the macro (for example `{name}_r`)"
                 ),
-            });
+            );
         }
     }
     // Walk the ORIGINAL source so the string/char literals are the ones
     // the student wrote (expansion leaves them alone by design).
     for (idx, raw) in source.lines().enumerate() {
         let line = idx + 1;
-        scan_line_for_hygiene(raw, line, expanded, warnings);
+        scan_line_for_hygiene(raw, line, expanded, &mut hygiene);
+    }
+    let n = hygiene.left_out;
+    if n > 0 {
+        hygiene.warnings.push(LintWarning {
+            line: hygiene.from_line,
+            message: format!(
+                "{n} more macro warning{} not shown, from this line on: the lint shows \
+                 at most {MAX_HYGIENE_WARNINGS} of them, or {} KiB of text. The usual \
+                 cause is a macro whose name appears many times in strings or after a \
+                 `#`, or whose body is very long: rename the macro, or make it an \
+                 equate (`name = value`)",
+                if n == 1 { "" } else { "s" },
+                MAX_HYGIENE_BYTES / 1024
+            ),
+        });
     }
 }
 
@@ -135,7 +186,7 @@ fn scan_line_for_hygiene(
     raw: &str,
     line: usize,
     expanded: &m4::Expanded,
-    warnings: &mut Vec<LintWarning>,
+    hygiene: &mut Hygiene<'_>,
 ) {
     // Ignore the define lines themselves and comment-only content.
     let trimmed = raw.trim_start();
@@ -182,9 +233,9 @@ fn scan_line_for_hygiene(
             // register the student never wrote into this warning.
             if let Some(body) = expanded.define_body_at(ident, line) {
                 if in_string || in_char {
-                    warnings.push(LintWarning {
+                    hygiene.push(
                         line,
-                        message: format!(
+                        format_args!(
                             "`{ident}` is defined as a macro ({body}) and also \
                              appears in this {}. m4 replaces it here exactly \
                              as the university servers do, so the program \
@@ -192,29 +243,29 @@ fn scan_line_for_hygiene(
                              example `{ident}_r`)",
                             if in_string { "string" } else { "character literal" }
                         ),
-                    });
+                    );
                 } else if after_hash {
-                    warnings.push(LintWarning {
+                    hygiene.push(
                         line,
-                        message: format!(
+                        format_args!(
                             "m4 treats `#` as a comment start, here and on the \
                              university servers, so `{ident}` will NOT expand \
                              and the assembler will reject the line. Use an \
                              equate (`{ident} = {body}`) instead of a define, \
                              or drop the `#`"
                         ),
-                    });
+                    );
                 } else if i < bytes.len() && bytes[i] == b'(' && !body.contains('$') {
                     // A body that reads `$1` is meant to be called this way.
-                    warnings.push(LintWarning {
+                    hygiene.push(
                         line,
-                        message: format!(
+                        format_args!(
                             "`{ident}(` reads as an m4 macro CALL on the \
                              university servers, which consumes the text in the \
                              parentheses. Put a space before `(`, or rename the \
                              macro"
                         ),
-                    });
+                    );
                 }
             }
             continue;
