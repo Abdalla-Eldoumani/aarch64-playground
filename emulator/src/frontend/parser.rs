@@ -195,10 +195,10 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
 pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
     let is_word = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
     let name = |n: &str, k: usize| format!(".L{n}_fb{k}");
-    // Definitions of each number so far (a program uses a handful, so a
-    // list), and the forward references, checked once all are counted.
-    let mut seen: Vec<(&str, usize)> = Vec::new();
-    let count = |seen: &[(&str, usize)], n: &str| seen.iter().find(|e| e.0 == n).map_or(0, |e| e.1);
+    // Definitions of each number so far, and the forward references,
+    // checked once all are counted.
+    let mut seen: HashMap<&str, usize> = HashMap::new();
+    let count = |seen: &HashMap<&str, usize>, n: &str| seen.get(n).copied().unwrap_or(0);
     let mut forward: Vec<(&str, usize, usize)> = Vec::new();
     let mut out = String::with_capacity(text.len());
     for (idx, line) in text.split('\n').enumerate() {
@@ -240,12 +240,9 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
             let (digits, last) = word.split_at(word.len() - 1);
             let colon = b.get(i) == Some(&b':');
             if label_place && colon && word.bytes().all(|c| c.is_ascii_digit()) {
-                let k = count(&seen, word) + 1;
-                match seen.iter_mut().find(|e| e.0 == word) {
-                    Some(e) => e.1 = k,
-                    None => seen.push((word, k)),
-                }
-                out.push_str(&name(word, k));
+                let k = seen.entry(word).or_insert(0);
+                *k += 1;
+                out.push_str(&name(word, *k));
             } else if !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && (last == "b" || last == "f") {
                 let k = count(&seen, digits);
                 if last == "b" && k == 0 {
