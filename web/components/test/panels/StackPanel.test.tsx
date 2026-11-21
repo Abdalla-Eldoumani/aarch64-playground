@@ -1,9 +1,10 @@
 // pins the stack panel contract: sp parses from hex and anchors a
 // 16-row by 8-byte window read through getMemory, values render as
 // little-endian 64-bit numbers, the fp row and frame-slot labels appear only
-// while fp is inside the window, and rows fall back to SP+N labels.
+// while fp is inside the window, and rows fall back to SP+N labels. Also the
+// 64 or 32-bit slot size, a choice kept per viewer.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { StackPanel } from "@/components/panels/StackPanel";
 
 afterEach(() => {
@@ -157,5 +158,72 @@ describe("StackPanel 32-bit slots", () => {
     cleanup();
     const { container } = render(<StackPanel sp="0x80000000" getMemory={intLocals()} />);
     expect(container.querySelectorAll("tbody tr").length).toBe(32);
+  });
+});
+
+// The slot size is one choice per viewer: stored as "8" or "4", read back on
+// the next visit, and followed at once by every stack view on the page and by
+// a change made in another tab, even when storage throws.
+describe("StackPanel slot size, kept per viewer", () => {
+  const KEY = "aarch64-playground:stack-width";
+  afterEach(() => vi.restoreAllMocks());
+
+  function page(): [HTMLElement, HTMLElement] {
+    render(
+      <>
+        <div data-testid="a">
+          <StackPanel sp="0x80000000" getMemory={seededMemory()} />
+        </div>
+        <div data-testid="b">
+          <StackPanel sp="0x80000000" getMemory={seededMemory()} />
+        </div>
+      </>,
+    );
+    return [screen.getByTestId("a"), screen.getByTestId("b")];
+  }
+  const rows = (view: HTMLElement) => view.querySelectorAll("tbody tr").length;
+  const pick = (view: HTMLElement, name: string) => fireEvent.click(within(view).getByRole("button", { name }));
+
+  it("stores 32-bit rows as \"4\" and 64-bit rows as \"8\"", () => {
+    const [a] = page();
+    pick(a, "32-bit");
+    expect(window.localStorage.getItem(KEY)).toBe("4");
+    pick(a, "64-bit");
+    expect(window.localStorage.getItem(KEY)).toBe("8");
+  });
+
+  it("opens on the stored size", () => {
+    window.localStorage.setItem(KEY, "4");
+    const [a] = page();
+    expect(rows(a)).toBe(32);
+  });
+
+  it("moves every stack view on the page at once", () => {
+    const [a, b] = page();
+    pick(a, "32-bit");
+    expect(rows(a)).toBe(32);
+    expect(rows(b)).toBe(32);
+  });
+
+  it("follows a change made in another tab", () => {
+    const [a] = page();
+    act(() => {
+      window.localStorage.setItem(KEY, "4");
+      window.dispatchEvent(new StorageEvent("storage", { key: KEY, newValue: "4", storageArea: window.localStorage }));
+    });
+    expect(rows(a)).toBe(32);
+  });
+
+  it("still moves every stack view on the page when storage throws", () => {
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("blocked");
+    });
+    const [a, b] = page();
+    pick(a, "32-bit");
+    expect(rows(a)).toBe(32);
+    expect(rows(b)).toBe(32);
   });
 });

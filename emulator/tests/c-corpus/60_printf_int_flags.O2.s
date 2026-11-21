@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -306,7 +307,7 @@ main:
 	.string	"%+012d"
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 sfmt:
 	.xword	.LC34
 	.xword	.LC35
@@ -373,4 +374,5 @@ uvals:
 	.word	-2147483648
 	.word	-1
 	.word	342391
+	.section	.note.GNU-stack,"",@progbits
 

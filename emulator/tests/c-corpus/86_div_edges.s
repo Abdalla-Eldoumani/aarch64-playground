@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 sdiv_w:
@@ -554,4 +555,5 @@ main:
 	ldr	x21, [sp, 80]
 	add	sp, sp, 176
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

@@ -4,8 +4,9 @@
  * emulator/src/frames/tree.rs, the tail of the frames numbers) decoded and
  * worded, each value read as the frames read a slot of its width. A run of
  * calls to one function past its first four comes folded into one node
- * that counts them ("rec × 7,940"). Only the frames view's chunk imports
- * this.
+ * that counts them ("rec × 7,940"). Past 200 rows the machine drops the
+ * oldest returned calls and counts them as earlier calls. Only the frames
+ * view's chunk imports this.
  */
 
 import { FRAME_ROW, FRAMES_HEADER } from "@/lib/emulator/frame-data";
@@ -13,7 +14,7 @@ import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import { COUNT, hex, plural, typed, type FrameLayout } from "@/lib/emulator/stack-frames";
 
 /** The tree's header, then the numbers per node. */
-const HEAD = 5;
+const HEAD = 6;
 const NODE = 10;
 
 export interface CallRow {
@@ -47,10 +48,11 @@ export function drawCalls(
   const at = FRAMES_HEADER + n[8] * FRAME_ROW + n[9] * 2;
   const count = n[at];
   if (count == null || n.length !== at + HEAD + count * NODE) return null;
-  const [current, outside, dropped, x0Width] = n.slice(at + 1, at + HEAD);
+  const [current, outside, dropped, earlier, x0Width] = n.slice(at + 1, at + HEAD);
   // x0 comes as its high and low 32 bits, read at the width it was written.
   const value = (hi: number, lo: number, width: number) =>
     typed((BigInt(hi) << 32n) | BigInt(lo), width, false, regions).value;
+  const nameOf = (entry: number) => layout?.functions.find((f) => f.entry === entry)?.name ?? hex(entry);
   const rows: CallRow[] = [];
   const all: CallRow[] = [];
   for (let i = 0; i < count; i++) {
@@ -58,11 +60,12 @@ export function drawCalls(
       at + HEAD + i * NODE,
       at + HEAD + (i + 1) * NODE,
     );
-    const name = layout?.functions.find((f) => f.entry === entry)?.name ?? hex(entry);
+    const name = nameOf(entry);
     // A fold holding one call so far reads as that call.
     const fold = calls > 1;
     const call = fold ? `${name} × ${COUNT.format(calls)}` : width ? `${name}(${value(argHi, argLo, width)})` : name;
-    const state = i + 1 === current ? "current" : open > 0 ? "running" : "returned";
+    // Inside calls the list leaves out, no row is the current call.
+    const state = i + 1 === current && !outside ? "current" : open > 0 ? "running" : "returned";
     const row: CallRow = {
       call,
       said: fold ? `${plural(calls, "call")} of ${name}` : call,
@@ -73,8 +76,16 @@ export function drawCalls(
     all.push(row);
     (parent ? all[parent - 1].children : rows).push(row);
   }
-  const hidden = dropped
-    ? `${plural(dropped, "more call")} not shown${outside ? ", the current one among them" : ""}`
-    : null;
+  // The innermost frame row is the current call, when the machine recorded
+  // every frame.
+  const innermost = n[1] === 0 && n[8] > 0 ? nameOf(n[FRAMES_HEADER + (n[8] - 1) * FRAME_ROW + 1]) : null;
+  // The calls with no row that were not dropped for room are past twelve
+  // levels, or inside one that is.
+  const deeper = dropped - earlier;
+  const parts = [
+    earlier ? `${plural(earlier, "earlier call")} not shown` : "",
+    deeper ? `${plural(deeper, "more call")} not shown${outside ? `, the current one${innermost ? `, ${innermost},` : ""} among them` : ""}` : "",
+  ];
+  const hidden = parts.filter(Boolean).join("; ") || null;
   return { rows, hidden, x0Width };
 }

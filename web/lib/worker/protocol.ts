@@ -15,6 +15,8 @@ export type RequestKind =
   | "pushStdin"
   | "closeStdin"
   | "setSnapshotsPaused"
+  | "setRealTime"
+  | "setWindowSize"
   | "takeStdout"
   | "takeStderr"
   | "getMemory"
@@ -56,6 +58,8 @@ export type Request =
   | (BaseRequest<"pushStdin"> & { text: string; interactive?: boolean })
   | BaseRequest<"closeStdin">
   | (BaseRequest<"setSnapshotsPaused"> & { paused: boolean })
+  | (BaseRequest<"setRealTime"> & { on: boolean })
+  | (BaseRequest<"setWindowSize"> & { cols: number; rows: number })
   | BaseRequest<"takeStdout">
   | BaseRequest<"takeStderr">
   | (BaseRequest<"getMemory"> & { addr: number; len: number })
@@ -153,13 +157,14 @@ export interface RunResultPayload {
   cancelled?: boolean;
   /**
    * Milliseconds the program's last nanosleep asked to pause, when the
-   * run stopped for one. The driver waits this out in real time and
+   * run stopped for one. The driver waits the sleep out in real time and
    * resumes; absent on wasm builds that predate pacing.
    */
   sleep_ms?: number | null;
   /** A run with a goal (`RunGoal`) stopped because it met the goal. */
   reached?: boolean;
-  /** A run with a goal stopped at a `ret` that went to no caller. */
+  /** A run with a goal stopped at a return that went to no caller or past
+   *  its own caller. */
   bad_return?: boolean;
 }
 

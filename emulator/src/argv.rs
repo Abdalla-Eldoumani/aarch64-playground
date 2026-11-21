@@ -9,13 +9,7 @@ use crate::errors::EmuError;
 use crate::memory::Memory;
 use crate::registers::RegisterFile;
 
-/// Between `.bss` (0x0070_0000) and the heap (0x0090_0000); the stdio
-/// globals take the next page.
-pub const ARGV_BASE: u64 = 0x0080_0000;
-
-/// Cap on combined pointer-table + string-pool size. One 4 KiB page is
-/// plenty for any realistic command-line on this playground.
-pub const ARGV_MAX_BYTES: usize = 4096;
+pub use crate::layout::{ARGV_BASE, ARGV_MAX_BYTES};
 
 /// The program name every load receives as argv[0]. The terminal pane
 /// already presents the assembled buffer under this name.

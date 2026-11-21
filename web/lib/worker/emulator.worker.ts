@@ -252,6 +252,25 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
         post({ id: msg.id, kind: "ok", value: null });
         return;
       }
+      case "setRealTime": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build keeps today's refund caps.
+        const set = (emu as { set_real_time?: (on: boolean) => void }).set_real_time;
+        if (typeof set === "function") set.call(emu, msg.on);
+        post({ id: msg.id, kind: "ok", value: null });
+        return;
+      }
+      case "setWindowSize": {
+        await ensureWasm();
+        const emu = require_emulator();
+        // Feature-detect: an older local wasm build keeps answering ENOTTY.
+        const set = (emu as { set_window_size?: (cols: number, rows: number) => void })
+          .set_window_size;
+        if (typeof set === "function") set.call(emu, msg.cols, msg.rows);
+        post({ id: msg.id, kind: "ok", value: null });
+        return;
+      }
       case "takeStdout": {
         await ensureWasm();
         const emu = require_emulator();

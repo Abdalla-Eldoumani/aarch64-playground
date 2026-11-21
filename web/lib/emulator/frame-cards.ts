@@ -1,10 +1,11 @@
 /**
  * The call stack's events in plain words: a write over a caller's saved fp
- * or lr, a `ret` that went to no caller, and a caller reading x19 to x28
- * after a call left one changed. Each card names the line and, for a write,
- * the step, counted as the step counter counts them. The machine sends
- * numbers (frames.rs, the clobber note rows); only the frames view, a goal
- * run's stop and a fault import this, so no page ships it until one does.
+ * or lr, a return that went to no caller or past its own caller, and a
+ * caller reading x19 to x28 after a call left one changed. Each card names
+ * the line and, for a write, the step, counted as the step counter counts
+ * them. The machine sends numbers (frames.rs, the clobber note rows); only
+ * the frames view, a goal run's stop and a fault import this, so no page
+ * ships it until one does.
  */
 
 import { at, type Place } from "@/lib/emulator/clobber-note";
@@ -159,11 +160,12 @@ export function writeCards(ctx: CardContext, readWord: (addr: number) => bigint 
 }
 
 /**
- * The `ret` that went to no caller, and why when the frame shows it: "main's
- * ret on line 21 jumped to 0x700000006 instead of going back to the C
- * runtime, because line 32 in helper overwrote the saved lr in main's frame
- * at step 45." `lr` is x30 as the registers hold it: the target the machine
- * sends is an f64, which loses the low bits of a target above 2^53.
+ * The return that went to no caller or past its own caller, and why when
+ * the frame shows it: "main's ret on line 21 jumped to 0x700000006 instead
+ * of going back to the C runtime, because line 32 in helper overwrote the
+ * saved lr in main's frame at step 45." `lr` is x30 as the registers hold
+ * it: the target the machine sends is an f64, which loses the low bits of a
+ * target above 2^53.
  */
 export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | null {
   const bad = ctx.snapshot.badReturn;
@@ -195,9 +197,16 @@ export function returnCard(ctx: CardContext, lr: bigint | null): ReturnCard | nu
     const bl = call && /^bl\b/i.test(code(call)) ? ` with \`${code(call)}\` on ${at(call)}` : "";
     because = `, because ${name} called out${bl} before saving lr, so lr still held that call's return address`;
   }
+  // Back to its own return address (every call from one bl site shares it),
+  // or out of the program with no call left: the frame record popped before
+  // the ret was its caller's, so it ended that call too.
+  const what =
+    bad.target === row.retAddr || (!landed && !ctx.snapshot.frames.length)
+      ? `ended its caller ${fnName(row.retAddr)} too: that call's frame record was popped before the ret`
+      : `${went} instead of going back to ${backTo(row, ctx, fnName)}${because}`;
   return {
     event: `ret at ${hex(bad.pc)} in ${hex(row.entry)}`,
-    text: `${name}'s ret on ${ret ? at(ret) : "its last line"} ${went} instead of going back to ${backTo(row, ctx, fnName)}${because}.`,
+    text: `${name}'s ret on ${ret ? at(ret) : "its last line"} ${what}.`,
     cause,
   };
 }

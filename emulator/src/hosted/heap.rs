@@ -6,13 +6,7 @@
 use crate::errors::EmuError;
 use crate::hosted::{HostContext, HostOutcome};
 
-/// The heap window sits above the argv page and far below the stack.
-pub const HEAP_BASE: u64 = 0x0090_0000;
-/// One 16 MiB window: big enough for anything a course program allocates
-/// (a 1 MiB malloc succeeds the way it does on the servers), and bounded
-/// so a runaway allocator hits NULL returns, not the page cap. Pages back
-/// lazily, so an untouched allocation costs address space only.
-pub const HEAP_LIMIT: u64 = HEAP_BASE + 16 * 1024 * 1024;
+pub use crate::layout::{HEAP_BASE, HEAP_LIMIT};
 
 const ALIGN: u64 = 16;
 
@@ -304,64 +298,9 @@ fn release_or_halt(ctx: &mut HostContext<'_>, addr: u64, call: &str) -> Result<(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpu::OpenFile;
-    use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
-
-    struct Host {
-        regs: RegisterFile,
-        mem: Memory,
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-        stdin: Vec<u8>,
-        vfs: HashMap<String, Vec<u8>>,
-        open_files: HashMap<u32, OpenFile>,
-        next_fd: u32,
-        rand_state: crate::hosted::libc::RandState,
-        term: crate::cpu::TermState,
-        heap: HeapState,
-        strtok_save: u64,
-        callbacks: crate::hosted::callback::CallbackState,
-    }
+    use crate::test_support::Host;
 
     impl Host {
-        fn new() -> Self {
-            Host {
-                regs: RegisterFile::new(),
-                mem: Memory::new(),
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                stdin: Vec::new(),
-                vfs: HashMap::new(),
-                open_files: HashMap::new(),
-                next_fd: 3,
-                rand_state: crate::hosted::libc::RandState::default(),
-                term: crate::cpu::TermState::default(),
-                heap: HeapState::default(),
-                strtok_save: 0,
-                callbacks: Default::default(),
-            }
-        }
-        fn ctx(&mut self) -> HostContext<'_> {
-            HostContext {
-                regs: &mut self.regs,
-                mem: &mut self.mem,
-                stdout: &mut self.stdout,
-                stderr: &mut self.stderr,
-                stdin: &mut self.stdin,
-                stdin_closed: false,
-                vfs: &mut self.vfs,
-                open_files: &mut self.open_files,
-                next_fd: &mut self.next_fd,
-                rand_state: &mut self.rand_state,
-                term: &mut self.term,
-                heap: &mut self.heap,
-                strtok_save: &mut self.strtok_save,
-                callbacks: &mut self.callbacks,
-                call: None,
-            }
-        }
         /// Call a stub with x0/x1 set and hand back x0.
         fn call2(&mut self, f: crate::hosted::HostFn, a: u64, b: u64) -> u64 {
             self.regs.write_gpr(0, true, a);

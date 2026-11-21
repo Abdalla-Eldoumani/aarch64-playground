@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 use crate::errors::{EmuError, MemAccess};
+use crate::layout::{CODE_BASE, HOST_STUB_BASE, HOST_STUB_WINDOW};
 
-const PAGE_SIZE: usize = 4096;
+pub(crate) const PAGE_SIZE: usize = 4096;
 const PAGE_MASK: u64 = !(PAGE_SIZE as u64 - 1);
 
 /// Most 4 KiB pages a program may have mapped at once. A write that would
@@ -24,7 +25,8 @@ pub const MAX_MAPPED_PAGES: usize = 8192;
 /// cap, new ranges widen the last entry instead of appending.
 const MAX_DIRTY_RANGES: usize = 4096;
 
-/// Sparse memory in 4 KiB pages, mapped on first write. Reads of unmapped
+/// Sparse memory in 4 KiB pages, mapped on first write unless the store
+/// guard refuses the store (`StoreGuard`). Reads of unmapped
 /// addresses fault. Accesses are little-endian, and unaligned ones succeed
 /// byte by byte, as in Linux user space (SCTLR.A = 0). The stack-pointer
 /// alignment check (SA0) belongs to the executor, since it checks SP, not
@@ -54,6 +56,19 @@ pub struct Memory {
     /// `step_writes`.
     undo: MemUndo,
     recording: bool,
+    guard: StoreGuard,
+}
+
+/// Stores the servers kill with a segmentation fault; any other write maps its page.
+#[derive(Clone, Copy, Default)]
+pub enum StoreGuard {
+    /// None: nothing is loaded, the program is bare, or a system call is writing.
+    #[default]
+    Off,
+    /// The program's own stores: its code, `[CODE_BASE, text_end)`.
+    Code { text_end: u64 },
+    /// A library call's: the code, page 0 and the stub window (past 4 GiB the servers differ).
+    Library { text_end: u64 },
 }
 
 /// What a step's writes replaced: each run of written bytes with the bytes
@@ -98,6 +113,7 @@ impl Clone for Memory {
             zero_fill: self.zero_fill.clone(),
             undo: MemUndo::default(),
             recording: false,
+            guard: self.guard,
         }
     }
 }
@@ -117,7 +133,17 @@ impl Memory {
             zero_fill: Vec::new(),
             undo: MemUndo::default(),
             recording: false,
+            guard: StoreGuard::Off,
         }
+    }
+
+    /// Which stores fault from now on (see `StoreGuard`).
+    pub fn set_store_guard(&mut self, guard: StoreGuard) {
+        self.guard = guard;
+    }
+
+    pub fn store_guard(&self) -> StoreGuard {
+        self.guard
     }
 
     /// Start logging what writes replace. The log fills `slot`'s buffers
@@ -147,6 +173,8 @@ impl Memory {
     /// the pages they mapped. The changed-byte log empties too: the memory
     /// is back where it was before anything changed.
     pub fn undo(&mut self, log: MemUndo) {
+        // A system call may have written into the code; putting it back must not fault.
+        let guard = std::mem::take(&mut self.guard);
         let mut end = log.old.len();
         for &(addr, len) in log.runs.iter().rev() {
             let start = end - len;
@@ -157,6 +185,7 @@ impl Memory {
             }
             end = start;
         }
+        self.guard = guard;
         for base in log.mapped {
             if let Some(page) = self.pages.remove(&base) {
                 // Recycled rather than dropped, as in `clear()`.
@@ -279,6 +308,7 @@ impl Memory {
     /// blamed.
     pub fn clear(&mut self) {
         self.zero_fill.clear();
+        self.guard = StoreGuard::Off;
         let Self { pages, free, .. } = self;
         for (_, page) in pages.drain() {
             // A page a named save still shares cannot be recycled:
@@ -313,6 +343,16 @@ impl Memory {
     /// page on first write and logging what they replace when an undo log
     /// is open.
     fn write_in_page(&mut self, addr: u64, bytes: &[u8]) -> Result<(), EmuError> {
+        let (text_end, library) = match self.guard {
+            StoreGuard::Off => (CODE_BASE, false),
+            StoreGuard::Code { text_end } => (text_end, false),
+            StoreGuard::Library { text_end } => (text_end, true),
+        };
+        let code = (CODE_BASE..text_end).contains(&addr);
+        let stubs = (HOST_STUB_BASE..HOST_STUB_BASE + HOST_STUB_WINDOW).contains(&addr);
+        if code || library && (addr < PAGE_SIZE as u64 || stubs) {
+            return Err(EmuError::StoreFault { address: addr, code, call: None });
+        }
         let base = addr & PAGE_MASK;
         // A write to an already-mapped page always succeeds. A write that
         // would map a NEW page is refused once the cap is reached, so a

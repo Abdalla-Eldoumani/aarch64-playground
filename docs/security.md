@@ -58,7 +58,7 @@ reaches React, the editor, or the emulator.
 
 | Input | Checked by | Refuses |
 | --- | --- | --- |
-| `?bundle=` diagnostic link | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
+| `#bundle=` diagnostic link, and `?bundle=` in links made before the bundle moved to the fragment | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
 | `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a source that is not text or does not match its checksum, a file name the **+** tab would refuse, more than 16 KiB compressed or 1 MiB decompressed. Any other field of the wrong type, or a files list of the wrong shape or over 16 files, is dropped, and the program still opens |
 | Checks in a `#p2=` link | `web/lib/playground/program-checks.ts` (`parseChecks`) | more than 32 checks, a name over 100 characters, args over 1000 characters, stdin or expected output over 100 KiB, an exit code that is not a whole number from 0 to 255, a field of the wrong type. One bad check drops the whole list, and the program still opens |
 | `?example=` | `web/lib/hooks/use-deep-link.ts`, regex `/^[\w.-]+$/` | paths and special characters |
@@ -89,17 +89,31 @@ the call, with a plain message instead of a crash:
   to fill the 8 MiB stack and the 16 MiB heap together.
 - At most 4 MiB of output (`cpu::MAX_OUTPUT_BYTES`), and a cap on the field
   width and precision `printf` will pad to.
+- A program that sleeps (`nanosleep`, `usleep`) earns back one instruction per
+  microsecond slept and one byte of output per ten, never past the two limits
+  above, up to 200,000,000 instructions and 4 MiB in a run. The terminal pane
+  waits out every sleep in real time, so there the caps are what four hours of
+  sleeping earns, 14,400,000,000 instructions and 1,440,000,000 bytes
+  (`cpu::REAL_TIME_REFUND_STEPS`, `cpu::REAL_TIME_REFUND_OUTPUT_BYTES`), and a
+  sleep counts against them only what it gave back. That bounds a terminal
+  session's work, not its length: a game using most of each second's refill
+  runs about five to eight hours, and a program that does little each second
+  can run for weeks. A program that never sleeps meets the limits above.
 - In the virtual filesystem: 4 MiB per file, 4 MiB in total, and 16 files. A
   call past a limit fails as on a full Linux disk: a system call returns a
   negative error number, a library call -1 or NULL.
-- A load or store in the first page, or a memory access through `sp` or a
-  library call while `sp` is not a multiple of 16, stops the program, as a
-  segmentation fault or bus error would on the course server.
+- A load or store in the first page, a store into the program's own code, a
+  library call's store into the host stub window just under 4 GiB, or a memory
+  access through `sp` or a library call while `sp` is not a multiple of 16,
+  stops the program, as a segmentation fault or bus error would on the course
+  server.
 
 The stack view caps its own records, so a deep recursion cannot use up memory
 through them either. It records at most 16,384 calls
-(`frames::MAX_ACTIVATIONS`), and the call tree keeps at most 200 entries.
-Calls past either cap are counted, not stored. The view draws at most 64
+(`frames::MAX_ACTIVATIONS`); deeper calls are counted, not stored. The call
+tree keeps at most 200 entries: a call that finds them full drops the oldest
+finished calls and counts them, and calls nested past 12 levels are counted,
+not stored. The view draws at most 64
 frames. Past 64, the frames between main and the newest 63 fold into one line
 that counts them. None of the three caps stops the program.
 
@@ -156,7 +170,8 @@ through Next.js, and `minimatch`, for the copy
 `@typescript-eslint/typescript-estree` uses in the lint tools. ESLint and its
 plugins keep minimatch 3, whose API differs, so that override applies
 to that one package. The root `package.json` holds the same `postcss`
-override for the copy of Next.js that Vercel installs there.
+override for the copy of Next.js that Vercel installs there, from the root
+`package-lock.json` with `npm ci`. Dependabot watches the root and `web/`.
 
 monaco-editor also bundles its own, older copy of DOMPurify, a file inside
 its package that `overrides` cannot change. The editor uses it to clean the
@@ -169,6 +184,13 @@ version. `npm run size` then reads the version each copy of DOMPurify in the
 built JavaScript states and fails if any is older than the one in
 `overrides`. A later monaco-editor update cannot bring the old copy back
 without that check failing.
+
+The production build, `scripts/vercel-build.sh`, downloads the Rust
+toolchain, wasm-pack, the wasm-bindgen CLI and `wasm-opt`. Each is pinned to
+an exact version and a sha256 written in the script, and the build stops
+before it runs any file whose hash differs. The emulator builds with cargo's
+`--locked`, so its crates are the ones `emulator/Cargo.lock` names, each
+checked against the hash recorded there.
 
 ## Check the headers
 

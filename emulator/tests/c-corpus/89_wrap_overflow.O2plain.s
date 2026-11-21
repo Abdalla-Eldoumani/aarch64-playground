@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -333,7 +334,7 @@ main:
 	ret
 	.section .rodata
 	.align	3
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 .LC0:
 	.xword	-1
 	.xword	-1
@@ -344,7 +345,7 @@ main:
 	.xword	7
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 ip:
 	.word	2147483647
 	.word	1
@@ -405,4 +406,5 @@ ulp:
 	.xword	4294967297
 	.xword	-9223372036854775808
 	.xword	2
+	.section	.note.GNU-stack,"",@progbits
 

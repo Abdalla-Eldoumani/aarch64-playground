@@ -22,12 +22,7 @@ use crate::memory::Memory;
 pub const FILE_HANDLE_BASE: u64 = 0xFFFF_2000;
 const FILE_HANDLE_STRIDE: u64 = 16;
 
-/// The loader-written `stdin`, `stdout` and `stderr` words (+0, +8, +16),
-/// each holding that stream's FILE* handle. glibc's `stdout` is a word that
-/// holds a FILE*, which code loads out of memory (`ldr x0, =stdout` then
-/// `ldr x0, [x0]`), so the symbols must point at real memory. The page
-/// sits in the gap `ARGV_BASE` left above the argv page, below the heap.
-pub const STDIO_GLOBALS_BASE: u64 = 0x0080_1000;
+pub use crate::layout::{CTYPE_CONV_BASE, STDIO_GLOBALS_BASE};
 
 /// The word `__ctype_b_loc` returns the address OF: it holds a pointer
 /// to the character-class table. Same page as the stream handles because
@@ -42,12 +37,7 @@ pub const CTYPE_B_TABLE: u64 = STDIO_GLOBALS_BASE + 32;
 /// pointer, just past that table's 768 bytes.
 pub const CTYPE_TOUPPER_PTR: u64 = STDIO_GLOBALS_BASE + 800;
 pub const CTYPE_TOLOWER_PTR: u64 = STDIO_GLOBALS_BASE + 808;
-/// The conversion tables live on the NEXT page: two 384-entry int32
-/// arrays are 3072 bytes and the first globals page is already spoken
-/// for by the stream words and the character-class table. Still far
-/// below `heap::HEAP_BASE`, and the page above argv's is otherwise
-/// unclaimed.
-pub const CTYPE_CONV_BASE: u64 = STDIO_GLOBALS_BASE + 4096;
+/// The two conversion tables share the page at `CTYPE_CONV_BASE`.
 pub const CTYPE_TOUPPER_TABLE: u64 = CTYPE_CONV_BASE;
 pub const CTYPE_TOLOWER_TABLE: u64 = CTYPE_CONV_BASE + 1536;
 
@@ -356,76 +346,19 @@ pub fn fclose(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 mod tests {
     use super::*;
     use crate::cpu::OpenFile;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
+    use crate::test_support::Host;
 
     const BUF: u64 = 0x0060_0000;
     const TEXT: u64 = 0x0050_0000;
 
-    struct Host {
-        regs: RegisterFile,
-        mem: Memory,
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-        stdin: Vec<u8>,
-        stdin_closed: bool,
-        vfs: HashMap<String, Vec<u8>>,
-        open_files: HashMap<u32, OpenFile>,
-        next_fd: u32,
-        rand_state: crate::hosted::libc::RandState,
-        term: crate::cpu::TermState,
-        heap: crate::hosted::heap::HeapState,
-        strtok_save: u64,
-        callbacks: crate::hosted::callback::CallbackState,
+    #[test]
+    fn the_globals_pages_sit_at_their_fixed_addresses() {
+        // Neither page is a memory-map row, so nothing else pins them.
+        assert_eq!(STDIO_GLOBALS_BASE, 0x0080_1000);
+        assert_eq!(CTYPE_CONV_BASE, 0x0080_2000);
     }
 
     impl Host {
-        fn new() -> Self {
-            let mut mem = Memory::new();
-            mem.map_page(BUF);
-            mem.map_page(TEXT);
-            Host {
-                regs: RegisterFile::new(),
-                mem,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                stdin: Vec::new(),
-                stdin_closed: false,
-                vfs: HashMap::new(),
-                open_files: HashMap::new(),
-                next_fd: 3,
-                rand_state: crate::hosted::libc::RandState::default(),
-                term: crate::cpu::TermState::default(),
-                heap: crate::hosted::heap::HeapState::default(),
-                strtok_save: 0,
-                callbacks: Default::default(),
-            }
-        }
-        fn ctx(&mut self) -> HostContext<'_> {
-            HostContext {
-                regs: &mut self.regs,
-                mem: &mut self.mem,
-                stdout: &mut self.stdout,
-                stderr: &mut self.stderr,
-                stdin: &mut self.stdin,
-                stdin_closed: self.stdin_closed,
-                vfs: &mut self.vfs,
-                open_files: &mut self.open_files,
-                next_fd: &mut self.next_fd,
-                rand_state: &mut self.rand_state,
-                term: &mut self.term,
-                heap: &mut self.heap,
-                strtok_save: &mut self.strtok_save,
-                callbacks: &mut self.callbacks,
-                call: None,
-            }
-        }
-        fn place_string(&mut self, addr: u64, s: &[u8]) {
-            for (i, b) in s.iter().enumerate() {
-                self.mem.write_u8(addr + i as u64, *b).unwrap();
-            }
-            self.mem.write_u8(addr + s.len() as u64, 0).unwrap();
-        }
         /// fgets(BUF, n, stream) -> (outcome, what x0 came back as).
         fn fgets(&mut self, n: u64, stream: u64) -> (HostOutcome, u64) {
             self.regs.write_gpr(0, true, BUF);

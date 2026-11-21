@@ -84,7 +84,7 @@ afterEach(() => {
 async function stepTo(count: number): Promise<void> {
   for (let n = 0; n < count; n++) {
     const before = pc;
-    // Found again each time: the cold frame's button gives way to the live one.
+    // Found again each time, as a student finds it.
     fireEvent.click(await screen.findByLabelText("step", {}, { timeout: 5000 }));
     await waitFor(() => expect(pc).not.toBe(before), { timeout: 5000 });
     // The state reaches the host before the step's own promise settles; a

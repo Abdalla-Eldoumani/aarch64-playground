@@ -210,64 +210,10 @@ pub fn ctype_tolower_loc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuEr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpu::OpenFile;
     use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
-
-    struct Host {
-        regs: RegisterFile,
-        mem: Memory,
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-        stdin: Vec<u8>,
-        vfs: HashMap<String, Vec<u8>>,
-        open_files: HashMap<u32, OpenFile>,
-        next_fd: u32,
-        rand_state: crate::hosted::libc::RandState,
-        term: crate::cpu::TermState,
-        heap: crate::hosted::heap::HeapState,
-        strtok_save: u64,
-        callbacks: crate::hosted::callback::CallbackState,
-    }
+    use crate::test_support::Host;
 
     impl Host {
-        fn new() -> Self {
-            Host {
-                regs: RegisterFile::new(),
-                mem: Memory::new(),
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                stdin: Vec::new(),
-                vfs: HashMap::new(),
-                open_files: HashMap::new(),
-                next_fd: 3,
-                rand_state: crate::hosted::libc::RandState::default(),
-                term: crate::cpu::TermState::default(),
-                heap: crate::hosted::heap::HeapState::default(),
-                strtok_save: 0,
-                callbacks: Default::default(),
-            }
-        }
-        fn ctx(&mut self) -> HostContext<'_> {
-            HostContext {
-                regs: &mut self.regs,
-                mem: &mut self.mem,
-                stdout: &mut self.stdout,
-                stderr: &mut self.stderr,
-                stdin: &mut self.stdin,
-                stdin_closed: false,
-                vfs: &mut self.vfs,
-                open_files: &mut self.open_files,
-                next_fd: &mut self.next_fd,
-                rand_state: &mut self.rand_state,
-                term: &mut self.term,
-                heap: &mut self.heap,
-                strtok_save: &mut self.strtok_save,
-                callbacks: &mut self.callbacks,
-                call: None,
-            }
-        }
         fn call(&mut self, f: fn(&mut HostContext<'_>) -> Result<HostOutcome, EmuError>, c: i64) -> i64 {
             self.regs.write_gpr(0, false, c as u64);
             f(&mut self.ctx()).unwrap();

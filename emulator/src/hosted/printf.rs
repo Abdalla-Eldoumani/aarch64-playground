@@ -365,6 +365,14 @@ fn format_conversion(
         }
         b's' => {
             let ptr = walker.next_int(ctx);
+            // glibc prints a NULL string as `(null)`, or as nothing when a
+            // precision under 6 has no room for it, and reads no memory.
+            if ptr == 0 {
+                let null: &[u8] =
+                    if spec.precision.is_some_and(|max| max < 6) { b"" } else { b"(null)" };
+                emit_field(b"", null, spec, false, out);
+                return Ok(());
+            }
             // C's %s precision is a maximum BYTE count, and the bytes go
             // out as they are, whether or not they spell UTF-8.
             let bytes = match spec.precision {
@@ -559,10 +567,9 @@ fn emit_field(prefix: &[u8], body: &[u8], spec: &FormatSpec, zero_ok: bool, out:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpu::OpenFile;
     use crate::memory::Memory;
     use crate::registers::RegisterFile;
-    use std::collections::HashMap;
+    use crate::test_support::Host;
 
     fn call(fmt: &str, setup: impl FnOnce(&mut RegisterFile, &mut Memory)) -> (String, usize) {
         try_call(fmt, setup).expect("printf should succeed")
@@ -572,47 +579,15 @@ mod tests {
         fmt: &str,
         setup: impl FnOnce(&mut RegisterFile, &mut Memory),
     ) -> Result<(String, usize), EmuError> {
-        let mut regs = RegisterFile::new();
-        let mut mem = Memory::new();
+        let mut h = Host::new();
         let fmt_addr = 0x0050_0000u64;
-        mem.map_page(fmt_addr);
-        let fmt_bytes = fmt.as_bytes();
-        for (i, b) in fmt_bytes.iter().enumerate() {
-            mem.write_u8(fmt_addr + i as u64, *b).unwrap();
-        }
-        mem.write_u8(fmt_addr + fmt_bytes.len() as u64, 0).unwrap();
-        regs.write_gpr(0, true, fmt_addr);
-        setup(&mut regs, &mut mem);
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        let mut stdin = Vec::new();
-        let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
-        let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
-        let mut next_fd = 3u32;
-        let mut rand_state = crate::hosted::libc::RandState::default();
-        let mut term = crate::cpu::TermState::default();
-        let mut heap = crate::hosted::heap::HeapState::default();
-        let mut strtok_save = 0u64;
-        let mut ctx = HostContext {
-            regs: &mut regs,
-            mem: &mut mem,
-            stdout: &mut stdout,
-            stderr: &mut stderr,
-            stdin: &mut stdin,
-            stdin_closed: false,
-            vfs: &mut vfs,
-            open_files: &mut open_files,
-            next_fd: &mut next_fd,
-            rand_state: &mut rand_state,
-            term: &mut term,
-            heap: &mut heap,
-            strtok_save: &mut strtok_save,
-            callbacks: &mut Default::default(),
-            call: None,
-        };
-        printf(&mut ctx)?;
-        let written = ctx.regs.read_gpr(0, true) as usize;
-        let s = String::from_utf8_lossy(&stdout).into_owned();
+        h.place_string(fmt_addr, fmt.as_bytes());
+        h.regs.write_gpr(0, true, fmt_addr);
+        let cpu = &mut h.0;
+        setup(&mut cpu.regs, &mut cpu.mem);
+        printf(&mut h.ctx())?;
+        let written = h.regs.read_gpr(0, true) as usize;
+        let s = String::from_utf8_lossy(&h.stdout).into_owned();
         Ok((s, written))
     }
 
@@ -632,49 +607,17 @@ mod tests {
         read_back: usize,
         setup: impl FnOnce(&mut RegisterFile, &mut Memory),
     ) -> (Vec<u8>, u64) {
-        let mut regs = RegisterFile::new();
-        let mut mem = Memory::new();
-        mem.map_page(FMT_ADDR);
-        mem.map_page(BUF_ADDR);
-        for (i, b) in fmt.as_bytes().iter().enumerate() {
-            mem.write_u8(FMT_ADDR + i as u64, *b).unwrap();
-        }
-        mem.write_u8(FMT_ADDR + fmt.len() as u64, 0).unwrap();
+        let mut h = Host::new();
+        h.place_string(FMT_ADDR, fmt.as_bytes());
         for i in 0..64u64 {
-            mem.write_u8(BUF_ADDR + i, 0xEE).unwrap();
+            h.mem.write_u8(BUF_ADDR + i, 0xEE).unwrap();
         }
-        setup(&mut regs, &mut mem);
-        let mut stdout = Vec::new();
-        let mut stderr = Vec::new();
-        let mut stdin = Vec::new();
-        let mut vfs: HashMap<String, Vec<u8>> = HashMap::new();
-        let mut open_files: HashMap<u32, OpenFile> = HashMap::new();
-        let mut next_fd = 3u32;
-        let mut rand_state = crate::hosted::libc::RandState::default();
-        let mut term = crate::cpu::TermState::default();
-        let mut heap = crate::hosted::heap::HeapState::default();
-        let mut strtok_save = 0u64;
-        let mut ctx = HostContext {
-            regs: &mut regs,
-            mem: &mut mem,
-            stdout: &mut stdout,
-            stderr: &mut stderr,
-            stdin: &mut stdin,
-            stdin_closed: false,
-            vfs: &mut vfs,
-            open_files: &mut open_files,
-            next_fd: &mut next_fd,
-            rand_state: &mut rand_state,
-            term: &mut term,
-            heap: &mut heap,
-            strtok_save: &mut strtok_save,
-            callbacks: &mut Default::default(),
-            call: None,
-        };
-        stub(&mut ctx).unwrap();
-        let returned = ctx.regs.read_gpr(0, true);
+        let cpu = &mut h.0;
+        setup(&mut cpu.regs, &mut cpu.mem);
+        stub(&mut h.ctx()).unwrap();
+        let returned = h.regs.read_gpr(0, true);
         let bytes = (0..read_back as u64)
-            .map(|i| mem.read_u8(BUF_ADDR + i).unwrap())
+            .map(|i| h.mem.read_u8(BUF_ADDR + i).unwrap())
             .collect();
         (bytes, returned)
     }
@@ -1019,15 +962,15 @@ mod tests {
 
     #[test]
     fn percent_s_with_a_bad_pointer_names_the_conversion() {
-        // A null (unmapped) pointer must not surface as a bare memory
-        // fault; the message names printf %s, the pointer, and the remedy.
+        // An unmapped pointer must not surface as a bare memory fault; the
+        // message names printf %s, the pointer, and the remedy.
         let err = try_call("%s", |regs, _| {
-            regs.write_gpr(1, true, 0);
+            regs.write_gpr(1, true, 0x10);
         })
         .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("printf %s"), "was: {msg}");
-        assert!(msg.contains("0x0"), "was: {msg}");
+        assert!(msg.contains("0x10,"), "was: {msg}");
         assert!(msg.contains("ldr"), "was: {msg}");
     }
 

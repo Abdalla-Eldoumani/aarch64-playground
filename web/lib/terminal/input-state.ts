@@ -92,7 +92,8 @@ export class TerminalInputState {
     const matches = candidates.filter((c) => c.startsWith(prefix));
     if (matches.length === 0) return [];
     if (matches.length === 1) {
-      const completion = matches[0];
+      // A program can choose a file's name.
+      const completion = sanitizeInput(matches[0]);
       const head = lastSpace === -1 ? "" : this.buffer.slice(0, lastSpace + 1);
       this.buffer = head + completion;
       this.cursor = this.buffer.length;

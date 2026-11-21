@@ -68,10 +68,10 @@ impl Cpu {
         if reads.is_empty() {
             return;
         }
-        let (read_by, read_pc) = if self.host.lookup("__main_return") == Some(pc) {
+        let (read_by, read_pc) = if pc == MAIN_RETURN_ADDR {
             (READ_BY_MAIN_RETURN, pc)
         } else if self.host.contains_address(pc) {
-            (READ_BY_CALL, lr.wrapping_sub(4))
+            (READ_BY_CALL, self.host.call_site(pc, lr))
         } else {
             (READ_BY_INSTRUCTION, pc)
         };
@@ -128,16 +128,18 @@ impl Cpu {
     }
 
     /// What a real library call leaves behind, applied as the call returns
-    /// (see `RegisterFile::clobber_caller_saved`).
-    fn clobber_after_call(&mut self, stub_pc: u64) {
+    /// (see `RegisterFile::clobber_caller_saved`): every caller-saved
+    /// register but the one `returns` names.
+    fn clobber_after_call(&mut self, stub_pc: u64, returns: Returns) {
         let lr = self.regs.read_gpr(30, true);
         // The call's reads of its arguments are noted against the calls
         // that left them, before this one replaces every origin.
         self.note_clobbered_reads(stub_pc, lr);
-        let name = self.host.name_for_address(stub_pc).unwrap_or_default();
-        let in_d0 = RETURNS_IN_D0.contains(&name);
-        let in_x0 = !in_d0 && !RETURNS_NOTHING.contains(&name);
-        self.regs.clobber_caller_saved(in_x0, in_d0, lr.wrapping_sub(4));
+        self.regs.clobber_caller_saved(
+            returns == Returns::X0,
+            returns == Returns::D0,
+            HostTable::bl_before(lr),
+        );
     }
 
     /// Push bytes onto the stdin buffer. Clears the `blocked` flag so a
@@ -241,11 +243,10 @@ impl Cpu {
         true
     }
 
-    /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
-    /// appropriate outcome to `blocked`/`exit_code` and leaves PC for the
-    /// caller to advance.
-    pub(super) fn dispatch_syscall(&mut self, number: u64) -> Result<(), EmuError> {
-        let mut ctx = HostContext {
+    /// What a libc stub or a syscall may touch, borrowed from this machine.
+    /// `record_call` lends printf or scanf the call card's record.
+    pub(crate) fn host_context(&mut self, record_call: bool) -> HostContext<'_> {
+        HostContext {
             regs: &mut self.regs,
             mem: &mut self.mem,
             stdout: &mut self.stdout,
@@ -257,12 +258,21 @@ impl Cpu {
             next_fd: &mut self.next_fd,
             rand_state: &mut self.rand_state,
             term: &mut self.term,
+            // Only while the ring is paused: a step it records never sees the
+            // pane's size, so Back then forward over the ioctl answers alike.
+            window_size: self.window_size.filter(|_| self.snapshots_paused),
             heap: &mut self.heap,
             strtok_save: &mut self.strtok_save,
             callbacks: &mut self.callbacks,
-            call: None,
-        };
-        let outcome = crate::hosted::syscalls::dispatch(number, &mut ctx)?;
+            call: record_call.then_some(&mut self.call_scratch),
+        }
+    }
+
+    /// Dispatch a Linux syscall (`svc #0` with x8 != 0). Applies the
+    /// appropriate outcome to `blocked`/`exit_code` and leaves PC for the
+    /// caller to advance.
+    pub(super) fn dispatch_syscall(&mut self, number: u64) -> Result<(), EmuError> {
+        let outcome = crate::hosted::syscalls::dispatch(number, &mut self.host_context(false))?;
         match outcome {
             // No syscall calls into the program, so Call never arrives here.
             HostOutcome::Continue | HostOutcome::Call(_) => {}
@@ -285,13 +295,22 @@ impl Cpu {
         self.term.virtual_ns = self.term.virtual_ns.saturating_add(ns);
         // Refunds stop at the lifetime cap so a runner that skips the
         // real pauses (a batch fixture run) cannot mint budget forever.
+        // A real-time host gets the four-hour caps, and each refund is
+        // charged only what it credits: a sleep into a full budget is free.
+        let (step_cap, byte_cap, spent_steps, spent_bytes) = if self.real_time {
+            (REAL_TIME_REFUND_STEPS, REAL_TIME_REFUND_OUTPUT_BYTES, self.steps_total, self.output_total)
+        } else {
+            (MAX_REFUND_STEPS, MAX_REFUND_OUTPUT_BYTES, u64::MAX, u64::MAX)
+        };
         let step_refund = (ns / SLEEP_STEP_REFUND_NS_PER_STEP)
-            .min(MAX_REFUND_STEPS.saturating_sub(self.refund_steps_total));
+            .min(step_cap.saturating_sub(self.refund_steps_total))
+            .min(spent_steps);
         self.refund_steps_total += step_refund;
         self.steps_total = self.steps_total.saturating_sub(step_refund);
         if step_refund > 0 {
-            let byte_refund = ((ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize)
-                .min(MAX_REFUND_OUTPUT_BYTES.saturating_sub(self.refund_output_total));
+            let byte_refund = (ns / SLEEP_OUTPUT_REFUND_NS_PER_BYTE)
+                .min(byte_cap.saturating_sub(self.refund_output_total))
+                .min(spent_bytes);
             self.refund_output_total += byte_refund;
             self.output_total = self.output_total.saturating_sub(byte_refund);
         }
@@ -299,8 +318,8 @@ impl Cpu {
     }
 
     /// Consume the pause the last nanosleep requested, if any. The
-    /// runner calls this once per run result and waits the returned
-    /// duration in real time; batch runners simply ignore it.
+    /// runner calls this once per run result and waits the pause out in
+    /// real time; batch runners simply ignore it.
     pub fn take_pending_sleep_ns(&mut self) -> Option<u64> {
         self.pending_sleep_ns.take()
     }
@@ -318,6 +337,11 @@ impl Cpu {
         call.call_pc = self.last_program_pc;
         call.result = regs[0];
         call.failed = failed;
+        // A scanf that faulted stopped at the conversion it was storing;
+        // printf words its own stopped rows.
+        if let Some(row) = call.current().filter(|_| failed && kind == crate::hosted::CALL_SCANF) {
+            row.code = crate::hosted::CALL_STOPPED;
+        }
         let old = std::mem::replace(&mut self.last_call, std::mem::take(&mut self.call_scratch));
         match self.snapshots.newest_mut() {
             Some(frame) => frame.call = Some(old),
@@ -325,56 +349,23 @@ impl Cpu {
         }
     }
 
-    /// Dispatch a host-stub entry point at `pc`. Splits the mutable borrow
-    /// of `self` so the stub can touch registers, memory, and console
-    /// buffers without racing the `HostTable` itself (which is only read).
-    pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<StepResult, EmuError> {
-        // Snapshot registers so the change highlighter still works across a
-        // host call.
-        let snapshot = self.regs.snapshot();
-        let fpr_snapshot = self.regs.snapshot_fpr();
-        // The table is read-only during dispatch; split the borrow by
-        // temporarily taking the entries, dispatching, then restoring.
+    /// Dispatch a host-stub entry point at `pc` and apply its outcome to
+    /// pc, `blocked`, `exit_code` and the call stack.
+    pub(super) fn dispatch_host_stub(&mut self, pc: u64) -> Result<(), EmuError> {
+        // A copy of the row, so the stub can borrow the rest of the machine.
+        let stub = self.host.stub_at(pc).expect("dispatch_host_stub called with non-host pc");
         // qsort's comparator returns to the stub it was called from.
         self.callbacks.stub_pc = pc;
-        // Only printf and scanf get a call card.
-        let kind = match self.host.name_for_address(pc) {
-            Some("printf") => CALL_PRINTF,
-            Some("scanf" | "__isoc99_scanf") => CALL_SCANF,
-            _ => 0,
-        };
         self.call_scratch.began = false;
-        let table = std::mem::take(&mut self.host);
-        let mut ctx = HostContext {
-            regs: &mut self.regs,
-            mem: &mut self.mem,
-            stdout: &mut self.stdout,
-            stderr: &mut self.stderr,
-            stdin: &mut self.stdin,
-            stdin_closed: self.stdin_closed,
-            vfs: &mut self.vfs,
-            open_files: &mut self.open_files,
-            next_fd: &mut self.next_fd,
-            rand_state: &mut self.rand_state,
-            term: &mut self.term,
-            heap: &mut self.heap,
-            strtok_save: &mut self.strtok_save,
-            callbacks: &mut self.callbacks,
-            call: (kind != 0).then_some(&mut self.call_scratch),
-        };
-        let outcome = table
-            .dispatch(pc, &mut ctx)
-            .expect("dispatch_host_stub called with non-host pc");
-        self.host = table;
+        let outcome = (stub.func)(&mut self.host_context(stub.card != 0));
         // A call waiting on input runs again from the start once it comes.
         if self.call_scratch.began && !matches!(outcome, Ok(HostOutcome::NeedInput)) {
-            self.keep_call(kind, outcome.is_err());
+            self.keep_call(stub.card, outcome.is_err());
         }
-        let host_outcome = outcome?;
-
-        match host_outcome {
+        let outcome = outcome?;
+        match outcome {
             HostOutcome::Continue => {
-                self.clobber_after_call(pc);
+                self.clobber_after_call(pc, stub.returns);
                 // Return to caller: pc = lr.
                 let lr = self.regs.read_gpr(30, true);
                 self.regs.write_pc(lr);
@@ -385,10 +376,9 @@ impl Cpu {
                 self.blocked = true;
             }
             HostOutcome::Sleep(ns) => {
-                // No libc stub returns Sleep, but the arm stays correct: a
-                // sleeping stub returns to its caller like Continue.
+                // usleep: the pause, then a return to the caller like Continue.
                 self.apply_sleep(ns);
-                self.clobber_after_call(pc);
+                self.clobber_after_call(pc, stub.returns);
                 let lr = self.regs.read_gpr(30, true);
                 self.regs.write_pc(lr);
             }
@@ -406,35 +396,14 @@ impl Cpu {
                 }
             }
         }
-
-        let current = self.regs.snapshot();
-        self.changed_regs.clear();
-        for i in 0..32 {
-            if snapshot[i] != current[i] {
-                self.changed_regs.push(i as u8);
-            }
+        // A library function a tail call (`b printf`) reached returns for
+        // the function that made it, named by the program's last instruction.
+        // shortcut: after qsort or bsearch ran the comparator that is the
+        // comparator's ret, not the b; take the call site once stub entries record it.
+        if matches!(outcome, HostOutcome::Continue | HostOutcome::Sleep(_)) {
+            self.track_return(self.last_program_pc, self.regs.read_pc(), true);
         }
-        let fpr_current = self.regs.snapshot_fpr();
-        self.changed_fprs.clear();
-        for i in 0..32 {
-            if fpr_snapshot[i] != fpr_current[i] {
-                self.changed_fprs.push(i as u8);
-            }
-        }
-
-        let result_outcome = match host_outcome {
-            HostOutcome::Continue | HostOutcome::Call(_) => StepOutcome::Advance,
-            HostOutcome::NeedInput => StepOutcome::WaitingForInput,
-            HostOutcome::Sleep(ns) => StepOutcome::Sleeping(ns.min(MAX_SLEEP_NS)),
-            HostOutcome::Exited(code) => StepOutcome::Exited(code),
-        };
-
-        Ok(StepResult {
-            pc: self.regs.read_pc(),
-            halted: self.halted,
-            error: None,
-            outcome: result_outcome,
-        })
+        Ok(())
     }
 
     /// Clear accumulated stdout and stderr without resetting the rest of

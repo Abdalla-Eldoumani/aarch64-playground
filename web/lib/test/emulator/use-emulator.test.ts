@@ -183,6 +183,7 @@ interface BackendCalls {
   deleteVfsFile: string[];
   resolveLabel: string[];
   getMemory: Array<[number, number]>;
+  setWindowSize: Array<[number, number]>;
 }
 
 // Like MainThreadBackend and WorkerClient, the fake fires each snapshot at the
@@ -216,6 +217,8 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
   let listener: ((s: StateSnapshot) => void) | null = null;
   let frame = 0;
   let runResolve: (() => void) | null = null;
+  // Moved by every call that replaces the machine, as the real backends' is.
+  let epoch = 0;
 
   const calls: BackendCalls = {
     assemble: [],
@@ -238,6 +241,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
     deleteVfsFile: [],
     resolveLabel: [],
     getMemory: [],
+    setWindowSize: [],
   };
 
   function fire(overrides: Partial<StateSnapshot> = {}): StateSnapshot {
@@ -247,6 +251,9 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
   }
 
   const backend: EmulatorBackend = {
+    get epoch() {
+      return epoch;
+    },
     onSnapshot(l) {
       listener = l;
       return () => {
@@ -273,6 +280,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve(cfg.memBytes);
     },
     assemble(source, args) {
+      epoch++;
       calls.assemble.push([source, args]);
       if (cfg.assembleThrows) return Promise.reject(new Error("boom"));
       const result: AssembleResultPayload = cfg.assembleSuccess
@@ -294,6 +302,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve({ stepResult: cfg.stepResult, snapshot: s });
     },
     stepBack() {
+      epoch++;
       calls.stepBack++;
       if (cfg.stepBackThrows) return Promise.reject(new Error("stepback boom"));
       const s = fire({ canStepBack: true });
@@ -326,6 +335,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve();
     },
     reset() {
+      epoch++;
       calls.reset++;
       return Promise.resolve(fire());
     },
@@ -338,6 +348,13 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve(fire());
     },
     setSnapshotsPaused() {
+      return Promise.resolve();
+    },
+    setRealTime() {
+      return Promise.resolve();
+    },
+    setWindowSize(cols, rows) {
+      calls.setWindowSize.push([cols, rows]);
       return Promise.resolve();
     },
     clearAllBreakpoints() {
@@ -362,6 +379,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       return Promise.resolve(fire({ savedStates: [name] }));
     },
     loadState(name) {
+      epoch++;
       calls.loadState.push(name);
       return Promise.resolve({ ok: cfg.loadStateOk, snapshot: fire() });
     },
@@ -392,6 +410,7 @@ function makeBackend(config: Partial<BackendConfig> = {}) {
       calls.clearConsole++;
       return Promise.resolve(fire());
     },
+    dispose() {},
   };
 
   return {
@@ -432,6 +451,7 @@ describe("useEmulator load + snapshot application", () => {
     h.backend = {
       onSnapshot: () => () => {},
       init: () => Promise.reject(new Error("wasm failed to load")),
+      dispose: () => {},
     };
     const { result } = renderHook(() => useEmulator());
     await waitFor(() => expect(result.current.loadError).toBe("wasm failed to load"));
@@ -593,6 +613,19 @@ describe("useEmulator load + snapshot application", () => {
       [0x1000, 4],
       [0x2000, 8],
     ]);
+  });
+
+  it("drops the dirty ranges when a snapshot writes nothing", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      fake.fire({ dirtyAddrs: [0x1000, 4] });
+    });
+    expect(result.current.dirtyAddrs).toEqual([[0x1000, 4]]);
+    act(() => {
+      fake.fire();
+    });
+    expect(result.current.dirtyAddrs).toEqual([]);
   });
 });
 
@@ -1663,6 +1696,359 @@ describe("useEmulator stepping and running", () => {
   });
 });
 
+// A run that sleeps waits in real time. Here the only time is a fake clock
+// behind both setTimeout and performance.now: the fake backend answers each
+// chunk `rt` ms after the call, and every timer the hub sets fires `late(k)`
+// ms late, k being the last sleep answered.
+describe("useEmulator real-time sleeps", () => {
+  const TICK = 1000 / 60;
+  const STOP: RunResultPayload = { pc: CODE_BASE, halted: false, steps_executed: 5, hit_breakpoint: false, error: null };
+  const SLEEP: RunResultPayload = { ...STOP, sleep_ms: TICK };
+  const HALT: RunResultPayload = { ...STOP, halted: true };
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  async function fakeClock(fake: ReturnType<typeof makeBackend>) {
+    const view = await mountAssembled(fake);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    const t = performance.now();
+    vi.advanceTimersByTime(1);
+    expect(performance.now()).toBe(t + 1);
+    return view;
+  }
+
+  async function paced(script: (k: number) => RunResultPayload, rt: number, late: (k: number) => number) {
+    const fake = makeBackend();
+    const view = await fakeClock(fake);
+    const timeout = globalThis.setTimeout;
+    const called: number[] = [];
+    const answered: number[] = [];
+    const results: RunResultPayload[] = [];
+    vi.stubGlobal("setTimeout", ((fn: () => void, ms = 0) => timeout(fn, ms + late(answered.length - 1))) as typeof setTimeout);
+    fake.backend.runUntilBreak = () => {
+      called.push(performance.now());
+      const runResult = script(called.length - 1);
+      return new Promise((resolve) =>
+        timeout(() => {
+          answered.push(performance.now());
+          results.push(runResult);
+          resolve({ runResult, snapshot: fake.fire() });
+        }, rt),
+      );
+    };
+    const advance = (ms: number) =>
+      act(async () => {
+        await vi.advanceTimersByTimeAsync(ms);
+      });
+    return { ...view, fake, called, answered, results, advance };
+  }
+
+  // The worst shortfall of real time against the time slept, over every
+  // stretch from a sleep's answer to a later chunk's call.
+  function worstShortfall(called: number[], answered: number[], results: RunResultPayload[]): number {
+    const slept = [0];
+    for (const r of results) slept.push(slept[slept.length - 1] + (r.sleep_ms ?? 0));
+    let worst = 0;
+    for (let i = 0; i < answered.length; i++) {
+      for (let j = i + 1; j < called.length; j++) {
+        worst = Math.max(worst, slept[j] - slept[i] - (called[j] - answered[i]));
+      }
+    }
+    return worst;
+  }
+
+  it("keeps 60 sleeps a second against a round trip and late timers", async () => {
+    const { result, called, answered, results, advance } = await paced(
+      (k) => (k < 600 ? SLEEP : HALT),
+      3,
+      (k) => 1 + ((k * 5) % 7),
+    );
+    act(() => {
+      void result.current.run();
+    });
+    await advance(20_000);
+    expect(results).toHaveLength(601);
+    expect(answered[600] - called[0]).toBeLessThanOrEqual(600 * TICK + TICK);
+    expect(worstShortfall(called, answered, results)).toBeLessThanOrEqual(TICK);
+  });
+
+  it("drops the time a stall lost instead of catching it up", async () => {
+    // One timer 10 s late, as a hidden tab's are. Sleeps of 100 ms, so one
+    // served with no wait would show as more than a tick short.
+    const { result, called, answered, results, advance } = await paced(
+      (k) => (k < 100 ? { ...STOP, sleep_ms: 100 } : HALT),
+      3,
+      (k) => (k === 20 ? 10_000 : 0),
+    );
+    act(() => {
+      void result.current.run();
+    });
+    await advance(30_000);
+    expect(results).toHaveLength(101);
+    expect(called[21] - answered[20]).toBeGreaterThanOrEqual(10_000);
+    expect(worstShortfall(called, answered, results)).toBeLessThanOrEqual(TICK);
+  });
+
+  it("drops only the part of a slow tick past the 16 ms carry", async () => {
+    // Every chunk takes 20 ms, 4 ms past the carry: a tick should last its
+    // sleep plus those 4 ms, not its sleep plus all 20 (and the fake timers
+    // round a wait under 1 ms up to 1).
+    const { result, answered, results, advance } = await paced((k) => (k < 100 ? SLEEP : HALT), 20, () => 0);
+    act(() => {
+      void result.current.run();
+    });
+    await advance(10_000);
+    expect(results).toHaveLength(101);
+    const period = (answered[100] - answered[1]) / 99;
+    expect(period).toBeGreaterThanOrEqual(20);
+    expect(period).toBeLessThanOrEqual(TICK + 20 - 16 + 1);
+  });
+
+  it("starts each run's sleeps afresh", async () => {
+    const { result, called, answered, advance } = await paced(
+      (k) => (k === 5 ? STOP : k === 7 ? HALT : SLEEP),
+      3,
+      () => 2,
+    );
+    act(() => {
+      result.current.run();
+    });
+    // On to the moment the first run ends, then straight into a second, so
+    // no idle time could hide a timeline carried over.
+    while (result.current.isRunning) await advance(1);
+    act(() => {
+      result.current.run();
+    });
+    await advance(1000);
+    expect(called).toHaveLength(8);
+    // The second run's first sleep (answer 6) waits at least in full.
+    expect(called[7] - answered[6]).toBeGreaterThan(TICK);
+  });
+
+  it("a pause during a sleep ends the run", async () => {
+    const { result, called, answered, advance } = await paced(() => SLEEP, 3, () => 1);
+    act(() => {
+      result.current.run();
+    });
+    // A few sleeps in, then on to the next answer: the drive is inside a wait.
+    await advance(90);
+    while (answered.length < called.length) await advance(1);
+    const asked = called.length;
+    act(() => {
+      result.current.pause();
+    });
+    await advance(1000);
+    expect(called).toHaveLength(asked);
+    // The run ended the usual way: its steps landed on the counter.
+    expect(result.current.stepCount).toBe(5 * asked);
+    expect(result.current.isRunning).toBe(false);
+  });
+
+  it("a run pressed again inside the paused run's sleep drives alone", async () => {
+    const { result, called, answered, advance } = await paced(() => SLEEP, 3, () => 1);
+    act(() => {
+      result.current.run();
+    });
+    await advance(90);
+    while (answered.length < called.length) await advance(1);
+    const asked = called.length;
+    act(() => {
+      result.current.pause();
+      result.current.run();
+    });
+    // One drive asks for about 30 chunks in 500 ms; two would ask for 60.
+    await advance(500);
+    expect(called.length - asked).toBeGreaterThanOrEqual(27);
+    expect(called.length - asked).toBeLessThanOrEqual(33);
+    expect(result.current.isRunning).toBe(true);
+    // The paused run ended, and only its steps are on the counter so far.
+    expect(result.current.stepCount).toBe(5 * asked);
+  });
+
+  it("a reset while the run's last chunk is out lands none of its steps", async () => {
+    // A 50 ms chunk that stops at a breakpoint, not cancelled: the worker
+    // finished it before the reset reached it. The reset lands 10 ms in.
+    const { result, advance } = await paced(() => ({ ...STOP, hit_breakpoint: true }), 50, () => 0);
+    act(() => {
+      result.current.run();
+    });
+    await advance(10);
+    act(() => {
+      result.current.reset();
+    });
+    await advance(200);
+    expect(result.current.stepCount).toBe(0);
+  });
+
+  describe("a machine replaced during a sleep", () => {
+    const NAP: RunResultPayload = { ...STOP, sleep_ms: 100 };
+
+    // Two sleeps in, then on to the next answer: the drive is inside a wait.
+    async function intoWait() {
+      const view = await paced(() => NAP, 3, () => 0);
+      act(() => {
+        view.result.current.run();
+      });
+      await view.advance(250);
+      while (view.answered.length < view.called.length) await view.advance(1);
+      return view;
+    }
+
+    it("a reset lands no steps afterwards", async () => {
+      const { result, called, advance } = await intoWait();
+      const asked = called.length;
+      act(() => {
+        result.current.reset();
+      });
+      await advance(1000);
+      expect(result.current.stepCount).toBe(0);
+      expect(called).toHaveLength(asked);
+    });
+
+    it("an assemble ends the old drive", async () => {
+      const { result, called, advance } = await intoWait();
+      await act(async () => {
+        await result.current.assemble(HOSTED_SOURCE);
+      });
+      const asked = called.length;
+      await advance(1000);
+      expect(called).toHaveLength(asked);
+      expect(result.current.stepCount).toBe(0);
+    });
+
+    it("a run pressed after an assemble drives the new program alone, counting from zero", async () => {
+      const { result, called, advance } = await intoWait();
+      await act(async () => {
+        await result.current.assemble(HOSTED_SOURCE);
+      });
+      const asked = called.length;
+      act(() => {
+        result.current.run();
+      });
+      expect(result.current.isRunning).toBe(true);
+      // One drive asks for about 10 chunks a second.
+      await advance(1000);
+      act(() => {
+        result.current.pause();
+      });
+      await advance(200);
+      const ran = called.length - asked;
+      expect(ran).toBeGreaterThanOrEqual(9);
+      expect(ran).toBeLessThanOrEqual(11);
+      expect(result.current.stepCount).toBe(5 * ran);
+    });
+
+    it("a paused run's steps never land on the program assembled and run in its wait", async () => {
+      const { result, called, advance } = await intoWait();
+      act(() => {
+        result.current.pause();
+      });
+      await act(async () => {
+        await result.current.assemble(HOSTED_SOURCE);
+      });
+      const asked = called.length;
+      act(() => {
+        result.current.run();
+      });
+      await advance(1000);
+      act(() => {
+        result.current.pause();
+      });
+      await advance(200);
+      expect(result.current.stepCount).toBe(5 * (called.length - asked));
+    });
+
+    it("a save loaded in a sleep lets a Run pressed at once drive alone", async () => {
+      const { result, called, advance } = await intoWait();
+      act(() => {
+        result.current.loadState("a");
+      });
+      const asked = called.length;
+      act(() => {
+        result.current.run();
+      });
+      expect(result.current.isRunning).toBe(true);
+      // One drive asks for about 10 chunks a second.
+      await advance(1000);
+      act(() => {
+        result.current.pause();
+      });
+      await advance(200);
+      const ran = called.length - asked;
+      expect(ran).toBeGreaterThanOrEqual(9);
+      expect(ran).toBeLessThanOrEqual(11);
+      expect(result.current.stepCount).toBe(5 * ran);
+    });
+
+    it("a step back while the run is on is refused, so the counter keeps the machine's steps", async () => {
+      // Three steps by hand, then a run of two 5-step chunks that sleep and
+      // one that stops at a breakpoint.
+      const BREAK: RunResultPayload = { ...STOP, hit_breakpoint: true };
+      const { result, fake, called, answered, advance } = await paced((k) => (k < 2 ? NAP : BREAK), 3, () => 0);
+      for (let i = 0; i < 3; i++) {
+        await act(async () => {
+          result.current.step();
+        });
+      }
+      act(() => {
+        result.current.run();
+      });
+      await advance(150);
+      while (answered.length < called.length) await advance(1);
+      act(() => {
+        fake.fire({ canStepBack: true });
+      });
+      act(() => {
+        result.current.stepBack();
+      });
+      expect(fake.calls.stepBack).toBe(0);
+      await advance(200);
+      expect(result.current.isRunning).toBe(false);
+      expect(result.current.stepCount).toBe(3 + 5 * called.length);
+      act(() => {
+        result.current.run();
+      });
+      await advance(200);
+      expect(result.current.stepCount).toBe(3 + 5 * called.length);
+    });
+  });
+
+  it("lets a pause land when no sleep has time left to wait", async () => {
+    // Chunks that cost the 2 ms they sleep and answer in microtasks, as the
+    // main-thread backend does: after the first sleep no wait is positive.
+    const fake = makeBackend();
+    const { result } = await fakeClock(fake);
+    let calls = 0;
+    fake.backend.runUntilBreak = () => {
+      if (++calls > 5000) return Promise.reject(new Error("the run never gave the page a turn"));
+      vi.advanceTimersByTime(2);
+      return Promise.resolve({ runResult: { ...SLEEP, sleep_ms: 2 }, snapshot: fake.fire() });
+    };
+    const turn = () =>
+      act(async () => {
+        await new Promise((settle) => setImmediate(settle));
+      });
+    act(() => {
+      result.current.run();
+    });
+    // The first sleep waits its 2 ms.
+    await turn();
+    vi.advanceTimersByTime(2);
+    // The pause comes from the event loop, as a click does.
+    setImmediate(() => {
+      result.current.pause();
+      vi.advanceTimersByTime(2);
+    });
+    for (let i = 0; i < 1000 && result.current.stepCount === 0; i++) await turn();
+    expect(result.current.error).toBeNull();
+    expect(calls).toBeLessThan(5000);
+    expect(result.current.stepCount).toBe(5 * calls);
+  });
+});
+
 describe("useEmulator reset", () => {
   it("clears execution state and calls the backend", async () => {
     const fake = makeBackend();
@@ -1969,9 +2355,59 @@ describe("useEmulator breakpoints", () => {
     });
     expect(fake.calls.clearBreakpoint).toEqual([0x401234]);
   });
+
+  it("keeps a gutter dot's stop when an address clear names its instruction", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    await act(async () => {
+      await result.current.clearBreakpointAddress(CODE_BASE);
+    });
+    expect(fake.calls.clearBreakpoint).toEqual([]);
+  });
+
+  // gdb sets a breakpoint again by name when the program restarts.
+  it("hands the terminal's gdb b breakpoints the editor's assemble and every clear, not a terminal build", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    const labels = { assembled: vi.fn(async () => {}), cleared: vi.fn() };
+    result.current.gdbLabels.current = labels;
+    await act(async () => {
+      await result.current.assemble(HOSTED_SOURCE);
+      await result.current.assembleForTool(HOSTED_SOURCE);
+    });
+    expect(labels.assembled).toHaveBeenCalledTimes(1);
+    // The last gutter dot on an instruction takes its gdb b with it, as gdb's clear does.
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    act(() => {
+      result.current.toggleBreakpoint(PROLOGUE_LINE);
+    });
+    expect(labels.cleared.mock.calls).toEqual([[CODE_BASE]]);
+    act(() => {
+      result.current.clearAllBreakpoints();
+    });
+    expect(labels.cleared.mock.calls).toEqual([[CODE_BASE], []]);
+  });
 });
 
 describe("useEmulator backend passthroughs", () => {
+  it("setWindowSize forwards the pane's columns, then rows, to the backend", async () => {
+    const fake = makeBackend();
+    const { result } = await mountLoaded(fake);
+    act(() => {
+      result.current.setWindowSize(48, 43);
+      result.current.setWindowSize(0, 0);
+    });
+    expect(fake.calls.setWindowSize).toEqual([[48, 43], [0, 0]]);
+  });
+
   it("pushStdin forwards text to the backend", async () => {
     const fake = makeBackend();
     const { result } = await mountLoaded(fake);

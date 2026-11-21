@@ -429,16 +429,50 @@ main:
     expect(card.outcome).toBe(`printed "${" ".repeat(256)}…"`);
   });
 
-  it("a scanf handed a value where an address belongs stores at that value", () => {
-    const card = after(load(fixture("scanf-value.s"), "7\n"), 24);
+  it("a scanf handed a value where an address belongs stops at that conversion", () => {
+    const p = load(fixture("scanf-value.s"), "7\n");
+    p.emu.run_until_break(1_000_000);
+    expect(p.emu.is_halted()).toBe(true);
+    const card = cardNow(p)!;
+    expect(card.line).toBe("line 24");
+    expect(card.rows).toEqual([{ text: "scanf stopped at %d", problem: null }]);
+    // x0 still holds the format's address: scanf never returned a count.
+    expect(card.outcome).toBe("stopped the program before it returned");
+    expect(spokenCard(card)).toBe('scanf("%d") on line 24 stopped the program before it returned. scanf stopped at %d.');
+  });
+
+  it("a scanf handed a number past the first page stores there and says it is not a variable", () => {
+    const p = load(`// Reads an int with scanf into 0x1000, a number where a variable's address belongs.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_in:     .string "%d"
+
+.text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+
+        ldr     x0, =fmt_in
+        mov     x1, 0x1000                  // a number, not an address
+        bl      scanf
+
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`, "7\n");
+    const card = after(p, 18);
     expect(card.rows).toEqual([
       {
-        text: "%d stored 7 at 0x0, which is not one of your variables",
-        problem:
-          "x1 should hold the address of a variable (add x1, fp, its offset for a local, or ldr x1, =its label), " +
-          "not its value. On the course server this stops the program.",
+        text: "%d stored 7 at 0x1000, which is not one of your variables",
+        problem: "x1 should hold the address of a variable (add x1, fp, its offset for a local, or ldr x1, =its label), not its value.",
       },
     ]);
+    expect(card.outcome).toBe("returned 1 in w0");
   });
 
   it("input that does not fit stops scanf at that conversion", () => {

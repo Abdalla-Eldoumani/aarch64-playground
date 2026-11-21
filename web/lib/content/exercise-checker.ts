@@ -275,6 +275,53 @@ function evaluateStructural(assertion: StructuralAssertion, strippedSource: stri
 }
 
 /**
+ * One call that broke a stack rule during a hidden run, read from the
+ * machine's own call stack (lib/emulator/headless-run). `sp`: the call went
+ * out with sp off a multiple of 16. `fp` and `lr`: the write on line `at`
+ * changed the saved fp or lr in the call's frame. `fpChanged` and `callee`:
+ * the call came back to its call site with sp where it began but fp, or
+ * x`register` (19 to 28), not as the call found it.
+ */
+export interface FrameNote {
+  kind: "sp" | "fp" | "lr" | "fpChanged" | "callee";
+  /** The function the call entered, by that exact address (its hex when no function starts there). */
+  fn: string;
+  /** The call's line in the run's source; null for main's own frame. */
+  line: number | null;
+  at?: number | null;
+  register?: number;
+}
+
+/**
+ * Whether a run collects frame notes and a note fails a hidden case. Off
+ * until after the CPSC 355 final on 2026-12-16, so pass and fail stay as
+ * students know them this term; turning it on is the one change that makes
+ * the notes count.
+ */
+export const FRAME_NOTES_COUNT = false;
+
+/** A frame note in words. */
+export function frameNoteText(note: FrameNote): string {
+  const lineText = (line: number | null | undefined) => (line == null ? "a line" : `line ${line}`);
+  const call = note.line === null ? note.fn : `the call to ${note.fn} on ${lineText(note.line)}`;
+  switch (note.kind) {
+    case "sp":
+      return `${lineText(note.line)} calls ${note.fn} with sp not a multiple of 16`;
+    case "fp":
+    case "lr":
+      return `${lineText(note.at)} writes over the saved ${note.kind} of ${call}`;
+    case "fpChanged":
+      return `${call} returns with fp changed`;
+    case "callee":
+      return `${call} returns with x${note.register} changed`;
+    default: {
+      const exhaustive: never = note.kind;
+      return exhaustive;
+    }
+  }
+}
+
+/**
  * What one run of the student's program on a hidden case produced
  * (lib/emulator/headless-run fills it in).
  */
@@ -294,10 +341,13 @@ export interface HiddenRunOutcome {
   stackBalanced: boolean | null;
   /** False when the program wrote above main's entry sp, into its caller's frame. */
   frameIntact: boolean;
+  /** Each stack rule a checked call broke, once, up to eight a run; empty
+   *  when the run did not collect them. */
+  frameNotes: FrameNote[];
 }
 
 /** Why a hidden case failed, first cause first. */
-export type HiddenMiss = "assemble" | "fault" | "unfinished" | "stdout" | "exit" | "stack" | "frame";
+export type HiddenMiss = "assemble" | "fault" | "unfinished" | "stdout" | "exit" | "stack" | "frame" | "calls";
 
 /**
  * One graded hidden case. `detail` carries only what the student's own run
@@ -313,8 +363,14 @@ export interface HiddenCaseCheck {
  * Grade one hidden case. Beyond output and exit status, it fails an unbalanced
  * stack or a write into the caller's frame: real hardware punishes both later
  * (a misaligned sp at the next call, the caller's saved registers overwritten).
+ * A frame note fails it only once `notesCount` is on (FRAME_NOTES_COUNT; the
+ * parameter lets a test throw that switch).
  */
-export function checkHiddenCase(testCase: HiddenCase, outcome: HiddenRunOutcome): HiddenCaseCheck {
+export function checkHiddenCase(
+  testCase: HiddenCase,
+  outcome: HiddenRunOutcome,
+  notesCount: boolean = FRAME_NOTES_COUNT,
+): HiddenCaseCheck {
   const missed = (miss: HiddenMiss, detail = ""): HiddenCaseCheck => ({ pass: false, miss, detail });
   if (outcome.assembleError !== null) return missed("assemble", outcome.assembleError);
   if (outcome.error !== null) return missed("fault", outcome.error);
@@ -325,6 +381,7 @@ export function checkHiddenCase(testCase: HiddenCase, outcome: HiddenRunOutcome)
   }
   if (outcome.stackBalanced === false) return missed("stack");
   if (!outcome.frameIntact) return missed("frame");
+  if (notesCount && outcome.frameNotes.length > 0) return missed("calls", frameNoteText(outcome.frameNotes[0]));
   return { pass: true, miss: null, detail: "" };
 }
 

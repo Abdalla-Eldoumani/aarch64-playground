@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 isort:
@@ -1292,4 +1293,5 @@ main:
 	.word	0
 	.zero	4
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

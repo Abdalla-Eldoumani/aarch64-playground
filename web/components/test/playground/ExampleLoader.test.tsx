@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { ExampleLoader } from "@/components/playground/ExampleLoader";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { ExampleLoader, GROUPS } from "@/components/playground/ExampleLoader";
+import { EXAMPLES } from "@/lib/playground/example-catalog";
 
 afterEach(() => {
   cleanup();
@@ -81,9 +82,9 @@ describe("ExampleLoader", () => {
     render(<ExampleLoader onLoad={() => {}} />);
     const labels = optionLabels(openList());
     // 14 course programs, 2 stage fillers, the program the playground opens
-    // with, the 6 vector demonstrations, and the 6 playable extras under
+    // with, the 6 vector demonstrations, and the 7 playable extras under
     // Miscellaneous.
-    expect(labels.length).toBe(29);
+    expect(labels.length).toBe(30);
     for (const label of labels) {
       expect(label).not.toMatch(/week\d/);
     }
@@ -97,6 +98,7 @@ describe("ExampleLoader", () => {
     expect(labels).toContain("temperature converter");
     expect(labels).toContain("two sum");
     expect(labels).toContain("deadzone");
+    expect(labels).toContain("flappy");
     expect(labels).toContain("uppercase a line");
     expect(labels).toContain("mean of floats");
   });
@@ -146,6 +148,99 @@ describe("ExampleLoader", () => {
       stem: "read-file",
       vfs: { "input.txt": "Hi\n" },
     });
+  });
+
+  it("lists every example under its stage in order, and loads each under its own label", async () => {
+    // [stage, [label, stem] in menu order]
+    const MENU: [string, [string, string][]][] = [
+      ["First programs", [["arithmetic", "basics"], ["distance from zero", "distance"]]],
+      ["Data and memory", [["globals (load + store)", "globals"]]],
+      ["Stack and locals", [["locals (sum + product)", "locals"]]],
+      [
+        "Records and arrays",
+        [["scores (scanf + avg)", "array-scores"], ["student record", "student-record"]],
+      ],
+      ["Subroutines", [["find max", "find-max"], ["is prime", "is-prime"]]],
+      [
+        "Static data and command-line arguments",
+        [["static counter", "static-counter"], ["command-line args", "command-line-args"]],
+      ],
+      [
+        "Floating point",
+        [["circle area", "circle-area"], ["triangle area (single precision)", "triangle-area"]],
+      ],
+      [
+        "Files and I/O",
+        [
+          ["hello (write)", "hello"],
+          ["echo (read)", "echo"],
+          ["write file", "write-file"],
+          ["read file", "read-file"],
+          ["copy file", "copy-file"],
+        ],
+      ],
+      [
+        "Vector registers (not taught in the course)",
+        [
+          ["uppercase a line", "vector-upper"],
+          ["count the characters", "vector-strlen"],
+          ["sum sixteen ints", "vector-sum"],
+          ["dot product", "vector-dot"],
+          ["brighten a picture", "vector-brighten"],
+          ["mean of floats", "vector-mean"],
+        ],
+      ],
+      [
+        "Miscellaneous",
+        [
+          ["snake", "snake"],
+          ["data structures visualizer", "dsav"],
+          ["calculator", "calc"],
+          ["temperature converter", "temp-convert"],
+          ["two sum", "two-sum"],
+          ["deadzone", "deadzone"],
+          ["flappy", "flappy"],
+        ],
+      ],
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        text: async () => (url.endsWith(".vfs.json") ? "{}" : "x\n"),
+      })),
+    );
+    const onLoad = vi.fn();
+    render(<ExampleLoader onLoad={onLoad} />);
+
+    for (const [, rows] of MENU) {
+      for (const [label, stem] of rows) {
+        await pick(label);
+        await waitFor(() =>
+          expect(onLoad).toHaveBeenLastCalledWith(expect.objectContaining({ label, stem })),
+        );
+      }
+    }
+
+    const shown = Array.from(openList().children).map((group) => [
+      groupHeaders(group as HTMLElement)[0],
+      optionLabels(group as HTMLElement),
+    ]);
+    expect(shown).toEqual(MENU.map(([stage, rows]) => [stage, rows.map(([label]) => label)]));
+  });
+
+  it("lists exactly the catalog's examples, in the catalog's order", () => {
+    const catalog = EXAMPLES.map((example) => example.stem);
+    const menu = GROUPS.flatMap((group) => group.items.map((item) => item.stem));
+    for (const stem of catalog) {
+      expect(menu, `${stem} is in the catalog but not the menu`).toContain(stem);
+    }
+    for (const stem of menu) {
+      expect(catalog, `${stem} is in the menu but not the catalog`).toContain(stem);
+    }
+    expect(menu, "the menu lists the catalog's examples in another order").toEqual(catalog);
   });
 
   it("shows an inline alert when the fetch fails", async () => {

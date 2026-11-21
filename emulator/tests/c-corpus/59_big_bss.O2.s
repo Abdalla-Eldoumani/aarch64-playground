@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -399,7 +400,7 @@ main:
 	.global	wide
 	.section .rodata
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 .LC0:
 	.byte	14
 	.byte	15
@@ -419,7 +420,7 @@ main:
 	.byte	1
 	.data
 	.align	4
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 marker:
 	.word	286331153
 	.word	572662306
@@ -429,7 +430,7 @@ limit:
 	.word	8000
 	.bss
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 counts.0:
 	.zero	2000
 grid:
@@ -438,4 +439,5 @@ wide:
 	.zero	480000
 sieve:
 	.zero	150001
+	.section	.note.GNU-stack,"",@progbits
 

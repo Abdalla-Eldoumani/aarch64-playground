@@ -12,7 +12,7 @@
     "dev:all": "concurrently --kill-others-on-fail --names wasm,web --prefix-colors yellow,cyan \"npm run wasm:watch\" \"npm run dev\"",
     "build": "next build --webpack && node ../scripts/write-precache-list.js",
     "start": "next start",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings 0",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -28,7 +28,7 @@
     {
       "name": "learn route entry js (index + lesson page chunks)",
       "path": ".next/static/chunks/app/[(]site[)]/learn/**/page-*.js",
-      "limit": "8.6 KB"
+      "limit": "8.66 KB"
     },
     {
       "name": "practice route entry js (index + exercise page chunks)",
@@ -64,7 +64,7 @@
     {
       "name": "lazy frame cards and frame drawing (loaded with the frames view or on the first bad return)",
       "path": ".next/static/chunks/frame-cards.*.js",
-      "limit": "4.3 KB"
+      "limit": "4.418 KB"
     },
     {
       "name": "lazy call card (loaded when a console first shows a program in hosted mode, the landing hero's included; carries the frame drawing it names stack slots by)",
@@ -74,7 +74,7 @@
     {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
-      "limit": "224.63 KB"
+      "limit": "228.22 KB"
     },
     {
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
@@ -95,18 +95,18 @@
   "dependencies": {
     "@monaco-editor/react": "4.7.0",
     "@vercel/analytics": "2.0.1",
-    "@vercel/speed-insights": "2.0.0",
+    "@vercel/speed-insights": "2.1.0",
     "@xterm/addon-fit": "0.11.0",
     "@xterm/xterm": "6.0.0",
     "cmdk": "1.1.1",
     "lz-string": "1.5.0",
     "monaco-editor": "0.56.0",
-    "next": "16.4.5",
+    "next": "16.4.6",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "react-hot-toast": "2.6.1",
     "react-markdown": "10.1.0",
-    "react-resizable-panels": "4.15.0",
+    "react-resizable-panels": "4.21.0",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1"
   },
@@ -116,23 +116,23 @@
     "@types/node": "24.19.2",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
-    "@vitest/coverage-v8": "5.0.5",
+    "@vitest/coverage-v8": "5.1.0",
     "autoprefixer": "10.6.2",
     "concurrently": "9.2.5",
     "eslint": "9.39.5",
-    "eslint-config-next": "16.4.5",
-    "jsdom": "30.1.3",
+    "eslint-config-next": "16.4.6",
+    "jsdom": "31.0.0",
     "lighthouse": "13.5.0",
     "playwright": "1.59.1",
     "postcss": "8.5.32",
     "size-limit": "14.3.0",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
-    "vitest": "5.0.5"
+    "vitest": "5.1.0"
   },
   "overrides": {
     "@typescript-eslint/typescript-estree": {
-      "minimatch": "11.0.3"
+      "minimatch": "11.0.6"
     },
     "dompurify": "3.4.17",
     "postcss": "8.5.32"

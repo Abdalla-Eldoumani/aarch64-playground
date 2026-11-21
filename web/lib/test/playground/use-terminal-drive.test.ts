@@ -8,6 +8,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import type { TerminalProgramIO } from "@/lib/terminal/dispatch";
 import type { LaunchMode } from "@/lib/playground/playground-handoff";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
+import { appendBounded } from "@/lib/emulator/use-emulator";
 import {
   useTerminalDrive,
   type TerminalDriveMachine,
@@ -34,6 +35,8 @@ function makeMachine(overrides: Partial<TerminalDriveMachine> = {}): TerminalDri
     pushStdin: vi.fn(),
     setOutputTap: vi.fn(),
     setSnapshotsPaused: vi.fn(),
+    setRealTime: vi.fn(),
+    setWindowSize: vi.fn(),
     ...overrides,
   };
   return machine;
@@ -46,6 +49,7 @@ function makeIO() {
     clear: vi.fn(),
     focus: vi.fn(),
     sessionEnded: vi.fn(),
+    altScreen: vi.fn(() => false),
   };
 }
 
@@ -425,6 +429,17 @@ describe("forwarding keystrokes", () => {
   });
 });
 
+/** Real time goes on after the ring pauses and off before it resumes, once
+ *  each, so no step the ring records ran under real time. */
+function expectRealTimeInsideThePause(machine: TerminalDriveMachine) {
+  const pause = vi.mocked(machine.setSnapshotsPaused).mock;
+  const real = vi.mocked(machine.setRealTime).mock;
+  expect(pause.calls).toEqual([[true], [false]]);
+  expect(real.calls).toEqual([[true], [false]]);
+  expect(pause.invocationCallOrder[0]).toBeLessThan(real.invocationCallOrder[0]);
+  expect(real.invocationCallOrder[1]).toBeLessThan(pause.invocationCallOrder[1]);
+}
+
 describe("standing down", () => {
   async function startSession(machine: TerminalDriveMachine) {
     const h = setup({}, machine);
@@ -448,6 +463,7 @@ describe("standing down", () => {
     expect(exit).toBe(7);
     expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
     expect(machine.setSnapshotsPaused).toHaveBeenLastCalledWith(false);
+    expectRealTimeInsideThePause(machine);
     expect(io.setForeground).toHaveBeenLastCalledWith(null);
     expect(h.drive().foregroundLive).toBe(false);
   });
@@ -462,6 +478,7 @@ describe("standing down", () => {
       exit = await session;
     });
     expect(exit).toBeNull();
+    expectRealTimeInsideThePause(machine);
   });
 
   it("stops on ctrl+c by pausing the machine", async () => {
@@ -474,6 +491,7 @@ describe("standing down", () => {
     });
     expect(machine.pause).toHaveBeenCalledTimes(1);
     expect(exit).toBeNull();
+    expectRealTimeInsideThePause(machine);
   });
 
   it("lets go when the pane it was driving goes away", async () => {
@@ -497,6 +515,7 @@ describe("standing down", () => {
       await session;
     });
     expect(machine.setSnapshotsPaused).toHaveBeenLastCalledWith(false);
+    expectRealTimeInsideThePause(machine);
   });
 
   it("lets go when an assemble replaces the program under it", async () => {
@@ -512,6 +531,7 @@ describe("standing down", () => {
       await session;
     });
     expect(machine.run).toHaveBeenCalledTimes(1);
+    expectRealTimeInsideThePause(machine);
   });
 
   it("lets go when the host surface unmounts", async () => {
@@ -524,5 +544,404 @@ describe("standing down", () => {
     });
     expect(exit).toBeNull();
     expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
+    expectRealTimeInsideThePause(machine);
+  });
+});
+
+describe("the pane's size", () => {
+  async function startSession(machine: TerminalDriveMachine) {
+    const h = setup({}, machine);
+    const io = makeIO();
+    let session!: Promise<number | null>;
+    act(() => {
+      session = h.drive().driveForeground(io as TerminalProgramIO);
+    });
+    return { io, session };
+  }
+
+  /** Every size the machine got went in after the ring paused, and the last
+   *  one, which takes the size away, before the ring resumed: no step the
+   *  ring records ever asked for the pane's size. */
+  function expectSizeInsideThePause(machine: TerminalDriveMachine) {
+    const pause = vi.mocked(machine.setSnapshotsPaused).mock;
+    const size = vi.mocked(machine.setWindowSize).mock;
+    expect(size.calls.at(-1)).toEqual([0, 0]);
+    expect(pause.invocationCallOrder[0]).toBeLessThan(size.invocationCallOrder[0]);
+    expect(size.invocationCallOrder.at(-1)).toBeLessThan(pause.invocationCallOrder[1]);
+  }
+
+  it("hands the machine the size the pane gives the program, and every resize after it", async () => {
+    const machine = makeMachine({ exitCode: 0 });
+    const { io, session } = await startSession(machine);
+    // The pane hands its columns and rows over as the program takes it.
+    foregroundOf(io).resize(48, 43);
+    foregroundOf(io).resize(80, 24);
+    await halt(machine, session);
+    expect(vi.mocked(machine.setWindowSize).mock.calls).toEqual([[48, 43], [80, 24], [0, 0]]);
+    expectSizeInsideThePause(machine);
+  });
+
+  it("takes the size away when ctrl+c stops a program that stays loaded", async () => {
+    // The paused program can still be stepped or run on in the console,
+    // where no pane answers for its size.
+    const machine = makeMachine();
+    const { io, session } = await startSession(machine);
+    foregroundOf(io).resize(48, 43);
+    await act(async () => {
+      foregroundOf(io).cancel();
+      await session;
+    });
+    expectSizeInsideThePause(machine);
+  });
+
+  it("lets a new session's size stand after an assemble ends the old one", async () => {
+    // An assemble mid-session ends the old drive on its next poll, and a run
+    // press right after asks for a new one. Had the new session started
+    // first, the old one's (0, 0) would land on the new program, and nothing
+    // would send the size again until the pane next resized. The machine is
+    // modelled here: what it holds when each run starts is what the
+    // program's first ask answers.
+    let size: [number, number] | null = null;
+    let paused = false;
+    const atRun: Array<{ size: [number, number] | null; paused: boolean }> = [];
+    const machine = makeMachine({
+      setWindowSize: vi.fn((cols: number, rows: number) => {
+        size = cols > 0 && rows > 0 ? [cols, rows] : null;
+      }),
+      setSnapshotsPaused: vi.fn((p: boolean) => {
+        paused = p;
+      }),
+    });
+    machine.run = vi.fn(() => {
+      machine.isRunning = true;
+      atRun.push({ size, paused });
+    });
+    const h = setup({}, machine, "terminal");
+    const io = makeIO();
+    // The pane hands every program that takes it over its size.
+    vi.mocked(io.setForeground).mockImplementation((fg) => fg?.resize(48, 43));
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+      h.drive().requestTerminalRun();
+    });
+    await waitFor(() => expect(machine.run).toHaveBeenCalledTimes(1));
+    await new Promise((r) => setTimeout(r, 40));
+    // The assemble drops the loaded flag, and the run press comes at once.
+    machine.isRunning = false;
+    machine.programLoaded = false;
+    await act(async () => {
+      h.drive().requestTerminalRun();
+    });
+    await waitFor(() => expect(machine.setSnapshotsPaused).toHaveBeenCalledWith(false), {
+      timeout: 2000,
+    });
+    // The new program is loaded by the time the old drive has let go.
+    machine.programLoaded = true;
+    await waitFor(() => expect(machine.run).toHaveBeenCalledTimes(2), { timeout: 2000 });
+    expect(atRun).toEqual([
+      { size: [48, 43], paused: true },
+      { size: [48, 43], paused: true },
+    ]);
+    expect(vi.mocked(machine.setWindowSize).mock.calls).toEqual([[48, 43], [0, 0], [48, 43]]);
+    machine.isRunning = false;
+    machine.isHalted = true;
+    await waitFor(() => expect(h.drive().foregroundLive).toBe(false), { timeout: 2000 });
+  });
+});
+
+describe("putting the pane back when a session ends", () => {
+  // What a stopped program may have left set in the pane: its alternate
+  // screen (left only while it is still up, since leaving it moves the
+  // cursor), then a soft reset (cursor shown, wrapping on, plain text),
+  // mouse reporting off, and the theme's palette (OSC 104).
+  const MAIN_SCREEN = "\x1b[?1049l";
+  const PUT_BACK = "\x1b[!p\x1b[?1000l\x1b[?1006l\x1b]104\x07";
+
+  type Started = {
+    h: ReturnType<typeof setup>;
+    machine: TerminalDriveMachine;
+    io: IO;
+  };
+  const ends: Array<[string, (s: Started) => void | Promise<void>]> = [
+    [
+      "the program exits",
+      ({ machine }) => {
+        machine.isRunning = false;
+        machine.isHalted = true;
+      },
+    ],
+    [
+      "the program faults",
+      ({ machine }) => {
+        machine.isRunning = false;
+        machine.error = "memory fault: the program tried to read 0x0000000000000000";
+      },
+    ],
+    ["ctrl+c stops it", ({ io }) => foregroundOf(io).cancel()],
+    [
+      "the pause button stops it",
+      ({ machine }) => {
+        machine.isRunning = false;
+      },
+    ],
+    [
+      "an assemble or a reset replaces it",
+      ({ machine }) => {
+        machine.isRunning = false;
+        machine.programLoaded = false;
+      },
+    ],
+    [
+      "the pane goes away",
+      async ({ h, io }) => {
+        h.drive().registerTermIO(io as TerminalProgramIO);
+        await new Promise((r) => setTimeout(r, 50));
+        h.drive().registerTermIO(null);
+      },
+    ],
+    ["the host surface unmounts", ({ h }) => h.rendered.unmount()],
+  ];
+
+  async function runToEnd(end: (s: Started) => void | Promise<void>, altScreen: boolean) {
+    const machine = makeMachine({ exitCode: 0 });
+    const h = setup({}, machine);
+    const io = makeIO();
+    io.altScreen.mockReturnValue(altScreen);
+    let session!: Promise<number | null>;
+    act(() => {
+      session = h.drive().driveForeground(io as TerminalProgramIO);
+    });
+    // One poll sees the program running before it ends.
+    await new Promise((r) => setTimeout(r, 40));
+    await act(async () => {
+      await end({ h, machine, io });
+      await session;
+    });
+    return { machine, io };
+  }
+
+  it.each(ends)("writes it once when %s, after the program's last byte", async (_, end) => {
+    const { machine, io } = await runToEnd(end, true);
+    const writes = io.write.mock.calls.map(([text]) => text);
+    expect(writes.filter((text) => text.includes("]104"))).toEqual([MAIN_SCREEN + PUT_BACK]);
+    // The tap lets go first, so no byte of the program's lands after it.
+    expect(machine.setOutputTap).toHaveBeenLastCalledWith(null);
+    const at = io.write.mock.invocationCallOrder[writes.indexOf(MAIN_SCREEN + PUT_BACK)];
+    expect(vi.mocked(machine.setOutputTap).mock.invocationCallOrder.at(-1)).toBeLessThan(at);
+  });
+
+  it("leaves the screen and the cursor where a program that put them back left them", async () => {
+    // A program that left its alternate screen itself may have printed below
+    // it since: a second exit from it would move the cursor back over that.
+    const { io } = await runToEnd(ends[0][1], false);
+    const writes = io.write.mock.calls.map(([text]) => text);
+    expect(writes.filter((text) => text.includes("]104"))).toEqual([PUT_BACK]);
+    expect(writes.some((text) => text.includes("?1049"))).toBe(false);
+  });
+
+  it("puts the pane back before it prints the exit line", async () => {
+    const machine = makeMachine({ wantsTerminal: true, exitCode: 0 });
+    const h = setup({ wantsTerminal: true }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalledWith(0));
+    });
+    const index = io.write.mock.calls.findIndex(([text]) => text === PUT_BACK);
+    expect(io.write.mock.invocationCallOrder[index]).toBeLessThan(
+      io.sessionEnded.mock.invocationCallOrder[0],
+    );
+  });
+});
+
+describe("what a raw-mode program wrote before the pane took it", () => {
+  // A program run in the console sets its terminal up (alternate screen,
+  // mouse reporting, palette) in the same chunk that turns raw mode on, so
+  // those bytes reach the console before the pane can attach.
+  async function selfAttach(stdout: string) {
+    const machine = makeMachine({ wantsTerminal: true, stdout, exitCode: 0 });
+    const h = setup({ wantsTerminal: true, stdout }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    const end = () =>
+      act(async () => {
+        machine.isRunning = false;
+        machine.isHalted = true;
+        await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+      });
+    return { machine, io, end };
+  }
+
+  it("replays the run's console output into the pane after the wipe, before any new byte", async () => {
+    const before = "\x1b[?1049h\x1b[?1000h\x1b[?1006hterminal is 80x24";
+    const { machine, io, end } = await selfAttach(before);
+    vi.mocked(machine.setOutputTap).mock.calls[0][0]!("frame");
+    expect(io.write.mock.calls.slice(0, 2)).toEqual([[before], ["frame"]]);
+    expect(io.clear.mock.invocationCallOrder[0]).toBeLessThan(io.write.mock.invocationCallOrder[0]);
+    await end();
+  });
+
+  it("never replays the console into a requested run or a ./name session", async () => {
+    // Only the self-attach starts where the console's run starts: a terminal
+    // build keeps the editor's console as history, and ./name starts right
+    // after one, where the hub can still say raw mode from a paused program.
+    const stdout = "the editor's run printed this\n";
+    const requested = makeMachine({ stdout, exitCode: 0 });
+    const h = setup({}, requested, "terminal");
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+      h.drive().requestTerminalRun();
+    });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    expect(io.write).not.toHaveBeenCalledWith(stdout);
+    await act(async () => {
+      requested.isRunning = false;
+      requested.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+    });
+
+    const named = makeMachine({ stdout, wantsTerminal: true, exitCode: 0 });
+    const n = setup({}, named);
+    const io2 = makeIO();
+    let session!: Promise<number | null>;
+    act(() => {
+      session = n.drive().driveForeground(io2 as TerminalProgramIO);
+    });
+    expect(io2.write).not.toHaveBeenCalledWith(stdout);
+    await halt(named, session);
+  });
+
+  it("replays nothing into a pane that remounts during a session it already took over", async () => {
+    // A crossing into the phone layout remounts the pane mid-session: the
+    // self-attach comes again, but the run's setup already went to the pane.
+    const stdout = "\x1b[?1000hRAWFRAME";
+    const machine = makeMachine({ wantsTerminal: true, stdout });
+    const h = setup({ wantsTerminal: true, stdout }, machine);
+    const first = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(first as TerminalProgramIO);
+    });
+    await waitFor(() => expect(first.write).toHaveBeenCalledWith(stdout));
+    await new Promise((r) => setTimeout(r, 50));
+    const second = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(null);
+      await new Promise((r) => setTimeout(r, 80));
+      h.drive().registerTermIO(second as TerminalProgramIO);
+    });
+    await waitFor(() => expect(second.setForeground).toHaveBeenCalled());
+    expect(second.write).not.toHaveBeenCalledWith(stdout);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(second.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("replays nothing into a pane that remounts during a ./name session", async () => {
+    // The console still holds an earlier editor run's text: a terminal build
+    // keeps it as history. The program turns raw while ./name drives it, and a
+    // remount then attaches a new pane to that same program.
+    const stdout = "the editor's run printed this\n";
+    const machine = makeMachine({ stdout, exitCode: 0 });
+    const h = setup({ stdout }, machine);
+    const first = makeIO();
+    let session!: Promise<number | null>;
+    await act(async () => {
+      h.drive().registerTermIO(first as TerminalProgramIO);
+      session = h.drive().driveForeground(first as TerminalProgramIO);
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    machine.wantsTerminal = true;
+    await h.update({ wantsTerminal: true });
+    const second = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(null);
+      await session;
+      h.drive().registerTermIO(second as TerminalProgramIO);
+    });
+    await waitFor(() => expect(second.setForeground).toHaveBeenCalled());
+    expect(second.write).not.toHaveBeenCalledWith(stdout);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(second.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("replays only what the run wrote from the chunk that turned raw mode on", async () => {
+    // Text the console held before that chunk (an earlier run's, or this
+    // program's own before raw mode) stays in the console.
+    const before = "kept from a terminal build\n";
+    const raw = "\x1b[?1000hRAWFRAME";
+    const machine = makeMachine({ stdout: before });
+    const h = setup({ stdout: before }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    machine.wantsTerminal = true;
+    machine.stdout = before + raw;
+    await h.update({ wantsTerminal: true, stdout: before + raw });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    expect(io.write.mock.calls[0]).toEqual([raw]);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("still replays that chunk when the console is full and drops as much as it adds", async () => {
+    // A program that printed past the console's 256 KB before raw mode: the
+    // chunk that turns raw mode on trims its own length off the head, so the
+    // console's length does not move.
+    const before = appendBounded("", Array.from({ length: 30_000 }, (_, i) => `line ${i}\n`).join(""));
+    const raw = "\x1b[?1000hRAWFRAME";
+    const after = appendBounded(before, raw);
+    expect(after.length).toBe(before.length);
+    const machine = makeMachine({ stdout: before });
+    const h = setup({ stdout: before }, machine);
+    const io = makeIO();
+    await act(async () => {
+      h.drive().registerTermIO(io as TerminalProgramIO);
+    });
+    machine.wantsTerminal = true;
+    machine.stdout = after;
+    await h.update({ wantsTerminal: true, stdout: after });
+    await waitFor(() => expect(io.setForeground).toHaveBeenCalled());
+    expect(io.write.mock.calls[0]).toEqual([raw]);
+    await act(async () => {
+      machine.isRunning = false;
+      machine.isHalted = true;
+      await waitFor(() => expect(io.sessionEnded).toHaveBeenCalled());
+    });
+  });
+
+  it("leaves a ./name program's screen alone when it turns raw mid-run", async () => {
+    // A wipe there came after the program's first chunk: it blanked a size
+    // notice and dropped the mouse reporting the program had just turned on.
+    const machine = makeMachine({ exitCode: 0 });
+    const h = setup({}, machine);
+    const io = makeIO();
+    let session!: Promise<number | null>;
+    act(() => {
+      session = h.drive().driveForeground(io as TerminalProgramIO);
+    });
+    vi.mocked(machine.setOutputTap).mock.calls[0][0]!("\x1b[?1000hterminal is 81x5");
+    machine.wantsTerminal = true;
+    await new Promise((r) => setTimeout(r, 80));
+    expect(io.clear).not.toHaveBeenCalled();
+    expect(io.write.mock.calls.filter(([t]) => t === "\x1b[?1000hterminal is 81x5")).toHaveLength(1);
+    await halt(machine, session);
   });
 });

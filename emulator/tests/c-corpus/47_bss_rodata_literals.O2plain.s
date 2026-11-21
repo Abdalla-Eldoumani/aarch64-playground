@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -48,7 +49,7 @@ main:
 	.global	zeroed
 	.section .rodata
 	.align	3
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 arr:
 	.string	"rodata"
 	.zero	1
@@ -56,12 +57,13 @@ rc:
 	.word	7
 	.data
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 lit:
 	.xword	.LC0
 	.bss
 	.align	3
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 zeroed:
 	.zero	40
+	.section	.note.GNU-stack,"",@progbits
 

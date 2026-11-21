@@ -2,23 +2,22 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  EXAMPLE_FILES,
-  EXAMPLE_INPUTS,
-  EXAMPLE_INTERACTIVE,
-  EXAMPLE_MODE_ARGS,
-  EXAMPLE_TERMINAL,
   MAX_VFS_FIXTURE_FILES,
   decodeLaunch,
+  exampleFor,
   fetchExample,
   legacyModeArgsFor,
   loadBundleDecoder,
   modeArgsFor,
   parseVfsFixture,
   resolveBoot,
+  resolveExampleStem,
   resolveHandoff,
 } from "@/lib/playground/playground-handoff";
+import { EXAMPLES } from "@/lib/playground/example-catalog";
+import { parseDeepLink } from "@/lib/hooks/use-deep-link";
 import { validateFileName } from "@/lib/playground/file-map";
-import { buildShareHash } from "@/lib/playground/share";
+import { buildShareHash, readShareHash } from "@/lib/playground/share";
 import { decodeBundle, encodeBundle } from "@/lib/playground/diagnostic-bundle";
 import {
   MAX_ARGS_CHARS,
@@ -33,11 +32,13 @@ const SHARE_HASH = buildShareHash({
   cursor: { line: 2, column: 3 },
 });
 
-const BUNDLE_QUERY = `?bundle=${encodeBundle({
+const BUNDLE_VALUE = encodeBundle({
   source: "mov x1, 9",
   args: "x",
   stdin: "y\n",
-})}`;
+});
+const BUNDLE_QUERY = `?bundle=${BUNDLE_VALUE}`;
+const BUNDLE_HASH = `#bundle=${BUNDLE_VALUE}`;
 
 describe("resolveBoot", () => {
   it("prefers a bundle deep-link over everything", () => {
@@ -172,6 +173,62 @@ describe("resolveHandoff", () => {
 
   it("returns nothing for a bare playground URL", () => {
     expect(resolveHandoff({ fromShare: false, fromBundle: false }, "", "")).toBeNull();
+  });
+});
+
+// Diagnostic links carry the bundle in the fragment, outside the request line;
+// links made before that carry it in the query and must keep loading.
+describe("a diagnostic link in the fragment", () => {
+  const unconsumed = { fromShare: false, fromBundle: false };
+
+  it("boots the same program and input as the query form, ahead of a share and the autosave", () => {
+    const boot = resolveBoot("", BUNDLE_HASH, "saved", "default", decodeBundle);
+    expect(boot).toEqual(resolveBoot(BUNDLE_QUERY, "", "saved", "default", decodeBundle));
+    expect(boot.source).toBe("mov x1, 9");
+    expect(boot.args).toBe("x");
+    expect(boot.stdin).toBe("y\n");
+    expect(boot.fromBundle).toBe(true);
+  });
+
+  it("is delivered after mount the same way as the query form", () => {
+    const decision = resolveHandoff(unconsumed, "", BUNDLE_HASH, decodeBundle);
+    expect(decision).toEqual(resolveHandoff(unconsumed, BUNDLE_QUERY, "", decodeBundle));
+    expect(decision).toEqual({
+      kind: "bundle",
+      payload: { source: "mov x1, 9", args: "x", stdin: "y\n", label: "diagnostic bundle" },
+    });
+  });
+
+  it("loads the decoder for either form, and for neither a share link nor a bare URL", async () => {
+    expect(await loadBundleDecoder("", BUNDLE_HASH)).toBe(decodeBundle);
+    expect(await loadBundleDecoder(BUNDLE_QUERY, "")).toBe(decodeBundle);
+    expect(await loadBundleDecoder("", SHARE_HASH)).toBeUndefined();
+    expect(await loadBundleDecoder("", "")).toBeUndefined();
+  });
+
+  it("reports a damaged fragment link as a bundle failure, not a share failure", () => {
+    const boot = resolveBoot("", "#bundle=not-a-payload", "saved", "default", decodeBundle);
+    expect(boot.source).toBe("saved");
+    expect(boot.bundleError).toBe("corrupt");
+    expect(boot.shareError).toBeUndefined();
+    expect(resolveHandoff(unconsumed, "", "#bundle=not-a-payload", decodeBundle)).toEqual({
+      kind: "bundle-error",
+      reason: "corrupt",
+    });
+  });
+
+  it("is never read as a share link, and a share link still loads as one", () => {
+    expect(readShareHash(BUNDLE_HASH)).toEqual({ kind: "none" });
+    // The render pass has no decoder, so it boots the autosave quietly and
+    // the pass after mount delivers the bundle.
+    const render = resolveBoot("", BUNDLE_HASH, "saved", "default");
+    expect(render.source).toBe("saved");
+    expect(render.shareError).toBeUndefined();
+    expect(render.bundleError).toBeUndefined();
+    const shared = resolveBoot("", SHARE_HASH, "saved", "default", decodeBundle);
+    expect(shared.source).toBe("mov x0, 7");
+    expect(shared.fromShare).toBe(true);
+    expect(shared.fromBundle).toBe(false);
   });
 });
 
@@ -327,21 +384,22 @@ describe("fetchExample", () => {
     // `// ---- name ----` marker, so it is checked like any other untrusted
     // name, and checked before a request goes out.
     const calls = stubFetch({ "/examples/cpsc355/basics.s": "mov x0, 1\n" });
-    EXAMPLE_FILES.basics = ["helper.s\n.global evil"];
+    const basics = exampleFor("basics")!;
+    basics.files = ["helper.s\n.global evil"];
     try {
       await expect(fetchExample("basics")).rejects.toThrow(/letters, digits/);
     } finally {
-      delete EXAMPLE_FILES.basics;
+      delete basics.files;
     }
     expect(calls).toEqual(["/examples/cpsc355/basics.s"]);
   });
 });
 
-describe("EXAMPLE_FILES manifest", () => {
+describe("the catalog's helper files", () => {
   it("declares only names the file-name rule accepts", () => {
-    for (const [stem, names] of Object.entries(EXAMPLE_FILES)) {
+    for (const { stem, files } of EXAMPLES) {
       const seen: { name: string; body: string }[] = [];
-      for (const name of names) {
+      for (const name of files ?? []) {
         expect(`${stem}: ${validateFileName(name, seen)}`).toBe(`${stem}: null`);
         seen.push({ name, body: "" });
       }
@@ -349,7 +407,15 @@ describe("EXAMPLE_FILES manifest", () => {
   });
 });
 
-describe("EXAMPLE_INPUTS manifest", () => {
+describe("the example catalog", () => {
+  it("lists every main file in the examples folder and nothing else", () => {
+    const dir = path.join(process.cwd(), "public/examples/cpsc355");
+    const mains = fs.readdirSync(dir).filter((file) => file.endsWith(".s"));
+    expect(EXAMPLES.map((example) => `${example.stem}.s`).sort()).toEqual(mains.sort());
+  });
+});
+
+describe("the catalog's inputs", () => {
   it("matches the input fixtures on disk exactly", () => {
     const dir = path.join(process.cwd(), "public/examples/cpsc355/fixtures");
     const onDisk: Record<string, { args?: true; stdin?: true; vfs?: true }> = {};
@@ -360,7 +426,10 @@ describe("EXAMPLE_INPUTS manifest", () => {
       const kind = m[2] === "vfs.json" ? "vfs" : (m[2] as "args" | "stdin");
       onDisk[stem] = { ...onDisk[stem], [kind]: true };
     }
-    expect(EXAMPLE_INPUTS).toEqual(onDisk);
+    const declared = Object.fromEntries(
+      EXAMPLES.filter((example) => example.inputs).map((example) => [example.stem, example.inputs]),
+    );
+    expect(declared).toEqual(onDisk);
   });
 
   describe("share failure verdicts", () => {
@@ -412,19 +481,25 @@ describe("EXAMPLE_INPUTS manifest", () => {
   });
 });
 
-describe("launch tables", () => {
-  it("names exactly the two default-terminal examples", () => {
-    // Both redraw the whole screen with terminal escape codes, which the
+/** The stems whose catalog record sets `flag`, sorted. */
+function stemsWith(flag: "terminal" | "interactive" | "modeArgs"): string[] {
+  return EXAMPLES.filter((example) => example[flag]).map((example) => example.stem).sort();
+}
+
+describe("launch flags", () => {
+  it("names exactly the three default-terminal examples", () => {
+    // Each redraws the whole screen with terminal escape codes, which the
     // plain-text console would show as garbage. Every other example starts in
     // the console.
-    expect(Object.keys(EXAMPLE_TERMINAL).sort()).toEqual(["dsav", "two-sum"]);
+    expect(stemsWith("terminal")).toEqual(["dsav", "flappy", "two-sum"]);
   });
 
-  it("names the six stems the run-mode control is offered for", () => {
-    expect(Object.keys(EXAMPLE_INTERACTIVE).sort()).toEqual([
+  it("names the seven stems the run-mode control is offered for", () => {
+    expect(stemsWith("interactive")).toEqual([
       "calc",
       "deadzone",
       "dsav",
+      "flappy",
       "snake",
       "temp-convert",
       "two-sum",
@@ -434,49 +509,33 @@ describe("launch tables", () => {
   it("offers the control for every example that defaults to the terminal", () => {
     // An example that starts in the terminal with no visible mode choice
     // would leave the student stuck there.
-    for (const stem of Object.keys(EXAMPLE_TERMINAL)) {
-      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
+    for (const stem of stemsWith("terminal")) {
+      expect(exampleFor(stem)?.interactive).toBe(true);
     }
   });
 
-  it("carries only `true` values and path-safe stems in both tables", () => {
-    for (const table of [EXAMPLE_TERMINAL, EXAMPLE_INTERACTIVE]) {
-      for (const [stem, value] of Object.entries(table)) {
-        expect(value).toBe(true);
-        expect(stem).toMatch(/^[\w.-]+$/);
-      }
-    }
+  it("names every example by a path-safe stem", () => {
+    for (const { stem } of EXAMPLES) expect(stem).toMatch(/^[\w.-]+$/);
   });
 
-  it("leaves every other example out of both tables", () => {
+  it("leaves both flags unset for every other example", () => {
     for (const stem of ["basics", "echo", "locals", "read-file", "circle-area"]) {
-      expect(EXAMPLE_TERMINAL[stem]).toBeUndefined();
-      expect(EXAMPLE_INTERACTIVE[stem]).toBeUndefined();
+      expect(exampleFor(stem)?.terminal).toBeUndefined();
+      expect(exampleFor(stem)?.interactive).toBeUndefined();
     }
   });
 });
 
-describe("the per-mode args table", () => {
+describe("the per-mode args flag", () => {
   it("names the three stems that take the console token", () => {
-    expect(Object.keys(EXAMPLE_MODE_ARGS).sort()).toEqual([
-      "calc",
-      "temp-convert",
-      "two-sum",
-    ]);
+    expect(stemsWith("modeArgs")).toEqual(["calc", "temp-convert", "two-sum"]);
   });
 
   it("is a subset of the stems the run-mode control is offered for", () => {
     // The mode sets the args box for these; with no visible mode choice the
     // student could never switch the box back.
-    for (const stem of Object.keys(EXAMPLE_MODE_ARGS)) {
-      expect(EXAMPLE_INTERACTIVE[stem]).toBe(true);
-    }
-  });
-
-  it("carries only `true` values and path-safe stems", () => {
-    for (const [stem, value] of Object.entries(EXAMPLE_MODE_ARGS)) {
-      expect(value).toBe(true);
-      expect(stem).toMatch(/^[\w.-]+$/);
+    for (const stem of stemsWith("modeArgs")) {
+      expect(exampleFor(stem)?.interactive).toBe(true);
     }
   });
 
@@ -498,6 +557,45 @@ describe("the per-mode args table", () => {
     expect(modeArgsFor("dsav", "console")).toBeNull();
     expect(modeArgsFor(null, "console")).toBeNull();
     expect(modeArgsFor(undefined, "terminal")).toBeNull();
+  });
+});
+
+describe("resolveExampleStem", () => {
+  it("maps a legacy course-labeled stem to its renamed file", () => {
+    expect(resolveExampleStem("week03_exercise")).toBe("basics");
+    expect(resolveExampleStem("week08_scores")).toBe("array-scores");
+    expect(resolveExampleStem("week11_argv")).toBe("command-line-args");
+    expect(resolveExampleStem("week13_copy_file")).toBe("copy-file");
+  });
+
+  it("passes an already-clean stem through unchanged", () => {
+    expect(resolveExampleStem("basics")).toBe("basics");
+    expect(resolveExampleStem("circle-area")).toBe("circle-area");
+  });
+
+  it("passes an unknown stem through unchanged", () => {
+    expect(resolveExampleStem("not-an-example")).toBe("not-an-example");
+  });
+
+  it("does not alias a traversal string, and parseDeepLink still rejects it", () => {
+    // resolveExampleStem only remaps the fixed allow-list; path safety is
+    // parseDeepLink's job, which drops anything outside /^[\w.-]+$/.
+    expect(resolveExampleStem("../etc/passwd")).toBe("../etc/passwd");
+    expect(parseDeepLink("?example=../etc/passwd").example).toBeUndefined();
+  });
+});
+
+describe("old example names", () => {
+  it("resolve in one hop to a clean stem that is no old name itself", () => {
+    const stems = EXAMPLES.map((example) => example.stem);
+    for (const example of EXAMPLES) {
+      expect(resolveExampleStem(example.stem)).toBe(example.stem);
+      for (const alias of example.aliases ?? []) {
+        expect(example.stem).toMatch(/^[a-z0-9-]+$/);
+        expect(stems).not.toContain(alias);
+        expect(resolveExampleStem(alias)).toBe(example.stem);
+      }
+    }
   });
 });
 

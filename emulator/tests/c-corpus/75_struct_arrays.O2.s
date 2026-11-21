@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -637,7 +638,7 @@ main:
 	.global	grid
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC1:
 	.word	0
 	.word	1
@@ -650,12 +651,13 @@ main:
 	.word	7
 	.data
 	.align	2
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 knob:
 	.word	7
 	.bss
 	.align	3
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 grid:
 	.zero	420
+	.section	.note.GNU-stack,"",@progbits
 

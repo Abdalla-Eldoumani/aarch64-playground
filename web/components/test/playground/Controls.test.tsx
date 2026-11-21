@@ -1,8 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Controls } from "@/components/playground/Controls";
+import { StepGoals } from "@/components/playground/StepGoals";
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  window.localStorage.clear();
+});
 
 const allHandlers = () => ({
   onAssemble: vi.fn(),
@@ -29,6 +33,26 @@ describe("Controls", () => {
     expect(screen.getByLabelText("1 instruction executed")).toBeTruthy();
     rerender(<Controls {...props} stepCount={2} />);
     expect(screen.getByText("2 steps")).toBeTruthy();
+  });
+
+  it("keeps the names the browser smoke finds its buttons and step count by", () => {
+    // scripts/browser-smoke.mjs reads these in a production build; vitest is
+    // where a rename shows first.
+    const props = {
+      ...allHandlers(),
+      canStepBack: false,
+      isRunning: false,
+      isHalted: false,
+      programLoaded: true,
+      error: null,
+    };
+    const { rerender } = render(<Controls {...props} stepCount={1} />);
+    expect(document.querySelectorAll('[data-walkthrough="assemble"]')).toHaveLength(1);
+    expect(screen.getByRole("button", { name: "run" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "step" })).toBeTruthy();
+    expect(screen.getByLabelText("1 instruction executed")).toBeTruthy();
+    rerender(<Controls {...props} stepCount={2} />);
+    expect(screen.getByLabelText("2 instructions executed")).toBeTruthy();
   });
 
   it("keeps the error out of the button row", () => {
@@ -690,6 +714,22 @@ describe("Controls' step over, step out and run to cursor", () => {
     // The ellipsis names the row it opens.
     const goals = document.getElementById(more.getAttribute("aria-controls") ?? "");
     expect(goals?.contains(screen.getByRole("button", { name: "step over" }))).toBe(true);
+  });
+
+  // The phone row's ellipsis and a lesson frame's are one remembered choice.
+  it("opens and shuts with a lesson frame's ellipsis on the same page", () => {
+    render(
+      <>
+        <StepGoals onRunUntil={vi.fn()} disabled={false} className="" />
+        <Controls {...props({ compact: true })} />
+      </>,
+    );
+    const [frame, phone] = screen.getAllByRole("button", { name: "more ways to step" });
+    fireEvent.click(frame);
+    expect(phone.getAttribute("aria-expanded")).toBe("true");
+    expect(window.localStorage.getItem("aarch64-playground:embed-more")).toBe("1");
+    fireEvent.click(frame);
+    expect(phone.getAttribute("aria-expanded")).toBe("false");
   });
 
   it("says why the last one stopped, unless an error says more", () => {

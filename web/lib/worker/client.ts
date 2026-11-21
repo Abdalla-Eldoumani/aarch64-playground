@@ -1,5 +1,6 @@
 "use client";
 
+import type { EmulatorBackend } from "@/lib/emulator/backend";
 import type { LintWarning } from "@/lib/emulator/emulator-state";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
@@ -21,7 +22,7 @@ type SnapshotListener = (snap: StateSnapshot) => void;
  * `onSnapshot` subscription that fires for every state change
  * (response snapshot or run-loop heartbeat).
  */
-export class WorkerClient {
+export class WorkerClient implements EmulatorBackend {
   private worker: Worker;
   private nextId = 1;
   private pending = new Map<
@@ -29,6 +30,10 @@ export class WorkerClient {
     { resolve: (v: unknown) => void; reject: (e: Error) => void }
   >();
   private listeners = new Set<SnapshotListener>();
+  // The worker keeps its own run epoch in its thread (emulator.worker.ts),
+  // out of synchronous reach; this one moves as each request that bumps it
+  // is sent, so the page sees the machine replaced before the worker does.
+  private runEpoch = 0;
 
   constructor(worker: Worker) {
     this.worker = worker;
@@ -63,6 +68,10 @@ export class WorkerClient {
     });
   }
 
+  get epoch(): number {
+    return this.runEpoch;
+  }
+
   onSnapshot(listener: SnapshotListener): () => void {
     this.listeners.add(listener);
     return () => {
@@ -78,6 +87,7 @@ export class WorkerClient {
     source: string,
     args: string[] = [],
   ): Promise<{ result: AssembleResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     return this.send({ id: 0, kind: "assemble", source, args });
   }
 
@@ -86,6 +96,7 @@ export class WorkerClient {
   }
 
   stepBack(): Promise<{ stepResult: StepResultPayload; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     return this.send({ id: 0, kind: "stepBack" });
   }
 
@@ -101,6 +112,7 @@ export class WorkerClient {
   }
 
   reset(): Promise<StateSnapshot> {
+    this.runEpoch++;
     return this.send<StateSnapshot>({ id: 0, kind: "reset" });
   }
 
@@ -114,6 +126,14 @@ export class WorkerClient {
 
   setSnapshotsPaused(paused: boolean): Promise<void> {
     return this.send<void>({ id: 0, kind: "setSnapshotsPaused", paused });
+  }
+
+  setRealTime(on: boolean): Promise<void> {
+    return this.send<void>({ id: 0, kind: "setRealTime", on });
+  }
+
+  setWindowSize(cols: number, rows: number): Promise<void> {
+    return this.send<void>({ id: 0, kind: "setWindowSize", cols, rows });
   }
 
   clearAllBreakpoints(): Promise<void> {
@@ -161,6 +181,7 @@ export class WorkerClient {
   }
 
   loadState(name: string): Promise<{ ok: boolean; snapshot: StateSnapshot }> {
+    this.runEpoch++;
     return this.send({ id: 0, kind: "loadState", name });
   }
 
@@ -218,11 +239,12 @@ export class WorkerClient {
     return this.send<FrameLayoutPayload | null>({ id: 0, kind: "frameLayout" });
   }
 
-  terminate(): void {
+  // Pending requests are dropped, not rejected: the hub fires many without
+  // a catch, and its owner is gone, so a rejection would only surface as an
+  // unhandled error.
+  dispose(): void {
+    this.runEpoch++;
     this.worker.terminate();
-    for (const slot of this.pending.values()) {
-      slot.reject(new Error("worker terminated"));
-    }
     this.pending.clear();
     this.listeners.clear();
   }

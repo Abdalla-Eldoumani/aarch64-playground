@@ -29,6 +29,7 @@ import { useConsoleOutput } from "@/lib/emulator/use-console-output";
 import { useCpuView } from "@/lib/emulator/use-cpu-view";
 import { useMemoryCache } from "@/lib/emulator/use-memory-cache";
 import { formatSteps } from "@/lib/emulator/format-steps";
+import { yieldToEventLoop } from "@/lib/emulator/run-loop";
 import { parseArgs } from "@/lib/playground/args";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
 import type { Workspace } from "@/lib/playground/file-map";
@@ -60,6 +61,10 @@ const loadFrameCards = () =>
 // the same array and its drop notice does not re-fire.
 const NO_LINES: number[] = [];
 
+// How far real time may trail a run's slept time: under one 60 Hz tick, so a
+// stall (a hidden tab's throttled timers) is made up by at most this much.
+const SLEEP_CARRY_MS = 16;
+
 // x16 and x17 (ip0, ip1) are the linker's scratch registers: the stub a `bl
 // printf` runs through writes them, the program does not. Inside a call they
 // are left out of the writes, so a stop there never names a value the student
@@ -78,9 +83,14 @@ interface Goal {
 // The same words again would leave a status's text unchanged, so unsaid.
 const saying = (text: string) => (last: string | null) => (last === text ? text + " " : text);
 
-export function useEmulator(): EmulatorState {
+/** `start` false holds the worker and the wasm back (an embed frame before it
+ *  engages); the backend starts the first render it is true. */
+export function useEmulator(start = true): EmulatorState {
   const backendRef = useRef<EmulatorBackend | null>(null);
   const runningRef = useRef(false);
+  // Bumped by every run, so a drive woken from a sleep knows whether a newer
+  // run has taken over.
+  const driveRef = useRef(0);
   const sourceRef = useRef("");
   // The files that source joins: the notes name lines per file.
   const workspaceRef = useRef<Workspace>({ main: "", extras: [] });
@@ -90,11 +100,6 @@ export function useEmulator(): EmulatorState {
   // map signals the legacy source-text line-count fallback (bare-metal,
   // where instruction index and non-label source line are already 1:1).
   const lineMapRef = useRef<LineMap>(emptyLineMap());
-  // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
-  // diff highlighting in the replay scrubber and MemoryPanel. Cleared
-  // whenever a snapshot reports no writes (assemble, reset, or a
-  // non-storing step) so stale ranges never linger.
-  const dirtyAddrsRef = useRef<Array<[number, number]>>([]);
   // Live halted flag for the run() guard. The embed and checker call a
   // `run` captured before their awaited assemble, so a state-closure
   // guard would still see the pre-assemble halt and silently skip the
@@ -186,7 +191,11 @@ export function useEmulator(): EmulatorState {
   const [hostedMode, setHostedMode] = useState(false);
   const [vfsFiles, setVfsFiles] = useState<string[]>([]);
   const [savedStates, setSavedStates] = useState<string[]>([]);
-  const [dirtyAddrsTick, setDirtyAddrsTick] = useState(0);
+  // Most-recent snapshot's `(addr, len)` writes. Drives memory-cell
+  // diff highlighting in the replay scrubber and MemoryPanel. Cleared
+  // whenever a snapshot reports no writes (assemble, reset, or a
+  // non-storing step) so stale ranges never linger.
+  const [dirtyAddrs, setDirtyAddrs] = useState<Array<[number, number]>>([]);
 
   const { getMemory, getMemoryMapped, invalidate: invalidateMemory } =
     useMemoryCache(backendRef);
@@ -207,6 +216,8 @@ export function useEmulator(): EmulatorState {
     pushStdin: pushStdinToBackend,
     closeStdin,
     setSnapshotsPaused,
+    setRealTime,
+    setWindowSize,
     lint,
     uploadVfsFile,
     readVfsFile,
@@ -227,7 +238,6 @@ export function useEmulator(): EmulatorState {
     changedFpRegs,
     vectorRegisters,
     currentLine,
-    replayTick,
     applyRegisters,
     latestSnapRef,
     markCurrentLine,
@@ -244,6 +254,7 @@ export function useEmulator(): EmulatorState {
     clearAllBreakpoints,
     setBreakpointAddress,
     clearBreakpointAddress,
+    gdbLabels,
     resolveBreakpointAddr,
     rekeyAfterAssemble,
   } = useBreakpoints({ backendRef, lineMapRef, sourceRef, programLoadedRef, codeBase });
@@ -336,7 +347,7 @@ export function useEmulator(): EmulatorState {
         markCurrentLine(pcToSourceLine(instrIndex, sourceRef.current));
       }
     }
-    // dirtyAddrs are surfaced through a separate ref so the memory
+    // dirtyAddrs are kept apart from the memory cache so the memory
     // panel + replay scrubber can highlight changed cells without
     // forcing a full memory cache invalidation.
     if (snap.dirtyAddrs && snap.dirtyAddrs.length > 0) {
@@ -345,13 +356,11 @@ export function useEmulator(): EmulatorState {
       for (let i = 0; i + 1 < snap.dirtyAddrs.length; i += 2) {
         pairs.push([snap.dirtyAddrs[i], snap.dirtyAddrs[i + 1]]);
       }
-      dirtyAddrsRef.current = pairs;
-      setDirtyAddrsTick((t) => t + 1);
-    } else if (dirtyAddrsRef.current.length > 0) {
+      setDirtyAddrs(pairs);
+    } else {
       // No writes in this snapshot (a non-storing step, or assemble/reset):
       // drop the previous frame's ranges so stale cells stop highlighting.
-      dirtyAddrsRef.current = [];
-      setDirtyAddrsTick((t) => t + 1);
+      setDirtyAddrs((last) => (last.length > 0 ? [] : last));
     }
   }, [
     appendNotes,
@@ -372,8 +381,9 @@ export function useEmulator(): EmulatorState {
     setProgramLoaded(loaded);
   }, []);
 
-  // Load backend on mount.
+  // Load the backend once `start` is true.
   useEffect(() => {
+    if (!start) return;
     let cancelled = false;
     const backend = pickBackend();
     backendRef.current = backend;
@@ -404,11 +414,15 @@ export function useEmulator(): EmulatorState {
       });
     return () => {
       cancelled = true;
+      // A run waiting out a sleep stands down like a pause: the main-thread
+      // backend has no worker to terminate, so the drive would run on.
+      runningRef.current = false;
       unsubscribe();
+      backend.dispose();
     };
     // applySnapshot depends on codeBase but we want this to run once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [start]);
 
   const assembleWith = useCallback(
     (
@@ -423,6 +437,10 @@ export function useEmulator(): EmulatorState {
       }
       sourceRef.current = source;
       workspaceRef.current = workspace;
+      // A run on the old program ends here, as a reset ends it, so a Run
+      // pressed after the assemble starts on the new one.
+      runningRef.current = false;
+      setIsRunning(false);
       runBlockedRef.current = false;
       setStopAt(-1);
       stdinLogRef.current = "";
@@ -510,7 +528,12 @@ export function useEmulator(): EmulatorState {
           // The gutter dots are re-keyed through the FRESH map; lines that
           // no longer resolve lose their dot, and the editor says which.
           const dropped = await rekeyAfterAssemble({ base, source, map });
-          if (surfaceErrors && dropped.length > 0) setDroppedBreakpoints(dropped);
+          if (surfaceErrors) {
+            if (dropped.length > 0) setDroppedBreakpoints(dropped);
+            // `gdb b`'s labels come back only for the editor's assemble: a
+            // terminal build (gcc, ./name) has always run past them.
+            await gdbLabels.current?.assembled();
+          }
           // The post-assemble snapshot was applied while the loaded flag was
           // still down (and before this map existed), so it left no marker.
           // Recompute the entry marker from the live PC now: through the map
@@ -555,6 +578,7 @@ export function useEmulator(): EmulatorState {
       latestSnapRef,
       markCurrentLine,
       rekeyAfterAssemble,
+      gdbLabels,
       resetReplayHistory,
       markProgramLoaded,
     ],
@@ -583,9 +607,10 @@ export function useEmulator(): EmulatorState {
    * call site instead of at nothing. Returns the words the error line shows.
    */
   const surfaceRuntimeError = useCallback((message: string, line?: number | null, note = true): string => {
-    // After a ret that went to no caller (frames header slot 5), the frame
-    // may show the cause: then its card stands in for the crate's guess, in
-    // the console too (not for a run's pause, which repeats every chunk).
+    // After a return that went to no caller or past its own caller (frames
+    // header slot 5), the frame may show the cause: then its card stands in
+    // for the crate's guess, in the console too (not for a run's pause, which
+    // repeats every chunk).
     // The callers load the words first (loadFrameCards).
     const snap = snapRef.current;
     const cards = snap?.frames?.[5] ? frameCards : null;
@@ -635,8 +660,9 @@ export function useEmulator(): EmulatorState {
   const stepBack = useCallback(() => {
     const backend = backendRef.current;
     // Past the oldest kept frame the machine does not move, and the counter
-    // must not move without it.
-    if (!backend || !programLoadedRef.current || !canStepBackRef.current) return;
+    // must not move without it. A live run would lose its steps to the step
+    // back, so it is refused then, as the Back button is.
+    if (!backend || !programLoadedRef.current || !canStepBackRef.current || runningRef.current) return;
     runBlockedRef.current = false;
     setStopAt(-1);
     pausedAtRef.current = -1;
@@ -665,6 +691,9 @@ export function useEmulator(): EmulatorState {
   const loadState = useCallback((name: string) => {
     const backend = backendRef.current;
     if (!backend) return;
+    // A live run ends here, as reset and assemble end it.
+    runningRef.current = false;
+    setIsRunning(false);
     runBlockedRef.current = false;
     setStopAt(-1);
     // A restored save is a live machine with a program in memory, so the
@@ -704,18 +733,28 @@ export function useEmulator(): EmulatorState {
     setError(null);
     setIsRunning(true);
     runningRef.current = true;
+    const mine = ++driveRef.current;
     const drive = async (): Promise<string | null> => {
       let total = 0;
+      // Where this run's sleeps have reached on the clock; the first anchors it.
+      let deadline: number | null = null;
       for (;;) {
+        // Noted before the chunk, so a reset or assemble sent while it ran counts.
+        const epoch = backend.epoch;
         const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
-        // A run cancelled by reset/assemble describes a machine that no
-        // longer exists; acting on it painted `unknown instruction:
-        // 0x00000000` right after the student pressed Reset.
-        if (runResult.cancelled) return null;
+        // A run cancelled by reset/assemble, or one that finished as the
+        // machine was replaced, describes a machine that no longer exists;
+        // acting on it painted `unknown instruction: 0x00000000` right after
+        // the student pressed Reset.
+        if (runResult.cancelled || backend.epoch !== epoch) return null;
         total += runResult.steps_executed;
-        // A pacing pause (nanosleep): honor it in real time and keep the
-        // same run going, unless pause/reset stood the drive down while
-        // it waited. The steps so far still land on the counter below.
+        // A pacing pause (nanosleep): wait until the deadline it moves on,
+        // so a chunk's round trip and a late timer come out of the next
+        // wait. The timeline never trails now by more than SLEEP_CARRY_MS.
+        // No time left still yields once, so a main-thread run cannot hold
+        // the page. A machine replaced meanwhile ends the drive as a
+        // cancelled run does. Pause, an unmount or a newer run stands it
+        // down; the steps so far land on the counter below.
         if (
           runResult.sleep_ms != null &&
           !runResult.halted &&
@@ -724,9 +763,13 @@ export function useEmulator(): EmulatorState {
           !runResult.reached &&
           !runResult.bad_return
         ) {
-          const ms = Math.max(1, Math.min(runResult.sleep_ms, 2000));
-          await new Promise<void>((resolve) => setTimeout(resolve, ms));
-          if (runningRef.current) continue;
+          const now = performance.now();
+          deadline = deadline == null ? now : Math.max(deadline, now - SLEEP_CARRY_MS);
+          deadline += Math.max(1, Math.min(runResult.sleep_ms, 2000));
+          const wait = deadline - now;
+          await (wait > 0 ? new Promise<void>((resolve) => setTimeout(resolve, wait)) : yieldToEventLoop());
+          if (backend.epoch !== epoch) return null;
+          if (runningRef.current && driveRef.current === mine) continue;
         }
         // The snapshot this result carries has already landed, so the ref
         // says whether the run stopped at a read rather than for good.
@@ -786,6 +829,8 @@ export function useEmulator(): EmulatorState {
         return null;
       })
       .finally(() => {
+        // Once a newer run has started, the running flags are its own.
+        if (driveRef.current !== mine) return;
         setIsRunning(false);
         runningRef.current = false;
       });
@@ -970,6 +1015,8 @@ export function useEmulator(): EmulatorState {
       resumeAfterInput,
       closeStdin,
       setSnapshotsPaused,
+      setRealTime,
+      setWindowSize,
       lint,
       uploadVfsFile,
       readVfsFile,
@@ -978,19 +1025,15 @@ export function useEmulator(): EmulatorState {
       m4Expand,
       setBreakpointAddress,
       clearBreakpointAddress,
+      gdbLabels,
       restoreBookmark,
       clearConsole,
-      dirtyAddrs: dirtyAddrsRef.current,
+      dirtyAddrs,
       replayFrames: readReplayFrames(),
       seekReplay,
     }),
-    // replayTick is intentionally a dep so consumers re-render when the
-    // underlying replay ring mutates (the ref identity itself never
-    // changes). eslint can't see that the returned `replayFrames` reads
-    // through the ref.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [
-      isLoaded, loadError, registers, sp, pc, nzcv, changedRegs,
+      isLoaded, loadError, registers, fpRegisters, changedFpRegs, vectorRegisters, sp, pc, nzcv, changedRegs,
       isRunning, isAssembling, isHalted, programLoaded, error, pauseText, errorCard, assemblyErrors, breakpoints,
       droppedBreakpoints, resumeAfterInput,
       currentLine, externalCall, frames, frameLayout, callCard, lineLabel, programLines, noteRows, instructions, codeBase, memoryRegions,
@@ -1000,9 +1043,9 @@ export function useEmulator(): EmulatorState {
       savedStates, assemble, assembleForTool, step, stepBack, saveState, loadState,
       deleteState, run, runUntil, stop, stopAt, pause, reset, toggleBreakpoint, clearAllBreakpoints, remapBreakpoints,
       getMemory, getMemoryMapped, readMemory,
-      pushStdin, stdinGiven, closeStdin, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel,
-      setBreakpointAddress, clearBreakpointAddress, restoreBookmark,
-      clearConsole, replayTick, dirtyAddrsTick, seekReplay,
+      pushStdin, stdinGiven, closeStdin, setSnapshotsPaused, setRealTime, setWindowSize, lint, uploadVfsFile, readVfsFile, deleteVfsFile, resolveLabel, m4Expand,
+      setBreakpointAddress, clearBreakpointAddress, gdbLabels, restoreBookmark,
+      clearConsole, dirtyAddrs, readReplayFrames, seekReplay,
     ],
   );
 }

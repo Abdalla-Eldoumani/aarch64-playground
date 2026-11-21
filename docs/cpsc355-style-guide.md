@@ -85,7 +85,7 @@ the author meant:
 
 The directive table in [instruction-reference.md](instruction-reference.md#directives)
 lists every spelling, including the ones gcc writes (`.xword`, `.p2align`,
-`.space`, `.2byte`). `.equ` and `.set` are refused: write `NAME = value`.
+`.space`, `.2byte`). `.equ NAME, value` and `.set NAME, value` work as `NAME = value` does.
 
 Base addresses:
 
@@ -214,7 +214,7 @@ Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
 Plus the interactive set a terminal program reaches for:
 
 ```
-29  ioctl          (TCGETS / TCSETS termios, the raw-mode handshake)
+29  ioctl          (TCGETS / TCSETS termios, the raw-mode handshake; TIOCGWINSZ, the pane's size)
 25  fcntl          (F_GETFL / F_SETFL, O_NONBLOCK on stdin)
 101 nanosleep      (pauses the run; the virtual clock advances)
 113 clock_gettime  (the virtual clock, so replay stays deterministic)

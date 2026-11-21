@@ -19,7 +19,8 @@ export const MAX_WORKSPACE_FILES = 32;
 export const MAX_BUNDLE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 export const MAX_SHARE_DECOMPRESSED_BYTES = 1 * 1024 * 1024;
 /**
- * Cap on a link payload before it is decompressed (`#p2=`, `#p=`, `?bundle=`).
+ * Cap on a link payload before it is decompressed (`#p2=`, `#p=`, `#bundle=`,
+ * and `?bundle=` from older diagnostic links).
  * A crafted payload inflates with the square of its length (30 KB became
  * ~200 MB), so the length is capped first. At 16 KB the worst case is ~67 MB,
  * decoded in under half a second and freed as soon as the 1 MiB decoded cap

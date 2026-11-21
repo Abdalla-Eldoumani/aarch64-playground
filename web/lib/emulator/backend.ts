@@ -50,6 +50,12 @@ export interface EmulatorBackend {
   /** Pause/resume the step-back snapshot ring (live terminal sessions,
    *  where stepping back has no meaning). */
   setSnapshotsPaused(paused: boolean): Promise<void>;
+  /** Live terminal sessions wait out every sleep in real time, so the
+   *  machine may give a paced program four hours of refunds. */
+  setRealTime(on: boolean): Promise<void>;
+  /** The terminal pane's columns and rows while it drives the program;
+   *  (0, 0) takes the size away. */
+  setWindowSize(cols: number, rows: number): Promise<void>;
   getMemory(addr: number, len: number): Promise<Uint8Array>;
   /** Whether every page in the range is mapped (watch fault display). */
   isRangeMapped(addr: number, len: number): Promise<boolean>;
@@ -79,8 +85,14 @@ export interface EmulatorBackend {
   /** The last assemble's frame layout (lib/emulator/frame-data); null on
    *  a wasm build that predates it. */
   frameLayout(): Promise<FrameLayoutPayload | null>;
+  /** Moved by every operation that cancels a run in flight (assemble,
+   *  stepBack, reset, loadState, dispose): a drive that saw it move is
+   *  driving a machine that no longer exists. */
+  readonly epoch: number;
   /** Subscribe to state-snapshot events: every response and every heartbeat. */
   onSnapshot(listener: (snap: StateSnapshot) => void): () => void;
+  /** Release the machine when its owner unmounts. */
+  dispose(): void;
 }
 
 /**
@@ -98,6 +110,10 @@ class MainThreadBackend implements EmulatorBackend {
   private runEpoch = 0;
   private pauseRequested = false;
   private listeners = new Set<(snap: StateSnapshot) => void>();
+
+  get epoch(): number {
+    return this.runEpoch;
+  }
 
   async init(): Promise<StateSnapshot> {
     this.emu = await loadEmulator();
@@ -211,6 +227,14 @@ class MainThreadBackend implements EmulatorBackend {
     this.requireEmu().setSnapshotsPaused(paused);
   }
 
+  async setRealTime(on: boolean): Promise<void> {
+    this.requireEmu().setRealTime(on);
+  }
+
+  async setWindowSize(cols: number, rows: number): Promise<void> {
+    this.requireEmu().setWindowSize(cols, rows);
+  }
+
   async getMemory(addr: number, len: number): Promise<Uint8Array> {
     return this.requireEmu().getMemoryRange(addr, len);
   }
@@ -306,6 +330,11 @@ class MainThreadBackend implements EmulatorBackend {
     };
   }
 
+  // Stands the run down only: the glue's finalizer frees the machine, and a late call must not hit a freed one.
+  dispose(): void {
+    this.runEpoch++;
+  }
+
   private requireEmu(): EmulatorInstance {
     if (!this.emu) {
       throw new Error("emulator not initialized; call init() first");
@@ -387,6 +416,6 @@ export function pickBackend(): EmulatorBackend {
     return new MainThreadBackend();
   }
   const worker = spawnEmulatorWorker();
-  if (worker) return worker as unknown as EmulatorBackend;
+  if (worker) return worker;
   return new MainThreadBackend();
 }

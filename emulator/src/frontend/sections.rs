@@ -8,6 +8,7 @@
 use std::collections::{HashMap, HashSet};
 
 use super::lexer::Token;
+use crate::layout::{BSS_BASE, CODE_BASE, DATA_BASE, RODATA_BASE};
 
 /// Which section an item lives in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -23,10 +24,10 @@ impl SectionKind {
     /// used by `Cpu::load_sections`.
     pub fn default_base(self) -> u64 {
         match self {
-            SectionKind::Text => 0x0040_0000,
-            SectionKind::Rodata => 0x0050_0000,
-            SectionKind::Data => 0x0060_0000,
-            SectionKind::Bss => 0x0070_0000,
+            SectionKind::Text => CODE_BASE,
+            SectionKind::Rodata => RODATA_BASE,
+            SectionKind::Data => DATA_BASE,
+            SectionKind::Bss => BSS_BASE,
         }
     }
 

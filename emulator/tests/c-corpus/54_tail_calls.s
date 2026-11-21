@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.data
 	.align	2
@@ -655,6 +656,7 @@ main:
 .LC5:
 	.string	"aab77-zzz0.q"
 	.text
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

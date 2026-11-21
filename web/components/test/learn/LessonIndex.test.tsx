@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { LessonIndex } from "@/components/learn/LessonIndex";
 import type { Lesson } from "@/lib/content/lesson-schema";
 
@@ -53,6 +55,26 @@ describe("LessonIndex", () => {
     expect(screen.queryByText("Beta Lesson")).toBeNull();
   });
 
+  // On a slow phone the search box takes text before the page's script runs;
+  // hydration keeps the text but no change for it reaches the list.
+  it("filters by a search typed before the page's script ran", async () => {
+    const container = document.body.appendChild(document.createElement("div"));
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    try {
+      container.innerHTML = renderToString(<LessonIndex lessons={lessons} />);
+      (within(container).getByLabelText("search lessons") as HTMLInputElement).value = "stack";
+      await act(async () => {
+        root = hydrateRoot(container, <LessonIndex lessons={lessons} />);
+      });
+      expect((screen.getByLabelText("search lessons") as HTMLInputElement).value).toBe("stack");
+      expect(screen.getByText("Beta Lesson")).toBeTruthy();
+      expect(screen.queryByText("Alpha Lesson")).toBeNull();
+    } finally {
+      act(() => root?.unmount());
+      container.remove();
+    }
+  });
+
   it("filters by a selected tag chip", () => {
     render(<LessonIndex lessons={lessons} />);
     fireEvent.click(screen.getByRole("button", { name: "registers" }));
@@ -98,11 +120,5 @@ describe("LessonIndex", () => {
     const { container } = render(<LessonIndex lessons={[]} />);
     expect(screen.getByText(/no lessons/i)).toBeTruthy();
     expect(container.querySelector('a[href^="/learn/"]')).toBeNull();
-  });
-
-  it("renders the loading skeleton instead of the list", () => {
-    const { container } = render(<LessonIndex lessons={lessons} loading />);
-    expect(container.querySelector('[aria-busy="true"]')).not.toBeNull();
-    expect(screen.queryByText("Alpha Lesson")).toBeNull();
   });
 });

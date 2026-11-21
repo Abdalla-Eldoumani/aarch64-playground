@@ -5,7 +5,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import type { LintWarning } from "@/lib/emulator/emulator-state";
 import { wordLint } from "@/lib/emulator/frame-check";
-import { readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
+import { FRAME_ROW, FRAMES_HEADER, readFrameLayout, readFrames } from "@/lib/emulator/frame-data";
 import { decodeFrameLayout, decodeFrames, FRAME_STATE } from "@/lib/emulator/stack-frames";
 
 // Pins the emulator calls the web layer relies on, against the real node
@@ -810,6 +810,75 @@ main:
   });
 });
 
+describe("error lines inside a library call", () => {
+  interface RawRunWithLine extends RawRun {
+    error_line?: number | null;
+  }
+
+  it("puts a fault in a tail-called printf on the bl that entered its caller", () => {
+    // say leaves 5 in x0 and branches to printf, which faults reading its
+    // format there. lr still holds main's way back from `bl say` (line 18),
+    // and the error line is the word before it.
+    const TAIL_CALL_FAULT = `define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+say:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 5
+        ldp     fp, lr, [sp], 16
+        b       printf
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      say
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+    withEmulator((emu) => {
+      assemble(emu, TAIL_CALL_FAULT);
+      const run = emu.run_until_break(1000) as RawRunWithLine;
+      expect(run.error).toMatch(/^Segmentation fault/);
+      expect(run.error_line).toBe(18);
+    });
+  });
+
+  it("puts the step ceiling on `bl __main_return` when the run stops at __main_return", () => {
+    // The ldr is one step and each pass of the loop two, so `bl
+    // __main_return` (line 8) starts with 1 + 2 * 4999998 = 9999997 steps
+    // spent. It and the two trampoline words make 10 million as the pc
+    // reaches __main_return, where the ceiling stops the run.
+    const CEILING_AT_MAIN_RETURN = `        .text
+        .global main
+main:
+        ldr     x19, =4999998
+spin:
+        subs    x19, x19, 1
+        b.ne    spin
+        bl      __main_return
+`;
+    withEmulator((emu) => {
+      assemble(emu, CEILING_AT_MAIN_RETURN);
+      // Back plays no part here, and with the ring paused the run takes half the time.
+      emu.set_snapshots_paused(true);
+      const run = emu.run_until_break(20_000_000) as RawRunWithLine;
+      expect(run.error).toMatch(/^stopped after 10 million steps/);
+      const stubs = (memoryMap() as Array<{ name: string; start: number; end: number }>).find(
+        (r) => r.name === "host stubs",
+      )!;
+      const pc = Number(run.pc);
+      expect(pc >= stubs.start && pc < stubs.end).toBe(true);
+      expect(run.error_line).toBe(8);
+    });
+  }, 60_000);
+});
+
 describe("m4 expansion", () => {
   // define(total, x19) collapses to a blank line (line numbers must hold)
   // and every later `total` token becomes x19. Lines join with \n and no
@@ -1035,15 +1104,16 @@ main:
   });
 
   // Steps 1 to 32 run to main's ret (run_to's count above); step 33 fetches
-  // at 0x4141414141414141, which no page covers: the memory fault errors.rs
-  // words for a read, address in 16 hex digits.
+  // at 0x4141414141414141, which is not a multiple of 4: the bus error
+  // errors.rs words for a jump there.
   const WORDS_FAULT =
-    "memory fault: the program tried to read 0x4141414141414141, which no section covers. " +
-    "The base register (the first one inside the brackets, or a pointer passed to a call) " +
-    "does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the " +
-    "value stored at the label) or a `mov` was written where `ldr xN, =label` was meant";
+    "Bus error\nthe program jumped to 0x4141414141414141, which is not a multiple of 4, so no " +
+    "instruction starts there. Usually a `ret` read a return address that a store overwrote on " +
+    "the stack, or a `br`/`blr` went through a register holding a number instead of a code " +
+    "address: keep each store inside its own variable, and load a function's address with " +
+    "`ldr xN, =label`";
 
-  it("ends a run through a garbage return with the memory fault, not a trap", () => {
+  it("ends a run through a garbage return with the bus error, not a trap", () => {
     withEmulator((emu) => {
       assemble(emu, WORDS);
       const r = emu.run_until_break(10_000) as RawRun;
@@ -1067,9 +1137,125 @@ main:
     });
   });
 
+  // tick and tock in turn: main and the first 199 calls fill the call
+  // tree's 200 nodes, and the 200th call, the 100th tock, drops the
+  // returned calls 1 to 99 to make room.
+  const TICK_TOCK = `        .text
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     w19, 0
+loop:
+        bl      tick
+        bl      tock
+        add     w19, w19, 1
+        cmp     w19, 150
+        b.lt    loop
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+`;
+
+  it("steps back over the call that drops the earliest calls and forward again to the same numbers", () => {
+    withEmulator((emu) => {
+      assemble(emu, TICK_TOCK);
+      const tock = Number(emu.resolve_label("tock"));
+      emu.set_breakpoint(tock);
+      for (let i = 0; i < 100; i++) {
+        emu.step();
+        emu.run_until_break(10_000_000);
+      }
+      emu.clear_breakpoint(tock);
+      // The tree's header: nodes, current, outside, dropped, earlier, and
+      // the width of x0's last write (tick's mov w0).
+      const head = (n: number[]) => {
+        const at = FRAMES_HEADER + n[8] * FRAME_ROW + n[9] * 2;
+        return n.slice(at, at + 6);
+      };
+      const dropped = Array.from(emu.frames());
+      expect(head(dropped)).toEqual([102, 102, 0, 99, 99, 4]);
+      emu.step_back();
+      const full = Array.from(emu.frames());
+      expect(head(full)).toEqual([200, 1, 0, 0, 0, 4]);
+      emu.step();
+      expect(Array.from(emu.frames())).toEqual(dropped);
+      emu.step_back();
+      expect(Array.from(emu.frames())).toEqual(full);
+    });
+  });
+
   it("reads as absent from a wasm build that predates the frames", () => {
     expect(readFrames({})).toBeNull();
     expect(readFrameLayout({})).toBeNull();
     expect(decodeFrames([])).toBeNull();
+  });
+});
+
+describe("set_real_time", () => {
+  it("is on the build under the name the worker and the wrapper probe for", () => {
+    // Both feature-detect it, so a rename here would quietly give the
+    // terminal pane today's refund caps instead of failing.
+    withEmulator((emu) => {
+      expect(typeof (emu as { set_real_time?: unknown }).set_real_time).toBe("function");
+      emu.set_real_time(true);
+      emu.set_real_time(false);
+    });
+  });
+});
+
+describe("set_window_size", () => {
+  it("is on the build under the name the worker and the wrapper probe for, columns first", () => {
+    // Both feature-detect it, so a rename here would quietly leave a program
+    // in the terminal pane guessing its size. 48 columns by 43 rows reads
+    // back from TIOCGWINSZ (0x5413) as ws_row 0x2b, then ws_col 0x30. The
+    // machine answers a size only while the step-back ring is paused, as
+    // the pane pauses it.
+    withEmulator((emu) => {
+      const set = (emu as { set_window_size?: (cols: number, rows: number) => void })
+        .set_window_size;
+      expect(typeof set).toBe("function");
+      assemble(
+        emu,
+        `
+        .data
+        .balign 8
+ws:     .quad   0
+fmt:    .string "%ld %016lx\\n"
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     x0, 1
+        mov     x1, 0x5413
+        ldr     x2, =ws
+        mov     x8, 29
+        svc     0
+        mov     x1, x0
+        ldr     x9, =ws
+        ldr     x2, [x9]
+        ldr     x0, =fmt
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+`,
+      );
+      emu.set_snapshots_paused(true);
+      set?.call(emu, 48, 43);
+      const run = emu.run_until_break(100_000) as RawRun;
+      expect(run.halted).toBe(true);
+      expect(emu.take_stdout()).toBe("0 000000000030002b\n");
+    });
   });
 });

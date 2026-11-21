@@ -5,18 +5,19 @@
 use super::*;
 
 impl Cpu {
-    /// Build the calm memory-cap halt result and record the abort, so a
-    /// page-cap write fault reports identically no matter which path raised
-    /// it: the executor, a hosted libc stub, or a syscall. Sets `halted`
-    /// and `abort_message`; the caller returns the result through `step`.
-    pub(super) fn memory_cap_halt(&mut self) -> StepResult {
+    /// The calm halt every wall and every runtime error ends in: `halted`,
+    /// the message kept in `abort_message` for the run result, and the
+    /// result `step` hands back. Without it the CPU stays live at the
+    /// fault: Step re-derives the same error forever and Run re-issues
+    /// chunks against the wedged machine at full speed. PC is left where
+    /// it is, so the halt resolves to the line that raised it.
+    pub(super) fn halt(&mut self, message: String) -> StepResult {
         self.halted = true;
-        let msg = MEMORY_CAP_MESSAGE.to_string();
-        self.abort_message = Some(msg.clone());
+        self.abort_message = Some(message.clone());
         StepResult {
             pc: self.regs.read_pc(),
             halted: true,
-            error: Some(msg),
+            error: Some(message),
             outcome: StepOutcome::Halted,
         }
     }
@@ -33,8 +34,16 @@ impl Cpu {
         let err_new = self.stderr.len().saturating_sub(err_before);
         self.stdout_seen = self.stdout_seen.saturating_add(out_new as u64);
         self.stderr_seen = self.stderr_seen.saturating_add(err_new as u64);
-        self.output_total += out_new + err_new;
+        self.output_total += (out_new + err_new) as u64;
         self.output_total > MAX_OUTPUT_BYTES
+    }
+
+    /// A real-time session has spent a four-hour refund cap, so the wall
+    /// it meets next ends the session rather than a runaway or a flood.
+    pub(super) fn refunds_spent(&self) -> bool {
+        self.real_time
+            && (self.refund_steps_total >= REAL_TIME_REFUND_STEPS
+                || self.refund_output_total >= REAL_TIME_REFUND_OUTPUT_BYTES)
     }
 
     /// Whether the state a snapshot frame copies WHOLE (virtual files,
@@ -70,38 +79,6 @@ impl Cpu {
             .saturating_add(moved / BULK_BYTES_PER_STEP);
     }
 
-    /// Build the calm output-ceiling halt, mirroring `memory_cap_halt`.
-    pub(super) fn output_cap_halt(&mut self) -> StepResult {
-        self.halted = true;
-        let msg = output_ceiling_message();
-        self.abort_message = Some(msg.clone());
-        StepResult {
-            pc: self.regs.read_pc(),
-            halted: true,
-            error: Some(msg),
-            outcome: StepOutcome::Halted,
-        }
-    }
-
-    /// Convert a propagated runtime error (a fetch fault, an undecodable
-    /// word, an executor fault, or a failed host stub / syscall) into the
-    /// same calm halt the bounds use. Without this boundary the CPU stays
-    /// live at the faulting PC: Step re-derives the identical error forever
-    /// and Run re-issues chunks against the wedged machine at full speed.
-    /// PC is left unadvanced
-    /// so the fault resolves to the line that raised it.
-    pub(super) fn runtime_error_halt(&mut self, e: EmuError) -> StepResult {
-        self.halted = true;
-        let msg = e.to_string();
-        self.abort_message = Some(msg.clone());
-        StepResult {
-            pc: self.regs.read_pc(),
-            halted: true,
-            error: Some(msg),
-            outcome: StepOutcome::Halted,
-        }
-    }
-
     /// The two walls a step meets before it executes anything: the
     /// cumulative instruction budget and the stack floor. `Some` is the
     /// calm halt `step` hands back; `None` means the cycle may proceed.
@@ -111,15 +88,12 @@ impl Cpu {
         // Checked here so single-stepping a loop is bounded the same way run
         // mode is; surfaced through `error` while `halted` stays true.
         if self.steps_total >= self.max_total_steps {
-            self.halted = true;
-            let msg = step_ceiling_message();
-            self.abort_message = Some(msg.clone());
-            return Some(StepResult {
-                pc: self.regs.read_pc(),
-                halted: true,
-                error: Some(msg),
-                outcome: StepOutcome::Halted,
-            });
+            let message = if self.refunds_spent() {
+                SESSION_CAP_MESSAGE.to_string()
+            } else {
+                step_ceiling_message()
+            };
+            return Some(self.halt(message));
         }
 
         // Stack wall: sp far below the base is runaway recursion (or a
@@ -127,7 +101,7 @@ impl Cpu {
         // store path maps page after page downward until the memory cap
         // fires, blaming memory instead of the recursion.
         if self.regs.read_sp() < STACK_FLOOR {
-            return Some(self.runtime_error_halt(EmuError::StackOverflow));
+            return Some(self.halt(EmuError::StackOverflow.to_string()));
         }
 
         None

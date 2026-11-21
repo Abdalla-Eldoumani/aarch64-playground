@@ -164,27 +164,28 @@ describe("a ret through an overwritten lr", () => {
   });
 
   // The crate's words stay as they are; the web keeps their first sentence
-  // and puts the card where they guess at a base register.
+  // and puts the card where they guess at the cause.
   it("takes the place of the fault's guess in the run row and in the explainer", () => {
     const m = load(OVERRUN);
     const { error, steps } = m.run();
     expect(steps).toBe(60);
+    const first =
+      "Bus error\nthe program jumped to 0x700000006, which is not a multiple of 4, so no instruction starts there.";
     expect(error).toBe(
-      "memory fault: the program tried to read 0x0000000700000006, which no section covers. The base " +
-        "register (the first one inside the brackets, or a pointer passed to a call) does not hold an " +
-        "address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) " +
-        "or a `mov` was written where `ldr xN, =label` was meant",
+      `${first} Usually a \`ret\` read a return address that a store overwrote on the stack, or a ` +
+        "`br`/`blr` went through a register holding a number instead of a code address: keep each store " +
+        "inside its own variable, and load a function's address with `ldr xN, =label`",
     );
     const said = faultText(error!, m.context(), m.lr(), m.pc());
     expect(said).toEqual({
-      error: `memory fault: the program tried to read 0x0000000700000006, which no section covers. ${BAD_RETURN}`,
+      error: `${first} ${BAD_RETURN}`,
       card: { event: retEvent(m, 21, 14), text: BAD_RETURN, cause: "overwritten" },
     });
     const explained = explainError(said!.error, said!.card)!;
     expect(explained.why).toBe(BAD_RETURN);
     expect(explained.fix).not.toContain("=");
-    // A fault with no bad return behind it keeps the old explanation.
-    expect(explainError(error!)!.why).toContain("`ldr xN, label` written without its `=`");
+    // With no bad return behind it, the crate's words stand alone.
+    expect(explainError(error!)).toBeNull();
     m.emu.free();
   });
 
@@ -296,7 +297,7 @@ main:
 `);
     const { error, steps } = m.run();
     expect(steps).toBe(6);
-    expect(error).toBe(`memory fault: the program tried to read 0x4141414141414141, which no section covers. ${GUESS}`);
+    expect(error).toMatch(/^Bus error\nthe program jumped to 0x4141414141414141, which is not a multiple of 4, /);
     expect(returnCard(m.context(), m.lr())?.cause).toBeNull();
     expect(faultText(error!, m.context(), m.lr(), m.pc())).toBeNull();
     m.emu.free();
@@ -785,6 +786,124 @@ main:
         "x19 to x28 are callee-saved: a function that uses one must save it first and put it back " +
         "before it returns. Do scratch work in x9 to x15, or save x19 on the stack and restore it before ret.",
     ]);
+    m.emu.free();
+  });
+});
+
+// A ret that ends its caller too: the frame record popped before it was the
+// caller's. Under one bl site every call returns to the same line, so the
+// usual "instead of going back to" would name the line it did go to.
+// SKIP_IN_A_RECURSION: sum starts on line 16; sum(2), sum(1) and sum(0) are
+// steps 5 to 11, 12 to 18 and 19 to 23 (cbz to sum_base); sum_base's mov,
+// ldr and two ldp are 24 to 27, and its ret on line 33 is step 28, back on
+// line 23 (sum+28, the bl's return address) with sum(2)'s sp and fp.
+const SKIP_IN_A_RECURSION = `// main prints sum(2), but sum(0) pops its caller's frame as well as its
+// own, so its ret ends sum(1) too.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "sum = %ld\\n"
+
+        .text
+// sum(x0 = n) -> x0 = n + (n - 1) + ... + 0
+        .balign 4
+        .global sum
+sum:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]
+        mov     n_r, x0
+        cbz     n_r, sum_base
+        sub     x0, n_r, 1
+        bl      sum
+        add     x0, x0, n_r
+sum_out:
+        ldr     n_r, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+sum_base:
+        mov     x0, 0
+        ldr     n_r, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ldp     fp, lr, [sp], 32        // bug: pops the caller's frame too
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 2
+        bl      sum
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+// SKIP_PAST_MAIN: bump starts on line 15; main's stp, mov, mov and bl bump
+// are steps 1 to 4, bump's add and ldp (main's record) 5 and 6, and its ret
+// on line 17 is step 7, out to the C runtime with main's caller's sp and fp.
+const SKIP_PAST_MAIN = `// main calls bump, whose stray ldp pops main's frame record, so bump's
+// ret ends main too.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "n = %d\\n"
+
+        .text
+// bump(w0 = n) -> w0 = n + 1 (bug: pops a frame it never pushed)
+        .balign 4
+        .global bump
+bump:
+        add     w0, w0, 1
+        ldp     fp, lr, [sp], 16        // bug: bump pushed nothing
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 10
+        bl      bump
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+describe("a ret that ends its caller too", () => {
+  it("says so when every call returns to the same line", () => {
+    const m = load(SKIP_IN_A_RECURSION);
+    m.step(27);
+    expect(returnCard(m.context(), m.lr())).toBeNull();
+    m.step(1);
+    expect(returnCard(m.context(), m.lr())).toEqual({
+      event: retEvent(m, 33, 16),
+      text: "sum's ret on line 33 ended its caller sum too: that call's frame record was popped before the ret.",
+      cause: null,
+    });
+    m.emu.free();
+  });
+
+  it("says so when the caller is main and the ret leaves the program", () => {
+    const m = load(SKIP_PAST_MAIN);
+    m.step(7);
+    expect(returnCard(m.context(), m.lr())).toEqual({
+      event: retEvent(m, 17, 15),
+      text: "bump's ret on line 17 ended its caller main too: that call's frame record was popped before the ret.",
+      cause: null,
+    });
     m.emu.free();
   });
 });

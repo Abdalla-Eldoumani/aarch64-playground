@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 fnv1a:
@@ -1061,4 +1062,5 @@ main:
 	.xword	.LC11
 	.xword	.LC12
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

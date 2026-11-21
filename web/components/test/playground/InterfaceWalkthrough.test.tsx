@@ -1,8 +1,9 @@
 // Pins the interface walkthrough's behaviour: offered once on a first visit
 // without taking focus, walked by buttons and arrow keys, closed at any step
 // with the step kept for a resume, reset once finished, opened at the start by
-// a deep link, put in the top layer where the popover API exists, and stepped
-// aside while a picker's list is open.
+// a deep link, put in the top layer where the popover API exists, stepped
+// aside while a picker's list is open, and settled in one spot by measures
+// that never write to the card and run once per width.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { InterfaceWalkthrough } from "@/components/playground/InterfaceWalkthrough";
@@ -255,5 +256,105 @@ describe("entry points and the top layer", () => {
     renderOpen(0);
     expect(screen.getByText(/the code tab shows it/)).toBeTruthy();
     tab.remove();
+  });
+});
+
+describe("placement", () => {
+  // The registers step on a 568x360 turned phone, as measured there: room
+  // left of the registers for a 296 px card, which wraps to 255 px and would
+  // reach the run row, where the 352 px card is 212 px. No room right of them.
+  function turnedPhone(heightAt: (width: number) => number = (width) => (width < 352 ? 255 : 212)): () => void {
+    const rect = (el: Element, top: number, left: number, width: number, height: number) =>
+      vi.spyOn(el, "getBoundingClientRect").mockReturnValue({
+        top, left, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON: () => ({}),
+      } as DOMRect);
+    const registers = document.createElement("div");
+    registers.setAttribute("data-walkthrough", "registers");
+    const decHex = document.createElement("div");
+    decHex.setAttribute("aria-label", "integer value format");
+    registers.appendChild(decHex);
+    const assemble = document.createElement("button");
+    assemble.setAttribute("data-walkthrough", "assemble");
+    const back = document.createElement("button");
+    back.setAttribute("aria-label", "back");
+    document.body.append(registers, assemble, back);
+    rect(registers, 89, 312, 256, 218);
+    rect(decHex, 186, 320, 90, 46);
+    rect(assemble, 312, 8, 56, 44);
+    rect(back, 312, 163, 44, 44);
+    vi.spyOn(window, "innerWidth", "get").mockReturnValue(568);
+    vi.spyOn(window, "innerHeight", "get").mockReturnValue(360);
+    vi.spyOn(HTMLElement.prototype, "offsetHeight", "get").mockImplementation(function (this: HTMLElement) {
+      return heightAt(parseFloat(this.style.width));
+    });
+    return () => {
+      registers.remove();
+      assemble.remove();
+      back.remove();
+    };
+  }
+
+  it("settles in one spot where a narrower card would be taller", () => {
+    const done = turnedPhone();
+    renderOpen(6);
+    expect(screen.getByRole("heading", { name: "Registers" })).toBeTruthy();
+    const spot = () => `${card().style.top} ${card().style.left} ${card().style.width}`;
+    const first = spot();
+    for (let beat = 1; beat <= 4; beat++) {
+      act(() => vi.advanceTimersByTime(400));
+      expect(spot(), `beat ${beat}`).toBe(first);
+    }
+    done();
+  });
+
+  it("measures each width once, never a side too narrow for the card, and nothing while idle", () => {
+    const done = turnedPhone();
+    // Each measure lays a copy of the card beside it; the copy's width is the width measured.
+    const measured: string[] = [];
+    const after = Element.prototype.after;
+    vi.spyOn(Element.prototype, "after").mockImplementation(function (this: Element, ...nodes: (Node | string)[]) {
+      for (const n of nodes) if (n instanceof HTMLElement) measured.push(n.style.width);
+      after.apply(this, nodes);
+    });
+    renderOpen(6);
+    expect(measured).toEqual(["352px", "296px"]);
+    act(() => vi.advanceTimersByTime(1200));
+    expect(measured).toEqual(["352px", "296px"]);
+    done();
+  });
+
+  it("drops every measured height when a late font arrives", () => {
+    // The font changes the 296 px card's height while the 352 px card on
+    // screen stays 212 px, so nothing but the font's arrival can tell.
+    let narrow = 255;
+    const done = turnedPhone((width) => (width < 352 ? narrow : 212));
+    const fonts = new EventTarget();
+    Object.defineProperty(document, "fonts", { configurable: true, value: fonts });
+    try {
+      renderOpen(6);
+      const spot = () => `${card().style.top} ${card().style.left} ${card().style.width}`;
+      expect(spot()).toBe("123px 208px 352px");
+      narrow = 200;
+      act(() => vi.advanceTimersByTime(400));
+      expect(spot()).toBe("123px 208px 352px");
+      act(() => {
+        fonts.dispatchEvent(new Event("loadingdone"));
+        vi.advanceTimersByTime(400);
+      });
+      // At 200 px the 296 px card fits left of the registers, clear of the run row.
+      expect(spot()).toBe("89px 8px 296px");
+    } finally {
+      delete (document as { fonts?: unknown }).fonts;
+      done();
+    }
+  });
+
+  it("measures without writing to the card, so a capped card's text keeps its scroll", () => {
+    renderOpen(6);
+    const writes = new MutationObserver(() => {});
+    writes.observe(card(), { attributes: true, attributeFilter: ["style"] });
+    act(() => vi.advanceTimersByTime(800));
+    expect(writes.takeRecords()).toEqual([]);
+    writes.disconnect();
   });
 });

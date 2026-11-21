@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -808,7 +809,7 @@ main:
 	.string	"max"
 	.section .rodata
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 fact_step:
 	.xword	one
 	.xword	fact
@@ -905,7 +906,7 @@ square_vt:
 	.xword	1
 	.data
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 slots:
 	.xword	add
 	.xword	sub
@@ -913,4 +914,5 @@ slots:
 	.xword	bxor
 tenp:
 	.xword	ten
+	.section	.note.GNU-stack,"",@progbits
 

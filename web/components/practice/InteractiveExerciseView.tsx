@@ -6,7 +6,7 @@
  * the restore waits until after mount so the first render matches the server's.
  */
 
-import { useCallback, useEffect, useReducer, type JSX } from "react";
+import { useCallback, useEffect, useReducer, useRef, type JSX } from "react";
 import type {
   BlanksExercise,
   PredictionExercise,
@@ -15,6 +15,7 @@ import type {
 import { markSolved } from "@/lib/playground/solved-state";
 import { readAnswer, saveAnswer } from "@/lib/playground/exercise-answers";
 import { typedAnswerIsRight } from "@/lib/content/theory-answers";
+import { typedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 import { LessonMarkdown } from "@/components/learn/LessonMarkdown";
 import { Kicker } from "@/components/ui/Kicker";
 import { QuizBlock } from "@/components/practice/QuizBlock";
@@ -101,30 +102,7 @@ export function InteractiveExerciseView({
   const total = questionCount(exercise);
   const [draft, editDraft] = useReducer(draftReducer, EMPTY_DRAFT);
   const { slug, variant } = exercise;
-
-  useEffect(() => {
-    const saved = readAnswer(slug);
-    if (!saved || saved.kind === "write") return;
-    // A record whose kind does not match this variant is left alone; the
-    // slice trims to the questions this build renders, so a set that lost a
-    // question does not carry a stranded answer back. A question comes back
-    // checked only while its stored answer still passes, in case the set's
-    // answer changed since.
-    const graded = (answers: readonly (number | string | null)[]): number[] =>
-      (saved.graded ?? []).filter((index) => index < total && stillRight(exercise, index, answers[index]));
-    if (exercise.variant === "quiz" && saved.kind === "quiz") {
-      const picks = saved.answers.slice(0, total);
-      editDraft({ picks, graded: graded(picks) });
-    }
-    if (exercise.variant === "blanks" && saved.kind === "blanks") {
-      const typed = saved.answers.slice(0, total);
-      editDraft({ typed, graded: graded(typed) });
-    }
-    if (exercise.variant === "prediction" && saved.kind === "predict") {
-      const typed = saved.answers.slice(0, total);
-      editDraft({ typed, graded: graded(typed) });
-    }
-  }, [slug, exercise, total]);
+  const sheet = useRef<HTMLElement>(null);
 
   // Every write carries both halves of the record, so storing an answer can
   // never forget which questions were already right, or the reverse.
@@ -139,6 +117,45 @@ export function InteractiveExerciseView({
     },
     [slug, variant],
   );
+
+  useEffect(() => {
+    const saved = readAnswer(slug);
+    // A record whose kind does not match this variant is left alone; the
+    // slice trims to the questions this build renders, so a set that lost a
+    // question does not carry a stranded answer back. A question comes back
+    // checked only while its stored answer still passes, in case the set's
+    // answer changed since.
+    const graded = (answers: readonly (number | string | null)[], from: number[] = []): number[] =>
+      from.filter((index) => index < total && stillRight(exercise, index, answers[index]));
+    if (exercise.variant === "quiz") {
+      if (saved?.kind === "quiz") {
+        const picks = saved.answers.slice(0, total);
+        editDraft({ picks, graded: graded(picks, saved.graded) });
+      }
+      return;
+    }
+    const record =
+      (exercise.variant === "blanks" && saved?.kind === "blanks") ||
+      (exercise.variant === "prediction" && saved?.kind === "predict")
+        ? saved
+        : null;
+    // Text typed before the page's script ran is still in its field (one per
+    // question) but in no draft. It is taken here, over that question's saved
+    // answer, because a block's own effect would run first and save it alone
+    // over the record.
+    const early = Array.from(
+      sheet.current?.querySelectorAll<HTMLInputElement>('input[type="text"]') ?? [],
+      (field) => typedBeforeHydration(field, ""),
+    );
+    const typed = early.reduce<string[]>(
+      (answers, text, index) => (text === null ? answers : withAt(answers, index, text, "")),
+      record?.answers.slice(0, total) ?? [],
+    );
+    if (!record && typed.length === 0) return;
+    const restored = { typed, graded: graded(typed, record?.graded) };
+    editDraft(restored);
+    if (early.some((text) => text !== null)) store({ ...EMPTY_DRAFT, ...restored });
+  }, [slug, exercise, total, store]);
 
   const pickAt = useCallback(
     (index: number, value: number | null): void => {
@@ -169,7 +186,7 @@ export function InteractiveExerciseView({
   };
 
   return (
-    <article className="mx-auto w-full max-w-3xl px-6 py-10 sm:py-12">
+    <article ref={sheet} className="mx-auto w-full max-w-3xl px-6 py-10 sm:py-12">
       <div className="flex flex-col gap-5">
         <Kicker number={sheetNumber} title="exercise" />
         <h1 className="font-serif text-3xl font-semibold leading-tight text-[var(--text-primary)] sm:text-4xl">

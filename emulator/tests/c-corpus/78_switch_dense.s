@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 mix:
@@ -2005,6 +2006,7 @@ main:
 	.xword	9223372036854775807
 	.xword	4294967295
 	.text
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

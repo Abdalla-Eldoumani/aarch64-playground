@@ -628,67 +628,9 @@ fn is_digit_for_base(b: u8, base: u32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpu::OpenFile;
-    use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
-
-    struct Host {
-        regs: RegisterFile,
-        mem: Memory,
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-        stdin: Vec<u8>,
-        vfs: HashMap<String, Vec<u8>>,
-        open_files: HashMap<u32, OpenFile>,
-        next_fd: u32,
-        rand_state: crate::hosted::libc::RandState,
-        term: crate::cpu::TermState,
-        heap: crate::hosted::heap::HeapState,
-        strtok_save: u64,
-        callbacks: crate::hosted::callback::CallbackState,
-    }
+    use crate::test_support::Host;
 
     impl Host {
-        fn new() -> Self {
-            let mut mem = Memory::new();
-            mem.map_page(0x0050_0000);
-            mem.map_page(0x0060_0000);
-            Host {
-                regs: RegisterFile::new(),
-                mem,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                stdin: Vec::new(),
-                vfs: HashMap::new(),
-                open_files: HashMap::new(),
-                next_fd: 3,
-                rand_state: crate::hosted::libc::RandState::default(),
-                term: crate::cpu::TermState::default(),
-                heap: crate::hosted::heap::HeapState::default(),
-                strtok_save: 0,
-                callbacks: Default::default(),
-            }
-        }
-        fn ctx(&mut self) -> HostContext<'_> {
-            HostContext {
-                regs: &mut self.regs,
-                mem: &mut self.mem,
-                stdout: &mut self.stdout,
-                stderr: &mut self.stderr,
-                stdin: &mut self.stdin,
-                stdin_closed: false,
-                vfs: &mut self.vfs,
-                open_files: &mut self.open_files,
-                next_fd: &mut self.next_fd,
-                rand_state: &mut self.rand_state,
-                term: &mut self.term,
-                heap: &mut self.heap,
-                strtok_save: &mut self.strtok_save,
-                callbacks: &mut self.callbacks,
-                call: None,
-            }
-        }
         fn place_fmt(&mut self, fmt: &str) {
             let fmt_addr = 0x0050_0000u64;
             for (i, b) in fmt.as_bytes().iter().enumerate() {

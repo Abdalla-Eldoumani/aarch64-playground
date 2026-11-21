@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.global	calls
 	.bss
@@ -186,4 +187,5 @@ main:
 	mov	w0, 0
 	ldp	x29, x30, [sp], 64
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

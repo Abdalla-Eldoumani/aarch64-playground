@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -781,7 +782,7 @@ main:
 	.string	""
 	.section .rodata
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 cases:
 	.xword	.LC21
 	.xword	.LC22
@@ -818,7 +819,7 @@ cases:
 	.xword	.LC53
 	.bss
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 pos:
 	.zero	8
 fail:
@@ -835,4 +836,5 @@ max_depth:
 	.zero	8
 buf:
 	.zero	16384
+	.section	.note.GNU-stack,"",@progbits
 

@@ -118,6 +118,7 @@ describe("a Run's bad return, said once", () => {
     fireEvent.click(within(screen.getByRole("group", { name: "registers or stack" })).getByRole("button", { name: "stack" }));
     // A press on the cold frame's run wakes the machine and runs once it loads.
     fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
     await saidOnceByTheAlert();
   });
 });
@@ -158,6 +159,7 @@ describe("a bad return under a run's pauses", () => {
   it("in a lesson frame, says the card once and the pause each time", async () => {
     render(<EmbeddablePlayground chrome="embed" startSource={NO_LR} />);
     fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+    fireEvent.click(screen.getByRole("button", { name: "run" }));
     const first = await screen.findByRole("alert", {}, { timeout: 30_000 });
     expect(first.textContent).toMatch(CARD);
     const second = await nextPause(first);

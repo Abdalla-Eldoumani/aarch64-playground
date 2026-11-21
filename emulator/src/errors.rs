@@ -17,7 +17,8 @@ pub enum EmuError {
         address: u64,
         access: MemAccess,
     },
-    /// Access requires natural alignment that the address does not satisfy.
+    /// An instruction fetch from a pc that is not a multiple of `required`
+    /// (4), which the course servers kill with a bus error.
     UnalignedAccess {
         address: u64,
         required: u8,
@@ -58,6 +59,14 @@ pub enum EmuError {
         address: u64,
         access: MemAccess,
     },
+    /// A store the course servers kill with a segmentation fault: into the
+    /// program's own code (`code`), or by the library call `call` into page
+    /// 0 or the host stub window. `call` is None for an instruction.
+    StoreFault {
+        address: u64,
+        code: bool,
+        call: Option<&'static str>,
+    },
     /// An SP-based load or store ran while SP was off the 16-byte
     /// boundary, or a libc call was made with SP misaligned. Linux sets
     /// SCTLR_EL1.SA0, so the course servers kill this with a bus error;
@@ -71,6 +80,21 @@ pub enum EmuError {
     /// resolved at the wasm boundary through the line map, so this
     /// variant carries no line of its own.
     RuntimeError { message: String },
+}
+
+impl EmuError {
+    /// The editor line and message an assemble result shows. The line
+    /// already names where, so the four variants with one hand back their
+    /// bare message; any other error is its whole text, with no line.
+    pub fn into_line_and_message(self) -> (Option<usize>, String) {
+        match self {
+            Self::AssemblyError { line, message }
+            | Self::PreprocError { line, message }
+            | Self::ParseError { line, message }
+            | Self::LinkError { line, message } => (Some(line), message),
+            other => (None, other.to_string()),
+        }
+    }
 }
 
 impl fmt::Display for EmuError {
@@ -102,9 +126,12 @@ impl fmt::Display for EmuError {
             Self::UnalignedAccess { address, required } => {
                 write!(
                     f,
-                    "unaligned access at 0x{address:016x}: this instruction needs an \
-                     address that is a multiple of {required}. Check the offset added \
-                     to the base register"
+                    "Bus error\nthe program jumped to 0x{address:x}, which is not a \
+                     multiple of {required}, so no instruction starts there. Usually a \
+                     `ret` read a return address that a store overwrote on the stack, or \
+                     a `br`/`blr` went through a register holding a number instead of a \
+                     code address: keep each store inside its own variable, and load a \
+                     function's address with `ldr xN, =label`"
                 )
             }
             Self::StackOverflow => write!(
@@ -150,6 +177,19 @@ impl fmt::Display for EmuError {
                      after `ldr x19, =arr` overwrites the pointer)"
                 )
             }
+            Self::StoreFault { address, code, call } => write!(
+                f,
+                "Segmentation fault\n{} tried to write to 0x{address:x}, {}",
+                call.unwrap_or("this store"),
+                if *code {
+                    "the program's own code: its label is in .text, or is the wrong one. \
+                     Put each variable the program changes under .data or .bss"
+                } else {
+                    "memory the program never set up: it was given a value, not an \
+                     address. Load the address with `ldr x1, =var`, or `add x1, x29, \
+                     offset` for a local"
+                }
+            ),
             // "Bus error" is what the servers' shell prints for SIGBUS, the
             // signal this fault raises there; the fix is stated here once.
             Self::SpAlignmentFault { sp, at_call } => {
@@ -157,8 +197,8 @@ impl fmt::Display for EmuError {
                 write!(
                     f,
                     "Bus error\nsp is 0x{sp:x}{place}, which is not a multiple of 16: \
-                     round the frame size above it up to a multiple of 16 (32 instead \
-                     of 24), or size it with `alloc = -(16 + locals) & -16`"
+                     round the frame size above it up to a multiple of 16, or size it \
+                     with `alloc = -(16 + locals) & -16`"
                 )
             }
             Self::RuntimeError { message } => write!(f, "{message}"),
@@ -176,3 +216,74 @@ impl fmt::Debug for EmuError {
 }
 
 impl std::error::Error for EmuError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stack_overflow_reads_in_full() {
+        assert_eq!(
+            EmuError::StackOverflow.to_string(),
+            "stack overflow: sp has moved more than 8 MiB below the stack base. Check the \
+             recursion's base case first, then check that every prologue has a matching \
+             epilogue with the same size, and that sp was never loaded from a register that \
+             had not been set up"
+        );
+    }
+
+    #[test]
+    fn the_sizes_the_messages_quote_are_the_layout_sizes() {
+        // The text spells the sizes out rather than formatting them, so this keeps it true.
+        let stack = crate::cpu::STACK_BASE - crate::cpu::STACK_FLOOR;
+        assert_eq!(stack % (1024 * 1024), 0, "the stack is a whole number of MiB");
+        let overflow = EmuError::StackOverflow.to_string();
+        assert!(overflow.contains(&format!("more than {} MiB below", stack / (1024 * 1024))));
+
+        let argv = crate::argv::ARGV_MAX_BYTES;
+        assert_eq!(argv % 1024, 0, "the argv page is a whole number of KiB");
+        let too_large = EmuError::ArgvTooLarge { bytes: 5035 }.to_string();
+        assert!(too_large.contains(&format!("the {} KiB the", argv / 1024)));
+    }
+
+    #[test]
+    fn an_assembly_error_hands_back_its_line_and_bare_message() {
+        let e = EmuError::AssemblyError { line: 5, message: "MOV requires 2 operands".into() };
+        assert_eq!(e.into_line_and_message(), (Some(5), "MOV requires 2 operands".to_string()));
+    }
+
+    #[test]
+    fn a_preprocess_error_hands_back_its_line_and_bare_message() {
+        let e = EmuError::PreprocError { line: 2, message: "unsupported m4 construct: ifdef".into() };
+        assert_eq!(e.into_line_and_message(), (Some(2), "unsupported m4 construct: ifdef".to_string()));
+    }
+
+    #[test]
+    fn a_parse_error_hands_back_its_line_and_bare_message() {
+        let e = EmuError::ParseError { line: 7, message: "expected an expression, found end of input".into() };
+        assert_eq!(
+            e.into_line_and_message(),
+            (Some(7), "expected an expression, found end of input".to_string())
+        );
+    }
+
+    #[test]
+    fn a_link_error_at_line_0_hands_back_line_0_and_bare_message() {
+        let e = EmuError::LinkError { line: 0, message: "undefined reference to `main'".into() };
+        assert_eq!(e.into_line_and_message(), (Some(0), "undefined reference to `main'".to_string()));
+    }
+
+    #[test]
+    fn any_other_error_hands_back_its_whole_text_and_no_line() {
+        let e = EmuError::ArgvTooLarge { bytes: 5035 };
+        assert_eq!(
+            e.into_line_and_message(),
+            (
+                None,
+                "the arguments need 5035 bytes, more than the 4 KiB the playground reserves for \
+                 argv. Shorten the args box above the editor, or pass fewer arguments"
+                    .to_string()
+            )
+        );
+    }
+}

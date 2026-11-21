@@ -1,17 +1,25 @@
 //! The call tree behind the stack frames view's list of calls: every call
 //! a program makes, returned ones included, with runs of one function
-//! folded past their first four, at most 200 nodes and 12 deep, counted
-//! past that. Read through the crate's public surface (the call stack's
-//! tree, the frame layout, the frames view's numbers). Every expected tree
+//! folded past their first four, at most 200 nodes (the latest calls, the
+//! earlier ones counted) and 12 deep (deeper calls counted). Read through
+//! the crate's public surface (the call stack's tree, the frame layout,
+//! the frames view's numbers). Every expected tree
 //! is worked out by hand from the program's text; the C programs' values
 //! come from their printed output and from the stack's own arithmetic.
+//!
+//! Each kind of return is also pinned at the frames view's numbers as the
+//! wasm exports them, with the clobber notes and Back: a leaf's, nested,
+//! recursive and tail-called returns (to the program's own function and to
+//! printf), a ret that skips its caller (across two bl sites, under one, and
+//! past main) and a stray ret, each ended by the sp, fp and pc it leaves; and
+//! the returns no `ret` makes (library tail calls, `br x16`, a hand-made call).
 
 use std::path::PathBuf;
 
-use aarch64_emulator::cpu::{Cpu, STACK_FLOOR};
+use aarch64_emulator::cpu::{Cpu, STACK_BASE, STACK_FLOOR};
 use aarch64_emulator::frames::layout::{frame_layout, FrameLayout};
 use aarch64_emulator::frames::tree::{CallTree, MAX_TREE_DEPTH, MAX_TREE_NODES, RUN_SHOWN};
-use aarch64_emulator::frames::{frame_view, FrameView, MAX_ACTIVATIONS, RUNTIME_CALL};
+use aarch64_emulator::frames::{frame_view, view_numbers, FrameView, MAX_ACTIVATIONS, RUNTIME_CALL};
 use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 
 fn repo_root() -> PathBuf {
@@ -105,6 +113,21 @@ impl Loaded {
                 format!("{}{call}{state}", "  ".repeat(depth[i]))
             })
             .collect()
+    }
+
+    /// The tree's header in the frames view's numbers: nodes, current,
+    /// outside, dropped, earlier (the returned calls dropped to make room)
+    /// and x0's width.
+    fn tree_head(&self) -> Vec<f64> {
+        let n = view_numbers(&frame_view(&self.cpu, &self.layout));
+        let at = 17 + 18 * n[8] as usize + 2 * n[9] as usize;
+        n[at..at + 6].to_vec()
+    }
+
+    /// The calls the nodes stand for plus the calls with none: every call
+    /// made.
+    fn calls_counted(&self) -> u64 {
+        self.tree().nodes().iter().map(|n| n.calls).sum::<u64>() + self.tree().dropped()
     }
 }
 
@@ -327,21 +350,291 @@ tt_test:
 ";
 
 #[test]
-fn the_tree_keeps_two_hundred_nodes_and_counts_the_calls_past_them() {
+fn the_tree_keeps_the_latest_calls_and_counts_the_earlier_ones() {
     let mut p = load(TICK_TOCK);
     // main, then tick and tock in turn: 199 calls fill the 200 nodes (100
-    // ticks, 99 tocks), so the 100th tock is the first call with no node.
-    let tock = p.label("tock");
-    p.run_to(tock, 100);
-    let tree = p.tree();
-    assert_eq!(tree.nodes().len(), MAX_TREE_NODES);
-    assert_eq!((tree.current(), tree.outside(), tree.dropped()), (Some(0), 1, 1));
+    // ticks, 99 tocks). The 100th tock, the 200th call, finds them full:
+    // the oldest returned calls, 1 to 99, go, and it takes a node as the
+    // current call. Call 100 was the 50th tock.
+    let (tick, tock) = (p.label("tick"), p.label("tock"));
+    p.run_to(tick, 100);
+    assert_eq!(p.tree().nodes().len(), MAX_TREE_NODES);
+    p.run_to(tock, 1);
+    let outline = p.outline();
+    assert_eq!((outline.len(), &*outline[0], &*outline[1], &*outline[101]), (102, "main ...", "  tock -> 2", "  tock *"));
+    assert_eq!(p.tree_head(), [102.0, 102.0, 0.0, 99.0, 99.0, 4.0], "nodes, current, outside, dropped, earlier, x0's width");
+    assert_eq!(p.calls_counted(), 201, "main and 200 calls");
+    // The 299th call finds them full again, and calls 100 to 198 go: main
+    // and calls 199 (the 100th tick) to 300 are left.
     p.run_to_end();
-    let tree = p.tree();
-    assert_eq!(tree.nodes().len(), 200);
-    assert_eq!(tree.dropped(), 300 - 199);
-    assert_eq!((tree.current(), tree.outside()), (None, 0));
-    assert_eq!(p.outline()[199], "  tick -> 1", "the 199th call, a tick, has the last node");
+    let outline = p.outline();
+    assert_eq!((outline.len(), &*outline[0], &*outline[1], &*outline[102]), (103, "main -> 0", "  tick -> 1", "  tock -> 2"));
+    assert_eq!(p.tree_head(), [103.0, 0.0, 0.0, 198.0, 198.0, 4.0]);
+    assert_eq!(p.calls_counted(), 301);
+}
+
+/// rec(5) recurses down to rec(0), which calls tick and tock in turn 144
+/// times: rec(1) and rec(0) fold into one node, so those 288 calls hang
+/// seven levels down, under an open fold. Then main calls tick once more.
+const DEEP_TICK_TOCK: &str = "\
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+.text
+// tick() -> w0 = 1
+        .balign 4
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+
+// tock() -> w0 = 2
+        .balign 4
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+
+// rec(w0 = n) -> w0 = 0, by way of rec(n - 1) down to rec(0)
+        .balign 4
+        .global rec
+rec:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     x19, [fp, 16]
+        cmp     w0, 0
+        b.le    rec_base
+        sub     w0, w0, 1
+        bl      rec
+        b       rec_done
+rec_base:
+        mov     i_r, 0
+        b       rec_test
+rec_loop:
+        bl      tick
+        bl      tock
+        add     i_r, i_r, 1
+rec_test:
+        cmp     i_r, 144
+        b.lt    rec_loop
+        mov     w0, 0
+rec_done:
+        ldr     x19, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 5
+        bl      rec
+        bl      tick
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+
+/// main calls hello, which returns, then work, which calls tick and tock in
+/// turn 100 times.
+const SIBLING_TICK_TOCK: &str = "\
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+.text
+// tick() -> w0 = 1
+        .balign 4
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+
+// tock() -> w0 = 2
+        .balign 4
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+
+// hello() -> w0 = 7
+        .balign 4
+        .global hello
+hello:
+        mov     w0, 7
+        ret
+
+// work() -> w0 = 0, after tick and tock in turn 100 times
+        .balign 4
+        .global work
+work:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     x19, [fp, 16]
+        mov     i_r, 0
+        b       work_test
+work_loop:
+        bl      tick
+        bl      tock
+        add     i_r, i_r, 1
+work_test:
+        cmp     i_r, 100
+        b.lt    work_loop
+        mov     w0, 0
+        ldr     x19, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      hello
+        bl      work
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+
+#[test]
+fn a_drop_moves_the_open_calls_up_with_their_calls_under_them() {
+    let mut p = load(SIBLING_TICK_TOCK);
+    // main, hello (returned) and work hold nodes 0 to 2, and work's ticks
+    // and tocks follow from node 3. The 197th of them fills the 200 nodes;
+    // the 198th, the 99th tock, drops hello and ticks and tocks 1 to 97, so
+    // work moves up from node 2 to node 1 and its calls 98 to 198 hang
+    // under it from node 2.
+    let tock = p.label("tock");
+    p.run_to(tock, 99);
+    let outline = p.outline();
+    let (first, last) = ("    tock -> 2".to_string(), "    tock *".to_string());
+    assert_eq!(outline[..2], ["main ...", "  work ..."]);
+    assert_eq!((outline.len(), &outline[2], &outline[102]), (103, &first, &last), "the 98th call to the 198th");
+    assert_eq!(p.tree_head(), [103.0, 103.0, 0.0, 98.0, 98.0, 4.0]);
+    assert_eq!(p.calls_counted(), 201, "main, hello, work and 198 ticks and tocks");
+    p.run_to_end();
+    let outline = p.outline();
+    assert_eq!(outline[..3], ["main -> 0", "  work -> 0", "    tock -> 2"]);
+    assert_eq!((outline.len(), &*outline[104]), (105, "    tock -> 2"));
+    assert_eq!(p.tree_head(), [105.0, 0.0, 0.0, 98.0, 98.0, 4.0]);
+    assert_eq!(p.calls_counted(), 203);
+}
+
+/// main calls work 150 times, and work calls tick, then tock.
+const FOLD_TICK_TOCK: &str = "\
+define(fp, x29)
+define(lr, x30)
+define(i_r, w19)
+
+.text
+// tick() -> w0 = 1
+        .balign 4
+        .global tick
+tick:
+        mov     w0, 1
+        ret
+
+// tock() -> w0 = 2
+        .balign 4
+        .global tock
+tock:
+        mov     w0, 2
+        ret
+
+// work() -> w0 = 2, what tock returns
+        .balign 4
+        .global work
+work:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      tick
+        bl      tock
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     i_r, 0
+        b       main_test
+main_loop:
+        bl      work
+        add     i_r, i_r, 1
+main_test:
+        cmp     i_r, 150
+        b.lt    main_loop
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+";
+
+#[test]
+fn a_fold_keeps_counting_its_calls_across_each_drop() {
+    let mut p = load(FOLD_TICK_TOCK);
+    let tick = p.label("tick");
+    // Works 1 to 4 take a node each, with their tick and tock under them
+    // (nodes 1 to 12); work 5 makes the fold at node 13, and from there on
+    // each work joins it and adds its tick and tock. Work 97's tock fills
+    // the 200 nodes, so work 98's tick drops works 1 to 4 and their calls
+    // (12) and the fold's ticks and tocks up to node 99 (86): the fold, now
+    // node 1, holds works 5 to 98 with ticks and tocks from work 48's on.
+    p.run_to(tick, 98);
+    let outline = p.outline();
+    let (first, last) = ("    tick -> 1".to_string(), "    tick *".to_string());
+    assert_eq!(outline[..2], ["main ...", "  work × 94 ..."]);
+    assert_eq!((outline.len(), &outline[2], &outline[102]), (103, &first, &last));
+    assert_eq!(p.tree_head(), [103.0, 103.0, 0.0, 98.0, 98.0, 4.0]);
+    // Work 99 joins the fold again, though the drop moved it.
+    for _ in 0..6 {
+        p.cpu.step_back();
+    }
+    back_retraces(&mut p, 10, "a drop under an open fold");
+    p.run_to(tick, 1);
+    assert_eq!(p.outline()[1], "  work × 95 ...");
+    // Work 146's tock fills the nodes again and work 147's tick drops 98
+    // more. At the end the fold counts works 5 to 150, and the ticks and
+    // tocks from work 97's on stay: every one of the 451 calls is counted.
+    p.run_to_end();
+    let outline = p.outline();
+    assert_eq!(outline[..4], ["main -> 0", "  work × 146 -> 2", "    tick -> 1", "    tock -> 2"]);
+    assert_eq!(outline.len(), 110);
+    assert_eq!(p.tree_head(), [110.0, 0.0, 0.0, 196.0, 196.0, 4.0]);
+    assert_eq!(p.calls_counted(), 451);
+}
+
+#[test]
+fn a_full_tree_keeps_the_open_calls_and_drops_whole_returned_calls() {
+    let mut p = load(DEEP_TICK_TOCK);
+    let tick = p.label("tick");
+    // main, rec(5) to rec(2), and the fold of rec(1) and rec(0) are open
+    // at nodes 0 to 5, and the ticks and tocks hang under the fold from
+    // node 6. The 194th fills the 200 nodes; the 195th, the 98th tick,
+    // drops the oldest returned calls, ticks and tocks 1 to 94, keeps the
+    // open six above them, and is the current call.
+    p.run_to(tick, 98);
+    let outline = p.outline();
+    let open = ["main ...", "  rec(5) ...", "    rec(4) ...", "      rec(3) ...", "        rec(2) ...", "          rec × 2 ..."];
+    assert_eq!(outline[..6], open);
+    let (first, last) = (format!("{}tick -> 1", "  ".repeat(6)), format!("{}tick *", "  ".repeat(6)));
+    assert_eq!((outline.len(), &outline[6], &outline[106]), (107, &first, &last), "the 95th call to the 195th");
+    assert_eq!(p.tree_head(), [107.0, 107.0, 0.0, 94.0, 94.0, 4.0]);
+    assert_eq!(p.calls_counted(), 202, "main, six rec calls and 195 ticks and tocks");
+    // The 288th, the last tock, fills the 200 nodes again. rec returns to
+    // main, so every node but main's is a returned one under rec(5), and
+    // main's tick drops them all: rec's six calls and ticks and tocks 95 to
+    // 288, 200 calls on top of the 94.
+    p.run_to(tick, 47);
+    assert_eq!(p.outline(), ["main ...", "  tick *"]);
+    assert_eq!(p.tree_head(), [2.0, 2.0, 0.0, 294.0, 294.0, 4.0]);
+    p.run_to_end();
+    assert_eq!(p.outline(), ["main -> 0", "  tick -> 1"]);
+    assert_eq!(p.tree_head(), [2.0, 0.0, 0.0, 294.0, 294.0, 4.0]);
+    assert_eq!(p.calls_counted(), 296);
 }
 
 /// down(n) calls over(n), which calls down(n - 1), until n is 0: two
@@ -501,12 +794,190 @@ main:
         f.arg_width
     };
     // A compare of w0 reads an int, a copy of x0 a long, a byte store a
-    // char, and a load through x0 a pointer; writing w0 first, a branch
-    // first, and an index register leave no argument to show.
+    // char, a load through x0 a pointer, and w0 as an index an int;
+    // writing w0 first and a branch first leave no argument to show.
     assert_eq!(
         ["compares", "copies", "stores_byte", "loads_through", "sets", "branches", "indexes", "main"].map(width),
-        [4, 8, 1, 8, 0, 0, 0, 0]
+        [4, 8, 1, 8, 0, 0, 4, 0]
     );
+}
+
+/// The argument width of each function, given as its name and its body
+/// (one instruction a line, before a closing `ret`), in a program with
+/// `fmt` in .data, a `helper` to call and a main.
+fn arg_widths<const N: usize>(functions: [(&str, &str); N]) -> [u8; N] {
+    let mut source = String::from(".data\nfmt:    .string \"%d\"\n.text\n");
+    for (name, body) in functions {
+        source += &format!("        .balign 4\n        .global {name}\n{name}:\n");
+        for line in body.lines() {
+            source += &format!("        {line}\n");
+        }
+        source += "        ret\n";
+    }
+    source += "        .balign 4\n        .global helper\nhelper:\n        ret\n";
+    source += "        .balign 4\n        .global main\nmain:\n        mov     w0, 0\n        ret\n";
+    let p = load(&source);
+    functions.map(|(name, _)| {
+        let f = p.layout.functions.iter().find(|f| p.layout.names[f.name.unwrap() as usize] == name).expect(name);
+        f.arg_width
+    })
+}
+
+// Each kind of instruction the scan reads on past: one that reads x0 gives
+// the width it reads it at, one that writes x0 first leaves no argument (a
+// `cmp` after it would read x0 if the scan missed the write), and one that
+// touches neither lets the scan go on to the `cmp` after it.
+
+#[test]
+fn an_index_register_reads_w0_under_sxtw_or_uxtw_and_else_x0() {
+    let widths = arg_widths([
+        ("reads_w", "ldr     w9, [x1, w0, uxtw 2]"),
+        ("reads_x", "ldr     x9, [x1, x0, lsl 3]"),
+        ("sign_extends", "ldrsw   x9, [x1, w0, sxtw 2]"),
+        ("loads_fp", "ldr     d9, [x1, x0, lsl 3]"),
+        ("writes", "ldr     x0, [x1, x2, lsl 3]\ncmp     w0, 1"),
+        ("neither", "ldr     w9, [x1, x2, lsl 2]\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 4, 8, 0, 4]);
+}
+
+#[test]
+fn sxtb_sxth_sxtw_uxtb_and_uxth_read_the_bytes_they_extend() {
+    let widths = arg_widths([
+        ("reads_char", "sxtb    x9, w0"),
+        ("reads_short", "sxth    w9, w0"),
+        ("reads_int", "sxtw    x9, w0"),
+        ("reads_byte", "uxtb    w9, w0"),
+        ("reads_half", "uxth    w9, w0"),
+        ("writes", "sxtw    x0, w1\ncmp     w0, 1"),
+        ("neither", "sxtb    x9, w1\ncmp     x0, 1"),
+    ]);
+    assert_eq!(widths, [1, 2, 4, 1, 2, 0, 8]);
+}
+
+#[test]
+fn a_one_source_operation_reads_its_source_at_its_own_width() {
+    let widths = arg_widths([
+        ("shifts", "lsl     w9, w0, 2"),
+        ("masks", "and     x9, x0, 0xff"),
+        ("reverses", "rev     x9, x0"),
+        ("writes", "lsr     x0, x1, 3\ncmp     w0, 1"),
+        ("writes_rev", "rev     x0, x1\ncmp     w0, 1"),
+        // bfi keeps the bits of x0 it does not insert into: a write that
+        // claims no argument either way.
+        ("inserts", "bfi     x0, x1, 0, 8\ncmp     w0, 1"),
+        ("neither", "clz     x9, x1\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8, 0, 0, 0, 4]);
+}
+
+#[test]
+fn a_two_source_operation_reads_either_source_at_its_own_width() {
+    let widths = arg_widths([
+        ("carries", "adds    x9, x1, x2\nadc     x10, x0, x3"),
+        ("selects", "csel    w9, w1, w0, eq"),
+        ("shifts_by", "lsl     x9, x1, x0"),
+        ("divides", "sdiv    w9, w1, w0"),
+        ("extracts", "extr    x9, x1, x0, 8"),
+        ("writes", "sdiv    x0, x1, x2\ncmp     w0, 1"),
+        ("neither", "orr     x9, x1, x2\ncmp     w0, 1"),
+        ("shifts_into", "lsl     x0, x1, x2\ncmp     w0, 1"),
+        ("shifts_neither", "lsl     x9, x1, x2\ncmp     w0, 1"),
+        ("extracts_into", "extr    x0, x1, x2, 8\ncmp     w0, 1"),
+        ("extracts_neither", "extr    x9, x1, x2, 8\ncmp     w0, 1"),
+        ("carries_into", "adc     x0, x1, x2\ncmp     w0, 1"),
+        ("carries_neither", "adc     x9, x1, x2\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [8, 4, 8, 4, 8, 0, 4, 0, 4, 0, 4, 0, 4]);
+}
+
+#[test]
+fn an_extended_operand_reads_as_much_of_x0_as_its_extend_takes() {
+    let widths = arg_widths([
+        ("reads_byte", "add     x9, x1, w0, uxtb"),
+        ("reads_half", "add     x9, x1, w0, uxth"),
+        ("reads_int", "add     x9, x1, w0, sxtw"),
+        ("reads_long", "add     x9, x1, x0, sxtx"),
+        ("writes", "add     x0, x1, w2, sxtw\ncmp     w0, 1"),
+        ("neither", "add     x9, x1, w2, sxtw\ncmp     x0, 1"),
+    ]);
+    assert_eq!(widths, [1, 2, 4, 8, 0, 8]);
+}
+
+#[test]
+fn a_conditional_compare_reads_x0_and_writes_only_the_flags() {
+    let widths = arg_widths([
+        ("reads_int", "cmp     w1, 0\nccmp    w0, 5, 0, ne"),
+        ("reads_long", "cmp     x1, 0\nccmp    x1, x0, 0, eq"),
+        ("neither", "cmp     w1, 0\nccmp    w1, 5, 0, ne\ncmp     x0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8]);
+}
+
+#[test]
+fn a_widening_multiply_reads_w0_as_a_factor_and_x0_as_the_sum() {
+    let widths = arg_widths([
+        ("factor", "smull   x9, w0, w1"),
+        ("high", "smulh   x9, x0, x1"),
+        ("sum", "smaddl  x9, w1, w2, x0"),
+        ("writes", "umull   x0, w1, w2\ncmp     w0, 1"),
+        ("neither", "umull   x9, w1, w2\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8, 0, 4]);
+}
+
+#[test]
+fn an_address_or_a_constant_into_x0_claims_no_argument() {
+    // These read no register: into x0 they write it first (a movk keeps
+    // bits a caller may never have set), and into another register the
+    // scan goes on.
+    let widths = arg_widths([
+        ("adrp_first", "adrp    x0, fmt\ncmp     w0, 1"),
+        ("literal_first", "ldr     x0, =fmt\ncmp     w0, 1"),
+        ("adr_first", "adr     x0, helper\ncmp     w0, 1"),
+        ("mov_first", "mov     x0, 5\ncmp     w0, 1"),
+        ("movk_first", "movk    x0, 1, lsl 16\ncmp     w0, 1"),
+        ("via_adrp", "adrp    x9, fmt\nldr     w10, [x0]"),
+        ("via_literal", "ldr     x9, =fmt\nadd     w0, w0, 1"),
+        ("via_constant", "mov     x9, 0x1234\nmovk    x9, 0x5678, lsl 16\ncmp     x0, x9"),
+    ]);
+    assert_eq!(widths, [0, 0, 0, 0, 0, 8, 4, 8]);
+}
+
+#[test]
+fn a_move_into_fp_reads_x0_and_any_other_fp_work_ends_the_scan() {
+    // A function whose first argument is a double takes it in d0, so FP
+    // work that does not read x0 leaves no argument to show.
+    let widths = arg_widths([
+        ("converts_int", "scvtf   d0, w0"),
+        ("converts_long", "ucvtf   s0, x0"),
+        ("moves_long", "fmov    d0, x0"),
+        ("converts_other", "scvtf   d0, w9\ncmp     w0, 1"),
+        ("fp_first", "fmov    d1, 1.0\ncmp     w0, 1"),
+        ("from_fp", "fcvtzs  w0, d0\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [4, 8, 8, 0, 0, 0]);
+}
+
+#[test]
+fn every_control_transfer_ends_the_argument_scan() {
+    // A cbz or tbz on x0 reads it (the test above); on another register it
+    // is a branch like the rest.
+    let widths = arg_widths([
+        ("returns", "ret\ncmp     w0, 1"),
+        ("branches", "b       1f\n1:\ncmp     w0, 1"),
+        ("branches_if", "cmp     w1, 0\nb.ne    1f\n1:\ncmp     w0, 1"),
+        ("tests_other", "cbz     x1, 1f\n1:\ncmp     w0, 1"),
+        ("tests_other_nonzero", "cbnz    x1, 1f\n1:\ncmp     w0, 1"),
+        ("tests_bit", "tbnz    w1, 0, 1f\n1:\ncmp     w0, 1"),
+        ("tests_bit_clear", "tbz     x1, 3, 1f\n1:\ncmp     w0, 1"),
+        ("calls", "bl      helper\ncmp     w0, 1"),
+        ("calls_through", "adrp    x9, helper\nblr     x9\ncmp     w0, 1"),
+        ("jumps_through", "adrp    x9, helper\nbr      x9\ncmp     w0, 1"),
+        ("traps", "svc     0\ncmp     w0, 1"),
+        ("breaks", "brk     0\ncmp     w0, 1"),
+    ]);
+    assert_eq!(widths, [0; 12]);
 }
 
 #[test]
@@ -694,7 +1165,7 @@ fn back_restores_the_tree_exactly_across_calls_returns_folds_and_the_caps() {
     let tick = p.label("tick");
     p.run_to(tick, 100);
     back_retraces(&mut p, 40, "the node cap");
-    assert!(p.tree().dropped() > 0, "the window went past the last node");
+    assert_eq!(p.tree_head()[3..5], [99.0, 99.0], "the window dropped calls 1 to 99 for the 200th");
     // Past twelve levels and back up.
     let mut p = load(DOWN_OVER);
     let over = p.label("over");
@@ -719,6 +1190,56 @@ fn back_restores_the_tree_exactly_across_calls_returns_folds_and_the_caps() {
         p.cpu.step_back();
     }
     back_retraces(&mut p, 10, "a comparator qsort calls");
+}
+
+#[test]
+fn back_restores_the_tree_exactly_across_each_drop_of_earlier_calls() {
+    // Into the 195th call, which drops returned calls under the open fold
+    // while six open calls sit before them: from six steps before its bl.
+    let mut p = load(DEEP_TICK_TOCK);
+    let tick = p.label("tick");
+    p.run_to(tick, 98);
+    for _ in 0..6 {
+        p.cpu.step_back();
+    }
+    back_retraces(&mut p, 10, "a drop under open calls");
+    assert_eq!(p.tree_head()[3..5], [94.0, 94.0], "the window dropped ticks and tocks 1 to 94");
+    // From the 286th call's bl, three short of full nodes with the fold
+    // current, through rec's returns to main's tick, which drops every
+    // returned node.
+    p.run_to(tick, 47);
+    for _ in 0..40 {
+        p.cpu.step_back();
+    }
+    assert_eq!(p.tree_head()[..2], [197.0, 6.0], "the window starts three calls short of full nodes");
+    back_retraces(&mut p, 44, "a drop of every returned node");
+    assert_eq!(p.tree_head()[3..5], [294.0, 294.0], "the window dropped all 200");
+    // Into the 198th of work's calls, which moves work and its calls up a
+    // node: from six steps before its bl.
+    let mut p = load(SIBLING_TICK_TOCK);
+    let tock = p.label("tock");
+    p.run_to(tock, 99);
+    for _ in 0..6 {
+        p.cpu.step_back();
+    }
+    back_retraces(&mut p, 10, "a drop that moves the open calls");
+    assert_eq!(p.tree_head()[3..5], [98.0, 98.0], "the window dropped hello and ticks and tocks 1 to 97");
+}
+
+#[test]
+fn a_named_save_and_a_reset_put_back_the_earlier_calls() {
+    let mut p = load(DEEP_TICK_TOCK);
+    let tick = p.label("tick");
+    p.run_to(tick, 98);
+    let saved = p.tree().clone();
+    p.cpu.save_state("first drop");
+    p.run_to_end();
+    assert_eq!(p.tree_head()[4], 294.0);
+    assert!(p.cpu.load_state("first drop"));
+    assert_eq!(*p.tree(), saved);
+    assert_eq!(p.tree_head(), [107.0, 107.0, 0.0, 94.0, 94.0, 4.0]);
+    p.cpu.reset();
+    assert_eq!(*p.tree(), CallTree::default(), "a reset clears the count of earlier calls too");
 }
 
 #[test]
@@ -756,4 +1277,1365 @@ fn a_named_save_and_a_reset_put_the_tree_back() {
     assert_eq!(*p.tree(), saved);
     p.cpu.reset();
     assert!(p.tree().nodes().is_empty(), "a reset clears the calls");
+}
+
+// ---------------------------------------------------------------------------
+// What each kind of return leaves in the frames view's numbers
+// ---------------------------------------------------------------------------
+
+impl Loaded {
+    /// The frames view's numbers as the wasm hands them to the web
+    /// (`view_numbers`), a line per part, with each address named: a
+    /// symbol by its name, an instruction as `label+offset`, a stack
+    /// address as `top-N` below `STACK_BASE`.
+    /// - header: step, uncounted, hidden, hidden entry, chain ok; the bad
+    ///   return's step, pc and target; frames, leftovers; then the call it
+    ///   left (index, entry, return address, flags, last return, lr hit's
+    ///   step and pc);
+    /// - a frame: index, entry, call pc, return address, entry sp, lo,
+    ///   entry fp, record, state, flags, then the fp and lr hits (step, pc,
+    ///   element, array name);
+    /// - a leftover: register, the ret that left it;
+    /// - the tree: nodes, current, outside, dropped, earlier, x0's width;
+    ///   a node: caller, entry, calls, open, argument width, x0 at the call
+    ///   and at the latest return (high and low halves), the return's width.
+    fn numbers(&self) -> Vec<String> {
+        let n = view_numbers(&frame_view(&self.cpu, &self.layout));
+        let text = self.image.text_base..self.image.text_end;
+        let mut symbols: Vec<(u64, &str)> = self.image.symbols.iter().map(|(s, &v)| (v, s.as_str())).collect();
+        symbols.sort();
+        let named = |x: f64| -> String {
+            let at = x as u64;
+            if x < 0.0 || at as f64 != x {
+                return x.to_string();
+            }
+            if let Some((_, s)) = symbols.iter().find(|(v, _)| *v == at) {
+                return s.to_string();
+            }
+            match symbols.iter().rev().find(|(v, _)| *v <= at) {
+                Some((v, s)) if text.contains(&at) && text.contains(v) => format!("{s}+{}", at - v),
+                _ if (STACK_FLOOR..=STACK_BASE).contains(&at) => format!("top-{}", STACK_BASE - at),
+                _ => at.to_string(),
+            }
+        };
+        let line = |part: &[f64]| part.iter().map(|&x| named(x)).collect::<Vec<_>>().join(" ");
+        let (frames, leftovers) = (n[8] as usize, n[9] as usize);
+        let (rows, tree) = n[17..].split_at(18 * frames + 2 * leftovers);
+        let (rows, left) = rows.split_at(18 * frames);
+        let mut out = vec![line(&n[..17])];
+        out.extend(rows.chunks(18).map(line));
+        out.extend(left.chunks(2).map(line));
+        out.push(line(&tree[..6]));
+        out.extend(tree[6..].chunks(10).map(line));
+        out
+    }
+
+    /// Run to the `times`th time the instruction at `pc` is next, step it,
+    /// and read the numbers.
+    fn numbers_after(&mut self, pc: u64, times: usize) -> Vec<String> {
+        self.run_to(pc, times);
+        self.cpu.step().expect("step");
+        self.numbers()
+    }
+}
+
+/// A leaf call and its return.
+const SQUARE: &str = r#"
+// main squares 3 with a call to a leaf.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// square(w0 = n) -> w0 = n * n
+        .balign 4
+        .global square
+square:
+        mul     w0, w0, w0
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 3
+        bl      square                  // w0 = 9
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_leaf_calls_return_pops_it_and_mains_return_ends_the_program() {
+    let mut p = load(SQUARE);
+    let square = p.label("square");
+    // square's ret pops square: main is drawn alone, square(3) -> 9.
+    assert_eq!(
+        p.numbers_after(square + 4, 1),
+        [
+            "6 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "2 1 0 0 0 4",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 square 1 0 4 0 3 0 9 4",
+        ]
+    );
+    // main's ret pops main and leaves the stack empty.
+    p.run_to_end();
+    assert_eq!(
+        p.numbers(),
+        ["10 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0", "2 0 0 0 0 4", "0 main 1 0 0 0 1 0 0 4", "1 square 1 0 4 0 3 0 9 4"]
+    );
+    assert!(p.cpu.take_clobber_notes().is_empty());
+    back_retraces(&mut load(SQUARE), 8, "a leaf's call and return");
+}
+
+/// Two calls deep; the inner one leaves x19 changed and the outer one
+/// reads it, then hands it back to main changed as well.
+const NESTED: &str = r#"
+// main -> outer -> inner; inner leaves x19 changed, and outer reads it.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// inner() -> w0 = 5 (bug: x19 belongs to the caller)
+        .balign 4
+        .global inner
+inner:
+        mov     x19, 5
+        mov     w0, 5
+        ret
+
+// outer() -> w0 = inner() + x19
+        .balign 4
+        .global outer
+outer:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      inner
+        add     w0, w0, w19             // reads what inner left in x19
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 1
+        bl      outer                   // w0 = 10
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn nested_returns_pop_one_call_each_and_mark_what_each_left_in_x19() {
+    let mut p = load(NESTED);
+    let (inner, outer) = (p.label("inner"), p.label("outer"));
+    // inner's ret pops inner and marks x19, which it left 5, not 1.
+    assert_eq!(
+        p.numbers_after(inner + 8, 1),
+        [
+            "10 0 0 0 1 0 0 0 2 1 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 outer main+12 main+16 top-16 top-32 top-16 top-32 0 4 0 0 -1 -1 0 0 -1 -1",
+            "19 inner+8",
+            "3 2 0 0 0 4",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 outer 1 1 0 0 1 0 0 0",
+            "2 inner 1 0 0 0 1 0 5 4",
+        ]
+    );
+    // outer's add reads x19, and outer's ret marks it again for itself.
+    assert_eq!(
+        p.numbers_after(outer + 20, 1),
+        [
+            "13 0 0 0 1 0 0 0 1 1 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "19 outer+20",
+            "3 1 0 0 0 4",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 outer 1 0 0 0 1 0 10 4",
+            "2 inner 1 0 0 0 1 0 5 4",
+        ]
+    );
+    // [register, read by an instruction, the ret that left it, the reader]
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, inner as u32 + 8, outer as u32 + 12]);
+    // main's x19 is its own: its ret checks nothing, and outer's mark stays.
+    p.run_to_end();
+    assert_eq!(
+        p.numbers(),
+        [
+            "17 0 0 0 1 0 0 0 0 1 0 0 0 0 0 0 0",
+            "19 outer+20",
+            "3 0 0 0 0 4",
+            "0 main 1 0 0 0 1 0 0 4",
+            "1 outer 1 0 0 0 1 0 10 4",
+            "2 inner 1 0 0 0 1 0 5 4",
+        ]
+    );
+    assert!(p.cpu.take_clobber_notes().is_empty());
+    back_retraces(&mut load(NESTED), 15, "two nested returns");
+}
+
+/// sum(2) recursing to sum(0), each call keeping its n in x19 and putting
+/// the caller's back.
+const SUM: &str = r#"
+// main prints sum(2) = 2 + 1 + 0.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "sum = %ld\n"
+
+        .text
+// sum(x0 = n) -> x0 = n + (n - 1) + ... + 0
+        .balign 4
+        .global sum
+sum:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]           // keep the caller's x19
+        mov     n_r, x0                 // x19 = n
+        mov     x0, 0
+        cbz     n_r, sum_out            // sum(0) = 0
+        sub     x0, n_r, 1
+        bl      sum                     // x0 = sum(n - 1)
+        add     x0, x0, n_r             // x0 += n
+sum_out:
+        ldr     n_r, [fp, 16]           // put the caller's x19 back
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 2
+        bl      sum
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_recursions_returns_pop_one_call_each() {
+    let mut p = load(SUM);
+    let ret = p.label("sum_out") + 8;
+    // sum(0)'s ret: sum(1) is innermost again, its record at fp.
+    assert_eq!(
+        p.numbers_after(ret, 1),
+        [
+            "29 0 0 0 1 0 0 0 3 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "2 sum sum+28 sum+32 top-48 top-80 top-48 top-80 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 3 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 1 8 0 1 0 0 0",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    // sum(1)'s ret: 0 + 1.
+    assert_eq!(
+        p.numbers_after(ret, 1),
+        [
+            "33 0 0 0 1 0 0 0 2 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 2 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 0 8 0 1 0 1 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    // sum(2)'s ret: 1 + 2. Each call put x19 back, so none is marked.
+    assert_eq!(
+        p.numbers_after(ret, 1),
+        [
+            "37 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 1 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 0 8 0 2 0 3 8",
+            "2 sum 1 0 8 0 1 0 1 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 3\n");
+    assert_eq!(p.outline(), ["main -> 0", "  sum(2) -> 3", "    sum(1) -> 1", "      sum(0) -> 0"]);
+    assert!(p.cpu.take_clobber_notes().is_empty());
+    back_retraces(&mut load(SUM), 40, "a recursion's returns");
+}
+
+/// Tail calls: a `b` to the program's own function and a `b printf`.
+const TAIL: &str = r#"
+// twice tail-calls add_self and show tail-calls printf, so each callee
+// returns straight to main.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// add_self(w0 = n, w1 = n) -> w0 = 2n
+        .balign 4
+        .global add_self
+add_self:
+        add     w0, w0, w1
+        ret
+
+// twice(w0 = n) -> w0 = 2n, by a tail call
+        .balign 4
+        .global twice
+twice:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w1, w0
+        ldp     fp, lr, [sp], 16
+        b       add_self                // add_self returns to twice's caller
+
+// show(w1 = value) prints it, by a tail call
+        .balign 4
+        .global show
+show:
+        ldr     x0, =fmt_out
+        b       printf                  // printf returns to show's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 21
+        bl      twice                   // w0 = 42
+        mov     w1, w0
+        bl      show
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn tail_calls_return_for_the_caller_that_made_them() {
+    let mut p = load(TAIL);
+    let (add_self, main) = (p.label("add_self"), p.label("main"));
+    // add_self's ret goes to twice's return address, so it pops twice,
+    // which returns 42; add_self, entered by a b, has no node.
+    assert_eq!(
+        p.numbers_after(add_self + 4, 1),
+        [
+            "11 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "2 1 0 0 0 4",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 twice 1 0 4 0 21 0 42 4",
+        ]
+    );
+    // show's `b printf` leaves lr as main's `bl show` set it, so printf's
+    // return is show's: it leaves sp, fp and pc as main had them at the call,
+    // and show returns what printf returned.
+    p.run_to(main + 24, 1);
+    assert_eq!(
+        p.numbers(),
+        [
+            "18 0 0 0 1 0 0 0 1 0 0 0 0 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "3 1 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 twice 1 0 4 0 21 0 42 4",
+            "1 show 1 0 0 0 42 0 3 8",
+        ]
+    );
+    // main's ret ends main alone.
+    assert_eq!(
+        p.numbers_after(main + 32, 1),
+        [
+            "21 0 0 0 1 0 0 0 0 0 0 0 0 0 0 0 0",
+            "3 0 0 0 0 4",
+            "0 main 1 0 0 0 1 0 0 4",
+            "1 twice 1 0 4 0 21 0 42 4",
+            "1 show 1 0 0 0 42 0 3 8",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "42\n");
+    assert!(p.cpu.take_clobber_notes().is_empty());
+    back_retraces(&mut load(TAIL), 21, "tail calls");
+}
+
+/// skip pops jump's frame record on top of returning, so its ret skips
+/// jump and lands in main; it also leaves x19 changed, which main reads.
+const SKIP_CHANGING_X19: &str = r#"
+// jump calls skip, whose ldp pops jump's record, so skip's ret goes
+// straight back into main; skip also leaves x19 changed.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%ld\n"
+
+        .text
+// jump() -> w0 = 7, through skip
+        .balign 4
+        .global jump
+jump:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      skip
+        mov     w0, 1                   // never runs
+        ldp     fp, lr, [sp], 16
+        ret
+
+// skip() -> w0 = 7 (bugs: x19 belongs to the caller; the ldp pops jump's record)
+        .balign 4
+        .global skip
+skip:
+        mov     x19, 99
+        mov     w0, 7
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 5
+        bl      jump                    // w0 = 7
+        add     x1, x19, x0             // reads what skip left in x19: 99 + 7
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// SUM with a bug in its base case: sum(0), three calls deep, aims lr at
+/// the epilogue, so its ret lands on sum(1)'s epilogue and goes to no
+/// caller's return address.
+const STRAY_SUM: &str = r#"
+// main prints sum(2), but sum(0) returns into sum's epilogue instead of
+// to its caller, so sum(1) never adds its n.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "sum = %ld\n"
+
+        .text
+// sum(x0 = n) -> x0 = n + (n - 1) + ... + 0
+        .balign 4
+        .global sum
+sum:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]           // keep the caller's x19
+        mov     n_r, x0                 // x19 = n
+        cbz     n_r, sum_base
+        sub     x0, n_r, 1
+        bl      sum                     // x0 = sum(n - 1)
+        add     x0, x0, n_r             // x0 += n
+sum_out:
+        ldr     n_r, [fp, 16]           // put the caller's x19 back
+        ldp     fp, lr, [sp], 32
+        ret
+sum_base:                               // sum(0) = 0
+        mov     x0, 0
+        ldr     n_r, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ldr     lr, =sum_out            // bug: lr aimed at the epilogue, not the caller
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 2
+        bl      sum
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+// ---------------------------------------------------------------------------
+// What a broken return leaves: a ret ends the call whose caller's sp, fp
+// and return address it leaves in sp, x29 and pc, as AAPCS64 has every
+// return do.
+// ---------------------------------------------------------------------------
+
+/// skip's ldp loads jump's record, so its ret leaves sp, fp and pc as main
+/// had them at `bl jump`: it ends jump too. A ret that ends more than its
+/// own call is a bad return, and main is owed the x19 it had when it
+/// called jump.
+#[test]
+fn a_ret_that_skips_its_caller_is_a_bad_return_and_marks_the_x19_its_caller_is_owed() {
+    let mut p = load(SKIP_CHANGING_X19);
+    let (skip, main) = (p.label("skip"), p.label("main"));
+    assert_eq!(
+        p.numbers_after(skip + 12, 1),
+        [
+            "11 0 0 0 1 11 skip+12 main+16 1 1 2 skip jump+12 0 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "19 skip+12",
+            "3 1 0 0 0 4",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 jump 1 0 0 0 1 0 7 4",
+            "2 skip 1 0 0 0 1 0 7 4",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "106\n");
+    // [register, read by an instruction, the ret that left it, the reader]:
+    // main's add reads the 99.
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, skip as u32 + 12, main as u32 + 16]);
+    assert_eq!(p.outline(), ["main -> 0", "  jump -> 7", "    skip -> 7"]);
+    back_retraces(&mut load(SKIP_CHANGING_X19), 19, "a ret that skips its caller");
+}
+
+/// SUM whose base case pops sum(1)'s frame as well as its own. Every sum
+/// call returns to the same address, so only sp and fp tell that the ret
+/// came back to sum(2) and ended sum(1) too.
+const SKIP_IN_A_RECURSION: &str = r#"
+// main prints sum(2), but sum(0) pops its caller's frame as well as its
+// own, so its ret ends sum(1) too and sum(2) adds the n sum(0) put back.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "sum = %ld\n"
+
+        .text
+// sum(x0 = n) -> x0 = n + (n - 1) + ... + 0
+        .balign 4
+        .global sum
+sum:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]           // keep the caller's x19
+        mov     n_r, x0                 // x19 = n
+        cbz     n_r, sum_base
+        sub     x0, n_r, 1
+        bl      sum                     // x0 = sum(n - 1)
+        add     x0, x0, n_r             // x0 += n
+sum_out:
+        ldr     n_r, [fp, 16]           // put the caller's x19 back
+        ldp     fp, lr, [sp], 32
+        ret
+sum_base:                               // sum(0) = 0
+        mov     x0, 0
+        ldr     n_r, [fp, 16]
+        ldp     fp, lr, [sp], 32
+        ldp     fp, lr, [sp], 32        // bug: pops the caller's frame too
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 2
+        bl      sum
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ret_that_skips_its_caller_under_one_bl_site_is_caught_by_sp_and_fp() {
+    let mut p = load(SKIP_IN_A_RECURSION);
+    let sum = p.label("sum");
+    // sum(0)'s ret leaves sp and fp as sum(2) had them at its bl: sum(0)
+    // and sum(1) both end, and x19 holds the 1 sum(0) put back, not the 2
+    // sum(1) owed sum(2).
+    assert_eq!(
+        p.numbers_after(p.label("sum_base") + 16, 1),
+        [
+            "28 0 0 0 1 28 sum_base+16 sum+28 2 1 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "19 sum_base+16",
+            "4 2 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 0 8 0 1 0 0 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 1\n");
+    // sum(2)'s add reads the 1.
+    assert_eq!(p.cpu.take_clobber_notes(), [19, 0, p.label("sum_base") as u32 + 16, sum as u32 + 28]);
+    assert_eq!(p.outline(), ["main -> 0", "  sum(2) -> 1", "    sum(1) -> 0", "      sum(0) -> 0"]);
+    back_retraces(&mut load(SKIP_IN_A_RECURSION), 40, "a ret that skips its caller under one bl site");
+}
+
+/// sum(0)'s ret goes to no return address, but it leaves sp and fp as
+/// sum(1) had them at its bl: sum(0) is over and sum(1) runs on, from its
+/// epilogue. Each later ret then ends its own call and checks it.
+#[test]
+fn a_stray_ret_ends_the_call_it_came_from_and_leaves_no_false_mark() {
+    let mut p = load(STRAY_SUM);
+    let epilogue_ret = p.label("sum_out") + 8;
+    assert_eq!(
+        p.numbers_after(p.label("sum_base") + 16, 1),
+        [
+            "28 0 0 0 1 28 sum_base+16 sum_out 3 0 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "2 sum sum+24 sum+28 top-48 top-80 top-48 top-80 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 3 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 1 8 0 1 0 0 0",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    // sum(1)'s ret ends sum(1), which put x19 back: no mark. It returns the
+    // 0 sum(0) left, since the stray ret skipped sum(1)'s add.
+    assert_eq!(
+        p.numbers_after(epilogue_ret, 1),
+        [
+            "31 0 0 0 1 28 sum_base+16 sum_out 2 0 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "1 sum main+12 main+16 top-16 top-48 top-16 top-48 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 2 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 1 8 0 2 0 0 0",
+            "2 sum 1 0 8 0 1 0 0 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    // sum(2)'s ret ends sum(2) alone: 0 + 2.
+    assert_eq!(
+        p.numbers_after(epilogue_ret, 1),
+        [
+            "35 0 0 0 1 28 sum_base+16 sum_out 1 0 3 sum sum+28 4 0 0 0",
+            "0 main 0 __main_return top-0 top-16 0 top-16 0 4 0 0 -1 -1 0 0 -1 -1",
+            "4 1 0 0 0 8",
+            "0 main 1 1 0 0 1 0 0 0",
+            "1 sum 1 0 8 0 2 0 2 8",
+            "2 sum 1 0 8 0 1 0 0 8",
+            "3 sum 1 0 8 0 0 0 0 8",
+        ]
+    );
+    assert!(p.cpu.take_clobber_notes().is_empty(), "every call put x19 back");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "sum = 2\n");
+    assert_eq!(p.outline(), ["main -> 0", "  sum(2) -> 2", "    sum(1) -> 0", "      sum(0) -> 0"]);
+    back_retraces(&mut load(STRAY_SUM), 43, "a stray ret three calls deep");
+}
+
+/// bump pops a frame record it never pushed: main's. Its ret then leaves
+/// sp, fp and pc as the C runtime had them at main's start, so it ends
+/// main too, and the program exits with bump's w0 before its printf.
+const SKIP_PAST_MAIN: &str = r#"
+// main calls bump, whose stray ldp pops main's frame record, so bump's
+// ret ends main too and the program exits before its printf.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "n = %d\n"
+
+        .text
+// bump(w0 = n) -> w0 = n + 1 (bug: pops a frame it never pushed)
+        .balign 4
+        .global bump
+bump:
+        add     w0, w0, 1
+        ldp     fp, lr, [sp], 16        // bug: bump pushed nothing
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 10
+        bl      bump
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ret_that_skips_main_is_a_bad_return_though_the_program_then_exits() {
+    let mut p = load(SKIP_PAST_MAIN);
+    let bump = p.label("bump");
+    assert_eq!(
+        p.numbers_after(bump + 8, 1),
+        [
+            "7 0 0 0 1 7 bump+8 __main_return 0 0 1 bump main+16 0 0 0 0",
+            "2 0 0 0 0 4",
+            "0 main 1 0 0 0 1 0 11 4",
+            "1 bump 1 0 4 0 10 0 11 4",
+        ]
+    );
+    p.run_to_end();
+    assert_eq!(p.cpu.take_stdout(), b"", "printf never runs");
+    assert_eq!(p.cpu.exit_code(), Some(11), "main's exit status is bump's w0");
+    back_retraces(&mut load(SKIP_PAST_MAIN), 7, "a ret that skips main");
+}
+
+/// f's first call returns astray to landing, which ends it; main then calls
+/// f again from the same bl, and that call pops main's frame record too, so
+/// its ret ends main as well.
+const STRAY_THEN_SKIP: &str = r#"
+// main calls f twice from one bl: the first call returns to landing
+// instead of to main, and the second pops main's frame record too.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x19, 0
+again:
+        mov     x0, x19
+        bl      f
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+landing:
+        add     x19, x19, 1
+        b       again
+
+// f(x0 = n): n == 0 returns to landing, otherwise it pops main's record
+        .balign 4
+        .global f
+f:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        cbnz    x0, second
+        ldp     fp, lr, [sp], 16
+        ldr     lr, =landing            // bug: back to landing, not to main
+        ret
+second:
+        ldp     fp, lr, [sp], 16
+        ldp     fp, lr, [sp], 16        // bug: main's frame record too
+        ret
+"#;
+
+/// The second call sits where the first one did (same index, entry and
+/// return address), but it is a new call: its skip is a bad return of its
+/// own.
+#[test]
+fn a_skip_by_a_call_made_again_where_a_stray_one_was_is_a_bad_return() {
+    let mut p = load(STRAY_THEN_SKIP);
+    let second = p.label("second");
+    p.run_to(second - 4, 1);
+    p.cpu.step().expect("step");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.step, bad.pc, bad.target, bad.index), (11, second - 4, p.label("landing"), 1));
+    assert_eq!(p.cpu.call_stack().depth(), 1, "the stray ret ended f");
+    p.run_to(second + 8, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 2, "f called again");
+    p.cpu.step().expect("step");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.step, bad.pc, bad.index), (21, second + 8, 1), "the second call's skip");
+    assert_eq!(p.cpu.call_stack().depth(), 0, "it ended f and main");
+    back_retraces(&mut load(STRAY_THEN_SKIP), 21, "a stray call made again that skips");
+}
+
+// ---------------------------------------------------------------------------
+// Returns no `ret` makes: each ends its call or leaves the stack as it is,
+// and only one that ends more than the innermost call is a bad return.
+// ---------------------------------------------------------------------------
+
+/// read_n tail-calls scanf and read_c tail-calls getchar, so each library
+/// function returns straight to main, whether or not it waited for input.
+const TAIL_READS: &str = r#"
+// read_n and read_c read by tail calls, so scanf and getchar return
+// straight to main.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+n_m:        .word 0
+fmt_in:     .string "%d"
+fmt_out:    .string "%d %d\n"
+
+        .text
+// read_n() reads an int into n_m, by a tail call
+        .balign 4
+        .global read_n
+read_n:
+        ldr     x0, =fmt_in
+        ldr     x1, =n_m
+        b       scanf                   // scanf returns to read_n's caller
+
+// read_c() -> w0 = the next character, by a tail call
+        .balign 4
+        .global read_c
+read_c:
+        b       getchar                 // getchar returns to read_c's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      read_n
+        bl      read_c                  // w0 = the newline after the number
+        mov     w2, w0
+        ldr     x0, =n_m
+        ldr     w1, [x0]
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_tail_call_to_scanf_or_getchar_ends_when_it_returns_even_after_waiting_for_input() {
+    let mut p = load(TAIL_READS);
+    let main = p.label("main");
+    p.cpu.push_stdin(b"42\n");
+    p.cpu.close_stdin();
+    p.run_to(main + 12, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "scanf's return ended read_n");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "getchar's return ended read_c");
+    p.run_to_end();
+    assert!(String::from_utf8_lossy(&p.cpu.take_stdout()).ends_with("42 10\n"));
+    assert_eq!(p.outline(), ["main -> 0", "  read_n -> 1", "  read_c -> 10"]);
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    // No input yet: scanf waits, and its return still ends read_n.
+    let mut p = load(TAIL_READS);
+    p.cpu.run_until_break(1_000).expect("run");
+    assert!(p.cpu.is_blocked(), "scanf waits for input");
+    p.cpu.push_stdin(b"42\n");
+    p.cpu.close_stdin();
+    p.cpu.step().expect("scanf again, now with input");
+    assert_eq!(p.cpu.regs.read_pc(), main + 12, "scanf returned to main");
+    assert_eq!(p.cpu.call_stack().depth(), 1, "scanf's return after the wait ended read_n");
+    let mut p = load(TAIL_READS);
+    p.cpu.push_stdin(b"42\n");
+    p.cpu.close_stdin();
+    back_retraces(&mut p, 20, "two tail calls into library reads");
+}
+
+/// sort3 tail-calls qsort, which runs the program's comparator and then
+/// returns straight to main.
+const TAIL_QSORT: &str = r#"
+// sort3 sorts main's three longs by a tail call to qsort, which returns
+// straight to main once its comparisons are done.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+nums_m:     .dword 30, 10, 20
+fmt_out:    .string "%ld %ld %ld\n"
+
+        .text
+// cmp_long(x0 = &a, x1 = &b) -> w0 = -1, 0 or 1
+        .balign 4
+        .global cmp_long
+cmp_long:
+        ldr     x2, [x0]
+        ldr     x3, [x1]
+        cmp     x2, x3
+        cset    w0, gt                  // 1 when a > b
+        csinv   w0, w0, wzr, ge         // -1 when a < b
+        ret
+
+// sort3(x0 = array of three longs), by a tail call
+        .balign 4
+        .global sort3
+sort3:
+        mov     x1, 3
+        mov     x2, 8
+        ldr     x3, =cmp_long
+        b       qsort                   // qsort returns to sort3's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =nums_m
+        bl      sort3
+        ldr     x9, =nums_m
+        ldr     x1, [x9]
+        ldr     x2, [x9, 8]
+        ldr     x3, [x9, 16]
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_tail_call_to_qsort_ends_when_qsort_returns_after_its_comparisons() {
+    let mut p = load(TAIL_QSORT);
+    let main = p.label("main");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "qsort's return ended sort3");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    let steps = p.cpu.steps_taken() as usize + 2;
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "10 20 30\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    back_retraces(&mut load(TAIL_QSORT), steps, "a tail call into qsort");
+}
+
+/// minus21 returns through x16, which `br x16` jumps to as `ret` would.
+const RETURN_THROUGH_X16: &str = r#"
+// minus21 returns through x16 instead of x30.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// minus21(w0 = n) -> w0 = n - 21, returning through x16
+        .balign 4
+        .global minus21
+minus21:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     w0, w0, 21
+        ldp     fp, x16, [sp], 16       // the way back into x16
+        br      x16                     // back to the caller, as ret would
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 42
+        bl      minus21
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_return_through_x16_ends_its_call() {
+    let mut p = load(RETURN_THROUGH_X16);
+    let main = p.label("main");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "br x16 ended minus21");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "21\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0, "no return went astray");
+    assert_eq!(p.outline(), ["main -> 0", "  minus21(42) -> 21"]);
+    back_retraces(&mut load(RETURN_THROUGH_X16), 12, "a return through x16");
+}
+
+/// skip pops its own frame record and then jump's, so `br x16` lands where
+/// jump's ret would have, with main's sp and fp: it ends skip and jump,
+/// and skips jump as a ret would.
+const BR_SKIP: &str = r#"
+// main calls jump, which calls skip; skip pops jump's frame record too
+// and goes back into main through x16.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      jump
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global jump
+jump:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      skip
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global skip
+skip:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldp     fp, lr, [sp], 16
+        ldp     fp, x16, [sp], 16       // bug: jump's frame record too
+        br      x16
+"#;
+
+/// The same skip through a tail call: skip pops jump's frame record into
+/// lr, so printf comes back into main and ends skip and jump.
+const LIB_SKIP: &str = r#"
+// main calls jump, which calls skip; skip pops jump's frame record too
+// and tail-calls printf, which comes back into main.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt:    .string "hi\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      jump
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global jump
+jump:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      skip
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global skip
+skip:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldp     fp, lr, [sp], 16
+        ldp     fp, lr, [sp], 16        // bug: jump's frame record too
+        ldr     x0, =fmt
+        b       printf
+"#;
+
+/// A `br` or a library return that matches a call below the innermost one
+/// ends both, like a ret, and is a bad return; its pc is the `br`, or the
+/// `b` that reached the library function.
+#[test]
+fn a_br_or_a_library_return_that_ends_two_calls_is_a_bad_return() {
+    // x0 at the return: argc, or the count printf returns.
+    for (source, jump_at, steps, out, x0) in [(BR_SKIP, 16, 11, "", 1), (LIB_SKIP, 20, 15, "hi\n", 3)] {
+        let mut p = load(source);
+        let (main, skip) = (p.label("main"), p.label("skip"));
+        p.run_to(main + 12, 1);
+        let stack = p.cpu.call_stack();
+        assert_eq!(stack.depth(), 1, "it ended skip and jump");
+        let bad = stack.bad_return();
+        assert_eq!((bad.step, bad.pc, bad.target, bad.index), (steps, skip + jump_at, main + 12, 2));
+        assert_eq!(p.name(bad.entry), "skip");
+        p.run_to_end();
+        assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), out);
+        assert_eq!(p.outline(), ["main -> 0".to_string(), format!("  jump -> {x0}"), format!("    skip -> {x0}")]);
+        back_retraces(&mut load(source), steps as usize, "a br or a library return that ends two calls");
+    }
+}
+
+/// twice keeps main's way back in x9 and calls add_one by hand: `adr lr`,
+/// then `b`. add_one's ret goes to no return address the stack knows;
+/// twice has no frame, so nothing shows that twice is over.
+const HAND_MADE_CALL: &str = r#"
+// twice calls add_one by hand (adr lr, then b), keeping main's way back
+// in x9.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// add_one(w0 = n) -> w0 = n + 1
+        .balign 4
+        .global add_one
+add_one:
+        add     w0, w0, 1
+        ret
+
+// twice(w0 = n) -> w0 = (n + 1) * 2
+        .balign 4
+        .global twice
+twice:
+        mov     x9, lr                  // keep the way back to main
+        adr     lr, twice_back          // a call made by hand
+        b       add_one
+twice_back:
+        add     w0, w0, w0
+        mov     lr, x9
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 20
+        bl      twice
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_hand_made_call_is_one_bad_return_and_never_ends_its_caller_early() {
+    let mut p = load(HAND_MADE_CALL);
+    let (add_one, main) = (p.label("add_one"), p.label("main"));
+    // add_one's ret reaches no return address the stack holds: recorded,
+    // and twice stays the call running.
+    p.run_to(add_one + 4, 1);
+    p.cpu.step().expect("add_one's ret");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.pc, bad.target), (add_one + 4, p.label("twice_back")));
+    assert_eq!(p.cpu.call_stack().depth(), 2, "twice is still running");
+    // twice's own ret ends twice, with no second bad return.
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1);
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "42\n");
+    assert_eq!(p.cpu.call_stack().bad_return(), bad, "one bad return only");
+}
+
+/// leaf has no frame and aims lr past outer's next instruction, so its ret
+/// goes to no return address; sp and fp cannot show whether leaf is over.
+const FRAMELESS_STRAY: &str = r#"
+// leaf returns into outer's epilogue instead of to its caller, and has
+// no frame of its own.
+
+define(fp, x29)
+define(lr, x30)
+
+        .text
+// leaf() -> w0 = 5 (bug: lr aimed at outer's epilogue)
+        .balign 4
+        .global leaf
+leaf:
+        mov     w0, 5
+        ldr     lr, =outer_out
+        ret
+
+// outer() -> w0 = leaf() + 1, but leaf skips the add
+        .balign 4
+        .global outer
+outer:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      leaf
+        add     w0, w0, 1               // never runs
+outer_out:
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      outer
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_stray_ret_from_a_function_with_no_frame_is_one_bad_return() {
+    let mut p = load(FRAMELESS_STRAY);
+    let (leaf, main) = (p.label("leaf"), p.label("main"));
+    p.run_to(leaf + 8, 1);
+    p.cpu.step().expect("leaf's ret");
+    let bad = p.cpu.call_stack().bad_return();
+    assert_eq!((bad.pc, bad.target), (leaf + 8, p.label("outer_out")));
+    // outer's ret ends outer, and leaf with it, with no second bad return.
+    p.run_to(main + 12, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1);
+    assert_eq!(p.cpu.call_stack().bad_return(), bad, "one bad return only");
+    p.run_to_end();
+    assert_eq!(p.outline(), ["main -> 5", "  outer -> 5", "    leaf -> 5"]);
+    back_retraces(&mut load(FRAMELESS_STRAY), 12, "a stray ret from a function with no frame");
+}
+
+/// minus21 returns with `ret x16`: a ret through another register is still
+/// a ret.
+const RET_THROUGH_X16: &str = r#"
+// minus21 returns with ret x16 instead of a plain ret.
+
+define(fp, x29)
+define(lr, x30)
+
+        .data
+fmt_out:    .string "%d\n"
+
+        .text
+// minus21(w0 = n) -> w0 = n - 21, returning with ret x16
+        .balign 4
+        .global minus21
+minus21:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        sub     w0, w0, 21
+        ldp     fp, x16, [sp], 16       // the way back into x16
+        ret     x16
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 42
+        bl      minus21
+        mov     w1, w0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_ret_through_x16_ends_its_call() {
+    let mut p = load(RET_THROUGH_X16);
+    let main = p.label("main");
+    p.run_to(main + 16, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 1, "ret x16 ended minus21");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "21\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    assert_eq!(p.outline(), ["main -> 0", "  minus21(42) -> 21"]);
+}
+
+/// walk(2), back from walk(1), jumps with `br` to the label right after
+/// its own `bl walk`: the address every walk call returns to, but reached
+/// with walk(2)'s frame still pushed, so it is a jump, not a return.
+const BR_TO_A_RETURN_ADDRESS: &str = r#"
+// walk(n) counts its calls; walk(2) jumps back to the label after its bl
+// once, with a br, which adds one more.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, x19)
+
+        .data
+fmt_out:    .string "%ld\n"
+
+        .text
+// walk(x0 = n) -> x0 = n, plus one for the jump in walk(2)
+        .balign 4
+        .global walk
+walk:
+        stp     fp, lr, [sp, -32]!
+        mov     fp, sp
+        str     n_r, [fp, 16]           // keep the caller's x19
+        mov     n_r, x0                 // x19 = n
+        mov     x0, 0
+        cbz     n_r, walk_done          // walk(0) = 0
+        sub     x0, n_r, 1
+        bl      walk                    // x0 = walk(n - 1)
+walk_back:                              // where every walk call returns
+        add     x0, x0, 1
+        cmp     n_r, 2
+        b.ne    walk_done
+        mov     n_r, 20                 // only once
+        adr     x9, walk_back
+        br      x9                      // a jump to walk_back, not a return
+walk_done:
+        ldr     n_r, [fp, 16]           // put the caller's x19 back
+        ldp     fp, lr, [sp], 32
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x0, 3
+        bl      walk
+        mov     x1, x0
+        ldr     x0, =fmt_out
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn a_br_to_the_label_after_a_recursive_bl_ends_no_call() {
+    let mut p = load(BR_TO_A_RETURN_ADDRESS);
+    let jump = p.label("walk_done") - 4;
+    // walk(3) -> walk(2) -> walk(1) -> walk(0); walk(1) has returned, so
+    // the stack is main, walk(3) and walk(2) at the br.
+    p.run_to(jump, 1);
+    assert_eq!(p.cpu.call_stack().depth(), 3);
+    p.cpu.step().expect("br x9");
+    assert_eq!(p.cpu.regs.read_pc(), p.label("walk_back"));
+    assert_eq!(p.cpu.call_stack().depth(), 3, "the br ended no call");
+    p.run_to_end();
+    assert_eq!(String::from_utf8_lossy(&p.cpu.take_stdout()), "4\n");
+    assert_eq!(p.cpu.call_stack().bad_return().step, 0);
+    assert_eq!(p.outline(), ["main -> 0", "  walk(3) -> 4", "    walk(2) -> 3", "      walk(1) -> 1", "        walk(0) -> 0"]);
+}
+
+/// Every library call goes through its trampoline, `ldr x16, <slot>` then
+/// `br x16` into the stub. That br ends no call, whatever the stack holds:
+/// a comparator's record holds a stub address as its return address.
+#[test]
+fn a_library_calls_trampoline_branch_ends_no_call() {
+    for name in ["80_qsort_bsearch.s", "80_qsort_bsearch.O2.s", "82_callbacks_generic.s", "82_callbacks_generic.O2plain.s"] {
+        let mut p = load(&read(&format!("emulator/tests/c-corpus/{name}")));
+        p.cpu.close_stdin();
+        let trampolines = p.image.trampoline_base..p.image.trampoline_base + 8 * p.image.trampoline_names.len() as u64;
+        let mut branches = 0;
+        while !p.cpu.is_halted() {
+            let pc = p.cpu.regs.read_pc();
+            let before = (p.cpu.call_stack().depth(), p.cpu.call_stack().bad_return().step);
+            p.cpu.step().expect("step");
+            if trampolines.contains(&pc) && (pc - trampolines.start) % 8 == 4 {
+                branches += 1;
+                let after = (p.cpu.call_stack().depth(), p.cpu.call_stack().bad_return().step);
+                assert_eq!(after, before, "{name}: the trampoline's br at {pc:#x}");
+            }
+        }
+        assert!(branches > 10, "{name}: {branches} library calls");
+    }
 }

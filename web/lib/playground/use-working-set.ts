@@ -19,7 +19,8 @@ export type InputSeeds = {
 export type WorkingSet = {
   /** Re-apply the seeds after an assemble (which resets the whole machine). */
   applySeeds: () => void;
-  /** Mirror the working file set into the store, if this surface has one. */
+  /** Mirror the working file set into the store, if this surface has one,
+   *  once the stored files have been read back. */
   persistWorkingSet: () => void;
   /** The one write path for a user-created file (upload, redirect, fixture). */
   stageVfsFile: (name: string, data: Uint8Array | string) => void;
@@ -71,8 +72,16 @@ export function useWorkingSet(opts: {
     if (seeds.vfs) uploadAll(seeds.vfs);
   }, [machine, uploadAll]);
 
+  // The store keeps one whole set, so a write before the stored files are
+  // read back would replace them with only this tab's; it waits for the read.
+  const storeReadRef = useRef(false);
+  const writeHeldRef = useRef(false);
   const persistWorkingSet = useCallback(() => {
     if (!isHome) return;
+    if (!storeReadRef.current) {
+      writeHeldRef.current = true;
+      return;
+    }
     void savePersistedVfs(seedsRef.current.vfs ?? {});
   }, [isHome]);
 
@@ -120,18 +129,24 @@ export function useWorkingSet(opts: {
 
   // Rehydrate the home directory once the hub is live: the persisted files
   // sit underneath anything a boot handoff (share link, bundle, example)
-  // already staged, so a link's fixtures win their name collisions. Runs
-  // once per mount; embed and checker chromes never touch the store.
+  // already staged, so a link's fixtures win their name collisions, and a
+  // write held for the read is made with the merged set. Runs once per
+  // mount; embed and checker chromes never touch the store.
   const hydratedRef = useRef(false);
   useEffect(() => {
     if (!isHome || hydratedRef.current || !machineLoaded) return;
     hydratedRef.current = true;
-    void loadPersistedVfs().then((files) => {
-      if (!files || Object.keys(files).length === 0) return;
-      seedsRef.current.vfs = { ...files, ...(seedsRef.current.vfs ?? {}) };
-      uploadAll(seedsRef.current.vfs);
-    });
-  }, [isHome, machineLoaded, uploadAll]);
+    void loadPersistedVfs()
+      .then((files) => {
+        if (!files || Object.keys(files).length === 0) return;
+        seedsRef.current.vfs = { ...files, ...(seedsRef.current.vfs ?? {}) };
+        uploadAll(seedsRef.current.vfs);
+      })
+      .finally(() => {
+        storeReadRef.current = true;
+        if (writeHeldRef.current) persistWorkingSet();
+      });
+  }, [isHome, machineLoaded, uploadAll, persistWorkingSet]);
 
   const workingFiles = useCallback(() => seedsRef.current.vfs ?? {}, []);
 

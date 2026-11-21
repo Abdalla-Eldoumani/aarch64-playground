@@ -88,10 +88,12 @@ export function parseCommandLine(line: string): ParsedCommandLine {
 }
 
 /** A running foreground program's input surface: the pane forwards raw
- *  keystrokes here and Ctrl+C cancels. */
+ *  keystrokes here, Ctrl+C cancels, and the pane's size in columns and rows
+ *  arrives as the program takes the pane over and on every resize. */
 export interface TerminalForegroundProgram {
   pushInput(data: string): void;
   cancel(): void;
+  resize(cols: number, rows: number): void;
 }
 
 /** The terminal pane's I/O surface for interactive program runs: output
@@ -111,6 +113,9 @@ export interface TerminalProgramIO {
   /** Put the keyboard back on the pane (returning to the terminal tab
    *  mid-session; hiding the pane blurs its textarea). */
   focus?(): void;
+  /** Whether a program left the pane on its alternate screen, which the
+   *  session's end leaves only then: leaving it moves the cursor. */
+  altScreen?(): boolean;
 }
 
 /**
@@ -145,8 +150,16 @@ export interface DispatchContext {
   frameStack(): Promise<FrameStack | null>;
   /** "line 12", or "ui.s line 12" in a program of several files. */
   lineLabel(addr: number): string | null;
-  setBreakpoint(addr: number): Promise<void>;
-  clearBreakpoint(addr: number): Promise<void>;
+  /** `gdb b label`: arms `addr` now, and the label again after the editor's
+   *  next assemble; resolves to the breakpoint's number. */
+  setBreakpoint(addr: number, label: string): Promise<number>;
+  /** `gdb delete [n]`: false when n names no breakpoint. */
+  deleteBreakpoints(n?: number): Promise<boolean>;
+  /** `gdb b`'s breakpoints as [number, label], lowest number first. */
+  breakpoints(): [number, string][];
+  /** The ones the editor's last assemble could not set again because their
+   *  label is gone, as [number, label]; each is handed over once. */
+  unsetBreakpoints(): [number, string][];
   /** Look up a label's runtime address. Returns null when unresolved. */
   resolveLabel(label: string): Promise<number | null> | number | null;
   /** Standalone m4 pass over source text; null when the emulator build
@@ -173,6 +186,9 @@ export interface DispatchContext {
   readRegisters(): Record<string, bigint>;
   readMemory(addr: number, len: number): Promise<Uint8Array>;
   pcAddress(): number;
+  /** The code the program exited with; null while it can still run (a
+   *  fault stops it without one) and with nothing loaded. */
+  exitCode(): number | null;
   reset(): Promise<void>;
   /** Present when the pane can host interactive programs; dispatch hands
    *  it to runProgram/runSource for `./name` runs without a `>` capture. */
@@ -212,7 +228,9 @@ const GDB_HELP_LINES = [
   "  gdb ni                            step over: run the call on this line in one go",
   "  gdb finish                        step out: run until this function returns to its caller",
   "  gdb c                             continue until the program ends or hits a breakpoint",
-  "  gdb b <label>                     set a breakpoint at a label",
+  "  gdb b <label>                     set a breakpoint at a label and print its number",
+  "  gdb delete [N...]                 delete breakpoints N..., or every breakpoint",
+  "  gdb info breakpoints              list the breakpoints gdb b set",
   "  gdb p $xN                         print register N's value in hex",
   "  gdb info registers                print every register",
   "  gdb x/Ni $pc                      show N instruction words in hex from the current PC",
@@ -221,9 +239,13 @@ const GDB_HELP_LINES = [
   "  gdb info frame                    this function's frame: its bytes, saved fp and lr, locals",
 ];
 
-// The machine drops the last frame only when the outermost function returns,
-// which ends the program (a `_start` that exits through svc keeps its own).
+// gdb's "No stack." The machine drops the last frame only when the outermost
+// function returns; an exit() deeper down, or a `_start` that exits through
+// svc, leaves frames behind, so an exit code means finished too.
 const NO_FRAMES = "gdb: no frames: the program has finished";
+
+// The commands that run or step the program.
+const RESUMES = new Set(["n", "s", "si", "ni", "finish", "c"]);
 
 // More recorded frames than this fold into one line, with main still shown last.
 const BT_SHOWN = 20;
@@ -410,7 +432,13 @@ export async function dispatchCommand(
   }
 
   if (cmd === "gdb") {
-    return runGdb(args, ctx);
+    // gdb says "Error in re-setting breakpoint N" as the program restarts;
+    // here the first gdb command after the editor's assemble says it.
+    const unset = ctx
+      .unsetBreakpoints()
+      .map(([n, label]) => `gdb: error in re-setting breakpoint ${n}: unknown label '${label}'`);
+    const result = await runGdb(args, ctx);
+    return unset.length === 0 ? result : { ...result, lines: [...unset, ...result.lines] };
   }
 
   return { status: "err", lines: [`${cmd}: command not found. Type 'help' for the list.`] };
@@ -419,6 +447,9 @@ export async function dispatchCommand(
 async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
   const sub = args[0];
   if (!sub || sub === "help") return { status: "ok", lines: GDB_HELP_LINES, table: true };
+  // gdb's "The program is not being run.": after the exit these would do
+  // nothing and say nothing.
+  if (RESUMES.has(sub) && ctx.exitCode() != null) return { status: "err", lines: ["gdb: the program has finished"] };
   if (sub === "n" || sub === "s" || sub === "si") {
     await ctx.step();
     return { status: "ok", lines: [] };
@@ -437,8 +468,38 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     if (!label) return { status: "err", lines: ["gdb: b needs a label"] };
     const addr = await ctx.resolveLabel(label);
     if (addr == null) return { status: "err", lines: [`gdb: unknown label '${label}'`] };
-    await ctx.setBreakpoint(addr);
-    return { status: "ok", lines: [`breakpoint set at ${formatWord64(addr)} (${label})`] };
+    const n = await ctx.setBreakpoint(addr, label);
+    return { status: "ok", lines: [`breakpoint ${n} at ${formatWord64(addr)} (${label})`] };
+  }
+  if (sub === "delete") {
+    if (args.length === 1) {
+      await ctx.deleteBreakpoints();
+      return { status: "ok", lines: [] };
+    }
+    // Plain decimal numbers, left to right: a 0 or a missing number says so
+    // and goes on; any other token says so and stops there, deleting nothing
+    // after it.
+    const lines: string[] = [];
+    for (const n of args.slice(1)) {
+      if (n !== "0" && !/^[1-9]\d*$/.test(n)) {
+        lines.push(`gdb: bad breakpoint number '${n}'`);
+        break;
+      }
+      if (n === "0") lines.push("gdb: bad breakpoint number '0'");
+      else if (!(await ctx.deleteBreakpoints(Number(n)))) lines.push(`gdb: no breakpoint number ${n}`);
+    }
+    return { status: lines.length > 0 ? "err" : "ok", lines };
+  }
+  if (sub === "info" && args[1] === "breakpoints") {
+    const set = ctx.breakpoints();
+    if (set.length === 0) return { status: "ok", lines: ["no breakpoints"] };
+    const lines = ["Num  Address             What"];
+    for (const [n, label] of set) {
+      // A label the program in the machine no longer has waits, as gdb's pending ones do.
+      const addr = await ctx.resolveLabel(label);
+      lines.push(`${String(n).padEnd(5)}${addr == null ? "pending".padEnd(18) : formatWord64(addr)}  ${label}`);
+    }
+    return { status: "ok", lines };
   }
   if (sub === "p") {
     const operand = args[1];
@@ -451,7 +512,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "info" && args[1] === "frame") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: info frame needs an assembled program"] };
-    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
+    if (view.snapshot.frames.length === 0 || ctx.exitCode() != null) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: frameLines(view) };
   }
   if (sub === "info" && args[1] === "registers") {
@@ -467,7 +528,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "bt") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: bt needs an assembled program"] };
-    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
+    if (view.snapshot.frames.length === 0 || ctx.exitCode() != null) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: backtrace(view, ctx) };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.data
 	.align	2
@@ -758,6 +759,7 @@ d.1:
 	.align	3
 big.0:
 	.xword	-9000000000000000000
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

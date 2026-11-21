@@ -46,7 +46,7 @@ one kind of instruction or one job. All paths below are under
 | m4, labels, directives, and linking | `frontend/`: `m4.rs`, `lexer.rs`, `parser.rs`, `expr.rs`, `sections.rs`, `pipeline.rs` |
 | A library function such as `printf` or `malloc` | `hosted/`, one file per family: `printf.rs`, `scanf.rs`, `libc.rs`, `stdio.rs`, `heap.rs`, `math.rs`, `ctype.rs`, `callback.rs` |
 | A system call or the virtual files | `hosted/syscalls.rs` |
-| The step loop and the memory layout | `cpu.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints, step back, and the runs behind step over, step out, and run to cursor (`run_until`) in `cpu/control.rs` |
+| The step loop and the memory layout | `cpu.rs`, with the fixed address map in `layout.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints, step back, and the runs behind step over, step out, and run to cursor (`run_until`) in `cpu/control.rs` |
 | Registers or memory pages | `registers.rs`, `memory.rs` |
 | The call stack behind the stack frames view | `frames.rs`; each function's slots in `frames/layout.rs`, the frame check in `frames/check.rs`, the call tree in `frames/tree.rs` (see [The stack frames view](#the-stack-frames-view)) |
 | What the site can call | `lib.rs` |
@@ -179,11 +179,14 @@ address maps its page. A named save shares pages with the live machine, and a
 page is copied only when it is written while a save still holds it. Step back
 does not copy pages at all: each step logs the bytes its writes replaced.
 
-Unaligned loads and stores work, as they do for Linux programs. The one
-alignment rule is on `sp`: a load or store through `sp`, or a library call,
-while `sp` is not a multiple of 16 stops the program with the bus error Linux
-gives. A load or store in the first page (a null pointer) stops it with a
-segmentation fault.
+Unaligned loads and stores work, as they do for Linux programs. Two alignment
+rules stop the program with the bus error Linux gives: a load or store through
+`sp`, or a library call, while `sp` is not a multiple of 16, and a jump to an
+address that is not a multiple of 4, where no instruction can start. A load or
+store in the first page (a null pointer) stops it with a segmentation fault, and
+so does a store into the program's own code. A library call's store stops there
+too, and also in the host stub window just under 4 GiB; a system call given
+such a buffer writes as before, since Linux fails that call with an error.
 
 The `memoryMap` export in `lib.rs` lists the address bands, built from the
 same constants the loader uses, so the memory panel's labels cannot drift
@@ -298,9 +301,22 @@ in the picture a student sees:
 - A `bl` or `blr` calls `CallStack::on_call`. It notes where the caller's
   frame record sits and whether `lr` went out unsaved, then pushes the callee
   if the target is the program's own code.
-- A `ret` or `br x30` calls `on_return`, which pops the call it returns from.
-  A return to no caller's return address is recorded and leaves the stack
-  alone.
+- A `ret` or `br x30` (a `ret` below), or a `br` through another register that
+  lands in the program, calls `on_return`. A return gives the caller back its
+  `sp` and `x29` as at the `bl`, so `on_return` ends the call whose return
+  address, entry `sp` and entry `x29` the return leaves; a `ret` with no such
+  call ends the nearest one by return address alone. A `ret` that reaches no
+  return address is recorded as a bad return. So is one that ends more than
+  the innermost call, unless the last bad return came from the innermost
+  call. A `ret` that reaches no return address still ends its own call when
+  that call is not `main`, stored `lr`, and put `sp` and `x29` back, unless
+  the `ret` returns to the instruction after that call's own latest `bl` or
+  `blr`. A `br` through another register ends a call only on the full match,
+  and is a bad return only when that match lies below the innermost call.
+- A library function that a `b` reached ends the function that made the `b`
+  when it returns (`dispatch_host_stub` in `cpu/system.rs`), on the full
+  match only, and that return is a bad return only when the match lies below
+  the innermost call.
 - A store of `x30` (`str` or `stp`) calls `on_lr_store`.
 
 Every other instruction passes straight through. `watch_frame_records` then

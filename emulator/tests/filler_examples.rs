@@ -3,9 +3,13 @@
 //! what is tested cannot drift. Line endings are normalized to LF because
 //! a Windows checkout can hand these files back as CRLF.
 
+#[path = "common/example_files.rs"]
+mod example_files;
+
 use std::path::PathBuf;
 
 use aarch64_emulator::cpu::Cpu;
+use example_files::example_files;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
 /// `web/public/examples/cpsc355/`, resolved relative to the emulator crate.
@@ -413,13 +417,8 @@ fn temp_convert_console_face_draws_the_same_readings_in_plain_text() {
 /// every menu, so every file assembles, links, and runs.
 #[test]
 fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
-    const EXTRAS: [&str; 17] = [
-        "theme.s", "ui.s", "ansi.s", "display.s", "utils.s", "array.s",
-        "stack.s", "queue.s", "list.s", "bst.s", "rbt.s", "heap.s",
-        "hash.s", "graph.s", "sort.s", "search.s", "recursion.s",
-    ];
     let mut source = read("dsav.s");
-    for name in EXTRAS {
+    for name in example_files("dsav") {
         source.push_str(&format!("\n// ---- {name} ----\n"));
         source.push_str(&read(&format!("dsav/{name}")));
     }
@@ -463,13 +462,8 @@ fn dsav_visualizer_links_across_its_files_and_runs_the_menus() {
 /// move, pause, resume, quit.
 #[test]
 fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
-    const EXTRAS: [&str; 11] = [
-        "constants.s", "terminal.s", "input.s", "player.s", "enemies.s",
-        "projectiles.s", "upgrades.s", "file-io.s", "effects.s", "boss.s",
-        "abilities.s",
-    ];
     let mut source = read("deadzone.s");
-    for name in EXTRAS {
+    for name in example_files("deadzone") {
         source.push_str(&format!("\n// ---- {name} ----\n"));
         source.push_str(&read(&format!("deadzone/{name}")));
     }
@@ -562,6 +556,54 @@ fn deadzone_survivor_links_across_its_files_and_plays_a_timed_session() {
     );
     // The game put the terminal in raw mode to draw and restored it on the
     // way out; a clean exit leaves the flag lowered.
+    assert!(!cpu.term.raw_mode, "exit must restore the terminal");
+}
+
+/// The Flappy remake, joined the way the files strip joins it: flappy.s
+/// holds the shared definitions and main, and the helpers follow in the
+/// order of the repo's one-file bundle. In a 36 by 32 pane it takes the
+/// playground's profile (palette indexes set with OSC 4), draws in half
+/// blocks, and q gives the palette back with OSC 104 and exits 0.
+#[test]
+fn flappy_links_across_its_files_draws_and_quits_on_q() {
+    let mut source = read("flappy.s");
+    for name in example_files("flappy") {
+        source.push_str(&format!("\n// ---- {name} ----\n"));
+        source.push_str(&read(&format!("flappy/{name}")));
+    }
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(&source, &cpu.host)
+        .unwrap_or_else(|e| panic!("assemble flappy: {e}"));
+    cpu.load_linked_image(&image).expect("load flappy");
+    // Driven the way the terminal pane drives it: the ring paused (a load
+    // clears the pause), then the pane's size.
+    cpu.snapshots_paused = true;
+    cpu.set_window_size(36, 32);
+    let mut stdout: Vec<u8> = Vec::new();
+    let mut halted = false;
+    let mut wants_terminal = false;
+    for boundary in 0..4000u32 {
+        let r = cpu.run_until_break(1_000_000).expect("run flappy");
+        stdout.extend(cpu.take_stdout());
+        if r.halted {
+            halted = true;
+            break;
+        }
+        let _ = cpu.take_pending_sleep_ns();
+        wants_terminal |= cpu.term.raw_mode;
+        // About two seconds of ticks on the title, then quit.
+        if boundary == 120 {
+            cpu.push_stdin(b"q");
+        }
+        assert!(!cpu.blocked, "the game polls its keys, it must never block on stdin");
+    }
+    let has = |needle: &[u8]| stdout.windows(needle.len()).any(|w| w == needle);
+    assert!(halted, "q must end the game");
+    assert_eq!(cpu.exit_code, Some(0));
+    assert!(wants_terminal, "the game must take the terminal over to draw itself");
+    assert!(has(b"\x1b]4;"), "the playground's profile sets its palette with OSC 4");
+    assert!(has("\u{2580}".as_bytes()) || has("\u{2584}".as_bytes()), "the picture is drawn in half blocks");
+    assert!(has(b"\x1b]104"), "q gives the terminal its palette back");
     assert!(!cpu.term.raw_mode, "exit must restore the terminal");
 }
 

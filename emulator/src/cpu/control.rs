@@ -154,6 +154,8 @@ impl Cpu {
         self.strtok_save = 0;
         self.callbacks = Default::default();
         self.snapshots_paused = false;
+        self.real_time = false;
+        self.window_size = None;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         self.refund_output_total = 0;

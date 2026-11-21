@@ -7,7 +7,8 @@
  * be exported.
  */
 
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { safeGetItem } from "@/lib/playground/safe-storage";
+import { subscribeStored, writeStored } from "@/lib/hooks/use-stored-setting";
 
 export interface NamedSave {
   name: string;
@@ -25,7 +26,11 @@ export interface SaveBundle {
 }
 
 const STORAGE_KEY = "aarch64-playground:named-saves";
-export const SAVES_CHANGED_EVENT = "aarch64-playground:named-saves-changed";
+
+/** Calls back when the saves change, in this tab or another; returns the unsubscribe. */
+export function subscribeSaves(callback: () => void): () => void {
+  return subscribeStored(STORAGE_KEY, callback);
+}
 
 function readAll(): NamedSave[] {
   const raw = safeGetItem(STORAGE_KEY);
@@ -41,11 +46,9 @@ function readAll(): NamedSave[] {
 
 function writeAll(saves: NamedSave[]): boolean {
   // Quota / private mode: report it. Swallowing the failure let an overwrite
-  // render the STALE record as if the update landed. A write that never
-  // happened must not announce a change either.
-  if (!safeSetItem(STORAGE_KEY, JSON.stringify(saves))) return false;
-  window.dispatchEvent(new CustomEvent(SAVES_CHANGED_EVENT));
-  return true;
+  // render the STALE record as if the update landed. Readers re-read storage,
+  // so the change event a failed write still sends shows nothing new.
+  return writeStored(STORAGE_KEY, JSON.stringify(saves));
 }
 
 function isValidSave(v: unknown): v is NamedSave {

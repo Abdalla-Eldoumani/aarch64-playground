@@ -203,7 +203,7 @@ describe("error guidance for the messages the emulator really sends", () => {
   });
 
   it("tells an unsupported metadata section to be deleted", () => {
-    const e = explained(withBody("", '        .section .note.GNU-stack,"",@progbits\n'));
+    const e = explained(withBody("", '        .section .comment,"MS",@progbits,1\n'));
     expect(e.fix.toLowerCase()).toContain("delete");
     expect(e.styleSection).toBe("section directives");
   });

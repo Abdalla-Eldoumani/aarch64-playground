@@ -8,7 +8,8 @@
  * import it back.
  */
 
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { safeGetItem } from "@/lib/playground/safe-storage";
+import { subscribeStored, writeStored } from "@/lib/hooks/use-stored-setting";
 import {
   MAX_ANSWER_CHARS,
   putAnswer,
@@ -19,8 +20,6 @@ import {
 } from "@/lib/playground/exercise-answers";
 
 const SOLVED_KEY = "aarch64-playground:practice:solved";
-/** Same-tab change signal; the native "storage" event covers other tabs only. */
-const SOLVED_EVENT = "aarch64-playground:practice:solved";
 
 /**
  * The solved slugs, parsed defensively: absent, non-JSON, or a value that
@@ -45,16 +44,9 @@ export function isSolved(slug: string): boolean {
   return getSolvedSlugs().includes(slug);
 }
 
-/**
- * Persist a new set and announce it in this tab. The announcement is what
- * keeps an open index live; the native "storage" event only reaches other
- * tabs. Every writer goes through here so a new one cannot forget it.
- */
+/** Every writer goes through here, so an open index hears each change. */
 function writeSolved(slugs: string[]): void {
-  safeSetItem(SOLVED_KEY, JSON.stringify(slugs));
-  if (typeof window !== "undefined") {
-    window.dispatchEvent(new CustomEvent(SOLVED_EVENT));
-  }
+  writeStored(SOLVED_KEY, JSON.stringify(slugs));
 }
 
 /**
@@ -67,24 +59,9 @@ export function markSolved(slug: string): void {
   writeSolved([...current, slug]);
 }
 
-/**
- * Subscribe to solved-set changes. The callback fires on a same-tab
- * markSolved (via the CustomEvent) and on a change in another tab (via the
- * native "storage" event). Returns an unsubscribe that removes both
- * listeners; a no-op on the server where there is no window.
- */
+/** Calls back when the solved set changes, in this tab or another; returns the unsubscribe. */
 export function subscribeSolved(callback: () => void): () => void {
-  if (typeof window === "undefined") return () => {};
-  const onStorage = (event: StorageEvent) => {
-    if (event.key === SOLVED_KEY) callback();
-  };
-  const onSameTab = () => callback();
-  window.addEventListener("storage", onStorage);
-  window.addEventListener(SOLVED_EVENT, onSameTab);
-  return () => {
-    window.removeEventListener("storage", onStorage);
-    window.removeEventListener(SOLVED_EVENT, onSameTab);
-  };
+  return subscribeStored(SOLVED_KEY, callback);
 }
 
 /**
@@ -112,15 +89,18 @@ export function buildProgressBundle(): ProgressBundle {
 
 /**
  * A file's answer replaces a local one only when strictly newer, so importing
- * an old export keeps the work in front of the student. A bad entry is
- * skipped; the rest of the file still lands.
+ * an old export keeps the work in front of the student. A file's date is
+ * capped at the import, so work saved here afterwards still counts as newer.
+ * A bad entry is skipped; the rest of the file still lands.
  */
 function mergeAnswers(raw: Record<string, unknown>): number {
+  const now = Date.now();
   let added = 0;
   for (const [slug, entry] of Object.entries(raw)) {
     if (slug.length === 0 || slug.length > MAX_SLUG_CHARS) continue;
     const answer = validateAnswer(entry);
     if (!answer) continue;
+    answer.updatedAt = Math.min(answer.updatedAt, now);
     if (JSON.stringify(answer).length > MAX_ANSWER_CHARS) continue;
     const local = readAnswer(slug);
     if (local && local.updatedAt >= answer.updatedAt) continue;

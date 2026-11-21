@@ -4,8 +4,8 @@
 // laptop layout's entries. Also pins that the editor survives a change of
 // arrangement: it is the same node before and after.
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { useEffect, type ReactNode } from "react";
 
 type Layout = Record<string, number>;
 
@@ -273,5 +273,150 @@ describe("FullLayout", () => {
     rerender(layout("sm", "portrait"));
     rerender(layout("md", "landscape"));
     expect(document.querySelector('textarea[aria-label="EDITOR"]')).toBe(before);
+  });
+
+  // A 1440px window zoomed to 150% is 960 CSS px wide: it crosses from the
+  // laptop layout to the tablet one, and a reader focused in the debug column
+  // must not land on the page.
+  it("keeps the register and tab nodes, and the focus in them, from laptop to tablet", () => {
+    const withButtons = (breakpoint: Breakpoint) => (
+      <FullLayout
+        {...layout(breakpoint).props}
+        registers={<button type="button">REGS</button>}
+        rightTabs={<button type="button">TABS</button>}
+      />
+    );
+    const { rerender } = render(withButtons("lg"));
+    const button = (name: string) =>
+      Array.from(document.querySelectorAll("button")).find((b) => b.textContent === name);
+    const regs = button("REGS");
+    const tabs = button("TABS");
+    act(() => tabs?.focus());
+    rerender(withButtons("md"));
+    expect(button("REGS")).toBe(regs);
+    expect(button("TABS")).toBe(tabs);
+    expect(document.activeElement).toBe(tabs);
+  });
+
+  // The editor's node already survives (the case above it), but taking it
+  // out of one arrangement and into the next drops the focus on the page.
+  it("keeps the focus in the editor through a change of arrangement", () => {
+    const { rerender } = renderLayout("lg");
+    const editor = document.querySelector('textarea[aria-label="EDITOR"]') as HTMLTextAreaElement;
+    act(() => editor.focus());
+    rerender(layout("md"));
+    expect(document.querySelector('textarea[aria-label="EDITOR"]')).toBe(editor);
+    expect(document.activeElement).toBe(editor);
+  });
+
+  // The phone layout places its own copies of the panes, so none of the wider
+  // layouts' stays mounted out of sight there: a hidden frames view or call
+  // card would count its lines as said while nobody saw them.
+  it("keeps no wider layout's pane mounted in the phone layout", () => {
+    const mounted = new Set<string>();
+    function Probe({ name }: { name: string }) {
+      useEffect(() => {
+        mounted.add(name);
+        return () => {
+          mounted.delete(name);
+        };
+      }, [name]);
+      return <span>{name}</span>;
+    }
+    const probed = (breakpoint: Breakpoint, phone: PhoneShape = null) => (
+      <FullLayout
+        {...layout(breakpoint, phone).props}
+        disassembly={<Probe name="DISASM" />}
+        registers={<Probe name="REGS" />}
+        rightTabs={<Probe name="TABS" />}
+      />
+    );
+    const { rerender } = render(probed("lg"));
+    expect([...mounted].sort()).toEqual(["DISASM", "REGS", "TABS"]);
+    // The phone opens on its code view, which shows none of the three.
+    rerender(probed("sm", "portrait"));
+    expect([...mounted]).toEqual([]);
+    rerender(probed("md"));
+    expect([...mounted].sort()).toEqual(["DISASM", "REGS", "TABS"]);
+  });
+
+  // The new layout's splits settle their sizes after the move, so a box that
+  // was at its end (a console following its output) is kept at its end as it
+  // resizes, until the reader scrolls it. jsdom has no layout: the box is
+  // 200 px of content whose height the test sets, and the stub observer
+  // reports when the test says the box resized.
+  it("keeps a moved box at its end while the new layout resizes it", () => {
+    const reports: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(report: () => void) {
+          reports.push(report);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const withBox = (breakpoint: Breakpoint) => (
+        <FullLayout {...layout(breakpoint).props} rightTabs={<div aria-label="BOX">output</div>} />
+      );
+      const { rerender } = render(withBox("lg"));
+      const box = document.querySelector('[aria-label="BOX"]') as HTMLElement;
+      const at = { top: 100, height: 100 };
+      Object.defineProperties(box, {
+        clientHeight: { configurable: true, get: () => at.height },
+        scrollHeight: { configurable: true, get: () => 200 },
+        scrollTop: { configurable: true, get: () => at.top, set: (v: number) => (at.top = Math.min(v, 200 - at.height)) },
+      });
+      rerender(withBox("md"));
+      at.height = 40;
+      act(() => reports.forEach((report) => report()));
+      expect(box.scrollTop).toBe(160);
+      // The reader scrolls up; a later resize leaves the box where they put it.
+      at.top = 50;
+      at.height = 60;
+      act(() => reports.forEach((report) => report()));
+      expect(box.scrollTop).toBe(50);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  // The resize that changes the arrangement reflows the old one first, so by
+  // the time the box moves it may have shrunk away from its end; where its
+  // last scroll left it is what counts.
+  it("keeps a box at its end when the resize shrank it before the move", () => {
+    const reports: (() => void)[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(report: () => void) {
+          reports.push(report);
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    try {
+      const withBox = (breakpoint: Breakpoint) => (
+        <FullLayout {...layout(breakpoint).props} rightTabs={<div aria-label="BOX">output</div>} />
+      );
+      const { rerender } = render(withBox("lg"));
+      const box = document.querySelector('[aria-label="BOX"]') as HTMLElement;
+      const at = { top: 100, height: 100 };
+      Object.defineProperties(box, {
+        clientHeight: { configurable: true, get: () => at.height },
+        scrollHeight: { configurable: true, get: () => 200 },
+        scrollTop: { configurable: true, get: () => at.top, set: (v: number) => (at.top = Math.min(v, 200 - at.height)) },
+      });
+      fireEvent.scroll(box);
+      at.height = 40;
+      rerender(withBox("md"));
+      act(() => reports.forEach((report) => report()));
+      expect(box.scrollTop).toBe(160);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

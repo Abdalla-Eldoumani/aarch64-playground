@@ -47,6 +47,9 @@ const TCGETS: u64 = 0x5401;
 const TCSETS: u64 = 0x5402;
 const TCSETSW: u64 = 0x5403;
 const TCSETSF: u64 = 0x5404;
+/// Asks for the terminal's size as a struct winsize: ws_row, ws_col, then
+/// two pixel counts, four u16s.
+const TIOCGWINSZ: u64 = 0x5413;
 
 /// termios c_lflag bits the raw-mode handshake cares about.
 const ICANON: u32 = 0o0002;
@@ -125,9 +128,11 @@ pub fn dispatch(number: u64, ctx: &mut HostContext<'_>) -> Result<HostOutcome, E
 
 /// ioctl(fd, request, argp). On the console TCGETS reports a cooked
 /// terminal; any TCSETS variant applies the caller's c_lflag, and clearing
-/// ICANON or ECHO marks the program as a terminal program. Stdin fed from
-/// a file and every open file are not terminals, so like any other
-/// request they answer -ENOTTY rather than halting.
+/// ICANON or ECHO marks the program as a terminal program. TIOCGWINSZ
+/// reports the terminal pane's size while the pane drives the program, and
+/// -ENOTTY otherwise or when stdin is a file. Stdin fed from a file and
+/// every open file are not terminals, so like any other request they
+/// answer -ENOTTY rather than halting.
 pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let fd = ctx.regs.read_gpr(0, true) as u32;
     let request = ctx.regs.read_gpr(1, true);
@@ -163,6 +168,15 @@ pub fn sys_ioctl(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
             ctx.term.raw_mode = (lflag & ICANON) == 0 || (lflag & ECHO) == 0;
             ctx.regs.write_gpr(0, true, 0);
         }
+        TIOCGWINSZ => match ctx.window_size.filter(|_| !ctx.term.stdin_is_file) {
+            Some(ws) => {
+                // No pixel size: the two counts after ws_row and ws_col stay 0.
+                let winsize = u64::from(ws.rows) | (u64::from(ws.cols) << 16);
+                ctx.mem.write_u64(argp, winsize)?;
+                ctx.regs.write_gpr(0, true, 0);
+            }
+            None => ctx.regs.write_gpr(0, true, ENOTTY as u64),
+        },
         _ => {
             ctx.regs.write_gpr(0, true, ENOTTY as u64);
         }
@@ -510,68 +524,7 @@ pub fn sys_lseek(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::test_support::rejects;
-    use crate::cpu::OpenFile;
-    use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
-
-    struct Host {
-        regs: RegisterFile,
-        mem: Memory,
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-        stdin: Vec<u8>,
-        vfs: HashMap<String, Vec<u8>>,
-        open_files: HashMap<u32, OpenFile>,
-        next_fd: u32,
-        rand_state: crate::hosted::libc::RandState,
-        term: crate::cpu::TermState,
-        heap: crate::hosted::heap::HeapState,
-        strtok_save: u64,
-        callbacks: crate::hosted::callback::CallbackState,
-    }
-
-    impl Host {
-        fn new() -> Self {
-            let mut mem = Memory::new();
-            mem.map_page(0x0060_0000);
-            Host {
-                regs: RegisterFile::new(),
-                mem,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                stdin: Vec::new(),
-                vfs: HashMap::new(),
-                open_files: HashMap::new(),
-                next_fd: 3,
-                rand_state: crate::hosted::libc::RandState::default(),
-                term: crate::cpu::TermState::default(),
-                heap: crate::hosted::heap::HeapState::default(),
-                strtok_save: 0,
-                callbacks: Default::default(),
-            }
-        }
-        fn ctx(&mut self) -> HostContext<'_> {
-            HostContext {
-                regs: &mut self.regs,
-                mem: &mut self.mem,
-                stdout: &mut self.stdout,
-                stderr: &mut self.stderr,
-                stdin: &mut self.stdin,
-                stdin_closed: false,
-                vfs: &mut self.vfs,
-                open_files: &mut self.open_files,
-                next_fd: &mut self.next_fd,
-                rand_state: &mut self.rand_state,
-                term: &mut self.term,
-                heap: &mut self.heap,
-                strtok_save: &mut self.strtok_save,
-                callbacks: &mut self.callbacks,
-                call: None,
-            }
-        }
-    }
+    use crate::test_support::{rejects, Host};
 
     #[test]
     fn write_fd_one_goes_to_stdout() {

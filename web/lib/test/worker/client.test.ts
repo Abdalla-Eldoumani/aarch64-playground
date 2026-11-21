@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from "vitest";
+import type { EmulatorBackend } from "@/lib/emulator/backend";
 import { WorkerClient, spawnEmulatorWorker } from "@/lib/worker/client";
 import type { Request, Response, StateSnapshot } from "@/lib/worker/protocol";
 
@@ -59,6 +60,32 @@ function makeMockWorker() {
 }
 
 describe("WorkerClient", () => {
+  test("serves every member of the backend interface", () => {
+    // The check is tsc's: this line stops compiling when the interface
+    // gains a member the client lacks.
+    const backend = new WorkerClient(makeMockWorker().w) satisfies EmulatorBackend;
+    expect(backend).toBeInstanceOf(WorkerClient);
+  });
+
+  // The worker moves its own epoch on these four kinds (emulator.worker.ts);
+  // the page's count has to move on the same ones, as each is sent.
+  test("moves its run epoch on each request that cancels a run", () => {
+    const client = new WorkerClient(makeMockWorker().w);
+    const moved = (send: () => unknown) => {
+      const before = client.epoch;
+      void send();
+      return client.epoch - before;
+    };
+    expect(moved(() => client.assemble("ret"))).toBe(1);
+    expect(moved(() => client.stepBack())).toBe(1);
+    expect(moved(() => client.reset())).toBe(1);
+    expect(moved(() => client.loadState("a"))).toBe(1);
+    expect(moved(() => client.step())).toBe(0);
+    expect(moved(() => client.runUntilBreak(10))).toBe(0);
+    expect(moved(() => client.pause())).toBe(0);
+    expect(moved(() => client.dispose())).toBe(1);
+  });
+
   test("step request resolves with the matching ok response", async () => {
     const { w, posted, fire } = makeMockWorker();
     const client = new WorkerClient(w);
@@ -127,12 +154,17 @@ describe("WorkerClient", () => {
     expect(runResult.runResult.steps_executed).toBe(100);
   });
 
-  test("terminate rejects pending promises", async () => {
-    const { w } = makeMockWorker();
+  test("dispose terminates the worker and drops pending requests unsettled", async () => {
+    const { w, posted, fire } = makeMockWorker();
     const client = new WorkerClient(w);
-    const promise = client.step();
-    client.terminate();
-    await expect(promise).rejects.toThrow("worker terminated");
+    const settled = vi.fn();
+    client.step().then(settled, settled);
+    client.dispose();
+    // A reply already on its way finds no request to settle.
+    fire({ id: posted[0].id, kind: "ok", value: null });
+    await new Promise((later) => setTimeout(later, 0));
+    expect(w.terminate).toHaveBeenCalledTimes(1);
+    expect(settled).not.toHaveBeenCalled();
   });
 
   test("heartbeat fans out to every subscriber", async () => {
@@ -302,10 +334,26 @@ describe("WorkerClient protocol round-trips", () => {
     wire: Record<string, unknown>;
     voidReply?: true;
   }> = [
+    { name: "init", invoke: (c) => c.init(), wire: { kind: "init" } },
     { name: "assemble", invoke: (c) => c.assemble("mov x0, 1", ["alpha"]), wire: { kind: "assemble", source: "mov x0, 1", args: ["alpha"] } },
+    { name: "step", invoke: (c) => c.step(), wire: { kind: "step" } },
     { name: "stepBack", invoke: (c) => c.stepBack(), wire: { kind: "stepBack" } },
     { name: "runUntilBreak", invoke: (c) => c.runUntilBreak(1234), wire: { kind: "runUntilBreak", maxSteps: 1234 } },
+    { name: "runUntilBreak with a goal", invoke: (c) => c.runUntilBreak(500, { depth: 1, pc: 0x400020 }), wire: { kind: "runUntilBreak", maxSteps: 500, until: { depth: 1, pc: 0x400020 } } },
     { name: "pause", invoke: (c) => c.pause(), wire: { kind: "pause" }, voidReply: true },
+    { name: "reset", invoke: (c) => c.reset(), wire: { kind: "reset" } },
+    { name: "closeStdin", invoke: (c) => c.closeStdin(), wire: { kind: "closeStdin" } },
+    // These three relay the worker's ok value (null in practice) rather than
+    // turning it into undefined.
+    { name: "setSnapshotsPaused", invoke: (c) => c.setSnapshotsPaused(true), wire: { kind: "setSnapshotsPaused", paused: true } },
+    { name: "setRealTime", invoke: (c) => c.setRealTime(true), wire: { kind: "setRealTime", on: true } },
+    { name: "setWindowSize", invoke: (c) => c.setWindowSize(48, 43), wire: { kind: "setWindowSize", cols: 48, rows: 43 } },
+    { name: "clearAllBreakpoints", invoke: (c) => c.clearAllBreakpoints(), wire: { kind: "clearAllBreakpoints" } },
+    { name: "isRangeMapped", invoke: (c) => c.isRangeMapped(0x600000, 16), wire: { kind: "isRangeMapped", addr: 0x600000, len: 16 } },
+    { name: "lint", invoke: (c) => c.lint("main:\n  ret"), wire: { kind: "lint", source: "main:\n  ret" } },
+    { name: "m4Expand", invoke: (c) => c.m4Expand("define(a, x19)"), wire: { kind: "m4Expand", source: "define(a, x19)" } },
+    { name: "memoryMap", invoke: (c) => c.memoryMap(), wire: { kind: "memoryMap" } },
+    { name: "frameLayout", invoke: (c) => c.frameLayout(), wire: { kind: "frameLayout" } },
     // A redirect: no echo, so the worker takes the silent queue.
     { name: "pushStdin", invoke: (c) => c.pushStdin("hi"), wire: { kind: "pushStdin", text: "hi", interactive: false } },
     { name: "pushStdin at a prompt", invoke: (c) => c.pushStdin("42\n", true), wire: { kind: "pushStdin", text: "42\n", interactive: true } },

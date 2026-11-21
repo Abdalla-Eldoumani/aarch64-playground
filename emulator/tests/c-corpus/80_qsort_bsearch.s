@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 cmp_int:
@@ -968,4 +969,5 @@ main:
 	.word	0
 	.word	8
 	.text
+	.section	.note.GNU-stack,"",@progbits
 
