@@ -82,19 +82,70 @@ pub enum StoreGuard {
 #[derive(Default)]
 pub struct MemUndo {
     /// `(addr, len)` per run, in write order. A write that starts where the
-    /// last run ended extends it, so filling a buffer is one run.
+    /// last run ended extends it, so filling a buffer is one run, and so
+    /// does one that ends where it started, so copying one backwards is too.
     runs: Vec<(u64, usize)>,
-    /// The replaced bytes of every run, end to end.
+    /// The replaced bytes of every run, end to end, in address order but
+    /// for the last run's while `down`.
     old: Vec<u8>,
     /// Pages the writes mapped, to unmap again.
     mapped: Vec<u64>,
+    /// The last run grew down, so its bytes in `old` are reversed until
+    /// `settle`.
+    down: bool,
+    /// What the run and byte buffers held, spare capacity included, when
+    /// the log was finished. The mapped pages are left out: while their
+    /// frames last, those pages stay mapped, so a whole ring lists at most
+    /// `MAX_MAPPED_PAGES` of them.
+    pub(crate) held: usize,
 }
 
 impl MemUndo {
-    fn note_run(&mut self, addr: u64, len: usize) {
+    /// Log a write at `addr`, and while `keep` the bytes it `replaced`.
+    fn note_write(&mut self, addr: u64, replaced: &[u8], keep: bool) {
+        let len = replaced.len();
         match self.runs.last_mut() {
-            Some((start, n)) if start.wrapping_add(*n as u64) == addr => *n += len,
-            _ => self.runs.push((addr, len)),
+            Some((start, n)) if !self.down && start.wrapping_add(*n as u64) == addr => *n += len,
+            // memmove and qsort copy down one byte at a time; a run per
+            // byte would cost 16 bytes of log for each byte written.
+            Some((start, _)) if addr.wrapping_add(len as u64) == *start => return self.note_down(addr, replaced, keep),
+            _ => {
+                if self.down {
+                    self.settle(keep);
+                }
+                self.runs.push((addr, len));
+            }
+        }
+        if keep {
+            self.old.extend_from_slice(replaced);
+        }
+    }
+
+    /// `note_write` for a write that ends where the last run starts. Kept
+    /// apart so the usual write's path stays short.
+    #[cold]
+    fn note_down(&mut self, addr: u64, replaced: &[u8], keep: bool) {
+        let Some((start, n)) = self.runs.last_mut() else { return };
+        if keep {
+            if !self.down {
+                let at = self.old.len() - *n;
+                self.old[at..].reverse();
+            }
+            self.old.extend(replaced.iter().rev());
+        }
+        self.down = true;
+        *start = addr;
+        *n += replaced.len();
+    }
+
+    /// Turn the last run's bytes the right way round once it stops growing
+    /// down.
+    #[cold]
+    fn settle(&mut self, keep: bool) {
+        self.down = false;
+        if keep {
+            let at = self.old.len() - self.runs.last().map_or(0, |&(_, n)| n);
+            self.old[at..].reverse();
         }
     }
 }
@@ -159,8 +210,8 @@ impl Memory {
     pub fn record_undo(&mut self, slot: &mut MemUndo) {
         std::mem::swap(&mut self.undo, slot);
         // A bulk step (a memset over megabytes) leaves a frame's buffers
-        // big, and they stay big. Shrinking them would gain nothing: wasm
-        // memory never shrinks, so the next big step reuses the space.
+        // big; the ring gives them back when that frame comes round
+        // (`SnapshotRing::push_slot`), and otherwise they are reused.
         let log = &mut self.undo;
         log.runs.clear();
         log.old.clear();
@@ -168,11 +219,19 @@ impl Memory {
         self.recording = true;
     }
 
-    /// Stop logging and trade the filled log back into `slot`.
-    pub fn finish_undo(&mut self, slot: &mut MemUndo) {
-        if std::mem::take(&mut self.recording) {
-            std::mem::swap(&mut self.undo, slot);
+    /// Stop logging and trade the filled log back into `slot`. Returns what
+    /// the log holds (`MemUndo::held`), when one was open.
+    pub fn finish_undo(&mut self, slot: &mut MemUndo) -> Option<usize> {
+        if !std::mem::take(&mut self.recording) {
+            return None;
         }
+        let log = &mut self.undo;
+        if log.down {
+            log.settle(true);
+        }
+        log.held = log.runs.capacity() * std::mem::size_of::<(u64, usize)>() + log.old.capacity();
+        std::mem::swap(log, slot);
+        Some(slot.held)
     }
 
     /// Put back what the logged writes replaced, newest first, then unmap
@@ -392,10 +451,7 @@ impl Memory {
         let slot = &mut Rc::make_mut(self.page_or_map(base))[off..off + bytes.len()];
         replaced[..bytes.len()].copy_from_slice(slot);
         slot.copy_from_slice(bytes);
-        self.undo.note_run(addr, bytes.len());
-        if self.recording {
-            self.undo.old.extend_from_slice(&replaced[..bytes.len()]);
-        }
+        self.undo.note_write(addr, &replaced[..bytes.len()], self.recording);
         self.note_write(addr, bytes.len());
         Ok(())
     }
@@ -928,5 +984,45 @@ mod tests {
         mem.finish_undo(&mut log);
         assert_eq!(log.runs, vec![(0x1000, 40_000)]);
         assert_eq!(log.old.len(), 40_000);
+    }
+
+    #[test]
+    fn writes_extending_a_run_down_log_one_run_and_undo_byte_for_byte() {
+        // A backward memmove or qsort's slide writes each byte just below
+        // the last. Runs that grow both ways, cross a page edge and are
+        // overwritten later must still come back exactly.
+        let mut mem = Memory::new();
+        let span = 0x1E00..0x2100u64;
+        for a in span.clone() {
+            mem.write_u8(a, (a as u8) ^ 0x5A).unwrap();
+        }
+        let before = mem.read_bytes(span.start, 0x300).unwrap();
+        let mut log = MemUndo::default();
+        mem.record_undo(&mut log);
+        mem.write_u32(0x1F80, 0xAABB_CCDD).unwrap();
+        for a in (0x1F00..0x1F80u64).rev() {
+            mem.write_u8(a, a as u8).unwrap();
+        }
+        mem.write_u32(0x1F84, 7).unwrap();
+        mem.write_u16(0x1EFE, 0x1234).unwrap();
+        mem.write_u64(0x1FFC, u64::MAX).unwrap();
+        mem.write_u32(0x1FF8, 9).unwrap();
+        mem.write_u8(0x1F00, 0).unwrap();
+        mem.finish_undo(&mut log);
+        // A run that grew down takes no more upward writes.
+        assert_eq!(log.runs, vec![(0x1F00, 132), (0x1F84, 4), (0x1EFE, 2), (0x1FF8, 12), (0x1F00, 1)]);
+        mem.undo(log);
+        assert_eq!(mem.read_bytes(span.start, 0x300).unwrap(), before);
+    }
+
+    #[test]
+    fn writes_going_down_are_one_run_with_no_log_open() {
+        // The runs drive the frame-record watch on every step, recorded or not.
+        let mut mem = Memory::new();
+        mem.start_step();
+        for a in (0x3000..0x3100u64).rev() {
+            mem.write_u8(a, 1).unwrap();
+        }
+        assert_eq!(mem.step_writes(), &[(0x3000, 0x100)]);
     }
 }
