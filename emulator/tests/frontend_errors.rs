@@ -303,6 +303,30 @@ fn an_adr_target_past_the_signed_range_is_out_of_range() {
 }
 
 #[test]
+fn a_branch_to_a_symbol_past_the_signed_range_is_out_of_reach() {
+    // The distance to the target used to overflow before the reach check.
+    let mut failures = Vec::new();
+    for (op, name) in [
+        ("b", "b"),
+        ("bl", "bl"),
+        ("b.eq", "b.cond"),
+        ("cbz x0,", "cbz/cbnz"),
+        ("tbz x0, 1,", "tbz/tbnz"),
+    ] {
+        let src = format!("far = 0x8000000000000000\n.text\n.global main\nmain:\n    {op} far\n    ret\n");
+        // Caught one by one so a single run names every encoder that panics.
+        match std::panic::catch_unwind(|| assemble_err(&src)) {
+            Ok(msg)
+                if msg.contains(&format!("{name} target is out of reach (-9223372036854775808 bytes away"))
+                    && msg.contains("line 5") => {}
+            Ok(msg) => failures.push(format!("{op}: message was: {msg}")),
+            Err(_) => failures.push(format!("{op}: panicked")),
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+#[test]
 fn a_typod_macro_name_in_an_operand_names_the_symbol() {
     // The evaluator's `unknown symbol` was swallowed into "invalid
     // immediate", pointing the student at ranges instead of the typo.
