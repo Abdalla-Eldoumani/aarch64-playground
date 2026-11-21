@@ -263,15 +263,23 @@ fn the_window_messages_quote_the_section_window() {
 }
 
 #[test]
-fn a_fill_directive_without_a_size_asks_for_one() {
-    // An empty operand list used to index past its end and panic.
+fn a_fill_directive_without_a_size_reserves_nothing() {
+    // GNU as builds these lines as zero bytes with no message. An empty
+    // operand list used to index past its end and panic.
+    let cpu = Cpu::new();
+    let program = |fill: &str| {
+        format!(".data\na: .byte 1\n{fill}b: .byte 2\n.text\n.global main\nmain:\nret\n")
+    };
+    let want = assemble_hosted(&program(""), &cpu.host).expect("should assemble");
     for name in [".skip", ".zero", ".space"] {
-        let src = format!(".data\n{name}\n.text\n.global main\nmain:\nret\n");
-        let msg = assemble_err(&src);
-        assert!(msg.contains(&format!("{name} needs a size")), "message was: {msg}");
-        assert!(msg.contains("line 2"), "message was: {msg}");
-        // The frame check assembles the source again on its own path.
-        check_source(&src, &Cpu::new().host);
+        let src = program(&format!("{name}\n"));
+        let got = assemble_hosted(&src, &cpu.host)
+            .unwrap_or_else(|e| panic!("{name} should assemble: {e}"));
+        assert_eq!(got.symbols["b"], want.symbols["b"], "{name} moved the next label");
+        assert_eq!(got.data_spans, want.data_spans, "{name} changed the section's size");
+        // The lint and the frame check read the source again on their own paths.
+        lint(&src);
+        check_source(&src, &cpu.host);
     }
 }
 
