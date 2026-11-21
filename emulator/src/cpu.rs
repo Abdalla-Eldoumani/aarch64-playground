@@ -28,7 +28,8 @@ mod system;
 const SNAPSHOT_CAPACITY: usize = 128;
 
 /// Budget for the state a snapshot frame copies WHOLE: the virtual
-/// filesystem, the queued stdin, and the open-file paths. Registers,
+/// filesystem, the queued stdin, the open-file paths, and the qsort and
+/// bsearch calls in flight. Registers,
 /// memory and the heap go in as undo logs of what the step changed, but
 /// these are real copies taken on every step, so a program holding
 /// megabytes of them paid that price per instruction (100k steps with a
