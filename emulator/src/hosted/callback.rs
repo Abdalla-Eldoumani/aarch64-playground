@@ -25,6 +25,11 @@ impl CallbackState {
     pub fn is_idle(&self) -> bool {
         self.jobs.is_empty()
     }
+
+    /// The bytes a step-back frame copies of the calls in flight.
+    pub fn copied_bytes(&self) -> usize {
+        self.jobs.len() * std::mem::size_of::<Job>()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
