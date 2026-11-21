@@ -247,9 +247,11 @@ impl Memory {
     /// feeds, without touching the dirty log (nothing changed for the
     /// UI to tint). memcmp/strncmp walk a guest-chosen length over
     /// mapped memory, and unpriced reads would let one call do
-    /// megabytes of work per step the runaway budget never saw.
+    /// megabytes of work per step the runaway budget never saw. The read
+    /// is host work too, so a loop of large compares hands its run back.
     pub fn note_bulk_read(&mut self, len: u64) {
         self.written = self.written.saturating_add(len);
+        self.note_host_work(len);
     }
 
     /// Count work a library call did over a guest-chosen size that the
