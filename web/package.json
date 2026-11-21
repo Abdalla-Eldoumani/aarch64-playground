@@ -132,7 +132,7 @@
   },
   "overrides": {
     "@typescript-eslint/typescript-estree": {
-      "minimatch": "11.0.6"
+      "minimatch": "11.0.8"
     },
     "dompurify": "3.4.17",
     "postcss": "8.5.33"
