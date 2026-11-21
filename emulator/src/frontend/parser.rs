@@ -196,9 +196,9 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
     let is_word = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
     let name = |n: &str, k: usize| format!(".L{n}_fb{k}");
     // Definitions of each number so far, and the forward references,
-    // checked once all are counted.
+    // checked once all are counted. Reads go through `entry` too, as a
+    // number not seen yet counts 0 either way, which builds smaller.
     let mut seen: HashMap<&str, usize> = HashMap::new();
-    let count = |seen: &HashMap<&str, usize>, n: &str| seen.get(n).copied().unwrap_or(0);
     let mut forward: Vec<(&str, usize, usize)> = Vec::new();
     let mut out = String::with_capacity(text.len());
     for (idx, line) in text.split('\n').enumerate() {
@@ -244,7 +244,7 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
                 *k += 1;
                 out.push_str(&name(word, *k));
             } else if !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && (last == "b" || last == "f") {
-                let k = count(&seen, digits);
+                let k = *seen.entry(digits).or_insert(0);
                 if last == "b" && k == 0 {
                     return Err(err(
                         idx + 1,
@@ -267,7 +267,7 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
         }
     }
     for &(n, k, line) in &forward {
-        if count(&seen, n) < k {
+        if *seen.entry(n).or_insert(0) < k {
             return Err(err(
                 line,
                 &format!(
