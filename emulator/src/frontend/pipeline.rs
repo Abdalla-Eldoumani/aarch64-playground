@@ -1668,6 +1668,30 @@ mod tests {
     use std::collections::HashMap;
 
     #[test]
+    fn an_equate_redefined_line_after_line_assembles_in_time_in_line_with_the_lines() {
+        // Each `x = x + 1` reads the definition above it, and `x = y + 1`
+        // reads a name defined once. A lookup that walks every earlier
+        // definition of x makes the first quadratic in the line count while
+        // the second stays linear, so the two must stay close at every size.
+        let host = crate::cpu::Cpu::new().host;
+        let time = |body: &str, n: usize| {
+            let lines = format!("x = {body}\n").repeat(n);
+            let src = format!(".data\ny = 0\nx = 0\n{lines}.text\n.global main\nmain: ret\n");
+            let started = std::time::Instant::now();
+            super::assemble_hosted(&src, &host).expect("assembles");
+            started.elapsed()
+        };
+        let mut slow = Vec::new();
+        for n in [20_000, 40_000, 80_000] {
+            let (own, other) = (time("x + 1", n), time("y + 1", n));
+            if own > other * 5 + std::time::Duration::from_millis(100) {
+                slow.push((n, own, other));
+            }
+        }
+        assert!(slow.is_empty(), "(lines, reading x, reading y) {slow:?}");
+    }
+
+    #[test]
     fn a_host_address_is_anywhere_in_the_64_kib_window_above_the_stubs() {
         // 0xFFFF_1000 is past the 4 KiB stub table yet inside the window.
         assert!(!is_host_address(0xFFFE_FFFF));
