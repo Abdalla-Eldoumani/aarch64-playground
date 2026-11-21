@@ -214,6 +214,13 @@ pub const SESSION_CAP_MESSAGE: &str =
 /// lifetime ceiling on bulk bytes lands at MAX_TOTAL_STEPS * 16.
 pub const BULK_BYTES_PER_STEP: u64 = 16;
 
+/// Most work library calls may do inside one `run_until` before it hands
+/// control back (`Memory::note_host_work`: bytes walked, read or
+/// formatted, free-list entries scanned), so the host reads Pause and
+/// Reset at least this often. The work is not charged to the step budget:
+/// that would move the step where a long program meets the ceiling.
+pub const MAX_HOST_WORK_PER_RUN: u64 = 16 << 20;
+
 /// Result of a single step.
 #[derive(Debug, Clone)]
 pub struct StepResult {
