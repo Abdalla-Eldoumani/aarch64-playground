@@ -1421,7 +1421,7 @@ fn string_and_file_calls_take_time_in_step_with_what_they_read() {
         let src = library_loop("", 16, 2000, open, "mov x0, x19\n ldr x1, =buf\n mov x2, 1\n mov x8, 63\n svc 0");
         let took = time_to_finish(&src, vec![b'A'; 16 * size as usize]);
         if took >= budget {
-            slow.push(format!("2,000 reads, {} KiB file: {took:?}", 16 * size >> 10));
+            slow.push(format!("2,000 reads, {} KiB file: {took:?}", (16 * size) >> 10));
         }
     }
     assert!(slow.is_empty(), "over {budget:?}: {slow:#?}");
