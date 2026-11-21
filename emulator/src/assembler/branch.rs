@@ -191,8 +191,8 @@ fn resolve_branch_target(
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
             .ok_or_else(|| undefined_label(ln, target))?;
-        // pc is positive, so an overflow is below i64::MIN: out of reach.
-        Ok((*addr as i64).checked_sub(pc as i64).unwrap_or(i64::MIN))
+        // The PC wraps at 2^64, so the distance does too.
+        Ok(addr.wrapping_sub(pc) as i64)
     }
 }
 
