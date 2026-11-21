@@ -40,12 +40,12 @@ const SNAPSHOT_CAPACITY: usize = 128;
 /// step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
 
-/// Budget for what the ring's memory undo logs hold together. A frame's log
-/// costs about what its step wrote, a few bytes on almost every step, but
-/// one library call can write megabytes (a memset, a memmove), and 128 such
-/// frames could hold gigabytes. Past the budget the oldest frames are
-/// dropped, so step-back reaches fewer steps behind such calls. The site's
-/// programs hold at most about 1 MiB.
+/// Budget for what the ring's bulk memory undo logs, those past 64 KiB,
+/// hold together. A frame's log costs about what its step wrote, a few
+/// bytes on almost every step, but one library call can write megabytes (a
+/// memset, a memmove), and 128 such frames could hold gigabytes. Past the
+/// budget the oldest frames are dropped, so step-back reaches fewer steps
+/// behind such calls. The site's programs hold at most about 1 MiB.
 pub const MAX_SNAPSHOT_LOG_BYTES: usize = 32 * 1024 * 1024;
 
 pub use crate::layout::{
