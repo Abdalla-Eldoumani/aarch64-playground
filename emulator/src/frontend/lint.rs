@@ -955,6 +955,41 @@ ret
     }
 
     #[test]
+    fn hygiene_warnings_stop_at_a_cap_with_one_line_counting_the_rest() {
+        // m4 copies the text after `#` as it is, so none of its own caps sees
+        // these uses, and each one would be a warning quoting the whole body.
+        let long = "x".repeat(1024);
+        let huge = "x".repeat(300 * 1024);
+        let shapes = [
+            (long.as_str(), "#", "", 1_000),
+            (long.as_str(), "#", "", 2_000),
+            (long.as_str(), "#", "", 4_000),
+            ("1", "#", "", 4_000),
+            ("1", ".string \"", "\"", 4_000),
+            (huge.as_str(), "#", "", 1),
+        ];
+        let mut over = Vec::new();
+        for (body, lead, tail, uses) in shapes {
+            let src = format!("define(a, {body})\n.text\nmain:\n{lead}{}{tail}\nret\n", " a".repeat(uses));
+            let started = std::time::Instant::now();
+            let w = lint(&src);
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "{uses} uses took {:?}",
+                started.elapsed()
+            );
+            let kept = w.len().saturating_sub(1);
+            let bytes: usize = w[..kept].iter().map(|w| w.message.len()).sum();
+            let closing = w.last().map_or("", |w| w.message.as_str());
+            let counted = closing.starts_with(&format!("{} more macro warning", uses - kept));
+            if kept > 1_000 || bytes > 256 * 1024 || !counted || w.last().map(|w| w.line) != Some(4) {
+                over.push((body.len(), uses, w.len(), bytes + closing.len()));
+            }
+        }
+        assert!(over.is_empty(), "(body bytes, uses, warnings, message bytes) {over:?}");
+    }
+
+    #[test]
     fn macro_shadowing_a_register_warns_at_its_define() {
         let src = "define(x0, x19)\n.text\nmain:\nret\n";
         let w = lint_lines(src);
