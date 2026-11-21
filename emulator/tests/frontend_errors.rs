@@ -317,7 +317,7 @@ fn a_branch_to_a_symbol_past_the_signed_range_is_out_of_reach() {
         // Caught one by one so a single run names every encoder that panics.
         match std::panic::catch_unwind(|| assemble_err(&src)) {
             Ok(msg)
-                if msg.contains(&format!("{name} target is out of reach (-9223372036854775808 bytes away"))
+                if msg.contains(&format!("{name} target is out of reach (9223372036850581504 bytes away"))
                     && msg.contains("line 5") => {}
             Ok(msg) => failures.push(format!("{op}: message was: {msg}")),
             Err(_) => failures.push(format!("{op}: panicked")),
