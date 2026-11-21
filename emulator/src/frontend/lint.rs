@@ -1041,6 +1041,20 @@ ret
     }
 
     #[test]
+    fn hygiene_closing_line_sits_at_the_lowest_line_left_out() {
+        // Define sites are checked before the source walk, so the first
+        // warning left out (line 12) sits below ten others left out after it.
+        let src = format!(
+            "define(x0, a)\n{}define(x1, {})\n",
+            ".string \"x0\"\n".repeat(10),
+            "y".repeat(300 * 1024)
+        );
+        let w = lint(&src);
+        let closing = w.iter().find(|w| w.message.contains("more macro warning")).expect("a closing line");
+        assert_eq!((closing.line, closing.message.starts_with("11 more")), (2, true), "{w:?}");
+    }
+
+    #[test]
     fn macro_shadowing_a_register_warns_at_its_define() {
         let src = "define(x0, x19)\n.text\nmain:\nret\n";
         let w = lint_lines(src);
