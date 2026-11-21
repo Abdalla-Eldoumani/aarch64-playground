@@ -198,6 +198,7 @@ impl HeapState {
 /// malloc(x0 = size) -> x0 = block address, or NULL when the window is
 /// exhausted or the request is larger than the window.
 pub fn malloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    note_free_list(ctx);
     let size = ctx.regs.read_gpr(0, true);
     let addr = ctx.heap.alloc(size).unwrap_or(0);
     ctx.regs.write_gpr(0, true, addr);
@@ -209,6 +210,7 @@ pub fn malloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 /// overflows, and a wrapped small allocation would hand the program a
 /// buffer far shorter than it asked for.
 pub fn calloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    note_free_list(ctx);
     let nmemb = ctx.regs.read_gpr(0, true);
     let size = ctx.regs.read_gpr(1, true);
     let addr = match nmemb.checked_mul(size).and_then(|total| {
@@ -232,6 +234,7 @@ pub fn calloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 /// original block alive. A request that fits the block already held is
 /// answered in place, the way glibc splits a chunk rather than moving it.
 pub fn realloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    note_free_list(ctx);
     let ptr = ctx.regs.read_gpr(0, true);
     let size = ctx.regs.read_gpr(1, true);
     if ptr == 0 {
@@ -269,12 +272,19 @@ pub fn realloc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 /// free(x0 = address). free(NULL) is a no-op per C; anything that is not
 /// a live malloc block halts with a plain-language diagnosis.
 pub fn free(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    note_free_list(ctx);
     let addr = ctx.regs.read_gpr(0, true);
     if addr == 0 {
         return Ok(HostOutcome::Continue);
     }
     release_or_halt(ctx, addr, "free")?;
     Ok(HostOutcome::Continue)
+}
+
+/// First fit walks the free list and an insert or a removal shifts it, so
+/// a heap call costs up to its length, which the program's frees set.
+fn note_free_list(ctx: &HostContext<'_>) {
+    ctx.mem.note_host_work(ctx.heap.free.len() as u64);
 }
 
 /// The halt for a pointer free/realloc cannot take: which call saw it,
