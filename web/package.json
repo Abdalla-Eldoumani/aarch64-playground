@@ -124,7 +124,7 @@
     "jsdom": "31.0.1",
     "lighthouse": "13.5.0",
     "playwright": "1.65.1",
-    "postcss": "8.5.32",
+    "postcss": "8.5.33",
     "size-limit": "14.3.0",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
@@ -135,6 +135,6 @@
       "minimatch": "11.0.6"
     },
     "dompurify": "3.4.17",
-    "postcss": "8.5.32"
+    "postcss": "8.5.33"
   }
 }
