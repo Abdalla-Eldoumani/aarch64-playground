@@ -1338,7 +1338,8 @@ fn a_run_hands_back_once_its_library_calls_have_done_a_run_of_work() {
     // The most library-call work one run_until_break may do before it
     // returns, so the host can read Pause and Reset.
     const LIMIT: u64 = 16 << 20;
-    let open = "ldr x0, =path\n ldr x1, =mode\n bl fopen\n mov x19, x0";
+    assert_eq!(MAX_HOST_WORK_PER_RUN, LIMIT);
+    let open ="ldr x0, =path\n ldr x1, =mode\n bl fopen\n mov x19, x0";
     let mut over = Vec::new();
     for size in [16u64 << 10, 128 << 10, 512 << 10] {
         let loops = [
