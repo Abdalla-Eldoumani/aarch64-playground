@@ -1348,6 +1348,8 @@ fn a_run_hands_back_once_its_library_calls_have_done_a_run_of_work() {
             ("snprintf with size 0", "", "mov x0, 0\n mov x1, 0\n ldr x2, =fmt\n ldr x3, =buf\n bl snprintf".to_string()),
             ("strtok", "", "ldr x0, =buf\n ldr x1, =comma\n bl strtok".to_string()),
             ("fwrite to a read-only stream", open, format!("ldr x0, =buf\n mov x1, 1\n ldr x2, ={size}\n mov x3, x19\n bl fwrite")),
+            ("memcmp of equal buffers", "", format!("ldr x0, =buf\n ldr x1, =buf\n ldr x2, ={size}\n bl memcmp")),
+            ("strncmp of equal strings", "", format!("ldr x0, =buf\n ldr x1, =buf\n ldr x2, ={size}\n bl strncmp")),
         ];
         for (name, setup, call) in loops {
             // Four limits' worth, so a run that never hands back finishes.
