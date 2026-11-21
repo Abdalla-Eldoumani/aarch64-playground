@@ -280,6 +280,7 @@ pub fn sys_write(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     for i in 0..count {
         bytes.push(ctx.mem.read_u8(buf.wrapping_add(i))?);
     }
+    ctx.mem.note_host_work(count);
     let n = write_to_fd(ctx, fd, &bytes);
     ctx.regs.write_gpr(0, true, n as u64);
     Ok(HostOutcome::Continue)
@@ -376,7 +377,8 @@ pub fn sys_read(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     };
     let path = file.path.clone();
     let offset = file.offset as usize;
-    let data = ctx.vfs.get(&path).cloned().unwrap_or_default();
+    // Borrowed, as fgets does: a clone costs the whole file on every call.
+    let data = ctx.vfs.get(&path).map_or(&[][..], Vec::as_slice);
     let available = data.len().saturating_sub(offset);
     let n = (count as usize).min(available);
     for i in 0..n {
