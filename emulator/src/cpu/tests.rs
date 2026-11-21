@@ -1295,3 +1295,133 @@ fn a_paused_ring_leaves_no_step_back_across_a_real_time_sleep() {
     assert_eq!(run_sleeps(&mut cpu, 3), None);
     assert!(!cpu.can_step_back());
 }
+
+/// `main` with `buf` holding `fill` bytes of 'A', then `call` repeated
+/// `rounds` times with the round count in x20, then a return. `data` adds
+/// to the data section.
+fn library_loop(data: &str, fill: u64, rounds: u64, setup: &str, call: &str) -> String {
+    format!(
+        "
+        .data
+path:   .asciz \"in.txt\"
+mode:   .asciz \"r\"
+fmt:    .asciz \"%s\"
+comma:  .asciz \",\"
+{data}
+        .bss
+buf:    .skip   {}
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldr     x0, =buf
+        mov     w1, 65
+        ldr     x2, ={fill}
+        bl      memset
+        {setup}
+        mov     x20, 0
+        ldr     x21, ={rounds}
+again:  {call}
+        add     x20, x20, 1
+        cmp     x20, x21
+        b.lo    again
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+",
+        fill + 16
+    )
+}
+
+#[test]
+fn a_run_hands_back_once_its_library_calls_have_done_a_run_of_work() {
+    // The most library-call work one run_until_break may do before it
+    // returns, so the host can read Pause and Reset.
+    const LIMIT: u64 = 16 << 20;
+    let open = "ldr x0, =path\n ldr x1, =mode\n bl fopen\n mov x19, x0";
+    let mut over = Vec::new();
+    for size in [16u64 << 10, 128 << 10, 512 << 10] {
+        let loops = [
+            ("write to a closed fd", "", format!("mov x0, 99\n ldr x1, =buf\n ldr x2, ={size}\n mov x8, 64\n svc 0")),
+            ("strlen", "", "ldr x0, =buf\n bl strlen".to_string()),
+            ("snprintf with size 0", "", "mov x0, 0\n mov x1, 0\n ldr x2, =fmt\n ldr x3, =buf\n bl snprintf".to_string()),
+            ("strtok", "", "ldr x0, =buf\n ldr x1, =comma\n bl strtok".to_string()),
+            ("fwrite to a read-only stream", open, format!("ldr x0, =buf\n mov x1, 1\n ldr x2, ={size}\n mov x3, x19\n bl fwrite")),
+        ];
+        for (name, setup, call) in loops {
+            // Four limits' worth, so a run that never hands back finishes.
+            let mut cpu = load_hosted(&library_loop("", size, 4 * LIMIT / size, setup, &call));
+            cpu.snapshots_paused = true;
+            assert!(cpu.upload_vfs_file("in.txt".into(), b"x".to_vec()));
+            let started = std::time::Instant::now();
+            let r = cpu.run_until_break(u32::MAX).unwrap();
+            let rounds = cpu.regs.read_gpr(20, true);
+            if r.halted || rounds * size > LIMIT + size {
+                over.push(format!("{name}, {size} bytes a call: {rounds} calls, halted {}", r.halted));
+            }
+            assert!(started.elapsed().as_secs() < 10, "{name}, {size} bytes a call");
+        }
+    }
+    // malloc and free walk and shift the free list: `holes` 16-byte gaps
+    // a 32-byte request never fits.
+    for holes in [1u64 << 10, 8 << 10, 64 << 10] {
+        let per_round = 2 * holes;
+        let mut cpu = load_hosted(&library_loop("", 16, 4 * LIMIT / per_round, "", "mov x0, 32\n bl malloc\n bl free"));
+        cpu.snapshots_paused = true;
+        let blocks: Vec<u64> = (0..2 * holes).map(|_| cpu.heap.alloc(16).unwrap()).collect();
+        for at in blocks.iter().step_by(2) {
+            cpu.heap.release(*at).unwrap();
+        }
+        let r = cpu.run_until_break(u32::MAX).unwrap();
+        let rounds = cpu.regs.read_gpr(20, true);
+        if r.halted || rounds * per_round > LIMIT + per_round {
+            over.push(format!("malloc and free over {holes} holes: {rounds} rounds, halted {}", r.halted));
+        }
+    }
+    assert!(over.is_empty(), "one run did over {LIMIT} units of library work: {over:#?}");
+}
+
+/// How long `src` takes to run to its end, with in.txt holding `file`.
+fn time_to_finish(src: &str, file: Vec<u8>) -> std::time::Duration {
+    let mut cpu = load_hosted(src);
+    cpu.snapshots_paused = true;
+    assert!(cpu.upload_vfs_file("in.txt".into(), file));
+    let started = std::time::Instant::now();
+    let r = cpu.run_until_break(u32::MAX).unwrap();
+    assert!(r.halted && r.error.is_none(), "{:?}", r.error);
+    started.elapsed()
+}
+
+#[test]
+fn string_and_file_calls_take_time_in_step_with_what_they_read() {
+    // Each call reads under a megabyte; the slow forms did work that grew
+    // with the product of two sizes, or with the whole file per read.
+    let budget = std::time::Duration::from_millis(250);
+    let mut slow = Vec::new();
+    for size in [64u64 << 10, 128 << 10, 256 << 10] {
+        // A haystack of 'A's and a needle of 'A's that ends in 'B'.
+        let data = format!("hay: .space {}, 65\n .byte 0\nneedle: .space {}, 65\n .asciz \"B\"", 2 * size, size - 1);
+        let src = library_loop(&data, 16, 1, "", "ldr x0, =hay\n ldr x1, =needle\n bl strstr");
+        let took = time_to_finish(&src, Vec::new());
+        if took >= budget {
+            slow.push(format!("strstr, {size}-byte needle: {took:?}"));
+        }
+
+        // A token of 'A's split on a delimiter string of commas.
+        let data = format!("token: .space {}, 65\n .byte 0\ndelims: .space {size}, 44\n .byte 0", 256 << 10);
+        let src = library_loop(&data, 16, 1, "", "ldr x0, =token\n ldr x1, =delims\n bl strtok");
+        let took = time_to_finish(&src, Vec::new());
+        if took >= budget {
+            slow.push(format!("strtok, {size} delimiters: {took:?}"));
+        }
+
+        // 2,000 one-byte reads of a file sixteen times the size.
+        let open = "mov x0, -100\n ldr x1, =path\n mov x2, 0\n mov x8, 56\n svc 0\n mov x19, x0";
+        let src = library_loop("", 16, 2000, open, "mov x0, x19\n ldr x1, =buf\n mov x2, 1\n mov x8, 63\n svc 0");
+        let took = time_to_finish(&src, vec![b'A'; 16 * size as usize]);
+        if took >= budget {
+            slow.push(format!("2,000 reads, {} KiB file: {took:?}", 16 * size >> 10));
+        }
+    }
+    assert!(slow.is_empty(), "over {budget:?}: {slow:#?}");
+}
