@@ -86,8 +86,17 @@ pub struct Snapshot<R, M, H, F> {
     pub call: Option<CallRecord>,
 }
 
-/// 128 frames of this are a quarter of the budget `Cpu` gives the ring.
-const REUSED_LOG_BYTES: usize = 64 * 1024;
+/// A memory log past this is a bulk step's: it counts against the ring's
+/// budget, and is given back rather than reused when its frame comes round,
+/// so the ring keeps a bulk step's buffers only while it holds that step.
+/// Smaller logs go uncounted, which spares every other step the sums; 128
+/// of them hold at most a quarter of the budget `Cpu` gives the ring.
+const BULK_LOG_BYTES: usize = 64 * 1024;
+
+/// What a frame's memory log counts against the ring's budget.
+fn counted(held: usize) -> usize {
+    if held > BULK_LOG_BYTES { held } else { 0 }
+}
 
 /// Fixed-capacity ring of snapshots. Oldest frame falls off when the
 /// buffer is full, or when the frames' memory logs together pass the
@@ -98,9 +107,9 @@ const REUSED_LOG_BYTES: usize = 64 * 1024;
 pub struct SnapshotRing {
     frames: VecDeque<Box<StepFrame>>,
     capacity: usize,
-    /// The most the frames' memory logs may hold together, and what they
-    /// hold. A log is counted once its step is over and stays as it was
-    /// until its frame leaves.
+    /// The most the frames' bulk memory logs may hold together, and what
+    /// they hold. A log is counted once its step is over and stays as it
+    /// was until its frame leaves.
     budget: usize,
     held: usize,
     /// Named save states: keyed checkpoints the user explicitly stashed.
@@ -129,20 +138,18 @@ impl SnapshotRing {
 
     pub fn pop(&mut self) -> Option<Box<StepFrame>> {
         let frame = self.frames.pop_back()?;
-        self.held -= frame.mem.held;
+        self.held -= counted(frame.mem.held);
         Some(frame)
     }
 
     /// The slot for a new newest frame, for the caller to fill: the oldest
-    /// frame once the ring is full, a blank one before that. A memory log
-    /// past `REUSED_LOG_BYTES` is given back rather than reused, so a bulk
-    /// step's buffers stay only while the ring holds that step.
+    /// frame once the ring is full, a blank one before that. A bulk memory
+    /// log is given back rather than reused (`BULK_LOG_BYTES`).
     pub fn push_slot(&mut self) -> &mut StepFrame {
         let slot = if self.frames.len() == self.capacity {
             self.frames.pop_front().map(|mut frame| {
-                let held = frame.mem.held;
-                self.held -= held;
-                if held > REUSED_LOG_BYTES {
+                if frame.mem.held > BULK_LOG_BYTES {
+                    self.held -= frame.mem.held;
                     frame.mem = MemUndo::default();
                 }
                 frame
@@ -155,15 +162,18 @@ impl SnapshotRing {
         &mut self.frames[newest]
     }
 
-    /// Count the `held` bytes of the newest frame's memory log once its step
-    /// is over, then drop the oldest frames until the logs fit the budget.
-    /// A frame over it on its own goes too, and the history starts again
-    /// after its step, as after a step the ring did not record.
+    /// Count the newest frame's memory log, which holds `held` bytes now
+    /// its step is over, when it is a bulk one; then drop the oldest frames
+    /// until the bulk logs fit the budget. A frame over it on its own goes
+    /// too, and the history starts again after its step, as after a step
+    /// the ring did not record.
     pub fn close_newest(&mut self, held: usize) {
-        self.held += held;
-        while self.held > self.budget {
-            let Some(frame) = self.frames.pop_front() else { break };
-            self.held -= frame.mem.held;
+        if held > BULK_LOG_BYTES {
+            self.held += held;
+            while self.held > self.budget {
+                let Some(frame) = self.frames.pop_front() else { break };
+                self.held -= counted(frame.mem.held);
+            }
         }
     }
 
@@ -317,24 +327,25 @@ mod tests {
         s
     }
 
+    const BULK: usize = 2 * BULK_LOG_BYTES;
+
     #[test]
     fn past_the_budget_the_oldest_frames_go() {
         let mut mem = Memory::new();
-        mem.map_page(0x1000);
-        let one = wrote(&mut mem, 4096, 0).mem.held;
+        let one = wrote(&mut mem, BULK, 0).mem.held;
         let mut ring = SnapshotRing::new(8, 3 * one);
         for fd in 1..=5 {
-            ring.push(wrote(&mut mem, 4096, fd));
+            ring.push(wrote(&mut mem, BULK, fd));
         }
-        assert_eq!(ring.len(), 3, "three frames fit the budget");
+        assert_eq!(ring.len(), 3, "three bulk frames fit the budget");
         assert_eq!(ring.held, 3 * one);
         // The newest frames stay, so stepping back goes through them in order.
         assert_eq!(ring.pop().unwrap().next_fd, 5);
         assert_eq!(ring.held, 2 * one);
         ring.push(wrote(&mut mem, 16, 6));
-        assert_eq!(ring.len(), 3, "a small frame fits beside two big ones");
+        assert_eq!((ring.len(), ring.held), (3, 2 * one), "a small frame is not counted");
         // A frame over the budget on its own ends the history.
-        ring.push(wrote(&mut mem, 4 * 4096, 7));
+        ring.push(wrote(&mut mem, 4 * BULK, 7));
         assert!(ring.is_empty());
         assert_eq!(ring.held, 0);
         ring.push(wrote(&mut mem, 16, 8));
@@ -342,14 +353,15 @@ mod tests {
     }
 
     #[test]
-    fn a_full_ring_counts_the_frame_it_recycles_out() {
+    fn a_full_ring_counts_what_its_bulk_frames_hold() {
         let mut mem = Memory::new();
         let mut ring = SnapshotRing::new(2, usize::MAX);
-        for fd in 0..4 {
-            ring.push(wrote(&mut mem, 4096, fd));
+        for fd in 0..5 {
+            ring.push(wrote(&mut mem, if fd % 2 == 0 { BULK } else { 16 }, fd));
         }
-        let left: usize = ring.frames.iter().map(|frame| frame.mem.held).sum();
+        let left: usize = ring.frames.iter().map(|frame| counted(frame.mem.held)).sum();
         assert_eq!(ring.held, left);
+        assert!(left > BULK, "the newest frame is a bulk one");
         ring.clear();
         assert_eq!(ring.held, 0);
     }
@@ -358,15 +370,16 @@ mod tests {
     fn a_recycled_frame_gives_back_a_bulk_steps_log() {
         let mut mem = Memory::new();
         let mut ring = SnapshotRing::new(1, usize::MAX);
-        ring.push(wrote(&mut mem, 2 * REUSED_LOG_BYTES, 0));
-        assert!(ring.held > 2 * REUSED_LOG_BYTES);
+        ring.push(wrote(&mut mem, BULK, 0));
+        assert!(ring.held > BULK);
         // The frame comes round again for a step that writes one byte.
         let slot = ring.push_slot();
         mem.record_undo(&mut slot.mem);
         mem.write_u8(0x1000, 2).unwrap();
         let held = mem.finish_undo(&mut slot.mem).expect("a log was open");
+        assert!(held < BULK_LOG_BYTES, "the log starts over small: {held}");
         ring.close_newest(held);
-        assert!(ring.held < REUSED_LOG_BYTES, "held {}", ring.held);
+        assert_eq!(ring.held, 0);
     }
 
     #[test]
