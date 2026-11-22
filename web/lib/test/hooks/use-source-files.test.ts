@@ -376,4 +376,21 @@ describe("useSourceFiles when storage is full", () => {
     );
     expect(h.count()).toBe(2);
   });
+
+  // A backup write that storage refused leaves the stored backup in charge:
+  // what the restore brings back, and what any undo puts back, is that.
+  it("restores the stored backup, not one storage refused to hold", () => {
+    window.localStorage.setItem(
+      STORE,
+      JSON.stringify([file("a.s", "a", 500), file("big.s", "big", 3000)]),
+    );
+    window.localStorage.setItem(BACKUP, JSON.stringify([file("k.s", "k", 800)]));
+    const h = mount();
+    leave(200);
+    // Closing big.s asks for a backup of it that does not fit.
+    h.save(h.files().filter((f) => f.name !== "big.s"));
+    h.restore();
+    expect(tags([...stored(STORE), ...stored(BACKUP)]), "k.s is still stored").toContain("// k");
+    expect(tags(h.files())).toEqual(["// a", "// k"]);
+  });
 });
