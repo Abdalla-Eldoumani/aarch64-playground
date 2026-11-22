@@ -1394,13 +1394,78 @@ mod tests {
     }
 
     #[test]
-    fn dnl_is_rejected() {
-        rejects(expand("dnl skip to end of line\n"), "unsupported m4 construct: dnl");
+    fn dnl_runs_in_gnu_m4s_order() {
+        let r = exp("dnl skip to end of line\nmov x0, 1\n");
+        assert_eq!(r.text, "mov x0, 1");
+        assert_eq!(r.line_map, vec![2]);
     }
 
     #[test]
-    fn backtick_is_rejected() {
-        rejects(expand("mov x0, `foo'\n"), "unsupported m4 construct: backtick-quoted string");
+    fn a_quote_runs_in_gnu_m4s_order() {
+        assert_eq!(exp("mov x0, `foo'\n").text, "mov x0, foo");
+    }
+
+    #[test]
+    fn a_define_ending_in_dnl_leaves_no_line() {
+        let r = exp("define(m, w0)dnl\n\tmov m, 1\n\tret\n");
+        assert_eq!(r.text, "\tmov w0, 1\n\tret");
+        assert_eq!(r.line_map, vec![2, 3]);
+        assert_eq!(r.define_events, vec![(1, "m".to_string(), Some("w0".to_string()))]);
+    }
+
+    #[test]
+    fn divert_where_a_mnemonic_goes_runs_in_gnu_m4s_order() {
+        // The line pass leaves `divert(-1)` as text, which no encoder takes.
+        let r = exp("divert(-1)\ndefine(fp, x29)\ndivert\n\tmov fp, sp\n");
+        assert_eq!(r.text, "\n\tmov x29, sp");
+        assert_eq!(r.line_map, vec![3, 4]);
+    }
+
+    #[test]
+    fn gnu_m4s_order_strips_the_comments_m4_writes() {
+        // m4 expands inside `//`, `;` and `/* */` comments; the strippers then
+        // take them out of what it wrote, keeping its lines.
+        let r = exp("define(m, w0)dnl\n\tmov m, 1 // m\n/* m\n m */\tret ; m\n");
+        assert_eq!(r.text, "\tmov w0, 1 \n\n\tret ");
+        assert_eq!(r.line_map, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn an_open_block_comment_in_gnu_m4s_order_names_its_source_line() {
+        // dnl takes the first line out of what m4 writes, so the comment opens
+        // on m4's first output line and the editor's second.
+        match expand("dnl a header\n/* open\n\tret\n") {
+            Err(EmuError::PreprocError { line, message }) => {
+                assert_eq!(line, 2);
+                assert!(message.contains("unterminated /* comment"), "message was: {message}");
+            }
+            other => panic!("expected the open comment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn gnu_m4s_order_keeps_bindings_and_assignments() {
+        let r = exp("define(`r', `x19')dnl\ndefine(`r', `x20')dnl\nundefine(`t')dnl\nsize = 8\n\tmov r, size\n");
+        assert_eq!(r.defines.get("r").map(String::as_str), Some("x20"));
+        assert!(r.windowed.contains("r"));
+        assert_eq!(r.define_body_at("r", 1), Some("x19"));
+        assert_eq!(r.assignments.get("size").map(String::as_str), Some("8"));
+        assert_eq!(r.text, "size = 8\n\tmov x20, size");
+    }
+
+    #[test]
+    fn programs_the_line_pass_reads_keep_its_result() {
+        // A label, an assignment or a .req named like a builtin, and a
+        // backtick in a comment, all of which the line pass takes as it always has.
+        for (src, text) in [
+            ("\t.data\ndivert: .word 1\n", "\t.data\ndivert: .word 1"),
+            ("divnum = 4\n", "divnum = 4"),
+            ("divert .req x19\n", "divert .req x19"),
+            ("\tb dnl\ndnl:\n", "\tb dnl\ndnl:"),
+            ("// a comment with dnl and `quote\n\tret\n", "\n\tret"),
+        ] {
+            assert_eq!(exp(src).text, text, "{src:?}");
+        }
     }
 
     #[test]
@@ -1498,8 +1563,8 @@ mod tests {
     fn a_define_may_quote_its_name_and_body() {
         let r = exp("define(`fp', `x29')\nmov x0, fp\n");
         assert_eq!(r.text, "\nmov x0, x29");
-        // Anywhere else a quote is still refused.
-        rejects(expand("mov x0, `fp'\n"), "backtick");
+        // Anywhere else a quote runs in GNU m4's order: what it quotes stays unexpanded.
+        assert_eq!(exp("define(fp, x29)\nmov x0, `fp'\n").text, "\nmov x0, fp");
     }
 
     #[test]
@@ -1539,11 +1604,11 @@ mod tests {
 
     #[test]
     fn macro_arguments_close_on_their_own_line() {
-        rejects(
-            expand("define(sq, `mul $1, $1, $1')\nsq(x0,\n"),
-            "closing `)` on the same line",
-        );
-        rejects(expand("define(sq, `mul $1\n"), "closing `)` is missing");
+        rejects(expand("define(sq, mul $1)\nsq(x0,\n"), "closing `)` on the same line");
+        // With a quote the program runs in GNU m4's order, where they may run
+        // on; a call or a quote left open at the end of the file stops GNU m4.
+        rejects(expand("define(sq, `mul $1, $1, $1')\nsq(x0,\n"), "end of file in argument list");
+        rejects(expand("define(sq, `mul $1\n"), "end of file in string");
     }
 
     #[test]
@@ -1614,13 +1679,18 @@ mod tests {
 
     #[test]
     fn unsupported_construct_error_carries_its_line_number() {
-        let err = expand("mov x0, 1\nmov x1, 2\ndnl skip the rest\n").unwrap_err();
-        match err {
-            EmuError::PreprocError { line, message } => {
-                assert_eq!(line, 3, "the error points at the dnl line");
-                assert!(message.contains("dnl"), "message was: {message}");
+        // The line pass's refusal and GNU m4's order's.
+        for (src, name) in [
+            ("mov x0, 1\nmov x1, 2\nforloop(i, 1, 2, x)\n", "forloop"),
+            ("mov x0, 1\nmov x1, 2\nifdef(`a', b)\n", "ifdef"),
+        ] {
+            match expand(src).unwrap_err() {
+                EmuError::PreprocError { line, message } => {
+                    assert_eq!(line, 3, "the error points at the {name} line");
+                    assert_eq!(message, format!("unsupported m4 construct: {name}"));
+                }
+                other => panic!("expected PreprocError, got {other:?}"),
             }
-            other => panic!("expected PreprocError, got {other:?}"),
         }
     }
 
