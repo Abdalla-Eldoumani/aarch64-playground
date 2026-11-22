@@ -218,9 +218,15 @@ while the program runs, because one jump serves every call to that function.
 
 The site runs programs from strangers, so the emulator enforces its limits
 itself, however the program arrived: at most 10 million instructions per run,
-32 MiB of mapped memory, an 8 MiB stack, and 4 MiB of output. Each one stops
-the program with a plain message, never a crash. [security.md](security.md)
-lists them all.
+32 MiB of mapped memory, an 8 MiB stack, and 4 MiB of output. Assembling has
+its own: m4 stops once the text its rounds build, over the whole source,
+passes 32 MiB, and filled `.space` and `.skip` lines are refused at the line
+that would take a section past its 1 MiB window. Each one stops the program
+with a plain message, never a crash. Three more caps keep the tab answering
+without stopping the program: the check that runs when a program loads keeps
+at most 1,000 macro warnings, a run hands control back to the page once its
+library calls have done 16 MiB of work, and step back's records of large
+writes share 32 MiB. [security.md](security.md) lists them all.
 
 ## Step back and save states
 
@@ -233,8 +239,12 @@ Each step records a frame in a ring of the last 128 steps: what the step
 changed in the registers, memory, the heap, and the call stack, and the state
 of input and files. **back** undoes the newest frame. The ring stops recording, and clears,
 while a terminal program has the keyboard in raw mode or runs live in the
-terminal pane, and once a frame's input and file state passes 4 KiB, so step
-back never jumps over steps it did not record. The output is never rolled
+terminal pane, and once a frame's input and file state passes 4 KiB (the
+`qsort` and `bsearch` calls in flight count toward it), so step back never
+jumps over steps it did not record. A frame whose memory record passes 64 KiB,
+a step such as a `memset` over a large buffer, counts against a 32 MiB budget
+the ring's large records share. Past it the oldest frames go, so step back
+reaches fewer steps behind such calls. The output is never rolled
 back, but the count of bytes shown is, so the console trims itself to what
 the restored frame had printed. Named save states live beside the ring, so
 stepping never pushes one out.
