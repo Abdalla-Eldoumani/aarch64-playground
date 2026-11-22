@@ -9,6 +9,7 @@
 //! It runs `define`, `undefine`, `dnl`, `divert` (-1 and 0), `divnum` and
 //! `changecom`; each other GNU builtin is refused by name.
 
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::rc::Rc;
 
@@ -134,9 +135,20 @@ enum Kind {
 
 struct Token {
     kind: Kind,
-    text: Vec<u8>,
+    text: Cow<'static, [u8]>,
     line: usize,
 }
+
+/// Every byte value, for one-byte tokens to borrow from.
+static BYTES: [u8; 256] = {
+    let mut all = [0u8; 256];
+    let mut i = 0;
+    while i < 256 {
+        all[i] = i as u8;
+        i += 1;
+    }
+    all
+};
 
 /// Text m4 reads before the rest of the file: an expansion, or characters
 /// a delimiter match gave back. Its bytes count as `line`, the line m4 was
@@ -346,7 +358,7 @@ impl<'a> Scanner<'a> {
                 }
                 text.push(c);
             }
-            return Ok(Some(Token { kind: Kind::Str, text, line }));
+            return Ok(Some(Token { kind: Kind::Str, text: Cow::Owned(text), line }));
         }
         if c.is_ascii_alphabetic() || c == b'_' {
             let mut text = vec![c];
@@ -354,7 +366,7 @@ impl<'a> Scanner<'a> {
                 text.push(c);
                 self.next_char();
             }
-            return Ok(Some(Token { kind: Kind::Word, text, line }));
+            return Ok(Some(Token { kind: Kind::Word, text: Cow::Owned(text), line }));
         }
         if !self.matches(c, LQUOTE, true)? {
             let kind = match c {
@@ -363,7 +375,8 @@ impl<'a> Scanner<'a> {
                 b')' => Kind::Close,
                 _ => Kind::Simple,
             };
-            return Ok(Some(Token { kind, text: vec![c], line }));
+            // Most tokens are one byte: borrow it rather than allocate.
+            return Ok(Some(Token { kind, text: Cow::Borrowed(std::slice::from_ref(&BYTES[usize::from(c)])), line }));
         }
         let mut depth = 1;
         let mut text = Vec::new();
@@ -390,7 +403,7 @@ impl<'a> Scanner<'a> {
                 text.push(c);
             }
         }
-        Ok(Some(Token { kind: Kind::Str, text, line }))
+        Ok(Some(Token { kind: Kind::Str, text: Cow::Owned(text), line }))
     }
 
     /// GNU m4's peek_token: is the next token a `(`?
@@ -457,10 +470,10 @@ impl<'a> Scanner<'a> {
 
     fn expand_token(&mut self, arg: Option<&mut Vec<u8>>, token: Token) -> Result<(), EmuError> {
         if token.kind == Kind::Word {
-            if let Some(found) = self.macros.get(&token.text).cloned() {
+            if let Some(found) = self.macros.get(token.text.as_ref()).cloned() {
                 let blind = matches!(found, Macro::Builtin { blind: true, .. });
                 if !blind || self.open_paren_next()? {
-                    return self.expand_macro(token.text, found, token.line);
+                    return self.expand_macro(token.text.into_owned(), found, token.line);
                 }
             }
         }
