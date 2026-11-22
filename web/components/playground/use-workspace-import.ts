@@ -144,7 +144,8 @@ export function useWorkspaceImport({
   // The replaced text also goes to recents, so the question is only about
   // work the student may not know is kept there; an untouched example is
   // swapped without asking. Every load replaces the checks, so any checks ask too.
-  // False when the student says no, so a caller can leave its own step undone.
+  // False when the student says no or the load is refused, so a caller can
+  // leave its own step undone.
   const loadProgramWithConfirm = useCallback(
     (payload: HandoffPayload): boolean => {
       const edited =
@@ -155,8 +156,7 @@ export function useWorkspaceImport({
       ) {
         return false;
       }
-      loadProgram(payload);
-      return true;
+      return loadProgram(payload);
     },
     [source, checks, loadProgram],
   );
