@@ -73,6 +73,10 @@ const failed = (error: string, error_line?: number) => ({
 
 const UNKNOWN_IFDEF = "unsupported m4 construct: ifdef";
 
+const NO_MAIN =
+  "undefined reference to `main'\nno line defines `main:`, where every program starts: " +
+  "add `.global main` and then `main:` above the first instruction";
+
 const LOADS = [
   { name: "assemble_and_load", load: (emu: EmulatorInstance, source: string) => emu.assemble_and_load(source) },
   {
@@ -122,13 +126,7 @@ describe.each(LOADS)("$name", ({ load }) => {
   // not a missing one.
   it("reports line 0 for a program with no main", () => {
     withEmulator((emu) => {
-      expect(load(emu, "        .text\nfoo:    ret\n")).toStrictEqual(
-        failed(
-          "undefined reference to `main'\nno line defines `main:`, where every program starts: " +
-            "add `.global main` and then `main:` above the first instruction",
-          0,
-        ),
-      );
+      expect(load(emu, "        .text\nfoo:    ret\n")).toStrictEqual(failed(NO_MAIN, 0));
     });
   });
 
@@ -136,7 +134,21 @@ describe.each(LOADS)("$name", ({ load }) => {
   // CODE_BASE with no line map and no frames.
   it("loads a bare-metal program with no line map", () => {
     withEmulator((emu) => {
-      expect(load(emu, "mov x0, 5\nadd x1, x0, 2\n")).toStrictEqual(succeeded(2));
+      expect(load(emu, "_start: mov x0, 5\nadd x1, x0, 2\n")).toStrictEqual(succeeded(2));
+      expect(Array.from(emu.get_line_map())).toEqual([]);
+      expect(Array.from(emu.frame_layout())).toEqual(NO_FRAME_LAYOUT);
+    });
+  });
+
+  // Without `_start:` a bare-metal program has nowhere to start, so it fails
+  // the link as a hosted one with no main does, at line 0. The program
+  // already loaded stays, as after a failed bare-metal assemble.
+  it("refuses a bare-metal program with no _start", () => {
+    withEmulator((emu) => {
+      expect(load(emu, LOADED)).toStrictEqual(succeeded(6));
+      emu.step();
+      expect(load(emu, "mov x0, 5\nadd x1, x0, 2\n")).toStrictEqual(failed(NO_MAIN, 0));
+      expect(emu.get_pc()).toBe(BigInt(CODE_BASE + 4));
       expect(Array.from(emu.get_line_map())).toEqual([]);
       expect(Array.from(emu.frame_layout())).toEqual(NO_FRAME_LAYOUT);
     });
