@@ -518,7 +518,7 @@ impl Emulator {
                 }
             }
         } else {
-            match assembler::assemble(source) {
+            match assembler::assemble_bare(source) {
                 Ok(code) => {
                     let count = code.len();
                     self.cpu.reset();
@@ -530,7 +530,10 @@ impl Emulator {
                         instruction_count: count,
                     }).unwrap()
                 }
-                Err(errors::EmuError::AssemblyError { line, message }) => {
+                Err(
+                    errors::EmuError::AssemblyError { line, message }
+                    | errors::EmuError::LinkError { line, message },
+                ) => {
                     serde_wasm_bindgen::to_value(&AssembleResultJs {
                         success: false,
                         error: Some(message),
