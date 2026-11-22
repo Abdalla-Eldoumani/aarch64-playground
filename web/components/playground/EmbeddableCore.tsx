@@ -54,6 +54,12 @@ function nameForRecents(source: string): string {
     : `snippet ${new Date().toLocaleTimeString()}`;
 }
 
+// What a program load says when storage has no room for its helper files.
+const HELPERS_NOT_SAVED =
+  "this program's helper files are not saved: the browser's storage for this site is full. a reload brings back the helper files you had saved";
+const LOAD_REFUSED =
+  "program not loaded: a copy of your helper files could not be saved, because the browser's storage for this site is full. your files are unchanged";
+
 // ---------------------------------------------------------------------------
 // Inner core: mounted from the first render, so a press or text that engages a
 // frame lands on the control it was aimed at. The hub's worker and wasm wait
@@ -131,6 +137,7 @@ export function EmbeddableCore({
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
+  const toast = useToast();
   const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
   // Latest-value refs for the buffers, synced with the others further down.
   // Declared here because the effects and callbacks below already read them.
@@ -151,8 +158,8 @@ export function EmbeddableCore({
   useEffect(() => {
     if (startFiles === undefined || startFilesApplied.current) return;
     startFilesApplied.current = true;
-    setExtraFiles(startFiles, { load: true });
-  }, [startFiles, setExtraFiles]);
+    if (setExtraFiles(startFiles, { load: true }) !== "stored") toast.error(HELPERS_NOT_SAVED);
+  }, [startFiles, setExtraFiles, toast]);
 
   // Jump to the first error in the file that owns it. The nonce re-fires the
   // jump when the student re-assembles unchanged code.
@@ -181,7 +188,6 @@ export function EmbeddableCore({
       }
     }
   }, [emu.assemblyErrors]);
-  const toast = useToast();
 
   // A dot set before assembling can sit where nothing runs (below the last
   // instruction). The assemble drops it, and the student is told which one
@@ -249,7 +255,17 @@ export function EmbeddableCore({
   // Declared here because loadProgram clears it.
   const lastRunSourceRef = useRef<string | null>(null);
   const loadProgram = useCallback(
-    (payload: HandoffPayload) => {
+    (payload: HandoffPayload): boolean => {
+      // A program handoff replaces the whole workspace: stale helper
+      // files from earlier work must not concatenate into the new
+      // program at its next assemble. The load keeps them restorable, and
+      // goes first so one that cannot changes nothing.
+      const helpers = setExtraFiles(payload.files ?? [], { load: true });
+      if (helpers === "refused") {
+        toast.error(LOAD_REFUSED);
+        return false;
+      }
+      if (helpers === "unsaved") toast.error(HELPERS_NOT_SAVED);
       // The replaced buffer stays recoverable through recents; entries are
       // keyed by content hash there, so repeats do not stack up.
       const prev = sourceRef.current;
@@ -266,10 +282,6 @@ export function EmbeddableCore({
       // a reading program waits for the student at the console).
       seedFromPayload(payload);
       setSource(payload.source);
-      // A program handoff replaces the whole workspace: stale helper
-      // files from earlier work must not concatenate into the new
-      // program at its next assemble. The load keeps them restorable.
-      setExtraFiles(payload.files ?? [], { load: true });
       setActiveFile(-1);
       setChecks(payload.checks ?? []);
       // The launch mode, the console watermark and the shared-program banner
@@ -278,8 +290,9 @@ export function EmbeddableCore({
       setArgsText(fullRef.current?.onProgramLoaded(payload) ?? payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       lastRunSourceRef.current = null;
+      return true;
     },
-    [chrome, recent, seedFromPayload, setExtraFiles],
+    [chrome, recent, seedFromPayload, setExtraFiles, toast],
   );
 
   // Joins the helper files onto main so `bl func` resolves across files, and
