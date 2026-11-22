@@ -254,8 +254,16 @@ describe("error guidance for the messages the emulator really sends", () => {
     expect(include.fix).toContain("copy the included file's lines into this file where the include was");
     const numbered = explained(`${dnl}divert(1)\n${withBody("")}`);
     expect(numbered.fix).toContain("numbered diversion");
+    const unsupported = explained(`${dnl}ifdef(\`x', y)\n${withBody("")}`);
+    expect(unsupported.why).toContain("dnl, divert, undivert, divnum, changecom or a backtick");
+    expect(unsupported.why).toContain("divert, undivert, divnum, changecom or changequote where an instruction goes");
+    // Calls nested past the cap, by a macro that calls itself and by hand.
     const nested = explained(`define(\`f', \`f(f($1))')dnl\n${withBody("        mov     x0, f(1)")}`);
-    expect(nested.why).toContain("define(x29, x29)");
+    expect(nested.what).toContain("inside one another's arguments");
+    expect(nested.why).toContain("calls itself inside its own arguments");
+    const byHand = explained(`define(\`f', \`$1')dnl\n${withBody(`        mov     x0, ${"f(".repeat(33)}1${")".repeat(33)}`)}`);
+    expect(byHand.what).toContain("inside one another's arguments");
+    expect(byHand.why).toContain("f(f(f(1)))");
   });
 
   // These messages say what to change themselves; no other refusal's box may claim them.
