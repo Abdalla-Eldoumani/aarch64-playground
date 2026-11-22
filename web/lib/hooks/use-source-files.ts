@@ -58,21 +58,26 @@ function dropOldestLinks(list: Stored[], need: number): Stored[] | null {
   let freed = 0;
   const left = list.filter((f) => {
     if (freed >= need || !f.link) return true;
-    freed += size([f]);
+    // Removing an entry frees at least its own text.
+    freed += JSON.stringify(f).length;
     return false;
   });
   return freed >= need ? left : null;
 }
 
 /**
- * Store `wanted` as the backup in place of `stored`, giving up the oldest
- * copies of link files if it does not fit; `freed` is room the strip just
- * gave up. Returns what was stored, or null with the stored backup unchanged.
+ * Store `wanted` as the backup, giving up the oldest copies of link files one
+ * at a time until it fits. Returns what was stored, or null with the stored
+ * backup unchanged.
  */
-function storeBackup(wanted: Stored[], stored: Stored[], freed = 0): Stored[] | null {
-  if (writeStore(BACKUP_KEY, wanted)) return wanted;
-  const left = dropOldestLinks(wanted, size(wanted) - size(stored) - freed);
-  return left && writeStore(BACKUP_KEY, left) ? left : null;
+function storeBackup(wanted: Stored[]): Stored[] | null {
+  let left = wanted;
+  while (!writeStore(BACKUP_KEY, left)) {
+    const oldest = left.findIndex((f) => f.link);
+    if (oldest < 0) return null;
+    left = left.filter((_, i) => i !== oldest);
+  }
+  return left;
 }
 
 /**
@@ -144,7 +149,7 @@ export function useSourceFiles(): [
   const [files, setFiles] = useState<SourceFile[]>(() =>
     start.strip.map(({ name, body }) => ({ name, body })),
   );
-  // What a restore brings back: the stored backup, then the kept files.
+  // What a restore brings back: the stored backup, then the kept and closed files.
   const [offer, setOffer] = useState<Stored[]>(start.backup);
   // The strip on screen. Writes compare against it at the moment of the
   // write, not in an effect, where the comparison would be a cascading render.
@@ -158,38 +163,45 @@ export function useSourceFiles(): [
   // The stored strip still holds them, so no write replaces it until they
   // come back on screen.
   const keptRef = useRef<Stored[]>([]);
+  // The student's closed tabs whose copy did not fit: the stored strip keeps
+  // them, after the tabs on screen, until a restore or a load takes them.
+  const closedRef = useRef<Stored[]>([]);
 
   const show = useCallback((next: SourceFile[]) => {
     filesRef.current = next;
     setFiles(next);
-    setOffer([...backupRef.current, ...keptRef.current]);
+    setOffer([...backupRef.current, ...keptRef.current, ...closedRef.current]);
   }, []);
 
   const save = useCallback(
     (next: SourceFile[], how?: { load: boolean }): FilesWrite => {
       if (!how?.load) {
         const displaced = markLinks(displacedBy(filesRef.current, next), fromLinkRef.current);
+        let written = false;
+        if (keptRef.current.length === 0) {
+          if (displaced.length > 0) {
+            if (writeStore(BACKUP_KEY, displaced)) backupRef.current = displaced;
+            else closedRef.current = [...closedRef.current, ...displaced.filter((f) => !f.link)];
+          }
+          const strip = markLinks(next, fromLinkRef.current);
+          // Under a free name, should a tab have taken its own since.
+          for (const c of closedRef.current) strip.push({ ...c, name: freeName(c.name, strip) });
+          const left = storeStrip(strip, storedRef.current, backupRef.current);
+          if (left) {
+            storedRef.current = strip;
+            backupRef.current = left;
+            closedRef.current = strip.slice(next.length);
+            written = true;
+          }
+        }
         show(next);
-        if (keptRef.current.length > 0) return "unsaved";
-        if (displaced.length > 0 && writeStore(BACKUP_KEY, displaced)) {
-          backupRef.current = displaced;
-          setOffer(displaced);
-        }
-        const strip = markLinks(next, fromLinkRef.current);
-        const left = storeStrip(strip, storedRef.current, backupRef.current);
-        if (!left) return "unsaved";
-        storedRef.current = strip;
-        if (left !== backupRef.current) {
-          backupRef.current = left;
-          setOffer(left);
-        }
-        return "stored";
+        return written ? "stored" : "unsaved";
       }
 
       // Everything the load takes off the screen or out of the stored strip
       // that it does not bring back and the backup does not already hold.
       const screen = markLinks(filesRef.current, fromLinkRef.current);
-      const atRisk = [...screen, ...keptRef.current].filter(
+      const atRisk = [...screen, ...keptRef.current, ...closedRef.current].filter(
         (f, i, all) =>
           all.findIndex((g) => sameFile(g, f)) === i &&
           !next.some((n) => n.body === f.body) &&
@@ -197,7 +209,9 @@ export function useSourceFiles(): [
       );
       // A file the load delivers unchanged is from a link, unless the student
       // already had that very file.
-      const own = [...screen, ...keptRef.current, ...backupRef.current].filter((f) => !f.link);
+      const own = [...screen, ...keptRef.current, ...closedRef.current, ...backupRef.current].filter(
+        (f) => !f.link,
+      );
       const fromLink = next.filter((n) => !own.some((o) => sameFile(o, n)));
       const strip = markLinks(next, fromLink);
       const stored = storedRef.current;
@@ -209,7 +223,7 @@ export function useSourceFiles(): [
       // The copies go first, while the old strip still holds the originals.
       let backup =
         atRisk.length > 0 || copies.length !== backupRef.current.length
-          ? storeBackup(wanted, backupRef.current)
+          ? storeBackup(wanted)
           : backupRef.current;
       let landed = false;
       let putBackFailed = false;
@@ -217,7 +231,7 @@ export function useSourceFiles(): [
         // A smaller strip makes room for the copies; if they still do not
         // fit, the old strip goes back.
         if (writeStore(STORE_KEY, strip)) {
-          backup = storeBackup(wanted, backupRef.current, size(stored) - size(strip));
+          backup = storeBackup(wanted);
           landed = backup !== null;
           if (!backup && !writeStore(STORE_KEY, stored)) {
             storedRef.current = strip;
@@ -248,6 +262,7 @@ export function useSourceFiles(): [
         if (screenOnly || putBackFailed) return "refused";
         keptRef.current = atRisk.filter((f) => stored.some((s) => sameFile(s, f)));
       }
+      closedRef.current = [];
       fromLinkRef.current = fromLink;
       show(next);
       return landed ? "stored" : "unsaved";
@@ -259,13 +274,14 @@ export function useSourceFiles(): [
   // whose name the strip now uses comes back under a free name.
   const restore = useCallback(() => {
     const next = [...filesRef.current];
-    for (const f of [...backupRef.current, ...keptRef.current]) {
+    for (const f of [...backupRef.current, ...keptRef.current, ...closedRef.current]) {
       if (next.some((n) => sameFile(n, f))) continue;
       const name = freeName(f.name, next);
       next.push({ name, body: f.body });
       if (f.link) fromLinkRef.current = [...fromLinkRef.current, { name, body: f.body }];
     }
     keptRef.current = [];
+    closedRef.current = [];
     // The backup goes only once the strip holds its files. A strip that does
     // not fit beside the backup takes the backup's room, and the backup goes
     // back if even that is not enough.
