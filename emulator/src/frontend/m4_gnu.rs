@@ -747,6 +747,18 @@ mod tests {
     }
 
     #[test]
+    fn a_body_read_without_writing_stops_at_the_work_budget_at_three_sizes() {
+        // `$9` with no ninth argument writes nothing, so each call reads the
+        // whole body and builds no text.
+        for repeats in [2_000, 8_000, 30_000] {
+            let body = "$9".repeat(repeats);
+            let calls = MAX_EXPANSION_WORK_BYTES / (body.len() + CALL_WORK_BYTES) + 10;
+            let line = format!("{}\n", "F()".repeat(100));
+            stops(&format!("define(`F', `{body}')dnl\n{}", line.repeat(calls / 100 + 1)), "m4 expansion built more than");
+        }
+    }
+
+    #[test]
     fn a_comment_start_that_keeps_almost_matching_stops_at_the_work_budget() {
         // Each failed match gives back what it read, so each byte is read again.
         let start = format!("{}b", "+".repeat(1000));
