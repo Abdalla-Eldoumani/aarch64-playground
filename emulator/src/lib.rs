@@ -195,7 +195,7 @@ pub const CALL_HEADER: usize = 11;
 pub const CALL_ROW: usize = 13;
 
 /// The printf or scanf call the last step ran, as the call card's numbers:
-/// a header (kind, step, the branch that made the call, x0 as a signed
+/// a header (kind, step, the branch that made the call, w0 as a signed
 /// number, whether the call stopped the program, rows, conversions, format
 /// bytes kept and in all, text bytes kept and in all), `CALL_ROW` numbers
 /// per row, then the format's bytes, the text's, and each row's label name
@@ -211,7 +211,7 @@ pub fn call_card(cpu: &Cpu) -> Vec<f64> {
         call.kind.into(),
         call.step as f64,
         call.call_pc as f64,
-        call.result as i64 as f64,
+        call.result as i32 as f64,
         u8::from(call.failed).into(),
         call.rows.len() as f64,
         call.conversions as f64,
