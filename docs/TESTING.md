@@ -71,7 +71,20 @@ A few suites are worth knowing by name:
   must list exactly the mnemonics the assembler accepts.
 - `bounds`: the limits that stop a runaway program, and the caps on the
   stack view's records. Its three slowest tests are ignored on pull requests
-  and run weekly in release mode.
+  and run weekly in release mode. The m4 budget, the macro warning cap, the
+  library-call hand-back and the filled `.space` bound are tested beside
+  their code, and `step_back_memory` checks, at the allocator, that the
+  step-back history stays in proportion to what its steps wrote.
+- `any_word` and `any_source`: seeded tests that nothing makes the emulator
+  panic. `any_word` (`emulator/tests/any_word.rs`) sends 500,000 random
+  32-bit words through the decoder, one step of the machine, and the
+  disassembler. `any_source` (`emulator/tests/any_source.rs`) sends 4,000
+  sources up to the editor's 1 MiB cap, a quarter random bytes and the rest
+  lines built from the assembler's mnemonics, directives, and library names,
+  through the lint, both assemblers, and the loader. An error, a fault, or a
+  halt passes; a panic fails and names the seed and the case. The seed is
+  fixed, so a rerun repeats every case in order:
+  `cargo test --manifest-path emulator/Cargo.toml --test any_word`.
 
 On Windows, if a debug test build fails with
 `LNK1104: cannot open file ... build_script_build-*.exe`, antivirus is
