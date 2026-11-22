@@ -1,4 +1,5 @@
-//! m4 preprocessing for CPSC 355 source. Supports a narrow subset:
+//! m4 preprocessing for CPSC 355 source. Most programs take a narrow pass,
+//! line at a time:
 //!
 //!   * define(NAME, BODY) and undefine(NAME): whole-token substitution of
 //!     NAME on the lines below it. Use for register aliases
@@ -16,9 +17,16 @@
 //!     they stay equal until a define or a macro body spans lines.
 //!
 //! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting outside a
-//! define) fails with an "unsupported m4 construct" error at its line.
+//! define) fails there with an "unsupported m4 construct" error at its line.
+//!
+//! A program that uses `dnl`, `divert`, `undivert`, `divnum`, `changecom`
+//! or a backtick, and that the narrow pass refuses or leaves with one of
+//! those builtins where a mnemonic goes, runs in GNU m4's own order
+//! instead (`m4_gnu`): m4 reads the source with its comments in it, as on
+//! the course servers, and the comments go from what m4 writes. `expand`
+//! makes that choice; every other program keeps the narrow pass's result.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::errors::EmuError;
 
@@ -97,6 +105,96 @@ impl Expanded {
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
+    let by_line = expand_by_line(source);
+    let unread = match &by_line {
+        Ok(expanded) => builtin_as_mnemonic(&expanded.text),
+        Err(_) => true,
+    };
+    if unread && uses_gnu_order_forms(source) {
+        return expand_in_gnu_order(source);
+    }
+    by_line
+}
+
+/// The source holds a backtick or a word only GNU m4's order runs.
+fn uses_gnu_order_forms(source: &str) -> bool {
+    source.contains('`')
+        || source
+            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+            .any(|word| matches!(word, "dnl" | "divert" | "undivert" | "divnum" | "changecom"))
+}
+
+/// A line of the narrow pass's output with `divert`, `undivert`, `divnum`,
+/// `changecom` or `changequote` where a mnemonic goes (after any labels),
+/// followed by `(` or the line's end: m4 the pass left unrun, which the
+/// encoder refuses as a mnemonic.
+fn builtin_as_mnemonic(text: &str) -> bool {
+    let blanks: &[char] = &[' ', '\t'];
+    text.split('\n').any(|line| {
+        let mut rest = line.trim_start_matches(blanks);
+        while let Some(after) = label_prefix(rest) {
+            rest = after.trim_start_matches(blanks);
+        }
+        ["divert", "undivert", "divnum", "changecom", "changequote"].iter().any(|name| {
+            rest.strip_prefix(name).is_some_and(|after| {
+                let after = after.trim_start_matches(blanks);
+                after.is_empty() || after.starts_with('(')
+            })
+        })
+    })
+}
+
+/// The text after a leading `name:` label, if the line opens with one.
+fn label_prefix(s: &str) -> Option<&str> {
+    let symbol = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
+    let first = *s.as_bytes().first()?;
+    if first.is_ascii_digit() || !symbol(first) {
+        return None;
+    }
+    let end = s.bytes().position(|c| !symbol(c)).unwrap_or(s.len());
+    s[end..].strip_prefix(':')
+}
+
+/// GNU m4's order: m4 over the source as written, then the same two
+/// comment strippers over what it writes, so every consumer gets the
+/// comment-free text it always gets. The stripper's error line is an
+/// output line until it goes through the line map.
+fn expand_in_gnu_order(source: &str) -> Result<Expanded, EmuError> {
+    let scan = super::m4_gnu::scan(source)?;
+    let blanked = strip_block_comments(&scan.text).map_err(|e| match e {
+        EmuError::PreprocError { line, message } => EmuError::PreprocError {
+            line: scan.lines.get(line.wrapping_sub(1)).copied().unwrap_or(line),
+            message,
+        },
+        other => other,
+    })?;
+    let mut assignments = HashMap::new();
+    let kept: Vec<&str> = blanked
+        .lines()
+        .map(|line| {
+            let code = strip_comment(line);
+            if let Some((name, body)) = parse_assignment(code.trim()) {
+                assignments.insert(name, body);
+            }
+            code
+        })
+        .collect();
+    let mut line_map = scan.lines;
+    // A block comment closing the output can leave its last line empty.
+    line_map.truncate(kept.len());
+    let (defines, windowed) = bindings(&scan.events);
+    Ok(Expanded {
+        text: kept.join("\n"),
+        line_map,
+        defines,
+        assignments,
+        define_events: scan.events,
+        windowed,
+    })
+}
+
+/// The narrow pass: every line on its own, comments stripped first.
+fn expand_by_line(source: &str) -> Result<Expanded, EmuError> {
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
@@ -180,35 +278,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         stripped.push((idx, without_comment.to_string()));
     }
 
-    // Find the names defined more than once or undefined, such as
-    // per-function aliases (`define(size, w19)` ... `define(size, w21)`).
-    let mut define_count: HashMap<&str, usize> = HashMap::new();
-    let mut undefined_names: std::collections::HashSet<&str> =
-        std::collections::HashSet::new();
-    for (_, name, body) in &define_events {
-        if body.is_some() {
-            *define_count.entry(name.as_str()).or_insert(0) += 1;
-        } else {
-            undefined_names.insert(name.as_str());
-        }
-    }
-    // Last body per name: the whole-file map for static names, and what
-    // the UI's register-alias labels read.
-    let mut defines: HashMap<String, String> = HashMap::new();
-    for (_, name, body) in &define_events {
-        if let Some(b) = body {
-            defines.insert(name.clone(), b.clone());
-        }
-    }
-    // `windowed` still marks the redefined/undefined names for the lint
-    // and UI layers, which report per-line bindings through
-    // `define_body_at`; substitution itself is sequential for every name.
-    let mut windowed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for (name, count) in define_count {
-        if count != 1 || undefined_names.contains(name) {
-            windowed.insert(name.to_string());
-        }
-    }
+    let (defines, windowed) = bindings(&define_events);
     let mut current: HashMap<String, String> = HashMap::new();
 
     // Pass 2: substitute `define()` aliases only; `name = expr` lines stay
@@ -269,6 +339,31 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             .collect(),
         windowed,
     })
+}
+
+/// From the define/undefine events: each name's last body, which the UI's
+/// register-alias labels read and which binds file-wide for a name defined
+/// once, and the names defined more than once or undefined (per-function
+/// aliases such as `define(size, w19)` ... `define(size, w21)`), whose
+/// bindings the lint and UI read per line through `define_body_at`.
+fn bindings(events: &[(usize, String, Option<String>)]) -> (HashMap<String, String>, HashSet<String>) {
+    let mut define_count: HashMap<&str, usize> = HashMap::new();
+    let mut undefined_names: HashSet<&str> = HashSet::new();
+    let mut defines: HashMap<String, String> = HashMap::new();
+    for (_, name, body) in events {
+        if let Some(b) = body {
+            *define_count.entry(name.as_str()).or_insert(0) += 1;
+            defines.insert(name.clone(), b.clone());
+        } else {
+            undefined_names.insert(name.as_str());
+        }
+    }
+    let windowed = define_count
+        .into_iter()
+        .filter(|(name, count)| *count != 1 || undefined_names.contains(name))
+        .map(|(name, _)| name.to_string())
+        .collect();
+    (defines, windowed)
 }
 
 fn expand_recursively(
@@ -1465,6 +1560,22 @@ mod tests {
             ("// a comment with dnl and `quote\n\tret\n", "\n\tret"),
         ] {
             assert_eq!(exp(src).text, text, "{src:?}");
+        }
+    }
+
+    #[test]
+    fn the_choice_reads_new_forms_and_builtins_where_a_mnemonic_goes() {
+        assert!(uses_gnu_order_forms("define(m, w0)dnl\n"));
+        assert!(uses_gnu_order_forms("\tmov x0, `y'\n"));
+        for word in ["divert", "undivert", "divnum", "changecom"] {
+            assert!(uses_gnu_order_forms(&format!("\t{word}(-1)\n")), "{word}");
+        }
+        assert!(!uses_gnu_order_forms("dnlx _dnl dnl2 xdivert divert_r\n"));
+        for line in ["divert(-1)", "a: b:\tdivnum  ", "  changequote (", ".L1: undivert"] {
+            assert!(builtin_as_mnemonic(line), "{line:?}");
+        }
+        for line in ["divert: .word 1", "divert .req x19", "divnum = 4", "\tmov w0, divnum", "1: divert(-1)", "divertx("] {
+            assert!(!builtin_as_mnemonic(line), "{line:?}");
         }
     }
 
