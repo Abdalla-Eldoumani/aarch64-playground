@@ -440,6 +440,22 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(1);
   });
 
+  // A link file back on the strip unchanged needs no copy, so alternating
+  // two programs does not fill the backup with copies of what is on screen.
+  it("drops a link file's copy once a load puts that file back", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("s.s", "student", 100)]));
+    const P = [file("p1.s", "P one", 100), file("p2.s", "P two", 100)];
+    const Q = [file("q1.s", "Q one", 100), file("q2.s", "Q two", 100)];
+    const h = mount();
+    h.save(P, { load: true });
+    h.save(Q, { load: true });
+    h.save(P, { load: true });
+    expect(tags(stored(BACKUP))).toEqual(["// student", "// Q one", "// Q two"]);
+    h.save(Q, { load: true });
+    expect(tags(stored(BACKUP))).toEqual(["// student", "// P one", "// P two"]);
+    expect(h.count()).toBe(3);
+  });
+
   // No room for both the copies and the new strip: the program opens for
   // this visit, and the stored strip keeps the student's files through any
   // typing in it.
