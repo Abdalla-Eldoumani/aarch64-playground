@@ -132,7 +132,8 @@ either:
 - A run hands control back to the page once its library calls have done
   16 MiB of work, the bytes they walk, read or format and the free-list
   entries they scan (`cpu::MAX_HOST_WORK_PER_RUN`), so Pause and Reset land
-  between calls. The instruction limit does not count this work.
+  between calls. Apart from the bytes `memcmp` and `strncmp` compare, the
+  instruction limit does not count this work.
 - Step back's memory logs over 64 KiB, kept for steps such as a `memset` over
   a large buffer, share 32 MiB (`cpu::MAX_SNAPSHOT_LOG_BYTES`).
   Past it the oldest frames go, so step back reaches fewer steps behind such
