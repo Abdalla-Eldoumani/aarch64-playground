@@ -183,13 +183,43 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
 
   if (detail.includes("unsupported m4 construct")) {
     return {
-      what: "m4 saw a construct outside the playground's narrow subset (define + name=expr only).",
-      why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop. Those expand at the macro level; the playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. A backtick is the one to take seriously: GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and then swallows the rest of the source (`ERROR: end of file in string`). Use plain quotes in comments.",
+      what: "m4 reached a construct the playground's m4 does not run; the message names it.",
+      why: "The playground's m4 runs define, undefine and macros with arguments, and in a program that uses dnl, divert, divnum, changecom or quotes, those too (divert to -1 and 0 only). It refuses the other GNU m4 builtins (ifdef, ifelse, include, changequote, eval, undivert and the rest), numbered diversions such as divert(1), and forloop in a program that uses none of those forms, rather than give a program a meaning the course servers would not.",
+      fix: "Expand an ifdef, ifelse or forloop into plain code. include is not supported: copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and put a numbered diversion's text where it should appear.",
       styleSection: "m4 preprocessing",
     };
   }
-  if (detail.includes("m4 recursion exceeded")) {
+  if (detail.includes("opens an m4 quote that no")) {
+    return {
+      what: "m4 read a backtick as the start of a quote, and no closing quote (') follows it before the end of the file.",
+      why: "GNU m4 on the course servers reads a backtick anywhere in the file, in a // comment or a string too, as an opening quote and takes everything after it as quoted text up to its closing '. With none, it stops with `end of file in string`.",
+      fix: "Close the quote with ', or write a plain quote in comments and strings instead of a backtick.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("m4 comment runs to the end of the file")) {
+    return {
+      what: "An m4 comment runs to the end of the file without closing.",
+      why: "To GNU m4 a # starts a comment that ends at the next newline, or at the end string changecom set. A file whose last line is a # comment with no newline after it, or a changecom comment left open, makes it stop with `end of file in comment`.",
+      fix: "End the file with a newline, or close the comment with the string changecom was given.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("arguments run to the end of the file")) {
+    return {
+      what: "A macro call's ( has no ) before the end of the file.",
+      why: "GNU m4 collects a macro's arguments, across lines, up to the ) that closes its (. With none, it reads to the end of the file and stops with `end of file in argument list`.",
+      fix: "Close the call with `)`. Quote a ( that follows a macro's name and is meant as text: `('.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  // The line pass stops a cycle after 32 rounds; GNU m4's order stops it at
+  // its work budget or once expansions pile up.
+  if (
+    detail.includes("m4 recursion exceeded") ||
+    detail.includes("for each macro call") ||
+    detail.includes("m4 expansions nest more than")
+  ) {
     return {
       what: "m4 kept rewriting the same text round after round, so a macro expands into something that expands back into it.",
       why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never stop expanding. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
