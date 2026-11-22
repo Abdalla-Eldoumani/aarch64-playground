@@ -56,9 +56,9 @@ function nameForRecents(source: string): string {
 
 // What a program load says when storage has no room for its helper files.
 const HELPERS_NOT_SAVED =
-  "this program's helper files are not saved: the browser's storage for this site is full. a reload brings back the helper files you had saved";
+  "helper tabs not saved: the browser's storage for this site is full, so your saved helper files stay as they were";
 const LOAD_REFUSED =
-  "program not loaded: a copy of your helper files could not be saved, because the browser's storage for this site is full. your files are unchanged";
+  "program not loaded: the browser's storage for this site is full, so a copy of your helper files could not be saved. your files are unchanged";
 
 // ---------------------------------------------------------------------------
 // Inner core: mounted from the first render, so a press or text that engages a
