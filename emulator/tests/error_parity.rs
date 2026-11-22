@@ -8,7 +8,9 @@
 use std::fs;
 use std::path::PathBuf;
 
+use aarch64_emulator::assembler::assemble;
 use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::detect_hosted_mode;
 use aarch64_emulator::errors::EmuError;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
@@ -104,6 +106,27 @@ fn run_case(case: &str) {
     check_guidance(case, &message, &server.key);
     let stdout = String::from_utf8_lossy(&cpu.take_stdout()).into_owned();
     assert_eq!(stdout, expected_stdout, "{case}: stdout differs from the server");
+}
+
+/// Build a source with no directive, which the playground loads on the
+/// bare-metal path, as its load does.
+fn build_bare(source: &str) -> Result<Vec<u32>, EmuError> {
+    assert!(!detect_hosted_mode(source), "this source loads on the hosted path:\n{source}");
+    assemble(source)
+}
+
+/// A source with no directive is refused as the server refuses `case`: the
+/// server's line and one line of guidance, at line 0. gcc links it like any
+/// other file, so its startup code finds no `main` there either.
+fn run_bare_case(case: &str, source: &str) -> String {
+    let transcript = fs::read_to_string(case_dir().join(format!("{case}.server.txt"))).unwrap();
+    let server = read_transcript(&transcript.replace("\r\n", "\n"));
+    let (line, message) = assemble_error(build_bare(source).err().unwrap_or_else(|| {
+        panic!("{case}: the server refuses to build this program, the playground built it:\n{source}")
+    }));
+    check_guidance(case, &message, &server.key);
+    assert_eq!(line, 0, "{case}: no line to mark\n{message}");
+    message
 }
 
 #[test]
@@ -245,4 +268,43 @@ _start: mov     x0, 3
     cpu.load_linked_image(&image).unwrap();
     cpu.run_until_break(1_000).unwrap();
     assert_eq!(cpu.exit_code, Some(3));
+}
+
+// A source with no directive, which loads on the bare-metal path.
+
+#[test]
+fn no_main_in_a_source_with_no_directive() {
+    let message = run_bare_case("no-main", "        mov     x0, 5\n        add     x0, x0, 1\n");
+    assert!(message.contains("no line defines `main:`"), "{message}");
+}
+
+#[test]
+fn main_not_global_in_a_source_with_no_directive() {
+    // `.global` is a directive, so a `main:` here is always a local label.
+    let source = "main:   mov     x0, 5\n        add     x0, x0, 1\n        ret\n";
+    let message = run_bare_case("main-not-global", source);
+    assert!(message.contains("add `.global main`"), "{message}");
+}
+
+#[test]
+fn main_and_start_are_matched_case_and_all() {
+    // ld reads `Main` and `_START` as other names: gcc refuses each of these
+    // with an undefined main, and `_START` never clashes with the startup
+    // file's `_start`.
+    for source in [
+        "Main:   mov     x0, 5\n        add     x0, x0, 1\n",
+        "_START: mov     x0, 3\n        mov     x8, 93\n        svc     0\n",
+    ] {
+        let message = run_bare_case("no-main", source);
+        assert!(message.contains("no line defines `main:`"), "{message}");
+    }
+}
+
+#[test]
+fn a_source_with_no_directive_and_its_own_start_still_builds() {
+    // As a hosted `_start` program does: as and ld build it, and nothing
+    // there calls main.
+    let code = build_bare("_start: mov     x0, 3\n        mov     x8, 93\n        svc     0\n")
+        .expect("a _start program builds");
+    assert_eq!(code.len(), 3);
 }
