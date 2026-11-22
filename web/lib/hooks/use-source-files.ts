@@ -47,33 +47,46 @@ function writeStore(key: string, files: Stored[]): boolean {
   return safeSetItem(key, JSON.stringify(files));
 }
 
+const size = (files: Stored[]) => JSON.stringify(files).length;
+
 /**
- * Store `files` as the backup, dropping the oldest copies of link files until
- * it fits. Returns what was stored, or null with the stored backup unchanged.
+ * `list` without its oldest copies of link files, as many as free `need`
+ * characters, or null when they cannot. Storage held the larger value, so a
+ * write that grows by `need` fits once these go.
  */
-function storeBackup(files: Stored[]): Stored[] | null {
-  let left = files;
-  while (!writeStore(BACKUP_KEY, left)) {
-    const oldest = left.findIndex((f) => f.link);
-    if (oldest < 0) return null;
-    left = left.filter((_, i) => i !== oldest);
-  }
-  return left;
+function dropOldestLinks(list: Stored[], need: number): Stored[] | null {
+  let freed = 0;
+  const left = list.filter((f) => {
+    if (freed >= need || !f.link) return true;
+    freed += size([f]);
+    return false;
+  });
+  return freed >= need ? left : null;
 }
 
 /**
- * Store the strip, dropping the oldest copies of link files from `backup` to
- * make room. Returns the backup now stored, or null if the strip did not fit.
+ * Store `wanted` as the backup in place of `stored`, giving up the oldest
+ * copies of link files if it does not fit; `freed` is room the strip just
+ * gave up. Returns what was stored, or null with the stored backup unchanged.
  */
-function storeStrip(strip: Stored[], backup: Stored[]): Stored[] | null {
-  let left = backup;
-  while (!writeStore(STORE_KEY, strip)) {
-    const oldest = left.findIndex((f) => f.link);
-    if (oldest < 0) return null;
-    left = left.filter((_, i) => i !== oldest);
-    if (!writeStore(BACKUP_KEY, left)) return null;
-  }
-  return left;
+function storeBackup(wanted: Stored[], stored: Stored[], freed = 0): Stored[] | null {
+  if (writeStore(BACKUP_KEY, wanted)) return wanted;
+  const left = dropOldestLinks(wanted, size(wanted) - size(stored) - freed);
+  return left && writeStore(BACKUP_KEY, left) ? left : null;
+}
+
+/**
+ * Store `strip` in place of `stored`, giving up the oldest copies of link
+ * files in `backup` (what the backup key holds) if it does not fit. Returns
+ * the backup now stored, or null with both keys as they were.
+ */
+function storeStrip(strip: Stored[], stored: Stored[], backup: Stored[]): Stored[] | null {
+  if (writeStore(STORE_KEY, strip)) return backup;
+  const left = dropOldestLinks(backup, size(strip) - size(stored));
+  if (!left || !writeStore(BACKUP_KEY, left)) return null;
+  if (writeStore(STORE_KEY, strip)) return left;
+  writeStore(BACKUP_KEY, backup);
+  return null;
 }
 
 /**
@@ -163,8 +176,13 @@ export function useSourceFiles(): [
           setOffer(displaced);
         }
         const strip = markLinks(next, fromLinkRef.current);
-        if (!writeStore(STORE_KEY, strip)) return "unsaved";
+        const left = storeStrip(strip, storedRef.current, backupRef.current);
+        if (!left) return "unsaved";
         storedRef.current = strip;
+        if (left !== backupRef.current) {
+          backupRef.current = left;
+          setOffer(left);
+        }
         return "stored";
       }
 
@@ -179,22 +197,27 @@ export function useSourceFiles(): [
       );
       // A file the load delivers unchanged is from a link, unless the student
       // already had that very file.
-      const own = [...screen, ...keptRef.current].filter((f) => !f.link);
+      const own = [...screen, ...keptRef.current, ...backupRef.current].filter((f) => !f.link);
       const fromLink = next.filter((n) => !own.some((o) => sameFile(o, n)));
       const strip = markLinks(next, fromLink);
       const stored = storedRef.current;
       const before = safeGetItem(BACKUP_KEY);
-      const wanted = [...backupRef.current, ...atRisk];
+      // A copy of a link file the load puts back unchanged is not needed.
+      const copies = backupRef.current.filter((k) => !(k.link && next.some((n) => sameFile(n, k))));
+      const wanted = [...copies, ...atRisk];
 
       // The copies go first, while the old strip still holds the originals.
-      let backup = atRisk.length > 0 ? storeBackup(wanted) : backupRef.current;
+      let backup =
+        atRisk.length > 0 || copies.length !== backupRef.current.length
+          ? storeBackup(wanted, backupRef.current)
+          : backupRef.current;
       let landed = false;
       let putBackFailed = false;
-      if (!backup && JSON.stringify(strip).length < JSON.stringify(stored).length) {
+      if (!backup && size(strip) < size(stored)) {
         // A smaller strip makes room for the copies; if they still do not
         // fit, the old strip goes back.
         if (writeStore(STORE_KEY, strip)) {
-          backup = storeBackup(wanted);
+          backup = storeBackup(wanted, backupRef.current, size(stored) - size(strip));
           landed = backup !== null;
           if (!backup && !writeStore(STORE_KEY, stored)) {
             storedRef.current = strip;
@@ -203,7 +226,7 @@ export function useSourceFiles(): [
         }
       }
       if (backup && !landed) {
-        const left = storeStrip(strip, backup);
+        const left = storeStrip(strip, stored, backup);
         if (left) {
           backup = left;
           landed = true;
@@ -243,9 +266,17 @@ export function useSourceFiles(): [
       if (f.link) fromLinkRef.current = [...fromLinkRef.current, { name, body: f.body }];
     }
     keptRef.current = [];
-    // The backup goes only once the strip holds its files.
+    // The backup goes only once the strip holds its files. A strip that does
+    // not fit beside the backup takes the backup's room, and the backup goes
+    // back if even that is not enough.
     const strip = markLinks(next, fromLinkRef.current);
-    if (writeStore(STORE_KEY, strip)) {
+    const backup = backupRef.current;
+    let landed = writeStore(STORE_KEY, strip);
+    if (!landed && backup.length > 0 && writeStore(BACKUP_KEY, [])) {
+      landed = writeStore(STORE_KEY, strip);
+      if (!landed && !writeStore(BACKUP_KEY, backup)) backupRef.current = [];
+    }
+    if (landed) {
       storedRef.current = strip;
       if (writeStore(BACKUP_KEY, [])) backupRef.current = [];
     }
