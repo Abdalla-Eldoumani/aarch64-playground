@@ -8,7 +8,7 @@
 use std::fs;
 use std::path::PathBuf;
 
-use aarch64_emulator::assembler::assemble;
+use aarch64_emulator::assembler::assemble_bare;
 use aarch64_emulator::cpu::Cpu;
 use aarch64_emulator::detect_hosted_mode;
 use aarch64_emulator::errors::EmuError;
@@ -112,7 +112,7 @@ fn run_case(case: &str) {
 /// bare-metal path, as its load does.
 fn build_bare(source: &str) -> Result<Vec<u32>, EmuError> {
     assert!(!detect_hosted_mode(source), "this source loads on the hosted path:\n{source}");
-    assemble(source)
+    assemble_bare(source)
 }
 
 /// A source with no directive is refused as the server refuses `case`: the
