@@ -439,4 +439,17 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count(), "a restore brings them back for this visit").toBe(3);
     expect(tags(mount().files())).toEqual(tags(mine));
   });
+
+  // A helper the student added that storage could not take exists only on
+  // screen: a load with no room to copy it would lose it, so it does not happen.
+  it("refuses a load that would lose a helper only the screen holds", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 1000)]));
+    const h = mount();
+    leave(500);
+    h.save([...h.files(), file("new.s", "my new", 1000)]);
+    expect(h.save([file("other.s", "link", 100)], { load: true })).toBe("refused");
+    expect(tags(h.files())).toEqual(["// mine", "// my new"]);
+    expect(tags(stored(STORE))).toEqual(["// mine"]);
+    expect(stored(BACKUP)).toEqual([]);
+  });
 });
