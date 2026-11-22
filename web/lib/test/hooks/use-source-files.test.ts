@@ -393,4 +393,16 @@ describe("useSourceFiles when storage is full", () => {
     expect(tags([...stored(STORE), ...stored(BACKUP)]), "k.s is still stored").toContain("// k");
     expect(tags(h.files())).toEqual(["// a", "// k"]);
   });
+
+  // Copies of a link's files may give way, so a strip the store has room for
+  // lands as it would with no backup at all.
+  it("stores a larger program over a link's helpers when only their copies do not fit", () => {
+    const names = ["stack.s", "queue.s", "utils.s"];
+    const h = mount();
+    h.save(names.map((n) => file(n, `link ${n}`, 2000)), { load: true });
+    leave(6500);
+    h.save(names.map((n) => file(n, `larger ${n}`, 2300)), { load: true });
+    expect(tags(stored(STORE))).toEqual(names.map((n) => `// larger ${n}`));
+    expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
+  });
 });
