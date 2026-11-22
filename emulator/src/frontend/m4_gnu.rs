@@ -88,8 +88,9 @@ pub struct Scan {
     /// GNU m4's output byte for byte, comments still in it.
     pub text: String,
     /// For each output line, the source line `m4 -s` gives it: the line of
-    /// the token that starts it (an expansion's tokens take the line of
-    /// the call), or the line above plus one inside a token that spans lines.
+    /// the token that starts it (an expansion's tokens take the call's line,
+    /// the line m4 is on after the macro's name), or the line above plus one
+    /// inside a token that spans lines.
     pub lines: Vec<usize>,
     /// Every `define` and `undefine` in the order m4 ran them: (source
     /// line, name, body), with `None` for an undefine.
@@ -481,7 +482,9 @@ impl<'a> Scanner<'a> {
             if let Some(found) = self.macros.get(token.text.as_ref()).cloned() {
                 let blind = matches!(found, Macro::Builtin { blind: true, .. });
                 if !blind || self.open_paren_next()? {
-                    return self.expand_macro(token.text.into_owned(), found, token.line);
+                    // GNU m4 gives a call the line it is on after the name,
+                    // which a name read on past an expansion's end moves.
+                    return self.expand_macro(token.text.into_owned(), found, self.line);
                 }
             }
         }
