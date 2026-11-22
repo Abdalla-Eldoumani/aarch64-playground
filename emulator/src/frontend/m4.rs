@@ -1585,6 +1585,22 @@ mod tests {
     }
 
     #[test]
+    fn a_line_pass_that_spends_the_whole_budget_keeps_its_refusal() {
+        // The renames use up the budget on a line in the middle; the quoted
+        // define at the end sends the program to GNU m4's order, which has
+        // nothing left to spend.
+        let letters = b"abcdefghijklmnopqrstuvwxyzABCDEF";
+        let mut src = String::new();
+        for pair in letters.windows(2) {
+            src += &format!("define({}, {})\n", pair[0] as char, pair[1] as char);
+        }
+        src += &format!("define(J, {})\n{}", "a ".repeat(22_500), "J\n".repeat(64));
+        let by_line = expand(&src).unwrap_err().to_string();
+        assert!(by_line.contains("counting every round of every line"), "{by_line}");
+        assert_eq!(expand(&format!("{src}define(`q', `1')\n")).unwrap_err().to_string(), by_line);
+    }
+
+    #[test]
     fn a_routed_program_spends_one_work_budget_across_both_passes() {
         // The line pass spends about 60% of the budget on renames inside the
         // strings, which GNU m4's order copies as comments (`changecom`).
