@@ -54,6 +54,8 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
     // expect a section to be present.
     prog.section_or_insert(SectionKind::Text);
     let mut current = SectionKind::Text;
+    // Filled `.space`/`.skip` bytes built so far, indexed by `section_slot`.
+    let mut filled = [0u64; 4];
     // ld throws `.note.GNU-stack` away with whatever is in it, so once the
     // note opens, a line that places bytes, defines a label or sets an
     // equate is refused until a section line ends the note. The parser sees
@@ -79,7 +81,7 @@ fn parse_expanded(text: &str, defines: HashMap<String, String>) -> Result<Progra
                 }
             }
         }
-        parse_line(line_tokens, &mut prog, &mut current)?;
+        parse_line(line_tokens, &mut prog, &mut current, &mut filled)?;
     }
     Ok(prog)
 }
@@ -193,10 +195,10 @@ fn apply_req_aliases(text: &str) -> Result<(String, HashMap<String, String>), Em
 pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
     let is_word = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
     let name = |n: &str, k: usize| format!(".L{n}_fb{k}");
-    // Definitions of each number so far (a program uses a handful, so a
-    // list), and the forward references, checked once all are counted.
-    let mut seen: Vec<(&str, usize)> = Vec::new();
-    let count = |seen: &[(&str, usize)], n: &str| seen.iter().find(|e| e.0 == n).map_or(0, |e| e.1);
+    // Definitions of each number so far, and the forward references,
+    // checked once all are counted. Reads go through `entry` too, as a
+    // number not seen yet counts 0 either way, which builds smaller.
+    let mut seen: HashMap<&str, usize> = HashMap::new();
     let mut forward: Vec<(&str, usize, usize)> = Vec::new();
     let mut out = String::with_capacity(text.len());
     for (idx, line) in text.split('\n').enumerate() {
@@ -238,14 +240,11 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
             let (digits, last) = word.split_at(word.len() - 1);
             let colon = b.get(i) == Some(&b':');
             if label_place && colon && word.bytes().all(|c| c.is_ascii_digit()) {
-                let k = count(&seen, word) + 1;
-                match seen.iter_mut().find(|e| e.0 == word) {
-                    Some(e) => e.1 = k,
-                    None => seen.push((word, k)),
-                }
-                out.push_str(&name(word, k));
+                let k = seen.entry(word).or_insert(0);
+                *k += 1;
+                out.push_str(&name(word, *k));
             } else if !digits.is_empty() && digits.bytes().all(|c| c.is_ascii_digit()) && (last == "b" || last == "f") {
-                let k = count(&seen, digits);
+                let k = *seen.entry(digits).or_insert(0);
                 if last == "b" && k == 0 {
                     return Err(err(
                         idx + 1,
@@ -268,7 +267,7 @@ pub(crate) fn name_local_labels(text: &str) -> Result<String, EmuError> {
         }
     }
     for &(n, k, line) in &forward {
-        if count(&seen, n) < k {
+        if *seen.entry(n).or_insert(0) < k {
             return Err(err(
                 line,
                 &format!(
@@ -313,6 +312,7 @@ fn parse_line(
     line_tokens: &[Token],
     prog: &mut Program,
     current: &mut SectionKind,
+    filled: &mut [u64; 4],
 ) -> Result<(), EmuError> {
     // Labels can stack on one line (`a: b: c: ret`). Peel them in a loop,
     // not by recursion: a stack frame per label overflows the wasm stack
@@ -375,7 +375,7 @@ fn parse_line(
             Ok(())
         }
         TokenKind::DirectiveIdent(name) => {
-            parse_directive(name, &line_tokens[1..], prog, current, first.line)
+            parse_directive(name, &line_tokens[1..], prog, current, filled, first.line)
         }
         TokenKind::Ident(name)
             if line_tokens
@@ -454,6 +454,7 @@ fn parse_directive(
     rest: &[Token],
     prog: &mut Program,
     current: &mut SectionKind,
+    filled: &mut [u64; 4],
     line: usize,
 ) -> Result<(), EmuError> {
     match name {
@@ -556,7 +557,10 @@ fn parse_directive(
                     "`.zero` takes a size only. Use `.space size, fill` to fill with a byte",
                 ));
             }
-            let count = groups[0];
+            // GAS builds a line with no size as zero bytes, with no message.
+            let Some(&count) = groups.first() else {
+                return Ok(());
+            };
             let fill = match groups.get(1) {
                 Some(g) => (eval_const(g, line)? & 0xFF) as u8,
                 None => 0,
@@ -588,12 +592,16 @@ fn parse_directive(
                 // Refuse before materializing: the filled bytes are
                 // allocated here, ahead of the linker's 1 MiB window
                 // check, and on wasm32 a giant Vec is an allocation
-                // abort rather than an error message.
-                if n as u64 > SECTION_WINDOW {
+                // abort rather than an error message. The total is per
+                // section, so many lines cannot add up past it either.
+                let total = &mut filled[section_slot(*current)];
+                *total += n as u64;
+                if *total > SECTION_WINDOW {
                     return Err(err(
                         line,
-                        "the fill would outgrow the section's 1 MiB window. \
-                         Shrink the size",
+                        "the filled .space and .skip lines here would outgrow the \
+                         section's 1 MiB window. The usual cause is a size with a \
+                         digit too many: shrink it",
                     ));
                 }
                 prog.section_or_insert(*current)
@@ -918,6 +926,17 @@ fn stringify_tokens_space(tokens: &[Token]) -> String {
     out.trim().to_string()
 }
 
+/// A section's index into the parser's per-section totals. Exhaustive, so a
+/// new section kind fails to compile here rather than index past the array.
+fn section_slot(kind: SectionKind) -> usize {
+    match kind {
+        SectionKind::Text => 0,
+        SectionKind::Data => 1,
+        SectionKind::Rodata => 2,
+        SectionKind::Bss => 3,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1127,6 +1146,43 @@ mod tests {
     fn space_fill_refuses_a_window_sized_allocation() {
         let e = parse(".data\n.space 1048577, 1\n").unwrap_err();
         assert!(e.to_string().contains("1 MiB"), "got: {e}");
+    }
+
+    fn filled_bytes(items: &[Item]) -> usize {
+        items.iter().map(|i| if let Item::Bytes(b) = i { b.len() } else { 0 }).sum()
+    }
+
+    #[test]
+    fn space_fills_stop_where_the_section_total_passes_the_window() {
+        // Each line fits the window alone; only a per-section running total
+        // stops every later line from building another MiB before the
+        // linker's window check runs.
+        let line = ".space 1048576, 1\n";
+        let mut built = Vec::new();
+        for k in [2, 4, 8] {
+            let started = std::time::Instant::now();
+            match parse(&format!(".data\n{}", line.repeat(k))) {
+                Ok(p) => built.push((k, filled_bytes(&p.section(SectionKind::Data).unwrap().items))),
+                Err(e) => assert!(matches!(e, EmuError::ParseError { line: 3, .. }), "{k} lines: {e}"),
+            }
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "{k} lines took {:?}",
+                started.elapsed()
+            );
+        }
+        assert!(built.is_empty(), "parsed, building (lines, filled bytes) {built:?}");
+        // Leaving the section and coming back keeps its total.
+        let r = parse(&format!(".data\n{line}.text\n.data\n.space 1, 1\n"));
+        assert!(matches!(r, Err(EmuError::ParseError { line: 5, .. })), "got: {:?}", r.err());
+    }
+
+    #[test]
+    fn space_fills_may_fill_each_section_window_exactly() {
+        let p = parse_ok(".data\n.space 524288, 1\n.space 524288, 2\n.rodata\n.space 1048576, 3\n");
+        for kind in [SectionKind::Data, SectionKind::Rodata] {
+            assert_eq!(filled_bytes(&p.section(kind).unwrap().items), 1 << 20, "{kind:?}");
+        }
     }
 
     #[test]
@@ -1475,6 +1531,27 @@ mod tests {
         let mut arr = [0u8; 4];
         arr.copy_from_slice(&bytes);
         assert_eq!(f32::from_bits(u32::from_le_bytes(arr)), -2.5_f32);
+    }
+
+    #[test]
+    fn numbering_local_labels_takes_time_in_line_with_their_count() {
+        // n distinct numbers against n definitions of ten numbers. A lookup
+        // that walks every number seen so far makes the first quadratic in
+        // n while the second stays linear, so the two must stay close.
+        let time = |numbers: usize, n: usize| {
+            let text: String = (0..n).map(|k| format!("{}:\n", k % numbers)).collect();
+            let started = std::time::Instant::now();
+            name_local_labels(&text).unwrap();
+            started.elapsed()
+        };
+        let mut slow = Vec::new();
+        for n in [10_000, 20_000, 40_000] {
+            let (distinct, ten) = (time(n, n), time(10, n));
+            if distinct > ten * 5 + std::time::Duration::from_millis(50) {
+                slow.push((n, distinct, ten));
+            }
+        }
+        assert!(slow.is_empty(), "(labels, distinct numbers, ten numbers) {slow:?}");
     }
 
     #[test]

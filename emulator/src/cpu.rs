@@ -28,7 +28,8 @@ mod system;
 const SNAPSHOT_CAPACITY: usize = 128;
 
 /// Budget for the state a snapshot frame copies WHOLE: the virtual
-/// filesystem, the queued stdin, and the open-file paths. Registers,
+/// filesystem, the queued stdin, the open-file paths, and the qsort and
+/// bsearch calls in flight. Registers,
 /// memory and the heap go in as undo logs of what the step changed, but
 /// these are real copies taken on every step, so a program holding
 /// megabytes of them paid that price per instruction (100k steps with a
@@ -38,6 +39,14 @@ const SNAPSHOT_CAPACITY: usize = 128;
 /// hundred bytes, so step-back stays available for the programs students
 /// step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
+
+/// Budget for what the ring's bulk memory undo logs, those past 64 KiB,
+/// hold together. A frame's log costs about what its step wrote, a few
+/// bytes on almost every step, but one library call can write megabytes (a
+/// memset, a memmove), and 128 such frames could hold gigabytes. Past the
+/// budget the oldest frames are dropped, so step-back reaches fewer steps
+/// behind such calls. The site's programs hold at most about 1 MiB.
+pub const MAX_SNAPSHOT_LOG_BYTES: usize = 32 * 1024 * 1024;
 
 pub use crate::layout::{
     BSS_BASE, CODE_BASE, DATA_BASE, HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE,
@@ -213,6 +222,13 @@ pub const SESSION_CAP_MESSAGE: &str =
 /// would: a 4 KiB clear is 256 steps against a 10M budget, while the
 /// lifetime ceiling on bulk bytes lands at MAX_TOTAL_STEPS * 16.
 pub const BULK_BYTES_PER_STEP: u64 = 16;
+
+/// Most work library calls may do inside one `run_until` before it hands
+/// control back (`Memory::note_host_work`: bytes walked, read or
+/// formatted, free-list entries scanned), so the host reads Pause and
+/// Reset at least this often. The work is not charged to the step budget:
+/// that would move the step where a long program meets the ceiling.
+pub const MAX_HOST_WORK_PER_RUN: u64 = 16 << 20;
 
 /// Result of a single step.
 #[derive(Debug, Clone)]
@@ -532,7 +548,7 @@ impl Cpu {
             refund_steps_total: 0,
             refund_output_total: 0,
             host: HostTable::new(),
-            snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
+            snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY, MAX_SNAPSHOT_LOG_BYTES),
             symbols: HashMap::new(),
             steps_total: 0,
             steps_taken: 0,
@@ -676,15 +692,18 @@ impl Cpu {
         }
     }
 
-    /// Give the frame this step pushed the undo logs the step filled. A
-    /// step that recorded nothing leaves every frame as it is. Recording
-    /// starts only once the frame is in the ring, and nothing in a step
-    /// empties the ring, so the newest frame is the one to fill.
+    /// Give the frame this step pushed the undo logs the step filled, then
+    /// hold the ring to its budget. A step that recorded nothing leaves
+    /// every frame as it is. Recording starts only once the frame is in the
+    /// ring, and nothing in a step empties the ring, so the newest frame is
+    /// the one to fill.
     fn close_step_frame(&mut self) {
-        if let Some(frame) = self.snapshots.newest_mut() {
-            self.regs.finish_undo(&mut frame.regs);
-            self.mem.finish_undo(&mut frame.mem);
-            self.heap.finish_undo(&mut frame.heap);
+        let Some(frame) = self.snapshots.newest_mut() else { return };
+        self.regs.finish_undo(&mut frame.regs);
+        let logged = self.mem.finish_undo(&mut frame.mem);
+        self.heap.finish_undo(&mut frame.heap);
+        if let Some(held) = logged {
+            self.snapshots.close_newest(held);
         }
     }
 

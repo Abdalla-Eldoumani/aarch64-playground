@@ -17,8 +17,9 @@ impl Cpu {
     pub fn run_until(&mut self, max_steps: u32, until: Until) -> Result<RunResult, EmuError> {
         let goal = until.depth.is_some() || until.pc.is_some();
         let astray = self.frames.bad_return().step;
+        let work_start = self.mem.host_work();
         let mut steps: u32 = 0;
-        let (mut reached, mut bad_return) = (false, false);
+        let (mut reached, mut bad_return, mut worked) = (false, false, false);
 
         while steps < max_steps && !self.halted && !self.blocked {
             let pc = self.regs.read_pc();
@@ -60,6 +61,13 @@ impl Cpu {
             if matches!(result.outcome, StepOutcome::Sleeping(_)) {
                 break;
             }
+            // One library call can walk megabytes in a single step, so a
+            // step count alone does not bound how long this call holds the
+            // host from reading Pause and Reset.
+            worked = self.mem.host_work().saturating_sub(work_start) >= MAX_HOST_WORK_PER_RUN;
+            if worked {
+                break;
+            }
         }
 
         let pc = self.regs.read_pc();
@@ -68,7 +76,7 @@ impl Cpu {
         // sitting exactly on a chunk boundary. If the budget (not a halt or
         // a stall) ended this call while PC rests on a breakpoint, report the
         // hit now, before the next chunk's first step would step past it.
-        let at_cap = steps >= max_steps && !self.halted && !self.blocked && !reached && !bad_return;
+        let at_cap = (steps >= max_steps || worked) && !self.halted && !self.blocked && !reached && !bad_return;
         Ok(RunResult {
             pc,
             halted: self.halted,

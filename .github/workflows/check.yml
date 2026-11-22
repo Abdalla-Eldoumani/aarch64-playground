@@ -57,9 +57,7 @@ jobs:
   # both places.
   wasm:
     name: wasm-pack bundles
-    # Every job stays on 24.04 through the term: playwright 1.59.1 cannot
-    # install its system dependencies on Ubuntu 26.04.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -109,7 +107,7 @@ jobs:
       # newer GitHub runners).
       - name: install wasm-pack
         if: steps.bundles.outputs.hit == 'false'
-        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
 
@@ -162,7 +160,7 @@ jobs:
   rust:
     name: ${{ matrix.name }}
     if: github.event_name != 'push' || github.ref_name != 'integration'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
@@ -235,7 +233,7 @@ jobs:
   corpus:
     name: verify-corpus
     if: github.event_name != 'push' || github.ref_name != 'integration'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -270,7 +268,7 @@ jobs:
   web-static:
     name: lint + typecheck + audit
     if: github.event_name != 'push' || github.ref_name != 'integration'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -331,7 +329,7 @@ jobs:
 
   web-build:
     name: next build + size-limit
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
@@ -419,7 +417,7 @@ jobs:
   web-test:
     name: vitest shard ${{ matrix.shard }}
     if: github.event_name != 'push' || github.ref_name != 'integration'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
@@ -471,7 +469,7 @@ jobs:
     name: merge shards + coverage floors
     needs: web-test
     if: github.ref_name == 'main' || github.head_ref == 'integration'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
@@ -503,7 +501,7 @@ jobs:
     name: ${{ github.event_name == 'push' && github.ref_name == 'integration' && 'ci (cache warm-up)' || 'ci' }}
     needs: [wasm, rust, corpus, web-static, web-build, web-test, coverage]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7

@@ -47,12 +47,14 @@ impl Cpu {
     }
 
     /// Whether the state a snapshot frame copies WHOLE (virtual files,
-    /// queued stdin, open-file paths) has outgrown the ring's budget.
-    /// Registers, memory and the heap go in as undo logs of what a step
-    /// changed, but these are real copies on every step: 100k steps with
-    /// a 1 MiB virtual file took 51 s against 73 ms with none.
+    /// queued stdin, open-file paths, qsort and bsearch calls in flight)
+    /// has outgrown the ring's budget. Registers, memory and the heap go in
+    /// as undo logs of what a step changed, but these are real copies on
+    /// every step: 100k steps with a 1 MiB virtual file took 51 s against
+    /// 73 ms with none, and a comparator that calls qsort again adds a call
+    /// every few steps.
     pub(super) fn snapshot_side_bytes_exceeded(&self) -> bool {
-        let mut bytes = self.stdin.len();
+        let mut bytes = self.stdin.len() + self.callbacks.copied_bytes();
         for (path, data) in &self.vfs {
             bytes += path.len() + data.len();
             if bytes > MAX_SNAPSHOT_SIDE_BYTES {

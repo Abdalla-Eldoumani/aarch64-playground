@@ -29,12 +29,13 @@ pub(super) fn encode_adr(
             .ok_or_else(|| undefined_label(ln, target))?
     };
 
+    // A distance past i64 is out of range too; i64::MAX fails the check below.
     let imm: i64 = if adrp {
         let pc_page = (pc & !0xFFF) as i64;
         let target_page = (target_addr & !0xFFF) as i64;
-        (target_page - pc_page) >> 12
+        target_page.checked_sub(pc_page).map_or(i64::MAX, |d| d >> 12)
     } else {
-        target_addr as i64 - pc as i64
+        (target_addr as i64).checked_sub(pc as i64).unwrap_or(i64::MAX)
     };
     if !(-(1 << 20)..(1 << 20)).contains(&imm) {
         return asm_err(ln, "ADR/ADRP target out of +/-1MiB (or +/-4GiB page) range");
@@ -52,19 +53,7 @@ pub(super) fn encode_branch_imm(
     if ops.len() != 1 {
         return asm_err(ln, "B/BL requires 1 operand");
     }
-    let target = ops[0].trim();
-
-    let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        parse_immediate(target, ln)?
-    } else {
-        // Labels in the cpsc 355 corpus are lowercase; the frontend
-        // pipeline preserves case so GCC-emitted `.L2` works. Try both.
-        let addr = labels
-            .get(target)
-            .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| undefined_label(ln, target))?;
-        *addr as i64 - pc as i64
-    };
+    let offset_bytes = resolve_branch_target(ops[0].trim(), pc, labels, ln)?;
 
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
@@ -82,19 +71,7 @@ pub(super) fn encode_bcond(
     if ops.len() != 1 {
         return asm_err(ln, "B.cond requires 1 operand");
     }
-    let target = ops[0].trim();
-
-    let offset_bytes = if target.starts_with('#') || target.starts_with('-') || target.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-        parse_immediate(target, ln)?
-    } else {
-        // Labels in the cpsc 355 corpus are lowercase; the frontend
-        // pipeline preserves case so GCC-emitted `.L2` works. Try both.
-        let addr = labels
-            .get(target)
-            .or_else(|| labels.get(&target.to_lowercase()))
-            .ok_or_else(|| undefined_label(ln, target))?;
-        *addr as i64 - pc as i64
-    };
+    let offset_bytes = resolve_branch_target(ops[0].trim(), pc, labels, ln)?;
 
     if offset_bytes % 4 != 0 {
         return asm_err(ln, "branch offset must be 4-byte aligned");
@@ -208,11 +185,14 @@ fn resolve_branch_target(
     {
         parse_immediate(target, ln)
     } else {
+        // Labels in the cpsc 355 corpus are lowercase; the frontend
+        // pipeline preserves case so GCC-emitted `.L2` works. Try both.
         let addr = labels
             .get(target)
             .or_else(|| labels.get(&target.to_lowercase()))
             .ok_or_else(|| undefined_label(ln, target))?;
-        Ok(*addr as i64 - pc as i64)
+        // The PC wraps at 2^64, so the distance does too.
+        Ok(addr.wrapping_sub(pc) as i64)
     }
 }
 

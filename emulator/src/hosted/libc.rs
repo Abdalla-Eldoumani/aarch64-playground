@@ -249,7 +249,7 @@ pub fn strstr(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let at = if needle.is_empty() {
         Some(0)
     } else {
-        hay.windows(needle.len()).position(|w| w == needle.as_slice())
+        first_match(&hay, &needle)
     };
     let found = match at {
         Some(i) => hay_ptr.wrapping_add(i as u64),
@@ -257,6 +257,37 @@ pub fn strstr(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     };
     ctx.regs.write_gpr(0, true, found);
     Ok(HostOutcome::Continue)
+}
+
+/// Where a non-empty `needle` first occurs in `hay`, in time linear in
+/// both (Knuth-Morris-Pratt): comparing every window costs up to the
+/// product of the lengths, all inside one step.
+fn first_match(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    // border[i]: the longest proper prefix of needle[..=i] that ends it too.
+    let mut border = vec![0; needle.len()];
+    let mut k = 0;
+    for (i, &c) in needle.iter().enumerate().skip(1) {
+        while k > 0 && c != needle[k] {
+            k = border[k - 1];
+        }
+        if c == needle[k] {
+            k += 1;
+        }
+        border[i] = k;
+    }
+    k = 0;
+    for (i, &c) in hay.iter().enumerate() {
+        while k > 0 && c != needle[k] {
+            k = border[k - 1];
+        }
+        if c == needle[k] {
+            k += 1;
+        }
+        if k == needle.len() {
+            return Some(i + 1 - k);
+        }
+    }
+    None
 }
 
 /// Return an `int` the way the ABI does: sign-extended through x0, so a
@@ -624,18 +655,24 @@ pub fn strtok(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let arg = ctx.regs.read_gpr(0, true);
     let delim_ptr = ctx.regs.read_gpr(1, true);
     let delims = read_c_string(ctx.mem, delim_ptr, "strtok's delimiters")?;
+    // A table, so a byte walked costs one lookup however long `delims` is.
+    let mut is_delim = [false; 256];
+    for &d in &delims {
+        is_delim[usize::from(d)] = true;
+    }
     // A NULL first argument means "continue"; glibc reads its static
     // cursor, and a program that continues before it ever started reads
     // through NULL and dies. Reading address 0 faults here the same way.
     let mut cursor = if arg != 0 { arg } else { *ctx.strtok_save };
     loop {
         let b = ctx.mem.read_u8(cursor)?;
+        ctx.mem.note_host_work(1);
         if b == 0 {
             *ctx.strtok_save = cursor;
             ctx.regs.write_gpr(0, true, 0);
             return Ok(HostOutcome::Continue);
         }
-        if !delims.contains(&b) {
+        if !is_delim[usize::from(b)] {
             break;
         }
         cursor = cursor.wrapping_add(1);
@@ -643,13 +680,14 @@ pub fn strtok(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let start = cursor;
     loop {
         let b = ctx.mem.read_u8(cursor)?;
+        ctx.mem.note_host_work(1);
         if b == 0 {
             // The last token ends at the string's own terminator; the
             // cursor stays on it so the next call reports exhaustion.
             *ctx.strtok_save = cursor;
             break;
         }
-        if delims.contains(&b) {
+        if is_delim[usize::from(b)] {
             ctx.mem.write_u8(cursor, 0)?;
             *ctx.strtok_save = cursor.wrapping_add(1);
             break;
@@ -934,6 +972,25 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0050_0040);
         strstr(&mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_gpr(0, true), 0);
+    }
+
+    #[test]
+    fn first_match_agrees_with_comparing_every_window() {
+        // Every string over {a, b} up to 7 bytes against every needle up to
+        // 4: overlapping prefixes, matches at either end, needles too long.
+        let words = |max: u32| -> Vec<Vec<u8>> {
+            (0..=max)
+                .flat_map(|len| {
+                    (0..1u32 << len).map(move |bits| (0..len).map(|i| b'a' + (bits >> i & 1) as u8).collect())
+                })
+                .collect()
+        };
+        for hay in words(7) {
+            for needle in words(4).iter().filter(|n| !n.is_empty()) {
+                let want = hay.windows(needle.len()).position(|w| w == needle.as_slice());
+                assert_eq!(first_match(&hay, needle), want, "{hay:?} {needle:?}");
+            }
+        }
     }
 
     #[test]

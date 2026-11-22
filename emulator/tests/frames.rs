@@ -783,6 +783,28 @@ fn a_library_calls_write_is_stamped_with_the_steps_taken_not_the_budget() {
     assert_eq!((bad.step, bad.pc, bad.target), (17, main_ret, 0x4141_4141_4141_4141));
 }
 
+/// A copy that walks down is logged as one run from its lowest byte, as a
+/// copy that walks up is, so a record it reaches is placed by where the
+/// copy starts either way. Shifts wipe's buffer up a byte instead of
+/// filling it, with 47 bytes moved.
+#[test]
+fn a_copy_down_and_a_copy_up_place_the_record_they_reach_alike() {
+    let shifted = |call: &str| {
+        let shift = format!("        mov     x1, x0\n        add     x0, x0, 1\n        mov     x2, 47\n        bl      {call}");
+        MEMSET_OVERRUN.replace("        bl      memset", &shift)
+    };
+    let mut down = load(&shifted("memmove"));
+    let mut up = load(&shifted("memcpy"));
+    // Three more steps reach the call than reach memset.
+    down.step(15);
+    up.step(15);
+    let hit = |p: &Loaded| p.view().frames[0].activation.lr_hit;
+    assert_eq!(hit(&down).fp_offset, 17, "from buf + 1, in wipe's frame");
+    assert_eq!(hit(&down), hit(&up));
+    down.cpu.step_back();
+    assert_eq!(hit(&down).step, 0, "Back takes the hit back");
+}
+
 const QSORT_OVERRUN: &str = r#"
 // sort3 keeps two longs but asks qsort to sort three: the third is main's
 // saved fp, just above sort3's frame.

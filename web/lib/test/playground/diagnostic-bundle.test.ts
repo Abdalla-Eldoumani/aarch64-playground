@@ -148,8 +148,8 @@ function noise(rows: number): string[] {
   });
 }
 
-/** The bundle a link carries. It must sit in the fragment, which the browser
- *  never sends, with no query to carry the program to the server. */
+/** The bundle a link carries. It must sit in the fragment, which is not part
+ *  of the request for the page, and the link must have no query. */
 function fragmentValue(url: string | null): string {
   if (url === null) throw new Error("expected a link");
   const link = new URL(url);

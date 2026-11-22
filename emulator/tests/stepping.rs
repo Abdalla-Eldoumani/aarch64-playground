@@ -510,3 +510,66 @@ fn step_back_restores_the_step_count_a_bulk_call_charged() {
     assert_eq!(cpu.steps_total(), straight.steps_total());
     assert_eq!(cpu.exit_code(), Some(0));
 }
+
+/// Shifts 40 bytes up by one with memmove, which copies them last byte
+/// first, then sorts six longs with qsort, which slides each run of
+/// elements up the same way.
+const COPY_DOWN_SRC: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+buf:    .byte   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20
+        .byte   21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40
+        .balign 8
+nums:   .dword  0x0606060606060606, 0x0505050505050505, 0x0404040404040404
+        .dword  0x0303030303030303, 0x0202020202020202, 0x0101010101010101
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x1, =buf
+        add     x0, x1, 1               // above the source, so memmove walks down
+        mov     x2, 39
+        bl      memmove
+        ldr     x0, =nums
+        mov     x1, 6
+        mov     x2, 8
+        adr     x3, compare
+        bl      qsort
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+
+compare:
+        ldr     x9, [x0]
+        ldr     x10, [x1]
+        cmp     x9, x10
+        cset    w0, gt
+        csinv   w0, w0, wzr, ge         // 1, 0 or -1
+        ret
+"#;
+
+/// Back over a copy that writes each byte below the last, and over qsort's
+/// slides, puts every byte back as it was.
+#[test]
+fn stepping_back_over_copies_that_walk_down_puts_every_byte_back() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(COPY_DOWN_SRC, &cpu.host).expect("assemble");
+    cpu.load_linked_image(&image).expect("load");
+    let mut states = vec![seen(&cpu)];
+    while !cpu.is_halted() {
+        cpu.step().expect("step");
+        states.push(seen(&cpu));
+    }
+    assert_eq!(cpu.exit_code(), Some(0));
+    let end = states.len() - 1;
+    assert!(end <= 128, "the whole run fits the ring: {end} steps");
+    assert_ne!(states[end].data, states[0].data, "the copy and the sort changed the data");
+    for back in 1..=end {
+        cpu.step_back();
+        assert!(states[end - back] == seen(&cpu), "{back} steps back differs from the first run");
+    }
+}

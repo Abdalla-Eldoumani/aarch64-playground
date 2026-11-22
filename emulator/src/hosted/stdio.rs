@@ -211,6 +211,7 @@ pub fn fwrite(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     for i in 0..size.saturating_mul(count) {
         bytes.push(ctx.mem.read_u8(ptr.wrapping_add(i))?);
     }
+    ctx.mem.note_host_work(bytes.len() as u64);
     let written = write_to_fd(ctx, fd as u64, &bytes);
     let items = if written <= 0 || size == 0 { 0 } else { written as u64 / size };
     ctx.regs.write_gpr(0, true, items);

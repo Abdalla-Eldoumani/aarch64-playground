@@ -3,6 +3,7 @@
 //! never panic, silently mis-encode, or report success.
 
 use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frames::check::check_source;
 use aarch64_emulator::frontend::lint::lint;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
@@ -259,6 +260,70 @@ fn the_window_messages_quote_the_section_window() {
     let code = ".text\n.global main\nmain:\nldr x0, =5\nbl printf\nret\n.skip";
     let text = assemble_err(&format!("{code} {}\n", SECTION_WINDOW - 16));
     assert!(text.contains(&format!("the {n} MiB code window")), "message was: {text}");
+}
+
+#[test]
+fn a_fill_directive_without_a_size_reserves_nothing() {
+    // GNU as builds these lines as zero bytes with no message. An empty
+    // operand list used to index past its end and panic.
+    let cpu = Cpu::new();
+    let program = |fill: &str| {
+        format!(".data\na: .byte 1\n{fill}b: .byte 2\n.text\n.global main\nmain:\nret\n")
+    };
+    let want = assemble_hosted(&program(""), &cpu.host).expect("should assemble");
+    for name in [".skip", ".zero", ".space"] {
+        let src = program(&format!("{name}\n"));
+        let got = assemble_hosted(&src, &cpu.host)
+            .unwrap_or_else(|e| panic!("{name} should assemble: {e}"));
+        assert_eq!(got.symbols["b"], want.symbols["b"], "{name} moved the next label");
+        assert_eq!(got.data_spans, want.data_spans, "{name} changed the section's size");
+        // The lint and the frame check read the source again on their own paths.
+        lint(&src);
+        check_source(&src, &cpu.host);
+    }
+}
+
+/// The distance to the target used to overflow before the range check.
+fn assert_target_at_i64_min_is_out_of_range(op: &str) {
+    let msg = assemble_err(&format!(
+        ".text\n.global main\nmain:\n    {op} x0, -9223372036854775808\n    ret\n"
+    ));
+    assert!(msg.contains("ADR/ADRP target out of"), "{op}: message was: {msg}");
+    assert!(msg.contains("line 4"), "{op}: message was: {msg}");
+}
+
+#[test]
+fn an_adrp_target_past_the_signed_range_is_out_of_range() {
+    assert_target_at_i64_min_is_out_of_range("adrp");
+}
+
+#[test]
+fn an_adr_target_past_the_signed_range_is_out_of_range() {
+    assert_target_at_i64_min_is_out_of_range("adr");
+}
+
+#[test]
+fn a_branch_to_a_symbol_past_the_signed_range_is_out_of_reach() {
+    // The distance to the target used to overflow before the reach check.
+    let mut failures = Vec::new();
+    for (op, name) in [
+        ("b", "b"),
+        ("bl", "bl"),
+        ("b.eq", "b.cond"),
+        ("cbz x0,", "cbz/cbnz"),
+        ("tbz x0, 1,", "tbz/tbnz"),
+    ] {
+        let src = format!("far = 0x8000000000000000\n.text\n.global main\nmain:\n    {op} far\n    ret\n");
+        // Caught one by one so a single run names every encoder that panics.
+        match std::panic::catch_unwind(|| assemble_err(&src)) {
+            Ok(msg)
+                if msg.contains(&format!("{name} target is out of reach (9223372036850581504 bytes away"))
+                    && msg.contains("line 5") => {}
+            Ok(msg) => failures.push(format!("{op}: message was: {msg}")),
+            Err(_) => failures.push(format!("{op}: panicked")),
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
 }
 
 #[test]
