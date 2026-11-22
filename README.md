@@ -85,10 +85,11 @@ steps in [Run it locally](#run-it-locally).
   instructions per run, 32 MiB of memory in use (an 8 MiB stack and a 16 MiB
   heap), 4 MiB of output, and 32 MiB of text built by m4, counting every
   round of every line (in GNU m4's order, on the same budget, 1 KiB for each
-  macro call plus the text it builds or, when longer, the body it reads).
-  Step back reaches the last 128 instructions, fewer
-  behind steps that write more than 64 KiB, such as a `memset` over a large
-  buffer: the records of those steps share 32 MiB. The editor shows at most
+  macro call plus the text it builds or, when longer, the body it reads, and
+  8 bytes for each token m4 reads or text it puts back). Step back reaches
+  the last 128 instructions, fewer behind steps that write more than 64 KiB,
+  such as a `memset` over a large buffer: the records of those steps share
+  32 MiB. The editor shows at most
   1,000 macro warnings and counts the rest on one line.
 - Your programs, files, and exercise progress are saved in this browser only.
   There are no accounts, and clearing the site's data deletes them. The
