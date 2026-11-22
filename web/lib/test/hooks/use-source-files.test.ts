@@ -403,6 +403,23 @@ describe("useSourceFiles when storage is full", () => {
     expect(tags(stored(STORE)), "the restore is stored").toEqual(["// a", "// k", "// big"]);
   });
 
+  it("stores a kept closed tab under a free name when a new tab takes its name", () => {
+    window.localStorage.setItem(
+      STORE,
+      JSON.stringify([file("a.s", "a", 500), file("big.s", "big", 3000)]),
+    );
+    window.localStorage.setItem(BACKUP, JSON.stringify([file("k.s", "k", 800)]));
+    const h = mount();
+    leave(200);
+    h.save(h.files().filter((f) => f.name !== "big.s"));
+    h.save([...h.files(), file("big.s", "new big", 10)]);
+    expect(stored(STORE).map((f) => `${f.name} ${f.body.split("\n")[0]}`)).toEqual([
+      "a.s // a",
+      "big.s // new big",
+      "2-big.s // big",
+    ]);
+  });
+
   // Copies of a link's files may give way, so a strip the store has room for
   // lands as it would with no backup at all.
   it("stores a larger program over a link's helpers when only their copies do not fit", () => {
