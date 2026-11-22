@@ -43,7 +43,7 @@ one kind of instruction or one job. All paths below are under
 | How a word decodes | `decoder/`, one file per instruction class (`data_processing.rs`, `load_store.rs`, `branch.rs`, `fp.rs`, `simd.rs`, `simd_fp.rs`) |
 | What an instruction does | `executor/`, with the decoder's class names; the flag helpers are in `executor.rs` |
 | The list of accepted mnemonics | `SUPPORTED_MNEMONICS` in `assembler.rs`, kept equal to [instruction-reference.md](instruction-reference.md) by a test |
-| m4, labels, directives, and linking | `frontend/`: `m4.rs`, `lexer.rs`, `parser.rs`, `expr.rs`, `sections.rs`, `pipeline.rs` |
+| m4, labels, directives, and linking | `frontend/`: `m4.rs`, `m4_gnu.rs`, `lexer.rs`, `parser.rs`, `expr.rs`, `sections.rs`, `pipeline.rs` |
 | A library function such as `printf` or `malloc` | `hosted/`, one file per family: `printf.rs`, `scanf.rs`, `libc.rs`, `stdio.rs`, `heap.rs`, `math.rs`, `ctype.rs`, `callback.rs` |
 | A system call or the virtual files | `hosted/syscalls.rs` |
 | The step loop and the memory layout | `cpu.rs`, with the fixed address map in `layout.rs`; loading in `cpu/loader.rs`, the limits in `cpu/bounds.rs`, input and output in `cpu/system.rs`, breakpoints, step back, and the runs behind step over, step out, and run to cursor (`run_until`) in `cpu/control.rs` |
@@ -130,7 +130,8 @@ so prompts, starters, and answers stay off the index pages.
   <img src="diagrams/assemble-pipeline-light.svg" alt="Assemble pipeline. The editor's files become one source string. detect_hosted_mode sends source that uses directives, m4 macros, or library calls through m4.rs, lexer.rs, parser.rs, and pipeline.rs in frontend/, and sends bare-metal source to assembler.rs, which pipeline.rs also sends one line at a time to get back its instruction word. cpu/loader.rs writes the result into memory. Error lines and the line map go back to the editor.">
 </picture>
 
-The pipeline runs m4 (`m4.rs`), the lexer, and the parser, groups the lines by
+The pipeline runs m4 (`m4.rs`, which hands a program it cannot run line by
+line to `m4_gnu.rs`, GNU m4's own order), the lexer, and the parser, groups the lines by
 section, and links (`pipeline.rs`). Linking places the labels, resolves
 forward references in two passes, builds the pool that `ldr xN, =label` loads
 from, and plants a two-instruction jump for each library function a program
@@ -220,7 +221,8 @@ The site runs programs from strangers, so the emulator enforces its limits
 itself, however the program arrived: at most 10 million instructions per run,
 32 MiB of mapped memory, an 8 MiB stack, and 4 MiB of output. Assembling has
 its own: m4 stops once the text its rounds build, over the whole source,
-passes 32 MiB, and filled `.space` and `.skip` lines are refused at the line
+passes 32 MiB (in GNU m4's order, the text its macro calls build, counting
+1 KiB for each call), and filled `.space` and `.skip` lines are refused at the line
 that would take a section past its 1 MiB window. Each one stops the program
 with a plain message, never a crash. Three more caps keep the tab answering
 without stopping the program: the check that runs when a program loads keeps
