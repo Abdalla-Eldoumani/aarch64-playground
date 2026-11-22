@@ -549,6 +549,20 @@ describe("a program load when storage is full", () => {
     expect(ref.current!.getSource()).toBe(MAIN);
     expect(ref.current!.getFiles().map((f) => f.name)).toEqual(["util.s", "queue.s"]);
   });
+
+  // With no file of the student's in the way, nothing is kept in place of the
+  // load, so there is nothing to say, as before.
+  it("says nothing when the load keeps none of the student's files", async () => {
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    act(() => ref.current!.loadProgram({ source: "// a recent program" }));
+    await waitFor(() => expect(ref.current!.getSource()).toBe("// a recent program"));
+    expect(toastError).not.toHaveBeenCalled();
+  });
 });
 
 describe("the error line under the run row", () => {
