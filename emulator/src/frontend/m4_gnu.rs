@@ -6,8 +6,9 @@
 //! The scanner is GNU m4's input engine: names, nested `' quotes, `#`
 //! comments (or `changecom`'s) copied unexpanded, macro calls whose
 //! arguments run across lines, and every expansion read again as input.
-//! It runs `define`, `undefine`, `dnl`, `divert` (-1 and 0), `divnum` and
-//! `changecom`; each other GNU builtin is refused by name.
+//! It runs `define`, `undefine`, `dnl`, `divert` (to 0, or to a negative
+//! number, which throws text away), `divnum` and `changecom`; each other
+//! GNU builtin, and a numbered diversion, is refused by name.
 
 use std::borrow::Cow;
 use std::collections::HashMap;
