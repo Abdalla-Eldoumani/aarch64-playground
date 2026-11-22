@@ -486,4 +486,27 @@ describe("useSourceFiles when storage is full", () => {
     expect(tags(stored(STORE))).toEqual(["// mine"]);
     expect(stored(BACKUP)).toEqual([]);
   });
+
+  // The smaller strip went in first, the copies still did not fit, and the
+  // old strip would not go back: the screen keeps the student's files, and
+  // their next write stores them again.
+  it("refuses a load whose old strip cannot be put back", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 1000)]));
+    const h = mount();
+    let stripWrites = 0;
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key === BACKUP || (key === STORE && ++stripWrites === 2)) {
+        throw new DOMException("storage is full", "QuotaExceededError");
+      }
+      realSetItem.call(this, key, value);
+    });
+    expect(h.save([file("x.s", "link", 10)], { load: true })).toBe("refused");
+    expect(tags(h.files())).toEqual(["// mine"]);
+    h.save(h.files().map((f) => ({ ...f, body: `${f.body}z` })));
+    expect(stored(STORE).map((f) => f.body)).toEqual(h.files().map((f) => f.body));
+  });
 });
