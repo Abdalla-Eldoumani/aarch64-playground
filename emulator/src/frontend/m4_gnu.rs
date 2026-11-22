@@ -753,6 +753,22 @@ mod tests {
     }
 
     #[test]
+    fn reading_text_again_counts_each_token_and_each_put_back_against_the_work_budget() {
+        // Each program spends half the budget in bytes alone: one-byte
+        // tokens, and a comment whose closing string almost matches at every
+        // byte, so each byte read is put back once.
+        let tokens = "+".repeat(16_384);
+        let comment = format!("#{}++b", "+".repeat(16_381));
+        for (setup, body, bytes_a_use) in [
+            ("", &tokens, tokens.len() + CALL_WORK_BYTES),
+            ("changecom(`#', `++b')", &comment, 2 * comment.len() + CALL_WORK_BYTES),
+        ] {
+            let uses = MAX_EXPANSION_WORK_BYTES / 2 / bytes_a_use;
+            stops(&format!("divert(-1){setup}define(`b', `{body}')\n{}", "b\n".repeat(uses)), "m4 expansion built more than");
+        }
+    }
+
+    #[test]
     fn a_body_read_without_writing_stops_at_the_work_budget_at_three_sizes() {
         // `$9` with no ninth argument writes nothing, so each call reads the
         // whole body and builds no text.
