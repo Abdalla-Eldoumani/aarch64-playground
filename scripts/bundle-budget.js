@@ -40,8 +40,11 @@ const ROUTES = [
     // real-time request and the unmount stop: 211,936 -> 211,998 B locally,
     // 211.97 -> 212.02 kB in CI. Raised 125 B (2026-11-18) for the window-size
     // request, the largest growth measured: +96 to +125 B by checkout path
-    // (212,000 -> 212,125 B at one), 212.05 -> 212.16 kB in CI.
-    limit: 212_187,
+    // (212,000 -> 212,125 B at one), 212.05 -> 212.16 kB in CI. Raised 573 B
+    // (2026-11-21) for keeping every helper a program load replaces
+    // restorable, with the full-storage rules and their notices:
+    // 211,971 -> 212,760 B locally.
+    limit: 212_760,
   },
   {
     name: "playground document js (every chunk /playground loads)",
@@ -50,10 +53,11 @@ const ROUTES = [
     // 225.12 kB brotli measured (2026-10-28). Raised 125 B (2026-11-18) for the
     // window-size request, the largest growth measured: +96 to +125 B by
     // checkout path (225,939 -> 226,064 B at one), 225.99 -> 226.10 kB in CI.
-    // Raised 88 B (2026-11-19) for keeping every helper a program load
-    // replaces and loading one program from a bundle-and-share link:
-    // 226,005 -> 226,213 B locally.
-    limit: 226_213,
+    // Raised 688 B (2026-11-21) for keeping every helper a program load
+    // replaces restorable, with the full-storage rules and their notices, and
+    // loading one program from a bundle-and-share link: 226,006 -> 226,813 B
+    // locally.
+    limit: 226_813,
   },
 ];
 
