@@ -1587,18 +1587,19 @@ mod tests {
     #[test]
     fn a_routed_program_spends_one_work_budget_across_both_passes() {
         // The line pass spends about 60% of the budget on renames inside the
-        // strings, which GNU m4's order copies as comments (`changecom`);
-        // GNU m4's order then spends about 60% on text read again under
-        // `divert(-1)`. Either pass alone fits; both together do not.
+        // strings, which GNU m4's order copies as comments (`changecom`).
+        // GNU m4's order then spends about 60% reading one long word again
+        // under `divert(-1)`, from `//` lines the line pass strips. Either
+        // pass alone fits; both together do not.
         let letters = b"abcdefghijklmnopqrstuvwxyzABCDEF";
         let mut src = String::from("changecom(.ascii)\n");
         for pair in letters.windows(2) {
             src += &format!("define({}, {})\n", pair[0] as char, pair[1] as char);
         }
         src += &format!("define(J, `{}')\n\t.data\n{}", "a ".repeat(22_500), "\t.ascii \"J\"\n".repeat(14));
-        let body = "+".repeat(16_384);
+        let body = "F".repeat(16_384);
         let uses = MAX_EXPANSION_WORK_BYTES / 10 * 6 / (body.len() + 1024);
-        src += &format!("divert(-1)\ndefine(`b', `{body}')\n{}divert\n\t.text\n\t.global main\nmain:\tret\n", "b\n".repeat(uses));
+        src += &format!("divert(-1)\ndefine(`b', `{body}')\n{}divert\n\t.text\n\t.global main\nmain:\tret\n", "// b\n".repeat(uses));
         rejects(expand(&src), "m4 expansion built more than 32 MiB");
     }
 
