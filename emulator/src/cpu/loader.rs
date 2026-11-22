@@ -7,6 +7,8 @@ use super::*;
 impl Cpu {
     /// Load encoded instructions into memory at CODE_BASE and reset PC.
     pub fn load_program(&mut self, code: &[u32]) {
+        // A bare program's stores stay unguarded, over any hosted load's code.
+        self.mem.set_store_guard(StoreGuard::Off);
         let mut addr = CODE_BASE;
         for &word in code {
             // auto-maps pages on write
@@ -87,6 +89,8 @@ impl Cpu {
         self.last_call = CallRecord::default();
         self.clobber_notes.clear();
         self.clobber_noted = 0;
+        // The last load's code may sit where this image writes.
+        self.mem.set_store_guard(StoreGuard::Off);
         for (addr, bytes) in &image.writes {
             self.mem.write_bytes(*addr, bytes).map_err(map_write_fault)?;
         }
@@ -98,6 +102,7 @@ impl Cpu {
         self.regs.write_gpr(30, true, MAIN_RETURN_ADDR);
         crate::argv::setup_argv(&mut self.regs, &mut self.mem, args).map_err(map_write_fault)?;
         crate::hosted::stdio::write_stdio_globals(&mut self.mem).map_err(map_write_fault)?;
+        self.mem.set_store_guard(StoreGuard::Code { text_end: image.text_end });
         self.frames.start(image.entry_point, &self.regs.snapshot());
         self.halted = false;
         // Refresh the symbol table from the linker so debugger

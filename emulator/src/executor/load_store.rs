@@ -132,21 +132,7 @@ pub(super) fn exec_ldst_pair(
     }
     check_sp_alignment(rn, regs)?;
     let base = regs.read_gpr_or_sp(rn, true);
-
-    let (address, writeback) = match mode {
-        IndexMode::PreIndex => {
-            let addr = (base as i64 + imm7 as i64) as u64;
-            (addr, Some(addr))
-        }
-        IndexMode::PostIndex => {
-            let wb = (base as i64 + imm7 as i64) as u64;
-            (base, Some(wb))
-        }
-        IndexMode::SignedOffset => {
-            let addr = (base as i64 + imm7 as i64) as u64;
-            (addr, None)
-        }
-    };
+    let (address, writeback) = apply_index_mode(base, imm7 as i64, mode);
 
     let pair_size: u64 = if sf && op != LdStPairOp::Ldpsw { 8 } else { 4 };
     let access = match op {

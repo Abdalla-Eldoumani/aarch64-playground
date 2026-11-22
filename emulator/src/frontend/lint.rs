@@ -97,10 +97,47 @@ fn is_reserved_name(name: &str) -> bool {
     )
 }
 
+/// Caps on the macro warnings one lint keeps: real programs stay far below
+/// them, but every use of a macro can get its own warning quoting the body.
+const MAX_HYGIENE_WARNINGS: usize = 1000;
+const MAX_HYGIENE_BYTES: usize = 256 * 1024;
+
+/// The macro warnings kept under the caps, and how many were left out.
+struct Hygiene<'a> {
+    warnings: &'a mut Vec<LintWarning>,
+    kept: usize,
+    bytes: usize,
+    left_out: usize,
+    /// Lowest line among the warnings left out, where the closing line goes.
+    from_line: usize,
+}
+
+impl Hygiene<'_> {
+    /// Past either cap a warning is only counted, so its message, which
+    /// can quote a long body, is never built.
+    fn push(&mut self, line: usize, message: std::fmt::Arguments<'_>) {
+        if self.left_out == 0 && self.kept < MAX_HYGIENE_WARNINGS {
+            let message = std::fmt::format(message);
+            if self.bytes + message.len() <= MAX_HYGIENE_BYTES {
+                self.kept += 1;
+                self.bytes += message.len();
+                self.warnings.push(LintWarning { line, message });
+                return;
+            }
+        }
+        // Define sites are pushed before the source walk, so not in line order.
+        if self.left_out == 0 || line < self.from_line {
+            self.from_line = line;
+        }
+        self.left_out += 1;
+    }
+}
+
 fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintWarning>) {
     if expanded.defines.is_empty() {
         return;
     }
+    let mut hygiene = Hygiene { warnings, kept: 0, bytes: 0, left_out: 0, from_line: 0 };
     // One warning per define SITE, quoting that site's own body. The
     // collapsed `defines` map holds only the last body a redefined macro
     // ever had, so a windowed alias would be reported against the wrong
@@ -113,21 +150,36 @@ fn macro_hygiene(source: &str, expanded: &m4::Expanded, warnings: &mut Vec<LintW
         let canonical = (name == "fp" && body.trim().eq_ignore_ascii_case("x29"))
             || (name == "lr" && body.trim().eq_ignore_ascii_case("x30"));
         if !canonical && is_reserved_name(name) {
-            warnings.push(LintWarning {
-                line: *line,
-                message: format!(
+            hygiene.push(
+                *line,
+                format_args!(
                     "the macro name `{name}` is also a register or instruction \
                      name: every later use of `{name}` becomes `{body}`; \
                      rename the macro (for example `{name}_r`)"
                 ),
-            });
+            );
         }
     }
     // Walk the ORIGINAL source so the string/char literals are the ones
     // the student wrote (expansion leaves them alone by design).
     for (idx, raw) in source.lines().enumerate() {
         let line = idx + 1;
-        scan_line_for_hygiene(raw, line, expanded, warnings);
+        scan_line_for_hygiene(raw, line, expanded, &mut hygiene);
+    }
+    let n = hygiene.left_out;
+    if n > 0 {
+        hygiene.warnings.push(LintWarning {
+            line: hygiene.from_line,
+            message: format!(
+                "{n} more macro warning{} not shown, from this line on: the lint shows \
+                 at most {MAX_HYGIENE_WARNINGS} of them, or {} KiB of text. The usual \
+                 cause is a macro whose name appears many times in strings or after a \
+                 `#`, or whose body is very long: rename the macro, or make it an \
+                 equate (`name = value`)",
+                if n == 1 { "" } else { "s" },
+                MAX_HYGIENE_BYTES / 1024
+            ),
+        });
     }
 }
 
@@ -135,7 +187,7 @@ fn scan_line_for_hygiene(
     raw: &str,
     line: usize,
     expanded: &m4::Expanded,
-    warnings: &mut Vec<LintWarning>,
+    hygiene: &mut Hygiene<'_>,
 ) {
     // Ignore the define lines themselves and comment-only content.
     let trimmed = raw.trim_start();
@@ -182,9 +234,9 @@ fn scan_line_for_hygiene(
             // register the student never wrote into this warning.
             if let Some(body) = expanded.define_body_at(ident, line) {
                 if in_string || in_char {
-                    warnings.push(LintWarning {
+                    hygiene.push(
                         line,
-                        message: format!(
+                        format_args!(
                             "`{ident}` is defined as a macro ({body}) and also \
                              appears in this {}. m4 replaces it here exactly \
                              as the university servers do, so the program \
@@ -192,29 +244,29 @@ fn scan_line_for_hygiene(
                              example `{ident}_r`)",
                             if in_string { "string" } else { "character literal" }
                         ),
-                    });
+                    );
                 } else if after_hash {
-                    warnings.push(LintWarning {
+                    hygiene.push(
                         line,
-                        message: format!(
+                        format_args!(
                             "m4 treats `#` as a comment start, here and on the \
                              university servers, so `{ident}` will NOT expand \
                              and the assembler will reject the line. Use an \
                              equate (`{ident} = {body}`) instead of a define, \
                              or drop the `#`"
                         ),
-                    });
+                    );
                 } else if i < bytes.len() && bytes[i] == b'(' && !body.contains('$') {
                     // A body that reads `$1` is meant to be called this way.
-                    warnings.push(LintWarning {
+                    hygiene.push(
                         line,
-                        message: format!(
+                        format_args!(
                             "`{ident}(` reads as an m4 macro CALL on the \
                              university servers, which consumes the text in the \
                              parentheses. Put a space before `(`, or rename the \
                              macro"
                         ),
-                    });
+                    );
                 }
             }
             continue;
@@ -952,6 +1004,55 @@ ret
         assert_eq!(w[0].0, 4);
         assert!(w[0].1.contains("comment"), "{}", w[0].1);
         assert!(w[0].1.contains("equate"), "{}", w[0].1);
+    }
+
+    #[test]
+    fn hygiene_warnings_stop_at_a_cap_with_one_line_counting_the_rest() {
+        // m4 copies the text after `#` as it is, so none of its own caps sees
+        // these uses, and each one would be a warning quoting the whole body.
+        let long = "x".repeat(1024);
+        let huge = "x".repeat(300 * 1024);
+        let shapes = [
+            (long.as_str(), "#", "", 1_000),
+            (long.as_str(), "#", "", 2_000),
+            (long.as_str(), "#", "", 4_000),
+            ("1", "#", "", 4_000),
+            ("1", ".string \"", "\"", 4_000),
+            (huge.as_str(), "#", "", 1),
+        ];
+        let mut over = Vec::new();
+        for (body, lead, tail, uses) in shapes {
+            let src = format!("define(a, {body})\n.text\nmain:\n{lead}{}{tail}\nret\n", " a".repeat(uses));
+            let started = std::time::Instant::now();
+            let w = lint(&src);
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "{uses} uses took {:?}",
+                started.elapsed()
+            );
+            let kept = w.len().saturating_sub(1);
+            let bytes: usize = w[..kept].iter().map(|w| w.message.len()).sum();
+            let closing = w.last().map_or("", |w| w.message.as_str());
+            let counted = closing.starts_with(&format!("{} more macro warning", uses - kept));
+            if kept > 1_000 || bytes > 256 * 1024 || !counted || w.last().map(|w| w.line) != Some(4) {
+                over.push((body.len(), uses, w.len(), bytes + closing.len()));
+            }
+        }
+        assert!(over.is_empty(), "(body bytes, uses, warnings, message bytes) {over:?}");
+    }
+
+    #[test]
+    fn hygiene_closing_line_sits_at_the_lowest_line_left_out() {
+        // Define sites are checked before the source walk, so the first
+        // warning left out (line 12) sits below ten others left out after it.
+        let src = format!(
+            "define(x0, a)\n{}define(x1, {})\n",
+            ".string \"x0\"\n".repeat(10),
+            "y".repeat(300 * 1024)
+        );
+        let w = lint(&src);
+        let closing = w.iter().find(|w| w.message.contains("more macro warning")).expect("a closing line");
+        assert_eq!((closing.line, closing.message.starts_with("11 more")), (2, true), "{w:?}");
     }
 
     #[test]

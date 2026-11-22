@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -7,8 +7,9 @@ import { describe, expect, it } from "vitest";
 // two conditions that read the branch, the vitest shard count, the corpus
 // test the cargo job skips by name, and the skip on web-build's browser
 // smoke. The workflow is read as text one level above web/ (vitest's cwd),
-// as .github/scripts/check-pins.js reads it. The last block pins the
-// triggers of refresh-stars.yml, whose every run starts a production build.
+// as .github/scripts/check-pins.js reads it. The last blocks pin the
+// triggers of refresh-stars.yml, whose every run starts a production build,
+// and the npm directories dependabot.yml watches.
 const ROOT = path.join(process.cwd(), "..");
 const read = (file: string) => readFileSync(path.join(ROOT, file), "utf8");
 const WORKFLOW = read(".github/workflows/check.yml").split(/\r?\n/);
@@ -182,5 +183,18 @@ describe("refresh-stars.yml", () => {
     const to = lines.findIndex((line, i) => i >= from && /^\S/.test(line));
     const triggers = lines.slice(from, to).flatMap((line) => line.match(/^ {2}([\w-]+):/)?.[1] ?? []);
     expect(triggers, "the events under on:").toEqual(["schedule", "workflow_dispatch"]);
+  });
+});
+
+describe("dependabot.yml", () => {
+  it("watches both npm lockfiles the deploy installs from", () => {
+    // vercel.json's install command runs npm ci at the root, then in web/.
+    const watched = [
+      ...read(".github/dependabot.yml").matchAll(/^ {2}- package-ecosystem: npm\r?\n {4}directory: (\S+)$/gm),
+    ].map(([, directory]) => directory);
+    expect(watched.sort(), "the npm entries' directories").toEqual(["/", "/web"]);
+    for (const directory of watched) {
+      expect(existsSync(path.join(ROOT, directory, "package-lock.json")), `${directory} has a package-lock.json`).toBe(true);
+    }
   });
 });

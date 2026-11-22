@@ -13,8 +13,7 @@ permissions:
 
 jobs:
   automerge:
-    # Pinned so every workflow runs on the same image.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'Abdalla-Eldoumani/aarch64-playground'
     steps:

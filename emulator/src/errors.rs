@@ -59,6 +59,14 @@ pub enum EmuError {
         address: u64,
         access: MemAccess,
     },
+    /// A store the course servers kill with a segmentation fault: into the
+    /// program's own code (`code`), or by the library call `call` into page
+    /// 0 or the host stub window. `call` is None for an instruction.
+    StoreFault {
+        address: u64,
+        code: bool,
+        call: Option<&'static str>,
+    },
     /// An SP-based load or store ran while SP was off the 16-byte
     /// boundary, or a libc call was made with SP misaligned. Linux sets
     /// SCTLR_EL1.SA0, so the course servers kill this with a bus error;
@@ -169,6 +177,19 @@ impl fmt::Display for EmuError {
                      after `ldr x19, =arr` overwrites the pointer)"
                 )
             }
+            Self::StoreFault { address, code, call } => write!(
+                f,
+                "Segmentation fault\n{} tried to write to 0x{address:x}, {}",
+                call.unwrap_or("this store"),
+                if *code {
+                    "the program's own code: its label is in .text, or is the wrong one. \
+                     Put each variable the program changes under .data or .bss"
+                } else {
+                    "memory the program never set up: it was given a value, not an \
+                     address. Load the address with `ldr x1, =var`, or `add x1, x29, \
+                     offset` for a local"
+                }
+            ),
             // "Bus error" is what the servers' shell prints for SIGBUS, the
             // signal this fault raises there; the fix is stated here once.
             Self::SpAlignmentFault { sp, at_call } => {

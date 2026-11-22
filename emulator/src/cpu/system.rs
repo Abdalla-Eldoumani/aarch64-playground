@@ -337,6 +337,11 @@ impl Cpu {
         call.call_pc = self.last_program_pc;
         call.result = regs[0];
         call.failed = failed;
+        // A scanf that faulted stopped at the conversion it was storing;
+        // printf words its own stopped rows.
+        if let Some(row) = call.current().filter(|_| failed && kind == crate::hosted::CALL_SCANF) {
+            row.code = crate::hosted::CALL_STOPPED;
+        }
         let old = std::mem::replace(&mut self.last_call, std::mem::take(&mut self.call_scratch));
         match self.snapshots.newest_mut() {
             Some(frame) => frame.call = Some(old),

@@ -1,6 +1,6 @@
 {
   "name": "aarch64-playground-web",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "private": true,
   "license": "AGPL-3.0-only",
   "engines": {
@@ -74,7 +74,7 @@
     {
       "name": "wasm emulator (lazy on first assemble)",
       "path": ".next/static/media/aarch64_emulator_bg.*.wasm",
-      "limit": "227.771 KB"
+      "limit": "229.628 KB"
     },
     {
       "name": "stylesheets (tailwind + fonts + monaco/xterm)",
@@ -106,7 +106,7 @@
     "react-dom": "19.3.1",
     "react-hot-toast": "2.6.1",
     "react-markdown": "10.1.0",
-    "react-resizable-panels": "4.21.0",
+    "react-resizable-panels": "4.23.0",
     "rehype-sanitize": "6.0.0",
     "remark-gfm": "4.0.1"
   },
@@ -121,10 +121,10 @@
     "concurrently": "9.2.5",
     "eslint": "9.39.5",
     "eslint-config-next": "16.4.6",
-    "jsdom": "31.0.0",
-    "lighthouse": "13.5.0",
-    "playwright": "1.59.1",
-    "postcss": "8.5.32",
+    "jsdom": "31.0.1",
+    "lighthouse": "13.6.0",
+    "playwright": "1.65.1",
+    "postcss": "8.5.33",
     "size-limit": "14.3.0",
     "tailwindcss": "3.4.19",
     "typescript": "5.9.3",
@@ -132,9 +132,9 @@
   },
   "overrides": {
     "@typescript-eslint/typescript-estree": {
-      "minimatch": "11.0.6"
+      "minimatch": "11.0.8"
     },
-    "dompurify": "3.4.17",
-    "postcss": "8.5.32"
+    "dompurify": "3.4.18",
+    "postcss": "8.5.33"
   }
 }

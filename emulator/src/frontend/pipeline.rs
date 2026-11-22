@@ -64,12 +64,15 @@ pub struct LinkedImage {
 type PoolKey = (String, Option<u64>);
 
 /// Every value a `name = expr` equate takes, keyed by name, as
-/// `(1-based source line, value)` pairs in no particular order. GAS treats
-/// `=` as `.set`, which is positional: a use takes the nearest definition
-/// above it, or the first one when it sits above them all (verified
-/// against aarch64-linux-gnu-as). So two files in one workspace can each
-/// write `len = . - msg`. Labels stay file-wide, as in GAS.
-type EquateDefs = HashMap<String, Vec<(usize, u64)>>;
+/// `(1-based source line, value)` pairs in the order they were recorded,
+/// in runs whose lines never go down: a run ends only where a later
+/// section or round of the linker goes back up the file, so a lookup
+/// binary-searches a few runs. GAS treats `=` as `.set`, which is
+/// positional: a use takes the nearest definition above it, or the first
+/// one when it sits above them all (verified against aarch64-linux-gnu-as).
+/// So two files in one workspace can each write `len = . - msg`. Labels
+/// stay file-wide, as in GAS.
+type EquateDefs = HashMap<String, Vec<Vec<(usize, u64)>>>;
 
 /// The value `name` holds at 1-based source `line`. Equates resolve
 /// positionally; labels, host stubs and trampolines come from the flat
@@ -80,21 +83,31 @@ fn symbol_at(
     symbols: &HashMap<String, u64>,
     equates: &EquateDefs,
 ) -> Option<i64> {
-    let Some(defs) = equates.get(name) else {
+    let Some(runs) = equates.get(name) else {
         return symbols.get(name).map(|v| *v as i64);
     };
+    // The last definition at or above `line` in each run; among runs, the
+    // nearest line, and on a tie the later run, as it was recorded later.
     let mut best: Option<(usize, u64)> = None;
-    for (at, value) in defs {
-        if *at <= line && best.is_none_or(|(chosen, _)| *at >= chosen) {
-            best = Some((*at, *value));
+    for run in runs {
+        let i = run.partition_point(|(at, _)| *at <= line);
+        if let Some(&(at, value)) = i.checked_sub(1).map(|i| &run[i]) {
+            if best.is_none_or(|(chosen, _)| at >= chosen) {
+                best = Some((at, value));
+            }
         }
     }
     match best {
         Some((_, value)) => Some(value as i64),
         // Above every definition: GAS resolves a forward reference to the
         // first binding the symbol receives.
-        None => defs.iter().min_by_key(|(at, _)| *at).map(|(_, v)| *v as i64),
+        None => first_equate(runs).map(|v| v as i64),
     }
+}
+
+/// The value recorded first on the lowest line a name is defined on.
+fn first_equate(runs: &[Vec<(usize, u64)>]) -> Option<u64> {
+    runs.iter().map(|run| run[0]).min_by_key(|(at, _)| *at).map(|(_, v)| v)
 }
 
 /// Record one resolved equate definition. The flat table keeps the FIRST
@@ -109,7 +122,11 @@ fn record_equate(
     equates: &mut EquateDefs,
 ) {
     symbols.entry(name.to_string()).or_insert(value);
-    equates.entry(name.to_string()).or_default().push((line, value));
+    let runs = equates.entry(name.to_string()).or_default();
+    match runs.last_mut() {
+        Some(run) if run.last().is_some_and(|(at, _)| *at <= line) => run.push((line, value)),
+        _ => runs.push(vec![(line, value)]),
+    }
 }
 
 pub fn assemble_hosted(source: &str, host: &HostTable) -> Result<LinkedImage, EmuError> {
@@ -449,9 +466,9 @@ fn resolve_equates(layout: &mut Layout) -> Result<(), EmuError> {
     // line. The passes above fill the table in section order, not source
     // order, and the readers that ignore position (`LinkedImage.symbols`,
     // the older encoder's label lookup) read only this table.
-    for (name, defs) in &layout.equates {
-        if let Some((_, value)) = defs.iter().min_by_key(|(line, _)| *line) {
-            layout.symbols.insert(name.clone(), *value);
+    for (name, runs) in &layout.equates {
+        if let Some(value) = first_equate(runs) {
+            layout.symbols.insert(name.clone(), value);
         }
     }
 
@@ -1666,6 +1683,30 @@ mod tests {
     };
     use crate::frontend::lexer::{lex, TokenKind};
     use std::collections::HashMap;
+
+    #[test]
+    fn an_equate_redefined_line_after_line_assembles_in_time_in_line_with_the_lines() {
+        // Each `x = x + 1` reads the definition above it, and `x = y + 1`
+        // reads a name defined once. A lookup that walks every earlier
+        // definition of x makes the first quadratic in the line count while
+        // the second stays linear, so the two must stay close at every size.
+        let host = crate::cpu::Cpu::new().host;
+        let time = |body: &str, n: usize| {
+            let lines = format!("x = {body}\n").repeat(n);
+            let src = format!(".data\ny = 0\nx = 0\n{lines}.text\n.global main\nmain: ret\n");
+            let started = std::time::Instant::now();
+            super::assemble_hosted(&src, &host).expect("assembles");
+            started.elapsed()
+        };
+        let mut slow = Vec::new();
+        for n in [20_000, 40_000, 80_000] {
+            let (own, other) = (time("x + 1", n), time("y + 1", n));
+            if own > other * 5 + std::time::Duration::from_millis(100) {
+                slow.push((n, own, other));
+            }
+        }
+        assert!(slow.is_empty(), "(lines, reading x, reading y) {slow:?}");
+    }
 
     #[test]
     fn a_host_address_is_anywhere_in_the_64_kib_window_above_the_stubs() {

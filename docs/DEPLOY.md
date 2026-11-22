@@ -13,19 +13,30 @@ framework, the install and build commands, and the output folder
 
 ## What the build does
 
-The install command installs the root `package.json` (which exists only so
-Vercel detects Next.js) and then runs `npm ci` in `web/`. The build command is
+The install command runs `npm ci` at the root, which installs the root
+`package.json` (it exists only so Vercel detects Next.js) from the committed
+root `package-lock.json`, and then runs `npm ci` in `web/`. Both installs fail
+rather than resolve anything their lockfile does not name. The build command is
 [`scripts/vercel-build.sh`](../scripts/vercel-build.sh). It:
 
-1. Installs rustup if it is missing, then the Rust toolchain pinned at the top
-   of the script, with the `wasm32-unknown-unknown` target. The pin means
+1. Installs the Rust toolchain pinned at the top of the script, with the
+   `wasm32-unknown-unknown` target. The script downloads the release's
+   manifest and its `rustc`, `cargo` and two `rust-std` archives, and rustup
+   installs from that local copy. Vercel's build image has rustup; where it is
+   missing, the script installs a pinned rustup first. The pin means
    production is built by the same compiler the release was tested with, so
    change it only together with a full rebuild and test run.
-2. Installs the pinned wasm-pack unless that exact version is already there.
+2. Downloads the pinned wasm-pack unless that exact version is already there,
+   and the wasm-bindgen CLI and `wasm-opt` that wasm-pack runs.
 3. Builds the emulator twice from `emulator/`: `--target web` into
    `web/lib/wasm/` for the site, and `--target nodejs` into
    `web/lib/wasm-node/`. The second copy never ships, but `next build`
-   type-checks the test files, and some of them import it.
+   type-checks the test files, and some of them import it. Both builds pass
+   `--mode no-install`, so wasm-pack uses the checked wasm-bindgen and
+   `wasm-opt` and downloads nothing, and cargo's `--locked`, so they fail
+   rather than build with a dependency `emulator/Cargo.lock` does not name.
+   `cargo fetch --locked` runs first, because wasm-pack's own `cargo metadata`
+   call would otherwise rewrite a stale lockfile before the build checks it.
 4. Picks one build id, `PLAYGROUND_BUILD_ID`, and exports it, so both builds
    in the next steps share it. An id containing "ad" is drawn again, because
    ad blockers block file names that contain it.
@@ -43,6 +54,14 @@ Vercel detects Next.js) and then runs `npm ci` in `web/`. The build command is
    deploy if the worker's file list does not match the files the second build
    made.
 
+Every file the script downloads must match a sha256 written in the script
+before anything runs it; on a mismatch `sha256sum` prints `FAILED` and the
+build stops. Each hash is the publisher's: the `.sha256` files beside the Rust
+downloads, the checksum files of the wasm-bindgen and binaryen releases, and
+the GitHub release digest for wasm-pack. A version bump changes the version
+and its hashes together. The wasm-bindgen version must be the one in
+`emulator/Cargo.lock`, and a test fails when the two differ.
+
 CI pins the same versions in more than one workflow: `check.yml` and
 `browser.yml` set both Rust and wasm-pack, and `bounds.yml` and `corpus.yml`
 set Rust. `.github/scripts/check-pins.js`, run in CI's `web-static` job,
@@ -51,11 +70,10 @@ a pull request tests the compiler that ships. A Rust bump changes the script
 and all four workflows together; a wasm-pack bump changes the script,
 `check.yml`, and `browser.yml`.
 
-Every job in `.github/workflows/` runs on `ubuntu-24.04`, not
-`ubuntu-latest`. `ubuntu-latest` now means Ubuntu 26.04, where the pinned
-Playwright cannot install its browsers, so the smoke tests would fail there.
-`check-pins.js` does not check the runner, so a new job copies the pin by
-hand.
+Every job in `.github/workflows/` runs on `ubuntu-latest` except the two in
+`corpus.yml`, which stay on `ubuntu-24.04`: the C corpus references come from
+that image's gcc, and a newer image brings a newer gcc. `check-pins.js` does
+not check the runner.
 
 ## Addresses
 
@@ -88,9 +106,11 @@ deployment, which matters for rollback (see [Releasing](#releasing)).
 
 ## When a deploy goes wrong
 
-- **`rustup: command not found`** or **`wasm-pack: command not found`**: an
-  install step failed. Read the build log; a failed download usually works on
-  a redeploy.
+- **A file name followed by `FAILED`**, or a `curl` error: a download failed
+  or did not match its pinned hash, and the build stopped before running it.
+  A failed download usually works on a redeploy. A hash that keeps failing
+  means the file changed upstream; check it against the publisher's checksum
+  before changing the pin.
 - **The playground says "failed to load emulator"**: open the browser's
   network tab and find the `.wasm` request. A 404 means the build ran before
   `web/lib/wasm/` existed; run `npm run build` in `web/` locally and look for a
@@ -100,8 +120,9 @@ deployment, which matters for rollback (see [Releasing](#releasing)).
 ## Releasing
 
 A release is its own pull request that bumps every version together:
-`web/package.json` and `web/package-lock.json`, the root `package.json`,
-`emulator/Cargo.toml` with `emulator/Cargo.lock`, and `CITATION.cff`
+`web/package.json` and `web/package-lock.json`, the root `package.json` and
+`package-lock.json`, `emulator/Cargo.toml` with `emulator/Cargo.lock`, and
+`CITATION.cff`
 (`version` and `date-released`). Before it, run the dependency audit on what
 ships, from the repository root:
 

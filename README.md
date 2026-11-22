@@ -76,7 +76,11 @@ steps in [Run it locally](#run-it-locally).
   runs on a real chip.
 - Limits stop a runaway program instead of freezing the tab: 10 million
   instructions per run, 32 MiB of memory in use (an 8 MiB stack and a 16 MiB
-  heap), and 4 MiB of output. Step back reaches the last 128 instructions.
+  heap), 4 MiB of output, and 32 MiB of text built by m4, counting every
+  round of every line. Step back reaches the last 128 instructions, fewer
+  behind steps that write more than 64 KiB, such as a `memset` over a large
+  buffer: the records of those steps share 32 MiB. The editor shows at most
+  1,000 macro warnings and counts the rest on one line.
 - Your programs, files, and exercise progress are saved in this browser only.
   There are no accounts, and clearing the site's data deletes them. The
   practice page can export your progress to a file and import it elsewhere.
