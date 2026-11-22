@@ -257,6 +257,8 @@ describe("error guidance for the messages the emulator really sends", () => {
     const unsupported = explained(`${dnl}ifdef(\`x', y)\n${withBody("")}`);
     expect(unsupported.why).toContain("dnl, divert, undivert, divnum, changecom or a backtick");
     expect(unsupported.why).toContain("divert, undivert, divnum, changecom or changequote where an instruction goes");
+    expect(unsupported.why).toContain("which runs dnl, divert (to 0 or a negative number), divnum, changecom and quotes");
+    expect(unsupported.why).not.toContain("runs those too");
     // Calls nested past the cap, by a macro that calls itself and by hand.
     const nested = explained(`define(\`f', \`f(f($1))')dnl\n${withBody("        mov     x0, f(1)")}`);
     expect(nested.what).toContain("inside one another's arguments");
