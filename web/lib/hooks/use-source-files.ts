@@ -19,8 +19,11 @@ const BACKUP_KEY = "aarch64-playground:multi-files-backup";
  */
 type Stored = SourceFile & { link?: true };
 
-/** What a write did: stored, shown but not stored, or (a load only) not done. */
-export type FilesWrite = "stored" | "unsaved" | "refused";
+/**
+ * What a write did: stored; shown but not stored; (a load only) shown while
+ * the student's stored files stay in its place; or (a load only) not done.
+ */
+export type FilesWrite = "stored" | "unsaved" | "kept" | "refused";
 
 function readStore(key: string): Stored[] {
   const raw = safeGetItem(key);
@@ -265,7 +268,8 @@ export function useSourceFiles(): [
       closedRef.current = [];
       fromLinkRef.current = fromLink;
       show(next);
-      return landed ? "stored" : "unsaved";
+      if (landed) return "stored";
+      return keptRef.current.some((f) => !f.link) ? "kept" : "unsaved";
     },
     [show],
   );

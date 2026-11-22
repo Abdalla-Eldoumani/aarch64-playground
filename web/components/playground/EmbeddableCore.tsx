@@ -158,7 +158,7 @@ export function EmbeddableCore({
   useEffect(() => {
     if (startFiles === undefined || startFilesApplied.current) return;
     startFilesApplied.current = true;
-    if (setExtraFiles(startFiles, { load: true }) !== "stored") toast.error(HELPERS_NOT_SAVED);
+    if (setExtraFiles(startFiles, { load: true }) === "kept") toast.error(HELPERS_NOT_SAVED);
   }, [startFiles, setExtraFiles, toast]);
 
   // Jump to the first error in the file that owns it. The nonce re-fires the
@@ -265,7 +265,7 @@ export function EmbeddableCore({
         toast.error(LOAD_REFUSED);
         return false;
       }
-      if (helpers === "unsaved") toast.error(HELPERS_NOT_SAVED);
+      if (helpers === "kept") toast.error(HELPERS_NOT_SAVED);
       // The replaced buffer stays recoverable through recents; entries are
       // keyed by content hash there, so repeats do not stack up.
       const prev = sourceRef.current;
