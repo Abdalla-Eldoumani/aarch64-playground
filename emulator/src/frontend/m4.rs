@@ -20,8 +20,9 @@
 //! define) fails there with an "unsupported m4 construct" error at its line.
 //!
 //! A program that uses `dnl`, `divert`, `undivert`, `divnum`, `changecom`
-//! or a backtick, and that the narrow pass refuses or leaves with one of
-//! those builtins where a mnemonic goes, runs in GNU m4's own order
+//! or a backtick, and that the narrow pass refuses or leaves with `divert`,
+//! `undivert`, `divnum`, `changecom` or `changequote` where a mnemonic
+//! goes, runs in GNU m4's own order
 //! instead (`m4_gnu`): m4 reads the source with its comments in it, as on
 //! the course servers, and the comments go from what m4 writes. `expand`
 //! makes that choice; every other program keeps the narrow pass's result.
