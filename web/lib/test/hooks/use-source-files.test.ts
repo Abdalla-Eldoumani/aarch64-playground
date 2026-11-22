@@ -421,4 +421,22 @@ describe("useSourceFiles when storage is full", () => {
     expect(tags(stored(BACKUP))).toEqual(studentTags);
     expect(h.count()).toBe(3);
   });
+
+  // No room for both the copies and the new strip: the program opens for
+  // this visit, and the stored strip keeps the student's files through any
+  // typing in it.
+  it("keeps the student's stored files when a load opens for this visit only", () => {
+    const names = ["stack.s", "queue.s", "utils.s"];
+    const mine = names.map((n) => file(n, `my ${n}`, 2000));
+    window.localStorage.setItem(STORE, JSON.stringify(mine));
+    const h = mount();
+    leave(6500);
+    h.save(names.map((n) => file(n, `link ${n}`, 2300)), { load: true });
+    expect(tags(h.files())).toEqual(names.map((n) => `// link ${n}`));
+    expect(tags(stored(STORE))).toEqual(tags(mine));
+    h.save(h.files().map((f) => (f.name === "stack.s" ? { ...f, body: `${f.body}z` } : f)));
+    expect(tags(stored(STORE)), "typing does not replace them").toEqual(tags(mine));
+    expect(h.count(), "a restore brings them back for this visit").toBe(3);
+    expect(tags(mount().files())).toEqual(tags(mine));
+  });
 });
