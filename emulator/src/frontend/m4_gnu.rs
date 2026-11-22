@@ -98,6 +98,12 @@ pub struct Scan {
 
 /// Run GNU m4's order over a source file. Errors carry 1-based source lines.
 pub fn scan(source: &str) -> Result<Scan, EmuError> {
+    scan_after(source, 0)
+}
+
+/// `scan`, with `spent` bytes of the work budget already used by the line
+/// pass that ran first, so a program gets one budget across both passes.
+pub(crate) fn scan_after(source: &str, spent: usize) -> Result<Scan, EmuError> {
     // GNU m4 drops a NUL from some tokens and ends others at it.
     // shortcut: a NUL is refused, not modelled; revisit if a program needs one.
     if let Some(at) = source.find('\0') {
@@ -107,6 +113,7 @@ pub fn scan(source: &str) -> Result<Scan, EmuError> {
         ));
     }
     let mut m4 = Scanner::new(source.as_bytes());
+    m4.work = spent;
     while let Some(token) = m4.next_token()? {
         m4.expand_token(None, token)?;
     }

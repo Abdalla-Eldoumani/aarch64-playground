@@ -106,13 +106,16 @@ impl Expanded {
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
-    let by_line = expand_by_line(source);
+    // One work budget for both passes: GNU m4's order starts from what the
+    // line pass spent.
+    let mut work = 0;
+    let by_line = expand_by_line(source, &mut work);
     let unread = match &by_line {
         Ok(expanded) => builtin_as_mnemonic(&expanded.text),
         Err(_) => true,
     };
     if unread && uses_gnu_order_forms(source) {
-        return expand_in_gnu_order(source);
+        return expand_in_gnu_order(source, work);
     }
     by_line
 }
@@ -159,9 +162,10 @@ fn label_prefix(s: &str) -> Option<&str> {
 /// GNU m4's order: m4 over the source as written, then the same two
 /// comment strippers over what it writes, so every consumer gets the
 /// comment-free text it always gets. The stripper's error line is an
-/// output line until it goes through the line map.
-fn expand_in_gnu_order(source: &str) -> Result<Expanded, EmuError> {
-    let scan = super::m4_gnu::scan(source)?;
+/// output line until it goes through the line map. `spent` is the work
+/// budget the line pass used.
+fn expand_in_gnu_order(source: &str, spent: usize) -> Result<Expanded, EmuError> {
+    let scan = super::m4_gnu::scan_after(source, spent)?;
     let blanked = strip_block_comments(&scan.text).map_err(|e| match e {
         EmuError::PreprocError { line, message } => EmuError::PreprocError {
             line: scan.lines.get(line.wrapping_sub(1)).copied().unwrap_or(line),
@@ -194,8 +198,9 @@ fn expand_in_gnu_order(source: &str) -> Result<Expanded, EmuError> {
     })
 }
 
-/// The narrow pass: every line on its own, comments stripped first.
-fn expand_by_line(source: &str) -> Result<Expanded, EmuError> {
+/// The narrow pass: every line on its own, comments stripped first. What
+/// it builds is added to `work`, whether it succeeds or not.
+fn expand_by_line(source: &str, work: &mut usize) -> Result<Expanded, EmuError> {
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
@@ -291,7 +296,6 @@ fn expand_by_line(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
-    let mut work: usize = 0;
     for (idx, line) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -308,7 +312,7 @@ fn expand_by_line(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
-        let expanded = expand_recursively(line, &current, line_num, &mut work)?;
+        let expanded = expand_recursively(line, &current, line_num, work)?;
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
