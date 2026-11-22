@@ -360,4 +360,20 @@ describe("useSourceFiles when storage is full", () => {
       expect(tags(stored(STORE)), `the strip after load ${i}`).toEqual(tags(h.files()));
     }
   });
+
+  // The copies do not fit beside the old strip, but do beside the smaller new one.
+  it("stores a smaller program's strip and the copies of what it replaced", () => {
+    window.localStorage.setItem(
+      STORE,
+      JSON.stringify([file("stack.s", "my stack", 2000), file("mine.s", "mine", 2000)]),
+    );
+    const h = mount();
+    leave(3000);
+    h.save([file("stack.s", "example stack", 1000)], { load: true });
+    expect(tags(stored(STORE))).toEqual(["// example stack"]);
+    expect(tags(stored(BACKUP)), "the student's files are stored").toEqual(
+      expect.arrayContaining(["// my stack", "// mine"]),
+    );
+    expect(h.count()).toBe(2);
+  });
 });
