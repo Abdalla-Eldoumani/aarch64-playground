@@ -426,6 +426,20 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(3);
   });
 
+  it("gives up a link file's copy, never the student's, to store typing at a full store", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 1000)]));
+    const h = mount();
+    h.save([file("p.s", "link one", 1000)], { load: true });
+    h.save([file("q.s", "link two", 1000)], { load: true });
+    leave(0);
+    h.save(h.files().map((f) => ({ ...f, body: `${f.body}${"z".repeat(25)}` })));
+    expect(stored(STORE).map((f) => f.body), "the typing is stored").toEqual(
+      h.files().map((f) => f.body),
+    );
+    expect(tags(stored(BACKUP))).toEqual(["// mine"]);
+    expect(h.count()).toBe(1);
+  });
+
   // No room for both the copies and the new strip: the program opens for
   // this visit, and the stored strip keeps the student's files through any
   // typing in it.
