@@ -184,7 +184,7 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
   if (detail.includes("unsupported m4 construct")) {
     return {
       what: "m4 reached a construct the playground's m4 does not run; the message names it.",
-      why: "The playground's m4 runs define, undefine and macros with arguments line by line, and refuses ifdef, ifelse and forloop there. A program that uses dnl, divert, divnum, changecom or a backtick, and that the line-by-line pass refuses or leaves with divert, divnum or changecom where an instruction goes, runs in GNU m4's order, which runs those too (divert to 0 or a negative number) and refuses the other GNU m4 builtins (ifdef, ifelse, include, changequote, eval, undivert and the rest) and numbered diversions such as divert(1), rather than give a program a meaning the course servers would not.",
+      why: "The playground's m4 runs define, undefine and macros with arguments line by line, and refuses ifdef, ifelse and forloop there. A program that uses dnl, divert, undivert, divnum, changecom or a backtick, and that the line-by-line pass refuses or leaves with divert, undivert, divnum, changecom or changequote where an instruction goes, runs in GNU m4's order, which runs those too (divert to 0 or a negative number) and refuses the other GNU m4 builtins (ifdef, ifelse, include, changequote, eval, undivert and the rest) and numbered diversions such as divert(1), rather than give a program a meaning the course servers would not.",
       fix: "Expand an ifdef, ifelse or forloop into plain code. include is not supported: copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and put a numbered diversion's text where it should appear.",
       styleSection: "m4 preprocessing",
     };
@@ -213,13 +213,20 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
       styleSection: "m4 preprocessing",
     };
   }
+  if (detail.includes("m4 macro calls nest more than")) {
+    return {
+      what: "m4 calls were nested more than 32 deep inside one another's arguments.",
+      why: "m4 runs a call written inside another call's arguments first, so each outer call stays open until the calls inside it finish. Written by hand, as in f(f(f(1))), each level is one more open call; a macro whose body calls itself inside its own arguments adds one more each time it runs, and GNU m4 never finishes it. The playground's m4 keeps at most 32 open.",
+      fix: "Call the macros one after another, with each result in its own register or line, instead of inside one another's arguments. A macro that calls itself inside its arguments needs a body that does not name it.",
+      styleSection: "m4 preprocessing",
+    };
+  }
   // The line pass stops a cycle after 32 rounds; GNU m4's order stops it at
-  // its work budget or once expansions or calls pile up.
+  // its work budget or once expansions pile up.
   if (
     detail.includes("m4 recursion exceeded") ||
     detail.includes("for each macro call") ||
-    detail.includes("m4 expansions nest more than") ||
-    detail.includes("m4 macro calls nest more than")
+    detail.includes("m4 expansions nest more than")
   ) {
     return {
       what: "m4 kept rewriting the same text round after round, so a macro expands into something that expands back into it.",
