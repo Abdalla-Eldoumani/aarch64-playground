@@ -107,6 +107,12 @@ the call, with a plain message instead of a crash:
   access through `sp` or a library call while `sp` is not a multiple of 16,
   stops the program, as a segmentation fault or bus error would on the course
   server.
+- While assembling: m4 stops at the line where the text its rounds have
+  built, counting every round of every line, passes 32 MiB
+  (`frontend::m4::MAX_EXPANSION_WORK_BYTES`). A section holds at most 1 MiB
+  (`layout::SECTION_WINDOW`), and filled `.space` and `.skip` lines that would
+  take one past it are refused at the line that does, before their bytes are
+  built.
 
 The stack view caps its own records, so a deep recursion cannot use up memory
 through them either. It records at most 16,384 calls
@@ -117,8 +123,23 @@ not stored. The view draws at most 64
 frames. Past 64, the frames between main and the newest 63 fold into one line
 that counts them. None of the three caps stops the program.
 
-`emulator/tests/bounds.rs` and the unit tests for the library calls test each
-limit.
+Three more caps keep the tab answering, and none of them stops the program
+either:
+
+- The check that runs when a program loads keeps at most 1,000 macro warnings
+  and 256 KiB of their text (`frontend::lint::MAX_HYGIENE_WARNINGS` and
+  `MAX_HYGIENE_BYTES`), and one closing line counts the rest.
+- A run hands control back to the page once its library calls have done
+  16 MiB of work, the bytes they walk, read or format and the free-list
+  entries they scan (`cpu::MAX_HOST_WORK_PER_RUN`), so Pause and Reset land
+  between calls. The instruction limit does not count this work.
+- Step back's memory logs over 64 KiB, kept for steps such as a `memset` over
+  a large buffer, share 32 MiB (`cpu::MAX_SNAPSHOT_LOG_BYTES`).
+  Past it the oldest frames go, so step back reaches fewer steps behind such
+  calls.
+
+`emulator/tests/bounds.rs`, `emulator/tests/step_back_memory.rs`, and the unit
+tests beside each limit's code test them.
 
 ## Other rules the code follows
 
@@ -132,6 +153,12 @@ limit.
   outside script host is trusted at run time.
 - The site does not use `SharedArrayBuffer`, so it needs no cross-origin
   isolation headers. The worker copies bytes through `postMessage`.
+- The terminal pane caps the count a program prints in seven control
+  sequences (scroll up and down, insert and delete lines, tab forward and
+  back, and repeat the last character) at what the screen shows: its rows, its
+  columns, or rows times columns (`COUNT_LIMITS` in
+  `web/components/panels/TerminalPane.tsx`). A count within the screen
+  behaves as before.
 - Vercel's firewall sits in front of the deployed site. Its rules live in the
   Vercel project's settings, not in this repository. With the current rules,
   clients that are not browsers get a JavaScript challenge, and known search
