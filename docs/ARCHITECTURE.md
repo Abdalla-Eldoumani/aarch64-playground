@@ -221,8 +221,9 @@ The site runs programs from strangers, so the emulator enforces its limits
 itself, however the program arrived: at most 10 million instructions per run,
 32 MiB of mapped memory, an 8 MiB stack, and 4 MiB of output. Assembling has
 its own: m4 stops once the text its rounds build, over the whole source,
-passes 32 MiB (in GNU m4's order, the text its macro calls build, counting
-1 KiB for each call), and filled `.space` and `.skip` lines are refused at the line
+passes 32 MiB (in GNU m4's order, on the same budget, 1 KiB for each macro
+call plus the text it builds or, when longer, the body it reads), and filled
+`.space` and `.skip` lines are refused at the line
 that would take a section past its 1 MiB window. Each one stops the program
 with a plain message, never a crash. Three more caps keep the tab answering
 without stopping the program: the check that runs when a program loads keeps
