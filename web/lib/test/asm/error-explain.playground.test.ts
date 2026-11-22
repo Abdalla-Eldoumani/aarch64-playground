@@ -254,5 +254,17 @@ describe("error guidance for the messages the emulator really sends", () => {
     expect(include.fix).toContain("copy the included file's lines into this file where the include was");
     const numbered = explained(`${dnl}divert(1)\n${withBody("")}`);
     expect(numbered.fix).toContain("numbered diversion");
+    const nested = explained(`define(\`f', \`f(f($1))')dnl\n${withBody("        mov     x0, f(1)")}`);
+    expect(nested.why).toContain("define(x29, x29)");
+  });
+
+  // These messages say what to change themselves; no other refusal's box may claim them.
+  it("adds no box to the m4 caps that explain themselves", () => {
+    const line = messageFor(`define(\`r', \`mov x0, 1 r')dnl\n${withBody("        r")}`);
+    expect(line).toContain("grew this line past");
+    expect(explainError(line)).toBeNull();
+    const nul = messageFor(`dnl\n${withBody("        mov     x0, 1\0")}`);
+    expect(nul).toContain("NUL byte");
+    expect(explainError(nul)).toBeNull();
   });
 });
