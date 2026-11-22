@@ -562,13 +562,15 @@ impl<'a> Scanner<'a> {
 
     /// A user macro's body with the call's arguments put in, as GNU m4
     /// does: `$0` the name, `$1` on (`$10` the tenth), `$#` the count, `$*`
-    /// all of them joined by commas and `$@` the same, each quoted.
+    /// all of them joined by commas and `$@` the same, each quoted. The
+    /// body bytes read and not written are charged here; `push` charges
+    /// what is written.
     fn substitute(&mut self, body: &[u8], args: &[Vec<u8>], line: usize) -> Result<Vec<u8>, EmuError> {
         let mut out = Vec::with_capacity(body.len());
         let mut i = 0;
         while i < body.len() {
             // The budget is checked while the text grows, not after.
-            self.check_room(out.len(), line)?;
+            self.check_room(out.len().max(i), line)?;
             let c = body[i];
             i += 1;
             if c != b'$' || i == body.len() {
@@ -610,6 +612,7 @@ impl<'a> Scanner<'a> {
                 _ => out.push(b'$'),
             }
         }
+        self.spend(body.len().saturating_sub(out.len()), line)?;
         Ok(out)
     }
 
