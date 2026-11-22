@@ -382,6 +382,45 @@ describe("helper file names", () => {
   });
 });
 
+// Only a press assembles. A buffer with nothing to run, whether restored from
+// the autosave, switched to, cleared, or beside a new tab, must reach no
+// assembler before one: the link would refuse it for having no main.
+describe("a buffer with nothing to assemble", () => {
+  const AUTOSAVE_KEY = "aarch64-playground:auto-save:current";
+
+  it.each(["", "// notes for later\n"])("is not assembled before a press in the playground: %j", (buffer) => {
+    window.localStorage.setItem(AUTOSAVE_KEY, buffer);
+    const hub: Hub = baseHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={buffer} />,
+    );
+    engage(container);
+    act(() => ref.current!.loadProgram({ source: buffer }));
+    fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "util.s" } });
+    fireEvent.click(screen.getByLabelText("add file"));
+    act(() => ref.current!.loadSource(""));
+
+    expect(screen.getByLabelText("remove util.s")).toBeTruthy();
+    expect(hub.assemble).not.toHaveBeenCalled();
+    expect(hub.assembleForTool).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "// notes for later\n"])("is not assembled before a press in an embed: %j", (buffer) => {
+    const hub: Hub = baseHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource={buffer} />,
+    );
+    engage(container);
+    act(() => ref.current!.loadSource(""));
+
+    expect(hub.assemble).not.toHaveBeenCalled();
+  });
+});
+
 describe("importing a program's files", () => {
   const PROGRAM = "        .global main\nmain:   bl cube\n        ret\n";
   const CUBE = "        .global cube\ncube:   mul x0, x0, x0\n        ret\n";
