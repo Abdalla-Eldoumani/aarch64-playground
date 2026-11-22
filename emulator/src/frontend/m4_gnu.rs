@@ -297,7 +297,8 @@ impl<'a> Scanner<'a> {
                 line,
                 format!(
                     "m4 expansion built more than {} MiB of text, counting {CALL_WORK_BYTES} bytes \
-                     for each macro call, which is as far as the playground's m4 goes. The usual \
+                     for each macro call and {STEP_WORK_BYTES} for each token read, which is as \
+                     far as the playground's m4 goes. The usual \
                      cause is a macro whose expansion uses the macro again, which GNU m4 never \
                      finishes: give the macro a body that does not name it",
                     MAX_EXPANSION_WORK_BYTES / (1024 * 1024)
