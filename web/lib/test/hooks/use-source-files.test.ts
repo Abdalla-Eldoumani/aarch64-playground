@@ -405,4 +405,20 @@ describe("useSourceFiles when storage is full", () => {
     expect(tags(stored(STORE))).toEqual(names.map((n) => `// larger ${n}`));
     expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
   });
+
+  // Typing writes the strip as it always did; a full store refuses it, and
+  // the backup is never made smaller to fit it.
+  it("leaves the backup alone when typing meets a full store", () => {
+    const student = [1, 2, 3].map((j) => file(`s${j}.s`, `student ${j}`, 1000));
+    window.localStorage.setItem(STORE, JSON.stringify(student));
+    const h = mount();
+    h.save(
+      ["stack.s", "queue.s", "utils.s"].map((n) => file(n, `program ${n}`, 1000)),
+      { load: true },
+    );
+    leave(0);
+    h.save(h.files().map((f) => (f.name === "stack.s" ? { ...f, body: `${f.body}${"z".repeat(25)}` } : f)));
+    expect(tags(stored(BACKUP))).toEqual(studentTags);
+    expect(h.count()).toBe(3);
+  });
 });
