@@ -2,9 +2,10 @@
 // replaces the strip keeps whatever it discarded recoverable, restore appends
 // beside the new program's own helpers, an edit or a rename is not a
 // discard, a program load keeps every helper text it does not bring back,
-// and the backup survives a reload. When storage is full the backup gives
-// way before the student's files, oldest entries first, and never keeps less
-// than the last load's files.
+// and the backup survives a reload. When storage is full only copies of
+// files that came with links give way, oldest first; a load with no room
+// for copies of the student's files leaves them stored and opens for the
+// visit, or does not happen when only the screen holds them.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { useSourceFiles } from "@/lib/hooks/use-source-files";
@@ -268,8 +269,11 @@ describe("useSourceFiles when storage is full", () => {
         );
         expectStored(h, replaced);
       }
+      // The new helper is stored if it fits, as at any full store; the
+      // backup never shrinks to make room for it.
+      const backup = stored(BACKUP);
       h.save([...h.files(), file("t.s", "student T", room / 10)]);
-      expectStored(h, replaced);
+      expect(stored(BACKUP)).toEqual(backup);
     },
   );
 
@@ -296,12 +300,15 @@ describe("useSourceFiles when storage is full", () => {
       h.save(link(5), { load: true });
       expectStored(h, replaced);
 
+      // A full store may refuse the restored strip: then every file stays
+      // where it was stored, and the count still offers the backup.
       const kept = tags([...h.files(), ...stored(BACKUP)]);
       h.restore();
       expect(tags(h.files())).toEqual(kept);
-      expect(tags(stored(STORE)), "the restored files are stored").toEqual(kept);
-      expect(stored(BACKUP)).toEqual([]);
-      expect(h.count()).toBe(0);
+      expect(tags([...stored(STORE), ...stored(BACKUP)]), "every file is still stored").toEqual(
+        expect.arrayContaining(kept),
+      );
+      expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
     },
   );
 
@@ -321,7 +328,7 @@ describe("useSourceFiles when storage is full", () => {
     });
     h.restore();
     expect(window.localStorage.getItem(BACKUP), "the stored backup is intact").toBe(backup);
-    expect(stored(STORE)).toEqual([{ name: "zz.s", body: "// zz" }]);
+    expect(tags(stored(STORE))).toEqual(["// zz"]);
     expect(h.count(), "the restore count is what is stored").toBe(1);
     expect(mount().count()).toBe(1);
   });
