@@ -40,11 +40,12 @@ error rather than silently ignoring them, and a backtick outside a `define`
 or ``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends
 that define's reach at that line, so an alias can be rebound per function.
 
-When those rules reject a program that uses `dnl`, `divert`, `divnum`,
-`changecom`, or a backtick, or leave `divert`, `divnum`, or `changecom`
-where an instruction goes, the program goes through m4 in GNU m4's own
-order instead, as on the servers: m4 reads the whole file with its
-comments in it, and the comments come out of what it writes. In that order:
+When those rules reject a program that uses `dnl`, `divert`, `undivert`,
+`divnum`, `changecom`, or a backtick, or leave `divert`, `undivert`,
+`divnum`, `changecom`, or `changequote` where an instruction goes, the
+program goes through m4 in GNU m4's own order instead, as on the servers:
+m4 reads the whole file with its comments in it, and the comments come out
+of what it writes. In that order:
 
 - `dnl` deletes the rest of its line and the newline, so
   `define(fp, x29)dnl` leaves no blank line.
@@ -57,8 +58,8 @@ comments in it, and the comments come out of what it writes. In that order:
   expanded, and may run over several lines, as may a macro's arguments.
 - m4 expands names inside `//`, `;`, and `/* */` comments, and a backtick
   there opens a quote, so keep backticks out of comments.
-- The other GNU m4 builtins, such as `include`, `changequote`, and `eval`,
-  are rejected by name. `forloop` is a macro course files define for
+- The other GNU m4 builtins, such as `undivert`, `include`, `changequote`,
+  and `eval`, are rejected by name. `forloop` is a macro course files define for
   themselves; without that define, m4 leaves it as written and the
   assembler rejects the line.
 
