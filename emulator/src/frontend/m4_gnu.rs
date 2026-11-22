@@ -30,6 +30,11 @@ const MAX_OPEN_EXPANSIONS: usize = 1024;
 /// bounded time even when its text is one byte or none.
 const CALL_WORK_BYTES: usize = 1024;
 
+/// What each token m4 reads, and each piece of text it puts back to read
+/// again, costs the work budget beyond its bytes, so the time m4 takes
+/// follows the budget however its input splits up.
+const STEP_WORK_BYTES: usize = 8;
+
 const LQUOTE: &[u8] = b"`";
 const RQUOTE: &[u8] = b"'";
 
@@ -261,7 +266,7 @@ impl<'a> Scanner<'a> {
         if text.is_empty() {
             return Ok(());
         }
-        self.spend(text.len(), line)?;
+        self.spend(text.len() + STEP_WORK_BYTES, line)?;
         // A block read to its end is finished, so it does not count as open.
         while self.blocks.last().is_some_and(|b| b.at == b.text.len()) {
             self.blocks.pop();
@@ -347,6 +352,7 @@ impl<'a> Scanner<'a> {
         };
         self.next_char();
         let line = self.line;
+        self.spend(STEP_WORK_BYTES, line)?;
         let open = Rc::clone(&self.comment_open);
         if self.matches(c, &open, true)? {
             let close = Rc::clone(&self.comment_close);
@@ -743,8 +749,7 @@ mod tests {
 
     #[test]
     fn text_read_again_under_divert_stops_at_the_work_budget_at_three_sizes() {
-        // divert(-1) throws the text away, so no output cap fires first, and
-        // a body of one-byte tokens is the slowest text to read again.
+        // divert(-1) throws the text away, so no output cap fires first.
         for body in [1024, 4096, 16384] {
             let uses = MAX_EXPANSION_WORK_BYTES / (body + CALL_WORK_BYTES) + 10;
             let src = format!("divert(-1)define(`b', `{}')\n{}", "+".repeat(body), "b\n".repeat(uses));
