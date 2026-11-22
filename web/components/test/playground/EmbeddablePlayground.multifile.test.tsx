@@ -492,6 +492,65 @@ describe("a program load over the student's helpers", () => {
   });
 });
 
+// With no room for the helpers, the page says what was not saved and why.
+describe("a program load when storage is full", () => {
+  const STUDENT = { name: "util.s", body: UTIL };
+  const LINK_FILE = { name: "stack.s", body: "// from the link" };
+  let refuse: { mockRestore: () => void } | null = null;
+  // Storage that refuses every write of the helper strip and its backup.
+  const fillHelperStorage = () => {
+    const real = Storage.prototype.setItem;
+    refuse = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key.startsWith(FILES_KEY)) throw new DOMException("storage is full", "QuotaExceededError");
+      real.call(this, key, value);
+    });
+  };
+  afterEach(() => {
+    refuse?.mockRestore();
+    refuse = null;
+  });
+
+  it("opens a link's helpers for the visit and says they are not saved", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} startFiles={[LINK_FILE]} />,
+    );
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(
+        expect.stringContaining("the browser's storage for this site is full"),
+      ),
+    );
+    expect(ref.current!.getFiles()).toEqual([LINK_FILE]);
+    expect(JSON.parse(window.localStorage.getItem(FILES_KEY)!)).toEqual([STUDENT]);
+  });
+
+  it("does not load a program over a helper only the screen holds", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    // A new tab storage cannot take.
+    fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "queue.s" } });
+    fireEvent.click(screen.getByLabelText("add file"));
+
+    act(() => ref.current!.loadProgram({ source: "// another program", files: [LINK_FILE] }));
+    await waitFor(() =>
+      expect(toastError).toHaveBeenCalledWith(expect.stringContaining("your files are unchanged")),
+    );
+    expect(ref.current!.getSource()).toBe(MAIN);
+    expect(ref.current!.getFiles().map((f) => f.name)).toEqual(["util.s", "queue.s"]);
+  });
+});
+
 describe("the error line under the run row", () => {
   async function mountWithError(message: string, line: number) {
     useEmulatorMock.mockReturnValue(
