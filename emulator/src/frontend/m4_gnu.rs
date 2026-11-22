@@ -728,6 +728,17 @@ mod tests {
     }
 
     #[test]
+    fn text_read_again_under_divert_stops_at_the_work_budget_at_three_sizes() {
+        // divert(-1) throws the text away, so no output cap fires first, and
+        // a body of one-byte tokens is the slowest text to read again.
+        for body in [1024, 4096, 16384] {
+            let uses = MAX_EXPANSION_WORK_BYTES / (body + CALL_WORK_BYTES) + 10;
+            let src = format!("divert(-1)define(`b', `{}')\n{}", "+".repeat(body), "b\n".repeat(uses));
+            stops(&src, "m4 expansion built more than");
+        }
+    }
+
+    #[test]
     fn a_comment_start_that_keeps_almost_matching_stops_at_the_work_budget() {
         // Each failed match gives back what it read, so each byte is read again.
         let start = format!("{}b", "+".repeat(1000));
