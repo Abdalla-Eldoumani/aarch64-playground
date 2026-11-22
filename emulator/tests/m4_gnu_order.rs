@@ -1818,6 +1818,47 @@ const CASES: &[Case] = &[
             b\n",
         gnu: Gnu::Fails,
     },
+    Case {
+        name: "a macro name read across an expansion's end takes the line after it",
+        source: "define(fp, x29)dnl\n\
+            define(lr, x30)dnl\n\
+            define(`ab', `mov\tw19, 15')dnl\n\
+            define(`f', `a')dnl\n\
+            \t.data\n\
+            fmt:\t.string \"%d\\n\"\n\
+            \t.text\n\
+            \t.balign 4\n\
+            \t.global main\n\
+            main:\n\
+            \tstp\tfp, lr, [sp, -16]!\n\
+            \tmov\tfp, sp\n\
+            f(\n\
+            )b\n\
+            \tldr\tx0, =fmt\n\
+            \tmov\tw1, w19\n\
+            \tbl\tprintf\n\
+            \tmov\tw0, 0\n\
+            \tldp\tfp, lr, [sp], 16\n\
+            \tret\n",
+        gnu: Gnu::Writes(
+            "\t.data\n\
+                fmt:\t.string \"%d\\n\"\n\
+                \t.text\n\
+                \t.balign 4\n\
+                \t.global main\n\
+                main:\n\
+                \tstp\tx29, x30, [sp, -16]!\n\
+                \tmov\tx29, sp\n\
+                mov\tw19, 15\n\
+                \tldr\tx0, =fmt\n\
+                \tmov\tw1, w19\n\
+                \tbl\tprintf\n\
+                \tmov\tw0, 0\n\
+                \tldp\tx29, x30, [sp], 16\n\
+                \tret\n",
+            &[5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 19, 20],
+        ),
+    },
 ];
 
 /// Builtins GNU m4 runs and the playground does not: (case, source, line,
