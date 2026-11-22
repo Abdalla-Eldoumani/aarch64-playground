@@ -111,11 +111,13 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     // which names the line where the budget ran out.
     let mut work = 0;
     let by_line = expand_by_line(source, &mut work);
-    let unread = match &by_line {
-        Ok(expanded) => builtin_as_mnemonic(&expanded.text),
-        Err(_) => work <= MAX_EXPANSION_WORK_BYTES,
-    };
-    if unread && uses_gnu_order_forms(source) {
+    // The source test is the cheaper one, and rules out almost every program.
+    let unread = uses_gnu_order_forms(source)
+        && match &by_line {
+            Ok(expanded) => builtin_as_mnemonic(&expanded.text),
+            Err(_) => work <= MAX_EXPANSION_WORK_BYTES,
+        };
+    if unread {
         return expand_in_gnu_order(source, work);
     }
     by_line
@@ -123,10 +125,12 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
 
 /// The source holds a backtick or a word only GNU m4's order runs.
 fn uses_gnu_order_forms(source: &str) -> bool {
+    // Searching for the text first spares most sources the split into words.
     source.contains('`')
-        || source
-            .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
-            .any(|word| matches!(word, "dnl" | "divert" | "undivert" | "divnum" | "changecom"))
+        || (["dnl", "divert", "divnum", "changecom"].iter().any(|w| source.contains(w))
+            && source
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .any(|word| matches!(word, "dnl" | "divert" | "undivert" | "divnum" | "changecom")))
 }
 
 /// A line of the narrow pass's output with `divert`, `undivert`, `divnum`,
