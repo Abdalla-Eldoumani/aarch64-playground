@@ -41,7 +41,7 @@ pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 /// total cap sees only each line's settled text, so a line that grows for
 /// 30 rounds and then settles to nothing would cost it nothing. The
 /// largest shipped example builds about 0.5 MiB.
-const MAX_EXPANSION_WORK_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_EXPANSION_WORK_BYTES: usize = 32 * 1024 * 1024;
 
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
