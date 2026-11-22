@@ -596,9 +596,9 @@ fn a_program_with_its_own_atol_loads_and_runs_as_it_did() {
 /// - `bl atol` in a comment of each form the assembler takes (`//`, `;`, and
 ///   `/* */` on its own line, after code and over several lines);
 /// - a program's own `atol` defined as `atol :`, `atol<TAB>:` or `ATOL :`;
-/// - `// bl atol` or `; bl atol` on a line with m4 quotes. The m4 here
-///   refuses backtick quotes, so these four record that refusal; with an m4
-///   that takes them they run, and their path stays the bare-metal one.
+/// - `// bl atol` or `; bl atol` on a line with m4 quotes. m4 reads these
+///   four in GNU m4's order, so they run, and their path stays the
+///   bare-metal one.
 const ATOL_SPELLINGS: &[(&str, &str)] = &[
     ("line_slashes", "// bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
     ("tail_slashes", "        mov     x0, 5 // bl atol\n        mov     x8, 93\n        svc     0\n"),
@@ -621,7 +621,8 @@ const ATOL_SPELLINGS: &[(&str, &str)] = &[
 ];
 
 /// One line per program from `load_and_run`, each as d312a96f's emulator
-/// gave it.
+/// gave it, but for the four with m4 quotes, which it refused: each runs as
+/// the same program with no quotes does.
 const ATOL_SPELLINGS_RUNS: &[&str] = &[
     "line_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "tail_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
@@ -637,10 +638,10 @@ const ATOL_SPELLINGS_RUNS: &[&str] = &[
     "own_space_colon_main: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
     "own_tab_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
     "own_upper_space_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
-    "quoted_slashes: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
-    "quoted_slashes_start_lr: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
-    "quoted_slashes_main: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
-    "quoted_semicolon: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
+    "quoted_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "quoted_slashes_start_lr: hosted false, trampolines [], exit Some(0), steps 4, pc 0x400010, x0 0x0, error None, stdout \"\"",
+    "quoted_slashes_main: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "quoted_semicolon: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
 ];
 
 #[test]
