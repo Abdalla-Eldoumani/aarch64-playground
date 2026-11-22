@@ -269,11 +269,11 @@ describe("useSourceFiles when storage is full", () => {
         );
         expectStored(h, replaced);
       }
-      // The new helper is stored if it fits, as at any full store; the
-      // backup never shrinks to make room for it.
-      const backup = stored(BACKUP);
+      // Copies of the loads' files give way to the student's new helper.
       h.save([...h.files(), file("t.s", "student T", room / 10)]);
-      expect(stored(BACKUP)).toEqual(backup);
+      expect(tags(stored(STORE)), "the new helper is stored").toEqual(tags(h.files()));
+      expect(tags(stored(BACKUP))).toEqual(expect.arrayContaining(tags(student)));
+      expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
     },
   );
 
@@ -300,15 +300,12 @@ describe("useSourceFiles when storage is full", () => {
       h.save(link(5), { load: true });
       expectStored(h, replaced);
 
-      // A full store may refuse the restored strip: then every file stays
-      // where it was stored, and the count still offers the backup.
       const kept = tags([...h.files(), ...stored(BACKUP)]);
       h.restore();
       expect(tags(h.files())).toEqual(kept);
-      expect(tags([...stored(STORE), ...stored(BACKUP)]), "every file is still stored").toEqual(
-        expect.arrayContaining(kept),
-      );
-      expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
+      expect(tags(stored(STORE)), "the restored files are stored").toEqual(kept);
+      expect(stored(BACKUP)).toEqual([]);
+      expect(h.count()).toBe(0);
     },
   );
 
