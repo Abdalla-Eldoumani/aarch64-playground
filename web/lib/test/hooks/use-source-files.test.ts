@@ -209,12 +209,30 @@ describe("useSourceFiles when storage is full", () => {
   // A body is its tag line and filler, so a failure names files by tag.
   const tags = (files: SourceFile[]) => files.map((f) => f.body.split("\n")[0]);
 
+  const usedChars = () => {
+    let used = 0;
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const key = window.localStorage.key(i) ?? "";
+      used += key.length + (window.localStorage.getItem(key) ?? "").length;
+    }
+    return used;
+  };
+  // Storage with `room` characters left past what it holds now.
+  const leave = (room: number) => capStorage(usedChars() + room);
+  const studentTags = ["// student 1", "// student 2", "// student 3"];
+
   function mount() {
     const { result } = renderHook(() => useSourceFiles());
     return {
       files: () => result.current[0],
       count: () => result.current[2].count,
-      save: (next: SourceFile[], how?: { load: boolean }) => act(() => result.current[1](next, how)),
+      save: (next: SourceFile[], how?: { load: boolean }) => {
+        let written: unknown;
+        act(() => {
+          written = result.current[1](next, how);
+        });
+        return written;
+      },
       restore: () => act(() => result.current[2].restore()),
     };
   }
@@ -324,5 +342,22 @@ describe("useSourceFiles when storage is full", () => {
       { name: "mine.s", body: "// mine" },
     ]);
     expect(h.count()).toBe(0);
+  });
+
+  // Room is made from copies of files that came with links, never from the
+  // student's own.
+  it("keeps the student's own helpers in the backup through loads that fill the store", () => {
+    const student = [1, 2, 3].map((j) => file(`s${j}.s`, `student ${j}`, 1000));
+    window.localStorage.setItem(STORE, JSON.stringify(student));
+    const h = mount();
+    leave(8000);
+    for (let i = 1; i <= 6; i++) {
+      h.save(
+        ["stack.s", "queue.s", "utils.s"].map((n) => file(n, `program ${i} ${n}`, 1000)),
+        { load: true },
+      );
+      expect(tags(stored(BACKUP)), `after load ${i}`).toEqual(expect.arrayContaining(studentTags));
+      expect(tags(stored(STORE)), `the strip after load ${i}`).toEqual(tags(h.files()));
+    }
   });
 });
