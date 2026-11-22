@@ -1,11 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import { ToastHost } from "@/components/ui/Toast";
 import { OfflineBadge } from "@/components/chrome/OfflineBadge";
 import { RegisterSW } from "@/components/chrome/RegisterSW";
+import { SiteAnalytics } from "@/components/chrome/SiteAnalytics";
 import { HOME_DESCRIPTION, HOME_TITLE, SITE_NAME, SITE_URL } from "@/lib/content/site";
 import { composeTitle, pageMetadata } from "@/lib/content/seo";
 import { PRE_PAINT_SCRIPT } from "@/lib/theme/pre-paint";
@@ -101,8 +100,7 @@ export default function RootLayout({
         <RegisterSW />
         <OfflineBadge />
         <ToastHost>{children}</ToastHost>
-        <Analytics />
-        <SpeedInsights />
+        <SiteAnalytics />
       </body>
     </html>
   );

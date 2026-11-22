@@ -211,6 +211,8 @@ fn one_source(text: &str) {
     if let Ok(code) = assembler::assemble(text) {
         cpu.load_program(&code);
     }
+    // The bare-metal load's build, which also reads the labels back.
+    let _ = assembler::assemble_bare(text);
 }
 
 #[test]

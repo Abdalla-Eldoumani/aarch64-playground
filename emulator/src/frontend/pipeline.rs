@@ -918,19 +918,32 @@ fn resolve_entry_point(prog: &Program, layout: &Layout) -> Result<u64, EmuError>
     if start_is_label {
         return Ok(layout.symbols[if main_line.is_some() { "main" } else { "_start" }]);
     }
-    let (line, guidance) = match main_line {
-        Some(_) if main_is_global => return Ok(layout.symbols["main"]),
+    if main_line.is_some() && main_is_global {
+        return Ok(layout.symbols["main"]);
+    }
+    Err(EmuError::LinkError {
+        line: main_line.unwrap_or(0),
+        message: undefined_main(main_line.is_some(), main_is_global),
+    })
+}
+
+/// ld's line for a program gcc's startup code finds no global `main` in,
+/// then what to add. Both load paths refuse with it.
+pub(crate) fn undefined_main(main_is_label: bool, main_is_global: bool) -> String {
+    let guidance = if main_is_label {
         // A local label is invisible to the startup code in another
         // object file, so ld reports main as undefined even though the
         // label is right there.
-        Some(at) => (at, "`main:` is here but not global, so the startup code \
-                          cannot see it: add `.global main` on the line above `main:`"),
-        None if main_is_global => (0, "`.global main` is declared but no line defines \
-                                       the label: add `main:` above main's first instruction"),
-        None => (0, "no line defines `main:`, where every program starts: add `.global main` \
-                     and then `main:` above the first instruction"),
+        "`main:` is here but not global, so the startup code \
+         cannot see it: add `.global main` on the line above `main:`"
+    } else if main_is_global {
+        "`.global main` is declared but no line defines \
+         the label: add `main:` above main's first instruction"
+    } else {
+        "no line defines `main:`, where every program starts: add `.global main` \
+         and then `main:` above the first instruction"
     };
-    Err(EmuError::LinkError { line, message: format!("{UNDEFINED_MAIN}\n{guidance}") })
+    format!("{UNDEFINED_MAIN}\n{guidance}")
 }
 
 /// Return the textual key for an `ldr xN, =<expr>` pseudo plus whether the
