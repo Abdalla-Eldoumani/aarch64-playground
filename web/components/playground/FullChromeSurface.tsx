@@ -106,8 +106,7 @@ export interface FullChromeSurfaceProps {
   assembledLayout: { main: string; extras: SourceFile[] } | null;
   /** The shell's assemble, which pins that layout and pushes to recents. */
   assemble: () => Promise<boolean>;
-  /** False when the load was refused and nothing changed. */
-  loadProgram: (payload: HandoffPayload) => boolean;
+  loadProgram: (payload: HandoffPayload) => void;
   recent: ReturnType<typeof useRecentPrograms>;
   applySeeds: WorkingSet["applySeeds"];
   stageVfsFile: WorkingSet["stageVfsFile"];
