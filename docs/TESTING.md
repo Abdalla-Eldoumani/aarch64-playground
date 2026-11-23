@@ -152,8 +152,9 @@ if you set it, never in the repository. A run with both halves also writes a
 What the comparisons with the course server found, read on 2026-11-23:
 
 - **The site's programs.** The sweep covers 622: 30 examples, 76 lesson
-  programs, 71 exercise starters, 370 reference programs, 72 pitfalls, the
-  home page's program, and the two starters in
+  programs, 71 exercise programs (68 starters and the programs of 3 frame
+  exercises), 370 reference programs, 72 pitfalls, the home page's program,
+  and the two starters in
   [authoring-content.md](authoring-content.md). The exercises' hidden
   solutions and the guide's programs are not in it. 621 of the 622 were run
   on the server on 2026-11-06. Here, 616 of those give the same output, exit
