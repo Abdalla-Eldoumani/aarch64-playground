@@ -276,10 +276,15 @@ not list is a bug, so please [report it](#reporting-a-problem).
   `helper.o`. The pane's `gcc` takes one source file at a time, where the
   server's takes several (`gcc main.s clamp.s -o sensors`), and it ignores
   flags such as `-O2` and `-lm`.
-- **gdb-lite's `n` and `s`** step one instruction, as `si` does. In gdb on the
-  server they step one source line in a program built with `gcc -g`, and
-  without `-g` they run to the end of the function. To step one instruction
-  at a time in either place, use `si` and `ni`.
+- **gdb-lite's `n` and `s`** step one source line, even after a `gcc` line
+  without `-g` (they say so once a session). In gdb on the server they step
+  by line only in a program built with `gcc -g`, and without `-g` they run to
+  the end of the function. gdb's own `next` can also run on past a label it
+  reaches after a call, taking the label for a new function, and at the `ret`
+  of a comparator `qsort` calls, both `next` and `step` stop inside the
+  library; gdb-lite stops on the label's line and on the program's next line.
+  On the server, build with `gcc -g` before you use them, or step one
+  instruction at a time with `si` and `ni`.
 - **`ldr xN, label`** is two instructions here, because the playground loads
   the value through the literal pool, and one on the server, so `si` takes two
   steps on that line. The [instruction reference](docs/instruction-reference.md)
