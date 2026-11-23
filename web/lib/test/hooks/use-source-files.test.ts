@@ -540,4 +540,21 @@ describe("useSourceFiles when storage is full", () => {
     expect(tags(result.current[0])).toEqual(names.map((n) => `// my ${n}`));
     expect(result.current[2].count).toBe(1);
   });
+
+  // A load that names a helper goes exactly as before: it keeps none of its
+  // copies, even older ones the room it frees would take.
+  it("keeps no copies from a load that names a helper", () => {
+    window.localStorage.setItem(
+      STORE,
+      JSON.stringify([file("s1.s", "mine 1", 2000), file("s2.s", "mine 2", 2000)]),
+    );
+    const h = mount();
+    leave(3000);
+    const link = [file("l1.s", "link 1", 2300), file("l2.s", "link 2", 2300)];
+    expect(h.save(link, { load: true })).toEqual(["s1.s", "s2.s"]);
+    h.save(h.files().map((f, i) => (i === 0 ? { ...f, body: `${f.body}e` } : f)));
+    expect(h.save([file("e.s", "example", 200)], { load: true })).toEqual(["l1.s", "l2.s"]);
+    expect(stored(COPIES)).toEqual([]);
+    expect(h.count(), "the list holds what the load displaced").toBe(2);
+  });
 });
