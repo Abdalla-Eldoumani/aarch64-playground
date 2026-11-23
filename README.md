@@ -70,7 +70,8 @@ steps in [Run it locally](#run-it-locally).
   `dnl`, `divert`, `undivert`, `divnum`, `changecom`, or m4 quotes, and that
   this pass refuses or leaves with `divert`, `undivert`, `divnum`,
   `changecom`, or `changequote` where an instruction goes, goes through m4
-  in GNU m4's own order instead, as on the course servers. That order runs
+  in GNU m4's own order instead, as on the course servers, unless this pass
+  already spent the whole work budget, which keeps its refusal. That order runs
   `dnl`, `divert` (to 0 or a negative number), `divnum`, `changecom`, and
   quotes, and refuses the other GNU builtins (`undivert`, `include`,
   `changequote`, and the rest) and numbered diversions such as `divert(1)`.
