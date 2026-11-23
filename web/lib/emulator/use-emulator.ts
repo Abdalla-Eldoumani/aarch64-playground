@@ -17,6 +17,7 @@ import {
   emptyLineMap,
   isEmptyLineMap,
   parseLineMap,
+  lineRange,
   lineToAddrFromMap,
   pcToSourceLineFromMap,
   type LineMap,
@@ -78,6 +79,15 @@ function withoutCallScratch(snap: StateSnapshot): StateSnapshot {
 interface Goal {
   until: RunGoal;
   target: StepTarget;
+  /** gdb's n N or s N: the lines still to step, this one included. */
+  lines?: number;
+}
+
+/** gdb's n or s from where `snap` stands: off its editor line, and for n at
+ *  this call depth or shallower. */
+function lineGoal(target: StepTarget, snap: StateSnapshot, map: LineMap): RunGoal {
+  const range = lineRange(Number(BigInt(snap.pc)), map);
+  return target === "next" && snap.frames ? { range, depth: callDepth(snap.frames) } : { range };
 }
 
 // The same words again would leave a status's text unchanged, so unsaid.
@@ -736,12 +746,15 @@ export function useEmulator(start = true): EmulatorState {
     const mine = ++driveRef.current;
     const drive = async (): Promise<string | null> => {
       let total = 0;
+      // The steps gdb's n N or s N took on its lines before this one: one
+      // 1,000,000-step budget covers the whole count, so a huge one pauses.
+      let spent = 0;
       // Where this run's sleeps have reached on the clock; the first anchors it.
       let deadline: number | null = null;
       for (;;) {
         // Noted before the chunk, so a reset or assemble sent while it ran counts.
         const epoch = backend.epoch;
-        const { runResult, snapshot } = await backend.runUntilBreak(1_000_000, goal?.until);
+        const { runResult, snapshot } = await backend.runUntilBreak(1_000_000 - spent, goal?.until);
         // A run cancelled by reset/assemble, or one that finished as the
         // machine was replaced, describes a machine that no longer exists;
         // acting on it painted `unknown instruction: 0x00000000` right after
@@ -770,6 +783,20 @@ export function useEmulator(start = true): EmulatorState {
           await (wait > 0 ? new Promise<void>((resolve) => setTimeout(resolve, wait)) : yieldToEventLoop());
           if (backend.epoch !== epoch) return null;
           if (runningRef.current && driveRef.current === mine) continue;
+        }
+        // A line of gdb's n N or s N reached with lines to go: the next one
+        // starts where this one stopped. The yield lets a main-thread run
+        // hand the page back between lines, and Pause, an unmount or a newer
+        // run stands the drive down there, as at a sleep.
+        if (goal?.lines && goal.lines > 1 && runResult.reached) {
+          await yieldToEventLoop();
+          if (backend.epoch !== epoch) return null;
+          if (runningRef.current && driveRef.current === mine) {
+            goal.lines -= 1;
+            goal.until = lineGoal(goal.target, snapshot, lineMapRef.current);
+            spent = total;
+            continue;
+          }
         }
         // The snapshot this result carries has already landed, so the ref
         // says whether the run stopped at a read rather than for good.
@@ -809,7 +836,9 @@ export function useEmulator(start = true): EmulatorState {
         // The words load only when a goal run first stops, so no page that
         // never steps over ships them.
         const { stopReason } = await import("@/lib/emulator/stop-reason");
-        const said = stopReason(goal.target, runResult, snapshot, frameLayoutRef.current, programLines);
+        // A count's pause counts every line's steps.
+        const result = goal.lines ? { ...runResult, steps_executed: total } : runResult;
+        const said = stopReason(goal.target, result, snapshot, frameLayoutRef.current, programLines);
         if (said?.problem) {
           setError(said.text);
           setErrorCard(said.card ? { error: said.text, card: said.card } : null);
@@ -837,9 +866,9 @@ export function useEmulator(start = true): EmulatorState {
   }, [markCurrentLine, programLines, pushReplayFrame, surfaceRuntimeError]);
 
   // Step over and step out aim at a call depth, run to cursor at the
-  // instruction the line stands for.
+  // instruction the line stands for, and gdb's n and s off the line.
   const runUntil = useCallback(
-    (target: StepTarget): Promise<string | null> =>
+    (target: StepTarget, lines = 1): Promise<string | null> =>
       movingRef.current.then(() => {
         // With nothing loaded every line reads as having no instruction.
         if (!programLoadedRef.current) return null;
@@ -854,6 +883,9 @@ export function useEmulator(start = true): EmulatorState {
           return null;
         }
         if (!snap?.frames) return null;
+        if (target === "next" || target === "step") {
+          return run({ until: lineGoal(target, snap, lineMapRef.current), target, lines });
+        }
         const depth = callDepth(snap.frames);
         // Inside a library call, both finish the call.
         return run({ until: { depth: target === "out" && !snap.externalCall ? depth - 1 : depth }, target });
