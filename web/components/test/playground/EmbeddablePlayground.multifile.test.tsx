@@ -539,15 +539,29 @@ describe("a program load when storage is full", () => {
   const LINK_FILE = { name: "stack.s", body: "// from the link" };
   const NOTICE = "replaced util.s with no copy: the browser's storage for this site is full";
   let refuse: { mockRestore: () => void } | null = null;
-  // Storage that refuses every write of the helper strip and its backup.
+  // A full store for the helper keys: in all they may hold no more than they
+  // hold now, and a write that needs more is refused, as past a quota.
   const fillHelperStorage = () => {
     const real = Storage.prototype.setItem;
+    const helperChars = (storage: Storage, key = "", value = "") => {
+      let used = key.length + value.length;
+      for (let i = 0; i < storage.length; i++) {
+        const other = storage.key(i) ?? "";
+        if (other.startsWith(FILES_KEY) && other !== key) {
+          used += other.length + (storage.getItem(other) ?? "").length;
+        }
+      }
+      return used;
+    };
+    const limit = helperChars(window.localStorage);
     refuse = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
       this: Storage,
       key: string,
       value: string,
     ) {
-      if (key.startsWith(FILES_KEY)) throw new DOMException("storage is full", "QuotaExceededError");
+      if (key.startsWith(FILES_KEY) && helperChars(this, key, value) > limit) {
+        throw new DOMException("storage is full", "QuotaExceededError");
+      }
       real.call(this, key, value);
     });
   };
@@ -565,6 +579,22 @@ describe("a program load when storage is full", () => {
     );
     await waitFor(() => expect(toastError).toHaveBeenCalledWith(NOTICE));
     expect(ref.current!.getFiles()).toEqual([LINK_FILE]);
+  });
+
+  // Tabs larger than the store has room for are not stored, so the saved
+  // helper is still stored and a reload brings it back: nothing to say.
+  it("says nothing when a link's helpers do not fit, since the saved helper stays stored", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    fillHelperStorage();
+    const larger = { name: "stack.s", body: `${UTIL}\n${UTIL}` };
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} startFiles={[larger]} />,
+    );
+    await waitFor(() => expect(ref.current!.getFiles()).toEqual([larger]));
+    await act(async () => {});
+    expect(toastError).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem(FILES_KEY) ?? "[]")).toEqual([STUDENT]);
   });
 
   it("loads a link's program after the page opened as before and names the saved helper", async () => {
