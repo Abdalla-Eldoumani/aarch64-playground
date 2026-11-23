@@ -148,6 +148,9 @@ It writes the programs and each side's results under
 if you set it, never in the repository. A run with both halves also writes a
 `report.md` there with one row per program.
 
+The README's [Known differences from the course server](../README.md#known-differences-from-the-course-server)
+gives the last sweep's result and lists the differences known today.
+
 ## Size and speed
 
 From `web/`, after `npm run build`:
