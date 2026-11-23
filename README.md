@@ -180,10 +180,12 @@ m4 on each.
   build here and do nothing special. GNU m4 on the server reads those comments
   as text. It expands a macro named there, so in a `//` comment the later
   lines of a macro whose body spans lines land in the code; a backtick starts
-  a quote that runs to the next `'`; and `dnl` deletes the rest of its line
-  and the line break, so the next line joins the comment and drops out of the
-  program. The program may then not build there, or build without that line.
-  Keep macro names, backticks, and `dnl` out of comments.
+  a quote that runs to the next `'`; in a quoted define body, a `'` in a
+  `/* */` comment on a later line ends the quote there; and `dnl` deletes the
+  rest of its line and the line break, so the next line joins the comment and
+  drops out of the program. The program may then not build there, or build
+  without that line. Keep macro names, backticks, apostrophes, and `dnl` out
+  of comments.
 - **m4 builtin names and nested quotes outside comments.** Line by line, a
   label named `dnl` or `traceon`, a `.string` holding `len(abc)` or `divnum`,
   and a quoted define body with another quote inside it
@@ -239,8 +241,15 @@ m4 on each.
 - **A macro call whose arguments close on the next line**, such as
   `jump_to(done` with its `)` on the line below. Line by line, the playground
   refuses it (`a macro's arguments run past the end of the line`). GNU m4 on
-  the server reads on to the `)` and builds it. Close the arguments on the
-  line that calls the macro: `jump_to(done)`.
+  the server reads on to the `)` and keeps the line break in the argument
+  unless it follows the `(` or a comma, so the program builds there when that
+  break can end a line, as after `b done`. Close the arguments on the line
+  that calls the macro: `jump_to(done)`.
+- **`divnum` as an operand, or `dnl` after an instruction.** Line by line, the
+  playground reads the word as part of the instruction and refuses it. On the
+  server GNU m4 writes 0 for `divnum`, and `dnl` deletes the rest of the line
+  and the line break, so the program builds there when the next line is blank
+  or a comment. Write the number, and put notes in `//` comments.
 
 ### Builds in both places, runs differently
 
