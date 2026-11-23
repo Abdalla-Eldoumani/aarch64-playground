@@ -112,6 +112,11 @@ two disagree, the server is right. These are the differences known today, with
 what to write instead where you can. A difference this list does not name is a
 bug, so please [report it](#reporting-a-problem).
 
+The m4 entries below are about programs the playground's m4 reads line by
+line, which is most of them. A program that goes through GNU m4's own order
+instead (the m4 line under [What it does not do](#what-it-does-not-do) says
+which) has its m4 read as the server reads it.
+
 ### Builds here, refused on the server
 
 - **A `;` in a line.** The playground reads the text after `;` as a comment.
@@ -162,12 +167,13 @@ bug, so please [report it](#reporting-a-problem).
   assembled and passed through m4 on its own, so the link fails with
   ``undefined reference to `name'``. Mark every label another file uses with
   `.global`, and put the defines a file uses in that file.
-- **A name defined twice without quotes.** Here a second `define(fp, x29)`
-  replaces the first. GNU m4 on the server expands `fp` before it defines it,
-  so the second line defines `x29` instead, and m4 may never finish once it
-  meets `x29` again. To define a name again, quote it (``define(`fp', x29)``)
-  or remove it first with ``undefine(`fp')``.
-- **A macro name, a backtick, or `dnl` in a `//` or `/* */` comment.** These
+- **A name defined twice without quotes.** Line by line, a second
+  `define(fp, x29)` replaces the first here. GNU m4 on the server expands `fp`
+  before it defines it, so the second line defines `x29` instead, and m4 may
+  never finish once it meets `x29` again. To define a name again, quote it
+  (``define(`fp', x29)``) or remove it first with ``undefine(`fp')``.
+- **A macro name, a backtick, or `dnl` in a `//` or `/* */` comment.** Line by
+  line, the playground takes comments out before m4 reads the program, so these
   build here and do nothing special. GNU m4 on the server reads those comments
   as text. It expands a macro named there, so the later lines of a macro
   whose body spans lines land in the code; a backtick starts a quote that runs
@@ -175,12 +181,13 @@ bug, so please [report it](#reporting-a-problem).
   so the next line joins the comment and drops out of the program. The
   program may then not build there, or build without that line. Keep macro
   names, backticks, and `dnl` out of comments.
-- **m4 builtin names and nested quotes outside comments.** A label named
-  `dnl` or `traceon`, a `.string` holding `len(abc)` or `divnum`, and a quoted
-  define body with another quote inside it (``define(abc, `a `b' c')``) build
-  here as written. GNU m4 on the server runs those builtins, which deletes or
-  replaces the words, and drops the inner quotes. Keep m4 builtin names out
-  of labels and strings, and do not nest quotes in a define body.
+- **m4 builtin names and nested quotes outside comments.** Line by line, a
+  label named `dnl` or `traceon`, a `.string` holding `len(abc)` or `divnum`,
+  and a quoted define body with another quote inside it
+  (``define(abc, `a `b' c')``) build here as written. GNU m4 on the server
+  runs those builtins, which deletes or replaces the words, and drops the
+  inner quotes. Keep m4 builtin names out of labels and strings, and do not
+  nest quotes in a define body.
 
 ### Refused here, builds on the server
 
@@ -222,9 +229,6 @@ bug, so please [report it](#reporting-a-problem).
 - **`#` at the start of a line as a comment, and a `/*` comment left open at
   the end of the file.** The server's assembler takes both. Write comments
   with `//`, and close every `/*`.
-- **m4 quotes outside a `define`**, such as ``mov w0, `8'``. The playground
-  refuses them (`unsupported m4 construct`); GNU m4 on the server removes the
-  quotes. Write the text without them.
 - **GNU m4 builtins the playground does not run**, such as `ifelse` and
   `eval`. They work on the server. The m4 line under
   [What it does not do](#what-it-does-not-do) says what the playground's m4
