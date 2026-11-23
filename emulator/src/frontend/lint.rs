@@ -1089,6 +1089,30 @@ ret
         assert_eq!(lint(src), Vec::new());
     }
 
+    /// Lint `source` and count the define events its body lookups read.
+    fn events_read_linting(source: &str) -> usize {
+        m4::EVENTS_READ.with(|n| n.set(0));
+        lint(source);
+        m4::EVENTS_READ.with(|n| n.get())
+    }
+
+    #[test]
+    fn names_undefined_by_expansion_cost_the_macro_check_little_per_use() {
+        // A macro that undefines `x` 10,000 times, called 32 times in GNU
+        // m4's order, makes 320,000 events; 10,000 uses of `x` in strings
+        // follow, and the program builds. Walking every event above each
+        // use reads 3.2 billion.
+        let uses = 10_000;
+        let src = format!(
+            "define(x, w19)dnl\ndefine(`u', `undefine({}`x')')dnl\n{}\t.data\n{}\t.text\n\t.global main\nmain:\tmov\tx0, 0\n\tret\n",
+            "`x',".repeat(9_999),
+            "u\n".repeat(32),
+            "\t.ascii \"x x x x x x x x x x\"\n".repeat(uses / 10),
+        );
+        let read = events_read_linting(&src);
+        assert!(read < 100 * uses, "the macro check read {read} define events for {uses} uses");
+    }
+
     #[test]
     fn a_broken_m4_pass_produces_no_warnings() {
         // The assemble surfaces the m4 error; lint must stay quiet.
