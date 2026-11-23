@@ -131,9 +131,10 @@ assembler, the executor, or an example.
 
 ## Compare with the course server
 
-On request only, not part of CI. `scripts/parity-sweep.js` runs every program
+On request only, not part of CI. `scripts/parity-sweep.js` runs the programs
 the site ships (the examples, the lesson and exercise starters, the reference
-and pitfall programs, and the home page's program) in the emulator and with
+and pitfall programs, the home page's program, and the two starters in
+[authoring-content.md](authoring-content.md)) in the emulator and with
 the course toolchain (`m4`, then `gcc`) on the course server, and compares the
 output, the exit code, and the files written, byte for byte. The server half
 needs key-based ssh access to that server. Without it, run the emulator half
@@ -148,8 +149,40 @@ It writes the programs and each side's results under
 if you set it, never in the repository. A run with both halves also writes a
 `report.md` there with one row per program.
 
+What the comparisons with the course server found, read on 2026-11-23:
+
+- **The site's programs.** The sweep covers 622: 30 examples, 76 lesson
+  programs, 71 exercise starters, 370 reference programs, 72 pitfalls, the
+  home page's program, and the two starters in
+  [authoring-content.md](authoring-content.md). The exercises' hidden
+  solutions and the guide's programs are not in it. 621 of the 622 were run
+  on the server on 2026-11-06. Here, 616 of those give the same output, exit
+  code, and written files, byte for byte, or both sides refuse to build them.
+  One terminal game builds on both sides and is not compared. The other 4
+  differ, each for a reason the README's list gives: the math functions, a
+  `_start` program, an unfinished exercise starter that prints registers it
+  never set, and an example whose files define the same names, which GNU m4
+  cannot read as one pasted file. The newest example, flappy, has not been
+  run on the server yet.
+- **C programs.** `c_corpus` holds 101 programs compiled by gcc on the
+  server, at three optimization levels. 98 print the server's output and exit
+  with its code at every level; the other 3 crash on purpose and must stop
+  with the playground's own fault message.
+- **Error messages.** `error_parity` holds 15 common mistakes with the
+  server's own error on record.
+- **Vector instructions.** Each of the 2,208 Advanced SIMD forms in
+  `emulator/tests/simd-inventory.txt` assembles to the word GNU `as` gives on
+  the server, and the results match the server's in all 6,618 recorded cases
+  in `simd-behaviour.txt`.
+- **Recorded runs.** 2,224 server runs of programs written for course-style
+  exercises, picked because an earlier version of the playground and the
+  server disagreed on them, kept outside the repository. 794 now agree: the
+  same kind of result (refused when building, refused when linking, crashed,
+  ran out of time, or finished) and, for a run that finished, the same output
+  and exit code. Most of the rest come from the differences the README lists.
+
 The README's [Known differences from the course server](../README.md#known-differences-from-the-course-server)
-gives the last sweep's result and lists the differences known today.
+lists those differences, each with what to write instead.
 
 ## Size and speed
 
