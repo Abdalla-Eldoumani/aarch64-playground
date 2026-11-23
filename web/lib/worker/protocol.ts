@@ -179,8 +179,10 @@ export interface RunGoal {
   /** The pc at this address. */
   pc?: number;
   /** Off this editor line's instructions, [first, past the last), back in
-   *  the program's code or at main's return: n with `depth`, s without. */
+   *  the program's code or at main's return, at `depth` or shallower: n. */
   range?: [number, number];
+  /** With `range`, also into a call the line makes: s. */
+  into?: boolean;
 }
 
 /**
