@@ -807,22 +807,20 @@ f:      mov     x1, 1
     await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
     await assembled(view, BARE);
     expect(view.result.current.pc).toBe(0x400000);
-    await gdb(view, "n");
+    // With no line map the stop is named by its address, as ni's is.
+    expect(await gdb(view, "n")).toEqual(["reached 0x400004"]);
     expect(view.result.current.pc).toBe(0x400004);
-    await gdb(view, "n");
+    expect(await gdb(view, "n 0")).toEqual(["at 0x400004"]);
+    expect(await gdb(view, "n")).toEqual(["reached 0x400008"]);
     expect(view.result.current.pc).toBe(0x400008);
     expect(BigInt(view.result.current.registers[1])).toBe(1n);
 
     const into = renderHook(() => useEmulator());
     await waitFor(() => expect(into.result.current.isLoaded).toBe(true));
     await assembled(into, BARE);
-    await gdb(into, "s");
-    const pcs: number[] = [];
-    for (let k = 0; k < 3; k++) {
-      await gdb(into, "s");
-      pcs.push(into.result.current.pc);
-    }
-    expect(pcs).toEqual([0x400010, 0x400014, 0x400008]);
+    const said: string[][] = [];
+    for (let k = 0; k < 4; k++) said.push(await gdb(into, "s"));
+    expect(said).toEqual([["reached 0x400004"], ["reached 0x400010"], ["reached 0x400014"], ["reached 0x400008"]]);
   });
 
   // qsort calls the program's comparator back; gdb's step at the bl qsort
@@ -867,9 +865,50 @@ main:   stp     fp, lr, [sp, -16]!
     const view = await stoppedAt(SORT3, 25);
     expect(await gdb(view, "s")).toEqual(["reached line 26"]);
     expect(view.result.current.pc).toBe(0x400010 + 28);
+    const over = await stoppedAt(SORT3, 25);
+    expect(await gdb(over, "n")).toEqual(["reached line 26"]);
     const into = await stoppedAt(SORT3, 25);
     act(() => into.result.current.toggleBreakpoint(12));
     expect(await gdb(into, "s")).toEqual(["stopped at the breakpoint on line 12"]);
     expect(await gdb(into, "s")).toEqual(["reached line 13"]);
+  });
+
+  // main reads an int with scanf (bl scanf on line 19), then adds one to it.
+  const READ_ADD = `// Reads an int with scanf, then adds one to it.
+define(fp, x29)
+define(lr, x30)
+
+n_s = 16
+alloc = -(16 + 16) & -16
+dealloc = -alloc
+
+        .data
+fmt_in: .string "%d"
+
+        .text
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, alloc]!
+        mov     fp, sp
+        ldr     x0, =fmt_in
+        add     x1, fp, n_s
+        bl      scanf
+        ldr     w19, [fp, n_s]
+        add     w19, w19, 1
+        mov     w0, 0
+        ldp     fp, lr, [sp], dealloc
+        ret
+`;
+
+  it("stops a count at a read that waits for input, and the answer finishes its lines", async () => {
+    const view = await stoppedAt(READ_ADD, 18);
+    expect(await gdb(view, "n 3")).toEqual(["waiting for input"]);
+    expect(view.result.current.blocked).toBe(true);
+    act(() => {
+      view.result.current.pushStdin("41\n", true);
+      view.result.current.resumeAfterInput();
+    });
+    await waitFor(() => expect(view.result.current.stopReason).toBe("reached line 21"));
+    expect(BigInt(view.result.current.registers[19])).toBe(41n);
   });
 });
