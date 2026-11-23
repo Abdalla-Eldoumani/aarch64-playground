@@ -717,10 +717,9 @@ describe("gdb n and s, stop for stop with gdb on a -g build", () => {
       driveForeground: vi.fn(async () => 0),
       executables: new Map(),
     });
-    // Into spin, then its two lines over and over.
+    // Into spin, then its two lines over and over, each pass adding to w9.
     const done = dispatchCommand("gdb s 100000000", ctx);
-    await waitFor(() => expect(view.result.current.isRunning).toBe(true));
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await waitFor(() => expect(BigInt(view.result.current.registers[9])).toBeGreaterThan(5n));
     act(() => view.result.current.pause());
     const { lines } = await done;
     await waitFor(() => expect(view.result.current.isRunning).toBe(false));
@@ -728,5 +727,148 @@ describe("gdb n and s, stop for stop with gdb on a -g build", () => {
     expect(lines[0]).toMatch(/^reached line 1[12]$/);
     expect(view.result.current.stepCount).toBeGreaterThan(10);
     expect(view.result.current.stepCount).toBeLessThan(1_000_000);
+  });
+});
+
+describe("gdb n and s on the real hub, past what gdb's transcripts show", () => {
+  // main calls work three times on 150,000 (0x249f0). As in counting above,
+  // each bl work line takes 3 * 150,000 + 10 = 450,010 steps; the mov before
+  // each takes one. The first bl work is line 34, the mov after the last 39.
+  const THRICE = `// Counts to 150,000 three times, one call per line.
+
+define(fp, x29)
+define(lr, x30)
+define(n_r, w19)
+
+.text
+
+// work(w0 = n) -> w0 = n, one loop pass at a time
+        .balign 4
+        .global work
+work:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w9, 0                       // count
+        b       wk_test
+wk_loop:
+        add     w9, w9, 1
+wk_test:
+        cmp     w9, w0
+        b.lt    wk_loop
+        mov     w0, w9
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     n_r, 0x49f0
+        movk    n_r, 0x2, lsl 16            // n = 150,000
+        mov     w0, n_r
+        bl      work
+        mov     w0, n_r
+        bl      work
+        mov     w0, n_r
+        bl      work
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  it("spends one 1,000,000-step budget on a whole count, and the next n goes on with it", async () => {
+    // stp, mov, mov, movk and mov: the first bl work is next.
+    const view = await stoppedAt(THRICE, 34);
+    expect(view.result.current.stepCount).toBe(5);
+    // Two calls and two movs are 900,022 steps; the third call gets the 99,978 left.
+    expect(await gdb(view, "n 5")).toEqual([paused("gdb n")]);
+    expect(view.result.current.stepCount).toBe(5 + 1_000_000);
+    expect(view.result.current.paused).toBe(true);
+    // The rest of the fifth line: 450,010 - 99,978.
+    expect(await gdb(view, "n")).toEqual(["reached line 39"]);
+    expect(view.result.current.stepCount).toBe(5 + 1_350_032);
+    expect(await gdb(view, "n")).toEqual(["reached line 40"]);
+  }, 60_000);
+
+  // A program with no directives starts at _start, and the playground has no
+  // line map for it: each instruction is its own line, as gdb's ni and si.
+  const BARE = `_start: mov     x0, 0
+        bl      f
+        mov     x8, 93
+        svc     0
+f:      mov     x1, 1
+        ret
+`;
+
+  it("steps a program with no line map an instruction at a time, n over a call and s into it", async () => {
+    const view = renderHook(() => useEmulator());
+    await waitFor(() => expect(view.result.current.isLoaded).toBe(true));
+    await assembled(view, BARE);
+    expect(view.result.current.pc).toBe(0x400000);
+    await gdb(view, "n");
+    expect(view.result.current.pc).toBe(0x400004);
+    await gdb(view, "n");
+    expect(view.result.current.pc).toBe(0x400008);
+    expect(BigInt(view.result.current.registers[1])).toBe(1n);
+
+    const into = renderHook(() => useEmulator());
+    await waitFor(() => expect(into.result.current.isLoaded).toBe(true));
+    await assembled(into, BARE);
+    await gdb(into, "s");
+    const pcs: number[] = [];
+    for (let k = 0; k < 3; k++) {
+      await gdb(into, "s");
+      pcs.push(into.result.current.pc);
+    }
+    expect(pcs).toEqual([0x400010, 0x400014, 0x400008]);
+  });
+
+  // qsort calls the program's comparator back; gdb's step at the bl qsort
+  // (gcc -g, under qemu-aarch64) stops on the line after it all the same, and
+  // stops in the comparator only at a breakpoint there. cmp_int is lines 11 to
+  // 15 from 0x400000; main is from 0x400010, its bl qsort on line 25.
+  const SORT3 = `// Sorts three ints with qsort and a comparator, then prints the first.
+define(fp, x29)
+define(lr, x30)
+
+        .data
+arr_m:  .word 3, 1, 2
+fmt:    .string "%d\\n"
+
+        .text
+        .balign 4
+cmp_int:
+        ldr     w2, [x0]
+        ldr     w3, [x1]
+        sub     w0, w2, w3
+        ret
+
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =arr_m
+        mov     x1, 3
+        mov     x2, 4
+        ldr     x3, =cmp_int
+        bl      qsort
+        ldr     x0, =fmt
+        ldr     x1, =arr_m
+        ldr     w1, [x1]
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+  it("runs a library call whole with s when it calls the program's comparator", async () => {
+    const view = await stoppedAt(SORT3, 25);
+    expect(await gdb(view, "s")).toEqual(["reached line 26"]);
+    expect(view.result.current.pc).toBe(0x400010 + 28);
+    const into = await stoppedAt(SORT3, 25);
+    act(() => into.result.current.toggleBreakpoint(12));
+    expect(await gdb(into, "s")).toEqual(["stopped at the breakpoint on line 12"]);
+    expect(await gdb(into, "s")).toEqual(["reached line 13"]);
   });
 });
