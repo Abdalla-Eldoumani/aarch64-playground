@@ -119,9 +119,12 @@ function store(
     safeRemoveItem(COPIES_KEY);
     return { backup, copies: [], unsaved: [] };
   }
-  // A file whose text the program brings back is not lost, whatever its name,
-  // and a file it puts back unchanged needs no copy.
-  const replaced = prev.filter((f) => !next.some((n) => n.body === f.body));
+  // What the load takes off the screen, and a stored helper the screen no
+  // longer shows (an earlier load's tabs did not fit). A file whose text the
+  // program brings back is not lost, whatever its name, and a file it puts
+  // back unchanged needs no copy.
+  const offScreen = saved.filter((s) => !prev.some((f) => f.name === s.name || f.body === s.body));
+  const replaced = [...prev, ...offScreen].filter((f) => !next.some((n) => n.body === f.body));
   const wanted = unheld(
     [...kept.copies, ...(displaced.length > 0 ? kept.backup : []), ...replaced],
     [...backup, ...next],
