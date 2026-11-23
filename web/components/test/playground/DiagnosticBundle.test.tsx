@@ -68,7 +68,7 @@ describe("DiagnosticBundle", () => {
       await Promise.resolve();
     });
     const link = writeText.mock.lastCall?.[0] as string;
-    expect(link.startsWith(`${window.location.origin}/?bundle=`)).toBe(true);
+    expect(link.startsWith(`${window.location.origin}/#bundle=`)).toBe(true);
     expect(report().value).toContain(`[open in the playground](${link})`);
     expect(screen.getByRole("status").textContent).toBe("link copied.");
   });
@@ -144,8 +144,8 @@ describe("DiagnosticBundle", () => {
       await Promise.resolve();
     });
     const link = writeText.mock.lastCall?.[0] as string;
-    expect(link.startsWith(`${window.location.origin}/playground?bundle=`)).toBe(true);
-    const payload = LZString.decompressFromEncodedURIComponent(link.split("?bundle=")[1]);
+    expect(link.startsWith(`${window.location.origin}/playground#bundle=`)).toBe(true);
+    const payload = LZString.decompressFromEncodedURIComponent(link.split("#bundle=")[1]);
     for (const secret of ["COOKIE-SECRET", "TOKEN-SECRET", "STORED-SECRET", "QUERY-SECRET", "HASH-SECRET"]) {
       expect(report().value, secret).not.toContain(secret);
       expect(link, secret).not.toContain(secret);

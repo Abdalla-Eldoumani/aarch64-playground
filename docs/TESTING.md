@@ -71,7 +71,20 @@ A few suites are worth knowing by name:
   must list exactly the mnemonics the assembler accepts.
 - `bounds`: the limits that stop a runaway program, and the caps on the
   stack view's records. Its three slowest tests are ignored on pull requests
-  and run weekly in release mode.
+  and run weekly in release mode. The m4 budget, the macro warning cap, the
+  library-call hand-back and the filled `.space` bound are tested beside
+  their code, and `step_back_memory` checks, at the allocator, that the
+  step-back history stays in proportion to what its steps wrote.
+- `any_word` and `any_source`: seeded tests that nothing makes the emulator
+  panic. `any_word` (`emulator/tests/any_word.rs`) sends 500,000 random
+  32-bit words through the decoder, one step of the machine, and the
+  disassembler. `any_source` (`emulator/tests/any_source.rs`) sends 4,000
+  sources up to the editor's 1 MiB cap, a quarter random bytes and the rest
+  lines built from the assembler's mnemonics, directives, and library names,
+  through the lint, both assemblers, and the loader. An error, a fault, or a
+  halt passes; a panic fails and names the seed and the case. The seed is
+  fixed, so a rerun repeats every case in order:
+  `cargo test --manifest-path emulator/Cargo.toml --test any_word`.
 
 On Windows, if a debug test build fails with
 `LNK1104: cannot open file ... build_script_build-*.exe`, antivirus is
@@ -118,9 +131,10 @@ assembler, the executor, or an example.
 
 ## Compare with the course server
 
-On request only, not part of CI. `scripts/parity-sweep.js` runs every program
+On request only, not part of CI. `scripts/parity-sweep.js` runs the programs
 the site ships (the examples, the lesson and exercise starters, the reference
-and pitfall programs, and the home page's program) in the emulator and with
+and pitfall programs, the home page's program, and the two starters in
+[authoring-content.md](authoring-content.md)) in the emulator and with
 the course toolchain (`m4`, then `gcc`) on the course server, and compares the
 output, the exit code, and the files written, byte for byte. The server half
 needs key-based ssh access to that server. Without it, run the emulator half
@@ -134,6 +148,42 @@ It writes the programs and each side's results under
 `aarch64-playground-parity` in the OS temp folder, or under `PARITY_SCRATCH`
 if you set it, never in the repository. A run with both halves also writes a
 `report.md` there with one row per program.
+
+What the comparisons with the course server found, read on 2026-11-23:
+
+- **The site's programs.** The sweep covers 622: 30 examples, 76 lesson
+  programs, 71 exercise programs (68 starters and the programs of 3 frame
+  exercises), 370 reference programs, 72 pitfalls, the home page's program,
+  and the two starters in
+  [authoring-content.md](authoring-content.md). The exercises' hidden
+  solutions and the guide's programs are not in it. 621 of the 622 were run
+  on the server on 2026-11-06. Here, 616 of those give the same output, exit
+  code, and written files, byte for byte, or both sides refuse to build them.
+  One terminal game builds on both sides and is not compared. The other 4
+  differ, each for a reason the README's list gives: the math functions, a
+  `_start` program, an unfinished exercise starter that prints registers it
+  never set, and an example whose files define the same names, which GNU m4
+  cannot read as one pasted file. The newest example, flappy, has not been
+  run on the server yet.
+- **C programs.** `c_corpus` holds 101 programs compiled by gcc on the
+  server, at three optimization levels. 98 print the server's output and exit
+  with its code at every level; the other 3 crash on purpose and must stop
+  with the playground's own fault message.
+- **Error messages.** `error_parity` holds 15 common mistakes with the
+  server's own error on record.
+- **Vector instructions.** Each of the 2,208 Advanced SIMD forms in
+  `emulator/tests/simd-inventory.txt` assembles to the word GNU `as` gives on
+  the server, and the results match the server's in all 6,618 recorded cases
+  in `simd-behaviour.txt`.
+- **Recorded runs.** 2,224 server runs of programs written for course-style
+  exercises, picked because an earlier version of the playground and the
+  server disagreed on them, kept outside the repository. 919 now agree: the
+  same kind of result (refused when building, refused when linking, crashed,
+  ran out of time, or finished) and, for a run that finished, the same output
+  and exit code. Most of the rest come from the differences the README lists.
+
+The README's [Known differences from the course server](../README.md#known-differences-from-the-course-server)
+lists those differences, each with what to write instead.
 
 ## Size and speed
 
@@ -212,17 +262,28 @@ nothing, except the two docs the tests read. `docs/authoring-content.md` runs
 `wasm`, `corpus`, `web-build`, and `web-test`, and
 `docs/instruction-reference.md` runs those four and `rust`. A lesson or
 example change skips lint and typecheck, and a change under `emulator/tests/`
-runs only the Rust jobs, except the error-parity cases and the one corpus
-program the web tests read, which also run `wasm`, `corpus`, `web-build`, and
-`web-test`. A change to `scripts/vercel-build.sh` runs neither the Rust jobs
-nor `browser`: CI never runs that script, and `web-static` checks its
-toolchain pins against the workflows. A change to a workflow, or to a file no
+runs only the Rust jobs, except the error-parity cases, the one corpus
+program the web tests read, and `c_corpus.rs` (a web test holds the name
+`cargo test` skips to it), which also run `wasm`, `corpus`, `web-build`, and
+`web-test`. The three web files the `wasm_codes` test reads,
+`web/lib/emulator/call-cards.ts`, `stack-frames.ts` and `clobber-note.ts`,
+also run `rust`. A change to
+`scripts/vercel-build.sh` runs none of the Rust jobs:
+CI never runs that script, `web-static` checks its
+toolchain pins against the workflows, and `web-test` runs
+`vercel-build.test.ts`, which checks that the script holds every download to
+a pinned hash. A change to a workflow, or to a file no
 rule names, runs everything, and so do a push to `main`, the weekly run, and
 the pull request from `integration` to `main`.
+The example catalog, `web/lib/playground/example-catalog.ts`, also runs
+`rust`: `frames.rs` and `filler_examples.rs` read its helper lists. So does
+the editor's completion list, `web/lib/asm/asm-completion.ts`: `stub_table.rs`
+holds its library calls to the stub table.
 
 A push to `integration` runs only `wasm`, `web-build`, and the gate job, which
 it names `ci (cache warm-up)`. `wasm` and `web-build` refill the caches that
-pull requests into `integration` restore. The pull request from `integration`
+pull requests into `integration` restore, and `web-build` skips its browser
+smoke there. The pull request from `integration`
 to `main` tests the same changes, so a push to `integration` with no such pull
 request open runs no tests.
 
@@ -230,7 +291,10 @@ request open runs no tests.
   the emulator's sources.
 - `rust`: `cargo test` without the C corpus, plus the corpus split across
   three jobs (`CORPUS_SHARD=1/3` and so on).
-- `corpus`: `node scripts/verify-corpus.js`.
+- `corpus`: `node scripts/verify-corpus.js`, then
+  `node scripts/check-course-style.js`, which holds the site's own programs to
+  `.balign 4` before each exported function and `ldr xN, =label` for
+  addresses.
 - `web-static`: a check that the Rust and wasm-pack versions in the workflows
   match the ones `scripts/vercel-build.sh` deploys with
   (`.github/scripts/check-pins.js`), the dependency audit, a check that
@@ -239,17 +303,10 @@ request open runs no tests.
 - `web-build`: `npm run build`, a check that the lazy chunks the size budgets
   name (Monaco, its worker, the terminal, xterm, the frames view, the frame
   cards, and the call card) exist, since a budget
-  whose files match nothing passes, and `npm run size`.
+  whose files match nothing passes, and `npm run size`. Then, on the same
+  build, `next start` and `scripts/browser-smoke.mjs` in Chromium, so any
+  change that runs the build runs the smoke too.
 - `web-test`: `npm test` split into six shards.
-- `browser`: when `emulator/src/`, the Cargo files, the package manifests, the
-  build configuration, the script that writes the service worker's file list,
-  the Chromium smoke script, the noise filter the two smoke tests share, the
-  share encoder, the locals example, or the stack frames view (its decode in
-  `web/lib/emulator/frame-data.ts` and `stack-frames.ts`, `FramesView.tsx`,
-  its rows' `FrameRow.tsx`, `lazy-frames.tsx`, and the stack tab's
-  `StackTab.tsx`) change (not for a change to the rest of the site's code
-  alone), `npm run build`,
-  `next start`, and `scripts/browser-smoke.mjs` in Chromium.
 - `coverage`: on pushes to `main`, the weekly run, and the pull request from
   `integration` only, merges the shards' coverage and fails if it drops below
   the floors in `web/vitest.config.mts`.

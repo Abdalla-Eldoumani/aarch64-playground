@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 dbits:
@@ -776,6 +777,7 @@ coef.0:
 	.word	1072693248
 	.word	0
 	.word	1072693248
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

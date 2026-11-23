@@ -157,6 +157,18 @@ describe("TerminalInputState", () => {
     expect(s.buffer).toBe("ls a");
   });
 
+  it("tab completion keeps a file name's escape and control bytes out of the buffer", () => {
+    // A program can create a file whose name moves the cursor back and erases
+    // its own tail, so the screen would show "./program" while " > notes.txt"
+    // runs. Completed text gets the same stripping as typed text.
+    const s = new TerminalInputState();
+    s.handlePrintable("./p");
+    s.handleTab(["./program > notes.txt \x1b[13D\x1b[K\x07"]);
+    expect(s.buffer).not.toMatch(/[\x00-\x1f\x7f-\x9f]/);
+    expect(s.buffer).toBe("./program > notes.txt ");
+    expect(s.cursor).toBe(s.buffer.length);
+  });
+
   it("tab completion is a no-op when nothing matches", () => {
     const s = new TerminalInputState();
     s.handlePrintable("c");

@@ -8,6 +8,8 @@ export interface BackendPassthroughs {
   pushStdin: (s: string, interactive?: boolean) => void;
   closeStdin: () => void;
   setSnapshotsPaused: (paused: boolean) => void;
+  setRealTime: (on: boolean) => void;
+  setWindowSize: (cols: number, rows: number) => void;
   lint: (source: string) => Promise<LintWarning[]>;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
   readVfsFile: (path: string) => Promise<Uint8Array>;
@@ -57,6 +59,27 @@ export function useBackendPassthroughs(
       const backend = backendRef.current;
       if (!backend) return;
       void backend.setSnapshotsPaused(paused);
+    },
+    [backendRef],
+  );
+
+  // Live terminal sessions also wait out every sleep in real time, so the
+  // machine gives a paced program the four-hour refund caps.
+  const setRealTime = useCallback(
+    (on: boolean) => {
+      const backend = backendRef.current;
+      if (!backend) return;
+      void backend.setRealTime(on);
+    },
+    [backendRef],
+  );
+
+  // The terminal pane's size for TIOCGWINSZ, while the pane drives a program.
+  const setWindowSize = useCallback(
+    (cols: number, rows: number) => {
+      const backend = backendRef.current;
+      if (!backend) return;
+      void backend.setWindowSize(cols, rows);
     },
     [backendRef],
   );
@@ -152,6 +175,8 @@ export function useBackendPassthroughs(
     pushStdin,
     closeStdin,
     setSnapshotsPaused,
+    setRealTime,
+    setWindowSize,
     lint,
     uploadVfsFile,
     readVfsFile,

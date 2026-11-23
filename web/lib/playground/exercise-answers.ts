@@ -109,8 +109,8 @@ export function readAnswer(slug: string): StoredAnswer | null {
 }
 
 /**
- * Store a record as given, so an import keeps the exporting device's
- * `updatedAt`. An over-cap record is dropped, not cut short: half an answer is
+ * Store a record as given, so an import keeps the file's `updatedAt`, capped
+ * at the import time. An over-cap record is dropped, not cut short: half an answer is
  * worse than none, and the surface that wrote it still holds the whole one.
  */
 export function putAnswer(slug: string, answer: StoredAnswer): boolean {

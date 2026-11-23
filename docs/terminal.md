@@ -2,7 +2,9 @@
 
 A small shell in the playground, beside the console. Open the **term** tab
 (on a phone, **terminal**). The console still works as before; use whichever
-fits the task.
+fits the task. Where its `gcc`, `as`, and gdb-lite differ from the course
+server's tools, the README's [Stepping and the terminal pane](../README.md#stepping-and-the-terminal-pane)
+says what to type instead.
 
 ## Commands
 
@@ -35,8 +37,8 @@ follows the terminal modes a real tty would apply:
   no echo: it draws its own screen.
 - Ctrl+C stops the program and returns the prompt.
 
-Six examples (snake, the data structures visualizer, calc, temp-convert,
-two-sum, and deadzone) can run in the terminal: set the `console | terminal`
+Seven examples (snake, the data structures visualizer, calc, temp-convert,
+two-sum, deadzone, and flappy) can run in the terminal: set the `console | terminal`
 switch in the header to terminal, and **run** opens the term tab, clears it,
 and starts the program there. Step back is off while such a session runs and
 comes back when it ends.
@@ -69,7 +71,8 @@ like the real toolchain would choke on unexpanded macros. A failed
 assemble prints the assembler's own error with its line number in the
 terminal, and leaves the editor's error markers alone: the build belongs
 to the terminal's file, not whatever the editor happens to show. Other gcc
-flags are accepted and ignored; there is no C compiler here, only the
+flags are accepted and ignored, except that gdb-lite notes whether the last
+build had `-g` (see `gdb n` below); there is no C compiler here, only the
 assembler. Executables live for the session and are re-assembled on each
 run. Builds and runs reset the machine like any assemble, and the home
 directory is re-seeded right after, so `ls` keeps showing your files and a
@@ -101,30 +104,33 @@ good. Embedded lesson and exercise players stay session-only sandboxes.
 | Command | Effect |
 | --- | --- |
 | `gdb help` | Show the gdb-lite command list. |
-| `gdb n`, `gdb s`, `gdb si` | Step one instruction. |
+| `gdb n [N]`, `gdb s [N]` | Step one source line, which is what gdb's `next` and `step` mean in a program built with `gcc -g`. gdb's own `next` can instead run on past a label it reaches after a call (it takes the label for a new function), and at the `ret` of a comparator `qsort` calls both stop inside the library; gdb-lite stops on the label's line and on the program's next line. `n` runs a call on the line in one go; `s` stops at the first instruction of a call to the program's own code, and runs a library call such as `printf` whole. A line is an editor line, so an m4 macro that becomes two instructions, or `ldr x0, label`, is one step; where the pc has no line (inside a library call) they step as `ni` does. After `main`'s last line they stop once at its return, as gdb does, and the next one ends the program. `N` steps N lines and stops sooner at a breakpoint, an input wait or the end of the program; each stop prints where it stopped (`reached line 27`, `stopped at the breakpoint on line 18`, `the program exited with code 0`). A count of 0 or less does not move and says where; anything but a whole number is refused. On the course server `n` and `s` step by line only in a program built with `-g`, and without it they run to the end of the function, so the first `n` or `s` after a `gcc` line without `-g` says so, once a session. |
+| `gdb si` | Step one instruction. |
 | `gdb ni` | Step over: run the call on this line in one go and stop on the next line. On any other instruction it steps one instruction. |
 | `gdb finish` | Step out: run until this function returns to its caller. Out of `main`, it runs to the end of the program. |
 | `gdb c` | Continue to halt or breakpoint. |
-| `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table). |
+| `gdb b <label>` | Set a breakpoint at a label (resolved via the linker symbol table) and print its number, as gdb does (`breakpoint 1 at 0x0000000000400000 (quit)`); numbers are never given twice. Like gdb, it stays across a reset: the next assemble from the editor finds the label again in the program and sets it there. When the label is gone, the next `gdb` command says `gdb: error in re-setting breakpoint N: unknown label 'quit'`. A terminal build (`gcc`, `./name`) runs past it. Taking the last gutter dot off its instruction deletes it, as gdb's `clear` deletes every breakpoint on a line. |
+| `gdb delete [N...]` | Delete breakpoints N..., or with no number every `gdb b` breakpoint. A number no breakpoint has says `gdb: no breakpoint number N`. A gutter breakpoint on the same instruction keeps its stop. |
+| `gdb info breakpoints` | List the `gdb b` breakpoints: number, address and label (`pending` when the program in the machine has no such label). |
 | `gdb p $xN` | Print a register in hex (`$x0`..`$x30`, `$sp`, `$pc`). |
 | `gdb info registers` | Print every register. |
 | `gdb x/Ni $pc` | Show N words of memory at the PC, or at the address in a register (`$x0`). N is at most 1024. |
 | `gdb x/Ngx $sp` | Show N 8-byte words in hex, two to a line, from `$sp`, `$fp`, any register, or an address (`0x7ffffff0`). N is at most 1024. |
 | `gdb bt` | The call stack: `#0` is the function the program is in and its line, `#1` its caller at the line of the call, and so on down to `main`. Past 20 frames the rest, apart from `main`, fold into one line (`... 3 more calls ...`). A program deeper than the 16,384 calls the playground records starts with one line for the calls it did not record (`(#0 to #4: 5 deeper frames, not recorded)`). |
-| `gdb info frame` | This function's frame: its size and the addresses it spans, who called it, then each box from the top down (locals by name with their values, padding, the saved lr and what it returns to, the saved fp and whose frame it points at). |
+| `gdb info frame` | This function's frame: its size and the addresses it spans, who called it, then each box from the top down (locals by name with their values, or by name with "reached only through its address" for a local the program only passes by address, such as a buffer for `scanf` or `read`; padding, the saved lr and what it returns to, the saved fp and whose frame it points at). |
 
 `ni`, `finish`, `bt` and `info frame` read the same call stack the stack
 tab's frames view draws. `ni` and `finish` stop early at a breakpoint, at a
 read waiting for input, when the program ends, or at a `ret` that does not
 go back to a caller (an overwritten saved lr), and print why they stopped.
 After 1,000,000 steps they pause and say so; the same command again goes on
-to the same place. With no frame left (the program has finished), `bt` and
-`info frame` say so.
+to the same place. Once the program has finished, `bt` and `info frame` say
+so, even when it exited from inside a function (`bl exit`, or a `_start`
+ending with `svc`) and left frames on the stack, and `c`, `n`, `s`, `si`,
+`ni` and `finish` say `gdb: the program has finished` instead of doing
+nothing. A program stopped by a fault has not finished: its stack stays.
 
-In real gdb, `n` and `s` step a whole source line. Here they step one
-instruction, as they always have, and keep doing so until after the
-course's final exam (December 16); `ni` and `si` are the
-instruction-level names to use now.
+`si` and `ni` are the instruction-level steps, and neither depends on `-g`.
 
 ## Input handling
 

@@ -273,6 +273,29 @@ main:
     assert!(r.halted);
 }
 
+#[test]
+fn a_pair_offset_past_i64_max_wraps_in_every_index_mode() {
+    // A 64-bit adder wraps; the sum used to trip Rust's overflow check instead.
+    let step_pair = |line: &str| {
+        let mut cpu = assemble(&format!(
+            ".text\n.global main\nmain:\n    mov x3, 0x7fffffffffffffff\n    {line}\n    ret\n"
+        ));
+        cpu.step().expect("mov steps");
+        let _ = cpu.step();
+        cpu
+    };
+    let cpu = step_pair("stp x13, x4, [x3], 200");
+    assert_eq!(cpu.regs.read_gpr(3, true), 0x8000_0000_0000_00c7, "{:?}", cpu.abort_message);
+    for (line, at) in [
+        ("ldp w1, w2, [x3, 244]!", "0x80000000000000f3"),
+        ("ldp w27, w17, [x3, 92]", "0x800000000000005b"),
+    ] {
+        let cpu = step_pair(line);
+        let msg = cpu.abort_message.clone().unwrap_or_default();
+        assert!(msg.contains(&format!("tried to read {at}")), "{line}: {msg}");
+    }
+}
+
 // ---------------------------------------------------------------------------
 // single precision (S registers) through the full pipeline: the course
 // teaches s/d as two views of one register file, with fcvt bridging them
@@ -651,6 +674,234 @@ fn sp_is_refused_where_the_encoding_has_no_room_for_it() {
     // The add/sub path DOES have an sp encoding and must keep working.
     assert!(assemble("add x0, sp, x1").is_ok());
     assert!(assemble("sub sp, sp, 16").is_ok());
+}
+
+/// Beside sp, GNU as reads `lsl #0` to `#4` as the extended-register form:
+/// UXTX for an x index and UXTW for a w one, so a w index's top half never
+/// counts. Each word is what `aarch64-linux-gnu-as` 2.42 emits for the line,
+/// and it refuses each line in the second list.
+#[test]
+fn sp_takes_lsl_as_the_extended_form_gas_emits() {
+    use aarch64_emulator::assembler::assemble;
+
+    let cases = [
+        ("add x0, sp, x1, lsl 3", 0x8B21_6FE0u32),
+        ("add x0, sp, x1, lsl #3", 0x8B21_6FE0),
+        ("add x0, sp, x1, lsl 0", 0x8B21_63E0),
+        ("add x0, sp, x1, lsl 4", 0x8B21_73E0),
+        ("add sp, sp, x1, lsl 2", 0x8B21_6BFF),
+        ("add sp, x0, x1, lsl 2", 0x8B21_681F),
+        ("sub x0, sp, x1, lsl 3", 0xCB21_6FE0),
+        ("sub sp, sp, x1, lsl 4", 0xCB21_73FF),
+        ("adds x0, sp, x1, lsl 2", 0xAB21_6BE0),
+        ("subs x0, sp, x1, lsl 2", 0xEB21_6BE0),
+        ("cmp sp, x1, lsl 2", 0xEB21_6BFF),
+        ("cmn sp, x1, lsl 2", 0xAB21_6BFF),
+        ("add x0, sp, w1, lsl 2", 0x8B21_4BE0),
+    ];
+    for (src, expected) in cases {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(got[0], expected, "{src}: got {:#010x}, GAS emits {expected:#010x}", got[0]);
+    }
+
+    for (src, fragment) in [
+        ("add x0, sp, x1, lsl 5", "0 to 4"),
+        ("add x0, sp, x1, lsr 2", "lsl"),
+        ("add x0, sp, x1, asr 2", "lsl"),
+        ("cmp sp, x1, lsr 2", "lsl"),
+        ("add w0, sp, w1, lsl 2", "x register"),
+        ("add x0, x1, sp, lsl 2", "sp"),
+    ] {
+        let err = match assemble(src) {
+            Ok(words) => panic!("{src} must be refused, encoded {:#010x}", words[0]),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains(fragment), "{src}: expected `{fragment}` in: {err}");
+    }
+}
+
+/// Register 31 means sp in the extended form, so beside sp a shifted xzr
+/// would read or write sp. GNU as 2.42 refuses xzr as the first source
+/// and as the destination of add and sub; the flag-setting forms keep
+/// xzr as their destination, which is how cmp and cmn are spelled.
+#[test]
+fn xzr_beside_sp_with_lsl_is_refused_as_gas_does() {
+    use aarch64_emulator::assembler::assemble;
+
+    for src in [
+        "add xzr, sp, x1, lsl 2",
+        "sub xzr, sp, x1, lsl 2",
+        "add sp, xzr, x1, lsl 2",
+        "sub sp, xzr, x1, lsl 2",
+    ] {
+        let err = match assemble(src) {
+            Ok(words) => panic!("{src} must be refused, encoded {:#010x}", words[0]),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains("xzr"), "{src}: the message should name xzr, got: {err}");
+    }
+
+    for (src, expected) in [
+        ("cmp sp, x1, lsl 2", 0xEB21_6BFFu32),
+        ("cmn sp, x1, lsl 2", 0xAB21_6BFF),
+        ("subs xzr, sp, x1, lsl 2", 0xEB21_6BFF),
+        ("adds xzr, sp, x1, lsl 2", 0xAB21_6BFF),
+    ] {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(got[0], expected, "{src}: got {:#010x}, GAS emits {expected:#010x}", got[0]);
+    }
+}
+
+/// A stack array indexed with `add x1, sp, x20, lsl 2`, built with
+/// `sub sp, sp, x21, lsl 4`. GNU as 2.42 and ld under qemu-aarch64 print
+/// this line and exit 0.
+#[test]
+fn sp_with_lsl_indexes_a_stack_array() {
+    let src = r#"
+        .data
+fmt:    .string "sum = %ld, a[3] = %d, a[2] = %d, hi = %d, eq = %d\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        mov     x21, 2
+        sub     sp, sp, x21, lsl 4      // 32 bytes: eight words
+        mov     x20, 0
+fill:
+        add     x1, sp, x20, lsl 2      // &a[i]
+        add     w2, w20, 1
+        mul     w2, w2, w2
+        str     w2, [x1]
+        add     x20, x20, 1
+        cmp     x20, 8
+        b.lt    fill
+        mov     x20, 0
+        mov     x19, 0
+sum:
+        add     x1, sp, x20, lsl #2
+        ldr     w2, [x1]
+        add     x19, x19, x2
+        add     x20, x20, 1
+        cmp     x20, 8
+        b.lt    sum
+        mov     x10, 3
+        movk    x10, 1, lsl 32          // w10 is 3; the top half must not count
+        add     x9, sp, w10, lsl 2
+        ldr     w22, [x9]
+        mov     x11, 1
+        add     x12, sp, x11, lsl 3
+        ldr     w23, [x12]
+        cmp     sp, x11, lsl 4
+        cset    w24, hi
+        subs    x13, sp, x11, lsl 0
+        adds    x14, x13, 1
+        cmp     sp, x14
+        cset    w25, eq
+        add     sp, sp, x21, lsl 4
+        ldr     x0, =fmt
+        mov     x1, x19
+        mov     w2, w22
+        mov     w3, w23
+        mov     w4, w24
+        mov     w5, w25
+        bl      printf
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+"#;
+    let mut cpu = run(src);
+    assert_eq!(
+        String::from_utf8_lossy(&cpu.take_stdout()),
+        "sum = 204, a[3] = 16, a[2] = 9, hi = 1, eq = 1\n"
+    );
+    assert_eq!(cpu.exit_code(), Some(0));
+}
+
+/// LDUR and STUR take a general register as well as a SIMD&FP one. They
+/// spell the unscaled form out, so `stur x30, [sp, 8]` keeps it where `str`
+/// would scale. Each word is what `aarch64-linux-gnu-as` 2.42 emits, and it
+/// refuses each line in the second list.
+#[test]
+fn ldur_and_stur_take_general_registers_as_gas_does() {
+    use aarch64_emulator::assembler::assemble;
+
+    let cases = [
+        ("stur x30, [sp, -8]", 0xF81F_83FEu32),
+        ("stur x30, [x29, -8]", 0xF81F_83BE),
+        ("stur lr, [sp, -8]", 0xF81F_83FE),
+        ("ldur x30, [sp, 8]", 0xF840_83FE),
+        ("stur x30, [sp, 8]", 0xF800_83FE),
+        ("stur x30, [sp]", 0xF800_03FE),
+        ("stur x0, [sp, 1]", 0xF800_13E0),
+        ("stur w30, [sp, -4]", 0xB81F_C3FE),
+        ("ldur w22, [sp, 12]", 0xB840_C3F6),
+        ("stur xzr, [sp, 8]", 0xF800_83FF),
+    ];
+    for (src, expected) in cases {
+        let got = assemble(src).unwrap_or_else(|e| panic!("{src}: {e}"));
+        assert_eq!(got[0], expected, "{src}: got {:#010x}, GAS emits {expected:#010x}", got[0]);
+    }
+
+    for (src, fragment) in [
+        ("stur x0, [sp, -8]!", "writeback"),
+        ("stur x0, [sp], 8", "writeback"),
+        ("stur x0, [sp, 256]", "[-256, 255]"),
+        ("stur x0, [sp, -257]", "[-256, 255]"),
+        ("stur x0, [sp, x1]", "register offset"),
+        ("ldur x0, [sp, x1, lsl 3]", "register offset"),
+        ("stur sp, [x0]", "sp"),
+    ] {
+        let err = match assemble(src) {
+            Ok(words) => panic!("{src} must be refused, encoded {:#010x}", words[0]),
+            Err(e) => e.to_string(),
+        };
+        assert!(err.contains(fragment), "{src}: expected `{fragment}` in: {err}");
+    }
+}
+
+/// A frame kept with STUR and LDUR alone: lr survives the printf call only
+/// if `ldur x30` reads back what `stur x30` wrote. GNU as 2.42 and ld under
+/// qemu-aarch64 print this line and exit 0.
+#[test]
+fn stur_and_ldur_keep_a_frame() {
+    let src = r#"
+        .data
+fmt:    .string "%ld %d %ld\n"
+
+        .text
+        .balign 4
+        .global main
+main:
+        sub     sp, sp, 48
+        stur    x29, [sp, 32]
+        stur    x30, [sp, 40]
+        add     x29, sp, 32
+        mov     x19, 1234
+        stur    x19, [sp, 1]
+        mov     w21, -7
+        stur    w21, [sp, 12]
+        mov     x23, -99
+        stur    x23, [x29, -16]
+        ldur    x20, [sp, 1]
+        ldur    w22, [sp, 12]
+        ldur    x24, [x29, -16]
+        ldr     x0, =fmt
+        mov     x1, x20
+        mov     w2, w22
+        mov     x3, x24
+        bl      printf
+        mov     w0, 0
+        ldur    x29, [sp, 32]
+        ldur    x30, [sp, 40]
+        add     sp, sp, 48
+        ret
+"#;
+    let mut cpu = run(src);
+    assert_eq!(String::from_utf8_lossy(&cpu.take_stdout()), "1234 -7 -99\n");
+    assert_eq!(cpu.exit_code(), Some(0));
 }
 
 // ---------------------------------------------------------------------------

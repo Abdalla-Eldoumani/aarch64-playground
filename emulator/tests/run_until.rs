@@ -89,12 +89,12 @@ fn step_to(cpu: &mut Cpu, pc: u64, depth_wanted: u64) {
 }
 
 fn over(cpu: &mut Cpu) -> RunResult {
-    let goal = Until { depth: Some(depth(cpu)), pc: None };
+    let goal = Until { depth: Some(depth(cpu)), ..Until::default() };
     cpu.run_until(1_000_000, goal).expect("runs")
 }
 
 fn out(cpu: &mut Cpu) -> RunResult {
-    let goal = Until { depth: Some(depth(cpu) - 1), pc: None };
+    let goal = Until { depth: Some(depth(cpu) - 1), ..Until::default() };
     cpu.run_until(1_000_000, goal).expect("runs")
 }
 
@@ -185,7 +185,7 @@ fn step_over_a_library_call_lands_on_the_next_line() {
 fn run_to_cursor_stops_at_the_address_and_matches_single_steps() {
     let mut cpu = load(FACT);
     let fact = label(&cpu, "fact");
-    let goal = Until { depth: None, pc: Some(fact + FACT_DONE) };
+    let goal = Until { pc: Some(fact + FACT_DONE), ..Until::default() };
     let r = cpu.run_until(1_000_000, goal).expect("runs");
     assert!(r.reached);
     assert_eq!(r.pc, fact + FACT_DONE);
@@ -395,7 +395,7 @@ fn a_chunk_that_ends_inside_the_call_has_not_reached() {
     let mut cpu = load(SPIN);
     let main = label(&cpu, "main");
     step_to(&mut cpu, main + 2 * 4, 1);
-    let goal = Until { depth: Some(1), pc: None };
+    let goal = Until { depth: Some(1), ..Until::default() };
     let r = cpu.run_until(10, goal).expect("runs");
     assert!(!r.reached && !r.halted && !r.hit_breakpoint);
     assert_eq!(r.steps_executed, 10);
@@ -437,7 +437,7 @@ fn step_over_waits_for_input_then_finishes_the_call() {
     let main = label(&cpu, "main");
     let scanf_bl = main + 4 * 4;
     step_to(&mut cpu, scanf_bl, 1);
-    let goal = Until { depth: Some(1), pc: None };
+    let goal = Until { depth: Some(1), ..Until::default() };
     let r = cpu.run_until(1_000_000, goal).expect("runs");
     assert!(!r.reached && !r.halted && cpu.is_blocked());
     cpu.push_stdin(b"7\n");
@@ -457,4 +457,100 @@ fn a_goal_met_by_a_sleeping_step_is_not_run_past() {
     assert!(r.reached);
     assert_eq!(r.pc, usleep_bl + 4);
     assert_eq!(r.steps_executed, 4);
+}
+
+/// show tail-calls printf, so printf comes back straight to main.
+const TAIL_PRINTF: &str = r#"// show prints its argument by a tail call to printf.
+
+define(fp, x29)
+define(lr, x30)
+
+.data
+fmt_out:    .string "%d\n"
+
+.text
+
+// show(w1 = value) prints it, by a tail call
+        .balign 4
+        .global show
+show:
+        ldr     x0, =fmt_out
+        b       printf                      // printf returns to show's caller
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w1, 42
+        bl      show
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn step_over_a_call_that_tail_calls_a_library_function_lands_on_the_next_line() {
+    let mut cpu = load(TAIL_PRINTF);
+    let show_bl = label(&cpu, "main") + 3 * 4;
+    step_to(&mut cpu, show_bl, 1);
+    let r = over(&mut cpu);
+    assert!(r.reached && !r.bad_return && !r.halted, "{r:?}");
+    assert_eq!(r.pc, show_bl + 4);
+    assert_eq!(depth(&cpu), 1, "printf's return ended show");
+    // The bl, show's ldr and b, then printf's two trampoline words and stub.
+    assert_eq!(r.steps_executed, 6);
+    assert_eq!(cpu.take_stdout(), b"42\n");
+}
+
+/// skip's ldp pops jump's frame record, so its ret goes straight back to
+/// main and ends jump too.
+const SKIP_JUMP: &str = r#"// skip returns for jump as well as itself.
+
+define(fp, x29)
+define(lr, x30)
+
+.text
+
+// jump() -> w0 = 7, through skip
+        .balign 4
+        .global jump
+jump:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      skip
+        mov     w0, 1                       // never runs
+        ldp     fp, lr, [sp], 16
+        ret
+
+// skip() -> w0 = 7 (bug: its ldp pops jump's record)
+        .balign 4
+        .global skip
+skip:
+        mov     w0, 7
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      jump
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+#[test]
+fn step_over_a_call_whose_callee_skips_it_stops_astray_on_the_next_line() {
+    let mut cpu = load(SKIP_JUMP);
+    let jump_bl = label(&cpu, "main") + 2 * 4;
+    step_to(&mut cpu, jump_bl, 1);
+    let r = over(&mut cpu);
+    assert!(r.bad_return && !r.reached && !r.halted, "{r:?}");
+    assert_eq!(r.pc, jump_bl + 4);
+    assert_eq!(depth(&cpu), 1);
+    // The bl, jump's stp, mov and bl, then skip's mov, ldp and ret.
+    assert_eq!(r.steps_executed, 7);
 }

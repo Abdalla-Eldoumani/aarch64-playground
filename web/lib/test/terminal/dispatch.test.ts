@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext } from "@/lib/terminal/dispatch";
+import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext, type GdbBuild } from "@/lib/terminal/dispatch";
 
 describe("parseCommandLine", () => {
   it("splits cmd and args on whitespace", () => {
@@ -64,13 +64,16 @@ function makeCtx(over: Partial<DispatchContext> = {}): DispatchContext {
     runUntil: async () => null,
     frameStack: async () => null,
     lineLabel: () => null,
-    setBreakpoint: async (_addr) => {},
-    clearBreakpoint: async (_addr) => {},
+    setBreakpoint: async (_addr) => 1,
+    deleteBreakpoints: async () => true,
+    breakpoints: () => [],
+    unsetBreakpoints: () => [],
     resolveLabel: (_label) => null,
     readRegister: (_name) => null,
     readRegisters: () => ({}),
     readMemory: async (_addr, _len) => new Uint8Array(),
     pcAddress: () => 0x400000,
+    exitCode: () => null,
     reset: async () => {},
     ...over,
   };
@@ -246,7 +249,7 @@ describe("dispatchCommand", () => {
     const set: number[] = [];
     const ctx = makeCtx({
       resolveLabel: (l) => (l === "main" ? 0x400044 : null),
-      setBreakpoint: async (addr) => { set.push(addr); },
+      setBreakpoint: async (addr) => { set.push(addr); return 1; },
     });
     const r = await dispatchCommand("gdb b main", ctx);
     expect(r.status).toBe("ok");
@@ -278,13 +281,13 @@ describe("dispatchCommand", () => {
     expect(text).toContain("pc");
   });
 
-  it("gdb n / s steps once", async () => {
+  it("gdb si steps once", async () => {
     let steps = 0;
     const ctx = makeCtx({
       step: async () => { steps += 1; return { halted: false, line: 42 }; },
     });
-    await dispatchCommand("gdb n", ctx);
-    await dispatchCommand("gdb s", ctx);
+    await dispatchCommand("gdb si", ctx);
+    await dispatchCommand("gdb si", ctx);
     expect(steps).toBe(2);
   });
 
@@ -607,10 +610,103 @@ describe("gdb-lite edges", () => {
     expect(unknown.lines[0]).toBe("gdb: unknown label 'nowhere'");
   });
 
-  it("gdb b echoes the resolved address and the label", async () => {
-    const ctx = makeCtx({ resolveLabel: (l) => (l === "loop" ? 0x400014 : null) });
+  it("gdb b echoes the breakpoint's number, the resolved address and the label", async () => {
+    // gdb: "Breakpoint 2 at 0x4007b8".
+    const ctx = makeCtx({ resolveLabel: (l) => (l === "loop" ? 0x400014 : null), setBreakpoint: async () => 2 });
     const r = await dispatchCommand("gdb b loop", ctx);
-    expect(r.lines).toEqual(["breakpoint set at 0x0000000000400014 (loop)"]);
+    expect(r.lines).toEqual(["breakpoint 2 at 0x0000000000400014 (loop)"]);
+  });
+
+  it("gdb delete N deletes that breakpoint and prints nothing, as gdb does", async () => {
+    const deleteBreakpoints = vi.fn(async () => true);
+    expect(await dispatchCommand("gdb delete 2", makeCtx({ deleteBreakpoints }))).toEqual({ status: "ok", lines: [] });
+    expect(deleteBreakpoints).toHaveBeenCalledWith(2);
+  });
+
+  it("gdb delete with no number deletes every breakpoint", async () => {
+    const deleteBreakpoints = vi.fn(async () => true);
+    expect(await dispatchCommand("gdb delete", makeCtx({ deleteBreakpoints }))).toEqual({ status: "ok", lines: [] });
+    expect(deleteBreakpoints).toHaveBeenCalledWith();
+  });
+
+  it("gdb delete says gdb's words for a number it does not have", async () => {
+    // gdb: "No breakpoint number 7."
+    const r = await dispatchCommand("gdb delete 7", makeCtx({ deleteBreakpoints: async () => false }));
+    expect(r).toEqual({ status: "err", lines: ["gdb: no breakpoint number 7"] });
+  });
+
+  it("gdb delete takes every number it is given and names the ones it cannot delete", async () => {
+    // gdb: "delete 1 2" deletes both.
+    const deleteBreakpoints = vi.fn(async (n?: number) => n !== 7);
+    const r = await dispatchCommand("gdb delete 1 7 0 2", makeCtx({ deleteBreakpoints }));
+    expect(r).toEqual({ status: "err", lines: ["gdb: no breakpoint number 7", "gdb: bad breakpoint number '0'"] });
+    expect(deleteBreakpoints.mock.calls).toEqual([[1], [7], [2]]);
+  });
+
+  it("gdb delete takes plain decimal numbers left to right and stops at any other token", async () => {
+    // Each row: the tokens, what gdb-lite says, and the numbers it asks to delete
+    // (breakpoint 7 does not exist).
+    const rows: [string, string, number[]][] = [
+      ["4 abc", "gdb: bad breakpoint number 'abc'", [4]],
+      ["4 abc 2", "gdb: bad breakpoint number 'abc'", [4]],
+      ["abc 4", "gdb: bad breakpoint number 'abc'", []],
+      ["-1 2", "gdb: bad breakpoint number '-1'", []],
+      ["2 -1", "gdb: bad breakpoint number '-1'", [2]],
+      ["1 -3", "gdb: bad breakpoint number '-3'", [1]],
+      ["1-3", "gdb: bad breakpoint number '1-3'", []],
+      ["02 3", "gdb: bad breakpoint number '02'", []],
+      ["0x2 3", "gdb: bad breakpoint number '0x2'", []],
+      ["2abc 3", "gdb: bad breakpoint number '2abc'", []],
+      ["00 2", "gdb: bad breakpoint number '00'", []],
+      ["0 2", "gdb: bad breakpoint number '0'", [2]],
+      ["7 2", "gdb: no breakpoint number 7", [7, 2]],
+    ];
+    for (const [tokens, said, asked] of rows) {
+      const deleteBreakpoints = vi.fn(async (n?: number) => n !== 7);
+      expect(await dispatchCommand(`gdb delete ${tokens}`, makeCtx({ deleteBreakpoints }))).toEqual({
+        status: "err",
+        lines: [said],
+      });
+      expect(deleteBreakpoints.mock.calls.map(([n]) => n)).toEqual(asked);
+    }
+  });
+
+  it("the first gdb command after an assemble names the breakpoints it could not set again", async () => {
+    // gdb: 'Error in re-setting breakpoint 1: Function "quit" not defined.'
+    const unsetBreakpoints = (): [number, string][] => [[1, "quit"]];
+    const r = await dispatchCommand("gdb info breakpoints", makeCtx({ unsetBreakpoints }));
+    expect(r.lines).toEqual(["gdb: error in re-setting breakpoint 1: unknown label 'quit'", "no breakpoints"]);
+  });
+
+  it("gdb delete refuses what is not a breakpoint number before deleting anything", async () => {
+    // gdb: "warning: bad breakpoint number at or near '0'".
+    const deleteBreakpoints = vi.fn(async () => true);
+    for (const n of ["0", "-1", "abc", "1.5"]) {
+      expect(await dispatchCommand(`gdb delete ${n}`, makeCtx({ deleteBreakpoints }))).toEqual({
+        status: "err",
+        lines: [`gdb: bad breakpoint number '${n}'`],
+      });
+    }
+    expect(deleteBreakpoints).not.toHaveBeenCalled();
+  });
+
+  it("gdb info breakpoints lists each number, its address and label, pending where the label is gone", async () => {
+    const ctx = makeCtx({
+      breakpoints: () => [
+        [1, "quit"],
+        [3, "gone"],
+      ],
+      resolveLabel: (l) => (l === "quit" ? 0x400000 : null),
+    });
+    expect((await dispatchCommand("gdb info breakpoints", ctx)).lines).toEqual([
+      "Num  Address             What",
+      "1    0x0000000000400000  quit",
+      "3    pending             gone",
+    ]);
+  });
+
+  it("gdb info breakpoints says when there are none", async () => {
+    expect(await dispatchCommand("gdb info breakpoints", makeCtx())).toEqual({ status: "ok", lines: ["no breakpoints"] });
   });
 
   it("gdb x/2i $pc prints two little-endian words from memory", async () => {
@@ -677,5 +773,83 @@ describe("toolchain edges", () => {
     const missing = await dispatchCommand("m4 ghost.asm", makeCtx());
     expect(missing.status).toBe("err");
     expect(missing.lines[0]).toBe("m4: ghost.asm: no such file in vfs");
+  });
+});
+
+// gdb's next and step on a -g build: one source line, over a call or into it,
+// with gdb's repeat count. The hub runs the lines and says why it stopped.
+describe("gdb n and s", () => {
+  const stepper = (said: string | null = null) => {
+    const runUntil = vi.fn(async () => said);
+    const step = vi.fn(async () => ({ halted: false, line: null }));
+    const ctx = makeCtx({ runUntil, step, lineLabel: (addr) => (addr === 0x400008 ? "line 26" : null), pcAddress: () => 0x400008 });
+    return { ctx, runUntil, step };
+  };
+
+  it("ask the hub for one line, n over a call and s into one, and leave si one instruction", async () => {
+    const { ctx, runUntil, step } = stepper();
+    for (const command of ["gdb n", "gdb s", "gdb si"]) {
+      expect(await dispatchCommand(command, ctx)).toEqual({ status: "ok", lines: [] });
+    }
+    expect(runUntil.mock.calls).toEqual([["next", 1], ["step", 1]]);
+    expect(step).toHaveBeenCalledTimes(1);
+  });
+
+  it("pass a count of lines on to the hub", async () => {
+    const { ctx, runUntil } = stepper();
+    for (const command of ["gdb n 3", "gdb s 6", "gdb n 007"]) await dispatchCommand(command, ctx);
+    expect(runUntil.mock.calls).toEqual([["next", 3], ["step", 6], ["next", 7]]);
+  });
+
+  it("print where the hub stopped, an exit or a breakpoint included", async () => {
+    for (const said of ["reached line 27", "the program exited with code 0", "stopped at the breakpoint on line 18"]) {
+      expect(await dispatchCommand("gdb n 5", stepper(said).ctx)).toEqual({ status: "ok", lines: [said] });
+    }
+    // A card marks its code with backticks, which the pane would show as they are.
+    const card = stepper("show called out with `bl print_n` on line 28 before saving lr").ctx;
+    expect((await dispatchCommand("gdb s", card)).lines).toEqual([
+      "show called out with bl print_n on line 28 before saving lr",
+    ]);
+  });
+
+  it("stay put on a count of 0 or less and say where, as gdb does", async () => {
+    const { ctx, runUntil, step } = stepper();
+    for (const command of ["gdb n 0", "gdb s 0", "gdb n -1"]) {
+      expect(await dispatchCommand(command, ctx)).toEqual({ status: "ok", lines: ["at line 26"] });
+    }
+    expect(runUntil).not.toHaveBeenCalled();
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it("refuse a count that is not a whole number, and do not move", async () => {
+    const { ctx, runUntil, step } = stepper();
+    expect(await dispatchCommand("gdb n abc", ctx)).toEqual({
+      status: "err",
+      lines: ["gdb: n takes a number of lines, such as n 3, not 'abc'"],
+    });
+    expect((await dispatchCommand("gdb n 1+1", ctx)).lines).toEqual([
+      "gdb: n takes a number of lines, such as n 3, not '1+1'",
+    ]);
+    expect((await dispatchCommand("gdb s 1 2", ctx)).lines).toEqual([
+      "gdb: s takes a number of lines, such as s 3, not '1 2'",
+    ]);
+    expect(runUntil).not.toHaveBeenCalled();
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it("keep the -g note's build line for gcc alone, and drop it for the editor's program", async () => {
+    const build: GdbBuild = { plain: null, noted: false };
+    const ctx = makeCtx({ gdbBuild: () => build, readVfs: () => "ret\n" });
+    await dispatchCommand("as prog.s -o prog", ctx);
+    expect(build.plain).toBeNull();
+    await dispatchCommand("gcc -ggdb prog.s -o prog", ctx);
+    expect(build.plain).toBeNull();
+    // The line to type on the server: their own, with -g in place of any -g flag.
+    await dispatchCommand("gcc -g -g0 prog.s -o prog", ctx);
+    expect(build.plain).toBe("gcc -g prog.s -o prog");
+    await dispatchCommand("./program", ctx);
+    expect(build.plain).toBeNull();
+    expect((await dispatchCommand("gdb n", ctx)).lines).toEqual([]);
+    expect(build.noted).toBe(false);
   });
 });

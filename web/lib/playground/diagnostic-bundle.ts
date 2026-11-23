@@ -1,6 +1,6 @@
 /**
  * Everything needed to debug one run, gathered when the student asks. It
- * leaves as a markdown report (bundle-markdown.ts) or a `?bundle=` link that
+ * leaves as a markdown report (bundle-markdown.ts) or a `#bundle=` link that
  * reopens the program, and holds playground state only, plus the site,
  * emulator, and browser versions.
  */
@@ -8,6 +8,7 @@
 import LZString from "lz-string";
 import sitePackage from "@/package.json";
 import emulatorPackage from "@/lib/wasm/package.json";
+import { BUNDLE_PREFIX } from "@/lib/hooks/use-deep-link";
 import { place, type Place } from "@/lib/emulator/clobber-note";
 import type { EmulatorState } from "@/lib/emulator/emulator-state";
 import { labelForOffset, parseFrameSlots, type StackSlot } from "@/lib/emulator/frame-labels";
@@ -79,22 +80,23 @@ export interface DiagnosticBundle {
 
 const BUNDLE_VERSION = 2;
 
-/** lz-string compress for the `?bundle=...` query parameter. */
+/** lz-string compress for a diagnostic link's payload. */
 export function encodeBundle(bundle: DiagnosticBundle): string {
   const payload = { v: BUNDLE_VERSION, b: bundle };
   return LZString.compressToEncodedURIComponent(JSON.stringify(payload));
 }
 
 /**
- * The `?bundle=` link that reopens this program, or null when even the program
- * alone is too long. A reopen reads only the program and its input, so the
- * link falls back to those when the whole bundle does not fit.
+ * The link that reopens this program, or null when even the program alone is
+ * too long. The bundle rides in the fragment, which is not in the request for
+ * the page. A reopen reads only the program and its input, so the link falls
+ * back to those when the whole bundle does not fit.
  */
 export function bundleShareUrl(originUrl: string, bundle: DiagnosticBundle): string | null {
   const { source, files, args, stdin } = bundle;
   for (const payload of [bundle, { source, files, args, stdin }]) {
     const encoded = encodeBundle(payload);
-    if (encoded.length <= MAX_SHARE_HASH_BYTES) return `${originUrl}?bundle=${encoded}`;
+    if (encoded.length <= MAX_SHARE_HASH_BYTES) return `${originUrl}#${BUNDLE_PREFIX}${encoded}`;
   }
   return null;
 }
@@ -172,7 +174,7 @@ const V1_FIELDS: Record<string, Check> = {
 /**
  * Strict shape validation on a decoded bundle: a field outside the list is
  * dropped, and a listed field of the wrong type fails the whole bundle, so a
- * crafted `?bundle=` link cannot hand downstream code a non-string `args`.
+ * crafted diagnostic link cannot hand downstream code a non-string `args`.
  */
 function readFields(b: unknown, fields: Record<string, Check>): Record<string, unknown> | null {
   if (b == null || typeof b !== "object") return null;
@@ -188,7 +190,7 @@ function readFields(b: unknown, fields: Record<string, Check>): Record<string, u
 }
 
 /**
- * The four outcomes of reading a `?bundle=` query, like `ShareReadResult`.
+ * The four outcomes of reading a diagnostic link, like `ShareReadResult`.
  * They stay apart so a broken or oversized link shows a notice instead of
  * quietly opening the default program.
  */
@@ -198,7 +200,7 @@ export type BundleReadResult =
   | { kind: "corrupt" }
   | { kind: "too-large" };
 
-/** Decode a `?bundle=` value, version 1 or 2. Anything that fails to
+/** Decode a diagnostic link's value, version 1 or 2. Anything that fails to
  *  decompress, parse, or pass the shape check is `corrupt`. */
 export function decodeBundle(value: string | null): BundleReadResult {
   if (!value) return { kind: "none" };

@@ -5,6 +5,7 @@ import { useToast } from "@/components/ui/Toast";
 import { MAX_VFS_BYTES, checkUploadSize, validateStdin } from "@/lib/playground/upload-guard";
 import { stripEscapeSequences } from "@/lib/terminal/input-state";
 import { scrollNow, type ScrollHold } from "@/lib/playground/use-autoplay";
+import { useTypedBeforeHydration } from "@/lib/hooks/use-typed-before-hydration";
 
 interface ConsolePanelProps {
   stdout: string;
@@ -93,6 +94,7 @@ export function ConsolePanel({
     lastBlockedRef.current = blocked;
   }, [blocked]);
   const [stdinValue, setStdinValue] = useState("");
+  useTypedBeforeHydration(stdinRef, stdinValue, setStdinValue);
   const toast = useToast();
 
   // Pointer-aware, not viewport-aware: a laptop with a touchscreen still has

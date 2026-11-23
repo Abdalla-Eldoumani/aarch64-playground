@@ -1,8 +1,9 @@
 //! The CPU: the `Cpu` state and `step`, which fetches, decodes and
 //! executes one instruction and records what changed. This file also
-//! holds the memory-layout and limit constants and the result types a
-//! host reads back. Loading, the limit checks, system calls and I/O, and
-//! run control between steps live in the child modules below.
+//! holds the limit constants and the result types a host reads back, and
+//! re-exports the address layout from `layout`. Loading, the limit checks,
+//! system calls and I/O, and run control between steps live in the child
+//! modules below.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -11,11 +12,8 @@ use crate::errors::{EmuError, MemAccess};
 use crate::executor::{self, ExecResult};
 use crate::frames::CallStack;
 use crate::frontend::sections::{align_padding, Item, Program};
-use crate::hosted::{
-    CALL_PRINTF, CALL_SCANF, CallRecord, HostContext, HostOutcome, HostTable, RETURNS_IN_D0,
-    RETURNS_NOTHING,
-};
-use crate::memory::Memory;
+use crate::hosted::{CallRecord, HostContext, HostOutcome, HostTable, Returns, MAIN_RETURN_ADDR};
+use crate::memory::{Memory, StoreGuard};
 use crate::registers::RegisterFile;
 use crate::snapshot::{SavedState, Snapshot, SnapshotRing};
 
@@ -30,7 +28,8 @@ mod system;
 const SNAPSHOT_CAPACITY: usize = 128;
 
 /// Budget for the state a snapshot frame copies WHOLE: the virtual
-/// filesystem, the queued stdin, and the open-file paths. Registers,
+/// filesystem, the queued stdin, the open-file paths, and the qsort and
+/// bsearch calls in flight. Registers,
 /// memory and the heap go in as undo logs of what the step changed, but
 /// these are real copies taken on every step, so a program holding
 /// megabytes of them paid that price per instruction (100k steps with a
@@ -41,42 +40,18 @@ const SNAPSHOT_CAPACITY: usize = 128;
 /// step through.
 pub const MAX_SNAPSHOT_SIDE_BYTES: usize = 4096;
 
-/// Base address where assembled code is loaded.
-pub const CODE_BASE: u64 = 0x0040_0000;
+/// Budget for what the ring's bulk memory undo logs, those past 64 KiB,
+/// hold together. A frame's log costs about what its step wrote, a few
+/// bytes on almost every step, but one library call can write megabytes (a
+/// memset, a memmove), and 128 such frames could hold gigabytes. Past the
+/// budget the oldest frames are dropped, so step-back reaches fewer steps
+/// behind such calls. The site's programs hold at most about 1 MiB.
+pub const MAX_SNAPSHOT_LOG_BYTES: usize = 32 * 1024 * 1024;
 
-/// Read-only data section base.
-pub const RODATA_BASE: u64 = 0x0050_0000;
-
-/// Initialized read-write data section base.
-pub const DATA_BASE: u64 = 0x0060_0000;
-
-/// Uninitialized data section base (zero-filled).
-pub const BSS_BASE: u64 = 0x0070_0000;
-
-/// Address space each section owns. The bases above sit exactly one window
-/// apart, so the linker bounds every section to it: a data block or `.skip`
-/// that outgrew its window would land on the next section's addresses.
-pub const SECTION_WINDOW: u64 = 1024 * 1024;
-
-/// Initial stack pointer (grows downward).
-pub const STACK_BASE: u64 = 0x8000_0000;
-
-/// Lowest address sp may legally reach: 8 MiB of stack, matching
-/// `ulimit -s` on the course servers so a deep-but-legal recursion that
-/// runs there runs here. Only unbounded recursion (or a garbage sp) gets
-/// past it, and that deserves a stack-overflow message, not the
-/// memory-cap one, which is why this floor stays well under
-/// `memory::MAX_MAPPED_PAGES` in page terms.
-pub const STACK_FLOOR: u64 = STACK_BASE - 8 * 1024 * 1024;
-
-/// Base address of the synthetic host-function stubs. `BL` targets inside
-/// this range are intercepted by the executor and dispatched to a Rust
-/// implementation (printf, scanf, etc.) instead of being executed as real
-/// instructions. 256 slots of 16 bytes gives room for every libc symbol
-/// the corpus references and leaves space for future additions.
-pub const HOST_STUB_BASE: u64 = 0xFFFF_0000;
-pub const HOST_STUB_STRIDE: u64 = 16;
-pub const HOST_STUB_COUNT: u64 = 256;
+pub use crate::layout::{
+    BSS_BASE, CODE_BASE, DATA_BASE, HOST_STUB_BASE, HOST_STUB_COUNT, HOST_STUB_STRIDE,
+    RODATA_BASE, SECTION_WINDOW, STACK_BASE, STACK_FLOOR,
+};
 
 /// Cumulative executed-instruction ceiling (the runaway-loop wall). Once a
 /// loaded program has executed this many steps (counted across every
@@ -118,7 +93,7 @@ pub fn step_ceiling_message() -> String {
 /// counter survives the UI draining the buffers, so it measures what the
 /// program produced, not what happens to be queued. 4 MiB dwarfs any real
 /// course program's output.
-pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_OUTPUT_BYTES: u64 = 4 * 1024 * 1024;
 
 /// Map a Write fault into the calm page-cap message. Stores are the only
 /// writer that faults (memory.rs's cap check is the sole producer), so a
@@ -187,6 +162,14 @@ pub struct TermState {
     pub stdin_is_file: bool,
 }
 
+/// The terminal pane's size in character cells, as ioctl TIOCGWINSZ
+/// reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WindowSize {
+    pub rows: u16,
+    pub cols: u16,
+}
+
 /// Pacing credit for sleeping programs: each nanosecond a program asks
 /// nanosleep to pause refunds step and output budget at these rates
 /// (one step per microsecond slept, one output byte per ten
@@ -214,7 +197,21 @@ pub const MAX_REFUND_STEPS: u64 = 200_000_000;
 /// back 20 MB, raising the 4 MiB output wall to 23 MiB. Capping it here
 /// states the real ceiling: a program may print MAX_OUTPUT_BYTES, plus
 /// this much more if it paced itself with real sleeps to earn it.
-pub const MAX_REFUND_OUTPUT_BYTES: usize = MAX_OUTPUT_BYTES;
+pub const MAX_REFUND_OUTPUT_BYTES: u64 = MAX_OUTPUT_BYTES;
+
+/// The lifetime refund caps while the host waits out every sleep in real
+/// time (`Cpu::real_time`, the terminal pane): what four hours of sleeping
+/// earns at the refund rates. They bound a session's total work, not its
+/// length: a refund is charged only what it credits, so a program that
+/// spends less than the refill runs longer.
+pub const REAL_TIME_REFUND_STEPS: u64 =
+    4 * 3600 * 1_000_000_000 / SLEEP_STEP_REFUND_NS_PER_STEP;
+pub const REAL_TIME_REFUND_OUTPUT_BYTES: u64 =
+    4 * 3600 * 1_000_000_000 / SLEEP_OUTPUT_REFUND_NS_PER_BYTE;
+
+/// Calm abort once a real-time session has spent one of those caps.
+pub const SESSION_CAP_MESSAGE: &str =
+    "stopped: the playground ends a program after about four hours";
 
 /// Bytes of guest memory one host stub may move per step it is charged
 /// for. `memset`, `memcpy` and `read` do a whole buffer's work inside a
@@ -225,6 +222,13 @@ pub const MAX_REFUND_OUTPUT_BYTES: usize = MAX_OUTPUT_BYTES;
 /// would: a 4 KiB clear is 256 steps against a 10M budget, while the
 /// lifetime ceiling on bulk bytes lands at MAX_TOTAL_STEPS * 16.
 pub const BULK_BYTES_PER_STEP: u64 = 16;
+
+/// Most work library calls may do inside one `run_until` before it hands
+/// control back (`Memory::note_host_work`: bytes walked, read or
+/// formatted, free-list entries scanned), so the host reads Pause and
+/// Reset at least this often. The work is not charged to the step budget:
+/// that would move the step where a long program meets the ceiling.
+pub const MAX_HOST_WORK_PER_RUN: u64 = 16 << 20;
 
 /// Result of a single step.
 #[derive(Debug, Clone)]
@@ -338,12 +342,12 @@ pub struct RunResult {
     pub error: Option<String>,
     /// The run's `Until` goal was met.
     pub reached: bool,
-    /// A `ret` went to no caller during a run with a goal.
+    /// A bad return (`CallStack::bad_return`) happened during a run with a goal.
     pub bad_return: bool,
 }
 
 /// Where `run_until` stops besides a breakpoint, a halt, an input wait and
-/// a sleep. Neither set is a plain run.
+/// a sleep. None set is a plain run.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Until {
     /// Back in the program's own code with the call stack this deep or
@@ -351,6 +355,15 @@ pub struct Until {
     pub depth: Option<u64>,
     /// The pc reaches this address: run to cursor.
     pub pc: Option<u64>,
+    /// The pc off the instructions [lo, hi) of one editor line, back in the
+    /// program's code or at main's return, at `depth` or shallower: gdb's
+    /// next. A library call's trampoline and stub are not program code, so
+    /// a library call runs whole.
+    pub range: Option<(u64, u64)>,
+    /// With `range`, also deeper when the step was made from the line: gdb's
+    /// step, into a call the line makes. A comparator qsort calls is entered
+    /// from the library, so step runs it with the rest of qsort, as gdb does.
+    pub into: bool,
 }
 
 /// Top-level CPU wrapping register file, memory, breakpoints, and the
@@ -416,6 +429,16 @@ pub struct Cpu {
     /// Transient runner state: not part of any snapshot, cleared on
     /// load/reset.
     pub snapshots_paused: bool,
+    /// The host waits out every sleep in real time (the web's live
+    /// terminal session), so the refund caps are the four-hour ones and a
+    /// refund is charged only what it credits. Batch runners leave it
+    /// off. Runner state like `snapshots_paused`: cleared on load/reset.
+    pub real_time: bool,
+    /// The terminal pane's size while it drives the program. Runner state
+    /// like `real_time`: in no snapshot, cleared on load/reset. TIOCGWINSZ
+    /// answers it only while `snapshots_paused` holds (`host_context`), so
+    /// no step the ring records ever sees it.
+    pub window_size: Option<WindowSize>,
     /// Set when the last dispatched instruction was a nanosleep; the
     /// run loop breaks so the runner can honor the pause, and the
     /// runner consumes it via `take_pending_sleep_ns`.
@@ -425,11 +448,10 @@ pub struct Cpu {
     refund_steps_total: u64,
     /// Output bytes refunded by sleeping so far, capped at
     /// MAX_REFUND_OUTPUT_BYTES per loaded program.
-    refund_output_total: usize,
-    /// Table of hosted libc / syscall stubs reachable by `bl` into the
-    /// synthetic 0xFFFF_0000 range. Populated by `Cpu::new` with the
-    /// default suite of stubs; the linker reads `host.lookup(name)` to
-    /// resolve external calls.
+    refund_output_total: u64,
+    /// Table of hosted libc stubs reachable by `bl` into the synthetic
+    /// 0xFFFF_0000 range: every row of `hosted::STUBS` at its slot. The
+    /// linker reads `host.lookup(name)` to resolve external calls.
     pub host: HostTable,
     /// Ring of pre-step snapshots powering `step_back`. Holds the last
     /// `SNAPSHOT_CAPACITY` frames of CPU state (registers + memory +
@@ -456,7 +478,7 @@ pub struct Cpu {
     max_total_steps: u64,
     /// Cumulative stdout+stderr bytes since the last load/reset. Drives the
     /// `MAX_OUTPUT_BYTES` wall; survives the UI draining the buffers.
-    output_total: usize,
+    output_total: u64,
     /// Bytes ever appended to `stdout` / `stderr`, echo included. DISPLAY
     /// state, not budget: a snapshot carries them and step-back restores
     /// them, so the web can drop exactly the characters a rolled-back step
@@ -529,11 +551,13 @@ impl Cpu {
             strtok_save: 0,
             callbacks: Default::default(),
             snapshots_paused: false,
+            real_time: false,
+            window_size: None,
             pending_sleep_ns: None,
             refund_steps_total: 0,
             refund_output_total: 0,
             host: HostTable::new(),
-            snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY),
+            snapshots: SnapshotRing::new(SNAPSHOT_CAPACITY, MAX_SNAPSHOT_LOG_BYTES),
             symbols: HashMap::new(),
             steps_total: 0,
             steps_taken: 0,
@@ -552,96 +576,6 @@ impl Cpu {
             last_call: CallRecord::default(),
             call_scratch: CallRecord::default(),
         };
-        // Pre-register the libc + hosted-printf/scanf stubs the cpsc 355
-        // corpus reaches for. Doing it here means the frontend linker can
-        // resolve `bl printf` / `bl scanf` / ... with no extra wiring on
-        // the JS or integration-test side.
-        cpu.host.register("printf", crate::hosted::printf::printf);
-        cpu.host.register("scanf", crate::hosted::scanf::scanf);
-        cpu.host.register("puts", crate::hosted::libc::puts);
-        cpu.host.register("putchar", crate::hosted::libc::putchar);
-        cpu.host.register("getchar", crate::hosted::libc::getchar);
-        cpu.host.register("sprintf", crate::hosted::printf::sprintf);
-        cpu.host.register("snprintf", crate::hosted::printf::snprintf);
-        cpu.host.register("strlen", crate::hosted::libc::strlen);
-        cpu.host.register("strcmp", crate::hosted::libc::strcmp);
-        cpu.host.register("strncmp", crate::hosted::libc::strncmp);
-        cpu.host.register("strcpy", crate::hosted::libc::strcpy);
-        cpu.host.register("strncpy", crate::hosted::libc::strncpy);
-        cpu.host.register("strcat", crate::hosted::libc::strcat);
-        cpu.host.register("strchr", crate::hosted::libc::strchr);
-        cpu.host.register("strstr", crate::hosted::libc::strstr);
-        cpu.host.register("strtok", crate::hosted::libc::strtok);
-        cpu.host.register("memset", crate::hosted::libc::memset);
-        cpu.host.register("memcpy", crate::hosted::libc::memcpy);
-        cpu.host.register("memmove", crate::hosted::libc::memmove);
-        cpu.host.register("memcmp", crate::hosted::libc::memcmp);
-        cpu.host.register("exit", crate::hosted::libc::exit);
-        cpu.host.register("atof", crate::hosted::libc::atof);
-        cpu.host.register("atoi", crate::hosted::libc::atoi);
-        cpu.host.register("strtol", crate::hosted::libc::strtol);
-        cpu.host.register("abs", crate::hosted::libc::abs);
-        cpu.host.register("labs", crate::hosted::libc::labs);
-        cpu.host.register("rand", crate::hosted::libc::rand);
-        cpu.host.register("srand", crate::hosted::libc::srand);
-        cpu.host.register("time", crate::hosted::libc::time);
-        cpu.host.register("malloc", crate::hosted::heap::malloc);
-        cpu.host.register("calloc", crate::hosted::heap::calloc);
-        cpu.host.register("realloc", crate::hosted::heap::realloc);
-        cpu.host.register("free", crate::hosted::heap::free);
-        cpu.host.register("usleep", crate::hosted::libc::usleep);
-        cpu.host.register("fflush", crate::hosted::libc::fflush);
-        // The C-locale character classes and case conversions, both ways
-        // a program reaches them: the functions, and the three tables the
-        // __ctype_*_loc pointers address.
-        cpu.host.register("isdigit", crate::hosted::ctype::isdigit);
-        cpu.host.register("isalpha", crate::hosted::ctype::isalpha);
-        cpu.host.register("isspace", crate::hosted::ctype::isspace);
-        cpu.host.register("toupper", crate::hosted::ctype::toupper);
-        cpu.host.register("tolower", crate::hosted::ctype::tolower);
-        cpu.host
-            .register("__ctype_b_loc", crate::hosted::ctype::ctype_b_loc);
-        cpu.host
-            .register("__ctype_toupper_loc", crate::hosted::ctype::ctype_toupper_loc);
-        cpu.host
-            .register("__ctype_tolower_loc", crate::hosted::ctype::ctype_tolower_loc);
-        // FILE*-level stdio over the VFS; the handle scheme lives in
-        // hosted/stdio.rs.
-        cpu.host.register("fopen", crate::hosted::stdio::fopen);
-        cpu.host.register("fprintf", crate::hosted::stdio::fprintf);
-        cpu.host.register("fgets", crate::hosted::stdio::fgets);
-        cpu.host.register("fputs", crate::hosted::stdio::fputs);
-        cpu.host.register("fclose", crate::hosted::stdio::fclose);
-        // What optimized code calls in place of putchar, getchar and
-        // fputs: glibc's inline putchar is putc(c, stdout).
-        cpu.host.register("putc", crate::hosted::stdio::putc);
-        cpu.host.register("fputc", crate::hosted::stdio::putc);
-        cpu.host.register("getc", crate::hosted::stdio::getc);
-        cpu.host.register("fwrite", crate::hosted::stdio::fwrite);
-        // The two calls that run the program's own comparator.
-        cpu.host.register("qsort", crate::hosted::callback::qsort);
-        cpu.host.register("bsearch", crate::hosted::callback::bsearch);
-        // The libm subset: double in d0 (and d1 for the two-argument
-        // forms), double out in d0.
-        cpu.host.register("sqrt", crate::hosted::math::sqrt);
-        cpu.host.register("pow", crate::hosted::math::pow);
-        cpu.host.register("sin", crate::hosted::math::sin);
-        cpu.host.register("cos", crate::hosted::math::cos);
-        cpu.host.register("tan", crate::hosted::math::tan);
-        cpu.host.register("log", crate::hosted::math::log);
-        cpu.host.register("log10", crate::hosted::math::log10);
-        cpu.host.register("exp", crate::hosted::math::exp);
-        cpu.host.register("floor", crate::hosted::math::floor);
-        cpu.host.register("fabs", crate::hosted::math::fabs);
-        cpu.host.register("fmod", crate::hosted::math::fmod);
-        cpu.host.register("sincos", crate::hosted::math::sincos);
-        // Sentinel used when a hosted program's `main` returns. Loader
-        // stashes this address in LR so `ret` from main halts cleanly
-        // with x0 as the exit code.
-        cpu.host.register("__main_return", crate::hosted::libc::main_return);
-        // The name gcc -S writes for scanf. Registered last so no other
-        // stub's address moves.
-        cpu.host.register("__isoc99_scanf", crate::hosted::scanf::scanf);
         cpu.regs.write_sp(STACK_BASE);
         cpu.regs.write_pc(CODE_BASE);
 
@@ -669,6 +603,12 @@ impl Cpu {
         crate::hosted::stdio::write_stdio_globals(&mut cpu.mem)
             .expect("the stdio globals page is freshly mapped");
         cpu
+    }
+
+    /// The terminal pane's size in columns and rows; a zero in either
+    /// means the pane has no size to report.
+    pub fn set_window_size(&mut self, cols: u16, rows: u16) {
+        self.window_size = (cols > 0 && rows > 0).then_some(WindowSize { rows, cols });
     }
 
     /// Snapshot CPU state before we touch anything so `step_back` can
@@ -761,35 +701,94 @@ impl Cpu {
         }
     }
 
-    /// Give the frame this step pushed the undo logs the step filled. A
-    /// step that recorded nothing leaves every frame as it is. Recording
-    /// starts only once the frame is in the ring, and nothing in a step
-    /// empties the ring, so the newest frame is the one to fill.
+    /// Give the frame this step pushed the undo logs the step filled, then
+    /// hold the ring to its budget. A step that recorded nothing leaves
+    /// every frame as it is. Recording starts only once the frame is in the
+    /// ring, and nothing in a step empties the ring, so the newest frame is
+    /// the one to fill.
     fn close_step_frame(&mut self) {
-        if let Some(frame) = self.snapshots.newest_mut() {
-            self.regs.finish_undo(&mut frame.regs);
-            self.mem.finish_undo(&mut frame.mem);
-            self.heap.finish_undo(&mut frame.heap);
+        let Some(frame) = self.snapshots.newest_mut() else { return };
+        self.regs.finish_undo(&mut frame.regs);
+        let logged = self.mem.finish_undo(&mut frame.mem);
+        self.heap.finish_undo(&mut frame.heap);
+        if let Some(held) = logged {
+            self.snapshots.close_newest(held);
         }
     }
 
-    /// Detect which registers changed, against the integer and FP files as
-    /// they stood before the instruction ran. The UI flashes both sets.
-    fn record_changed_registers(&mut self, gpr_before: &[u64; 32], fpr_before: &[u128; 32]) {
-        let current = self.regs.snapshot();
-        self.changed_regs.clear();
-        for i in 0..32 {
-            if gpr_before[i] != current[i] {
-                self.changed_regs.push(i as u8);
-            }
+    /// The integer and FP registers the step changed since it started
+    /// (`RegisterFile::start_changes`). The UI flashes both sets.
+    fn record_changed_registers(&mut self) {
+        self.regs.changed(&mut self.changed_regs, &mut self.changed_fprs);
+    }
+
+    /// How every step that did not stop on an error ends: the registers it
+    /// changed and its outcome, in the result `step` hands back.
+    fn step_tail(&mut self) -> StepResult {
+        self.record_changed_registers();
+        let outcome = self.classify_outcome();
+        StepResult {
+            pc: self.regs.read_pc(),
+            halted: self.halted,
+            error: None,
+            outcome,
         }
-        let fpr_current = self.regs.snapshot_fpr();
-        self.changed_fprs.clear();
-        for i in 0..32 {
-            if fpr_before[i] != fpr_current[i] {
-                self.changed_fprs.push(i as u8);
+    }
+
+    /// Run a library call or a system call (`dispatch`) with what every
+    /// host-side call owes the walls: the input it read echoes, the bytes
+    /// it moved and printed are charged, and a failure is a calm halt. A
+    /// write fault there is the page cap, as in normal code; a library
+    /// call's store the servers would kill names the call; a read fault
+    /// through x0 at a library call names the missing `ldr x0, =fmt`, while
+    /// a syscall's keeps the plain text, even from an `svc` a program wrote
+    /// over a trampoline. `Some` is the halt `step` hands back.
+    fn host_call(
+        &mut self,
+        pc: u64,
+        dispatch: impl FnOnce(&mut Self) -> Result<(), EmuError>,
+    ) -> Option<StepResult> {
+        let out_before = self.stdout.len();
+        let err_before = self.stderr.len();
+        let moved = self.mem.bytes_written();
+        let queued = self.stdin.len();
+        let guard = self.mem.store_guard();
+        self.mem.set_store_guard(match guard {
+            StoreGuard::Code { text_end } if self.host.contains_address(pc) => {
+                StoreGuard::Library { text_end }
             }
+            // A system call stays unguarded: Linux fails a bad buffer with an error.
+            _ => StoreGuard::Off,
+        });
+        let dispatched = dispatch(self);
+        self.mem.set_store_guard(guard);
+        // Echo before the charge so echoed bytes count against the
+        // output wall and the display counters like any other output.
+        self.echo_consumed_stdin(queued);
+        self.charge_bulk_work(moved);
+        if self.charge_output(out_before, err_before) {
+            let message = if self.refunds_spent() {
+                SESSION_CAP_MESSAGE.to_string()
+            } else {
+                output_ceiling_message()
+            };
+            return Some(self.halt(message));
         }
+        let e = match dispatched {
+            Ok(()) => return None,
+            Err(EmuError::MemoryFault { address, access: MemAccess::Read })
+                if self.host.contains_address(pc) =>
+            {
+                self.libc_read_fault(pc, address)
+            }
+            Err(EmuError::StoreFault { address, code, .. }) => EmuError::StoreFault {
+                address,
+                code,
+                call: self.host.stub_at(pc).map(|stub| stub.name),
+            },
+            Err(e) => map_write_fault(e),
+        };
+        Some(self.halt(e.to_string()))
     }
 
     /// How the cycle ended, in the order the states shadow one another:
@@ -829,13 +828,14 @@ impl Cpu {
                 let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
                 self.frames.on_call(pc, target, into_program, &regs, &self.mem, log);
             }
-            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, rn: 30 } => {
-                let regs = self.regs.snapshot();
-                let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
-                let x0_width = self.regs.write_width(0);
-                let changed = self.frames.on_return(pc, self.regs.read_pc(), self.steps_taken, &regs, x0_width, log);
-                if changed != 0 {
-                    self.regs.mark_callee_saved(changed, pc);
+            I::BrReg { op: BrRegOp::Ret, .. } | I::BrReg { op: BrRegOp::Br, .. } => {
+                let target = self.regs.read_pc();
+                // A br through another register is a return only when it
+                // lands as one; a br out of the program is a library
+                // trampoline's jump into its stub.
+                let quiet = matches!(*instr, I::BrReg { op: BrRegOp::Br, rn } if rn != 30);
+                if !quiet || self.in_program(target) {
+                    self.track_return(pc, target, quiet);
                 }
             }
             I::LdSt { op: LdStOp::Str, rt: 30, size: MemSize::X, .. }
@@ -848,6 +848,19 @@ impl Cpu {
         }
     }
 
+    /// A return the instruction or library call at `pc` just made to
+    /// `target` (`quiet`: one that may be a return, `CallStack::on_return`),
+    /// and the callee-saved registers the call it ended left changed.
+    fn track_return(&mut self, pc: u64, target: u64, quiet: bool) {
+        let regs = self.regs.snapshot();
+        let x0_width = self.regs.write_width(0);
+        let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
+        let changed = self.frames.on_return(pc, target, self.steps_taken, &regs, x0_width, quiet, log);
+        if changed != 0 {
+            self.regs.mark_callee_saved(changed, pc);
+        }
+    }
+
     /// Check the step's writes against every caller's frame record, in
     /// every mode the ring has. Most steps write nothing, and most writes
     /// land below the nearest record.
@@ -857,10 +870,7 @@ impl Cpu {
             return;
         }
         // A library call's write names the `bl` that made the call.
-        let writer = || {
-            let at = if self.host.contains_address(pc) { lr.wrapping_sub(4) } else { pc };
-            (at, self.regs.snapshot()[29])
-        };
+        let writer = || (self.host.call_site(pc, lr), self.regs.snapshot()[29]);
         let log = self.snapshots.newest_mut().map(|frame| &mut frame.frames);
         self.frames.watch_writes(writes, self.steps_taken, &self.mem, writer, log);
     }
@@ -928,6 +938,9 @@ impl Cpu {
         self.steps_total += 1;
         self.steps_taken += 1;
 
+        // The sets of registers the step changes start here.
+        self.regs.start_changes();
+
         // If PC landed on a host-stub address (reached via `bl printf` or
         // similar), dispatch to Rust instead of fetching an instruction,
         // then return to the caller via LR.
@@ -939,84 +952,56 @@ impl Cpu {
             // wrong line for an unbalanced epilogue, which has its own
             // diagnosis.
             let sp = self.regs.read_sp();
-            if !sp.is_multiple_of(16) && self.host.lookup("__main_return") != Some(pc) {
-                return Ok(self.runtime_error_halt(EmuError::SpAlignmentFault {
-                    sp,
-                    at_call: true,
-                }));
+            if !sp.is_multiple_of(16) && pc != MAIN_RETURN_ADDR {
+                return Ok(self.halt(EmuError::SpAlignmentFault { sp, at_call: true }.to_string()));
             }
-            // A page-cap write fault inside a hosted libc routine (e.g. a
-            // buffer-filling scanf when the program has already neared the
-            // cap) gets the same calm halt as a write in normal code, never
-            // a raw fault. Any other stub failure halts calmly too.
-            let out_before = self.stdout.len();
-            let err_before = self.stderr.len();
-            let moved = self.mem.bytes_written();
-            let queued = self.stdin.len();
-            let dispatched = self.dispatch_host_stub(pc);
-            // Echo before the charge so echoed bytes count against the
-            // output wall and the display counters like any other output.
-            self.echo_consumed_stdin(queued);
-            self.charge_bulk_work(moved);
-            if self.charge_output(out_before, err_before) {
-                return Ok(self.output_cap_halt());
-            }
-            return match dispatched {
-                Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
-                    Ok(self.memory_cap_halt())
-                }
-                Err(EmuError::MemoryFault { address, access: MemAccess::Read }) => {
-                    let e = self.libc_read_fault(pc, address);
-                    Ok(self.runtime_error_halt(e))
-                }
-                Err(e) => Ok(self.runtime_error_halt(e)),
-                other => other,
+            // The changed sets are also taken before the output charge, so
+            // a call whose printing crosses the output wall still shows
+            // what it changed.
+            let call = |cpu: &mut Self| {
+                cpu.dispatch_host_stub(pc)?;
+                cpu.record_changed_registers();
+                Ok(())
             };
+            if let Some(halt) = self.host_call(pc, call) {
+                return Ok(halt);
+            }
+            return Ok(self.step_tail());
         }
 
         // Fell off the end of the program: the previous instruction was the
         // image's last and nothing branched. Name the real cause instead of
         // decoding the padding that happens to live here.
         if self.text_end == Some(pc) {
-            self.halted = true;
-            let msg = "execution ran past the last instruction of the program. \
-                       main needs a `ret` (with an epilogue if it pushed one) or an \
-                       exit call as its final step"
-                .to_string();
-            self.abort_message = Some(msg.clone());
-            return Ok(StepResult {
-                pc,
-                halted: true,
-                error: Some(msg),
-                outcome: StepOutcome::Halted,
-            });
+            return Ok(self.halt(
+                "execution ran past the last instruction of the program. \
+                 main needs a `ret` (with an epilogue if it pushed one) or an \
+                 exit call as its final step"
+                    .to_string(),
+            ));
         }
 
         // Not the trampoline past the text that a library call goes through.
         if self.in_program(pc) {
             self.last_program_pc = pc;
         }
-        let snapshot = self.regs.snapshot();
-        let fpr_snapshot = self.regs.snapshot_fpr();
+        // Checked before the read, so it wins over an unmapped address.
+        if !pc.is_multiple_of(4) {
+            return Ok(self.halt(EmuError::UnalignedAccess { address: pc, required: 4 }.to_string()));
+        }
         let word = match self.mem.read_u32(pc) {
             Ok(w) => w,
-            Err(e) => return Ok(self.runtime_error_halt(e)),
+            Err(e) => return Ok(self.halt(e.to_string())),
         };
         let instr = match decoder::decode(word) {
             Ok(i) => i,
-            Err(e) => return Ok(self.runtime_error_halt(e)),
+            Err(e) => return Ok(self.halt(e.to_string())),
         };
         let result = match executor::execute(&instr, &mut self.regs, &mut self.mem) {
             Ok(r) => r,
-            Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
-                // A store tried to map a page past MAX_MAPPED_PAGES. Convert
-                // the allocation-cap fault into the same calm halt as the
-                // step ceiling rather than propagating a raw memory fault.
-                // (Stores are the only writer that faults, so a write fault
-                // here is unambiguously the cap.)
-                return Ok(self.memory_cap_halt());
-            }
-            Err(e) => return Ok(self.runtime_error_halt(e)),
+            // A store past MAX_MAPPED_PAGES halts with the memory-cap
+            // message rather than a raw memory fault.
+            Err(e) => return Ok(self.halt(map_write_fault(e).to_string())),
         };
 
         // advance PC if the instruction didn't branch
@@ -1038,26 +1023,8 @@ impl Cpu {
             if syscall_num == 0 {
                 self.halted = true;
             } else {
-                // A page-cap write fault inside a syscall (e.g. read filling
-                // a buffer when the program has already neared the cap) gets
-                // the same calm halt as a write in normal code, never a raw
-                // fault.
-                let out_before = self.stdout.len();
-                let err_before = self.stderr.len();
-                let moved = self.mem.bytes_written();
-                let queued = self.stdin.len();
-                let dispatched = self.dispatch_syscall(syscall_num);
-                self.echo_consumed_stdin(queued);
-                self.charge_bulk_work(moved);
-                if self.charge_output(out_before, err_before) {
-                    return Ok(self.output_cap_halt());
-                }
-                match dispatched {
-                    Ok(()) => {}
-                    Err(EmuError::MemoryFault { access: MemAccess::Write, .. }) => {
-                        return Ok(self.memory_cap_halt());
-                    }
-                    Err(e) => return Ok(self.runtime_error_halt(e)),
+                if let Some(halt) = self.host_call(pc, |cpu| cpu.dispatch_syscall(syscall_num)) {
+                    return Ok(halt);
                 }
                 // After a syscall returns normally, PC moves past the svc.
                 if !self.blocked {
@@ -1066,16 +1033,7 @@ impl Cpu {
             }
         }
 
-        self.record_changed_registers(&snapshot, &fpr_snapshot);
-
-        let outcome = self.classify_outcome();
-
-        Ok(StepResult {
-            pc: self.regs.read_pc(),
-            halted: self.halted,
-            error: None,
-            outcome,
-        })
+        Ok(self.step_tail())
     }
 }
 

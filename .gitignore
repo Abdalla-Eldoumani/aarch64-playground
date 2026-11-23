@@ -15,10 +15,6 @@ web/coverage/
 web/public/sw.js
 web/.vitest/
 web/tsconfig.tsbuildinfo
-# A root package-lock.json only appears after a local npm install here (the
-# Vercel install passes --no-package-lock). The app's lock file is
-# web/package-lock.json.
-/package-lock.json
 
 # WASM build output
 web/lib/wasm/

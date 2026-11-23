@@ -35,20 +35,43 @@ msg_len = . - msg - 1
 
 Comments strip before substitution: `//` to end of line.
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected with a clear error
-rather than silently ignored, and so is a backtick outside a `define` or
-``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends that
-define's reach at that line, so an alias can be rebound per function.
+These rules reject `ifdef`, `ifelse`, `forloop`, and `dnl` with a clear
+error rather than silently ignoring them, and a backtick outside a `define`
+or ``undefine(`NAME')``, where m4 quotes are legal. Undefining a name ends
+that define's reach at that line, so an alias can be rebound per function.
+
+When those rules reject a program that uses `dnl`, `divert`, `undivert`,
+`divnum`, `changecom`, or a backtick, or leave `divert`, `undivert`,
+`divnum`, `changecom`, or `changequote` where an instruction goes, the
+program goes through m4 in GNU m4's own order instead, as on the servers,
+unless those rules already spent the whole work budget, which keeps their
+rejection. There m4 reads the whole file with its comments in it, and the
+comments come out of what it writes. In that order:
+
+- `dnl` deletes the rest of its line and the newline, so
+  `define(fp, x29)dnl` leaves no blank line.
+- `divert(-1)` throws away what m4 writes until `divert` or `divert(0)`,
+  and `divnum` gives the diversion in use. A numbered diversion such as
+  `divert(1)` is rejected.
+- `changecom` alone turns `#` comments off, and ``changecom(`//')`` makes
+  `//` the comment start instead.
+- A quoted string (`` `text' ``) is written without its quotes and never
+  expanded, and may run over several lines, as may a macro's arguments.
+- m4 expands names inside `//`, `;`, and `/* */` comments, and a backtick
+  there opens a quote, so keep backticks out of comments.
+- The other GNU m4 builtins, such as `undivert`, `include`, `changequote`,
+  and `eval`, are rejected by name. `forloop` is a macro course files define for
+  themselves; without that define, m4 leaves it as written and the
+  assembler rejects the line.
 
 ### Where GNU m4's text-level rules bite
 
 Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
 machines) knows nothing about assembly syntax, which produces four
-behaviors the playground's m4 reproduces exactly. A program built from
-the instructions and directives the reference documents prints the same
-bytes here as on the servers. The pre-assembly lint warns
-whenever a program hits one, because the rewrite is almost never what
-the author meant:
+behaviors the playground's m4 reproduces: everywhere in GNU m4's order, and
+outside comments line by line, where it takes the comments out first. The
+pre-assembly lint warns whenever a program hits one, because the rewrite is
+almost never what the author meant:
 
 - m4 substitutes a macro name **anywhere** it appears as a whole word,
   including inside `"..."` strings and `'.'` character literals.
@@ -68,6 +91,10 @@ the author meant:
   on the server, and the parenthesized text is consumed as arguments.
   Put a space before the `(` or rename the macro.
 
+The README's [Known differences from the course server](../README.md#known-differences-from-the-course-server)
+lists where a program still builds or runs differently here and on the
+servers, in m4 and elsewhere.
+
 ## section directives
 
 ```
@@ -85,7 +112,7 @@ the author meant:
 
 The directive table in [instruction-reference.md](instruction-reference.md#directives)
 lists every spelling, including the ones gcc writes (`.xword`, `.p2align`,
-`.space`, `.2byte`). `.equ` and `.set` are refused: write `NAME = value`.
+`.space`, `.2byte`). `.equ NAME, value` and `.set NAME, value` work as `NAME = value` does.
 
 Base addresses:
 
@@ -214,7 +241,7 @@ Pre-registered syscalls (via `svc 0` with the syscall number in `x8`):
 Plus the interactive set a terminal program reaches for:
 
 ```
-29  ioctl          (TCGETS / TCSETS termios, the raw-mode handshake)
+29  ioctl          (TCGETS / TCSETS termios, the raw-mode handshake; TIOCGWINSZ, the pane's size)
 25  fcntl          (F_GETFL / F_SETFL, O_NONBLOCK on stdin)
 101 nanosleep      (pauses the run; the virtual clock advances)
 113 clock_gettime  (the virtual clock, so replay stays deterministic)

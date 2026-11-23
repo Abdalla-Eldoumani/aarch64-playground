@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	sum
@@ -196,4 +197,5 @@ main:
 	ldp	x19, x20, [sp, 64]
 	add	sp, sp, 80
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

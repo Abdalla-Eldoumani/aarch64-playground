@@ -8,6 +8,11 @@ import type { ReactNode } from "react";
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
+// The surface itself, not its dynamic() wrapper: the wrapper loads on its
+// first render, so a case run alone would read "loading emulator...".
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
+}));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: (props: { openOn?: string; vectorRegisters?: string[] }) => (
     <div
@@ -107,15 +112,6 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// The full-chrome surface is reached through dynamic(), so it mounts a beat
-// after the shell does. Awaiting the same import settles it before a case
-// reads the surface's own markup.
-async function fullChromeMounted() {
-  await act(async () => {
-    await import("@/components/playground/FullChromeSurface");
-  });
-}
-
 describe("EmbeddablePlayground", () => {
   it("can be driven through its ref handle once started", () => {
     const hub: Hub = makeHub();
@@ -191,11 +187,11 @@ describe("EmbeddablePlayground", () => {
     const { container } = render(<EmbeddablePlayground chrome="embed" />);
     // An embed waits until it scrolls into view or is pressed; jsdom has no
     // IntersectionObserver, so the emulator must not start on mount.
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
     expect(screen.queryByTestId("editor")).toBeNull();
 
     engage(container);
-    expect(useEmulatorMock).toHaveBeenCalled();
+    expect(useEmulatorMock).toHaveBeenLastCalledWith(true);
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
@@ -237,7 +233,7 @@ describe("EmbeddablePlayground", () => {
     vi.stubGlobal("cancelIdleCallback", vi.fn());
 
     render(<EmbeddablePlayground chrome="embed" />);
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
 
     // Two intersections, one queued engage: the observer reports every change.
     act(() => {
@@ -246,11 +242,11 @@ describe("EmbeddablePlayground", () => {
     });
     expect(requestIdle).toHaveBeenCalledTimes(1);
     expect(idleOptions).toEqual({ timeout: 1200 });
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
     expect(screen.queryByTestId("editor")).toBeNull();
 
     act(() => runIdle());
-    expect(useEmulatorMock).toHaveBeenCalled();
+    expect(useEmulatorMock).toHaveBeenLastCalledWith(true);
     expect(screen.getByTestId("editor")).toBeTruthy();
   });
 
@@ -531,11 +527,13 @@ describe("EmbeddablePlayground", () => {
     const hub: Hub = makeHub();
     hub.assemble = vi.fn().mockResolvedValue(true);
     useEmulatorMock.mockReturnValue(hub);
-    const { container, rerender } = render(
-      <EmbeddablePlayground chrome="checker" startSource="mov x0, 1" onCheck={vi.fn()} />,
-    );
+    render(<EmbeddablePlayground chrome="checker" startSource="mov x0, 1" onCheck={vi.fn()} />);
     expect(screen.queryByLabelText("args")).toBeNull();
-    rerender(
+    cleanup();
+    // A frame reads its start props when it mounts, as useState seeds do, so
+    // new ones need a new frame (hosts key theirs); a re-render keeps the box's
+    // text (next case).
+    const { container } = render(
       <EmbeddablePlayground
         chrome="checker"
         startSource="mov x0, 1"
@@ -548,6 +546,24 @@ describe("EmbeddablePlayground", () => {
     const box = screen.getByLabelText("args") as HTMLInputElement;
     expect(box.value).toBe("12 7");
     fireEvent.change(box, { target: { value: "5 -3 8" } });
+    fireEvent.click(screen.getByLabelText("run"));
+    await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
+  });
+
+  it("keeps args typed before the engage through a re-render of the frame", async () => {
+    const hub: Hub = makeHub();
+    hub.assemble = vi.fn().mockResolvedValue(true);
+    useEmulatorMock.mockReturnValue(hub);
+    // A fresh onCheck each time, as a host's re-render passes.
+    const frame = () => (
+      <EmbeddablePlayground chrome="checker" startSource="mov x0, 1" startArgs="12 7" showArgs onCheck={vi.fn()} />
+    );
+    const { container, rerender } = render(frame());
+    fireEvent.change(screen.getByLabelText("args"), { target: { value: "5 -3 8" } });
+    rerender(frame());
+    expect((screen.getByLabelText("args") as HTMLInputElement).value).toBe("5 -3 8");
+    engage(container);
+    expect((screen.getByLabelText("args") as HTMLInputElement).value).toBe("5 -3 8");
     fireEvent.click(screen.getByLabelText("run"));
     await waitFor(() => expect(hub.assemble).toHaveBeenCalledWith("mov x0, 1", ["5", "-3", "8"]));
   });
@@ -793,7 +809,7 @@ describe("EmbeddablePlayground", () => {
     expect((container.firstChild as HTMLElement).getAttribute("data-embed")).toBe("1");
   });
 
-  it("disables the full playground's step and back until a program is loaded, and keeps run live", async () => {
+  it("disables the full playground's step and back until a program is loaded, and keeps run live", () => {
     // The real Controls renders in full chrome; step and back must follow
     // programLoaded even when the step-back history says stepping back is
     // possible (an old canStepBack cannot outvote a missing program). Run
@@ -802,7 +818,6 @@ describe("EmbeddablePlayground", () => {
       makeHub({ programLoaded: false, canStepBack: true }),
     );
     const { unmount } = render(<EmbeddablePlayground chrome="full" />);
-    await fullChromeMounted();
     for (const name of [/^step$/, /^back$/, /^step over$/, /^step out$/, /^run to cursor$/]) {
       expect(
         screen.getByRole("button", { name }).hasAttribute("disabled"),
@@ -923,7 +938,6 @@ describe("loading a program from recents and the tutorial", () => {
         startSource={"// working buffer\nret"}
       />,
     );
-    await fullChromeMounted();
     // Loading a program with stdin and a file pushes the current code into
     // recents. The stdin must not come back with the recalled code; the file
     // stays, because the full playground treats files as the student's home
@@ -1159,7 +1173,6 @@ describe("the phone playground's status line", () => {
     useEmulatorMock.mockReturnValue(makeHub({ programLoaded: true, stepCount: 1_000_000, error: pause, paused: true }));
     const view = () => <EmbeddablePlayground chrome="full" startSource="b ." />;
     const { rerender } = render(view());
-    await fullChromeMounted();
     const paused = await screen.findByText("paused · 1,000,000 steps");
     expect(paused.getAttribute("role")).toBe("status");
     expect(paused.className).toContain("text-[var(--text-secondary)]");
@@ -1304,5 +1317,26 @@ describe("autoplay", () => {
     } finally {
       window.matchMedia = realMatchMedia;
     }
+  });
+});
+
+describe("the tools across the short window line", () => {
+  function setHeight(px: number): void {
+    Object.defineProperty(window, "innerHeight", { value: px, configurable: true, writable: true });
+    window.dispatchEvent(new Event("resize"));
+  }
+  afterEach(() => setHeight(768));
+
+  // A 1440x900 window zoomed to 150% is 960x600: past the short line, the
+  // header band hands its tools to the run row.
+  it("moves the same toolbar to the run row, with the focus still on it", async () => {
+    setHeight(900);
+    render(<EmbeddablePlayground chrome="full" startSource="main: ret" />);
+    const share = await screen.findByRole("button", { name: "share program" });
+    act(() => share.focus());
+    act(() => setHeight(600));
+    expect(screen.getByRole("button", { name: "open navigation" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "share program" })).toBe(share);
+    expect(document.activeElement).toBe(share);
   });
 });

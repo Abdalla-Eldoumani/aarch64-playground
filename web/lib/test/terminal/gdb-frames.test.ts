@@ -82,8 +82,12 @@ function stoppedAt(source: string, line: number | null, stdin?: string) {
     for (let i = 0; i + 1 < map.length; i += 2) if (map[i] === addr) return `line ${map[i + 1]}`;
     return null;
   };
+  const exitCode = emu.get_exit_code();
   const hub: EmulatorState = makeHub({
     programLoaded: true,
+    // The machine's own end state: a fault halts it with no exit code.
+    isHalted: emu.is_halted(),
+    exitCode: exitCode === undefined ? null : Number(exitCode),
     frames: Array.from(emu.frames()),
     frameLayout: { numbers: Array.from(emu.frame_layout()), names: emu.frame_names() },
     registers: regs.gpr,
@@ -102,8 +106,68 @@ function stoppedAt(source: string, line: number | null, stdin?: string) {
     driveForeground: vi.fn(async () => 0),
     executables: new Map(),
   });
-  return { ctx, sp: Number(BigInt(regs.sp)) };
+  return { ctx, hub, sp: Number(BigInt(regs.sp)) };
 }
+
+// quit ends the program from inside a function: its frame and main's are
+// still on the stack when exit(3) ends it.
+const QUITS = `// Ends the program from inside a function, through exit(3).
+
+define(fp, x29)
+define(lr, x30)
+
+.text
+
+// quit(): never returns
+        .balign 4
+        .global quit
+quit:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     w0, 3                       // exit code
+        bl      exit
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        bl      quit
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+
+// No C runtime: _start's own frame is the only one, and svc ends the program.
+const START_EXITS = `// Ends the program through the exit system call, with no C runtime.
+
+.text
+
+        .balign 4
+        .global _start
+_start:
+        mov     x0, 0                       // exit code
+        mov     x8, 93                      // exit
+        svc     0
+`;
+
+const NULL_READ = `// Reads through a null pointer: a fault, not an exit.
+
+define(fp, x29)
+define(lr, x30)
+
+.text
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     x9, 0                       // a null pointer
+        ldr     x10, [x9]
+        ldp     fp, lr, [sp], 16
+        ret
+`;
 
 const gdb = async (command: string, ctx: ReturnType<typeof stoppedAt>["ctx"]) =>
   dispatchCommand(`gdb ${command}`, ctx);
@@ -265,6 +329,25 @@ describe("gdb-lite bt and info frame with no frame", () => {
     }
   });
 
+  // gdb answers "No stack." for both once the program has exited, whatever
+  // frames were live when it did.
+  it("say the program has finished after exit() inside a callee, not the frames it left", async () => {
+    const { ctx } = stoppedAt(QUITS, null);
+    // quit's frame and main's are still recorded, so bt used to list them.
+    expect((await ctx.frameStack())?.snapshot.frames).toHaveLength(2);
+    for (const command of ["bt", "info frame"]) {
+      expect(await gdb(command, ctx)).toEqual({ status: "err", lines: ["gdb: no frames: the program has finished"] });
+    }
+  });
+
+  it("say the program has finished after a _start exits through svc", async () => {
+    const { ctx } = stoppedAt(START_EXITS, null);
+    expect((await ctx.frameStack())?.snapshot.frames).toHaveLength(1);
+    for (const command of ["bt", "info frame"]) {
+      expect(await gdb(command, ctx)).toEqual({ status: "err", lines: ["gdb: no frames: the program has finished"] });
+    }
+  });
+
   it("ask for a program before anything is loaded", async () => {
     const ctx = createTerminalContext({
       machine: { current: makeHub() },
@@ -280,6 +363,31 @@ describe("gdb-lite bt and info frame with no frame", () => {
       status: "err",
       lines: ["gdb: info frame needs an assembled program"],
     });
+  });
+});
+
+describe("gdb-lite's run and step commands after the end", () => {
+  const RESUMES = ["c", "n", "s", "si", "ni", "finish"];
+
+  // gdb answers "The program is not being run." to each of them after the exit.
+  it("say the program has finished once it has exited, and run nothing", async () => {
+    const { ctx, hub } = stoppedAt(QUITS, null);
+    for (const command of RESUMES) {
+      expect(await gdb(command, ctx)).toEqual({ status: "err", lines: ["gdb: the program has finished"] });
+    }
+    expect(hub.run).not.toHaveBeenCalled();
+    expect(hub.step).not.toHaveBeenCalled();
+    expect(hub.runUntil).not.toHaveBeenCalled();
+  });
+
+  // gdb keeps a faulted program alive until a continue ends it.
+  it("leave a program stopped at a fault to the machine, since it has not exited", async () => {
+    const { ctx, hub } = stoppedAt(NULL_READ, null);
+    expect(hub.isHalted).toBe(true);
+    for (const command of RESUMES) expect(await gdb(command, ctx)).toEqual({ status: "ok", lines: [] });
+    expect(hub.run).toHaveBeenCalledTimes(1);
+    expect(hub.step).toHaveBeenCalledTimes(1);
+    expect(hub.runUntil).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -304,14 +412,14 @@ describe("gdb-lite ni, si, finish", () => {
     }
   });
 
-  it("keeps n and s one instruction, and si with them", async () => {
+  it("steps n and s a line through the hub, and keeps si one instruction", async () => {
     const { ctx } = stoppedAt(fact(4), 39);
     const step = vi.fn(async () => ({ halted: false, line: 16 }));
     const runUntil = vi.fn(async () => null);
     for (const command of ["n", "s", "si"]) {
       expect((await dispatchCommand(`gdb ${command}`, { ...ctx, step, runUntil })).lines).toEqual([]);
     }
-    expect(step).toHaveBeenCalledTimes(3);
-    expect(runUntil).not.toHaveBeenCalled();
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(runUntil.mock.calls).toEqual([["next", 1], ["step", 1]]);
   });
 });

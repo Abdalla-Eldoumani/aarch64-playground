@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -848,7 +849,7 @@ main:
 	.string	"zulu"
 	.section .rodata
 	.align	3
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 .LC10:
 	.word	-2147483648
 	.word	0
@@ -883,4 +884,5 @@ main:
 	.byte	0
 	.byte	0
 	.byte	0
+	.section	.note.GNU-stack,"",@progbits
 

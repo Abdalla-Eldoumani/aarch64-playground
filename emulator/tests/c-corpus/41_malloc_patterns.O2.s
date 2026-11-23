@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -151,4 +152,5 @@ main:
 	adrp	x1, .LC1
 	add	x1, x1, :lo12:.LC1
 	b	.L2
+	.section	.note.GNU-stack,"",@progbits
 

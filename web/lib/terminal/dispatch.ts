@@ -88,10 +88,12 @@ export function parseCommandLine(line: string): ParsedCommandLine {
 }
 
 /** A running foreground program's input surface: the pane forwards raw
- *  keystrokes here and Ctrl+C cancels. */
+ *  keystrokes here, Ctrl+C cancels, and the pane's size in columns and rows
+ *  arrives as the program takes the pane over and on every resize. */
 export interface TerminalForegroundProgram {
   pushInput(data: string): void;
   cancel(): void;
+  resize(cols: number, rows: number): void;
 }
 
 /** The terminal pane's I/O surface for interactive program runs: output
@@ -111,6 +113,9 @@ export interface TerminalProgramIO {
   /** Put the keyboard back on the pane (returning to the terminal tab
    *  mid-session; hiding the pane blurs its textarea). */
   focus?(): void;
+  /** Whether a program left the pane on its alternate screen, which the
+   *  session's end leaves only then: leaving it moves the cursor. */
+  altScreen?(): boolean;
 }
 
 /**
@@ -137,16 +142,28 @@ export interface DispatchContext {
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   step(): Promise<{ halted: boolean; line: number | null }>;
   runUntilBreak(): Promise<{ halted: boolean; hit_breakpoint: boolean }>;
-  /** `ni` (over the call on this line) and `finish` (out of this function),
-   *  at run speed: why it stopped, or null after one instruction. */
-  runUntil(target: "over" | "out"): Promise<string | null>;
+  /** `ni` (over the call on this line), `finish` (out of this function), and
+   *  `lines` editor lines of `n` ("next") or `s` ("step"), at run speed: why
+   *  it stopped, or null after one instruction of `ni`. */
+  runUntil(target: "over" | "out" | "next" | "step", lines?: number): Promise<string | null>;
+  /** What the -g note reads, kept for the pane's life; absent where no pane
+   *  keeps one, which then never notes. */
+  gdbBuild?(): GdbBuild;
   /** The call stack as the frames view draws it, with the stack bytes it
    *  read; null with no program loaded. */
   frameStack(): Promise<FrameStack | null>;
   /** "line 12", or "ui.s line 12" in a program of several files. */
   lineLabel(addr: number): string | null;
-  setBreakpoint(addr: number): Promise<void>;
-  clearBreakpoint(addr: number): Promise<void>;
+  /** `gdb b label`: arms `addr` now, and the label again after the editor's
+   *  next assemble; resolves to the breakpoint's number. */
+  setBreakpoint(addr: number, label: string): Promise<number>;
+  /** `gdb delete [n]`: false when n names no breakpoint. */
+  deleteBreakpoints(n?: number): Promise<boolean>;
+  /** `gdb b`'s breakpoints as [number, label], lowest number first. */
+  breakpoints(): [number, string][];
+  /** The ones the editor's last assemble could not set again because their
+   *  label is gone, as [number, label]; each is handed over once. */
+  unsetBreakpoints(): [number, string][];
   /** Look up a label's runtime address. Returns null when unresolved. */
   resolveLabel(label: string): Promise<number | null> | number | null;
   /** Standalone m4 pass over source text; null when the emulator build
@@ -173,10 +190,23 @@ export interface DispatchContext {
   readRegisters(): Record<string, bigint>;
   readMemory(addr: number, len: number): Promise<Uint8Array>;
   pcAddress(): number;
+  /** The code the program exited with; null while it can still run (a
+   *  fault stops it without one) and with nothing loaded. */
+  exitCode(): number | null;
   reset(): Promise<void>;
   /** Present when the pane can host interactive programs; dispatch hands
    *  it to runProgram/runSource for `./name` runs without a `>` capture. */
   terminalIO?: TerminalProgramIO;
+}
+
+/** What the terminal keeps for the -g note: on the course server, n and s
+ *  step a source line only in a program built with gcc -g. */
+export interface GdbBuild {
+  /** The last gcc line, spelled with -g, when it left -g out; null after a
+   *  build with -g or the editor's assemble, which has no build line. */
+  plain: string | null;
+  /** Whether the note has been said, once a session. */
+  noted: boolean;
 }
 
 /** What `bt` and `info frame` read. */
@@ -208,11 +238,15 @@ const HELP_LINES = [
 
 const GDB_HELP_LINES = [
   "gdb-lite commands:",
-  "  gdb n | gdb s | gdb si            step one instruction",
+  "  gdb n [N]                         step one line, or N; a call on the line runs whole",
+  "  gdb s [N]                         step one line, or N; a call to your own code stops inside it",
+  "  gdb si                            step one instruction",
   "  gdb ni                            step over: run the call on this line in one go",
   "  gdb finish                        step out: run until this function returns to its caller",
   "  gdb c                             continue until the program ends or hits a breakpoint",
-  "  gdb b <label>                     set a breakpoint at a label",
+  "  gdb b <label>                     set a breakpoint at a label and print its number",
+  "  gdb delete [N...]                 delete breakpoints N..., or every breakpoint",
+  "  gdb info breakpoints              list the breakpoints gdb b set",
   "  gdb p $xN                         print register N's value in hex",
   "  gdb info registers                print every register",
   "  gdb x/Ni $pc                      show N instruction words in hex from the current PC",
@@ -221,9 +255,13 @@ const GDB_HELP_LINES = [
   "  gdb info frame                    this function's frame: its bytes, saved fp and lr, locals",
 ];
 
-// The machine drops the last frame only when the outermost function returns,
-// which ends the program (a `_start` that exits through svc keeps its own).
+// gdb's "No stack." The machine drops the last frame only when the outermost
+// function returns; an exit() deeper down, or a `_start` that exits through
+// svc, leaves frames behind, so an exit code means finished too.
 const NO_FRAMES = "gdb: no frames: the program has finished";
+
+// The commands that run or step the program.
+const RESUMES = new Set(["n", "s", "si", "ni", "finish", "c"]);
 
 // More recorded frames than this fold into one line, with main still shown last.
 const BT_SHOWN = 20;
@@ -324,18 +362,20 @@ export async function dispatchCommand(
   }
 
   if (cmd === "gcc" || cmd === "as") {
-    // Course shape: gcc prog.s -o prog. Optimization/debug flags are
-    // accepted and ignored; the output name defaults to a.out like the
-    // real driver.
+    // Course shape: gcc prog.s -o prog. Other flags are accepted and
+    // ignored, but -g is kept for gdb-lite's note; the output name defaults
+    // to a.out like the real driver.
     const positional: string[] = [];
     let outName = "a.out";
+    let debug = false;
     for (let i = 0; i < args.length; i++) {
       const a = args[i];
       if (a === "-o" && i + 1 < args.length) {
         outName = args[i + 1];
         i += 1;
       } else if (a.startsWith("-")) {
-        continue; // -g, -O2, -Wall... accepted silently
+        // -g, -g3, -ggdb and the like ask for line numbers; -g0 turns them off.
+        if (a.startsWith("-g")) debug = a !== "-g0";
       } else {
         positional.push(a);
       }
@@ -364,6 +404,11 @@ export async function dispatchCommand(
       return { status: "err", lines };
     }
     ctx.executables.set(outName, body);
+    // The note is about gcc's -g; `as` builds no executable on the server.
+    const build = ctx.gdbBuild?.();
+    if (build && cmd === "gcc") {
+      build.plain = debug ? null : ["gcc", "-g", ...args.filter((a) => !a.startsWith("-g"))].join(" ");
+    }
     return { status: "ok", lines: [] };
   }
 
@@ -385,6 +430,9 @@ export async function dispatchCommand(
       if (body === undefined) return { status: "err", lines: [`./${name}: ${stdinFrom}: no such file in vfs`] };
       stdin = body;
     }
+    // The editor's program has no gcc line, so no -g to miss.
+    const build = isEditorProgram ? ctx.gdbBuild?.() : undefined;
+    if (build) build.plain = null;
     const argv = [`./${name}`, ...args];
     // A `> file` capture stays a batch run; everything else streams
     // through the pane when it offers interactive I/O.
@@ -410,7 +458,13 @@ export async function dispatchCommand(
   }
 
   if (cmd === "gdb") {
-    return runGdb(args, ctx);
+    // gdb says "Error in re-setting breakpoint N" as the program restarts;
+    // here the first gdb command after the editor's assemble says it.
+    const unset = ctx
+      .unsetBreakpoints()
+      .map(([n, label]) => `gdb: error in re-setting breakpoint ${n}: unknown label '${label}'`);
+    const result = await runGdb(args, ctx);
+    return unset.length === 0 ? result : { ...result, lines: [...unset, ...result.lines] };
   }
 
   return { status: "err", lines: [`${cmd}: command not found. Type 'help' for the list.`] };
@@ -419,7 +473,26 @@ export async function dispatchCommand(
 async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchResult> {
   const sub = args[0];
   if (!sub || sub === "help") return { status: "ok", lines: GDB_HELP_LINES, table: true };
-  if (sub === "n" || sub === "s" || sub === "si") {
+  // gdb's "The program is not being run.": after the exit these would do
+  // nothing and say nothing.
+  if (RESUMES.has(sub) && ctx.exitCode() != null) return { status: "err", lines: ["gdb: the program has finished"] };
+  if (sub === "n" || sub === "s") {
+    // gdb's repeat count, in digits: 0 or less stays put and says where.
+    const count = args.slice(1).join(" ") || "1";
+    if (!/^-?\d+$/.test(count)) {
+      return { status: "err", lines: [`gdb: ${sub} takes a number of lines, such as ${sub} 3, not '${count}'`] };
+    }
+    const lines = debugNote(ctx);
+    if (Number(count) < 1) {
+      // By address where no line holds the pc, as the stop words name it.
+      const pc = ctx.pcAddress();
+      return { status: "ok", lines: [...lines, `at ${ctx.lineLabel(pc) ?? `0x${pc.toString(16)}`}`] };
+    }
+    const said = await ctx.runUntil(sub === "n" ? "next" : "step", Number(count));
+    // A card marks its code with backticks, which the pane would show as they are.
+    return { status: "ok", lines: said ? [...lines, said.replaceAll("`", "")] : lines };
+  }
+  if (sub === "si") {
     await ctx.step();
     return { status: "ok", lines: [] };
   }
@@ -437,8 +510,38 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     if (!label) return { status: "err", lines: ["gdb: b needs a label"] };
     const addr = await ctx.resolveLabel(label);
     if (addr == null) return { status: "err", lines: [`gdb: unknown label '${label}'`] };
-    await ctx.setBreakpoint(addr);
-    return { status: "ok", lines: [`breakpoint set at ${formatWord64(addr)} (${label})`] };
+    const n = await ctx.setBreakpoint(addr, label);
+    return { status: "ok", lines: [`breakpoint ${n} at ${formatWord64(addr)} (${label})`] };
+  }
+  if (sub === "delete") {
+    if (args.length === 1) {
+      await ctx.deleteBreakpoints();
+      return { status: "ok", lines: [] };
+    }
+    // Plain decimal numbers, left to right: a 0 or a missing number says so
+    // and goes on; any other token says so and stops there, deleting nothing
+    // after it.
+    const lines: string[] = [];
+    for (const n of args.slice(1)) {
+      if (n !== "0" && !/^[1-9]\d*$/.test(n)) {
+        lines.push(`gdb: bad breakpoint number '${n}'`);
+        break;
+      }
+      if (n === "0") lines.push("gdb: bad breakpoint number '0'");
+      else if (!(await ctx.deleteBreakpoints(Number(n)))) lines.push(`gdb: no breakpoint number ${n}`);
+    }
+    return { status: lines.length > 0 ? "err" : "ok", lines };
+  }
+  if (sub === "info" && args[1] === "breakpoints") {
+    const set = ctx.breakpoints();
+    if (set.length === 0) return { status: "ok", lines: ["no breakpoints"] };
+    const lines = ["Num  Address             What"];
+    for (const [n, label] of set) {
+      // A label the program in the machine no longer has waits, as gdb's pending ones do.
+      const addr = await ctx.resolveLabel(label);
+      lines.push(`${String(n).padEnd(5)}${addr == null ? "pending".padEnd(18) : formatWord64(addr)}  ${label}`);
+    }
+    return { status: "ok", lines };
   }
   if (sub === "p") {
     const operand = args[1];
@@ -451,7 +554,7 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "info" && args[1] === "frame") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: info frame needs an assembled program"] };
-    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
+    if (view.snapshot.frames.length === 0 || ctx.exitCode() != null) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: frameLines(view) };
   }
   if (sub === "info" && args[1] === "registers") {
@@ -467,10 +570,22 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   if (sub === "bt") {
     const view = await ctx.frameStack();
     if (!view) return { status: "err", lines: ["gdb: bt needs an assembled program"] };
-    if (view.snapshot.frames.length === 0) return { status: "err", lines: [NO_FRAMES] };
+    if (view.snapshot.frames.length === 0 || ctx.exitCode() != null) return { status: "err", lines: [NO_FRAMES] };
     return { status: "ok", lines: backtrace(view, ctx) };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };
+}
+
+/** Once a session, at the first n or s after a gcc line that left out -g:
+ *  what the course server's gdb needs to step by line. */
+function debugNote(ctx: DispatchContext): string[] {
+  const build = ctx.gdbBuild?.();
+  if (!build?.plain || build.noted) return [];
+  build.noted = true;
+  return [
+    `note: on the course server, n and s need a build with -g: ${build.plain}`,
+    "note: without -g, n and s run to the end of the function",
+  ];
 }
 
 /**

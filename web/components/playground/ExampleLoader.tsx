@@ -25,9 +25,11 @@ interface ExampleGroup {
 
 /**
  * The examples in the order the ideas build on each other. Labels name the
- * stage, never a course week.
+ * stage, never a course week. The labels stay here, off the playground's
+ * first load, so the stems repeat lib/playground/example-catalog.ts's in its
+ * order; this component's test fails when the two lists differ.
  */
-const GROUPS: ExampleGroup[] = [
+export const GROUPS: ExampleGroup[] = [
   {
     label: "First programs",
     items: [
@@ -101,6 +103,7 @@ const GROUPS: ExampleGroup[] = [
       { name: "temperature converter", stem: "temp-convert" },
       { name: "two sum", stem: "two-sum" },
       { name: "deadzone", stem: "deadzone" },
+      { name: "flappy", stem: "flappy" },
     ],
   },
 ];

@@ -31,7 +31,7 @@ system calls `write`, `read`, `exit`, `openat`, and `close`.
 - `read-file.s`: open and read a file
 - `copy-file.s`: copy one file to another
 
-Six extra programs are served beyond the tutorial set:
+Seven extra programs are served beyond the tutorial set:
 
 - `snake.s`: the real-time snake game, six modes, from
   https://github.com/Abdalla-Eldoumani/snake-game; run it and the
@@ -67,6 +67,14 @@ Six extra programs are served beyond the tutorial set:
   constant only resolves for the modules below it). Waves of enemies,
   upgrades on level-up, a bomb and a freeze, and a boss at wave 10; run
   hands it the terminal pane and it grabs the keyboard
+- `flappy.s` + `flappy/`: Flappy Bird's gameplay from
+  https://github.com/Abdalla-Eldoumani/flappy-a64, the third multi-file
+  example: `flappy.s` holds the shared definitions and `main`, and the six
+  files under `flappy/` follow in the order the repo's one-file bundle
+  pastes them. It draws in half blocks at 60 ticks a second and fits its
+  picture to the pane; run hands it the terminal pane, space or a click
+  flaps, q quits, and `--autopilot` in the args line lets it play by
+  itself
 
 Six more programs demonstrate the vector (`v`) registers, a set of
 registers the course does not teach, so the rules for the playable

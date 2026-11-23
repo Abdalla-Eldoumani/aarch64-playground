@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -766,6 +767,7 @@ main:
 .LC19:
 	.word	-1783957616
 	.word	1074118409
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

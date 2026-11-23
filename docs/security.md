@@ -58,7 +58,7 @@ reaches React, the editor, or the emulator.
 
 | Input | Checked by | Refuses |
 | --- | --- | --- |
-| `?bundle=` diagnostic link | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
+| `#bundle=` diagnostic link, and `?bundle=` in links made before the bundle moved to the fragment | `web/lib/playground/diagnostic-bundle.ts` (`decodeBundle`) | a version other than 1 or 2, a field of the wrong type, more than 1 MiB once decompressed |
 | `#p2=` share link | `web/lib/playground/share.ts` (`readShareHash`) | a source that is not text or does not match its checksum, a file name the **+** tab would refuse, more than 16 KiB compressed or 1 MiB decompressed. Any other field of the wrong type, or a files list of the wrong shape or over 16 files, is dropped, and the program still opens |
 | Checks in a `#p2=` link | `web/lib/playground/program-checks.ts` (`parseChecks`) | more than 32 checks, a name over 100 characters, args over 1000 characters, stdin or expected output over 100 KiB, an exit code that is not a whole number from 0 to 255, a field of the wrong type. One bad check drops the whole list, and the program still opens |
 | `?example=` | `web/lib/hooks/use-deep-link.ts`, regex `/^[\w.-]+$/` | paths and special characters |
@@ -89,22 +89,65 @@ the call, with a plain message instead of a crash:
   to fill the 8 MiB stack and the 16 MiB heap together.
 - At most 4 MiB of output (`cpu::MAX_OUTPUT_BYTES`), and a cap on the field
   width and precision `printf` will pad to.
+- A program that sleeps (`nanosleep`, `usleep`) earns back one instruction per
+  microsecond slept and one byte of output per ten, never past the two limits
+  above, up to 200,000,000 instructions and 4 MiB in a run. The terminal pane
+  waits out every sleep in real time, so there the caps are what four hours of
+  sleeping earns, 14,400,000,000 instructions and 1,440,000,000 bytes
+  (`cpu::REAL_TIME_REFUND_STEPS`, `cpu::REAL_TIME_REFUND_OUTPUT_BYTES`), and a
+  sleep counts against them only what it gave back. That bounds a terminal
+  session's work, not its length: a game using most of each second's refill
+  runs about five to eight hours, and a program that does little each second
+  can run for weeks. A program that never sleeps meets the limits above.
 - In the virtual filesystem: 4 MiB per file, 4 MiB in total, and 16 files. A
   call past a limit fails as on a full Linux disk: a system call returns a
   negative error number, a library call -1 or NULL.
-- A load or store in the first page, or a memory access through `sp` or a
-  library call while `sp` is not a multiple of 16, stops the program, as a
-  segmentation fault or bus error would on the course server.
+- A load or store in the first page, a store into the program's own code, a
+  library call's store into the host stub window just under 4 GiB, or a memory
+  access through `sp` or a library call while `sp` is not a multiple of 16,
+  stops the program, as a segmentation fault or bus error would on the course
+  server.
+- While assembling: m4 stops at the line where the text its rounds have
+  built, counting every round of every line, passes 32 MiB
+  (`frontend::m4::MAX_EXPANSION_WORK_BYTES`). In GNU m4's order the same
+  budget, carried on from what the line pass spent, counts 1 KiB for each
+  macro call plus the text it builds or, when longer, the body it reads, and
+  8 bytes for each token m4 reads or text it puts back to read again, so its
+  time follows the budget however the text splits into tokens. m4 also
+  stops once calls nest more than 32 deep inside one another's arguments or
+  1,024 expansions are begun and not yet read to their end
+  (`frontend::m4_gnu`). A section holds at most 1 MiB
+  (`layout::SECTION_WINDOW`), and filled `.space` and `.skip` lines that would
+  take one past it are refused at the line that does, before their bytes are
+  built.
 
 The stack view caps its own records, so a deep recursion cannot use up memory
 through them either. It records at most 16,384 calls
-(`frames::MAX_ACTIVATIONS`), and the call tree keeps at most 200 entries.
-Calls past either cap are counted, not stored. The view draws at most 64
+(`frames::MAX_ACTIVATIONS`); deeper calls are counted, not stored. The call
+tree keeps at most 200 entries: a call that finds them full drops the oldest
+finished calls and counts them, and calls nested past 12 levels are counted,
+not stored. The view draws at most 64
 frames. Past 64, the frames between main and the newest 63 fold into one line
 that counts them. None of the three caps stops the program.
 
-`emulator/tests/bounds.rs` and the unit tests for the library calls test each
-limit.
+Three more caps keep the tab answering, and none of them stops the program
+either:
+
+- The check that runs when a program loads keeps at most 1,000 macro warnings
+  and 256 KiB of their text (`frontend::lint::MAX_HYGIENE_WARNINGS` and
+  `MAX_HYGIENE_BYTES`), and one closing line counts the rest.
+- A run hands control back to the page once its library calls have done
+  16 MiB of work, the bytes they walk, read or format and the free-list
+  entries they scan (`cpu::MAX_HOST_WORK_PER_RUN`), so Pause and Reset land
+  between calls. Apart from the bytes `memcmp` and `strncmp` compare, the
+  instruction limit does not count this work.
+- Step back's memory logs over 64 KiB, kept for steps such as a `memset` over
+  a large buffer, share 32 MiB (`cpu::MAX_SNAPSHOT_LOG_BYTES`).
+  Past it the oldest frames go, so step back reaches fewer steps behind such
+  calls.
+
+`emulator/tests/bounds.rs`, `emulator/tests/step_back_memory.rs`, and the unit
+tests beside each limit's code test them.
 
 ## Other rules the code follows
 
@@ -118,6 +161,12 @@ limit.
   outside script host is trusted at run time.
 - The site does not use `SharedArrayBuffer`, so it needs no cross-origin
   isolation headers. The worker copies bytes through `postMessage`.
+- The terminal pane caps the count a program prints in seven control
+  sequences (scroll up and down, insert and delete lines, tab forward and
+  back, and repeat the last character) at what the screen shows: its rows, its
+  columns, or rows times columns (`COUNT_LIMITS` in
+  `web/components/panels/TerminalPane.tsx`). A count within the screen
+  behaves as before.
 - Vercel's firewall sits in front of the deployed site. Its rules live in the
   Vercel project's settings, not in this repository. With the current rules,
   clients that are not browsers get a JavaScript challenge, and known search
@@ -156,7 +205,8 @@ through Next.js, and `minimatch`, for the copy
 `@typescript-eslint/typescript-estree` uses in the lint tools. ESLint and its
 plugins keep minimatch 3, whose API differs, so that override applies
 to that one package. The root `package.json` holds the same `postcss`
-override for the copy of Next.js that Vercel installs there.
+override for the copy of Next.js that Vercel installs there, from the root
+`package-lock.json` with `npm ci`. Dependabot watches the root and `web/`.
 
 monaco-editor also bundles its own, older copy of DOMPurify, a file inside
 its package that `overrides` cannot change. The editor uses it to clean the
@@ -169,6 +219,13 @@ version. `npm run size` then reads the version each copy of DOMPurify in the
 built JavaScript states and fails if any is older than the one in
 `overrides`. A later monaco-editor update cannot bring the old copy back
 without that check failing.
+
+The production build, `scripts/vercel-build.sh`, downloads the Rust
+toolchain, wasm-pack, the wasm-bindgen CLI and `wasm-opt`. Each is pinned to
+an exact version and a sha256 written in the script, and the build stops
+before it runs any file whose hash differs. The emulator builds with cargo's
+`--locked`, so its crates are the ones `emulator/Cargo.lock` names, each
+checked against the hash recorded there.
 
 ## Check the headers
 

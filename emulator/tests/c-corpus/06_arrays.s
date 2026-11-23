@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	bubble
@@ -371,4 +372,5 @@ main:
 	.xword	.LC2
 	.xword	.LC3
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

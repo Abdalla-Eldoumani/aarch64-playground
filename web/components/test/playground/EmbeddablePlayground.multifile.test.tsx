@@ -21,6 +21,11 @@ vi.mock("@/components/playground/lazy-editor", () => ({
     return <div data-testid="editor" />;
   },
 }));
+// The surface itself, not its dynamic() wrapper: the wrapper loads on its
+// first render, so a case run alone would read "loading emulator...".
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
+}));
 
 const decodeProps = vi.hoisted(() => ({
   current: null as null | { source: string; currentLine: number | null; compact?: boolean },
@@ -156,15 +161,6 @@ afterEach(() => {
   terminalProps.current = null;
 });
 
-// The full-chrome surface is reached through dynamic(), so it mounts a beat
-// after the shell does. Awaiting the same import settles it before a case
-// reads the surface's own markup.
-async function fullChromeMounted() {
-  await act(async () => {
-    await import("@/components/playground/FullChromeSurface");
-  });
-}
-
 describe("multi-file line translation", () => {
   it("stays on the tab being edited when an assemble puts the entry in another file", async () => {
     seedFiles();
@@ -175,7 +171,6 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
     await act(async () => {
       ref.current!.assemble();
     });
@@ -193,7 +188,6 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
     await act(async () => {
       ref.current!.assemble();
     });
@@ -255,7 +249,6 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
 
     // Click into util.s, then set a breakpoint on its line 3.
     fireEvent.click(screen.getByText("util.s"));
@@ -288,7 +281,6 @@ describe("multi-file line translation", () => {
       <EmbeddablePlayground chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
 
     fireEvent.click(screen.getByLabelText("remove util.s"));
 
@@ -327,20 +319,19 @@ describe("the decode strip in a short window", () => {
   }
   afterEach(() => setHeight(768));
 
-  async function stripCompact(height: number) {
+  function stripCompact(height: number) {
     setHeight(height);
     const { container } = render(<EmbeddablePlayground chrome="full" startSource={MAIN} />);
     engage(container);
-    await fullChromeMounted();
     return decodeProps.current!.compact;
   }
 
-  it("drops the field meanings in a short window, so the registers keep their rows", async () => {
-    expect(await stripCompact(657)).toBe(true);
+  it("drops the field meanings in a short window, so the registers keep their rows", () => {
+    expect(stripCompact(657)).toBe(true);
   });
 
-  it("keeps them at a regular height", async () => {
-    expect(await stripCompact(900)).toBe(false);
+  it("keeps them at a regular height", () => {
+    expect(stripCompact(900)).toBe(false);
   });
 });
 
@@ -391,6 +382,45 @@ describe("helper file names", () => {
   });
 });
 
+// Only a press assembles. A buffer with nothing to run, whether restored from
+// the autosave, switched to, cleared, or beside a new tab, must reach no
+// assembler before one: the link would refuse it for having no main.
+describe("a buffer with nothing to assemble", () => {
+  const AUTOSAVE_KEY = "aarch64-playground:auto-save:current";
+
+  it.each(["", "// notes for later\n"])("is not assembled before a press in the playground: %j", (buffer) => {
+    window.localStorage.setItem(AUTOSAVE_KEY, buffer);
+    const hub: Hub = baseHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={buffer} />,
+    );
+    engage(container);
+    act(() => ref.current!.loadProgram({ source: buffer }));
+    fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "util.s" } });
+    fireEvent.click(screen.getByLabelText("add file"));
+    act(() => ref.current!.loadSource(""));
+
+    expect(screen.getByLabelText("remove util.s")).toBeTruthy();
+    expect(hub.assemble).not.toHaveBeenCalled();
+    expect(hub.assembleForTool).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "// notes for later\n"])("is not assembled before a press in an embed: %j", (buffer) => {
+    const hub: Hub = baseHub();
+    useEmulatorMock.mockReturnValue(hub);
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="embed" startSource={buffer} />,
+    );
+    engage(container);
+    act(() => ref.current!.loadSource(""));
+
+    expect(hub.assemble).not.toHaveBeenCalled();
+  });
+});
+
 describe("importing a program's files", () => {
   const PROGRAM = "        .global main\nmain:   bl cube\n        ret\n";
   const CUBE = "        .global cube\ncube:   mul x0, x0, x0\n        ret\n";
@@ -409,7 +439,6 @@ describe("importing a program's files", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     pick(file(CUBE, "cube.s"), file(PROGRAM, "a6.s"));
@@ -426,7 +455,6 @@ describe("importing a program's files", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
 
     pick(file(CUBE, "cube.s"));
@@ -444,7 +472,6 @@ describe("importing a program's files", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
     fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "cube.s" } });
     fireEvent.click(screen.getByLabelText("add file"));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
@@ -469,7 +496,6 @@ describe("the error line under the run row", () => {
       <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
     );
     engage(container);
-    await fullChromeMounted();
     await act(async () => {
       ref.current!.assemble();
     });

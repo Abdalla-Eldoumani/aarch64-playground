@@ -6,7 +6,10 @@
 
 use std::collections::HashMap;
 
-use crate::decoder::{self, BrRegOp, DpOp, IndexMode, Instruction as I, LdStOffset, LdStOp, LdStPairOp, MemSize, MoveWideOp};
+use crate::decoder::{
+    self, BitfieldOp, BrRegOp, CondCmpOperand, DpOp, ExtendType, IndexMode, Instruction as I, LdStOffset, LdStOp,
+    LdStPairOp, MemSize, MulWideOp,
+};
 use crate::frontend::lexer::{lex, TokenKind};
 use crate::frontend::lint::split_functions;
 use crate::frontend::m4;
@@ -42,10 +45,10 @@ pub struct FunctionLayout {
     /// `mov x29, sp`) and changes sp and x29 nowhere else but in an
     /// `ldp x29, x30, [sp], M`: the functions the frame check reads.
     pub course_frame: bool,
-    /// The width its first use of x0 reads it at, before any other branch
-    /// or write of x0 (4 for w0, 8 for x0, a store's own width; a cbz,
-    /// cbnz, tbz or tbnz on x0 is a read): the argument the call tree
-    /// shows. 0 when no such read comes first.
+    /// The width its first use of x0 reads it at, before any branch, call,
+    /// FP work or write of x0 (4 for w0, 8 for x0, a store's own width, the
+    /// bytes an extend takes; a cbz, cbnz, tbz or tbnz on x0 is a read): the
+    /// argument the call tree shows. 0 when no such read comes first.
     pub arg_width: u8,
     /// By offset.
     pub slots: Vec<Slot>,
@@ -64,6 +67,8 @@ pub struct FunctionLayout {
 pub struct Slot {
     /// Bytes from x29.
     pub offset: i64,
+    /// 0 for a local the function only takes the address of
+    /// (`add x1, x29, n_s`), whose size the code does not say.
     pub width: u8,
     pub float: bool,
     /// The name written as the offset, or for `[x9, field]` with x9 an
@@ -78,13 +83,15 @@ pub struct Slot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NamedSlot {
     pub offset: i64,
-    /// The widest access to it.
+    /// The widest access to it, both registers of a pair.
     pub width: u8,
     pub name: u32,
-    /// The first access at that width.
+    /// The first access at that width, a single register's before a pair's.
     pub pc: u64,
     /// Some access writes it.
     pub stored: bool,
+    /// That widest access is a pair.
+    pub pair: bool,
 }
 
 /// A register set by `add xN, x29, base` and indexed by a register
@@ -211,6 +218,12 @@ pub fn line_at(lines: &[(u64, u32)], pc: u64) -> u32 {
 }
 
 impl Scan<'_> {
+    /// Whether `name`, written as an offset, can stand for `offset`: a label
+    /// written there is an address, not an offset.
+    fn is_offset_name(&self, name: &str, offset: i64) -> bool {
+        self.symbols.get(name).is_none_or(|&v| v as i64 == offset)
+    }
+
     fn text(&self, pc: u64) -> &str {
         let line = line_at(self.lines, pc) as usize;
         line.checked_sub(1).and_then(|l| self.source.get(l)).copied().unwrap_or("")
@@ -224,6 +237,8 @@ impl Scan<'_> {
         let mut bases: [Option<(i64, Option<u32>)>; 31] = [None; 31];
         let (mut opens, mut sets_fp, mut strays) = (false, false, false);
         let mut arg = None;
+        // Offsets an add from x29 wrote as a name, with that name.
+        let mut addressed = Vec::new();
         let mut pc = entry;
         while pc < end {
             let at = pc;
@@ -252,8 +267,7 @@ impl Scan<'_> {
                 if let Some((rn, off, size, float, pair)) = fixed_access(&instr) {
                     let width = size.bytes() as u8;
                     let written_name = offset_name(text);
-                    // A label written there is an address, not an offset.
-                    if let Some(name) = written_name.as_deref().filter(|n| rn == 29 && self.symbols.get(*n).is_none_or(|&v| v as i64 == off)) {
+                    if let Some(name) = written_name.as_deref().filter(|n| rn == 29 && self.is_offset_name(n, off)) {
                         let stored = matches!(
                             instr,
                             I::LdSt { op: LdStOp::Str, .. }
@@ -261,7 +275,8 @@ impl Scan<'_> {
                                 | I::LdStPair { op: LdStPairOp::Stp, .. }
                                 | I::FpLdStPair { op: LdStPairOp::Stp, .. }
                         );
-                        add_named(&mut f.named, names, NamedSlot { offset: off, width, name: 0, pc: at, stored }, name);
+                        let width = width << u8::from(pair);
+                        add_named(&mut f.named, names, NamedSlot { offset: off, width, name: 0, pc: at, stored, pair }, name);
                     }
                     // Through x29 the written offset names the slot; through
                     // an array base it names a field of the array's.
@@ -307,8 +322,27 @@ impl Scan<'_> {
             }
             if let I::DpImm { op: DpOp::Add, sf: true, rd, rn: 29, imm, shift } = instr {
                 if let Some(slot) = bases.get_mut(usize::from(rd)) {
-                    *slot = Some((i64::from(imm) << shift, last_operand_name(text).map(|n| add_name(names, n))));
+                    let offset = i64::from(imm) << shift;
+                    let written = last_operand_name(text);
+                    let names_offset = written.as_deref().is_some_and(|n| self.is_offset_name(n, offset));
+                    let name = written.map(|n| add_name(names, n));
+                    *slot = Some((offset, name));
+                    if let Some(name) = name.filter(|_| names_offset) {
+                        addressed.push((offset, name));
+                    }
                 }
+            }
+        }
+        // A local only ever reached through its address (`add x1, x29, n_s`
+        // handed to scanf) keeps the name its add wrote, where no load or
+        // store placed a slot over it and it lies in this frame above the
+        // frame record.
+        for (offset, name) in addressed {
+            let inside = u64::try_from(offset).is_ok_and(|at| (16..f.frame_bytes).contains(&at));
+            let covered = f.slots.iter().any(|s| s.offset <= offset && offset < s.offset + i64::from(s.width.max(1)))
+                || f.arrays.iter().any(|a| a.offset == offset);
+            if inside && !covered && f.slots.len() + f.arrays.len() + f.elements.len() < MAX_SLOTS {
+                insert_slot(&mut f.slots, Slot { offset, width: 0, float: false, name: Some(name), field: None });
             }
         }
         f.course_frame = opens && sets_fp && !strays;
@@ -322,8 +356,10 @@ impl Scan<'_> {
 /// here).
 fn add_named(named: &mut Vec<NamedSlot>, names: &mut Vec<String>, access: NamedSlot, name: &str) {
     if let Some(s) = named.iter_mut().find(|s| s.offset == access.offset && names[s.name as usize] == name) {
-        if s.width < access.width {
-            (s.width, s.pc) = (access.width, access.pc);
+        // A wider access wins, and at one width so does a single register
+        // over a pair: two ints also used as one long are checked as the long.
+        if (s.width, !s.pair) < (access.width, !access.pair) {
+            (s.width, s.pc, s.pair) = (access.width, access.pc, access.pair);
         }
         s.stored |= access.stored;
     } else if named.len() < MAX_SLOTS {
@@ -416,10 +452,9 @@ fn written(instr: &I) -> u32 {
 }
 
 /// What an instruction does with x0, for the argument scan: the width it
-/// reads x0 at, None when it leaves x0 alone, and 0 when it writes x0
-/// first or is one the scan does not follow (a branch other than a cbz,
-/// cbnz, tbz or tbnz on x0, a call, an index register), which ends the
-/// scan.
+/// reads x0 at, None when it leaves x0 alone, and 0 when it writes x0 first
+/// or is one the scan does not follow (a branch other than a cbz, cbnz, tbz
+/// or tbnz on x0, a call, an svc, FP or SIMD work), which ends the scan.
 fn x0_use(instr: &I) -> Option<u8> {
     let width = |sf: bool| if sf { 8 } else { 4 };
     // An instruction reads its sources before it writes its result.
@@ -432,16 +467,51 @@ fn x0_use(instr: &I) -> Option<u8> {
     };
     let base = |rn: u8| (rn == 0).then_some(8);
     match *instr {
-        I::LdSt { offset: LdStOffset::Register { rm: 0, .. }, .. }
-        | I::LdrSignExtended { offset: LdStOffset::Register { rm: 0, .. }, .. }
-        | I::FpLdSt { offset: LdStOffset::Register { rm: 0, .. }, .. } => Some(0),
-        I::DpImm { sf, rd, rn, .. } | I::LogImm { sf, rd, rn, .. } => reg(&[rn], rd, sf),
+        // An index register: w0 under uxtw or sxtw, else x0.
+        I::LdSt { offset: LdStOffset::Register { rm: 0, extend, .. }, .. }
+        | I::LdrSignExtended { offset: LdStOffset::Register { rm: 0, extend, .. }, .. }
+        | I::FpLdSt { offset: LdStOffset::Register { rm: 0, extend, .. }, .. } => {
+            Some(width(!matches!(extend, ExtendType::Uxtw | ExtendType::Sxtw)))
+        }
+        // sxtb, sxth, sxtw, uxtb and uxth read the low 1, 2 or 4 bytes of w0.
+        I::Bitfield { op: BitfieldOp::Sbfm | BitfieldOp::Ubfm, rn: 0, immr: 0, imms: imms @ (7 | 15 | 31), .. } => {
+            Some(imms / 8 + 1)
+        }
+        // An extended operand reads as much of w0 or x0 as its extend takes;
+        // RegExtend is in the encoding's option order, whose low two bits
+        // are the size (b, h, w, x).
+        I::DpRegExt { rn, rm: 0, extend, .. } if rn != 0 => Some(1 << (extend as u8 & 3)),
+        // bfi and bfxil into x0 keep bits the caller left: as a write, they
+        // claim nothing.
+        I::DpImm { sf, rd, rn, .. }
+        | I::LogImm { sf, rd, rn, .. }
+        | I::Bitfield { sf, rd, rn, .. }
+        | I::DataProc1 { sf, rd, rn, .. }
+        | I::DpRegExt { sf, rd, rn, .. } => reg(&[rn], rd, sf),
         I::DpReg { sf, rd, rn, rm, .. }
         | I::LogReg { sf, rd, rn, rm, .. }
         | I::MulDiv { sf, rd, rn, rm, .. }
-        | I::CondSel { sf, rd, rn, rm, .. } => reg(&[rn, rm], rd, sf),
+        | I::CondSel { sf, rd, rn, rm, .. }
+        | I::VarShift { sf, rd, rn, rm, .. }
+        | I::Extr { sf, rd, rn, rm, .. }
+        | I::DpCarry { sf, rd, rn, rm, .. } => reg(&[rn, rm], rd, sf),
+        // ccmp and ccmn write only the flags.
+        I::CondCompare { sf, rn, operand, .. } => {
+            reg(&[rn, if let CondCmpOperand::Reg(r) = operand { r } else { 31 }], 31, sf)
+        }
         I::MulAccumulate { sf, rd, rn, rm, ra, .. } => reg(&[rn, rm, ra], rd, sf),
-        I::MoveWide { op, rd, .. } if op != MoveWideOp::Movk => reg(&[], rd, true),
+        // smull and its kin multiply w registers into an x accumulator;
+        // smulh and umulh multiply x registers.
+        I::MulWide { ra: 0, rn, rm, .. } if rn != 0 && rm != 0 => Some(8),
+        I::MulWide { op, rd, rn, rm, .. } => reg(&[rn, rm], rd, matches!(op, MulWideOp::Smulh | MulWideOp::Umulh)),
+        // These write one register; a movk keeps the rest of it, so into x0
+        // it claims nothing either way.
+        I::MoveWide { rd, .. } | I::Adr { rd, .. } | I::LdrLiteral { rt: rd, .. } => reg(&[], rd, true),
+        // From a general register into FP: a read of x0, or else FP work,
+        // which ends the scan (the first argument may be a double in d0).
+        I::FpFromInt { rn, sf, .. } | I::FpMoveGeneral { to_fp: true, rn, sf, .. } => {
+            Some(if rn == 0 { width(sf) } else { 0 })
+        }
         I::LdSt { op: LdStOp::Str, rt, rn, size, .. } => base(rn).or((rt == 0).then(|| size.bytes() as u8)),
         I::LdStPair { op: LdStPairOp::Stp, sf, rt, rt2, rn, .. } => {
             base(rn).or((rt == 0 || rt2 == 0).then(|| width(sf)))

@@ -183,13 +183,51 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
 
   if (detail.includes("unsupported m4 construct")) {
     return {
-      what: "m4 saw a construct outside the playground's narrow subset (define + name=expr only).",
-      why: "Course-shipped m4 files sometimes include ifdef/ifelse/forloop. Those expand at the macro level; the playground refuses them so error messages stay aligned with the original lines.",
-      fix: "Manually expand the ifdef/ifelse/forloop into plain code, or move the conditional into the m4 source you control. A backtick is the one to take seriously: GNU m4 on the course servers reads a backtick ANYWHERE in the file, inside a `//` comment included, as an opening quote and then swallows the rest of the source (`ERROR: end of file in string`). Use plain quotes in comments.",
+      what: "m4 reached a construct the playground's m4 does not run; the message names it.",
+      why: "The playground's m4 runs define, undefine and macros with arguments line by line, and refuses ifdef, ifelse and forloop there. A program that uses dnl, divert, undivert, divnum, changecom or a backtick, and that the line-by-line pass refuses or leaves with divert, undivert, divnum, changecom or changequote where an instruction goes, runs in GNU m4's order, which runs dnl, divert (to 0 or a negative number), divnum, changecom and quotes, and refuses the other GNU m4 builtins (ifdef, ifelse, include, changequote, eval, undivert and the rest) and numbered diversions such as divert(1), rather than give a program a meaning the course servers would not.",
+      fix: "Expand an ifdef, ifelse or forloop into plain code. include is not supported: copy the included file's lines into this file where the include was. Write quotes as `text' instead of calling changequote, and put a numbered diversion's text where it should appear.",
       styleSection: "m4 preprocessing",
     };
   }
-  if (detail.includes("m4 recursion exceeded")) {
+  if (detail.includes("opens an m4 quote that no")) {
+    return {
+      what: "m4 read a backtick as the start of a quote, and no closing quote (') follows it before the end of the file.",
+      why: "GNU m4 on the course servers reads a backtick anywhere in the file, in a // comment or a string too, as an opening quote and takes everything after it as quoted text up to its closing '. With none, it stops with `end of file in string`.",
+      fix: "Close the quote with ', or write a plain quote in comments and strings instead of a backtick.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("m4 comment runs to the end of the file")) {
+    return {
+      what: "An m4 comment runs to the end of the file without closing.",
+      why: "To GNU m4 a # starts a comment that ends at the next newline, or at the end string changecom set. A file whose last line is a # comment with no newline after it, or a changecom comment left open, makes it stop with `end of file in comment`.",
+      fix: "End the file with a newline, or close the comment with the string changecom was given.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("arguments run to the end of the file")) {
+    return {
+      what: "A macro call's ( has no ) before the end of the file.",
+      why: "GNU m4 collects a macro's arguments, across lines, up to the ) that closes its (. With none, it reads to the end of the file and stops with `end of file in argument list`.",
+      fix: "Close the call with `)`. Quote a ( that follows a macro's name and is meant as text: `('.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  if (detail.includes("m4 macro calls nest more than")) {
+    return {
+      what: "m4 calls were nested more than 32 deep inside one another's arguments.",
+      why: "m4 runs a call written inside another call's arguments first, so each outer call stays open until the calls inside it finish. Written by hand, as in f(f(f(1))), each level is one more open call; a macro whose body calls itself inside its own arguments adds one more each time it runs, and GNU m4 never finishes it. The playground's m4 keeps at most 32 open.",
+      fix: "Call the macros one after another, with each result in its own register or line, instead of inside one another's arguments. A macro that calls itself inside its arguments needs a body that does not name it.",
+      styleSection: "m4 preprocessing",
+    };
+  }
+  // The line pass stops a cycle after 32 rounds; GNU m4's order stops it at
+  // its work budget or once expansions pile up.
+  if (
+    detail.includes("m4 recursion exceeded") ||
+    detail.includes("for each macro call") ||
+    detail.includes("m4 expansions nest more than")
+  ) {
     return {
       what: "m4 kept rewriting the same text round after round, so a macro expands into something that expands back into it.",
       why: "Two defines that name each other (`define(a_r, b_r)` with `define(b_r, a_r)`) never stop expanding. The same shape appears by accident when one file is pasted after another and repeats a define: GNU m4 expands a define's FIRST argument too, so a second `define(fp, x29)` becomes `define(x29, x29)` and m4 on the course servers never terminates at all.",
@@ -255,8 +293,8 @@ export function explainError(located: string, card?: ReturnCard | null): ErrorEx
   if (detail.includes("unsupported section")) {
     return {
       what: "A .section directive names a section the playground does not lay out (only .text/.data/.rodata/.bss have addresses here).",
-      why: "gcc -S output carries linker-metadata sections like `.note.GNU-stack` or `.init_array` that only matter to a real ELF linker; the dot-separated name means the message may show just the first word of it.",
-      fix: "If the line is compiler metadata (`.note.GNU-stack`, `.init_array`, `.comment`), delete it: nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
+      why: "gcc -S output carries linker-metadata sections like `.comment` or `.init_array` that only matter to a real ELF linker; the dot-separated name means the message may show just the first word of it.",
+      fix: "If the line is compiler metadata (`.comment`, `.init_array`), delete it: nothing references it. If you meant program data, use the plain `.data` or `.rodata` directive.",
       styleSection: "section directives",
     };
   }

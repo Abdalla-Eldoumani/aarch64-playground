@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -661,13 +662,13 @@ main:
 	ret
 	.data
 	.align	2
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 seed:
 	.word	-1831433054
 	.bss
 	.align	4
-	.LANCHOR1:
-	.LANCHOR2 = . + 4352
+	.set	.LANCHOR1,. + 0
+	.set	.LANCHOR2,. + 4352
 a32:
 	.zero	1024
 b32:
@@ -688,4 +689,5 @@ s8a:
 	.zero	256
 a64:
 	.zero	2048
+	.section	.note.GNU-stack,"",@progbits
 

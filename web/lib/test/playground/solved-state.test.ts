@@ -74,6 +74,18 @@ describe("solved-state", () => {
     expect(calls).toBe(1);
   });
 
+  it("subscribeSolved fires when another tab changes the solved set, and only then", () => {
+    let calls = 0;
+    const unsubscribe = subscribeSolved(() => {
+      calls += 1;
+    });
+    window.dispatchEvent(new StorageEvent("storage", { key: SOLVED_KEY, newValue: '["x"]' }));
+    expect(calls).toBe(1);
+    window.dispatchEvent(new StorageEvent("storage", { key: "aarch64-playground:theme", newValue: "light" }));
+    expect(calls).toBe(1);
+    unsubscribe();
+  });
+
   it("does not throw when localStorage.setItem throws", () => {
     const spy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new Error("quota exceeded");
@@ -264,6 +276,36 @@ describe("progress bundle answers", () => {
     expect(result).toMatchObject({ ok: true, answersAdded: 1 });
     expect(readAnswer("newer-here")).toMatchObject({ source: "mine" });
     expect(readAnswer("older-here")).toMatchObject({ source: "theirs" });
+  });
+
+  it("lets a record saved after the import win over a file dated in the future", () => {
+    const now = vi.spyOn(Date, "now");
+    try {
+      putAnswer("demo", { version: 1, kind: "write", source: "MY WORK", updatedAt: 1_700_000_000_000 });
+
+      now.mockReturnValue(1_700_000_001_000);
+      const future = importProgressBundle({
+        version: 1,
+        solved: [],
+        answers: { demo: { version: 1, kind: "write", source: "REPLACED", updatedAt: 8.64e15 } },
+      });
+      expect(future).toMatchObject({ ok: true, answersAdded: 1 });
+      expect(readAnswer("demo")).toMatchObject({ source: "REPLACED" });
+
+      // The student's own record, saved a second after that import.
+      now.mockReturnValue(1_700_000_002_000);
+      const own = importProgressBundle({
+        version: 1,
+        solved: [],
+        answers: {
+          demo: { version: 1, kind: "write", source: "MY WORK", updatedAt: 1_700_000_002_000 },
+        },
+      });
+      expect(own).toMatchObject({ ok: true, answersAdded: 1 });
+      expect(readAnswer("demo")).toMatchObject({ source: "MY WORK" });
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it("skips a malformed answer and lands the rest of the file", () => {

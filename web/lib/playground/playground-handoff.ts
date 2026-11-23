@@ -1,10 +1,7 @@
 "use client";
 
-import {
-  parseDeepLink,
-  resolveExampleStem,
-  type BundleDecoder,
-} from "@/lib/hooks/use-deep-link";
+import { bundleValue, parseDeepLink, type BundleDecoder } from "@/lib/hooks/use-deep-link";
+import { EXAMPLES, type Example } from "@/lib/playground/example-catalog";
 import { validateFileName, type SourceFile } from "@/lib/playground/file-map";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
 import { readShareHash } from "@/lib/playground/share";
@@ -84,26 +81,26 @@ export interface PlaygroundBoot {
    *  boot fell back to autosave or the default, and the page must say so,
    *  since nobody notices a missing "loaded from a share link" banner. */
   shareError?: "corrupt" | "too-large";
-  /** Same idea for a `?bundle=` deep-link that failed to decode. */
+  /** Same idea for a diagnostic link that failed to decode. */
   bundleError?: "corrupt" | "too-large";
 }
 
 /**
- * The bundle decoder, loaded only for a URL that has `?bundle=`. A static
- * import would put lz-string on every page that reaches this module, the
- * landing hero included.
+ * The bundle decoder, loaded only for a URL that carries a diagnostic link
+ * (`#bundle=`, or `?bundle=` from older links). A static import would put
+ * lz-string on every page that reaches this module, the landing hero included.
  */
 export async function loadBundleDecoder(
   search: string,
+  hash = "",
 ): Promise<BundleDecoder | undefined> {
-  const trimmed = search.startsWith("?") ? search.slice(1) : search;
-  if (!new URLSearchParams(trimmed).has("bundle")) return undefined;
+  if (bundleValue(search, hash) === null) return undefined;
   const { decodeBundle } = await import("@/lib/playground/diagnostic-bundle");
   return decodeBundle;
 }
 
 /**
- * The starting program at render time: a `?bundle=` link, then a share link,
+ * The starting program at render time: a diagnostic link, then a share link,
  * then the autosave, then the default. Render cannot await loadBundleDecoder,
  * so the playground route boots without it and the pass after mount delivers
  * the bundle.
@@ -115,7 +112,7 @@ export function resolveBoot(
   fallback: string,
   decode?: BundleDecoder,
 ): PlaygroundBoot {
-  const dl = parseDeepLink(search, decode);
+  const dl = parseDeepLink(search, decode, hash);
   if (dl.bundle) {
     return {
       source: dl.bundle.source,
@@ -160,7 +157,7 @@ export type HandoffDecision =
 /**
  * What the pass after mount must still deliver: a bundle or share the boot
  * missed, or an example (only this pass fetches, and a bundle or share in the
- * same URL wins). It can await the decoder, so a `?bundle=` link lands here.
+ * same URL wins). It can await the decoder, so a diagnostic link lands here.
  */
 export function resolveHandoff(
   boot: Pick<PlaygroundBoot, "fromShare" | "fromBundle" | "shareError" | "bundleError">,
@@ -168,7 +165,7 @@ export function resolveHandoff(
   hash: string,
   decode?: BundleDecoder,
 ): HandoffDecision {
-  const dl = parseDeepLink(search, decode);
+  const dl = parseDeepLink(search, decode, hash);
   if (dl.bundle) {
     if (boot.fromBundle) return null;
     return {
@@ -226,38 +223,13 @@ export const MAX_VFS_FIXTURE_FILES = 16;
 /** Longest VFS file name an example fixture may declare. */
 const MAX_VFS_FIXTURE_NAME_CHARS = 128;
 
-/** Examples whose DEFAULT owner at run press is the terminal pane: run
- *  takes it over (clear, focus, live keys) instead of routing scanf to
- *  the console. Both entries draw a full-screen ANSI frame, which the
- *  console's plain-text scrollback renders as escape-sequence garbage. */
-export const EXAMPLE_TERMINAL: Record<string, true> = {
-  dsav: true,
-  "two-sum": true,
-};
-
-/** Examples the run-mode control is offered for: the ones where both surfaces
- *  are a real answer. It gates a SURFACE, never behavior: a program outside it
- *  runs unchanged, and a stem listed here before its source lands simply never
- *  reaches the loader. */
-export const EXAMPLE_INTERACTIVE: Record<string, true> = {
-  snake: true,
-  dsav: true,
-  calc: true,
-  "temp-convert": true,
-  "two-sum": true,
-  deadzone: true,
-};
-
-/** Examples with two faces: in the console they take the argument `console`
- *  and print plain lines; in the terminal they take none and draw a full
- *  screen. The mode sets their args box on load and on each mode change,
- *  over EXAMPLE_INPUTS (temp-convert is in both), unless the student typed
- *  something of their own there. */
-export const EXAMPLE_MODE_ARGS: Record<string, true> = {
-  calc: true,
-  "temp-convert": true,
-  "two-sum": true,
-};
+/**
+ * The catalog's record for `stem`. It matches by value, so a built-in object
+ * key such as `constructor` finds nothing.
+ */
+export function exampleFor(stem: string): Example | undefined {
+  return EXAMPLES.find((example) => example.stem === stem);
+}
 
 /**
  * The args box for `stem` under `mode`, or null when the mode does not set
@@ -267,7 +239,7 @@ export function modeArgsFor(
   stem: string | null | undefined,
   mode: LaunchMode,
 ): string | null {
-  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  if (!stem || !exampleFor(stem)?.modeArgs) return null;
   return mode === "console" ? "console" : "";
 }
 
@@ -277,76 +249,19 @@ export function modeArgsFor(
  * migrates that exact string to the current seed and touches nothing else.
  */
 export function legacyModeArgsFor(stem: string | null | undefined): string | null {
-  if (!stem || EXAMPLE_MODE_ARGS[stem] !== true) return null;
+  if (!stem || !exampleFor(stem)?.modeArgs) return null;
   return `./${stem} console`;
 }
 
 /**
- * Extra source files a multi-file example loads into the files strip,
- * served from `<stem>/<name>` beside the main `<stem>.s`. Order is the
- * tab order.
+ * Resolve a `?example=` stem to the file actually on disk, translating a stem
+ * an example was renamed from to its current one. An unknown stem is returned
+ * unchanged. Path safety stays with the `/^[\w.-]+$/` check in
+ * `parseDeepLink`; this only remaps the catalog's old names.
  */
-export const EXAMPLE_FILES: Record<string, string[]> = {
-  dsav: [
-    "theme.s",
-    "ui.s",
-    "ansi.s",
-    "display.s",
-    "utils.s",
-    "array.s",
-    "stack.s",
-    "queue.s",
-    "list.s",
-    "bst.s",
-    "rbt.s",
-    "heap.s",
-    "hash.s",
-    "graph.s",
-    "sort.s",
-    "search.s",
-    "recursion.s",
-  ],
-  // The repo builds this one with m4 include(), and the paste order is
-  // load-bearing: an equate only resolves for the modules below it, so
-  // constants comes first and the rest follow the includes. main's own
-  // uses reach back through the assembler's positional first-definition
-  // fallback, but a helper's do not.
-  deadzone: [
-    "constants.s",
-    "terminal.s",
-    "input.s",
-    "player.s",
-    "enemies.s",
-    "projectiles.s",
-    "upgrades.s",
-    "file-io.s",
-    "effects.s",
-    "boss.s",
-    "abilities.s",
-  ],
-};
-
-/**
- * Examples with input files (`<stem>.args`, `.stdin`, `.vfs.json` in the
- * fixtures directory). A test keeps this in sync with that directory.
- */
-export const EXAMPLE_INPUTS: Record<
-  string,
-  { args?: true; stdin?: true; vfs?: true }
-> = {
-  "array-scores": { stdin: true },
-  "circle-area": { stdin: true },
-  "command-line-args": { args: true },
-  "copy-file": { vfs: true },
-  echo: { stdin: true },
-  locals: { stdin: true },
-  "read-file": { vfs: true },
-  "student-record": { stdin: true },
-  "temp-convert": { args: true },
-  "triangle-area": { stdin: true },
-  "vector-strlen": { stdin: true },
-  "vector-upper": { stdin: true },
-};
+export function resolveExampleStem(stem: string): string {
+  return EXAMPLES.find((example) => example.aliases?.includes(stem))?.stem ?? stem;
+}
 
 /**
  * Parse a `<stem>.vfs.json` fixture: a flat object of file name to text. Any
@@ -397,7 +312,9 @@ async function fetchFixture(stem: string, ext: string): Promise<string> {
  * the current program.
  */
 export async function fetchExample(stem: string): Promise<HandoffPayload> {
-  if (!STEM_PATTERN.test(stem)) {
+  // A built-in object key (constructor, __proto__) names no example, and a
+  // link carrying one has always been answered as an invalid name.
+  if (!STEM_PATTERN.test(stem) || stem in Object.prototype) {
     throw new Error("invalid example name");
   }
   const res = await fetch(`${EXAMPLES_PREFIX}${stem}.s`);
@@ -409,9 +326,10 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
   if (sourceError) throw new Error(sourceError);
 
   const payload: HandoffPayload = { source, label: stem, stem };
-  if (EXAMPLE_TERMINAL[stem]) payload.launch = "terminal";
+  const example = exampleFor(stem);
+  if (example?.terminal) payload.launch = "terminal";
 
-  const extraNames = EXAMPLE_FILES[stem];
+  const extraNames = example?.files;
   if (extraNames) {
     // Names checked before a single fetch goes out: each one is pasted into
     // a URL path and then into combineSources' `// ---- name ----` marker,
@@ -438,7 +356,7 @@ export async function fetchExample(stem: string): Promise<HandoffPayload> {
     );
   }
 
-  const inputs = EXAMPLE_INPUTS[stem];
+  const inputs = example?.inputs;
   if (!inputs) return payload;
 
   if (inputs.args) {

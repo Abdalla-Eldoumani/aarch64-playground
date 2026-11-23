@@ -166,13 +166,7 @@ pub(super) fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result
                 // (struct fields at odd offsets, negative frame slots).
                 // Same conversion here, same [-256, 255] reach.
                 if (-256..=255).contains(&offset_val) {
-                    let imm9 = (offset_val as u32) & 0x1FF;
-                    return Ok(((size as u32) << 30)
-                        | (0b111000 << 24)
-                        | ((load as u32) << 22)
-                        | (imm9 << 12)
-                        | ((rn as u32) << 5)
-                        | (rt as u32));
+                    return Ok(unscaled_word(size, load, offset_val, rn, rt));
                 }
                 return asm_err(
                     ln,
@@ -250,18 +244,9 @@ pub(super) fn encode_ldst(ops: &[&str], load: u8, size: u8, ln: usize) -> Result
 /// outright and take no other addressing mode.
 fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u32, EmuError> {
     let FpReg { idx: rt, width } = parse_fp_register(ops[0], ln)?;
-    let addr_str: String = ops[1..].join(",");
-    let am = parse_addressing_mode(addr_str.trim(), ln)?;
     let size = width.size_field();
     let scale = width.bytes();
     let opc: u32 = (width.opc_high() << 1) | u32::from(load);
-    let mnemonic = if unscaled {
-        if load == 1 { "LDUR" } else { "STUR" }
-    } else if load == 1 {
-        "LDR"
-    } else {
-        "STR"
-    };
     // The imm9 family shared by the unscaled-offset and writeback forms.
     let imm9_form = |offset_val: i64, idx: u32, rn: u8| -> Result<u32, EmuError> {
         if !(-256..=255).contains(&offset_val) {
@@ -276,17 +261,21 @@ fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u
             | ((rn as u32) << 5)
             | (rt as u32))
     };
-    match am {
+    if unscaled {
+        let (rn, offset_val) = unscaled_address(ops, load, ln)?;
+        return imm9_form(offset_val, 0b00, rn);
+    }
+    let addr_str: String = ops[1..].join(",");
+    match parse_addressing_mode(addr_str.trim(), ln)? {
         AddressingMode::Immediate {
             rn,
             offset,
             mode: IndexMode::Unsigned,
         } => {
             let offset_val = offset.unwrap_or(0);
-            if unscaled || offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
+            if offset_val < 0 || !(offset_val as u64).is_multiple_of(scale) {
                 // Same GAS conversion as the integer path: negative or
-                // unaligned offsets ride the unscaled encoding, and
-                // LDUR/STUR ask for it by name.
+                // unaligned offsets ride the unscaled encoding.
                 return imm9_form(offset_val, 0b00, rn);
             }
             let imm12 = (offset_val as u64 / scale) as u32;
@@ -302,12 +291,6 @@ fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u
                 | (rt as u32))
         }
         AddressingMode::Immediate { rn, offset, mode } => {
-            if unscaled {
-                return asm_err(
-                    ln,
-                    &format!("{mnemonic} takes a plain [Xn, #imm] address, with no writeback"),
-                );
-            }
             let offset_val = offset.unwrap_or(0);
             let idx = if matches!(mode, IndexMode::PreIndex) { 0b11 } else { 0b01 };
             imm9_form(offset_val, idx, rn)
@@ -318,12 +301,6 @@ fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u
             option,
             shift_amount,
         } => {
-            if unscaled {
-                return asm_err(
-                    ln,
-                    &format!("{mnemonic} takes a plain [Xn, #imm] address, not a register offset"),
-                );
-            }
             // S means "scale the index by the access size". The only
             // amount that may be written is log2 of the access width, and
             // a written #0 sets S for a byte access, where the two spell
@@ -357,14 +334,52 @@ fn encode_ldst_fp(ops: &[&str], load: u8, unscaled: bool, ln: usize) -> Result<u
     }
 }
 
-/// LDUR/STUR of a SIMD&FP register: the unscaled signed-offset form
-/// spelled out. The integer LDUR/STUR are not in `SUPPORTED_MNEMONICS`,
-/// so a general-register operand is turned away by `parse_fp_register`.
+/// LDUR/STUR: the unscaled signed-offset form spelled out, for a general or
+/// a SIMD&FP register. Unlike LDR/STR they keep that form for an offset the
+/// scaled form could take (`stur x30, [sp, 8]`).
 pub(super) fn encode_ldur_stur(ops: &[&str], load: u8, ln: usize) -> Result<u32, EmuError> {
     if ops.len() < 2 {
         return asm_err(ln, "LDUR/STUR requires at least 2 operands");
     }
-    encode_ldst_fp(ops, load, true, ln)
+    // The split LDR/STR makes: a b/h/s/d/q target goes to the SIMD&FP
+    // encoder, and so does sp, which neither register file takes here.
+    if ops[0].trim().chars().next().is_some_and(|c| FpWidth::from_prefix(c).is_some()) {
+        return encode_ldst_fp(ops, load, true, ln);
+    }
+    let (rt, is_x) = parse_register(ops[0], ln)?;
+    let (rn, offset) = unscaled_address(ops, load, ln)?;
+    if !(-256..=255).contains(&offset) {
+        return asm_err(ln, "LDUR/STUR offset must be in [-256, 255]");
+    }
+    Ok(unscaled_word(if is_x { 0b11 } else { 0b10 }, load, offset, rn, rt))
+}
+
+/// The one address LDUR/STUR take, `[Xn, #imm]`: GNU as refuses writeback
+/// and an index register.
+fn unscaled_address(ops: &[&str], load: u8, ln: usize) -> Result<(u8, i64), EmuError> {
+    let mnemonic = if load == 1 { "LDUR" } else { "STUR" };
+    match parse_addressing_mode(ops[1..].join(",").trim(), ln)? {
+        AddressingMode::Immediate { rn, offset, mode: IndexMode::Unsigned } => Ok((rn, offset.unwrap_or(0))),
+        AddressingMode::Immediate { .. } => asm_err(
+            ln,
+            &format!("{mnemonic} takes a plain [Xn, #imm] address, with no writeback"),
+        ),
+        AddressingMode::RegOffset { .. } => asm_err(
+            ln,
+            &format!("{mnemonic} takes a plain [Xn, #imm] address, not a register offset"),
+        ),
+    }
+}
+
+/// The integer unscaled-offset word: the 9-bit offset counts bytes and is
+/// never scaled.
+fn unscaled_word(size: u8, load: u8, offset: i64, rn: u8, rt: u8) -> u32 {
+    ((size as u32) << 30)
+        | (0b111000 << 24)
+        | ((load as u32) << 22)
+        | (((offset as u32) & 0x1FF) << 12)
+        | ((rn as u32) << 5)
+        | (rt as u32)
 }
 
 #[allow(clippy::identity_op)] // zero fields kept to document the full encoding layout

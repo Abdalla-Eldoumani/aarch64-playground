@@ -1,9 +1,12 @@
 import { at } from "@/lib/emulator/clobber-note";
 import type { StepTarget } from "@/lib/emulator/emulator-state";
 import { cardContext, returnCard, sayCard, type ProgramLines, type ReturnCard } from "@/lib/emulator/frame-cards";
-import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
+import { callDepth, type FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import { formatSteps } from "@/lib/emulator/format-steps";
 import type { RunResultPayload, StateSnapshot } from "@/lib/worker/protocol";
+
+// Each goal as its pause names it: the control, or the gdb command.
+const GOALS = { over: "step over", out: "step out", next: "gdb n", step: "gdb s" } as const;
 
 /** Why a goal run stopped; `problem` goes in the error line, as a bug in the
  *  program or a long run's pause does, and a bad return brings its `card`
@@ -15,12 +18,12 @@ export interface StopWords {
 }
 
 /**
- * Why a step over, step out or run to cursor stopped, in the words the
- * controls and the terminal show. The hub imports this on the first such
+ * Why a step over, step out, run to cursor, gdb n or gdb s stopped, in the
+ * words the controls and the terminal show. The hub imports this on the first such
  * stop, so a page that never steps over never loads it. Null when there is
  * nothing to add: the error line already says why, or a step over moved one
- * instruction. A ret that went to no caller is said with the frames view's
- * own card (frame-cards.ts).
+ * instruction. A return that went to no caller or past its own caller is
+ * said with the frames view's own card (frame-cards.ts).
  */
 export function stopReason(
   target: StepTarget,
@@ -53,7 +56,7 @@ export function stopReason(
   }
   if (result.hit_breakpoint) return said(`stopped at the breakpoint on ${here}`);
   if (result.step_limit_reached) {
-    const goal = typeof target === "number" ? "run to cursor" : target === "over" ? "step over" : "step out";
+    const goal = typeof target === "number" ? "run to cursor" : GOALS[target];
     return said(
       `paused after ${formatSteps(result.steps_executed)}, before the ${goal} finished. ${goal} again to go on, ` +
         "or check for a loop whose exit condition never becomes true",
@@ -62,5 +65,11 @@ export function stopReason(
   }
   if (!result.reached) return said(`paused at ${here}`);
   if (target === "out") return said(`returned to ${name} at ${here}`);
+  // gdb's n and s say where every stop is, gdb's own stop at main's return
+  // included; a step over that moved one instruction says nothing.
+  if (target === "next" || target === "step") {
+    const returned = snap.frames && callDepth(snap.frames) === 0;
+    return said(returned ? "main has returned; the next n or s ends the program" : `reached ${here}`);
+  }
   return result.steps_executed > 1 ? said(`reached ${here}`) : null;
 }

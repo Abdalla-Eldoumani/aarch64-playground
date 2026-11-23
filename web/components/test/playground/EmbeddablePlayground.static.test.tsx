@@ -57,7 +57,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     const { container } = render(
       <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
     );
-    expect(useEmulatorMock).not.toHaveBeenCalled();
+    expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
     expect(container.textContent).toContain("mov");
     expect(container.textContent).toContain("ret");
     expect(screen.queryByTestId("editor")).toBeNull();
@@ -73,7 +73,7 @@ describe("EmbeddablePlayground staticEditor", () => {
       expect(
         await screen.findByText("Step through the program to watch each call's frame being built.", {}, { timeout: 3000 }),
       ).toBeTruthy();
-      expect(useEmulatorMock).not.toHaveBeenCalled();
+      expect(useEmulatorMock).not.toHaveBeenCalledWith(true);
     } finally {
       window.localStorage.removeItem("aarch64-playground:embed-stack");
     }
@@ -119,8 +119,8 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(screen.queryByRole("heading", { name: "regfile", level: 2 })).toBeNull();
   });
 
-  // The press engages the frame, and the swap to the live panes takes the
-  // pressed button away before its click lands: a phone needed a second tap.
+  // The press engages the frame and its click is the run, done once the hub
+  // has loaded.
   it("runs on the press that engages the frame, once the hub loads", async () => {
     const hub = makeHub({ isLoaded: false, assemble: vi.fn(async () => true) });
     useEmulatorMock.mockReturnValue(hub);
@@ -129,6 +129,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     );
     act(() => {
       fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+      fireEvent.click(screen.getByRole("button", { name: "run" }));
     });
     expect(hub.run).not.toHaveBeenCalled();
     const loaded = { ...hub, isLoaded: true };
@@ -151,6 +152,7 @@ describe("EmbeddablePlayground staticEditor", () => {
     const { rerender } = render(frame());
     act(() => {
       fireEvent.mouseDown(screen.getByRole("button", { name: "run" }));
+      fireEvent.click(screen.getByRole("button", { name: "run" }));
     });
     const loaded = { ...hub, isLoaded: true };
     useEmulatorMock.mockReturnValue(loaded);
@@ -164,6 +166,26 @@ describe("EmbeddablePlayground staticEditor", () => {
     );
   });
 
+  // A screen reader's or voice control's press is a click with no mousedown
+  // or focus before it.
+  it("runs on a click that comes alone, once the hub loads", async () => {
+    const hub = makeHub({ isLoaded: false, assemble: vi.fn(async () => true) });
+    useEmulatorMock.mockReturnValue(hub);
+    const { rerender } = render(
+      <EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />,
+    );
+    act(() => {
+      fireEvent.click(screen.getByRole("button", { name: "run" }));
+    });
+    expect(useEmulatorMock).toHaveBeenLastCalledWith(true);
+    const loaded = { ...hub, isLoaded: true };
+    useEmulatorMock.mockReturnValue(loaded);
+    await act(async () => {
+      rerender(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
+    });
+    expect(loaded.run).toHaveBeenCalledTimes(1);
+  });
+
   it("only wakes the frame for a press that is not run, step or check", async () => {
     const hub = makeHub({ assemble: vi.fn(async () => true) });
     useEmulatorMock.mockReturnValue(hub);
@@ -175,18 +197,18 @@ describe("EmbeddablePlayground staticEditor", () => {
     expect(hub.run).not.toHaveBeenCalled();
   });
 
-  it("gives focus back to the same control after focus engages the frame", () => {
+  // The frame keeps its controls through the engage, and the focus with them.
+  it("keeps the focus on the register values when their focus engages the frame", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
     const before = screen.getByRole("group", { name: "register values" });
     act(() => before.focus());
     const after = screen.getByRole("group", { name: "register values" });
-    // The live panes replaced the pre-engage copy, so the focus had to move.
-    expect(after).not.toBe(before);
+    expect(after).toBe(before);
     expect(document.activeElement).toBe(after);
   });
 
-  it("gives focus back to a field named only by its <label>", () => {
+  it("keeps the focus in the args box when its focus engages the frame", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(
       <EmbeddablePlayground chrome="checker" startSource={SRC} startArgs="1 2" showArgs readOnly staticEditor />,
@@ -194,18 +216,18 @@ describe("EmbeddablePlayground staticEditor", () => {
     const before = screen.getByLabelText("args");
     act(() => before.focus());
     const after = screen.getByLabelText("args");
-    expect(after).not.toBe(before);
+    expect(after).toBe(before);
     expect(document.activeElement).toBe(after);
   });
 
-  it("gives focus back to a button named only by its text", () => {
+  it("keeps the focus on the view switch's console when its focus engages the frame", () => {
     useEmulatorMock.mockReturnValue(makeHub({ isLoaded: false }));
     render(<EmbeddablePlayground chrome="embed" startSource={SRC} readOnly staticEditor />);
     const tab = () => within(screen.getByRole("group", { name: "view" })).getByRole("button", { name: "console" });
     const before = tab();
     act(() => before.focus());
     const after = tab();
-    expect(after).not.toBe(before);
+    expect(after).toBe(before);
     expect(document.activeElement).toBe(after);
   });
 

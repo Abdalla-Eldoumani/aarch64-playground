@@ -148,20 +148,27 @@ function noise(rows: number): string[] {
   });
 }
 
+/** The bundle a link carries. It must sit in the fragment, which is not part
+ *  of the request for the page, and the link must have no query. */
+function fragmentValue(url: string | null): string {
+  if (url === null) throw new Error("expected a link");
+  const link = new URL(url);
+  expect(link.origin + link.pathname).toBe("https://example.com/playground");
+  expect(link.search).toBe("");
+  expect(link.hash.startsWith("#bundle=")).toBe(true);
+  return link.hash.slice("#bundle=".length);
+}
+
 describe("diagnostic bundle share url", () => {
   it("carries the whole bundle when it fits, so the link round-trips", () => {
-    const url = bundleShareUrl("https://example.com/playground", full);
-    if (url === null) throw new Error("expected a link");
-    expect(url.startsWith("https://example.com/playground?bundle=")).toBe(true);
-    expect(decodeBundle(url.slice(url.indexOf("?bundle=") + 8))).toEqual({ kind: "ok", bundle: full });
+    const value = fragmentValue(bundleShareUrl("https://example.com/playground", full));
+    expect(decodeBundle(value)).toEqual({ kind: "ok", bundle: full });
   });
 
   it("falls back to the program and its input when the machine state is past the cap", () => {
     const heavy = { ...full, stack: noise(2000) };
     expect(encodeBundle(heavy).length).toBeGreaterThan(MAX_SHARE_HASH_BYTES);
-    const url = bundleShareUrl("https://example.com/playground", heavy);
-    if (url === null) throw new Error("expected a link");
-    const value = url.slice(url.indexOf("?bundle=") + 8);
+    const value = fragmentValue(bundleShareUrl("https://example.com/playground", heavy));
     expect(value.length).toBeLessThanOrEqual(MAX_SHARE_HASH_BYTES);
     expect(decodeBundle(value)).toEqual({
       kind: "ok",

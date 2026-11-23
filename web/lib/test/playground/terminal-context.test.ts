@@ -10,6 +10,7 @@ import {
   type TerminalContextDeps,
 } from "@/lib/playground/terminal-context";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
+import { dispatchCommand } from "@/lib/terminal/dispatch";
 
 const SOURCE = "        mov x0, 1\n        ret\n";
 
@@ -309,10 +310,14 @@ describe("gdb-lite's reads", () => {
     // The machine's own read: the panels' cache answers zeros until it lands.
     hub.readMemory = vi.fn(async () => new Uint8Array([1, 2]));
     hub.resolveLabel = vi.fn(async () => 0x420000);
-    await ctx.setBreakpoint(0x400010);
-    await ctx.clearBreakpoint(0x400010);
+    // gdb b's numbers and labels stay in the terminal; the hub sets and clears addresses.
+    expect(await ctx.setBreakpoint(0x400010, "loop")).toBe(1);
+    expect(ctx.breakpoints()).toEqual([[1, "loop"]]);
+    expect(await ctx.deleteBreakpoints(1)).toBe(true);
+    expect(ctx.breakpoints()).toEqual([]);
     await ctx.reset();
     expect(hub.setBreakpointAddress).toHaveBeenCalledWith(0x400010);
+    // The instruction it was set on, not where the label reads now.
     expect(hub.clearBreakpointAddress).toHaveBeenCalledWith(0x400010);
     expect(hub.reset).toHaveBeenCalledTimes(1);
     expect(await ctx.resolveLabel("main")).toBe(0x420000);
@@ -320,6 +325,23 @@ describe("gdb-lite's reads", () => {
     expect(ctx.pcAddress()).toBe(0x400020);
     await ctx.m4Expand("define(`N', 4)");
     expect(hub.m4Expand).toHaveBeenCalledWith("define(`N', 4)");
+  });
+
+  it("drops gdb b's breakpoints on a cleared instruction and names each one an assemble could not set, once", async () => {
+    const { hub, ctx } = setup();
+    await ctx.setBreakpoint(0x400000, "quit");
+    await ctx.setBreakpoint(0x400010, "main");
+    const labels = hub.gdbLabels.current;
+    if (!labels) throw new Error("gdb b left nothing on the hub");
+    // gdb's clear: the last gutter dot on quit's instruction went.
+    labels.cleared(0x400000);
+    expect(ctx.breakpoints()).toEqual([[2, "main"]]);
+    hub.resolveLabel = vi.fn(async () => null);
+    await labels.assembled();
+    expect(ctx.unsetBreakpoints()).toEqual([[2, "main"]]);
+    expect(ctx.unsetBreakpoints()).toEqual([]);
+    labels.cleared();
+    expect(ctx.breakpoints()).toEqual([]);
   });
 });
 
@@ -372,5 +394,62 @@ describe("the context itself", () => {
     });
     machine.current = makeHub({ pc: 0x400040 });
     expect(ctx.pcAddress()).toBe(0x400040);
+  });
+});
+
+// On the course server, gdb's n and s step a source line only in a program
+// built with gcc -g; without it they run to the end of the function.
+describe("gdb-lite's -g note", () => {
+  const NOTE = [
+    "note: on the course server, n and s need a build with -g: gcc -g prog.s -o prog",
+    "note: without -g, n and s run to the end of the function",
+  ];
+
+  // The pane builds a context for every command, so the note has to outlast each one.
+  function session(hubOverrides: Partial<EmulatorState> = {}) {
+    const { hub, deps } = setup({
+      vfsFiles: ["prog.s"],
+      readVfsFile: vi.fn(async () => new TextEncoder().encode(SOURCE)),
+      ...hubOverrides,
+    });
+    const say = async (line: string) => (await dispatchCommand(line, createTerminalContext(deps))).lines;
+    return { hub, say };
+  }
+
+  it("is said once, at the first n or s after a gcc line without -g", async () => {
+    const { say } = session();
+    expect(await say("gcc prog.s -o prog")).toEqual([]);
+    expect(await say("gdb n")).toEqual(NOTE);
+    expect(await say("gdb s")).toEqual([]);
+    expect(await say("gcc prog.s -o prog")).toEqual([]);
+    expect(await say("gdb s 2")).toEqual([]);
+  });
+
+  it("is not said after a build with -g, the last build being the one that counts", async () => {
+    const { say } = session();
+    expect(await say("gcc -g prog.s -o prog")).toEqual([]);
+    expect(await say("gdb n")).toEqual([]);
+    await say("gcc prog.s -o prog");
+    await say("gcc -g prog.s -o prog");
+    expect(await say("gdb s")).toEqual([]);
+  });
+
+  it("is not said for a program from the editor, which has no build line", async () => {
+    const { hub, say } = session();
+    expect(await say("gdb n")).toEqual([]);
+    await say("gcc prog.s -o prog");
+    // The editor's assemble, which a Run makes too.
+    await hub.gdbLabels.current?.assembled();
+    expect(await say("gdb n")).toEqual([]);
+  });
+
+  it("waits for a build that worked and an n or s that runs", async () => {
+    const { hub, say } = session({ assembleForTool: failedAssemble("expected register", 1) });
+    await say("gcc prog.s -o prog");
+    expect(await say("gdb n")).toEqual([]);
+    hub.assembleForTool = vi.fn(async () => ({ success: true, error: null, errorLine: null }));
+    await say("gcc prog.s -o prog");
+    expect(await say("gdb n abc")).toEqual(["gdb: n takes a number of lines, such as n 3, not 'abc'"]);
+    expect(await say("gdb n")).toEqual(NOTE);
   });
 });

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.data
 	.align	2
@@ -1118,4 +1119,5 @@ main:
 	ldp	x27, x28, [sp, 80]
 	add	sp, sp, 592
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import {
-  EXAMPLE_INTERACTIVE,
   decodeLaunch,
+  exampleFor,
   legacyModeArgsFor,
   modeArgsFor,
   type LaunchMode,
@@ -126,7 +126,7 @@ export function useLaunchMode({ args, setArgs }: LaunchModeParams): LaunchModeCo
   return {
     mode,
     modeRef,
-    offersControl: stem !== null && EXAMPLE_INTERACTIVE[stem] === true,
+    offersControl: stem !== null && exampleFor(stem)?.interactive === true,
     changeMode,
     adoptLaunch,
     reset,

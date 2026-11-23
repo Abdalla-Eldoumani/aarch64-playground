@@ -15,10 +15,11 @@ impl Cpu {
     /// caller: a step over or out waiting for that call to return never
     /// would. A host drives it in chunks, so the goal is absolute.
     pub fn run_until(&mut self, max_steps: u32, until: Until) -> Result<RunResult, EmuError> {
-        let goal = until.depth.is_some() || until.pc.is_some();
+        let goal = until.depth.is_some() || until.pc.is_some() || until.range.is_some();
         let astray = self.frames.bad_return().step;
+        let work_start = self.mem.host_work();
         let mut steps: u32 = 0;
-        let (mut reached, mut bad_return) = (false, false);
+        let (mut reached, mut bad_return, mut worked) = (false, false, false);
 
         while steps < max_steps && !self.halted && !self.blocked {
             let pc = self.regs.read_pc();
@@ -42,12 +43,10 @@ impl Cpu {
             // Before the sleep check: a goal met by the step that slept
             // would otherwise be overshot when the runner resumes.
             if goal && !self.halted {
-                let pc = self.regs.read_pc();
+                let (from, pc) = (pc, self.regs.read_pc());
                 // A stray return that lands in the program is still the stop.
                 bad_return = self.frames.bad_return().step != astray;
-                reached = !bad_return
-                    && (until.pc == Some(pc)
-                        || until.depth.is_some_and(|d| self.frames.depth() <= d && self.in_program(pc)));
+                reached = !bad_return && (until.pc == Some(pc) || self.back_off(until, from, pc));
                 if reached || bad_return {
                     break;
                 }
@@ -60,21 +59,31 @@ impl Cpu {
             if matches!(result.outcome, StepOutcome::Sleeping(_)) {
                 break;
             }
+            // One library call can walk megabytes in a single step, so a
+            // step count alone does not bound how long this call holds the
+            // host from reading Pause and Reset.
+            worked = self.mem.host_work().saturating_sub(work_start) >= MAX_HOST_WORK_PER_RUN;
+            if worked {
+                break;
+            }
         }
 
         let pc = self.regs.read_pc();
+        // gdb's next and step stop at a breakpoint on the line they land on,
+        // which ends a count; the loop above only checks before a step.
+        let landed = reached && until.range.is_some() && self.breakpoints.contains(&pc);
         // Both backends drive a run as a series of max_steps chunks, and the
         // first-step resume exemption above would silently skip a breakpoint
         // sitting exactly on a chunk boundary. If the budget (not a halt or
         // a stall) ended this call while PC rests on a breakpoint, report the
         // hit now, before the next chunk's first step would step past it.
-        let at_cap = steps >= max_steps && !self.halted && !self.blocked && !reached && !bad_return;
+        let at_cap = (steps >= max_steps || worked) && !self.halted && !self.blocked && !reached && !bad_return;
         Ok(RunResult {
             pc,
             halted: self.halted,
             steps_executed: steps,
-            hit_breakpoint: at_cap && self.breakpoints.contains(&pc),
-            reached,
+            hit_breakpoint: landed || (at_cap && self.breakpoints.contains(&pc)),
+            reached: reached && !landed,
             bad_return,
             // Surface a bounds abort (step ceiling / memory cap) through
             // `error` so the UI shows the calm message. Gated on `halted` so
@@ -86,6 +95,21 @@ impl Cpu {
                 None
             },
         })
+    }
+
+    /// Whether the step from `from` to `pc` meets `until`'s depth and line:
+    /// back in the program's code, off the line, and at that depth or
+    /// shallower, or for step deeper by a call made from the line. Off a line,
+    /// main's return counts as back too: gdb's next and step stop there before
+    /// the exit, so a count of them comes out the same.
+    fn back_off(&self, until: Until, from: u64, pc: u64) -> bool {
+        if until.depth.is_none() && until.range.is_none() {
+            return false;
+        }
+        let on_line = |addr: u64| until.range.is_some_and(|(lo, hi)| (lo..hi).contains(&addr));
+        let back = self.in_program(pc) || (until.range.is_some() && pc == MAIN_RETURN_ADDR);
+        let depth_ok = until.depth.is_none_or(|d| self.frames.depth() <= d) || (until.into && on_line(from));
+        back && !on_line(pc) && depth_ok
     }
 
     /// Raise (or lower) the runaway-loop wall for this machine. Native
@@ -154,6 +178,8 @@ impl Cpu {
         self.strtok_save = 0;
         self.callbacks = Default::default();
         self.snapshots_paused = false;
+        self.real_time = false;
+        self.window_size = None;
         self.pending_sleep_ns = None;
         self.refund_steps_total = 0;
         self.refund_output_total = 0;

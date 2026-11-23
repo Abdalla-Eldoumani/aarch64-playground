@@ -80,8 +80,9 @@ export interface FramesSnapshot {
   hiddenEntry: number;
   /** The x29 chain in memory matches the call stack. */
   chainOk: boolean;
-  /** The last `ret` that went to no caller, with the call it returned from
-   *  as that call stood at the `ret` (a later return can pop it), or null. */
+  /** The last return that went to no caller or past its own caller, with
+   *  the call it returned from as that call stood then (a later return can
+   *  pop it), or null. */
   badReturn: {
     step: number;
     pc: number;
@@ -162,6 +163,8 @@ export function decodeFrames(n: ArrayLike<number>): FramesSnapshot | null {
 export interface FrameSlot {
   /** Bytes from x29. */
   offset: number;
+  /** 0 for a local the function only takes the address of
+   *  (`add x1, x29, n_s`), whose size the code does not say. */
   width: number;
   float: boolean;
   /** The name written as the offset (`a_s`), or for `[x9, field]` with x9
@@ -401,11 +404,14 @@ interface Item {
   name: string | null;
   /** Set on the box that stands for the elements past MAX_ELEMENTS. */
   more?: { count: number; width: number };
+  /** A local the code only takes the address of: named, with no size or value. */
+  addressOnly?: boolean;
 }
 
 /** The function's named places inside the frame, lowest first, none
  *  overlapping another. An array runs from its base to the next name above
- *  it (or the frame's top), and wins over a slot at its own base. */
+ *  it (or the frame's top), as does a local the code only takes the address
+ *  of; an array wins over a slot at its own base. */
 function itemsOf(fn: FunctionLayout | undefined, top: number): Item[] {
   if (!fn) return [];
   const offsets = [...fn.slots, ...fn.arrays].map((s) => s.offset);
@@ -432,7 +438,8 @@ function itemsOf(fn: FunctionLayout | undefined, top: number): Item[] {
   }
   for (const slot of fn.slots) {
     const label = slot.field ? `${slot.name ?? "?"}.${slot.field}` : (slot.name ?? `[fp, ${slot.offset}]`);
-    items.push({ offset: slot.offset, width: slot.width, float: slot.float, label, name: slot.name && label });
+    const width = slot.width || Math.min(top, ...offsets.filter((o) => o > slot.offset)) - slot.offset;
+    if (width > 0) items.push({ offset: slot.offset, width, float: slot.float, label, name: slot.name && label, addressOnly: !slot.width });
   }
   // Stable, so an array's element keeps its place ahead of a slot at the same offset.
   items.sort((a, b) => a.offset - b.offset);
@@ -546,7 +553,9 @@ export function drawFrames(input: DrawInput): DrawnStack {
       for (const item of itemsOf(fn, top)) {
         padding(item.offset);
         const at = R + item.offset;
-        if (item.more) {
+        if (item.addressOnly) {
+          boxes.push(box(at, item.width, base, "local", item.label, item.name, "reached only through its address"));
+        } else if (item.more) {
           const each = INT_KINDS[item.more.width] ?? "element";
           boxes.push(box(at, item.width, base, "local", item.label, item.name, `${plural(item.more.count, `more ${each}`)}, ${plural(item.width, "byte")}`));
         } else {

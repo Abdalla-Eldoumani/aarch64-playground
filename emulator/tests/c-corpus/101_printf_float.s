@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.data
 	.align	3
@@ -894,6 +895,7 @@ main:
 .LC36:
 	.word	515396076
 	.word	-1060943291
+	.section	.note.GNU-stack,"",@progbits
 
 
 	.bss

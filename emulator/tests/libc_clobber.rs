@@ -4,7 +4,7 @@
 //! across a call is lost. Using such a value earns one note; saving or
 //! copying it is not a use, so the note waits for the read that is.
 
-use aarch64_emulator::clobber_note_lines;
+use aarch64_emulator::{clobber_note_lines, host_call_context};
 use aarch64_emulator::cpu::{Cpu, READ_BY_CALL, READ_BY_INSTRUCTION, READ_BY_MAIN_RETURN};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 use aarch64_emulator::registers::{CLOBBER_NZCV, CLOBBER_PATTERN, FLAGS_CODE};
@@ -481,4 +481,107 @@ main:
 fn a_copy_is_noted_at_the_copy_once_the_value_is_used() {
     let (mut cpu, map) = run(COPIED_THEN_USED);
     assert_eq!(notes(&mut cpu, &map), vec![[9, READ_BY_INSTRUCTION, 16, 17]]);
+}
+
+/// main sorts two longs, then reads x1 as if qsort kept it. qsort hands
+/// the comparator its own address in lr and puts main's lr back on the
+/// step it returns.
+const QSORT_PAIR: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+        .balign 8
+pair_m: .dword  7, 5
+
+        .text
+// cmp_longs(x0 = &a, x1 = &b) -> w0 = a - b (the values are small)
+        .balign 4
+cmp_longs:
+        ldr     x9, [x0]
+        ldr     x10, [x1]
+        sub     w0, w9, w10
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =pair_m
+        mov     x1, 2
+        mov     x2, 8
+        ldr     x3, =cmp_longs
+        bl      qsort
+        cmp     x1, 2
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// Back in qsort after the comparator's ret (line 15), lr holds qsort's
+/// own address, so the stepping view names the word before it. What qsort
+/// leaves in x1 is charged to `bl qsort` (line 26), from the lr qsort put
+/// back, and noted when line 27 reads it.
+#[test]
+fn qsort_back_from_its_comparator_and_the_registers_it_leaves() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(QSORT_PAIR, &cpu.host).expect("assembles");
+    cpu.load_linked_image(&image).expect("loads");
+    let map: Vec<u32> = image.line_map.iter().flat_map(|(addr, line)| [*addr as u32, *line]).collect();
+    let stub = cpu.host.lookup("qsort").expect("qsort");
+    let ret = image.line_map.iter().find(|(_, line)| *line == 15).expect("line 15").0;
+    cpu.set_breakpoint(ret);
+    cpu.run_until_break(1_000).expect("runs");
+    cpu.clear_breakpoint(ret);
+    cpu.step().expect("the comparator's ret");
+    assert_eq!(cpu.regs.read_pc(), stub);
+    assert_eq!(host_call_context(&cpu, &map).map(|c| c.call_site_pc), Some(stub - 4));
+
+    cpu.run_until_break(1_000).expect("runs");
+    let x1 = notes(&mut cpu, &map).into_iter().find(|row| row[0] == 1);
+    assert_eq!(x1.map(|row| row[2]), Some(26), "the call that left x1");
+}
+
+/// The comparator's address is loaded into x3 before a call to srand,
+/// which need not keep it, and qsort reads it on its first step.
+const COMPARATOR_BEFORE_SRAND: &str = r#"define(fp, x29)
+define(lr, x30)
+
+        .data
+        .balign 8
+pair_m: .dword  7, 5
+
+        .text
+        .balign 4
+cmp_longs:
+        ldr     x9, [x0]
+        ldr     x10, [x1]
+        sub     w0, w9, w10
+        ret
+
+        .balign 4
+        .global main
+main:
+        stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x3, =cmp_longs
+        mov     w0, 1
+        bl      srand
+        ldr     x0, =pair_m
+        mov     x1, 2
+        mov     x2, 8
+        bl      qsort
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
+/// qsort's first step sets lr to its own address for the comparator, but
+/// the stale x3 it read is noted at `bl qsort` (line 27), from the lr the
+/// step began with.
+#[test]
+fn a_stale_comparator_qsort_reads_is_noted_at_bl_qsort() {
+    let (mut cpu, map) = run(COMPARATOR_BEFORE_SRAND);
+    let x3 = notes(&mut cpu, &map).into_iter().find(|row| row[0] == 3);
+    assert_eq!(x3.map(|row| row[3]), Some(27), "the read");
 }

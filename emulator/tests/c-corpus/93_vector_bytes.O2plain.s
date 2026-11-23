@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -523,7 +524,7 @@ main:
 	b	.L12
 	.section .rodata
 	.align	4
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 text:
 	.string	"Hello, World! the quick brown fox jumps over the lazy dog 0123456789 ~{}"
 	.zero	7
@@ -538,13 +539,13 @@ text:
 	.hword	300
 	.data
 	.align	2
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 seed:
 	.word	88172645
 	.bss
 	.align	4
-	.LANCHOR0:
-	.LANCHOR3 = . + 4352
+	.set	.LANCHOR0,. + 0
+	.set	.LANCHOR3,. + 4352
 src:
 	.zero	512
 dst:
@@ -559,4 +560,5 @@ pair:
 	.zero	1024
 w32:
 	.zero	512
+	.section	.note.GNU-stack,"",@progbits
 

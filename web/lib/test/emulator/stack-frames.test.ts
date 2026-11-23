@@ -484,6 +484,51 @@ describe("values by the slot's width", () => {
       "fp + 0 | saved fp (x29) | 0, no caller frame | sp, fp",
     ]);
   });
+
+  // The layout says main's frame is 48 bytes, but sp at entry leaves 32 of
+  // it drawn: buf_s, only ever reached through its address, runs from fp + 16
+  // to n_s at fp + 24, and far_s at fp + 40 lies past the drawn top.
+  it("draws a local reached only through its address up to the next name, with no size or value", () => {
+    const R = 0x7fffffe0;
+    const bytes = new Uint8Array(32);
+    const view = new DataView(bytes.buffer);
+    view.setBigUint64(8, 0xffff0000n, true);
+    view.setInt32(24, 7, true);
+    const stack = drawFrames({
+      snapshot: {
+        step: 9, uncounted: 0, hidden: 0, hiddenEntry: 0, chainOk: true, badReturn: null, leftovers: [],
+        frames: [{
+          index: 0, entry: 0x400000, callPc: 0, retAddr: 0xffff0000, spEntry: R + 32, lo: R, fpEntry: 0,
+          record: R, state: FRAME_STATE.complete, flags: 0, fpHit: null, lrHit: null,
+        }],
+      },
+      layout: {
+        names: [],
+        functions: [{
+          entry: 0x400000, end: 0x400100, name: "main", frameBytes: 48, makesRecord: true, arrays: [],
+          slots: [
+            { offset: 16, width: 0, float: false, name: "buf_s", field: null },
+            { offset: 24, width: 4, float: false, name: "n_s", field: null },
+            { offset: 40, width: 0, float: false, name: "far_s", field: null },
+          ],
+        }],
+      },
+      sp: R,
+      fp: R,
+      pc: 0x400010,
+      memory: [{ addr: R, bytes }],
+      written: [],
+      regions: [{ name: "stack", start: 0x7f800000, end: 0x80000000 }],
+      lineLabel: () => null,
+    });
+    expect(rows(stack, 0)).toEqual([
+      "fp + 28 | padding | 4 bytes",
+      "fp + 24 | n_s = 7 | int, 4 bytes",
+      "fp + 16 | buf_s | reached only through its address",
+      "fp + 8 | saved lr (x30) | back to the C runtime",
+      "fp + 0 | saved fp (x29) | 0, no caller frame | sp, fp",
+    ]);
+  });
 });
 
 describe("rangesToRead", () => {
@@ -548,6 +593,33 @@ describe("slotAt", () => {
     expect(chip(stack, heap.start)).toBeNull();
     expect(chip(stack, 0)).toBeNull();
     p.emu.free();
+  });
+
+  // student-record.s keeps name[20] at fp + 16 to fp + 35, the id at fp + 36
+  // and the grade at fp + 40; only scanf and printf reach the name, through
+  // `add x1, fp, stu_name`. copy-file.s keeps a 256-byte buffer at fp + 16
+  // that only the read and write syscalls reach, through `add x1, fp, buf_s`.
+  it("names a local the program reaches only through add by the name its offset is written as", () => {
+    const source = readFileSync(path.join(process.cwd(), "public/examples/cpsc355/student-record.s"), "utf8");
+    const p = load(source, "Ada\n42\n");
+    runTo(p, lineOf(source, "add     x1, fp, stu_id"));
+    const fp = Number(p.emu.get_register(29));
+    const stack = draw(p);
+    expect(chip(stack, fp + 16)).toBe("stu_name · main");
+    expect(chip(stack, fp + 35)).toBe("stu_name + 19 · main");
+    expect(chip(stack, fp + 36)).toBe("stu_id · main");
+    expect(rows(stack, 0)).toContain("fp + 16 | stu_name | reached only through its address");
+    p.emu.free();
+
+    const copy = readFileSync(path.join(process.cwd(), "public/examples/cpsc355/copy-file.s"), "utf8");
+    const q = load(copy);
+    q.emu.step(); // stp
+    q.emu.step(); // mov fp, sp
+    const qfp = Number(q.emu.get_register(29));
+    const frames = draw(q);
+    expect(chip(frames, qfp + 16)).toBe("buf_s · main");
+    expect(chip(frames, qfp + 271)).toBe("buf_s + 255 · main");
+    q.emu.free();
   });
 
   // Two calls deep, inside square: fill's 32-byte frame sits right under

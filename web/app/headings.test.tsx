@@ -5,7 +5,7 @@
 // that opens with code (a mnemonic, a C library call, argc, m4) keeps the
 // code's spelling. A label heading, the small mono kind that CSS sets in
 // capitals like the kickers, is written in lower case, as the kickers are.
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
@@ -139,6 +139,11 @@ function problems(root: ParentNode): string[] {
 
 beforeAll(async () => {
   await import("@/components/playground/FullChromeSurface");
+});
+
+// Every embed frame renders its core, and so asks for the hub, before it engages.
+beforeEach(() => {
+  useEmulatorMock.mockReturnValue(makeHub());
 });
 
 afterEach(() => {

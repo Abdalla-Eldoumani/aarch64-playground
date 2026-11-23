@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	compute
@@ -67,4 +68,5 @@ main:
 .L7:
 	ldp	x29, x30, [sp], 48
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

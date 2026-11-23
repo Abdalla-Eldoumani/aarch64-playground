@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	fact
@@ -329,4 +330,5 @@ main:
 	ldr	x19, [sp, 48]
 	add	sp, sp, 64
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

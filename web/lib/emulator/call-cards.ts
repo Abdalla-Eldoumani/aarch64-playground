@@ -27,9 +27,6 @@ const NO_INPUT = 3;
 /** Sources: xN is N, dN is 32 + N, the stack is 64 + its 8-byte slot. */
 const FP_SOURCE = 32;
 const STACK_SOURCE = 64;
-/** The first page: no program may use it, and the course server stops one
- *  that tries. */
-const FIRST_PAGE = 4096;
 
 export interface CallRow {
   /** What the conversion did, starting with the conversion as written. */
@@ -171,7 +168,9 @@ export function callCard(numbers: readonly number[], input: CallCardInput): Call
   if (conversions > rowCount) rows.push({ text: `and ${conversions - rowCount} more conversions`, problem: null });
   const outcome =
     kind === SCANF
-      ? `returned ${result} in w0${result < 0 ? ": the input ended before anything was read" : ""}`
+      ? failed
+        ? "stopped the program before it returned"
+        : `returned ${result} in w0${result < 0 ? ": the input ended before anything was read" : ""}`
       : failed
         ? "stopped the program, so nothing was printed"
         : `printed ${literal(text, textLen > text.length)}`;
@@ -271,9 +270,7 @@ function scanfRow(conv: string, a: ScanfArg, input: CallCardInput): CallRow {
   const reg = sourceName(a.source, 8);
   return {
     text: `${conv} stored ${value} at ${hex(a.arg)}, which is not one of your variables`,
-    problem:
-      `${reg} should hold the address of a variable (add ${reg}, fp, its offset for a local, or ldr ${reg}, =its label), not its value.` +
-      (a.arg < BigInt(FIRST_PAGE) ? " On the course server this stops the program." : ""),
+    problem: `${reg} should hold the address of a variable (add ${reg}, fp, its offset for a local, or ldr ${reg}, =its label), not its value.`,
   };
 }
 

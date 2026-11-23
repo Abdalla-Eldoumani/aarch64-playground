@@ -11,6 +11,11 @@ import type { ReactNode } from "react";
 vi.mock("@/components/playground/lazy-editor", () => ({
   Editor: () => <div data-testid="editor" />,
 }));
+// The surface itself, not its dynamic() wrapper: the wrapper loads on its
+// first render, so a case run alone would read "loading emulator...".
+vi.mock("@/components/playground/lazy-full-chrome", async () => ({
+  FullChromeSurface: (await import("@/components/playground/FullChromeSurface")).FullChromeSurface,
+}));
 vi.mock("@/components/panels/RegisterPanel", () => ({
   RegisterPanel: () => <div data-testid="registers" />,
 }));
@@ -56,10 +61,9 @@ function pickFirstRecent(): void {
   fireEvent.pointerDown(entry!);
 }
 
-// The full surface and the checks panel arrive through dynamic imports, and a
-// first transform inside a test can outlast its one-second wait.
+// The checks panel arrives through a dynamic import, and a first transform
+// inside a test can outlast its one-second wait.
 beforeAll(async () => {
-  await import("@/components/playground/FullChromeSurface");
   await import("@/components/playground/ChecksPanel");
 });
 

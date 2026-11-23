@@ -115,6 +115,7 @@ describe("the list of calls", () => {
     fireEvent.click(within(screen.getByRole("group", { name: "registers or stack" })).getByRole("button", { name: "stack" }));
     // A press on the cold frame's step wakes the machine and steps once it loads.
     fireEvent.mouseDown(screen.getByRole("button", { name: "step" }));
+    fireEvent.click(screen.getByRole("button", { name: "step" }));
     await screen.findByRole("list", { name: "calls, main first" }, { timeout: 5000 });
     await act(() => new Promise((done) => setTimeout(done, 0)));
     expect(screen.queryByRole("list", { name: "calls so far" })).toBeNull();

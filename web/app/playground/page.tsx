@@ -213,7 +213,7 @@ export default function Home() {
     const bootSearch = window.location.search;
     const bootHash = window.location.hash;
     void (async () => {
-      const decode = await loadBundleDecoder(bootSearch);
+      const decode = await loadBundleDecoder(bootSearch, bootHash);
       const handoff = resolveHandoff(boot, bootSearch, bootHash, decode);
       if (handoff?.kind === "share-error") {
         toastSoon(
@@ -253,7 +253,7 @@ export default function Home() {
       const search = window.location.search;
       const hash = window.location.hash;
       void (async () => {
-        const decode = await loadBundleDecoder(search);
+        const decode = await loadBundleDecoder(search, hash);
         const next = resolveHandoff(
           { fromShare: false, fromBundle: false },
           search,

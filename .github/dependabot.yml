@@ -37,7 +37,19 @@ updates:
       # Below 1.0 a minor can break the API, and the site bundles this exact version.
       - dependency-name: monaco-editor
         update-types: ["version-update:semver-minor", "version-update:semver-major"]
-      - dependency-name: playwright
+  # The root manifest exists for Vercel's framework detection, and the deploy
+  # installs it with npm ci from its own lockfile, so that tree is watched too.
+  # Its postcss override moves by hand with web/'s.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+      exclude: ["next"]
+    groups:
+      next:
+        patterns: ["next"]
   - package-ecosystem: cargo
     directory: /emulator
     schedule:
@@ -50,5 +62,3 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
-  # The root manifest is not listed: its `next` entry exists only for Vercel's
-  # framework detection, and its `postcss` override moves with web/'s.

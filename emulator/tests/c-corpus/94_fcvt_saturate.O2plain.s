@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.p2align 5,,15
@@ -354,7 +355,7 @@ main:
 	.string	"pu"
 	.section .rodata
 	.align	3
-	.LANCHOR2:
+	.set	.LANCHOR2,. + 0
 modes:
 	.xword	.LC9
 	.xword	fcvtns_w
@@ -382,7 +383,7 @@ modes:
 	.xword	fcvtpu_x
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 dv:
 	.word	0
 	.word	0
@@ -511,11 +512,12 @@ rv:
 	.word	2146959360
 	.bss
 	.align	4
-	.LANCHOR1:
+	.set	.LANCHOR1,. + 0
 lanes:
 	.zero	32
 lane_i:
 	.zero	32
 lane_u:
 	.zero	32
+	.section	.note.GNU-stack,"",@progbits
 

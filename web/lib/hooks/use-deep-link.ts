@@ -16,28 +16,41 @@ export interface DeepLink {
    *  so an older `?example=` link resolves the same way it always did. */
   run?: LaunchMode;
   embed: boolean;
-  /** Decoded `?bundle=<lz>` payload, when present and well-formed. */
+  /** Decoded diagnostic bundle, when present and well-formed. */
   bundle?: DiagnosticBundle;
-  /** Set when a `?bundle=` was present but failed to decode, so the boot
-   *  can report it instead of silently loading a different buffer. */
+  /** Set when a diagnostic bundle was present but failed to decode, so the
+   *  boot can report it instead of silently loading a different buffer. */
   bundleError?: "corrupt" | "too-large";
 }
 
 /**
  * The bundle codec's read, taken as an argument rather than imported: share.ts
  * and playground-handoff import this module, and neither should carry the
- * codec (diagnostic-bundle.ts), which loads only for a `?bundle=` URL.
+ * codec (diagnostic-bundle.ts), which loads only for a diagnostic link.
  */
 export type BundleDecoder = (value: string | null) => BundleReadResult;
 
+/** Not a share prefix (p2=, p=). */
+export const BUNDLE_PREFIX = "bundle=";
+
 /**
- * Parse the URL query string into a deep-link record. Pure so that
- * tests don't need a window. Unknown values for typed params are
- * dropped (treated as undefined) rather than passing through. With no
- * decoder supplied a `?bundle=` is left undecoded, so `bundle` and
- * `bundleError` stay absent.
+ * A diagnostic link's payload, or null if none. Links put it in the fragment,
+ * which the page's request line leaves out; older links use `?bundle=`.
  */
-export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink {
+export function bundleValue(search: string, hash: string): string | null {
+  const fragment = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (fragment.startsWith(BUNDLE_PREFIX)) return fragment.slice(BUNDLE_PREFIX.length);
+  return new URLSearchParams(search.startsWith("?") ? search.slice(1) : search).get("bundle");
+}
+
+/**
+ * Parse the URL query string, and the fragment for a diagnostic link, into a
+ * deep-link record. Pure so that tests don't need a window. Unknown values
+ * for typed params are dropped (treated as undefined) rather than passing
+ * through. With no decoder supplied a bundle is left undecoded, so `bundle`
+ * and `bundleError` stay absent.
+ */
+export function parseDeepLink(search: string, decode?: BundleDecoder, hash = ""): DeepLink {
   const trimmed = search.startsWith("?") ? search.slice(1) : search;
   const params = new URLSearchParams(trimmed);
   const result: DeepLink = { embed: false };
@@ -55,7 +68,7 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
 
   result.embed = params.get("embed") === "1";
 
-  const bundle = decode?.(params.get("bundle"));
+  const bundle = decode?.(bundleValue(search, hash));
   if (bundle?.kind === "ok") {
     result.bundle = bundle.bundle;
   } else if (bundle?.kind === "corrupt" || bundle?.kind === "too-large") {
@@ -63,36 +76,6 @@ export function parseDeepLink(search: string, decode?: BundleDecoder): DeepLink 
   }
 
   return result;
-}
-
-/**
- * Old example names mapped to their current ones, so a `?example=` link
- * shared before the examples were renamed still opens the right file.
- */
-export const LEGACY_EXAMPLE_ALIASES: Record<string, string> = {
-  week03_exercise: "basics",
-  week08_scores: "array-scores",
-  week09_student_record: "student-record",
-  week10_find_max: "find-max",
-  week11_argv: "command-line-args",
-  week11_static_counter: "static-counter",
-  week12_fp_circle: "circle-area",
-  week12_is_prime: "is-prime",
-  week13_hello: "hello",
-  week13_echo: "echo",
-  week13_write_file: "write-file",
-  week13_read_file: "read-file",
-  week13_copy_file: "copy-file",
-};
-
-/**
- * Resolve a `?example=` stem to the file actually on disk, translating a
- * known legacy stem to its renamed clean stem. An unknown stem is returned
- * unchanged. Path safety stays with the `/^[\w.-]+$/` check in
- * `parseDeepLink`; this only remaps a fixed set of names.
- */
-export function resolveExampleStem(stem: string): string {
-  return LEGACY_EXAMPLE_ALIASES[stem] ?? stem;
 }
 
 /** Compose the query-string portion of a share URL from a partial DeepLink. */

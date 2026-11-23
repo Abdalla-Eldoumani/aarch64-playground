@@ -882,7 +882,7 @@ fn the_sleep_output_refund_stops_at_its_lifetime_cap() {
     cpu.load_program(&[encode_svc(0)]);
     let start = MAX_OUTPUT_BYTES * 3;
     cpu.output_total = start;
-    let per_sleep = (MAX_SLEEP_NS / SLEEP_OUTPUT_REFUND_NS_PER_BYTE) as usize;
+    let per_sleep = MAX_SLEEP_NS / SLEEP_OUTPUT_REFUND_NS_PER_BYTE;
     for _ in 0..(MAX_REFUND_OUTPUT_BYTES / per_sleep + 20) {
         cpu.apply_sleep(MAX_SLEEP_NS);
     }
@@ -994,6 +994,24 @@ fn host_stub_write_past_page_cap_aborts_calmly() {
 }
 
 #[test]
+fn the_memory_cap_message_reads_in_full_and_quotes_the_layout_sizes() {
+    assert_eq!(
+        MEMORY_CAP_MESSAGE,
+        "stopped: the program asked for more memory than the playground gives it (8 MiB of \
+         stack and 16 MiB of heap). Check for a loop that stores past the end of an array, a \
+         malloc inside a loop with no free, or a frame size computed from a value that was \
+         never initialized"
+    );
+    // The text spells the sizes out rather than formatting them, so this keeps it true.
+    use crate::hosted::heap::{HEAP_BASE, HEAP_LIMIT};
+    const MIB: u64 = 1024 * 1024;
+    let (stack, heap) = (STACK_BASE - STACK_FLOOR, HEAP_LIMIT - HEAP_BASE);
+    assert_eq!((stack % MIB, heap % MIB), (0, 0), "both are a whole number of MiB");
+    let sizes = format!("({} MiB of stack and {} MiB of heap)", stack / MIB, heap / MIB);
+    assert!(MEMORY_CAP_MESSAGE.contains(&sizes));
+}
+
+#[test]
 fn syscall_write_past_page_cap_aborts_calmly() {
     use crate::memory::MAX_MAPPED_PAGES;
     let mut cpu = Cpu::new();
@@ -1018,4 +1036,395 @@ fn syscall_write_past_page_cap_aborts_calmly() {
         "a syscall-path cap hit must carry the calm memory-cap message"
     );
     assert_eq!(cpu.abort_message.as_deref(), Some(MEMORY_CAP_MESSAGE));
+}
+
+#[test]
+fn step_counts_past_two_to_the_thirty_second_reach_every_stamp_exactly() {
+    // A terminal session paced by sleeps can take more than 2^32 steps, and
+    // the wasm hands each count over as an f64, exact below 2^53.
+    const SRC: &str = r#"
+        .data
+fmt:    .string "hi\n"
+        .text
+        .global main
+main:
+        stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldr     x0, =fmt
+        bl      printf
+        bl      stray
+        nop
+skipped:
+        ldp     x29, x30, [sp], 16
+        ret
+stray:
+        ldr     x30, =skipped
+        ret
+"#;
+    let mut cpu = Cpu::new();
+    let image = crate::frontend::pipeline::assemble_hosted(SRC, &cpu.host).expect("assembles");
+    cpu.load_linked_image(&image).expect("loads");
+    let layout = crate::frames::layout::frame_layout(SRC, &image, &cpu.mem);
+    cpu.steps_taken = (1 << 32) - 3;
+    cpu.stdout_seen = (1 << 32) - 1;
+
+    // The printf call's card carries the step that made it.
+    while crate::call_card(&cpu).is_empty() {
+        cpu.step().unwrap();
+    }
+    let at = cpu.steps_taken();
+    assert!(at > 1 << 32, "the call came after 2^32: {at}");
+    assert_eq!(crate::call_card(&cpu)[1], at as f64);
+    assert_eq!(cpu.stdout_seen(), (1 << 32) + 2);
+
+    // Back puts the count back by exactly one across 2^32, and forward again.
+    cpu.step_back();
+    assert_eq!(cpu.steps_taken(), at - 1);
+    cpu.step().unwrap();
+    assert_eq!(cpu.steps_taken(), at);
+
+    // stray returns past its caller's next line: the bad return's stamp.
+    let r = cpu.run_until_break(100).unwrap();
+    assert!(r.halted && r.error.is_none(), "{:?}", r.error);
+    let bad = cpu.frames.bad_return().step;
+    assert!(bad > at, "the stray ret came later: {bad}");
+    let view = crate::frames::view_numbers(&crate::frames::frame_view(&cpu, &layout));
+    assert_eq!(view[0], cpu.steps_taken() as f64);
+    assert_eq!(view[5], bad as f64);
+}
+
+#[test]
+fn the_budget_counters_are_64_bit_on_every_target() {
+    // usize is 32 bits on wasm32, where a long terminal session's totals
+    // would wrap while every native test passed.
+    let cpu = Cpu::new();
+    let _: [u64; 5] = [
+        cpu.steps_total,
+        cpu.steps_taken,
+        cpu.refund_steps_total,
+        cpu.output_total,
+        cpu.refund_output_total,
+    ];
+}
+
+fn load_hosted(src: &str) -> Cpu {
+    let mut cpu = Cpu::new();
+    let image = crate::frontend::pipeline::assemble_hosted(src, &cpu.host).expect("assembles");
+    cpu.load_linked_image(&image).expect("loads");
+    cpu
+}
+
+/// Five steps and a 1 ms nanosleep a pass, forever.
+const PACED_PASS: &str = "
+        .data
+pause:  .dword 0
+        .dword 1000000
+        .text
+        .global main
+main:
+tick:
+        ldr     x0, =pause
+        mov     x1, 0
+        mov     x8, 101
+        svc     0
+        b       tick
+";
+
+/// 100 bytes written and a 1 ms nanosleep a pass: exactly the output refill.
+const PACED_PRINT: &str = "
+        .data
+pause:  .dword 0
+        .dword 1000000
+line:   .skip 100
+        .text
+        .global main
+main:
+tick:
+        mov     x0, 1
+        ldr     x1, =line
+        mov     x2, 100
+        mov     x8, 64
+        svc     0
+        ldr     x0, =pause
+        mov     x1, 0
+        mov     x8, 101
+        svc     0
+        b       tick
+";
+
+/// Runs one sleep's worth at a time, `sleeps` times or to a halt: its error.
+fn run_sleeps(cpu: &mut Cpu, sleeps: u64) -> Option<String> {
+    for _ in 0..sleeps {
+        let r = cpu.run_until_break(1_000_000).unwrap();
+        cpu.take_stdout();
+        if r.halted {
+            return Some(r.error.unwrap_or_default());
+        }
+    }
+    None
+}
+
+#[test]
+fn real_time_is_off_until_set_and_load_and_reset_clear_it() {
+    let mut cpu = load_hosted(PACED_PASS);
+    assert!(!cpu.real_time);
+    cpu.real_time = true;
+    let image = crate::frontend::pipeline::assemble_hosted(PACED_PASS, &cpu.host).unwrap();
+    cpu.load_linked_image(&image).unwrap();
+    assert!(!cpu.real_time, "a load starts the next program without it");
+    cpu.real_time = true;
+    cpu.reset();
+    assert!(!cpu.real_time, "so does a reset");
+}
+
+#[test]
+fn a_sleep_under_real_time_is_charged_only_what_it_credits() {
+    // The first pass credits the 4 steps before its sleep, each later one 5;
+    // without real time every 1 ms sleep is charged its full 1,000.
+    for (real_time, charged) in [(false, 1_000 * 1_000), (true, 5 * 1_000 - 1)] {
+        let mut cpu = load_hosted(PACED_PASS);
+        cpu.real_time = real_time;
+        assert_eq!(run_sleeps(&mut cpu, 1_000), None);
+        assert_eq!(cpu.refund_steps_total, charged, "real time {real_time}");
+    }
+}
+
+#[test]
+fn real_time_runs_on_past_todays_lifetime_caps() {
+    // Seeded as a session that has already spent today's caps, 200M steps
+    // and 4 MiB of refunds, with the output budget nearly spent too.
+    for real_time in [false, true] {
+        let mut cpu = load_hosted(PACED_PRINT);
+        cpu.real_time = real_time;
+        cpu.refund_steps_total = MAX_REFUND_STEPS;
+        cpu.refund_output_total = MAX_REFUND_OUTPUT_BYTES;
+        cpu.output_total = MAX_OUTPUT_BYTES - 500;
+        let stop = run_sleeps(&mut cpu, 100_000);
+        if real_time {
+            assert_eq!(stop, None, "10 MB more at the refill rate meets no wall");
+            assert_eq!(cpu.stdout_seen(), 100_000 * 100);
+            assert!(cpu.refund_steps_total > MAX_REFUND_STEPS, "the step refund went on");
+        } else {
+            assert_eq!(stop, Some(output_ceiling_message()));
+        }
+    }
+}
+
+#[test]
+fn real_time_prints_past_eight_mib_at_the_refill_rate() {
+    // Unseeded: 100,000 bytes and a 1 s sleep a pass.
+    const SECOND_PRINT: &str = "
+        .data
+pause:  .dword 1
+        .dword 0
+        .bss
+buf:    .skip 100000
+        .text
+        .global main
+main:
+tick:
+        mov     x0, 1
+        ldr     x1, =buf
+        movz    x2, 0x86a0
+        movk    x2, 0x1, lsl 16
+        mov     x8, 64
+        svc     0
+        ldr     x0, =pause
+        mov     x1, 0
+        mov     x8, 101
+        svc     0
+        b       tick
+";
+    for real_time in [false, true] {
+        let mut cpu = load_hosted(SECOND_PRINT);
+        cpu.real_time = real_time;
+        let stop = run_sleeps(&mut cpu, 100);
+        if real_time {
+            assert_eq!(stop, None);
+            assert_eq!(cpu.stdout_seen(), 100 * 100_000);
+        } else {
+            // 4 MiB plus 4 MiB of refunds, to the write that crossed it.
+            assert_eq!(stop, Some(output_ceiling_message()));
+            assert_eq!(cpu.stdout_seen(), 84 * 100_000);
+        }
+    }
+}
+
+#[test]
+fn the_four_hour_step_cap_ends_a_real_time_session_with_its_own_message() {
+    let mut cpu = load_hosted(PACED_PASS);
+    cpu.real_time = true;
+    cpu.refund_steps_total = REAL_TIME_REFUND_STEPS - 5_000;
+    cpu.steps_total = MAX_TOTAL_STEPS - 20_000;
+    assert_eq!(run_sleeps(&mut cpu, 100_000).as_deref(), Some(SESSION_CAP_MESSAGE));
+    assert_eq!(cpu.refund_steps_total, REAL_TIME_REFUND_STEPS);
+}
+
+#[test]
+fn the_four_hour_byte_cap_ends_a_real_time_session_at_the_output_wall() {
+    let mut cpu = load_hosted(PACED_PRINT);
+    cpu.real_time = true;
+    cpu.refund_output_total = REAL_TIME_REFUND_OUTPUT_BYTES;
+    cpu.output_total = MAX_OUTPUT_BYTES - 500;
+    assert_eq!(run_sleeps(&mut cpu, 100).as_deref(), Some(SESSION_CAP_MESSAGE));
+    // The same spent budget without real time is today's flood.
+    let mut cpu = load_hosted(PACED_PRINT);
+    cpu.refund_output_total = MAX_REFUND_OUTPUT_BYTES;
+    cpu.output_total = MAX_OUTPUT_BYTES - 500;
+    assert_eq!(run_sleeps(&mut cpu, 100), Some(output_ceiling_message()));
+}
+
+#[test]
+fn a_cpu_bound_loop_under_real_time_stops_with_todays_message() {
+    let mut cpu = Cpu::new();
+    cpu.load_program(&[0x1400_0000]); // b .
+    cpu.real_time = true;
+    cpu.steps_total = MAX_TOTAL_STEPS - 10;
+    let r = cpu.run_until_break(100).unwrap();
+    assert_eq!(r.error, Some(step_ceiling_message()));
+}
+
+#[test]
+fn a_paused_ring_leaves_no_step_back_across_a_real_time_sleep() {
+    // The web pauses the ring before it turns real time on and turns real
+    // time off before it resumes the ring, so Back never crosses a sleep
+    // credited under real time.
+    let mut cpu = load_hosted(PACED_PASS);
+    cpu.snapshots_paused = true;
+    cpu.real_time = true;
+    assert_eq!(run_sleeps(&mut cpu, 3), None);
+    assert!(!cpu.can_step_back());
+}
+
+/// `main` with `buf` holding `fill` bytes of 'A', then `call` repeated
+/// `rounds` times with the round count in x20, then a return. `data` adds
+/// to the data section.
+fn library_loop(data: &str, fill: u64, rounds: u64, setup: &str, call: &str) -> String {
+    format!(
+        "
+        .data
+path:   .asciz \"in.txt\"
+mode:   .asciz \"r\"
+fmt:    .asciz \"%s\"
+comma:  .asciz \",\"
+{data}
+        .bss
+buf:    .skip   {}
+        .text
+        .global main
+main:   stp     x29, x30, [sp, -16]!
+        mov     x29, sp
+        ldr     x0, =buf
+        mov     w1, 65
+        ldr     x2, ={fill}
+        bl      memset
+        {setup}
+        mov     x20, 0
+        ldr     x21, ={rounds}
+again:  {call}
+        add     x20, x20, 1
+        cmp     x20, x21
+        b.lo    again
+        mov     w0, 0
+        ldp     x29, x30, [sp], 16
+        ret
+",
+        fill + 16
+    )
+}
+
+#[test]
+fn a_run_hands_back_once_its_library_calls_have_done_a_run_of_work() {
+    // The most library-call work one run_until_break may do before it
+    // returns, so the host can read Pause and Reset.
+    const LIMIT: u64 = 16 << 20;
+    assert_eq!(MAX_HOST_WORK_PER_RUN, LIMIT);
+    let open ="ldr x0, =path\n ldr x1, =mode\n bl fopen\n mov x19, x0";
+    let mut over = Vec::new();
+    for size in [16u64 << 10, 128 << 10, 512 << 10] {
+        let loops = [
+            ("write to a closed fd", "", format!("mov x0, 99\n ldr x1, =buf\n ldr x2, ={size}\n mov x8, 64\n svc 0")),
+            ("strlen", "", "ldr x0, =buf\n bl strlen".to_string()),
+            ("snprintf with size 0", "", "mov x0, 0\n mov x1, 0\n ldr x2, =fmt\n ldr x3, =buf\n bl snprintf".to_string()),
+            ("strtok", "", "ldr x0, =buf\n ldr x1, =comma\n bl strtok".to_string()),
+            ("fwrite to a read-only stream", open, format!("ldr x0, =buf\n mov x1, 1\n ldr x2, ={size}\n mov x3, x19\n bl fwrite")),
+            ("memcmp of equal buffers", "", format!("ldr x0, =buf\n ldr x1, =buf\n ldr x2, ={size}\n bl memcmp")),
+            ("strncmp of equal strings", "", format!("ldr x0, =buf\n ldr x1, =buf\n ldr x2, ={size}\n bl strncmp")),
+        ];
+        for (name, setup, call) in loops {
+            // Four limits' worth, so a run that never hands back finishes.
+            let mut cpu = load_hosted(&library_loop("", size, 4 * LIMIT / size, setup, &call));
+            cpu.snapshots_paused = true;
+            assert!(cpu.upload_vfs_file("in.txt".into(), b"x".to_vec()));
+            let started = std::time::Instant::now();
+            let r = cpu.run_until_break(u32::MAX).unwrap();
+            let rounds = cpu.regs.read_gpr(20, true);
+            if r.halted || rounds * size > LIMIT + size {
+                over.push(format!("{name}, {size} bytes a call: {rounds} calls, halted {}", r.halted));
+            }
+            assert!(started.elapsed().as_secs() < 10, "{name}, {size} bytes a call");
+        }
+    }
+    // malloc and free walk and shift the free list: `holes` 16-byte gaps
+    // a 32-byte request never fits.
+    for holes in [1u64 << 10, 8 << 10, 64 << 10] {
+        let per_round = 2 * holes;
+        let mut cpu = load_hosted(&library_loop("", 16, 4 * LIMIT / per_round, "", "mov x0, 32\n bl malloc\n bl free"));
+        cpu.snapshots_paused = true;
+        let blocks: Vec<u64> = (0..2 * holes).map(|_| cpu.heap.alloc(16).unwrap()).collect();
+        for at in blocks.iter().step_by(2) {
+            cpu.heap.release(*at).unwrap();
+        }
+        let r = cpu.run_until_break(u32::MAX).unwrap();
+        let rounds = cpu.regs.read_gpr(20, true);
+        if r.halted || rounds * per_round > LIMIT + per_round {
+            over.push(format!("malloc and free over {holes} holes: {rounds} rounds, halted {}", r.halted));
+        }
+    }
+    assert!(over.is_empty(), "one run did over {LIMIT} units of library work: {over:#?}");
+}
+
+/// How long `src` takes to run to its end, with in.txt holding `file`.
+fn time_to_finish(src: &str, file: Vec<u8>) -> std::time::Duration {
+    let mut cpu = load_hosted(src);
+    cpu.snapshots_paused = true;
+    assert!(cpu.upload_vfs_file("in.txt".into(), file));
+    let started = std::time::Instant::now();
+    let r = cpu.run_until_break(u32::MAX).unwrap();
+    assert!(r.halted && r.error.is_none(), "{:?}", r.error);
+    started.elapsed()
+}
+
+#[test]
+fn string_and_file_calls_take_time_in_step_with_what_they_read() {
+    // Each call reads under a megabyte; the slow forms did work that grew
+    // with the product of two sizes, or with the whole file per read.
+    let budget = std::time::Duration::from_millis(250);
+    let mut slow = Vec::new();
+    for size in [64u64 << 10, 128 << 10, 256 << 10] {
+        // A haystack of 'A's and a needle of 'A's that ends in 'B'.
+        let data = format!("hay: .space {}, 65\n .byte 0\nneedle: .space {}, 65\n .asciz \"B\"", 2 * size, size - 1);
+        let src = library_loop(&data, 16, 1, "", "ldr x0, =hay\n ldr x1, =needle\n bl strstr");
+        let took = time_to_finish(&src, Vec::new());
+        if took >= budget {
+            slow.push(format!("strstr, {size}-byte needle: {took:?}"));
+        }
+
+        // A token of 'A's split on a delimiter string of commas.
+        let data = format!("token: .space {}, 65\n .byte 0\ndelims: .space {size}, 44\n .byte 0", 256 << 10);
+        let src = library_loop(&data, 16, 1, "", "ldr x0, =token\n ldr x1, =delims\n bl strtok");
+        let took = time_to_finish(&src, Vec::new());
+        if took >= budget {
+            slow.push(format!("strtok, {size} delimiters: {took:?}"));
+        }
+
+        // 2,000 one-byte reads of a file sixteen times the size.
+        let open = "mov x0, -100\n ldr x1, =path\n mov x2, 0\n mov x8, 56\n svc 0\n mov x19, x0";
+        let src = library_loop("", 16, 2000, open, "mov x0, x19\n ldr x1, =buf\n mov x2, 1\n mov x8, 63\n svc 0");
+        let took = time_to_finish(&src, vec![b'A'; 16 * size as usize]);
+        if took >= budget {
+            slow.push(format!("2,000 reads, {} KiB file: {took:?}", (16 * size) >> 10));
+        }
+    }
+    assert!(slow.is_empty(), "over {budget:?}: {slow:#?}");
 }

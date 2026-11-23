@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { hydrateRoot } from "react-dom/client";
+import { renderToString } from "react-dom/server";
 import { REFERENCE_INSTRUCTIONS, type ReferenceInstruction } from "@/lib/content/reference-data";
 
 // Echo the markdown the component feeds the sanitizing renderer, so the usage
@@ -558,6 +560,28 @@ describe("InstructionReference finder", () => {
     fireEvent.click(screen.getByRole("button", { name: /^load and store/ }));
     expect(window.location.search).toBe("?q=ld&group=memory");
     expect(window.history.length).toBe(before + 1);
+  });
+
+  // On a slow phone the filter takes text before the page's script runs;
+  // hydration keeps the text, but the link's own search, read once hydrated,
+  // writes its empty query back. The typed text joins the link's group.
+  it("keeps a filter typed before the page's script ran, beside the link's group", async () => {
+    window.history.replaceState(null, "", "?group=memory");
+    const container = document.body.appendChild(document.createElement("div"));
+    let root: ReturnType<typeof hydrateRoot> | undefined;
+    try {
+      container.innerHTML = renderToString(<InstructionReference instructions={FIXTURE} course={COURSE} />);
+      (within(container).getByLabelText(/^filter$/i) as HTMLInputElement).value = "ld";
+      await act(async () => {
+        root = hydrateRoot(container, <InstructionReference instructions={FIXTURE} course={COURSE} />);
+      });
+      expect(filterBox().value).toBe("ld");
+      expect(window.location.search).toBe("?q=ld&group=memory");
+      expect(screen.getByText("1 match")).toBeTruthy();
+    } finally {
+      act(() => root?.unmount());
+      container.remove();
+    }
   });
 
   it("opens the list a shared link describes, and follows back and forward", () => {

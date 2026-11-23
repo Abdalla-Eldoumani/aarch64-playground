@@ -58,6 +58,22 @@ export function pcToSourceLineFromMap(pc: number, map: LineMap): number | null {
 }
 
 /**
+ * The instructions of the pc's editor line as [first, past the last): what
+ * gdb's n and s step off. An m4 macro or `ldr x0, label` can make a line of
+ * several. A pc no line holds (a library call, a bare-metal program's empty
+ * map) gets its one instruction.
+ */
+export function lineRange(pc: number, map: LineMap): [number, number] {
+  const line = map.addrToLine.get(pc);
+  if (line === undefined) return [pc, pc + 4];
+  let lo = pc;
+  while (map.addrToLine.get(lo - 4) === line) lo -= 4;
+  let hi = pc + 4;
+  while (map.addrToLine.get(hi) === line) hi += 4;
+  return [lo, hi];
+}
+
+/**
  * Instruction address for an editor line: the instruction at that line,
  * or the next instruction at a line at/after it, so a breakpoint set on a
  * label, a blank line, or a comment lands on the following real instruction.

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	swap
@@ -238,4 +239,5 @@ main:
 	.xword	sub
 	.xword	mul
 	.text
+	.section	.note.GNU-stack,"",@progbits
 

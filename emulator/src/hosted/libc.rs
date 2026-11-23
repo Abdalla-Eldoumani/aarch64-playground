@@ -26,10 +26,10 @@ pub fn putchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 
 pub fn getchar(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     if ctx.stdin.is_empty() {
-        // Closed stdin means EOF (-1), so the canonical read-until-EOF
-        // loop can terminate.
+        // Closed stdin means EOF, which ends a read-until-EOF loop: the int
+        // -1 in w0, with x0's upper half clear, as glibc returns it.
         if ctx.stdin_closed {
-            ctx.regs.write_gpr(0, true, (-1i64) as u64);
+            ctx.regs.write_gpr(0, false, (-1i64) as u64);
             return Ok(HostOutcome::Continue);
         }
         return Ok(HostOutcome::NeedInput);
@@ -249,7 +249,7 @@ pub fn strstr(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let at = if needle.is_empty() {
         Some(0)
     } else {
-        hay.windows(needle.len()).position(|w| w == needle.as_slice())
+        first_match(&hay, &needle)
     };
     let found = match at {
         Some(i) => hay_ptr.wrapping_add(i as u64),
@@ -257,6 +257,37 @@ pub fn strstr(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     };
     ctx.regs.write_gpr(0, true, found);
     Ok(HostOutcome::Continue)
+}
+
+/// Where a non-empty `needle` first occurs in `hay`, in time linear in
+/// both (Knuth-Morris-Pratt): comparing every window costs up to the
+/// product of the lengths, all inside one step.
+fn first_match(hay: &[u8], needle: &[u8]) -> Option<usize> {
+    // border[i]: the longest proper prefix of needle[..=i] that ends it too.
+    let mut border = vec![0; needle.len()];
+    let mut k = 0;
+    for (i, &c) in needle.iter().enumerate().skip(1) {
+        while k > 0 && c != needle[k] {
+            k = border[k - 1];
+        }
+        if c == needle[k] {
+            k += 1;
+        }
+        border[i] = k;
+    }
+    k = 0;
+    for (i, &c) in hay.iter().enumerate() {
+        while k > 0 && c != needle[k] {
+            k = border[k - 1];
+        }
+        if c == needle[k] {
+            k += 1;
+        }
+        if k == needle.len() {
+            return Some(i + 1 - k);
+        }
+    }
+    None
 }
 
 /// Return an `int` the way the ABI does: sign-extended through x0, so a
@@ -517,6 +548,13 @@ pub fn strtol(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     Ok(HostOutcome::Continue)
 }
 
+/// atol(nptr) -> strtol(nptr, NULL, 10), which is how glibc defines it.
+pub fn atol(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
+    let bytes = read_c_string(ctx.mem, ctx.regs.read_gpr(0, true), "atol")?;
+    ctx.regs.write_gpr(0, true, parse_strtol(&bytes, 10).0 as u64);
+    Ok(HostOutcome::Continue)
+}
+
 /// The strtol grammar, returning the value and how many bytes it used.
 /// A value too big for a long clamps to LONG_MAX / LONG_MIN, which is
 /// what glibc returns alongside ERANGE (nothing here models errno, and
@@ -617,18 +655,24 @@ pub fn strtok(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let arg = ctx.regs.read_gpr(0, true);
     let delim_ptr = ctx.regs.read_gpr(1, true);
     let delims = read_c_string(ctx.mem, delim_ptr, "strtok's delimiters")?;
+    // A table, so a byte walked costs one lookup however long `delims` is.
+    let mut is_delim = [false; 256];
+    for &d in &delims {
+        is_delim[usize::from(d)] = true;
+    }
     // A NULL first argument means "continue"; glibc reads its static
     // cursor, and a program that continues before it ever started reads
     // through NULL and dies. Reading address 0 faults here the same way.
     let mut cursor = if arg != 0 { arg } else { *ctx.strtok_save };
     loop {
         let b = ctx.mem.read_u8(cursor)?;
+        ctx.mem.note_host_work(1);
         if b == 0 {
             *ctx.strtok_save = cursor;
             ctx.regs.write_gpr(0, true, 0);
             return Ok(HostOutcome::Continue);
         }
-        if !delims.contains(&b) {
+        if !is_delim[usize::from(b)] {
             break;
         }
         cursor = cursor.wrapping_add(1);
@@ -636,13 +680,14 @@ pub fn strtok(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
     let start = cursor;
     loop {
         let b = ctx.mem.read_u8(cursor)?;
+        ctx.mem.note_host_work(1);
         if b == 0 {
             // The last token ends at the string's own terminator; the
             // cursor stays on it so the next call reports exhaustion.
             *ctx.strtok_save = cursor;
             break;
         }
-        if delims.contains(&b) {
+        if is_delim[usize::from(b)] {
             ctx.mem.write_u8(cursor, 0)?;
             *ctx.strtok_save = cursor.wrapping_add(1);
             break;
@@ -656,74 +701,7 @@ pub fn strtok(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::cpu::OpenFile;
-    use crate::memory::Memory;
-    use crate::registers::RegisterFile;
-    use std::collections::HashMap;
-
-    struct Host {
-        regs: RegisterFile,
-        mem: Memory,
-        stdout: Vec<u8>,
-        stderr: Vec<u8>,
-        stdin: Vec<u8>,
-        vfs: HashMap<String, Vec<u8>>,
-        open_files: HashMap<u32, OpenFile>,
-        next_fd: u32,
-        rand_state: RandState,
-        term: crate::cpu::TermState,
-        heap: crate::hosted::heap::HeapState,
-        strtok_save: u64,
-        callbacks: crate::hosted::callback::CallbackState,
-    }
-
-    impl Host {
-        fn new() -> Self {
-            let mut mem = Memory::new();
-            mem.map_page(0x0050_0000);
-            mem.map_page(0x0060_0000);
-            Host {
-                regs: RegisterFile::new(),
-                mem,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-                stdin: Vec::new(),
-                vfs: HashMap::new(),
-                open_files: HashMap::new(),
-                next_fd: 3,
-                rand_state: RandState::default(),
-                term: crate::cpu::TermState::default(),
-                heap: crate::hosted::heap::HeapState::default(),
-                strtok_save: 0,
-                callbacks: Default::default(),
-            }
-        }
-        fn ctx(&mut self) -> HostContext<'_> {
-            HostContext {
-                regs: &mut self.regs,
-                mem: &mut self.mem,
-                stdout: &mut self.stdout,
-                stderr: &mut self.stderr,
-                stdin: &mut self.stdin,
-                stdin_closed: false,
-                vfs: &mut self.vfs,
-                open_files: &mut self.open_files,
-                next_fd: &mut self.next_fd,
-                rand_state: &mut self.rand_state,
-                term: &mut self.term,
-                heap: &mut self.heap,
-                strtok_save: &mut self.strtok_save,
-                callbacks: &mut self.callbacks,
-                call: None,
-            }
-        }
-        fn place_string(&mut self, addr: u64, s: &[u8]) {
-            for (i, b) in s.iter().enumerate() {
-                self.mem.write_u8(addr + i as u64, *b).unwrap();
-            }
-            self.mem.write_u8(addr + s.len() as u64, 0).unwrap();
-        }
-    }
+    use crate::test_support::Host;
 
     #[test]
     fn exit_reads_a_signed_int_like_main_return() {
@@ -994,6 +972,25 @@ mod tests {
         h.regs.write_gpr(1, true, 0x0050_0040);
         strstr(&mut h.ctx()).unwrap();
         assert_eq!(h.regs.read_gpr(0, true), 0);
+    }
+
+    #[test]
+    fn first_match_agrees_with_comparing_every_window() {
+        // Every string over {a, b} up to 7 bytes against every needle up to
+        // 4: overlapping prefixes, matches at either end, needles too long.
+        let words = |max: u32| -> Vec<Vec<u8>> {
+            (0..=max)
+                .flat_map(|len| {
+                    (0..1u32 << len).map(move |bits| (0..len).map(|i| b'a' + (bits >> i & 1) as u8).collect())
+                })
+                .collect()
+        };
+        for hay in words(7) {
+            for needle in words(4).iter().filter(|n| !n.is_empty()) {
+                let want = hay.windows(needle.len()).position(|w| w == needle.as_slice());
+                assert_eq!(first_match(&hay, needle), want, "{hay:?} {needle:?}");
+            }
+        }
     }
 
     #[test]
@@ -1283,7 +1280,7 @@ mod tests {
         let mut ctx = h.ctx();
         ctx.stdin_closed = true;
         getchar(&mut ctx).unwrap();
-        assert_eq!(ctx.regs.read_gpr(0, true) as i64, -1);
+        assert_eq!(ctx.regs.read_gpr(0, true), 0xFFFF_FFFF);
     }
 
     #[test]

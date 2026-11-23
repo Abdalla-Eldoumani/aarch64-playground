@@ -63,6 +63,24 @@ pub fn assemble(source: &str) -> Result<Vec<u32>, EmuError> {
         })
 }
 
+/// The bare-metal load's build: `assemble`, then the link gcc makes. With no
+/// directive there is no `.global`, so a program starts only at its own
+/// `_start:`, as as and ld build it; any other is refused as ld refuses a
+/// program with no global `main`. ld tells names apart by case, so labels
+/// are read as m4 writes them, not lowercased as the encoder keys them.
+pub fn assemble_bare(source: &str) -> Result<Vec<u32>, EmuError> {
+    let code = assemble(source)?;
+    let lines = preprocess(&crate::frontend::m4::expand(source)?.text);
+    let defines = |name: &str| lines.iter().any(|(_, line)| split_label(line).0 == Some(name));
+    if defines("_start") {
+        return Ok(code);
+    }
+    Err(EmuError::LinkError {
+        line: 0,
+        message: crate::frontend::pipeline::undefined_main(defines("main"), false),
+    })
+}
+
 /// Pre-m4 entry point used by tests that want to exercise the raw encoder
 /// without feeding the source through expansion.
 pub fn assemble_expanded(source: &str) -> Result<Vec<u32>, EmuError> {
@@ -207,7 +225,7 @@ pub const SUPPORTED_MNEMONICS: &[&str] = &[
     "SMADDL", "SMSUBL", "UMADDL", "UMSUBL", "SMNEGL", "UMNEGL",
     // memory
     "LDR", "STR", "LDRB", "STRB", "LDRH", "STRH", "LDRSB", "LDRSH", "LDRSW",
-    // the unscaled and no-allocate spellings (SIMD&FP registers only)
+    // the unscaled spellings, and the no-allocate pairs (SIMD&FP registers only)
     "LDUR", "STUR", "LDNP", "STNP",
     // floating-point
     "FADD", "FSUB", "FMUL", "FDIV", "FNMUL", "FMOV", "FNEG", "FABS", "FSQRT", "FCMP", "FCMPE",
@@ -665,6 +683,34 @@ mod tests {
         assert_eq!(cpu.regs.read_gpr(1, true), 20);
         assert_eq!(cpu.regs.read_gpr(2, true), 30);
         assert!(cpu.is_halted());
+    }
+
+    #[test]
+    fn a_bare_program_with_a_start_label_builds_as_assemble_does() {
+        for source in ["_start: mov x0, 1\n", "_start:\n        mov x0, 1\n", "_start : mov x0, 1\n"] {
+            assert_eq!(assemble_bare(source).unwrap(), assemble(source).unwrap(), "{source}");
+        }
+    }
+
+    #[test]
+    fn a_bare_program_with_no_start_label_is_refused_at_line_0() {
+        let no_main = "no line defines `main:`";
+        for (source, fragment) in [
+            ("", no_main),
+            ("mov x0, 1\n", no_main),
+            ("// _start:\nmov x0, 1\n", no_main),
+            ("mov x0, 1 ; _start:\n", no_main),
+            ("/* _start: */\nmov x0, 1\n", no_main),
+            ("main: mov x0, 1\n", "`main:` is here but not global"),
+        ] {
+            rejects(assemble_bare(source), fragment);
+            assert!(matches!(assemble_bare(source), Err(EmuError::LinkError { line: 0, .. })), "{source:?}");
+        }
+    }
+
+    #[test]
+    fn a_bare_assemble_error_comes_before_the_missing_start() {
+        rejects(assemble_bare("mov x0, 1\nfrob x1, x0\n"), "unknown mnemonic `frob'");
     }
 
     #[test]

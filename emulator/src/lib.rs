@@ -8,6 +8,7 @@ pub mod fpu;
 pub mod frames;
 pub mod frontend;
 pub mod hosted;
+pub mod layout;
 pub mod memory;
 pub mod registers;
 pub mod snapshot;
@@ -20,34 +21,6 @@ use serde::Serialize;
 
 #[allow(unused_imports)]
 use cpu::{Cpu, StepOutcome};
-
-/// Every C-callable name the hosted runtime registers, as `bl <name>`
-/// spells it. A program that calls one of these needs the hosted
-/// pipeline, so the list has to keep pace with the stub table: the unit
-/// test `every_registered_stub_is_detected_as_hosted` fails the moment a
-/// new stub is registered without being named here.
-pub const HOSTED_LIBC_NAMES: &[&str] = &[
-    // console and formatted output
-    "printf", "scanf", "__isoc99_scanf", "sprintf", "snprintf", "puts", "putchar", "getchar",
-    // strings
-    "strlen", "strcmp", "strncmp", "strcpy", "strncpy", "strcat", "strchr",
-    "strstr", "strtok", "memset", "memcpy", "memmove", "memcmp",
-    // conversion and process control
-    "atof", "atoi", "strtol", "abs", "labs", "exit", "rand", "srand", "time",
-    // heap and pacing
-    "malloc", "calloc", "realloc", "free", "usleep", "fflush",
-    // character classes
-    "isdigit", "isalpha", "isspace", "toupper", "tolower", "__ctype_b_loc",
-    "__ctype_toupper_loc", "__ctype_tolower_loc",
-    // FILE*-level stdio
-    "fopen", "fprintf", "fgets", "fputs", "fclose", "putc", "fputc", "getc",
-    "fwrite",
-    // sorting and searching with the program's comparator
-    "qsort", "bsearch",
-    // libm
-    "sqrt", "pow", "sin", "cos", "tan", "log", "log10", "exp", "floor",
-    "fabs", "fmod", "sincos",
-];
 
 /// Decide whether the source uses the hosted cpsc 355 feature set
 /// (sections, `.global main`, libc BLs, m4 defines). The bare-metal
@@ -85,10 +58,12 @@ pub fn detect_hosted_mode(source: &str) -> bool {
         return true;
     }
     // Collapse whitespace runs so `bl   printf` and `bl\tprintf` detect the
-    // same as `bl printf`.
+    // same as `bl printf`. A `bl` to one of the stubs detection reads needs
+    // the hosted pipeline; a stub added after them is never read, so it
+    // cannot move a program that already runs from one path to the other.
     let normalized = lower.split_whitespace().collect::<Vec<_>>().join(" ");
-    for libc in HOSTED_LIBC_NAMES {
-        let pat = format!("bl {libc}");
+    for stub in hosted::STUBS[..hosted::ROWS_DETECTED_ANYWHERE].iter().filter(|stub| stub.callable) {
+        let pat = format!("bl {}", stub.name);
         if normalized.contains(&pat) {
             return true;
         }
@@ -98,7 +73,7 @@ pub fn detect_hosted_mode(source: &str) -> bool {
 
 /// Wasm-bindgen wrapper. The TS frontend imports this through the WASM
 /// module so it never has to maintain a parallel list of directives or
-/// libc names; adding a new hosted feature touches only this file.
+/// libc names.
 #[cfg(target_arch = "wasm32")]
 #[wasm_bindgen(js_name = detectHostedMode)]
 pub fn detect_hosted_mode_js(source: &str) -> bool {
@@ -184,6 +159,7 @@ pub struct HostCallContext {
 /// call site of a function.
 pub fn host_call_context(cpu: &Cpu, line_map: &[u32]) -> Option<HostCallContext> {
     let name = cpu.host_call_name(cpu.regs.read_pc())?.to_string();
+    // Not `HostTable::call_site`: the two trampoline words are inside the call too.
     let call_site_pc = cpu.regs.read_gpr(30, true).wrapping_sub(4);
     let call_site_line = line_at(line_map, call_site_pc);
     Some(HostCallContext { name, call_site_pc, call_site_line })
@@ -219,7 +195,7 @@ pub const CALL_HEADER: usize = 11;
 pub const CALL_ROW: usize = 13;
 
 /// The printf or scanf call the last step ran, as the call card's numbers:
-/// a header (kind, step, the branch that made the call, x0 as a signed
+/// a header (kind, step, the branch that made the call, w0 as a signed
 /// number, whether the call stopped the program, rows, conversions, format
 /// bytes kept and in all, text bytes kept and in all), `CALL_ROW` numbers
 /// per row, then the format's bytes, the text's, and each row's label name
@@ -235,7 +211,7 @@ pub fn call_card(cpu: &Cpu) -> Vec<f64> {
         call.kind.into(),
         call.step as f64,
         call.call_pc as f64,
-        call.result as i64 as f64,
+        call.result as i32 as f64,
         u8::from(call.failed).into(),
         call.rows.len() as f64,
         call.conversions as f64,
@@ -481,6 +457,24 @@ impl Emulator {
     /// pipeline; everything else keeps the legacy single-`.text` path so
     /// the bare-metal examples retain their exact byte-for-byte layout.
     pub fn assemble_and_load(&mut self, source: &str) -> JsValue {
+        self.load(source, &[])
+    }
+
+    /// `assemble_and_load`, plus argc/argv written at `argv::ARGV_BASE` for
+    /// `main(int argc, char **argv)`. `args` is argv[1..]: the loader
+    /// supplies argv[0] (`./program`) itself. Bare-metal sources ignore
+    /// args, since only a hosted `main` reads them.
+    pub fn assemble_and_load_with_args(
+        &mut self,
+        source: &str,
+        args: Vec<String>,
+    ) -> JsValue {
+        let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+        self.load(source, &arg_refs)
+    }
+
+    /// Both load exports' one body, so a hosted change lands once.
+    fn load(&mut self, source: &str, args: &[&str]) -> JsValue {
         // Each assemble replaces the line map; clear it up front so a
         // failed assemble or the bare-metal path leaves it empty and the
         // web layer falls back to the legacy line-count heuristic.
@@ -492,7 +486,7 @@ impl Emulator {
                 Ok(image) => {
                     let count = image.instruction_count;
                     self.line_map = flatten_line_map(&image.line_map);
-                    match self.cpu.load_linked_image(&image) {
+                    match self.cpu.load_linked_image_with_args(&image, args) {
                         Ok(()) => {
                             self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
                             serde_wasm_bindgen::to_value(&AssembleResultJs {
@@ -513,13 +507,7 @@ impl Emulator {
                     }
                 }
                 Err(e) => {
-                    let (line, message) = match e {
-                        errors::EmuError::AssemblyError { line, message }
-                        | errors::EmuError::PreprocError { line, message }
-                        | errors::EmuError::ParseError { line, message }
-                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
-                        other => (None, other.to_string()),
-                    };
+                    let (line, message) = e.into_line_and_message();
                     serde_wasm_bindgen::to_value(&AssembleResultJs {
                         success: false,
                         error: Some(message),
@@ -530,7 +518,7 @@ impl Emulator {
                 }
             }
         } else {
-            match assembler::assemble(source) {
+            match assembler::assemble_bare(source) {
                 Ok(code) => {
                     let count = code.len();
                     self.cpu.reset();
@@ -542,7 +530,10 @@ impl Emulator {
                         instruction_count: count,
                     }).unwrap()
                 }
-                Err(errors::EmuError::AssemblyError { line, message }) => {
+                Err(
+                    errors::EmuError::AssemblyError { line, message }
+                    | errors::EmuError::LinkError { line, message },
+                ) => {
                     serde_wasm_bindgen::to_value(&AssembleResultJs {
                         success: false,
                         error: Some(message),
@@ -562,68 +553,6 @@ impl Emulator {
         }
     }
 
-    /// `assemble_and_load`, plus argc/argv written at `argv::ARGV_BASE` for
-    /// `main(int argc, char **argv)`. `args` is argv[1..]: the loader
-    /// supplies argv[0] (`./program`) itself. Bare-metal sources ignore
-    /// args, since only a hosted `main` reads them.
-    pub fn assemble_and_load_with_args(
-        &mut self,
-        source: &str,
-        args: Vec<String>,
-    ) -> JsValue {
-        // Clear the map up front for the same reason as assemble_and_load.
-        self.line_map.clear();
-        self.frame_layout = Default::default();
-        if detect_hosted_mode(source) {
-            self.cpu.reset();
-            let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-            match frontend::pipeline::assemble_hosted(source, &self.cpu.host) {
-                Ok(image) => {
-                    let count = image.instruction_count;
-                    self.line_map = flatten_line_map(&image.line_map);
-                    match self.cpu.load_linked_image_with_args(&image, &arg_refs) {
-                        Ok(()) => {
-                            self.frame_layout = frames::layout::frame_layout(source, &image, &self.cpu.mem);
-                            serde_wasm_bindgen::to_value(&AssembleResultJs {
-                                success: true,
-                                error: None,
-                                error_line: None,
-                                instruction_count: count,
-                            })
-                            .unwrap()
-                        }
-                        Err(e) => serde_wasm_bindgen::to_value(&AssembleResultJs {
-                            success: false,
-                            error: Some(e.to_string()),
-                            error_line: None,
-                            instruction_count: 0,
-                        })
-                        .unwrap(),
-                    }
-                }
-                Err(e) => {
-                    let (line, message) = match e {
-                        errors::EmuError::AssemblyError { line, message }
-                        | errors::EmuError::PreprocError { line, message }
-                        | errors::EmuError::ParseError { line, message }
-                        | errors::EmuError::LinkError { line, message } => (Some(line), message),
-                        other => (None, other.to_string()),
-                    };
-                    serde_wasm_bindgen::to_value(&AssembleResultJs {
-                        success: false,
-                        error: Some(message),
-                        error_line: line,
-                        instruction_count: 0,
-                    })
-                    .unwrap()
-                }
-            }
-        } else {
-            // Bare-metal path: args have no caller, just delegate.
-            self.assemble_and_load(source)
-        }
-    }
-
     /// Resolve the editor line for a runtime stop. The calm-halt boundary
     /// leaves PC on the faulting instruction; a fault raised inside a host
     /// stub (printf, scanf, a syscall helper) reports the CALL site instead,
@@ -636,12 +565,7 @@ impl Emulator {
         if self.cpu.text_end() == Some(pc) {
             return self.line_map.chunks_exact(2).last().map(|pair| pair[1]);
         }
-        let lookup = if self.cpu.host.contains_address(pc) {
-            self.cpu.regs.read_gpr(30, true).wrapping_sub(4)
-        } else {
-            pc
-        };
-        let target = lookup as u32;
+        let target = self.cpu.host.call_site(pc, self.cpu.regs.read_gpr(30, true)) as u32;
         self.line_map
             .chunks_exact(2)
             .find(|pair| pair[0] == target)
@@ -760,11 +684,23 @@ impl Emulator {
 
     /// `run_until_break` with a goal: stop once the call stack is `depth`
     /// deep or shallower back in the program's own code, or once the pc is
-    /// `pc`; a negative number leaves that half off.
-    pub fn run_to(&mut self, max_steps: u32, depth: f64, pc: f64) -> JsValue {
+    /// `pc`; a negative number leaves that half off. `lo` and `hi`, when
+    /// given, are the editor line gdb's next and step leave (`Until::range`),
+    /// and `into` makes it step (`Until::into`).
+    pub fn run_to(
+        &mut self,
+        max_steps: u32,
+        depth: f64,
+        pc: f64,
+        lo: Option<f64>,
+        hi: Option<f64>,
+        into: Option<bool>,
+    ) -> JsValue {
         let until = cpu::Until {
             depth: (depth >= 0.0).then_some(depth as u64),
             pc: (pc >= 0.0).then_some(pc as u64),
+            range: lo.zip(hi).map(|(lo, hi)| (lo as u64, hi as u64)),
+            into: into == Some(true),
         };
         let (result, error_line) = match self.cpu.run_until(max_steps, until) {
             Ok(result) => {
@@ -930,17 +866,12 @@ impl Emulator {
             })
             .unwrap(),
             Err(err) => {
-                let (message, line) = match &err {
-                    errors::EmuError::PreprocError { line, message } => {
-                        (message.clone(), Some(*line as u32))
-                    }
-                    other => (other.to_string(), None),
-                };
+                let (line, message) = err.into_line_and_message();
                 serde_wasm_bindgen::to_value(&M4ResultJs {
                     success: false,
                     text: None,
                     error: Some(message),
-                    error_line: line,
+                    error_line: line.map(|line| line as u32),
                 })
                 .unwrap()
             }
@@ -1093,6 +1024,21 @@ impl Emulator {
         self.cpu.snapshots_paused = paused;
     }
 
+    /// The terminal pane waits out every sleep in real time: the lifetime
+    /// refund caps become four hours' worth and a refund is charged only
+    /// what it credits. Off by default; cleared by load and reset.
+    pub fn set_real_time(&mut self, on: bool) {
+        self.cpu.real_time = on;
+    }
+
+    /// The terminal pane's columns and rows, sent when a program takes the
+    /// pane over and on every resize; (0, 0) takes the size away. Load and
+    /// reset clear it, and TIOCGWINSZ answers it only while the ring is
+    /// paused.
+    pub fn set_window_size(&mut self, cols: u16, rows: u16) {
+        self.cpu.set_window_size(cols, rows);
+    }
+
     /// True once the running program has put the terminal in raw mode
     /// (ioctl TCSETS clearing ICANON/ECHO): the UI treats it as a
     /// terminal program and hands it the terminal pane.
@@ -1177,6 +1123,27 @@ mod memory_map_tests {
         rows.iter()
             .find(|region| region.name == name)
             .unwrap_or_else(|| panic!("the map has a `{name}` row"))
+    }
+
+    #[test]
+    fn every_row_sits_at_its_fixed_address() {
+        // Literals, because the tests below read the same constants the map does.
+        let map = memory_map();
+        let rows: Vec<(&str, u32, u32)> =
+            map.iter().map(|region| (region.name, region.start, region.end)).collect();
+        assert_eq!(
+            rows,
+            vec![
+                (".text", 0x0040_0000, 0x0050_0000),
+                (".rodata", 0x0050_0000, 0x0060_0000),
+                (".data", 0x0060_0000, 0x0070_0000),
+                (".bss", 0x0070_0000, 0x0080_0000),
+                ("argv", 0x0080_0000, 0x0080_1000),
+                ("heap", 0x0090_0000, 0x0190_0000),
+                ("stack", 0x7F80_0000, 0x8000_0000),
+                ("host stubs", 0xFFFF_0000, 0xFFFF_1000),
+            ],
+        );
     }
 
     #[test]
@@ -1309,30 +1276,16 @@ mod hosted_mode_tests {
     }
 
     #[test]
-    fn every_registered_stub_is_detected_as_hosted() {
-        // A stub registered in `Cpu::new` but missing here leaves
-        // `bl <name>` on the bare-metal path, where the call resolves to
-        // nothing. The table is the source of truth; the two internal stubs
-        // are not names a program can call.
-        let cpu = crate::cpu::Cpu::new();
-        let missing: Vec<String> = cpu
-            .host
-            .names()
-            .filter(|name| !matches!(*name, "__host_noop" | "__main_return"))
-            .filter(|name| !super::HOSTED_LIBC_NAMES.contains(name))
-            .map(str::to_string)
-            .collect();
-        assert!(
-            missing.is_empty(),
-            "these stubs are registered but not in HOSTED_LIBC_NAMES: {missing:?}"
-        );
-        // And each listed name really does route a `bl` to the hosted
-        // pipeline, rather than only sitting in the list.
-        for name in super::HOSTED_LIBC_NAMES {
-            assert!(
-                detect_hosted_mode(&format!("main:\n    bl {name}\n    ret\n")),
-                "`bl {name}` must detect as hosted"
-            );
+    fn every_callable_stub_is_detected_as_hosted() {
+        // Every name a program calls through the rows detection reads routes
+        // `bl <name>` to the hosted pipeline (a missed one would resolve to
+        // nothing on the bare-metal path); the runtime's own two entries and
+        // the later rows do not. Detection lowercases the source, so this
+        // also catches a name it never matches.
+        for (row, stub) in crate::hosted::STUBS.iter().enumerate() {
+            let src = format!("main:\n    bl {}\n    ret\n", stub.name);
+            let read = row < crate::hosted::ROWS_DETECTED_ANYWHERE;
+            assert_eq!(detect_hosted_mode(&src), stub.callable && read, "`bl {}`", stub.name);
         }
     }
 

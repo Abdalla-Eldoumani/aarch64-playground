@@ -8,19 +8,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { IDLE_CPU_VIEW } from "@/lib/emulator/use-cpu-view";
 import type { RegView, StepGoal } from "@/lib/emulator/emulator-state";
 import type { HandoffPayload } from "@/lib/playground/playground-handoff";
 import type { ProgramCheck } from "@/lib/playground/program-checks";
 import type { WalkCommand, WalkState } from "@/lib/playground/use-autoplay";
 import type { Action } from "@/lib/playground/commands";
-import { StaticCodeView } from "@/components/playground/StaticCodeView";
-import { RegisterPanel } from "@/components/panels/RegisterPanel";
-import { ConsolePanel } from "@/components/panels/ConsolePanel";
-import { EmbedLayout } from "@/components/playground/EmbedLayout";
-import { FramesView } from "@/components/playground/lazy-frames";
 import type { SourceFile } from "@/components/playground/MultiFileTabs";
-import { EmbeddableCore, type FirstPress } from "@/components/playground/EmbeddableCore";
+import { EmbeddableCore } from "@/components/playground/EmbeddableCore";
 
 /**
  * One emulator surface for the playground, the landing hero, lessons, and
@@ -163,94 +157,24 @@ function joinClasses(...parts: Array<string | undefined | false>): string {
   return parts.filter(Boolean).join(" ");
 }
 
-// What names a control across the swap from the pre-engage panes to the live
-// ones: its accessible label, a field's <label> text, or a plain button's text.
-function focusKey(target: EventTarget | null): string | null {
-  if (!(target instanceof HTMLElement)) return null;
-  const label = target.getAttribute("aria-label");
-  if (label !== null) return label;
-  if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
-    return target.labels?.[0]?.textContent?.trim() || null;
-  }
-  return target.tagName === "BUTTON" ? target.textContent?.trim() || null : null;
-}
-
-// Frozen empties for the pre-engage panes, at module scope so the pre-engage
-// render hands the panels the same objects every time and never remounts them
-// on a parent re-render.
-const NO_CHANGED_REGS: Set<number> = new Set();
-
-// The status line of a frame nobody has pressed yet.
-const IDLE_RUN_STATUS = {
-  programLoaded: false,
-  isRunning: false,
-  isHalted: false,
-  blocked: false,
-  exitCode: null,
-  stepCount: 0,
-  failed: false,
-  paused: false,
-  registers: IDLE_CPU_VIEW.registers,
-  sp: IDLE_CPU_VIEW.sp,
-  changedRegs: NO_CHANGED_REGS,
-};
-const NO_VFS_FILES: string[] = [];
-
-/** The pre-engage controls whose press is an action, not only a wake-up. */
-const FIRST_PRESSES: readonly string[] = ["run", "step", "check"];
 // ---------------------------------------------------------------------------
 // Outer component: owns the lazy-engage gate and the imperative handle, and
-// hosts the data-embed wrapper. The hub does not exist until `engaged`.
+// hosts the data-embed wrapper. The hub's worker and wasm wait for `engaged`.
 // ---------------------------------------------------------------------------
 
 export const EmbeddablePlayground = forwardRef<
   EmbeddablePlaygroundHandle,
   EmbeddablePlaygroundProps
 >(function EmbeddablePlayground(props, ref) {
-  const {
-    chrome,
-    startSource,
-    startArgs,
-    className,
-    staticEditor,
-    registerHeadingLevel,
-    showRun = true,
-    showReset = true,
-    showStep = true,
-    showBack = true,
-    showCheck = true,
-    showArgs = false,
-  } = props;
+  const { chrome, startSource, startArgs, className } = props;
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Full chrome is the primary in-viewport content, so it engages on mount,
   // preserving the loading -> ready flow. Embed/checker defer to the lazy
   // trigger effect below so a multi-embed page does not spin up N workers.
   const [engaged, setEngaged] = useState(() => chrome === "full");
-  // A click, a tap, a key, or focus is a user asking for the machine now, and
-  // so is a press on any pre-engage control.
+  // A click, a tap, a key, or focus is a user asking for the machine now. The
+  // controls stay mounted through it, so the press itself still lands.
   const engage = useCallback(() => setEngaged(true), []);
-  const [firstPress, setFirstPress] = useState<FirstPress | null>(null);
-  const pressFirst = useCallback((press: FirstPress) => {
-    setFirstPress(press);
-    setEngaged(true);
-  }, []);
-
-  // Focus that engages the frame sits on a pre-engage copy of a control, and
-  // the swap to the live panes unmounts it, dropping a keyboard or screen
-  // reader user back to the page. The same control in the live panes takes
-  // the focus back.
-  const refocusRef = useRef<string | null>(null);
-  useEffect(() => {
-    const key = refocusRef.current;
-    refocusRef.current = null;
-    const node = wrapperRef.current;
-    if (!engaged || key === null || !node || node.contains(document.activeElement)) return;
-    // The live copy sits where the pressed one did, so the page never needs
-    // to move for it.
-    Array.from(node.querySelectorAll<HTMLElement>("[aria-label], button, input, textarea"))
-      .find((el) => focusKey(el) === key)
-      ?.focus({ preventScroll: true });
-  }, [engaged]);
 
   // An autoplay frame keeps its scroll boxes out of the reader's way until the
   // reader reaches in with a click, a tap, or focus (globals.css,
@@ -305,8 +229,8 @@ export const EmbeddablePlayground = forwardRef<
     if (!node) return;
 
     // Coming into view is not a user asking. On the landing the observer fires
-    // the moment the tree hydrates, and mounting the core plus its module
-    // worker in that same commit lands inside the hydration long task; one
+    // the moment the tree hydrates, and starting the core's module worker
+    // in that same commit lands inside the hydration long task; one
     // idle slot moves it clear, and the timeout bounds the wait so a busy
     // thread cannot leave the hero dead.
     let idleHandle: number | null = null;
@@ -327,24 +251,9 @@ export const EmbeddablePlayground = forwardRef<
       });
       observer.observe(node);
     }
-    const engageOnFocus = (event: FocusEvent) => {
-      refocusRef.current = focusKey(event.target);
-      engage();
-    };
-    // The press itself engages, so the button it landed on is gone before
-    // its click: read which one it was here.
-    const engageOnPress = (event: Event) => {
-      const label =
-        event.target instanceof Element
-          ? event.target.closest("button")?.getAttribute("aria-label")
-          : null;
-      if (label && FIRST_PRESSES.includes(label)) setFirstPress(label as FirstPress);
-      engage();
-    };
-    node.addEventListener("mousedown", engageOnPress, { once: true });
-    node.addEventListener("touchstart", engageOnPress, { once: true });
-    node.addEventListener("keydown", engage, { once: true });
-    node.addEventListener("focusin", engageOnFocus, { once: true });
+    // A click with nothing before it is a screen reader's or voice control's press.
+    const asks = ["mousedown", "touchstart", "keydown", "focusin", "click"];
+    for (const ask of asks) node.addEventListener(ask, engage, { once: true });
     return () => {
       observer?.disconnect();
       // A callback that survives the unmount would setEngaged on a gone tree.
@@ -352,10 +261,7 @@ export const EmbeddablePlayground = forwardRef<
         cancelIdleCallback(idleHandle);
       }
       if (idleTimer !== null) clearTimeout(idleTimer);
-      node.removeEventListener("mousedown", engageOnPress);
-      node.removeEventListener("touchstart", engageOnPress);
-      node.removeEventListener("keydown", engage);
-      node.removeEventListener("focusin", engageOnFocus);
+      for (const ask of asks) node.removeEventListener(ask, engage);
     };
   }, [engaged, engage]);
 
@@ -399,92 +305,7 @@ export const EmbeddablePlayground = forwardRef<
       data-hands-off={handsOff || undefined}
       className={joinClasses("flex flex-col flex-1 min-h-0", className)}
     >
-      {engaged ? (
-        <EmbeddableCore
-          {...props}
-          registerHandle={registerHandle}
-          frameRef={wrapperRef}
-          firstPress={firstPress}
-        />
-      ) : (
-        // Embed and checker only. It paints the same grid the engaged render
-        // does, so the host page does not shift when the hub arrives, and a
-        // static-editor embed draws its real program so the code is in the
-        // server HTML. Its controls engage the hub.
-        <EmbedLayout
-          showRun={showRun}
-          showReset={showReset}
-          showStep={showStep}
-          showBack={showBack}
-          showCheck={chrome === "checker" && showCheck}
-          args={showArgs ? { value: startArgs ?? "", onChange: engage } : undefined}
-          isRunning={false}
-          canStep
-          canStepBack={false}
-          error={null}
-          onRun={() => pressFirst("run")}
-          onReset={engage}
-          onStep={() => pressFirst("step")}
-          onStepBack={engage}
-          onRunUntil={engage}
-          stopReason={null}
-          onCheck={() => pressFirst("check")}
-          runStatus={IDLE_RUN_STATUS}
-          hasOutput={false}
-          editor={
-            staticEditor && startSource !== undefined ? (
-              <StaticCodeView value={startSource} currentLine={null} />
-            ) : (
-              <div className="flex flex-1 min-h-0 items-center justify-center text-[var(--text-secondary)] text-sm">
-                loading editor...
-              </div>
-            )
-          }
-          registers={
-            <RegisterPanel
-              registers={IDLE_CPU_VIEW.registers}
-              changedRegs={NO_CHANGED_REGS}
-              sp={IDLE_CPU_VIEW.sp}
-              pc={IDLE_CPU_VIEW.pc}
-              nzcv={IDLE_CPU_VIEW.nzcv}
-              headingLevel={registerHeadingLevel}
-            />
-          }
-          // A stack side chosen in another frame on the page shows here too,
-          // as it does in a frame that has engaged but not stepped.
-          stack={
-            <FramesView
-              frames={null}
-              frameLayout={null}
-              registers={IDLE_CPU_VIEW.registers}
-              sp={IDLE_CPU_VIEW.sp}
-              pc={IDLE_CPU_VIEW.pc}
-              getMemory={() => new Uint8Array()}
-              dirtyAddrs={[]}
-              memoryRegions={[]}
-              lineLabel={() => null}
-              programLoaded={false}
-              running={false}
-            />
-          }
-          console={
-            <ConsolePanel
-              stdout=""
-              stderr=""
-              blocked={false}
-              exitCode={null}
-              vfsFiles={NO_VFS_FILES}
-              pushStdin={engage}
-              echoStdin={chrome !== "checker"}
-              keyHints={false}
-              stepButton={showStep}
-              closeStdin={engage}
-              uploadVfsFile={engage}
-              clearConsole={engage}
-            />
-          }
-        />
-      )}
+      <EmbeddableCore {...props} engaged={engaged} registerHandle={registerHandle} frameRef={wrapperRef} />
     </div>
   );
 });

@@ -3,6 +3,7 @@
 //! never panic, silently mis-encode, or report success.
 
 use aarch64_emulator::cpu::Cpu;
+use aarch64_emulator::frames::check::check_source;
 use aarch64_emulator::frontend::lint::lint;
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 
@@ -241,6 +242,91 @@ ret
 }
 
 #[test]
+fn the_window_messages_quote_the_section_window() {
+    // The texts spell the size out rather than formatting it, so this keeps them true.
+    use aarch64_emulator::cpu::SECTION_WINDOW;
+    const MIB: u64 = 1024 * 1024;
+    assert_eq!(SECTION_WINDOW % MIB, 0, "the window is a whole number of MiB");
+    let n = SECTION_WINDOW / MIB;
+    let main = ".text\n.global main\nmain:\nret\n";
+
+    let fill = assemble_err(&format!(".data\n.space {}, 1\n{main}", SECTION_WINDOW + 1));
+    assert!(fill.contains(&format!("the section's {n} MiB window")), "message was: {fill}");
+
+    let data = assemble_err(&format!(".data\n.skip {}\n.word 7\n{main}", SECTION_WINDOW));
+    assert!(data.contains(&format!("past its {n} MiB window")), "message was: {data}");
+
+    // .text alone fits; its pool slot and printf trampoline carry the image past the window.
+    let code = ".text\n.global main\nmain:\nldr x0, =5\nbl printf\nret\n.skip";
+    let text = assemble_err(&format!("{code} {}\n", SECTION_WINDOW - 16));
+    assert!(text.contains(&format!("the {n} MiB code window")), "message was: {text}");
+}
+
+#[test]
+fn a_fill_directive_without_a_size_reserves_nothing() {
+    // GNU as builds these lines as zero bytes with no message. An empty
+    // operand list used to index past its end and panic.
+    let cpu = Cpu::new();
+    let program = |fill: &str| {
+        format!(".data\na: .byte 1\n{fill}b: .byte 2\n.text\n.global main\nmain:\nret\n")
+    };
+    let want = assemble_hosted(&program(""), &cpu.host).expect("should assemble");
+    for name in [".skip", ".zero", ".space"] {
+        let src = program(&format!("{name}\n"));
+        let got = assemble_hosted(&src, &cpu.host)
+            .unwrap_or_else(|e| panic!("{name} should assemble: {e}"));
+        assert_eq!(got.symbols["b"], want.symbols["b"], "{name} moved the next label");
+        assert_eq!(got.data_spans, want.data_spans, "{name} changed the section's size");
+        // The lint and the frame check read the source again on their own paths.
+        lint(&src);
+        check_source(&src, &cpu.host);
+    }
+}
+
+/// The distance to the target used to overflow before the range check.
+fn assert_target_at_i64_min_is_out_of_range(op: &str) {
+    let msg = assemble_err(&format!(
+        ".text\n.global main\nmain:\n    {op} x0, -9223372036854775808\n    ret\n"
+    ));
+    assert!(msg.contains("ADR/ADRP target out of"), "{op}: message was: {msg}");
+    assert!(msg.contains("line 4"), "{op}: message was: {msg}");
+}
+
+#[test]
+fn an_adrp_target_past_the_signed_range_is_out_of_range() {
+    assert_target_at_i64_min_is_out_of_range("adrp");
+}
+
+#[test]
+fn an_adr_target_past_the_signed_range_is_out_of_range() {
+    assert_target_at_i64_min_is_out_of_range("adr");
+}
+
+#[test]
+fn a_branch_to_a_symbol_past_the_signed_range_is_out_of_reach() {
+    // The distance to the target used to overflow before the reach check.
+    let mut failures = Vec::new();
+    for (op, name) in [
+        ("b", "b"),
+        ("bl", "bl"),
+        ("b.eq", "b.cond"),
+        ("cbz x0,", "cbz/cbnz"),
+        ("tbz x0, 1,", "tbz/tbnz"),
+    ] {
+        let src = format!("far = 0x8000000000000000\n.text\n.global main\nmain:\n    {op} far\n    ret\n");
+        // Caught one by one so a single run names every encoder that panics.
+        match std::panic::catch_unwind(|| assemble_err(&src)) {
+            Ok(msg)
+                if msg.contains(&format!("{name} target is out of reach (9223372036850581504 bytes away"))
+                    && msg.contains("line 5") => {}
+            Ok(msg) => failures.push(format!("{op}: message was: {msg}")),
+            Err(_) => failures.push(format!("{op}: panicked")),
+        }
+    }
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+#[test]
 fn a_typod_macro_name_in_an_operand_names_the_symbol() {
     // The evaluator's `unknown symbol` was swallowed into "invalid
     // immediate", pointing the student at ranges instead of the typo.
@@ -271,23 +357,60 @@ ret
     assert!(msg.contains("zero"), "message was: {msg}");
 }
 
+/// GNU as wants a comma after the name ("expected comma after \"FOO\"").
 #[test]
-fn equ_and_set_point_at_the_supported_spelling() {
-    let msg = assemble_err(".equ FOO, 5
-.text
-.global main
-main:
-ret
-");
-    assert!(msg.contains("NAME = expression"), "message was: {msg}");
-    assert!(msg.contains("line 1"), "message was: {msg}");
-    let msg = assemble_err(".set FOO, 5
-.text
-.global main
-main:
-ret
-");
-    assert!(msg.contains("NAME = expression"), "message was: {msg}");
+fn equ_and_set_without_a_comma_name_the_form() {
+    for directive in [".equ", ".set"] {
+        let msg = assemble_err(&format!("{directive} FOO 5\n.text\n.global main\nmain:\nret\n"));
+        assert!(msg.contains(&format!("{directive} NAME, expression")), "message was: {msg}");
+        assert!(msg.contains("line 1"), "message was: {msg}");
+    }
+}
+
+/// The playground runs the base ARMv8-A set and nothing past it, so only
+/// the `.arch` line gcc writes is taken. GNU as refuses `.arch foo`
+/// ("unknown architecture") and takes the others, which turn on extensions.
+#[test]
+fn arch_names_other_than_armv8_a_are_refused() {
+    for arch in ["foo", "armv8.2-a", "armv8-a+crc"] {
+        let msg = assemble_err(&format!(".arch {arch}\n.text\n.global main\nmain:\nret\n"));
+        assert!(msg.contains(".arch armv8-a"), "{arch}: message was: {msg}");
+        assert!(msg.contains("line 1"), "{arch}: message was: {msg}");
+    }
+}
+
+/// ld throws `.note.GNU-stack` away, so GNU ld refuses to link a `main`
+/// written after the note ("defined in discarded section"). gcc writes the
+/// note last; a line after it that places bytes, defines a label or sets an
+/// equate is refused here until a section line ends the note.
+/// The joined files of a program reach the parser as one text, where GNU as
+/// starts each file in .text, so the message tells a helper file to open
+/// with its own section line.
+#[test]
+fn code_after_the_gnu_stack_note_is_refused() {
+    let msg = assemble_err(
+        ".text\n.balign 4\n.section .note.GNU-stack,\"\",@progbits\n.global main\nmain:\n\
+         mov w0, 3\nret\n",
+    );
+    assert!(msg.contains("line 5"), "message was: {msg}");
+    assert!(msg.contains(".text"), "the message names the way out: {msg}");
+    assert!(msg.contains("each file"), "the message names the joined-file cause: {msg}");
+}
+
+/// A line that places nothing may follow the note: GNU as and ld build this
+/// program and it exits 3 under qemu-aarch64.
+#[test]
+fn a_global_after_the_gnu_stack_note_still_builds() {
+    let mut cpu = Cpu::new();
+    let image = assemble_hosted(
+        ".text\n.balign 4\nmain:\nmov w0, 3\nret\n\
+         .section .note.GNU-stack,\"\",@progbits\n.global main\n",
+        &cpu.host,
+    )
+    .unwrap_or_else(|e| panic!("should assemble: {e}"));
+    cpu.load_linked_image(&image).expect("load");
+    assert!(cpu.run_until_break(1000).expect("run").halted);
+    assert_eq!(cpu.exit_code(), Some(3));
 }
 
 #[test]

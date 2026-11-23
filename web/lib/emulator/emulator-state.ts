@@ -1,8 +1,10 @@
+import type { RefObject } from "react";
 import type { DecodedInstruction } from "@/lib/emulator/disassembly";
 import type { ProgramLines, ReturnCard } from "@/lib/emulator/frame-cards";
 import type { FrameLayoutPayload } from "@/lib/emulator/frame-data";
 import type { MemoryRegion } from "@/lib/emulator/memory-map";
 import type { ReplayFrame } from "@/lib/emulator/replay";
+import type { GdbLabels } from "@/lib/emulator/use-breakpoints";
 import type { Workspace } from "@/lib/playground/file-map";
 import type { ExternalCall } from "@/lib/worker/protocol";
 
@@ -13,9 +15,10 @@ import type { ExternalCall } from "@/lib/worker/protocol";
  */
 
 /** What a run with a goal runs until: "over" the call on this line (or
- *  just this instruction), "out" of this function, or an editor line (run
- *  to cursor). */
-export type StepTarget = "over" | "out" | number;
+ *  just this instruction), "out" of this function, an editor line (run to
+ *  cursor), or gdb's n ("next": off this editor line, over a call) and s
+ *  ("step": off it, into a call to the program's own code). */
+export type StepTarget = "over" | "out" | "next" | "step" | number;
 
 /** The same three as the controls name them: run to cursor is the caret's
  *  line in main.asm, which only the shell knows. */
@@ -165,10 +168,12 @@ export interface EmulatorState {
   loadState: (name: string) => void;
   deleteState: (name: string) => void;
   run: () => void;
-  /** Step over, step out or run to cursor, at run speed. Resolves to the
-   *  words for why it stopped (also `stopReason`), null when there is
-   *  nothing to say; a stop that is the program's own bug lands in `error`. */
-  runUntil: (target: StepTarget) => Promise<string | null>;
+  /** Step over, step out, run to cursor, or `lines` editor lines of gdb's n
+   *  or s (stopping sooner at a breakpoint, an input wait or the end), at run
+   *  speed. Resolves to the words for why it stopped (also `stopReason`), null
+   *  when there is nothing to say; a stop that is the program's own bug lands
+   *  in `error`. */
+  runUntil: (target: StepTarget, lines?: number) => Promise<string | null>;
   /** Why the last step over, step out or run to cursor stopped, until the
    *  machine moves again. */
   stopReason: string | null;
@@ -206,6 +211,13 @@ export interface EmulatorState {
   resumeAfterInput: () => void;
   /** Pause/resume the step-back snapshot ring (terminal sessions). */
   setSnapshotsPaused: (paused: boolean) => void;
+  /** Wait out sleeps in real time: the four-hour refund caps (terminal
+   *  sessions). A load or reset turns it off. */
+  setRealTime: (on: boolean) => void;
+  /** The terminal pane's columns and rows for TIOCGWINSZ, answered only
+   *  while the step-back ring is paused; (0, 0) takes the size away, and
+   *  a load or reset clears it. */
+  setWindowSize: (cols: number, rows: number) => void;
   /** Signal end-of-input (ctrl-d): getchar sees EOF, scanf finishes. */
   closeStdin: () => void;
   uploadVfsFile: (path: string, data: Uint8Array) => void;
@@ -222,7 +234,11 @@ export interface EmulatorState {
    *  label resolves. The line-based `toggleBreakpoint` stays the
    *  primary path for the gutter UI. */
   setBreakpointAddress: (addr: number) => Promise<void>;
+  /** Leaves the stop when a gutter dot is on the same instruction. */
   clearBreakpointAddress: (addr: number) => Promise<void>;
+  /** Where the terminal keeps `gdb b`'s breakpoints for this machine; the
+   *  editor's assemble sets them again and loading a program clears them. */
+  gdbLabels: RefObject<GdbLabels | null>;
   /** Rebuild a bookmark: assemble its source and args, queue its stdin, and
    *  step to `stepCount`. `success` is false when the source no longer
    *  assembles; `stepped` is how far it got before a halt, fault, or read. */

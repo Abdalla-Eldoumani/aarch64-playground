@@ -10,7 +10,7 @@ use aarch64_emulator::frontend::pipeline::{assemble_hosted, LinkedImage};
 use aarch64_emulator::hosted::{
     CALL_NO_INPUT, CALL_NO_MATCH, CALL_OK, CALL_PRINTF, CALL_SCANF, CALL_STOPPED, MAX_CALL_BYTES,
 };
-use aarch64_emulator::{call_card, CALL_HEADER, CALL_ROW};
+use aarch64_emulator::{call_card, host_call_context, CALL_HEADER, CALL_ROW};
 
 fn repo_root() -> PathBuf {
     let mut p = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -401,15 +401,16 @@ fn a_percent_s_keeps_the_bytes_it_read_apart_from_its_padding_and_past_the_text_
 }
 
 #[test]
-fn a_scanf_handed_a_value_stores_at_that_value() {
+fn a_scanf_handed_a_value_stops_at_that_conversion() {
     let mut p = load(&fixture("scanf-value.s"));
     p.cpu.push_stdin(b"7\n");
-    let c = p.after_call(24);
-    assert_eq!(c.rows, [stored("%d", 1, 0, 7, 4, "7")]);
-    // What the program does is untouched: a_s was never written.
     let r = p.cpu.run_until_break(1_000_000).expect("run");
     assert!(r.halted);
-    assert_eq!(p.cpu.take_stdout(), b"a = 0\n");
+    assert!(r.error.as_deref().unwrap_or("").starts_with("Segmentation fault\nscanf tried to write to 0x0, "));
+    let c = card(&p.cpu).expect("the faulting step made the call");
+    assert_eq!((c.kind, c.failed, c.call_pc), (CALL_SCANF, true, p.pc_of(24)));
+    assert_eq!(c.rows, [Row { code: CALL_STOPPED, ..printed("%d", -1, 0, "") }]);
+    assert_eq!(p.cpu.take_stdout(), b"");
 }
 
 #[test]
@@ -540,6 +541,22 @@ fn a_tail_called_printf_is_named_by_its_b_also_after_back_and_a_restore() {
     assert!(p.cpu.load_state("in printf"));
     p.cpu.step().expect("printf from the save");
     assert_eq!(named(&p.cpu), want, "after a restore");
+}
+
+/// Two answers to "which instruction made this call" inside a tail-called
+/// printf: the stepping marker takes main's `bl say` (line 31) from lr,
+/// while the card names the `b printf` (line 22) that really reached it.
+#[test]
+fn inside_a_tail_called_printf_the_marker_names_bl_say_and_the_card_b_printf() {
+    let mut p = load(TAIL_CALL);
+    let stub = p.cpu.host.lookup("printf").expect("printf");
+    p.cpu.set_breakpoint(stub);
+    p.cpu.run_until_break(1_000_000).expect("run");
+    assert_eq!(p.cpu.regs.read_pc(), stub);
+    let inside = host_call_context(&p.cpu, &[]).expect("inside printf");
+    assert_eq!(inside.call_site_pc, p.pc_of(31), "the marker");
+    p.cpu.step().expect("printf");
+    assert_eq!(card(&p.cpu).map(|c| c.call_pc), Some(p.pc_of(22)), "the card");
 }
 
 #[test]

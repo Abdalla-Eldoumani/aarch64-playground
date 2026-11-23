@@ -8,11 +8,11 @@ Register operands are `X0`-`X30` (64-bit), `W0`-`W30` (32-bit), `SP`, and `XZR`/
 
 | Mnemonic | Form                             | Notes                                    |
 | -------- | -------------------------------- | ---------------------------------------- |
-| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. A negative immediate lowers to `MOVN`, so `mov x0, #-5` and `movn x0, #4` produce the identical word. |
+| `MOV`    | `MOV Xd, Xn` / `MOV Xd, #imm` / `MOV Xd, SP` | Register-to-register or wide immediate. `MOV Xd, SP` / `MOV SP, Xn` lower to `ADD ..., #0`. Immediates that fit in one shifted 16-bit field (e.g. `#0x10000000 = #0x1000 LSL #16`) are auto-encoded as MOVZ with the right shift; a repeating bit pattern that fits no shifted field (e.g. `#0x5555555555555555`) lowers to `ORR Xd, XZR, #imm` instead. A negative immediate lowers to `MOVN`, so `mov x0, #-5` and `movn x0, #4` produce the identical word. Both registers have one width, as GAS requires: `mov x1, w3` and `mov w1, x24` are refused with its "operand mismatch" (`sxtw x1, w3` widens a signed 32-bit value). |
 | `MOVZ`   | `MOVZ Xd, #imm, LSL #shift`      | Zero upper bits, shift is 0/16/32/48.    |
 | `MOVK`   | `MOVK Xd, #imm, LSL #shift`      | Keep other halfwords.                    |
 | `MOVN`   | `MOVN Xd, #imm, LSL #shift`      | Bitwise NOT, same shifts.                |
-| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Xm, LSL #k` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The plain register form is the shifted-register one: an optional `LSL`/`LSR`/`ASR` amount of 0 to 63 (31 for a W destination) rides the second source, and `add x0, x1, x2` is that form with an amount of zero. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. GAS also accepts the bare `add x0, sp, x1` spelling, which is the same extended form with `UXTX #0`. |
+| `ADD`    | `ADD Xd, Xn, Xm` / `..., #imm` / `ADD Xd, Xn, Xm, LSL #k` / `ADD Xd, Xn, Wm, SXTW #s` | No flags. The plain register form is the shifted-register one: an optional `LSL`/`LSR`/`ASR` amount of 0 to 63 (31 for a W destination) rides the second source, and `add x0, x1, x2` is that form with an amount of zero. The last form is the extended-register one: the index register is widened (`UXTB`/`UXTH`/`UXTW`/`UXTX`/`SXTB`/`SXTH`/`SXTW`/`SXTX`) and then shifted left by 0 to 4. It is the only register form that reaches `SP`. GAS also accepts the bare `add x0, sp, x1` spelling, which is the same extended form with `UXTX #0`, and `add x0, sp, x1, lsl #k` with `k` from 0 to 4, which is `UXTX #k` (`UXTW #k` for a W index). `LSR` and `ASR` have no form that reaches `SP`. |
 | `ADDS`   | same                             | Sets NZCV.                               |
 | `SUB`    | `SUB Xd, Xn, Xm` / `..., #imm` / `SUB Xd, Xn, Xm, LSL #k` / `SUB Xd, Xn, Wm, SXTW #s` | No flags. Same shifted- and extended-register forms as `ADD`. |
 | `SUBS`   | same                             | Sets NZCV.                               |
@@ -110,13 +110,13 @@ which is why none of them accepts `AL` or `NV`.
 | `STRB`   | same                                                  | Byte store.                        |
 | `LDRH`   | same                                                  | Halfword load.                     |
 | `STRH`   | same                                                  | Halfword store.                    |
-| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` / `LDP Qt1, Qt2, ...` (+ pre/post index) | Load pair, general or SIMD&FP registers. X and D pairs scale by 8, W and S pairs by 4, Q pairs by 16. |
+| `LDP`    | `LDP Xt1, Xt2, [Xn, #imm]` / `LDP Wt1, Wt2, ...` / `LDP Dt1, Dt2, ...` / `LDP Qt1, Qt2, ...` (+ pre/post index) | Load pair, general or SIMD&FP registers. X and D pairs scale by 8, W and S pairs by 4, Q pairs by 16. A general pair that names one register twice (`ldp x1, x1, [sp], 16`) stops the program with `Illegal instruction`, as it does on the servers. |
 | `STP`    | same                                                  | Store pair. `stp d8, d9, [sp, -16]!` is the AAPCS64 callee-saved FP prologue. |
 | `LDRSB`  | `LDRSB Wt, [Xn, #imm]` / `LDRSB Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Byte load, sign-extended into Wt or Xt. |
 | `LDRSH`  | same addressing forms                                 | Halfword load, sign-extended.      |
 | `LDRSW`  | `LDRSW Xt, [Xn, #imm]` / `[Xn, #imm]!` / `[Xn], #imm` | Word load, sign-extended to 64 bits. `Xt` target only, per the ARM spec. |
 | `LDPSW`  | `LDPSW Xt1, Xt2, [Xn, #imm]` (+ pre/post index) | Load a pair of words, each sign-extended to 64 bits. `X` targets only; the offset scales by 4. |
-| `LDUR`   | `LDUR Bt/Ht/St/Dt/Qt, [Xn, #imm]`                     | The unscaled signed-offset load, spelled out. SIMD&FP targets only; `imm` runs [-256, 255] and is never scaled. `LDR` picks this encoding on its own for a negative or unaligned offset. |
+| `LDUR`   | `LDUR Xt/Wt, [Xn, #imm]` / `LDUR Bt/Ht/St/Dt/Qt, [Xn, #imm]` | The unscaled signed-offset load, spelled out, into a general or SIMD&FP register. `imm` runs [-256, 255] and is never scaled, even where the scaled form could take it (`ldur x30, [sp, 8]`). `LDR` picks this encoding on its own for a negative or unaligned offset. |
 | `STUR`   | same                                                  | The unscaled store.                |
 | `LDNP`   | `LDNP St1, St2, [Xn, #imm]` / `Dt1, Dt2` / `Qt1, Qt2` | The no-allocate pair load: a plain signed offset, no writeback. Identical here to `LDP`; on hardware it only differs in a cache hint. |
 | `STNP`   | same                                                  | The no-allocate pair store.        |
@@ -645,6 +645,10 @@ An address in the unmapped first page faults here exactly as it does for
 | `.string` / `.asciz` | Null-terminated string.                        |
 | `.ascii`      | String, no null terminator.                           |
 | `.type` / `.size` | Accepted and ignored, so the ones GCC writes need no edit. |
+| `.equ NAME, expr` / `.set NAME, expr` | The same as `NAME = expr` (see m4 preprocessing below), so `.equ alloc, -(16 + 8) & -16` gives a frame offset. |
+| `.arch armv8-a` | Accepted, as GCC writes it. The playground runs that base instruction set, so any other name is refused. |
+| `.ltorg` | Accepted. The literal pool stays at the end of `.text`, so a `. - label` span across a `.ltorg` does not count the pool GNU `as` places there, and code that runs into a `.ltorg` keeps going here, where the GNU-built program runs the pool's words as instructions, which usually stops it with an illegal instruction. |
+| `.section .note.GNU-stack` | Accepted, as GCC writes it at the end of a file. The linker throws that section away, so a line after it that places bytes, defines a label or sets an equate is refused until a section line ends the note; `.global`, `.globl`, `.type`, `.size`, `.arch` and `.ltorg` may follow it. The playground joins a program's files into one text, so a file that follows one ending with the note must open with its own section line. |
 | `name .req reg` | Register alias, integer or FP (`fp .req x29`, `sum .req d19`). Takes effect on the lines after it; string literals are never rewritten. |
 
 ## Pseudo-instructions
@@ -663,19 +667,22 @@ An address in the unmapped first page faults here exactly as it does for
 | Form                     | Notes                                                |
 | ------------------------ | ---------------------------------------------------- |
 | `define(NAME, BODY)`     | Token-boundary substitution. Use for register aliases. |
-| `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line. |
+| `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line, except in GNU m4's order. |
 | `NAME = EXPRESSION`      | Symbol assignment. `.` is the address at the line where the assignment appears. |
+| `dnl`                    | GNU m4's order only: deletes the rest of its line and the newline. |
+| `divert(-1)` ... `divert` | GNU m4's order only: throws away what m4 writes in between; `divert(0)` ends it too, and `divnum` gives the diversion in use. |
+| `changecom`              | GNU m4's order only: alone, turns `#` comments off; ``changecom(`//')`` makes `//` the comment start, and a second argument sets the end string (a newline when none is given). |
+| `` `text' ``             | A quoted string, in GNU m4's order: written without its quotes and never expanded. It may span lines. |
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick outside a `define` or ``undefine(`NAME')``. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
+Line by line, `ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick outside a `define` or ``undefine(`NAME')``. A program that uses `dnl`, `divert`, `undivert`, `divnum`, `changecom`, or a backtick, and that the line-by-line pass rejects or leaves with `divert`, `undivert`, `divnum`, `changecom`, or `changequote` where an instruction goes, runs in GNU m4's own order instead, unless the line-by-line pass already spent the whole work budget, which keeps its rejection. There m4 reads the whole source with its comments in it, as `m4 prog.asm > prog.s` does on the course servers, and the `//`, `;`, and `/* */` comments come out of what it writes. In that order a macro's arguments may run across lines, `$#`, `$*` and `$@` work as in GNU m4 (`$10` is the tenth argument), names expand inside comments, a backtick in a comment opens a quote, and an error names the source line `m4 -s` gives. The other GNU m4 builtins (`ifdef`, `ifelse`, `include`, `changequote`, `eval`, `undivert`, and the rest) and a numbered diversion such as `divert(1)` are rejected by name; `forloop` is no builtin, so m4 leaves it as written. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
 
 ## GCC output compatibility
 
-Most of what AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) are in the table above.
+Most of what AArch64 GCC `-S` writes assembles as it stands: the lexer accepts `@ident` attribute tokens (`.type foo, @function`, `@progbits`), `.L2:` / `.Ltext0:` dotted names are labels when they end in `:`, a symbol keeps the dots GCC puts after its first character (`twice.constprop.0`, `f.isra.0`, `f.part.0`, `f.cold`, a static local's `count.0`) wherever a label can go, lowercase `bgt` / `beq` / `blt` route to the encoding for `B.GT` / `B.EQ` / `B.LT`, immediates assemble with or without the `#` prefix, label lookups are case-preserving so mixed-case `.L<N>` targets resolve as GCC emitted them, and GCC's data and alignment spellings (`.2byte` jump tables, `.xword`, `.p2align 5,,15`) and its `.arch armv8-a`, `.set` and `.section .note.GNU-stack` lines are in the table above.
 
 A whole `-S` file still needs these edits before it assembles:
 
-- Delete the metadata lines: `.arch`, `.file`, `.ident`, every `.cfi_` directive, `.aeabi_subsection` / `.aeabi_attribute`, `.section .note.GNU-stack`, and the `#APP` / `#NO_APP` markers around inline assembly.
-- Write `.set NAME, VALUE` as `NAME = VALUE`.
+- Delete the metadata lines: `.file`, `.ident`, every `.cfi_` directive, `.aeabi_subsection` / `.aeabi_attribute`, and the `#APP` / `#NO_APP` markers around inline assembly.
 - Replace `.local NAME` plus `.comm NAME, SIZE, ALIGN` with `.balign ALIGN`, `NAME:`, and `.skip SIZE` in `.bss`.
 - Write a `.base64` string out as `.byte` rows.
 - Call `strtol` by that name where glibc's headers renamed it `__isoc23_strtol`.
@@ -686,7 +693,7 @@ Built into the playground, so `bl` reaches them with no setup:
 
 | Name     | Notes                                                    |
 | -------- | -------------------------------------------------------- |
-| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. |
+| `printf` | `%d %i %u %x %X %o %s %c %% %p %f %F %e %E %g %G` with glibc's flags (`-`, `+`, space, `#`, `0`), widths and precisions (`*` included) and the `hh h l ll z j t` length modifiers; `inf` and `nan` print as glibc prints them. Walks `x0..x7` and `d0..d7` independently for mixed int/double args. A long double (`%Lf`) stops with a message: the playground has no 128-bit float. A NULL `%s` argument prints `(null)`, or nothing under a precision below 6, as glibc does. |
 | `sprintf` / `snprintf`         | The printf engine writing into a buffer. `snprintf` truncates to `size - 1` plus the terminator and returns the untruncated length, so `if (n >= size)` detects the overflow. |
 | `scanf`  | `%d %u %x %s %c %f`, where `%f` also reads `inf`, `infinity` and `nan` in any case, as glibc does; returns `WaitingForInput` when stdin runs dry. `__isoc99_scanf`, the name `gcc -S` writes, is the same function. |
 | `puts` / `putchar` / `getchar` | Standard libc semantics.                  |
@@ -704,10 +711,11 @@ Built into the playground, so `bl` reaches them with no setup:
 | `exit`                         | Halts the CPU with `x0` as exit code.     |
 | `atof`                         | Writes result into `d0`.                  |
 | `atoi`                         | Standard C semantics (skips whitespace, optional sign, stops at the first non-digit); result in `w0`. The usual partner of argv string handling. |
+| `atol`                         | glibc's `strtol(s, NULL, 10)`: skips whitespace, optional sign, decimal digits; LONG_MIN/LONG_MAX on overflow; result in `x0`. |
 | `rand` / `srand`               | glibc's TYPE_3 additive generator, `RAND_MAX` 2147483647: the sequence is identical to the course servers', so unseeded draws diff cleanly against sample runs. Unseeded behaves as `srand(1)`. Draws are deterministic and survive step-back, so replay shows the same sequence. |
 | `time`                         | Returns a fixed timestamp (and stores it through `x0` when non-null), so `srand(time(0))` seeds the same run every time. Reproducibility over wall-clock realism, by design. |
 | `malloc` / `free`              | A fixed 16 MiB heap window at `0x0090_0000`. Allocator state is host-side, so a stray store cannot corrupt the free list; a wild or double free halts with a plain message, and exhaustion returns NULL. |
-| `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
+| `usleep`                       | Pauses the run for the requested time. A real-time runner waits it out, counting from where the previous sleep ended; the step budget is refunded at a capped rate so a paced program is not punished for sleeping. |
 | `fflush`                       | Accepted and ignored: output is never buffered here. |
 | `fopen`                        | Opens a virtual-filesystem file by C mode string (`r`, `w`, `a`, with `+`); returns an opaque FILE* handle, NULL on a missing `r` file or a refused wall. The handle is not a real pointer; dereferencing it faults. |
 | `fprintf`                      | The printf engine writing to a FILE* (x0 = stream, x1 = format, varargs from x2). Bytes land in the virtual file under the same caps as the write syscall; the file appears in the console's files view. A stream that never came from fopen stops the program with a message naming the fix. |
@@ -749,12 +757,12 @@ finishes on the next step.
 | 93 | exit        | `x0=status`                              |
 | 94 | exit_group  | `x0=status` (what glibc's `exit()` issues; same effect as 93) |
 | 25 | fcntl       | `x0=fd`, `x1=cmd`, `x2=arg` (F_GETFL / F_SETFL with O_NONBLOCK on stdin) |
-| 29 | ioctl       | `x0=fd`, `x1=request`, `x2=argp` (TCGETS / TCSETS termios, the raw-mode handshake) |
+| 29 | ioctl       | `x0=fd`, `x1=request`, `x2=argp` (TCGETS / TCSETS termios, the raw-mode handshake; TIOCGWINSZ gives the terminal pane's rows and columns while the pane runs the program) |
 | 101 | nanosleep  | `x0=req`, `x1=rem` (pauses the run; the virtual clock advances) |
 | 113 | clock_gettime | `x0=clock_id`, `x1=timespec`            |
 | 278 | getrandom  | `x0=buf`, `x1=buflen`, `x2=flags` (deterministic, so replay matches) |
 
-A call that fails puts a negative Linux error number in `x0`, as on the server: -2 for a file that does not exist, -9 for a descriptor that is not open, -22 for a bad argument, and -25 when ioctl asks a file whether it is a terminal (stdin is a file under `./program < input`).
+A call that fails puts a negative Linux error number in `x0`, as on the server: -2 for a file that does not exist, -9 for a descriptor that is not open, -22 for a bad argument, and -25 when ioctl asks a file whether it is a terminal (stdin is a file under `./program < input`), or asks TIOCGWINSZ outside the terminal pane.
 
 ## NZCV flags
 

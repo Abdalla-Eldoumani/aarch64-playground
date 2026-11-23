@@ -20,14 +20,12 @@ env:
   # scripts/vercel-build.sh.
   NODE_VERSION: "24"
   RUST_TOOLCHAIN: "1.99.1"
-  WASM_PACK_VERSION: "0.15.0"
+  WASM_PACK_VERSION: "0.15.1"
 
 jobs:
   browsers:
     name: chromium + firefox smoke
-    # Stays on 24.04 through the term: playwright 1.59.1 cannot install its
-    # system dependencies on Ubuntu 26.04.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -57,7 +55,7 @@ jobs:
 
       - name: install wasm-pack
         if: steps.bundles.outputs.hit == 'false'
-        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
+        uses: taiki-e/install-action@4a76afe23f9e08d2d9550fb56e556444e8611d21 # v2.90.4
         with:
           tool: wasm-pack@${{ env.WASM_PACK_VERSION }}
 
@@ -76,19 +74,9 @@ jobs:
         working-directory: web
         run: npm run build
 
-      # Background processes outlive their step; the readiness poll gives up
-      # after a minute and prints the server's log.
       - name: start the production server
         id: server
-        working-directory: web
-        run: |
-          nohup npx next start -p 3000 > "$RUNNER_TEMP/next.log" 2>&1 &
-          for _ in $(seq 60); do
-            if curl -fsS -o /dev/null http://localhost:3000/playground; then exit 0; fi
-            sleep 1
-          done
-          cat "$RUNNER_TEMP/next.log"
-          exit 1
+        uses: ./.github/actions/next-start
 
       - name: chromium smoke
         timeout-minutes: 5

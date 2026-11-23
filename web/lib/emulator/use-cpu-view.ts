@@ -31,10 +31,6 @@ export interface CpuView {
   currentLine: number | null;
   currentLineRef: RefObject<number | null>;
   latestSnapRef: RefObject<LatestSnap>;
-  /** Bumped whenever the ring mutates; the hub keeps it in the return
-   *  memo's deps so consumers re-render on a capture they cannot see
-   *  (the ring lives behind a ref whose identity never changes). */
-  replayTick: number;
   /** Apply a snapshot's register file to the view, returning the pc as a
    *  number so the caller can resolve it to a source line. */
   applyRegisters: (snap: StateSnapshot) => number;
@@ -47,6 +43,8 @@ export interface CpuView {
   pushReplayFrame: (newStepCount: number) => void;
   resetReplayHistory: () => void;
   seekReplay: (frameIndex: number) => void;
+  /** A new function whenever the ring mutates, so a memo that calls it
+   *  reruns (the ring lives behind a ref whose identity never changes). */
   readReplayFrames: () => ReplayFrame[];
 }
 
@@ -161,7 +159,11 @@ export function useCpuView(): CpuView {
     setCurrentLine(frame.currentLine);
   }, []);
 
-  const readReplayFrames = useCallback(() => replayRingRef.current.range(), []);
+  // Reads the tick it is keyed on: the ring changes without a render.
+  const readReplayFrames = useCallback(() => {
+    void replayTick;
+    return replayRingRef.current.range();
+  }, [replayTick]);
 
   return {
     registers,
@@ -175,7 +177,6 @@ export function useCpuView(): CpuView {
     currentLine,
     currentLineRef,
     latestSnapRef,
-    replayTick,
     applyRegisters,
     setCurrentLine,
     markCurrentLine,

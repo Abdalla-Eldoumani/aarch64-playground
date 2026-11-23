@@ -6,32 +6,41 @@ import { escapeRegExp } from "@/lib/asm/escape-regexp";
 // Directives course files never write, each noted with the spelling the course
 // uses instead (docs/cpsc355-style-guide.md). The emulator still accepts some
 // so pasted gcc output assembles; this check covers only what the site ships.
-const BANNED_DIRECTIVES = [
-  ".type", // GCC function metadata; course files declare main with .global alone
-  ".size", // GCC function metadata; never written by hand in course files
-  ".globl", // course spells it .global
-  ".section", // course switches sections with bare .data / .text / .bss
-  ".quad", // course writes .dword for 8-byte values
-  ".xword", // same: .dword is the course's 8-byte spelling
-  ".space", // course writes .skip
-  ".p2align", // course writes .balign (byte count) or .align (power of two)
-  ".equ", // course aliases with m4 define() or name = expression
-  ".set", // same: assembler-level aliasing never appears in course files
-];
+const BANNED_DIRECTIVES = new Map([
+  [".type", "nothing: GCC function metadata; declare main with .global alone"],
+  [".size", "nothing: GCC function metadata, never written by hand"],
+  [".globl", ".global"],
+  [".section", "a bare .data, .text or .bss"],
+  [".quad", ".dword for an 8-byte value"],
+  [".xword", ".dword for an 8-byte value"],
+  [".space", ".skip"],
+  [".p2align", ".balign (a byte count) or .align (a power of two)"],
+  [".equ", "m4 define() or name = expression"],
+  [".set", "m4 define() or name = expression"],
+]);
 
 /** Any of the names, read as literal text, ending at a word boundary. */
 function literalAlternation(names: readonly string[]): RegExp {
   return new RegExp(`(${names.map(escapeRegExp).join("|")})\\b`);
 }
 
-const bannedRe = literalAlternation(BANNED_DIRECTIVES);
+const bannedRe = literalAlternation([...BANNED_DIRECTIVES.keys()]);
 
 function assertClean(file: string, raw: string): void {
   const hit = bannedRe.exec(raw);
   expect(
     hit,
-    `${file} carries \`${hit?.[0] ?? ""}\`, a directive course files never write`,
+    `${file} carries \`${hit?.[1] ?? ""}\`, which course files never write; write ${BANNED_DIRECTIVES.get(hit?.[1] ?? "")} instead`,
   ).toBeNull();
+}
+
+// flappy is a copy of its own repository (public/examples/cpsc355/README.md),
+// which keeps its read-only data in `.section .rodata`; a fix lands upstream
+// first. Only that spelling, and only in flappy's files, is let through.
+const FLAPPY = /^public[\\/]examples[\\/]cpsc355[\\/]flappy(\.s$|[\\/])/;
+
+function excuseUpstream(file: string, raw: string): string {
+  return FLAPPY.test(file) ? raw.replaceAll(".section .rodata", "") : raw;
 }
 
 /** Every file under dir (recursively) whose name ends with ext. */
@@ -70,6 +79,22 @@ describe("authored programs stay inside the course directive vocabulary", () => 
   it("public example programs carry no banned directive", () => {
     const files = walk(path.join(process.cwd(), "public/examples"), ".s");
     expect(files.length).toBeGreaterThanOrEqual(14);
+    for (const file of files) {
+      assertClean(rel(file), excuseUpstream(rel(file), fs.readFileSync(file, "utf8")));
+    }
+  });
+
+  it("lets through only flappy's `.section .rodata`", () => {
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/flappy/art.s", ".section .rodata"))).toBe(false);
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/flappy.s", ".section .rodata"))).toBe(false);
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/flappy/art.s", ".section .data"))).toBe(true);
+    expect(bannedRe.test(excuseUpstream("public/examples/cpsc355/deadzone.s", ".section .rodata"))).toBe(true);
+  });
+
+  it("exercise reference solutions carry no banned directive", () => {
+    // They ship: course-instructions.ts reads them at build.
+    const files = walk(path.join(process.cwd(), "lib/test/content/exercise-solutions"), ".s");
+    expect(files.length).toBeGreaterThanOrEqual(60);
     for (const file of files) {
       assertClean(rel(file), fs.readFileSync(file, "utf8"));
     }

@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.section .rodata
 	.align	3
@@ -579,7 +580,7 @@ main:
 	.xword	68719476736
 	.data
 	.align	4
-	.LANCHOR0:
+	.set	.LANCHOR0,. + 0
 sv:
 	.xword	-9223372036854775808
 	.xword	9223372036854775807
@@ -592,4 +593,5 @@ hv:
 	.xword	-81985529216486896
 	.xword	1229782938247303441
 	.xword	2459565876494606882
+	.section	.note.GNU-stack,"",@progbits
 

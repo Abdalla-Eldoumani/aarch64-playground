@@ -44,7 +44,8 @@ export interface RunResult {
   /** Pause the last nanosleep asked for, in ms; null when the run
    *  stopped for any other reason (or the wasm predates pacing). */
   sleep_ms: number | null;
-  /** A run with a goal met it, or stopped at a return to no caller. */
+  /** A run with a goal met it, or stopped at a return to no caller or past
+   *  its own caller. */
   reached: boolean;
   bad_return: boolean;
 }
@@ -141,6 +142,23 @@ export class EmulatorInstance {
     const set = (this.inner as { set_snapshots_paused?: (p: boolean) => void })
       .set_snapshots_paused;
     if (typeof set === "function") set.call(this.inner, paused);
+  }
+
+  /** The terminal pane waits out every sleep in real time: the refund
+   *  caps become four hours' worth. Feature-detected so an older wasm
+   *  build keeps today's caps. */
+  setRealTime(on: boolean): void {
+    const set = (this.inner as { set_real_time?: (on: boolean) => void }).set_real_time;
+    if (typeof set === "function") set.call(this.inner, on);
+  }
+
+  /** The terminal pane's columns and rows for TIOCGWINSZ; (0, 0) takes the
+   *  size away. Feature-detected so an older wasm build keeps answering
+   *  ENOTTY. */
+  setWindowSize(cols: number, rows: number): void {
+    const set = (this.inner as { set_window_size?: (cols: number, rows: number) => void })
+      .set_window_size;
+    if (typeof set === "function") set.call(this.inner, cols, rows);
   }
 
   /** Queue stdin. `interactive` marks a line the student typed at a
@@ -256,7 +274,7 @@ export class EmulatorInstance {
   runUntilBreak(maxSteps: number, until?: RunGoal): RunResult {
     const raw = (
       until
-        ? this.inner.run_to(maxSteps, until.depth ?? -1, until.pc ?? -1)
+        ? this.inner.run_to(maxSteps, until.depth ?? -1, until.pc ?? -1, until.range?.[0], until.range?.[1], until.into)
         : this.inner.run_until_break(maxSteps)
     ) as RawRunResult;
     return {
@@ -418,7 +436,7 @@ interface WasmEmulatorInstance extends FrameExports, CallCardExports {
   delete_state(name: string): boolean;
   list_states(): string[];
   run_until_break(max_steps: number): unknown;
-  run_to(max_steps: number, depth: number, pc: number): unknown;
+  run_to(max_steps: number, depth: number, pc: number, lo?: number, hi?: number, into?: boolean): unknown;
   reset(): void;
   get_pc(): bigint;
   get_register(index: number): bigint;

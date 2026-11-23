@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { usePersistedFlag } from "@/components/panels/register-panel-settings";
+import { usePersistedFlag } from "@/lib/hooks/use-stored-setting";
 import { PaneSwitch } from "@/components/playground/PaneSwitch";
 
 export const BYTES_KEY = "aarch64-playground:stack-bytes";

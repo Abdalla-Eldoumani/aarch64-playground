@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 	.global	popcount
@@ -192,4 +193,5 @@ main:
 	ldp	x19, x20, [sp, 16]
 	ldp	x29, x30, [sp], 64
 	ret
+	.section	.note.GNU-stack,"",@progbits
 

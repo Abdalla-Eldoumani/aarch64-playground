@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   emptyLineMap,
   isEmptyLineMap,
+  lineRange,
   lineToAddrFromMap,
   parseLineMap,
   pcToSourceLineFromMap,
@@ -97,6 +98,27 @@ describe("lineToAddrFromMap", () => {
 
 // The maps must stay deterministic so the current-line marker and breakpoints
 // cannot flap between candidates.
+
+describe("lineRange", () => {
+  // Line 14 is one word, line 15 two (an m4 macro or `ldr x0, label`), and
+  // line 34 one, past a gap.
+  const map = parseLineMap([CODE_BASE, 14, CODE_BASE + 4, 15, CODE_BASE + 8, 15, CODE_BASE + 0x40, 34]);
+
+  it("is the one instruction of a one-word line", () => {
+    expect(lineRange(CODE_BASE, map)).toEqual([CODE_BASE, CODE_BASE + 4]);
+    expect(lineRange(CODE_BASE + 0x40, map)).toEqual([CODE_BASE + 0x40, CODE_BASE + 0x44]);
+  });
+
+  it("covers every word of the line from either of them", () => {
+    expect(lineRange(CODE_BASE + 4, map)).toEqual([CODE_BASE + 4, CODE_BASE + 12]);
+    expect(lineRange(CODE_BASE + 8, map)).toEqual([CODE_BASE + 4, CODE_BASE + 12]);
+  });
+
+  it("is the one word at a pc no line holds, as in a library call", () => {
+    expect(lineRange(0xffff0000, map)).toEqual([0xffff0000, 0xffff0004]);
+    expect(lineRange(CODE_BASE, emptyLineMap())).toEqual([CODE_BASE, CODE_BASE + 4]);
+  });
+});
 
 describe("line map duplicate and gap handling", () => {
   it("keeps the last line seen for a repeated instruction address", () => {

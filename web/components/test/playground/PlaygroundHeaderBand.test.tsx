@@ -26,6 +26,7 @@ function band(short: boolean) {
       args=""
       onArgsChange={vi.fn()}
       runMode={null}
+      tools={<div role="group" aria-label="share and tools" />}
       onShare={vi.fn()}
       onTutorials={vi.fn()}
       buildDiagnostic={vi.fn(async () => ({ source: "" }))}

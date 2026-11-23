@@ -1,3 +1,4 @@
+	.arch armv8-a
 	.text
 	.align	2
 v2_add:
@@ -1150,4 +1151,5 @@ main:
 .LC4:
 	.word	-1840700270
 	.word	1069697316
+	.section	.note.GNU-stack,"",@progbits
 

@@ -1,19 +1,16 @@
 name: refresh stars
 
 # The nav's star count is read once per production build, so it only moves on
-# a redeploy. This triggers one through a Vercel deploy hook on each new star
-# and weekly, to catch unstars. The count's cache is keyed per deployment, so
-# rebuilding the same commit still reads the live number. GitHub fires watch
-# and schedule events only from the default branch.
+# a redeploy: a release, or this workflow, which triggers one through a Vercel
+# deploy hook weekly and when run by hand. The count's cache is keyed per
+# deployment, so rebuilding the same commit still reads the live number.
+# GitHub fires schedule events only from the default branch.
 on:
-  watch:
-    types: [started]
   schedule:
     - cron: "17 7 * * 1"
   workflow_dispatch:
 
-# A burst of stars collapses to one run in flight and one waiting, instead of
-# one production build per star.
+# One run at a time: a manual run during the weekly one waits for its hook call.
 concurrency:
   group: refresh-stars
 
@@ -25,8 +22,7 @@ jobs:
     name: trigger the production deploy hook
     # Forks inherit the workflow but not the secret or the Vercel project.
     if: github.repository == 'Abdalla-Eldoumani/aarch64-playground'
-    # Pinned so every workflow runs on the same image.
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: trigger the production deploy hook
