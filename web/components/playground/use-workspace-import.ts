@@ -33,18 +33,25 @@ function confirmImport(what: string, replaced: string[], edited: boolean): boole
   );
 }
 
-// What a program load asks. Checks are saved nowhere, so losing them is said outright.
-function loadQuestion(label: string, edited: boolean, checks: number): string {
+// What a program load asks. Checks are saved nowhere, so losing them is said
+// outright, and so is a saved helper storage has no room to keep a copy of.
+function loadQuestion(label: string, edited: boolean, checks: number, unsaved: string[]): string {
   const what = checks === 1 ? "your check" : `your ${checks} checks`;
   const kept = `The current code stays under "recent" if you want it back.`;
   const gone = "Checks are not saved anywhere, so you cannot get them back.";
-  if (checks === 0) return `Load ${label}? It replaces your edits in main.asm. ${kept}`;
-  if (!edited) return `Load ${label}? It removes ${what}. ${gone}`;
-  return `Load ${label}? It replaces your edits in main.asm and removes ${what}. ${kept} ${gone}`;
+  const lost =
+    unsaved.length === 0
+      ? ""
+      : ` It replaces ${unsaved.join(", ")} with no copy, because the browser's storage for this site is full.`;
+  if (!edited && checks === 0) return `Load ${label}?${lost}`;
+  if (checks === 0) return `Load ${label}? It replaces your edits in main.asm. ${kept}${lost}`;
+  if (!edited) return `Load ${label}? It removes ${what}. ${gone}${lost}`;
+  return `Load ${label}? It replaces your edits in main.asm and removes ${what}. ${kept} ${gone}${lost}`;
 }
 
 /** Import and program loads into the workspace, asking before either
- *  replaces code the student wrote, or a load drops their checks. */
+ *  replaces code the student wrote, or a load drops their checks or a saved
+ *  helper it cannot keep a copy of. */
 export function useWorkspaceImport({
   source,
   setSource,
@@ -54,9 +61,10 @@ export function useWorkspaceImport({
   toast,
   resetLaunch,
   loadProgram,
+  filesBackup,
 }: Pick<
   FullChromeSurfaceProps,
-  "source" | "setSource" | "extraFiles" | "setExtraFiles" | "checks" | "loadProgram"
+  "source" | "setSource" | "extraFiles" | "setExtraFiles" | "checks" | "loadProgram" | "filesBackup"
 > & {
   toast: ReturnType<typeof useToast>;
   resetLaunch: ReturnType<typeof useLaunchMode>["reset"];
@@ -149,16 +157,17 @@ export function useWorkspaceImport({
     (payload: HandoffPayload): boolean => {
       const edited =
         source.trim() !== "" && source !== loadedSourceRef.current && source !== payload.source;
+      const unsaved = filesBackup.unsavedBy(payload.files ?? []);
       if (
-        (edited || checks.length > 0) &&
-        !window.confirm(loadQuestion(payload.label ?? "this program", edited, checks.length))
+        (edited || checks.length > 0 || unsaved.length > 0) &&
+        !window.confirm(loadQuestion(payload.label ?? "this program", edited, checks.length, unsaved))
       ) {
         return false;
       }
       loadProgram(payload);
       return true;
     },
-    [source, checks, loadProgram],
+    [source, checks, loadProgram, filesBackup],
   );
   return { loadedSourceRef, loadedFilesRef, handleImport, handleImportMany, loadProgramWithConfirm };
 }
