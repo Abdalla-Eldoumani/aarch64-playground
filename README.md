@@ -54,7 +54,7 @@ steps in [Run it locally](#run-it-locally).
 - It follows one course server's toolchain (GNU `as`, glibc, and GNU m4 on
   AArch64 Linux), not every system, and it does not match that server in
   every case. [Known differences from the course server](#known-differences-from-the-course-server)
-  says what is checked and lists the differences known today.
+  lists the differences known today and links to how they are checked.
 - It runs user programs only, with no operating system underneath. System
   registers (`MRS`, `MSR`), atomics and exclusive loads and stores (`LDXR`,
   `STXR`, `LDAR`, `STLR`, `SWP`, `CAS`), SVE, and SME are not supported. The
@@ -94,40 +94,12 @@ steps in [Run it locally](#run-it-locally).
 ## Known differences from the course server
 
 The playground follows one CPSC 355 course server (GNU `as`, gcc, glibc, and
-GNU m4 on AArch64 Linux). These checks compare it with that server:
-
-- **The site's own programs.** A sweep covers 622 of the programs the site
-  ships: the examples, the lesson programs, the exercise starters, the
-  reference and pitfall programs, and the home page's program. The
-  exercises' hidden solutions and the guide's programs are not in it. 621 of
-  the 622 were run on the server on 2026-11-06. Here, 616
-  of those give the same output, exit code, and written files, byte for byte,
-  or both sides refuse them the same way. One terminal game builds on both
-  sides and is not compared. The other 4 differ for reasons this section
-  lists: the math functions, a `_start` program, an unfinished exercise
-  starter that prints registers it never set, and an example whose files
-  define the same names, which GNU m4 cannot read as one pasted file. The
-  newest example, flappy, has not been run on the server yet.
-- **C programs.** 101 programs compiled by gcc on the server, at three
-  optimization levels. 98 print the server's output and exit with its code at
-  every level. The other 3 crash on purpose and must stop with the
-  playground's own fault message.
-- **Error messages.** 15 common mistakes, such as a missing `main` or a stack
-  frame that is not a multiple of 16, have the server's own error on record.
-  The playground's message starts with the server's line and adds one line on
-  what to change.
-- **Vector instructions.** Each of the 2,208 Advanced SIMD forms the
-  assembler takes assembles to the word GNU `as` gives on the server, and the
-  results match the server's in all 6,618 recorded cases.
-- **Recorded runs.** 2,224 server runs of programs written for course-style
-  exercises, picked because an earlier version of the playground and the
-  server disagreed on them. 794 now agree: the same kind of result (refused
-  when building, refused when linking, crashed, ran out of time, or finished)
-  and, for a run that finished, the same output and exit code. Most of the
-  rest come from the differences below.
-
-Where the two disagree, the server is right. A difference this section does
-not list is a bug, so please [report it](#reporting-a-problem).
+GNU m4 on AArch64 Linux).
+[Compare with the course server](docs/TESTING.md#compare-with-the-course-server)
+says how it is checked against that server and what the checks find. Where the
+two disagree, the server is right. These are the differences known today, with
+what to write instead where you can. A difference this list does not name is a
+bug, so please [report it](#reporting-a-problem).
 
 ### Builds here, refused on the server
 
@@ -140,14 +112,20 @@ not list is a bug, so please [report it](#reporting-a-problem).
 - **`w` and `x` registers mixed where the server refuses them.** These build
   here: `cmp x3, w21`, `cmp w1, x22`, and `add x1, x0, w21` with no extend,
   `add x24, x21, w20, lsl 3`, `ldr w19, [w19]`, `ldrb x1, [x0]`,
-  `strb x1, [x0]`, and `mul x5, w0, x4`. Name the extend
-  (`cmp x3, w21, sxtw`, `add x24, x21, w20, sxtw 3`, or `uxtw` for an
-  unsigned value), use an `x` register for every address (`ldr w19, [x19]`),
-  a `w` register for a byte (`ldrb w1, [x0]`), and one width across a `mul`.
-- **`sp` where the server's assembler does not allow it.** `and sp, sp, -16`,
-  `mov sp, xzr`, `mov xzr, sp`, and `sxtw sp, w0` build here, and
-  `and sp, sp, -16` then stops the program with `stack overflow`. Round `sp`
-  through another register: `mov x9, sp`, `and x9, x9, -16`, `mov sp, x9`.
+  `strb x1, [x0]`, and `mul x5, w0, x4`. Name the extend when an `x` register
+  meets a `w` one (`cmp x3, w21, sxtw`, `add x24, x21, w20, sxtw 3`, or `uxtw`
+  for an unsigned value), make the second register of a `cmp` a `w`
+  register when the first is one (`cmp w1, w22`), use an `x` register for
+  every address (`ldr w19, [x19]`), a `w` register for a byte
+  (`ldrb w1, [x0]`), and one width across a `mul`.
+- **`sp` and `xzr` where the server's assembler does not allow them.**
+  `and sp, sp, -16`, `mov sp, xzr`, `mov xzr, sp`, `sxtw sp, w0`,
+  `add w0, sp, w1`, `add xzr, sp, x1`, `add sp, xzr, x1`, and
+  `ldr x0, [xzr]` build here, and `and sp, sp, -16` then stops the program
+  with `stack overflow`. Give an instruction that uses `sp` an `x` register
+  to write, keep `xzr` out of it, load and store through a base register you
+  have set, and round `sp` through another register: `mov x9, sp`,
+  `and x9, x9, -16`, `mov sp, x9`.
 - **`.balign` with a number that is not a power of 2**, such as `.balign 3`.
   The server stops with `alignment not a power of 2`. Use 2, 4, 8, or 16.
 - **`.rodata` on a line of its own.** The server's assembler does not know it
@@ -178,12 +156,20 @@ not list is a bug, so please [report it](#reporting-a-problem).
   so the second line defines `x29` instead, and m4 may never finish once it
   meets `x29` again. To define a name again, quote it (``define(`fp', x29)``)
   or remove it first with ``undefine(`fp')``.
-- **A backtick or `dnl` in a `//` or `/* */` comment, or a label named
-  `dnl`.** These build here and do nothing special. GNU m4 on the server reads
-  those comments as text: a backtick starts a quote that runs to the next `'`,
-  and `dnl` deletes the rest of its line and the line break, so the program
-  may not build there. Keep backticks and `dnl` out of comments, and do not
-  name a label `dnl`.
+- **A macro name, a backtick, or `dnl` in a `//` or `/* */` comment.** These
+  build here and do nothing special. GNU m4 on the server reads those comments
+  as text. It expands a macro named there, so the later lines of a macro
+  whose body spans lines land in the code; a backtick starts a quote that runs
+  to the next `'`; and `dnl` deletes the rest of its line and the line break,
+  so the next line joins the comment and drops out of the program. The
+  program may then not build there, or build without that line. Keep macro
+  names, backticks, and `dnl` out of comments.
+- **m4 builtin names and nested quotes outside comments.** A label named
+  `dnl` or `traceon`, a `.string` holding `len(abc)` or `divnum`, and a quoted
+  define body with another quote inside it (``define(abc, `a `b' c')``) build
+  here as written. GNU m4 on the server runs those builtins, which deletes or
+  replaces the words, and drops the inner quotes. Keep m4 builtin names out
+  of labels and strings, and do not nest quotes in a define body.
 
 ### Refused here, builds on the server
 
@@ -207,16 +193,27 @@ not list is a bug, so please [report it](#reporting-a-problem).
   `.extern` and `.end`, since library calls need no declaration.
 - **A library function the playground does not have**, such as `fgetc`. The
   link fails here with ``undefined reference to `fgetc'``; gcc on the server
-  links it. The [instruction reference](docs/instruction-reference.md#c-library-functions)
+  links it. Write `getc` for `fgetc`; the
+  [instruction reference](docs/instruction-reference.md#c-library-functions)
   lists the functions the playground has.
+- **The unscaled loads and stores by name**: `ldurb`, `sturb`, `ldurh`,
+  `sturh`, `ldursb`, `ldursh`, and `ldursw`. Write `ldrb`, `strb`, `ldrh`,
+  `strh`, `ldrsb`, `ldrsh`, and `ldrsw`, which take the same offsets in both
+  places (`ldrb w0, [x0, -1]`).
 - **Some instruction spellings.** The playground refuses `bic` with an
   immediate (write `and` with the inverted mask), `lsrv` (write `lsr`),
   `mov w22, w21, lsl 1` (write `lsl w22, w21, 1`), a shift amount written as
   a sum such as `lsl 3-1` (write the number), `wsp` (it has no `wsp`, so
-  write `mov x0, sp`), and gcc's `:got:` operands.
+  write `mov x0, sp`), and gcc's `:got:` operands (write `ldr x0, =stdin`).
+- **An operand left out of an expression**, such as `mov w0, 1 *`. The
+  server's assembler builds it with a warning and takes the missing operand
+  as 0. Write the whole expression.
 - **`#` at the start of a line as a comment, and a `/*` comment left open at
   the end of the file.** The server's assembler takes both. Write comments
   with `//`, and close every `/*`.
+- **m4 quotes outside a `define`**, such as ``mov w0, `8'``. The playground
+  refuses them (`unsupported m4 construct`); GNU m4 on the server removes the
+  quotes. Write the text without them.
 - **GNU m4 builtins the playground does not run**, such as `ifelse` and
   `eval`. They work on the server. The m4 line under
   [What it does not do](#what-it-does-not-do) says what the playground's m4
@@ -234,9 +231,16 @@ not list is a bug, so please [report it](#reporting-a-problem).
   finish, or seem to work. Keep a value you need after a call in `x19` to
   `x28`, or on the stack.
 - **Memory nothing has written.** On the server a read of it goes through and
-  gives whatever was there. Here a local in a small frame reads 0, and a read
-  from a stack page nothing has touched yet, such as a large local array,
-  stops with a memory fault. Store a value before you load it.
+  gives whatever was there. Here a local in a small frame reads 0, but a read
+  from a page nothing has stored to yet stops with a memory fault: a large
+  local array on the stack, or a block from `malloc` read before anything is
+  stored in it. Store a value before you load it, or take the block from
+  `calloc`, whose memory reads 0.
+- **`add` or `sub` with `sp` and a `w` register but no extend**, such as
+  `add x0, sp, w1`. The server's assembler reads it as
+  `add x0, sp, w1, uxtw`, which adds the 32 bits of `w1`; here it adds all 64
+  bits of `x1`. Write the extend (`add x0, sp, w1, uxtw`) or an `x` register
+  (`add x0, sp, x1`).
 - **Printed addresses.** Here each section starts at a fixed address (`.data`
   at `0x600000`) and the stack starts just below `0x80000000`. On the server
   they sit elsewhere, so a printed address (`%p`, or a pointer printed as a
@@ -251,10 +255,11 @@ not list is a bug, so please [report it](#reporting-a-problem).
   past its last instruction. On the server it runs on into whatever code the
   linker put after it. End every function with `ret`.
 - **Some faults have other words here.** A jump into data or onto the stack
-  stops with `unknown instruction`, a jump to an address nothing covers stops
-  with a memory fault that names a read, and a recursion that runs out of
-  stack stops with `stack overflow`. The server says `Segmentation fault` for
-  each.
+  runs any instructions the bytes there spell and stops with
+  `unknown instruction` at the first word that is not one, a jump to an
+  address nothing covers stops with a memory fault that names a read, and a
+  recursion that runs out of stack stops with `stack overflow`. The server
+  says `Segmentation fault` for each.
 - **Reading numbers.** `scanf` with `%lf` and `atof` read no hexadecimal float
   (`0x1p3` is 8 on the server and 0 here), `atof` reads neither `inf` nor
   `nan`, and when `%d` meets a lone `-`, glibc takes the `-` while the
@@ -262,11 +267,14 @@ not list is a bug, so please [report it](#reporting-a-problem).
 - **Files.** `openat` with `O_CREAT` in a directory that does not exist
   creates the file here, because the playground's files have no directories;
   the server returns -2. A program that asks whether its output is a terminal
-  is told yes here, even under `> file` in the terminal pane.
-- **Limits.** A program that needs more than 10 million instructions stops
-  here (the limits above list the rest), each section holds at most 1 MiB,
-  and `time` returns a fixed value, so a program that seeds `rand` with
-  `time` prints the same numbers on every run here.
+  is told yes here, even under `> file` in the terminal pane. A file the
+  program writes itself lasts here only until the next Run or `./program`,
+  which starts the machine again with only your uploaded files and the files
+  `>` wrote; on the server it stays.
+- **Limits.** A program that needs more than 10 million instructions without
+  sleeping stops here (the limits above list the rest), each section holds at
+  most 1 MiB, and `time` returns a fixed value, so a program that seeds `rand`
+  with `time` prints the same numbers on every run here.
 
 ### Stepping and the terminal pane
 
@@ -275,7 +283,9 @@ not list is a bug, so please [report it](#reporting-a-problem).
   `main` is refused with the no-`main` error, where the server writes
   `helper.o`. The pane's `gcc` takes one source file at a time, where the
   server's takes several (`gcc main.s clamp.s -o sensors`), and it ignores
-  flags such as `-O2` and `-lm`.
+  flags such as `-O2` and `-lm`. In the pane, build with
+  `gcc file.s -o name`; for a program in several files, add them with the
+  **+** beside the editor's file tab, which builds them together.
 - **gdb-lite's `n` and `s`** step one source line, even after a `gcc` line
   without `-g` (they say so once a session). In gdb on the server they step
   by line only in a program built with `gcc -g`, and without `-g` they run to
@@ -285,6 +295,11 @@ not list is a bug, so please [report it](#reporting-a-problem).
   library; gdb-lite stops on the label's line and on the program's next line.
   On the server, build with `gcc -g` before you use them, or step one
   instruction at a time with `si` and `ni`.
+- **gdb-lite's `c` after a fault** does nothing: the program stays stopped
+  where it faulted. gdb on the server goes on, and the program ends with the
+  signal (`Program terminated with signal SIGSEGV`). Read the fault where it
+  stopped, then run the program again. The [terminal guide](docs/terminal.md#gdb-lite)
+  says what each gdb-lite command does.
 - **`ldr xN, label`** is two instructions here, because the playground loads
   the value through the literal pool, and one on the server, so `si` takes two
   steps on that line. The [instruction reference](docs/instruction-reference.md)
