@@ -189,8 +189,9 @@ pub fn getc(ctx: &mut HostContext<'_>) -> Result<HostOutcome, EmuError> {
         return crate::hosted::libc::getchar(ctx);
     }
     // An output stream has no open-file entry, so it reads as end of file.
+    // The answer is an int in w0, so EOF leaves x0's upper half clear, as in glibc.
     let byte = take_line_from_file(ctx, fd, 1);
-    ctx.regs.write_gpr(0, true, byte.first().map_or(EOF, |b| u64::from(*b)));
+    ctx.regs.write_gpr(0, false, byte.first().map_or(EOF, |b| u64::from(*b)));
     Ok(HostOutcome::Continue)
 }
 

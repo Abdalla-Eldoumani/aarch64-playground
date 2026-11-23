@@ -9,7 +9,7 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 
 use aarch64_emulator::{call_card, detect_hosted_mode, host_call_context};
-use aarch64_emulator::assembler::assemble;
+use aarch64_emulator::assembler::assemble_bare;
 use aarch64_emulator::cpu::{Cpu, StepOutcome};
 use aarch64_emulator::frontend::pipeline::assemble_hosted;
 use aarch64_emulator::hosted::STUBS;
@@ -524,10 +524,10 @@ _start: ldr     x0, =num
             "bare_main",
             format!("main:   stp     x29, x30, [sp, -16]!\n        mov     x29, sp\n{stack_42}        bl      atol\n        add     sp, sp, 16\n        ldp     x29, x30, [sp], 16\n        ret\n{OWN_ATOL_BODY}"),
         ),
-        ("bare_no_entry", format!("{stack_42}        bl      atol\n        add     sp, sp, 16\n        b       finish\n{OWN_ATOL_BODY}finish: mov     x19, x0\n")),
+        ("bare_no_exit", format!("_start: {}        bl      atol\n        add     sp, sp, 16\n        b       finish\n{OWN_ATOL_BODY}finish: mov     x19, x0\n", stack_42.trim_start())),
         (
             "bare_prefix",
-            format!("{stack_42}        bl      atol_digits\n        add     sp, sp, 16\n        b       finish\n{}finish: mov     x19, x0\n", OWN_ATOL_BODY.replace("atol", "atol_digits")),
+            format!("_start: {}        bl      atol_digits\n        add     sp, sp, 16\n        b       finish\n{}finish: mov     x19, x0\n", stack_42.trim_start(), OWN_ATOL_BODY.replace("atol", "atol_digits")),
         ),
     ]
 }
@@ -547,7 +547,7 @@ fn load_and_run(source: &str) -> String {
         cpu.load_linked_image_with_args(&image, &[]).expect("load");
         image.trampoline_names
     } else {
-        let code = match assemble(source) {
+        let code = match assemble_bare(source) {
             Ok(code) => code,
             Err(e) => return format!("hosted {hosted}, not built: {e}"),
         };
@@ -573,8 +573,8 @@ const OWN_ATOL_RUNS: &[&str] = &[
     "hosted_main: hosted true, trampolines [\"printf\"], exit Some(0), steps 69, pc 0xffff0430, x0 0x0, error None, stdout \"0 0 907\\n\"",
     "hosted_start: hosted true, trampolines [], exit Some(0), steps 12, pc 0x400010, x0 0x0, error None, stdout \"\"",
     "bare_start: hosted false, trampolines [], exit Some(42), steps 29, pc 0x40001c, x0 0x2a, error None, stdout \"\"",
-    "bare_main: hosted false, trampolines [], exit None, steps 33, pc 0x0, x0 0x2a, error Some(\"memory fault: the program tried to read 0x0000000000000000, which no section covers. The base register (the first one inside the brackets, or a pointer passed to a call) does not hold an address, usually because `ldr xN, label` lost its `=` (it loads the value stored at the label) or a `mov` was written where `ldr xN, =label` was meant\"), stdout \"\"",
-    "bare_no_entry: hosted false, trampolines [], exit None, steps 31, pc 0x40004c, x0 0x2a, error Some(\"execution ran past the last instruction of the program. main needs a `ret` (with an epilogue if it pushed one) or an exit call as its final step\"), stdout \"\"",
+    "bare_main: hosted false, not built: link error at line 0: undefined reference to `main'\n`main:` is here but not global, so the startup code cannot see it: add `.global main` on the line above `main:`",
+    "bare_no_exit: hosted false, trampolines [], exit None, steps 31, pc 0x40004c, x0 0x2a, error Some(\"execution ran past the last instruction of the program. main needs a `ret` (with an epilogue if it pushed one) or an exit call as its final step\"), stdout \"\"",
     "bare_prefix: hosted false, trampolines [], exit None, steps 31, pc 0x40004c, x0 0x2a, error Some(\"execution ran past the last instruction of the program. main needs a `ret` (with an epilogue if it pushed one) or an exit call as its final step\"), stdout \"\"",
 ];
 
@@ -592,7 +592,9 @@ fn a_program_with_its_own_atol_loads_and_runs_as_it_did() {
 
 /// Directive-free programs that spell `atol` without a directive to make
 /// them hosted. Detection reads no stub after `__isoc99_scanf`, so each
-/// loads and runs as it did before the library had `atol`:
+/// loads on the bare-metal path as it did before the library had `atol`,
+/// and runs as it did when it has a `_start:` (with none, the link refuses
+/// it, as gcc does):
 /// - `bl atol` in a comment of each form the assembler takes (`//`, `;`, and
 ///   `/* */` on its own line, after code and over several lines);
 /// - a program's own `atol` defined as `atol :`, `atol<TAB>:` or `ATOL :`;
@@ -600,20 +602,20 @@ fn a_program_with_its_own_atol_loads_and_runs_as_it_did() {
 ///   refuses backtick quotes, so these four record that refusal; with an m4
 ///   that takes them they run, and their path stays the bare-metal one.
 const ATOL_SPELLINGS: &[(&str, &str)] = &[
-    ("line_slashes", "// bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
-    ("tail_slashes", "        mov     x0, 5 // bl atol\n        mov     x8, 93\n        svc     0\n"),
-    ("line_semicolon", "; bl atol\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
-    ("tail_semicolon", "        mov     x0, 5 ; bl atol\n        mov     x8, 93\n        svc     0\n"),
-    ("line_block", "/* bl atol */\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
-    ("tail_block", "        mov     x0, 5 /* bl atol */\n        mov     x8, 93\n        svc     0\n"),
-    ("lines_block", "/* the call\n        bl      atol\n   is not made */\n        mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("line_slashes", "// bl atol\n_start: mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("tail_slashes", "_start: mov     x0, 5 // bl atol\n        mov     x8, 93\n        svc     0\n"),
+    ("line_semicolon", "; bl atol\n_start: mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("tail_semicolon", "_start: mov     x0, 5 ; bl atol\n        mov     x8, 93\n        svc     0\n"),
+    ("line_block", "/* bl atol */\n_start: mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
+    ("tail_block", "_start: mov     x0, 5 /* bl atol */\n        mov     x8, 93\n        svc     0\n"),
+    ("lines_block", "/* the call\n        bl      atol\n   is not made */\n_start: mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
     ("block_main", "/* bl atol */\nmain:   mov     x0, 5\n        mov     x8, 93\n        svc     0\n"),
     ("block_start_lr", "/* bl atol */\n_start: mov     x0, x30\n        and     x0, x0, 0xff\n        mov     x8, 93\n        svc     0\n"),
     ("own_space_colon", "        mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol :  mov     x0, 7\n        ret\n"),
     ("own_space_colon_start", "_start: mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol :  mov     x0, 7\n        ret\n"),
     ("own_space_colon_main", "main:   mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol :  mov     x0, 7\n        ret\n"),
-    ("own_tab_colon", "        mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol\t:  mov     x0, 7\n        ret\n"),
-    ("own_upper_space_colon", "        mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\nATOL :  mov     x0, 7\n        ret\n"),
+    ("own_tab_colon", "_start: mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\natol\t:  mov     x0, 7\n        ret\n"),
+    ("own_upper_space_colon", "_start: mov     x0, 5\n        bl      atol\n        mov     x8, 93\n        svc     0\nATOL :  mov     x0, 7\n        ret\n"),
     ("quoted_slashes", "        mov     x0, `5' // bl atol\n        mov     x8, 93\n        svc     0\n"),
     ("quoted_slashes_start_lr", "_start: mov     x0, `x30' // bl atol\n        and     x0, x0, 0xff\n        mov     x8, 93\n        svc     0\n"),
     ("quoted_slashes_main", "main:   mov     x0, `5' // bl atol\n        mov     x8, 93\n        svc     0\n"),
@@ -621,7 +623,7 @@ const ATOL_SPELLINGS: &[(&str, &str)] = &[
 ];
 
 /// One line per program from `load_and_run`, each as d312a96f's emulator
-/// gave it.
+/// gave it but for the three link refusals.
 const ATOL_SPELLINGS_RUNS: &[&str] = &[
     "line_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "tail_slashes: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
@@ -630,11 +632,11 @@ const ATOL_SPELLINGS_RUNS: &[&str] = &[
     "line_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "tail_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
     "lines_block: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
-    "block_main: hosted false, trampolines [], exit Some(5), steps 3, pc 0x40000c, x0 0x5, error None, stdout \"\"",
+    "block_main: hosted false, not built: link error at line 0: undefined reference to `main'\n`main:` is here but not global, so the startup code cannot see it: add `.global main` on the line above `main:`",
     "block_start_lr: hosted false, trampolines [], exit Some(0), steps 4, pc 0x400010, x0 0x0, error None, stdout \"\"",
-    "own_space_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "own_space_colon: hosted false, not built: link error at line 0: undefined reference to `main'\nno line defines `main:`, where every program starts: add `.global main` and then `main:` above the first instruction",
     "own_space_colon_start: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
-    "own_space_colon_main: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
+    "own_space_colon_main: hosted false, not built: link error at line 0: undefined reference to `main'\n`main:` is here but not global, so the startup code cannot see it: add `.global main` on the line above `main:`",
     "own_tab_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
     "own_upper_space_colon: hosted false, trampolines [], exit Some(7), steps 6, pc 0x400010, x0 0x7, error None, stdout \"\"",
     "quoted_slashes: hosted false, not built: preprocess error at line 1: unsupported m4 construct: backtick-quoted string",
