@@ -109,7 +109,14 @@ the call, with a plain message instead of a crash:
   server.
 - While assembling: m4 stops at the line where the text its rounds have
   built, counting every round of every line, passes 32 MiB
-  (`frontend::m4::MAX_EXPANSION_WORK_BYTES`). A section holds at most 1 MiB
+  (`frontend::m4::MAX_EXPANSION_WORK_BYTES`). In GNU m4's order the same
+  budget, carried on from what the line pass spent, counts 1 KiB for each
+  macro call plus the text it builds or, when longer, the body it reads, and
+  8 bytes for each token m4 reads or text it puts back to read again, so its
+  time follows the budget however the text splits into tokens. m4 also
+  stops once calls nest more than 32 deep inside one another's arguments or
+  1,024 expansions are begun and not yet read to their end
+  (`frontend::m4_gnu`). A section holds at most 1 MiB
   (`layout::SECTION_WINDOW`), and filled `.space` and `.skip` lines that would
   take one past it are refused at the line that does, before their bytes are
   built.

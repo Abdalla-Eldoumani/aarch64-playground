@@ -12,6 +12,7 @@ pub mod lexer;
 pub mod linker;
 pub mod lint;
 pub mod m4;
+pub mod m4_gnu;
 pub mod parser;
 pub mod pipeline;
 pub mod sections;

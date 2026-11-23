@@ -1,4 +1,5 @@
-//! m4 preprocessing for CPSC 355 source. Supports a narrow subset:
+//! m4 preprocessing for CPSC 355 source. Most programs take a narrow pass,
+//! line at a time:
 //!
 //!   * define(NAME, BODY) and undefine(NAME): whole-token substitution of
 //!     NAME on the lines below it. Use for register aliases
@@ -16,9 +17,18 @@
 //!     they stay equal until a define or a macro body spans lines.
 //!
 //! Anything else (ifdef, ifelse, forloop, dnl, backtick quoting outside a
-//! define) fails with an "unsupported m4 construct" error at its line.
+//! define) fails there with an "unsupported m4 construct" error at its line.
+//!
+//! A program that uses `dnl`, `divert`, `undivert`, `divnum`, `changecom`
+//! or a backtick, and that the narrow pass refuses or leaves with `divert`,
+//! `undivert`, `divnum`, `changecom` or `changequote` where a mnemonic
+//! goes, runs in GNU m4's own order instead (`m4_gnu`), unless the narrow
+//! pass already spent the whole work budget, which keeps its refusal.
+//! There m4 reads the source with its comments in it, as on the course
+//! servers, and the comments go from what m4 writes. `expand` makes that
+//! choice; every other program keeps the narrow pass's result.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::errors::EmuError;
 
@@ -41,7 +51,7 @@ pub(crate) const MAX_EXPANDED_TOTAL_BYTES: usize = 8 * 1024 * 1024;
 /// total cap sees only each line's settled text, so a line that grows for
 /// 30 rounds and then settles to nothing would cost it nothing. The
 /// largest shipped example builds about 0.5 MiB.
-const MAX_EXPANSION_WORK_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_EXPANSION_WORK_BYTES: usize = 32 * 1024 * 1024;
 
 /// Result of m4 expansion.
 #[derive(Debug, Default, Clone)]
@@ -72,6 +82,41 @@ pub struct Expanded {
     /// Names whose bindings are windowed (redefined or undefined) rather
     /// than file-wide. For every other name `defines` is exact everywhere.
     pub windowed: std::collections::HashSet<String>,
+    index: EventIndex,
+}
+
+/// What lets `define_body_at` find a windowed name's binding by binary
+/// search, where walking the events for each use of the name grows with
+/// events times uses. `reach[i]` is the furthest line any of the first
+/// `i + 1` events names, so the events before the first one past a line
+/// are the ones before the first `reach` past it; `by_name` holds each
+/// windowed name's event indices in order.
+#[derive(Debug, Default, Clone)]
+struct EventIndex {
+    reach: Vec<usize>,
+    by_name: HashMap<String, Vec<usize>>,
+}
+
+impl EventIndex {
+    fn new(events: &[(usize, String, Option<String>)], windowed: &HashSet<String>) -> Self {
+        let mut furthest = 0;
+        let reach = events
+            .iter()
+            .map(|(at, _, _)| {
+                furthest = furthest.max(*at);
+                furthest
+            })
+            .collect();
+        let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, (_, name, _)) in events.iter().enumerate() {
+            if let Some(indices) = by_name.get_mut(name) {
+                indices.push(i);
+            } else if windowed.contains(name) {
+                by_name.insert(name.clone(), vec![i]);
+            }
+        }
+        EventIndex { reach, by_name }
+    }
 }
 
 impl Expanded {
@@ -82,21 +127,139 @@ impl Expanded {
         if !self.windowed.contains(name) {
             return self.defines.get(name).map(String::as_str);
         }
-        let mut body: Option<&str> = None;
-        for (at, event_name, event_body) in &self.define_events {
-            if *at > line {
-                break;
-            }
-            if event_name == name {
-                body = event_body.as_deref();
-            }
-        }
-        body
+        // The last of the name's events that m4 ran before the first event
+        // past `line`.
+        let before = self.index.reach.partition_point(|&furthest| {
+            note_event_read();
+            furthest <= line
+        });
+        let indices = self.index.by_name.get(name)?;
+        let last = indices
+            .partition_point(|&i| {
+                note_event_read();
+                i < before
+            })
+            .checked_sub(1)?;
+        self.define_events[indices[last]].2.as_deref()
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Define events `define_body_at` has read, for the tests that bound the
+    /// lint's work.
+    pub(crate) static EVENTS_READ: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn note_event_read() {
+    #[cfg(test)]
+    EVENTS_READ.with(|n| n.set(n.get() + 1));
 }
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
 pub fn expand(source: &str) -> Result<Expanded, EmuError> {
+    // One work budget for both passes: GNU m4's order starts from what the
+    // line pass spent, and a line pass that spent it all keeps its refusal,
+    // which names the line where the budget ran out.
+    let mut work = 0;
+    let by_line = expand_by_line(source, &mut work);
+    // The source test is the cheaper one, and rules out almost every program.
+    let unread = uses_gnu_order_forms(source)
+        && match &by_line {
+            Ok(expanded) => builtin_as_mnemonic(&expanded.text),
+            Err(_) => work <= MAX_EXPANSION_WORK_BYTES,
+        };
+    if unread {
+        return expand_in_gnu_order(source, work);
+    }
+    by_line
+}
+
+/// The source holds a backtick or a word only GNU m4's order runs.
+fn uses_gnu_order_forms(source: &str) -> bool {
+    // Searching for the text first spares most sources the split into words.
+    source.contains('`')
+        || (["dnl", "divert", "divnum", "changecom"].iter().any(|w| source.contains(w))
+            && source
+                .split(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                .any(|word| matches!(word, "dnl" | "divert" | "undivert" | "divnum" | "changecom")))
+}
+
+/// A line of the narrow pass's output with `divert`, `undivert`, `divnum`,
+/// `changecom` or `changequote` where a mnemonic goes (after any labels),
+/// followed by `(` or the line's end: m4 the pass left unrun, which the
+/// encoder refuses as a mnemonic.
+fn builtin_as_mnemonic(text: &str) -> bool {
+    let blanks: &[char] = &[' ', '\t'];
+    text.split('\n').any(|line| {
+        let mut rest = line.trim_start_matches(blanks);
+        while let Some(after) = label_prefix(rest) {
+            rest = after.trim_start_matches(blanks);
+        }
+        ["divert", "undivert", "divnum", "changecom", "changequote"].iter().any(|name| {
+            rest.strip_prefix(name).is_some_and(|after| {
+                let after = after.trim_start_matches(blanks);
+                after.is_empty() || after.starts_with('(')
+            })
+        })
+    })
+}
+
+/// The text after a leading `name:` label, if the line opens with one.
+fn label_prefix(s: &str) -> Option<&str> {
+    let symbol = |c: u8| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'$');
+    let first = *s.as_bytes().first()?;
+    if first.is_ascii_digit() || !symbol(first) {
+        return None;
+    }
+    let end = s.bytes().position(|c| !symbol(c)).unwrap_or(s.len());
+    s[end..].strip_prefix(':')
+}
+
+/// GNU m4's order: m4 over the source as written, then the same two
+/// comment strippers over what it writes, so every consumer gets the
+/// comment-free text it always gets. The stripper's error line is an
+/// output line until it goes through the line map. `spent` is the work
+/// budget the line pass used.
+fn expand_in_gnu_order(source: &str, spent: usize) -> Result<Expanded, EmuError> {
+    let scan = super::m4_gnu::scan_after(source, spent)?;
+    let blanked = strip_block_comments(&scan.text).map_err(|e| match e {
+        EmuError::PreprocError { line, message } => EmuError::PreprocError {
+            line: scan.lines.get(line.wrapping_sub(1)).copied().unwrap_or(line),
+            message,
+        },
+        other => other,
+    })?;
+    let mut assignments = HashMap::new();
+    let kept: Vec<&str> = blanked
+        .lines()
+        .map(|line| {
+            let code = strip_comment(line);
+            if let Some((name, body)) = parse_assignment(code.trim()) {
+                assignments.insert(name, body);
+            }
+            code
+        })
+        .collect();
+    let mut line_map = scan.lines;
+    // A block comment closing the output can leave its last line empty.
+    line_map.truncate(kept.len());
+    let (defines, windowed) = bindings(&scan.events);
+    let index = EventIndex::new(&scan.events, &windowed);
+    Ok(Expanded {
+        text: kept.join("\n"),
+        line_map,
+        defines,
+        assignments,
+        define_events: scan.events,
+        windowed,
+        index,
+    })
+}
+
+/// The narrow pass: every line on its own, comments stripped first. What
+/// it builds is added to `work`, whether it succeeds or not.
+fn expand_by_line(source: &str, work: &mut usize) -> Result<Expanded, EmuError> {
     // Pass 0: blank C-style block comments. Course assignment headers wrap
     // multi-line prose (even #include lines) in /* ... */, which the
     // per-line comment stripping below cannot see.
@@ -180,35 +343,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         stripped.push((idx, without_comment.to_string()));
     }
 
-    // Find the names defined more than once or undefined, such as
-    // per-function aliases (`define(size, w19)` ... `define(size, w21)`).
-    let mut define_count: HashMap<&str, usize> = HashMap::new();
-    let mut undefined_names: std::collections::HashSet<&str> =
-        std::collections::HashSet::new();
-    for (_, name, body) in &define_events {
-        if body.is_some() {
-            *define_count.entry(name.as_str()).or_insert(0) += 1;
-        } else {
-            undefined_names.insert(name.as_str());
-        }
-    }
-    // Last body per name: the whole-file map for static names, and what
-    // the UI's register-alias labels read.
-    let mut defines: HashMap<String, String> = HashMap::new();
-    for (_, name, body) in &define_events {
-        if let Some(b) = body {
-            defines.insert(name.clone(), b.clone());
-        }
-    }
-    // `windowed` still marks the redefined/undefined names for the lint
-    // and UI layers, which report per-line bindings through
-    // `define_body_at`; substitution itself is sequential for every name.
-    let mut windowed: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for (name, count) in define_count {
-        if count != 1 || undefined_names.contains(name) {
-            windowed.insert(name.to_string());
-        }
-    }
+    let (defines, windowed) = bindings(&define_events);
     let mut current: HashMap<String, String> = HashMap::new();
 
     // Pass 2: substitute `define()` aliases only; `name = expr` lines stay
@@ -220,7 +355,6 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
     let mut out: Vec<String> = Vec::with_capacity(stripped.len());
     let mut line_map: Vec<usize> = Vec::with_capacity(stripped.len());
     let mut total: usize = 0;
-    let mut work: usize = 0;
     for (idx, line) in &stripped {
         let (idx, line_num) = (*idx, idx + 1);
         while let Some((event_idx, name, body)) = events.peek() {
@@ -237,7 +371,7 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
             }
             events.next();
         }
-        let expanded = expand_recursively(line, &current, line_num, &mut work)?;
+        let expanded = expand_recursively(line, &current, line_num, work)?;
         total = total.saturating_add(expanded.len());
         if total > MAX_EXPANDED_TOTAL_BYTES {
             return Err(EmuError::PreprocError {
@@ -258,17 +392,45 @@ pub fn expand(source: &str) -> Result<Expanded, EmuError> {
         out.push(expanded);
     }
 
+    let define_events: Vec<_> = define_events
+        .into_iter()
+        .map(|(idx, name, body)| (idx + 1, name, body))
+        .collect();
+    let index = EventIndex::new(&define_events, &windowed);
     Ok(Expanded {
         text: out.join("\n"),
         line_map,
         defines,
         assignments,
-        define_events: define_events
-            .into_iter()
-            .map(|(idx, name, body)| (idx + 1, name, body))
-            .collect(),
+        define_events,
         windowed,
+        index,
     })
+}
+
+/// From the define/undefine events: each name's last body, which the UI's
+/// register-alias labels read and which binds file-wide for a name defined
+/// once, and the names defined more than once or undefined (per-function
+/// aliases such as `define(size, w19)` ... `define(size, w21)`), whose
+/// bindings the lint and UI read per line through `define_body_at`.
+fn bindings(events: &[(usize, String, Option<String>)]) -> (HashMap<String, String>, HashSet<String>) {
+    let mut define_count: HashMap<&str, usize> = HashMap::new();
+    let mut undefined_names: HashSet<&str> = HashSet::new();
+    let mut defines: HashMap<String, String> = HashMap::new();
+    for (_, name, body) in events {
+        if let Some(b) = body {
+            *define_count.entry(name.as_str()).or_insert(0) += 1;
+            defines.insert(name.clone(), b.clone());
+        } else {
+            undefined_names.insert(name.as_str());
+        }
+    }
+    let windowed = define_count
+        .into_iter()
+        .filter(|(name, count)| *count != 1 || undefined_names.contains(name))
+        .map(|(name, _)| name.to_string())
+        .collect();
+    (defines, windowed)
 }
 
 fn expand_recursively(
@@ -1394,13 +1556,165 @@ mod tests {
     }
 
     #[test]
-    fn dnl_is_rejected() {
-        rejects(expand("dnl skip to end of line\n"), "unsupported m4 construct: dnl");
+    fn dnl_runs_in_gnu_m4s_order() {
+        let r = exp("dnl skip to end of line\nmov x0, 1\n");
+        assert_eq!(r.text, "mov x0, 1");
+        assert_eq!(r.line_map, vec![2]);
     }
 
     #[test]
-    fn backtick_is_rejected() {
-        rejects(expand("mov x0, `foo'\n"), "unsupported m4 construct: backtick-quoted string");
+    fn a_quote_runs_in_gnu_m4s_order() {
+        assert_eq!(exp("mov x0, `foo'\n").text, "mov x0, foo");
+    }
+
+    #[test]
+    fn a_define_ending_in_dnl_leaves_no_line() {
+        let r = exp("define(m, w0)dnl\n\tmov m, 1\n\tret\n");
+        assert_eq!(r.text, "\tmov w0, 1\n\tret");
+        assert_eq!(r.line_map, vec![2, 3]);
+        assert_eq!(r.define_events, vec![(1, "m".to_string(), Some("w0".to_string()))]);
+    }
+
+    #[test]
+    fn divert_where_a_mnemonic_goes_runs_in_gnu_m4s_order() {
+        // The line pass leaves `divert(-1)` as text, which no encoder takes.
+        let r = exp("divert(-1)\ndefine(fp, x29)\ndivert\n\tmov fp, sp\n");
+        assert_eq!(r.text, "\n\tmov x29, sp");
+        assert_eq!(r.line_map, vec![3, 4]);
+    }
+
+    #[test]
+    fn gnu_m4s_order_strips_the_comments_m4_writes() {
+        // m4 expands inside `//`, `;` and `/* */` comments; the strippers then
+        // take them out of what it wrote, keeping its lines.
+        let r = exp("define(m, w0)dnl\n\tmov m, 1 // m\n/* m\n m */\tret ; m\n");
+        assert_eq!(r.text, "\tmov w0, 1 \n\n\tret ");
+        assert_eq!(r.line_map, vec![2, 3, 4]);
+    }
+
+    #[test]
+    fn an_open_block_comment_in_gnu_m4s_order_names_its_source_line() {
+        // dnl takes the first line out of what m4 writes, so the comment opens
+        // on m4's first output line and the editor's second.
+        match expand("dnl a header\n/* open\n\tret\n") {
+            Err(EmuError::PreprocError { line, message }) => {
+                assert_eq!(line, 2);
+                assert!(message.contains("unterminated /* comment"), "message was: {message}");
+            }
+            other => panic!("expected the open comment, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn gnu_m4s_order_keeps_bindings_and_assignments() {
+        let r = exp("define(`r', `x19')dnl\ndefine(`r', `x20')dnl\nundefine(`t')dnl\nsize = 8\n\tmov r, size\n");
+        assert_eq!(r.defines.get("r").map(String::as_str), Some("x20"));
+        assert!(r.windowed.contains("r"));
+        assert_eq!(r.define_body_at("r", 1), Some("x19"));
+        assert_eq!(r.assignments.get("size").map(String::as_str), Some("8"));
+        assert_eq!(r.text, "size = 8\n\tmov x20, size");
+    }
+
+    #[test]
+    fn programs_the_line_pass_reads_keep_its_result() {
+        // A label, an assignment or a .req named like a builtin, and a
+        // backtick in a comment, all of which the line pass takes as it always has.
+        for (src, text) in [
+            ("\t.data\ndivert: .word 1\n", "\t.data\ndivert: .word 1"),
+            ("divnum = 4\n", "divnum = 4"),
+            ("divert .req x19\n", "divert .req x19"),
+            ("\tb dnl\ndnl:\n", "\tb dnl\ndnl:"),
+            ("// a comment with dnl and `quote\n\tret\n", "\n\tret"),
+        ] {
+            assert_eq!(exp(src).text, text, "{src:?}");
+        }
+    }
+
+    #[test]
+    fn the_choice_reads_new_forms_and_builtins_where_a_mnemonic_goes() {
+        assert!(uses_gnu_order_forms("define(m, w0)dnl\n"));
+        assert!(uses_gnu_order_forms("\tmov x0, `y'\n"));
+        for word in ["divert", "undivert", "divnum", "changecom"] {
+            assert!(uses_gnu_order_forms(&format!("\t{word}(-1)\n")), "{word}");
+        }
+        assert!(!uses_gnu_order_forms("dnlx _dnl dnl2 xdivert divert_r\n"));
+        for line in ["divert(-1)", "a: b:\tdivnum  ", "  changequote (", ".L1: undivert"] {
+            assert!(builtin_as_mnemonic(line), "{line:?}");
+        }
+        for line in ["divert: .word 1", "divert .req x19", "divnum = 4", "\tmov w0, divnum", "1: divert(-1)", "divertx("] {
+            assert!(!builtin_as_mnemonic(line), "{line:?}");
+        }
+    }
+
+    #[test]
+    fn a_body_lookup_finds_what_walking_the_events_finds() {
+        // Seeded events over three names, defines and undefines, with lines
+        // that do not always rise: in GNU m4's order a call's arguments can
+        // run past the line its expansion then takes.
+        let mut seed = 0x2545_f491_u32;
+        let mut next = |n: u32| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            (seed >> 16) % n
+        };
+        let names = ["a", "b", "c"];
+        let events: Vec<(usize, String, Option<String>)> = (0..300)
+            .map(|k| {
+                let body = (next(3) > 0).then(|| format!("w{k}"));
+                (1 + next(40) as usize, names[next(3) as usize].to_string(), body)
+            })
+            .collect();
+        let windowed: HashSet<String> = names.iter().map(|n| n.to_string()).collect();
+        let index = EventIndex::new(&events, &windowed);
+        let expanded = Expanded { define_events: events.clone(), windowed, index, ..Expanded::default() };
+        for name in names {
+            for line in 0..45 {
+                let mut walked = None;
+                for (at, event_name, body) in &events {
+                    if *at > line {
+                        break;
+                    }
+                    if event_name == name {
+                        walked = body.as_deref();
+                    }
+                }
+                assert_eq!(expanded.define_body_at(name, line), walked, "{name} at line {line}");
+            }
+        }
+    }
+
+    #[test]
+    fn a_line_pass_that_spends_the_whole_budget_keeps_its_refusal() {
+        // The renames use up the budget on a line in the middle; the quoted
+        // define at the end sends the program to GNU m4's order, which has
+        // nothing left to spend.
+        let letters = b"abcdefghijklmnopqrstuvwxyzABCDEF";
+        let mut src = String::new();
+        for pair in letters.windows(2) {
+            src += &format!("define({}, {})\n", pair[0] as char, pair[1] as char);
+        }
+        src += &format!("define(J, {})\n{}", "a ".repeat(22_500), "J\n".repeat(64));
+        let by_line = expand(&src).unwrap_err().to_string();
+        assert!(by_line.contains("counting every round of every line"), "{by_line}");
+        assert_eq!(expand(&format!("{src}define(`q', `1')\n")).unwrap_err().to_string(), by_line);
+    }
+
+    #[test]
+    fn a_routed_program_spends_one_work_budget_across_both_passes() {
+        // The line pass spends about 60% of the budget on renames inside the
+        // strings, which GNU m4's order copies as comments (`changecom`).
+        // GNU m4's order then spends about 60% reading one long word again
+        // under `divert(-1)`, from `//` lines the line pass strips. Either
+        // pass alone fits; both together do not.
+        let letters = b"abcdefghijklmnopqrstuvwxyzABCDEF";
+        let mut src = String::from("changecom(.ascii)\n");
+        for pair in letters.windows(2) {
+            src += &format!("define({}, {})\n", pair[0] as char, pair[1] as char);
+        }
+        src += &format!("define(J, `{}')\n\t.data\n{}", "a ".repeat(22_500), "\t.ascii \"J\"\n".repeat(14));
+        let body = "F".repeat(16_384);
+        let uses = MAX_EXPANSION_WORK_BYTES / 10 * 6 / (body.len() + 1024);
+        src += &format!("divert(-1)\ndefine(`b', `{body}')\n{}divert\n\t.text\n\t.global main\nmain:\tret\n", "// b\n".repeat(uses));
+        rejects(expand(&src), "m4 expansion built more than 32 MiB");
     }
 
     #[test]
@@ -1498,8 +1812,8 @@ mod tests {
     fn a_define_may_quote_its_name_and_body() {
         let r = exp("define(`fp', `x29')\nmov x0, fp\n");
         assert_eq!(r.text, "\nmov x0, x29");
-        // Anywhere else a quote is still refused.
-        rejects(expand("mov x0, `fp'\n"), "backtick");
+        // Anywhere else a quote runs in GNU m4's order: what it quotes stays unexpanded.
+        assert_eq!(exp("define(fp, x29)\nmov x0, `fp'\n").text, "\nmov x0, fp");
     }
 
     #[test]
@@ -1539,11 +1853,11 @@ mod tests {
 
     #[test]
     fn macro_arguments_close_on_their_own_line() {
-        rejects(
-            expand("define(sq, `mul $1, $1, $1')\nsq(x0,\n"),
-            "closing `)` on the same line",
-        );
-        rejects(expand("define(sq, `mul $1\n"), "closing `)` is missing");
+        rejects(expand("define(sq, mul $1)\nsq(x0,\n"), "closing `)` on the same line");
+        // With a quote the program runs in GNU m4's order, where they may run
+        // on; a call or a quote left open at the end of the file stops GNU m4.
+        rejects(expand("define(sq, `mul $1, $1, $1')\nsq(x0,\n"), "end of file in argument list");
+        rejects(expand("define(sq, `mul $1\n"), "end of file in string");
     }
 
     #[test]
@@ -1614,13 +1928,18 @@ mod tests {
 
     #[test]
     fn unsupported_construct_error_carries_its_line_number() {
-        let err = expand("mov x0, 1\nmov x1, 2\ndnl skip the rest\n").unwrap_err();
-        match err {
-            EmuError::PreprocError { line, message } => {
-                assert_eq!(line, 3, "the error points at the dnl line");
-                assert!(message.contains("dnl"), "message was: {message}");
+        // The line pass's refusal and GNU m4's order's.
+        for (src, name) in [
+            ("mov x0, 1\nmov x1, 2\nforloop(i, 1, 2, x)\n", "forloop"),
+            ("mov x0, 1\nmov x1, 2\nifdef(`a', b)\n", "ifdef"),
+        ] {
+            match expand(src).unwrap_err() {
+                EmuError::PreprocError { line, message } => {
+                    assert_eq!(line, 3, "the error points at the {name} line");
+                    assert_eq!(message, format!("unsupported m4 construct: {name}"));
+                }
+                other => panic!("expected PreprocError, got {other:?}"),
             }
-            other => panic!("expected PreprocError, got {other:?}"),
         }
     }
 

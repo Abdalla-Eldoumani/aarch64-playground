@@ -231,11 +231,50 @@ describe("error guidance for the messages the emulator really sends", () => {
     expect(e.fix).not.toContain("line above");
   });
 
-  it("names the m4 traps: recursion, a backtick, and an unsupported macro", () => {
+  it("names the m4 traps: recursion, an unclosed quote, and an unsupported macro", () => {
     const loop = explained(`define(one_r, two_r)\ndefine(two_r, one_r)\n${withBody("        mov     x0, one_r")}`);
     expect(loop.styleSection).toBe("m4 preprocessing");
     expect(loop.why).toContain("define(x29, x29)");
-    expect(explained(withBody("        mov     x0, `one'")).fix).toContain("end of file in string");
+    expect(explained(withBody("        mov     x0, `one")).why).toContain("end of file in string");
     expect(explained(`ifelse(a, b, c, d)\n${withBody("")}`).styleSection).toBe("m4 preprocessing");
+  });
+
+  // A program with dnl runs in GNU m4's order, which refuses what GNU m4 stops on.
+  it("explains what GNU m4's order refuses", () => {
+    const dnl = "define(m, x0)dnl\n";
+    const loop = explained(`define(one_r, two_r)dnl\ndefine(two_r, one_r)dnl\n${withBody("        mov     x0, one_r")}`);
+    expect(loop.why).toContain("define(x29, x29)");
+    const call = explained(`${dnl}${withBody("        m(1,")}`);
+    expect(call.why).toContain("end of file in argument list");
+    expect(call.fix).toContain("`)`");
+    const comment = explained(`${dnl}${withBody("", "        # the last line")}`);
+    expect(comment.why).toContain("end of file in comment");
+    expect(comment.fix).toContain("newline");
+    const include = explained(`${dnl}include(\`helpers.s')\n${withBody("")}`);
+    expect(include.fix).toContain("copy the included file's lines into this file where the include was");
+    const numbered = explained(`${dnl}divert(1)\n${withBody("")}`);
+    expect(numbered.fix).toContain("numbered diversion");
+    const unsupported = explained(`${dnl}ifdef(\`x', y)\n${withBody("")}`);
+    expect(unsupported.why).toContain("dnl, divert, undivert, divnum, changecom or a backtick");
+    expect(unsupported.why).toContain("divert, undivert, divnum, changecom or changequote where an instruction goes");
+    expect(unsupported.why).toContain("which runs dnl, divert (to 0 or a negative number), divnum, changecom and quotes");
+    expect(unsupported.why).not.toContain("runs those too");
+    // Calls nested past the cap, by a macro that calls itself and by hand.
+    const nested = explained(`define(\`f', \`f(f($1))')dnl\n${withBody("        mov     x0, f(1)")}`);
+    expect(nested.what).toContain("inside one another's arguments");
+    expect(nested.why).toContain("calls itself inside its own arguments");
+    const byHand = explained(`define(\`f', \`$1')dnl\n${withBody(`        mov     x0, ${"f(".repeat(33)}1${")".repeat(33)}`)}`);
+    expect(byHand.what).toContain("inside one another's arguments");
+    expect(byHand.why).toContain("f(f(f(1)))");
+  });
+
+  // These messages say what to change themselves; no other refusal's box may claim them.
+  it("adds no box to the m4 caps that explain themselves", () => {
+    const line = messageFor(`define(\`r', \`mov x0, 1 r')dnl\n${withBody("        r")}`);
+    expect(line).toContain("grew this line past");
+    expect(explainError(line)).toBeNull();
+    const nul = messageFor(`dnl\n${withBody("        mov     x0, 1\0")}`);
+    expect(nul).toContain("NUL byte");
+    expect(explainError(nul)).toBeNull();
   });
 });

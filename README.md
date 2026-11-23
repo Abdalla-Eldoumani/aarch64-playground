@@ -68,9 +68,17 @@ steps in [Run it locally](#run-it-locally).
 - Only some system calls exist (`read`, `write`, `openat`, `close`, `lseek`,
   `exit`, and a few that terminal programs use). Files live in a small virtual
   filesystem in the browser: at most 16 files and 4 MiB.
-- The m4 pass handles `define`, macros with arguments, and `undefine`. It
-  refuses `ifdef`, `ifelse`, `forloop`, and `dnl`, and a macro's arguments
-  must close on the line that uses it.
+- The m4 pass handles `define`, macros with arguments, and `undefine`, line
+  by line, and refuses `ifdef`, `ifelse`, and `forloop`. A program that uses
+  `dnl`, `divert`, `undivert`, `divnum`, `changecom`, or m4 quotes, and that
+  this pass refuses or leaves with `divert`, `undivert`, `divnum`,
+  `changecom`, or `changequote` where an instruction goes, goes through m4
+  in GNU m4's own order instead, as on the course servers, unless this pass
+  already spent the whole work budget, which keeps its refusal. That order runs
+  `dnl`, `divert` (to 0 or a negative number), `divnum`, `changecom`, and
+  quotes, and refuses the other GNU builtins (`undivert`, `include`,
+  `changequote`, and the rest) and numbered diversions such as `divert(1)`.
+  Line by line, a macro's arguments must close on the line that uses it.
 - Output from `gcc -S` needs a few edits before it assembles, such as deleting
   the `.cfi_` lines. The [instruction reference](docs/instruction-reference.md#gcc-output-compatibility)
   lists them.
@@ -80,9 +88,12 @@ steps in [Run it locally](#run-it-locally).
 - Limits stop a runaway program instead of freezing the tab: 10 million
   instructions per run, 32 MiB of memory in use (an 8 MiB stack and a 16 MiB
   heap), 4 MiB of output, and 32 MiB of text built by m4, counting every
-  round of every line. Step back reaches the last 128 instructions, fewer
-  behind steps that write more than 64 KiB, such as a `memset` over a large
-  buffer: the records of those steps share 32 MiB. The editor shows at most
+  round of every line (in GNU m4's order, on the same budget, 1 KiB for each
+  macro call plus the text it builds or, when longer, the body it reads, and
+  8 bytes for each token m4 reads or text it puts back). Step back reaches
+  the last 128 instructions, fewer behind steps that write more than 64 KiB,
+  such as a `memset` over a large buffer: the records of those steps share
+  32 MiB. The editor shows at most
   1,000 macro warnings and counts the rest on one line.
 - Your programs, files, and exercise progress are saved in this browser only.
   There are no accounts, and clearing the site's data deletes them. The

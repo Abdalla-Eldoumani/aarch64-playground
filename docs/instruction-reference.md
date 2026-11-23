@@ -667,10 +667,14 @@ An address in the unmapped first page faults here exactly as it does for
 | Form                     | Notes                                                |
 | ------------------------ | ---------------------------------------------------- |
 | `define(NAME, BODY)`     | Token-boundary substitution. Use for register aliases. |
-| `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line. |
+| `NAME(ARG, ...)`         | A macro with arguments: `$1`, `$2`, ... in the body take the arguments, `$#` their count and `$*` all of them. Quote a body that holds commas or spans lines: ``define(sq, `mul $1, $1, $1')``. The arguments of a use close on its own line, except in GNU m4's order. |
 | `NAME = EXPRESSION`      | Symbol assignment. `.` is the address at the line where the assignment appears. |
+| `dnl`                    | GNU m4's order only: deletes the rest of its line and the newline. |
+| `divert(-1)` ... `divert` | GNU m4's order only: throws away what m4 writes in between; `divert(0)` ends it too, and `divnum` gives the diversion in use. |
+| `changecom`              | GNU m4's order only: alone, turns `#` comments off; ``changecom(`//')`` makes `//` the comment start, and a second argument sets the end string (a newline when none is given). |
+| `` `text' ``             | A quoted string, in GNU m4's order: written without its quotes and never expanded. It may span lines. |
 
-`ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick outside a `define` or ``undefine(`NAME')``. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
+Line by line, `ifdef`, `ifelse`, `forloop`, and `dnl` are rejected, and so is a backtick outside a `define` or ``undefine(`NAME')``. A program that uses `dnl`, `divert`, `undivert`, `divnum`, `changecom`, or a backtick, and that the line-by-line pass rejects or leaves with `divert`, `undivert`, `divnum`, `changecom`, or `changequote` where an instruction goes, runs in GNU m4's own order instead, unless the line-by-line pass already spent the whole work budget, which keeps its rejection. There m4 reads the whole source with its comments in it, as `m4 prog.asm > prog.s` does on the course servers, and the `//`, `;`, and `/* */` comments come out of what it writes. In that order a macro's arguments may run across lines, `$#`, `$*` and `$@` work as in GNU m4 (`$10` is the tenth argument), names expand inside comments, a backtick in a comment opens a quote, and an error names the source line `m4 -s` gives. The other GNU m4 builtins (`ifdef`, `ifelse`, `include`, `changequote`, `eval`, `undivert`, and the rest) and a numbered diversion such as `divert(1)` are rejected by name; `forloop` is no builtin, so m4 leaves it as written. Undefining a name ends that define's reach at that line, so an alias can be rebound per function. A macro whose body spans lines steps as the one line that used it.
 
 ## GCC output compatibility
 
