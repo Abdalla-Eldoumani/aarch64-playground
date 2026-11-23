@@ -176,7 +176,7 @@ What the comparisons with the course server found, read on 2026-11-23:
   in `simd-behaviour.txt`.
 - **Recorded runs.** 2,224 server runs of programs written for course-style
   exercises, picked because an earlier version of the playground and the
-  server disagreed on them, kept outside the repository. 794 now agree: the
+  server disagreed on them, kept outside the repository. 919 now agree: the
   same kind of result (refused when building, refused when linking, crashed,
   ran out of time, or finished) and, for a run that finished, the same output
   and exit code. Most of the rest come from the differences the README lists.
