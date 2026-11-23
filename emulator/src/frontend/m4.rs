@@ -93,6 +93,7 @@ impl Expanded {
         }
         let mut body: Option<&str> = None;
         for (at, event_name, event_body) in &self.define_events {
+            note_event_read();
             if *at > line {
                 break;
             }
@@ -102,6 +103,18 @@ impl Expanded {
         }
         body
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Define events `define_body_at` has read, for the tests that bound the
+    /// lint's work.
+    pub(crate) static EVENTS_READ: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+fn note_event_read() {
+    #[cfg(test)]
+    EVENTS_READ.with(|n| n.set(n.get() + 1));
 }
 
 /// Expand an m4 source file. Errors carry 1-based original line numbers.
