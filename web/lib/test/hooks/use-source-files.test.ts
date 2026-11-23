@@ -492,57 +492,33 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(3);
   });
 
-  // No room for both the copies and the new strip: the program opens for
-  // this visit, and the stored strip keeps the student's files through any
-  // typing in it.
-  it("keeps the student's stored files when a load opens for this visit only", () => {
+  // No room for copies of the student's files beside the new strip: the
+  // load goes as it always did, and says which saved helpers it replaced
+  // with no copy.
+  it("loads a larger program as before when no copies fit beside it, and names them", () => {
     const names = ["stack.s", "queue.s", "utils.s"];
-    const mine = names.map((n) => file(n, `my ${n}`, 2000));
-    window.localStorage.setItem(STORE, JSON.stringify(mine));
+    window.localStorage.setItem(STORE, JSON.stringify(names.map((n) => file(n, `my ${n}`, 2000))));
     const h = mount();
     leave(6500);
-    h.save(names.map((n) => file(n, `link ${n}`, 2300)), { load: true });
+    expect(h.save(names.map((n) => file(n, `link ${n}`, 2300)), { load: true })).toEqual(names);
     expect(tags(h.files())).toEqual(names.map((n) => `// link ${n}`));
-    expect(tags(stored(STORE))).toEqual(tags(mine));
-    h.save(h.files().map((f) => (f.name === "stack.s" ? { ...f, body: `${f.body}z` } : f)));
-    expect(tags(stored(STORE)), "typing does not replace them").toEqual(tags(mine));
-    expect(h.count(), "a restore brings them back for this visit").toBe(3);
-    expect(tags(mount().files())).toEqual(tags(mine));
+    expect(tags(stored(STORE))).toEqual(names.map((n) => `// link ${n}`));
+    expect(kept()).toEqual([]);
+    expect(h.count()).toBe(0);
   });
 
-  // A helper the student added that storage could not take exists only on
-  // screen: a load with no room to copy it would lose it, so it does not happen.
-  it("refuses a load that would lose a helper only the screen holds", () => {
-    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 1000)]));
-    const h = mount();
-    leave(500);
-    h.save([...h.files(), file("new.s", "my new", 1000)]);
-    expect(h.save([file("other.s", "link", 100)], { load: true })).toBe("refused");
-    expect(tags(h.files())).toEqual(["// mine", "// my new"]);
-    expect(tags(stored(STORE))).toEqual(["// mine"]);
-    expect(stored(BACKUP)).toEqual([]);
-  });
-
-  // The smaller strip went in first, the copies still did not fit, and the
-  // old strip would not go back: the screen keeps the student's files, and
-  // their next write stores them again.
-  it("refuses a load whose old strip cannot be put back", () => {
-    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 1000)]));
-    const h = mount();
-    let stripWrites = 0;
-    vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
-      this: Storage,
-      key: string,
-      value: string,
-    ) {
-      if (key === BACKUP || (key === STORE && ++stripWrites === 2)) {
-        throw new DOMException("storage is full", "QuotaExceededError");
-      }
-      realSetItem.call(this, key, value);
+  // Storage that takes no write: the load still goes, the list it displaced
+  // is offered for this visit as it always was, and the saved helper is named.
+  it("loads as before when storage takes no write, and names the saved helper", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 100)]));
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("storage is full", "QuotaExceededError");
     });
-    expect(h.save([file("x.s", "link", 10)], { load: true })).toBe("refused");
-    expect(tags(h.files())).toEqual(["// mine"]);
-    h.save(h.files().map((f) => ({ ...f, body: `${f.body}z` })));
-    expect(stored(STORE).map((f) => f.body)).toEqual(h.files().map((f) => f.body));
+    const h = mount();
+    h.save([...h.files(), file("new.s", "new", 10)]);
+    expect(h.save([file("l.s", "link", 10)], { load: true })).toEqual(["mine.s"]);
+    expect(tags(h.files())).toEqual(["// link"]);
+    expect(h.count()).toBe(2);
+    expect(tags(stored(STORE))).toEqual(["// mine"]);
   });
 });
