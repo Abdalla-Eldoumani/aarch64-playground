@@ -81,6 +81,41 @@ pub struct Expanded {
     /// Names whose bindings are windowed (redefined or undefined) rather
     /// than file-wide. For every other name `defines` is exact everywhere.
     pub windowed: std::collections::HashSet<String>,
+    index: EventIndex,
+}
+
+/// What lets `define_body_at` find a windowed name's binding by binary
+/// search, where walking the events for each use of the name grows with
+/// events times uses. `reach[i]` is the furthest line any of the first
+/// `i + 1` events names, so the events before the first one past a line
+/// are the ones before the first `reach` past it; `by_name` holds each
+/// windowed name's event indices in order.
+#[derive(Debug, Default, Clone)]
+struct EventIndex {
+    reach: Vec<usize>,
+    by_name: HashMap<String, Vec<usize>>,
+}
+
+impl EventIndex {
+    fn new(events: &[(usize, String, Option<String>)], windowed: &HashSet<String>) -> Self {
+        let mut furthest = 0;
+        let reach = events
+            .iter()
+            .map(|(at, _, _)| {
+                furthest = furthest.max(*at);
+                furthest
+            })
+            .collect();
+        let mut by_name: HashMap<String, Vec<usize>> = HashMap::new();
+        for (i, (_, name, _)) in events.iter().enumerate() {
+            if let Some(indices) = by_name.get_mut(name) {
+                indices.push(i);
+            } else if windowed.contains(name) {
+                by_name.insert(name.clone(), vec![i]);
+            }
+        }
+        EventIndex { reach, by_name }
+    }
 }
 
 impl Expanded {
@@ -91,17 +126,20 @@ impl Expanded {
         if !self.windowed.contains(name) {
             return self.defines.get(name).map(String::as_str);
         }
-        let mut body: Option<&str> = None;
-        for (at, event_name, event_body) in &self.define_events {
+        // The last of the name's events that m4 ran before the first event
+        // past `line`.
+        let before = self.index.reach.partition_point(|&furthest| {
             note_event_read();
-            if *at > line {
-                break;
-            }
-            if event_name == name {
-                body = event_body.as_deref();
-            }
-        }
-        body
+            furthest <= line
+        });
+        let indices = self.index.by_name.get(name)?;
+        let last = indices
+            .partition_point(|&i| {
+                note_event_read();
+                i < before
+            })
+            .checked_sub(1)?;
+        self.define_events[indices[last]].2.as_deref()
     }
 }
 
@@ -206,6 +244,7 @@ fn expand_in_gnu_order(source: &str, spent: usize) -> Result<Expanded, EmuError>
     // A block comment closing the output can leave its last line empty.
     line_map.truncate(kept.len());
     let (defines, windowed) = bindings(&scan.events);
+    let index = EventIndex::new(&scan.events, &windowed);
     Ok(Expanded {
         text: kept.join("\n"),
         line_map,
@@ -213,6 +252,7 @@ fn expand_in_gnu_order(source: &str, spent: usize) -> Result<Expanded, EmuError>
         assignments,
         define_events: scan.events,
         windowed,
+        index,
     })
 }
 
@@ -351,16 +391,19 @@ fn expand_by_line(source: &str, work: &mut usize) -> Result<Expanded, EmuError> 
         out.push(expanded);
     }
 
+    let define_events: Vec<_> = define_events
+        .into_iter()
+        .map(|(idx, name, body)| (idx + 1, name, body))
+        .collect();
+    let index = EventIndex::new(&define_events, &windowed);
     Ok(Expanded {
         text: out.join("\n"),
         line_map,
         defines,
         assignments,
-        define_events: define_events
-            .into_iter()
-            .map(|(idx, name, body)| (idx + 1, name, body))
-            .collect(),
+        define_events,
         windowed,
+        index,
     })
 }
 
@@ -1599,6 +1642,42 @@ mod tests {
         }
         for line in ["divert: .word 1", "divert .req x19", "divnum = 4", "\tmov w0, divnum", "1: divert(-1)", "divertx("] {
             assert!(!builtin_as_mnemonic(line), "{line:?}");
+        }
+    }
+
+    #[test]
+    fn a_body_lookup_finds_what_walking_the_events_finds() {
+        // Seeded events over three names, defines and undefines, with lines
+        // that do not always rise: in GNU m4's order a call's arguments can
+        // run past the line its expansion then takes.
+        let mut seed = 0x2545_f491_u32;
+        let mut next = |n: u32| {
+            seed = seed.wrapping_mul(1_103_515_245).wrapping_add(12_345);
+            (seed >> 16) % n
+        };
+        let names = ["a", "b", "c"];
+        let events: Vec<(usize, String, Option<String>)> = (0..300)
+            .map(|k| {
+                let body = (next(3) > 0).then(|| format!("w{k}"));
+                (1 + next(40) as usize, names[next(3) as usize].to_string(), body)
+            })
+            .collect();
+        let windowed: HashSet<String> = names.iter().map(|n| n.to_string()).collect();
+        let index = EventIndex::new(&events, &windowed);
+        let expanded = Expanded { define_events: events.clone(), windowed, index, ..Expanded::default() };
+        for name in names {
+            for line in 0..45 {
+                let mut walked = None;
+                for (at, event_name, body) in &events {
+                    if *at > line {
+                        break;
+                    }
+                    if event_name == name {
+                        walked = body.as_deref();
+                    }
+                }
+                assert_eq!(expanded.define_body_at(name, line), walked, "{name} at line {line}");
+            }
         }
     }
 
