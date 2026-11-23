@@ -44,11 +44,9 @@ define's reach at that line, so an alias can be rebound per function.
 
 Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
 machines) knows nothing about assembly syntax, which produces four
-behaviors the playground's m4 reproduces exactly. A program built from
-the instructions and directives the reference documents prints the same
-bytes here as on the servers. The pre-assembly lint warns
-whenever a program hits one, because the rewrite is almost never what
-the author meant:
+behaviors the playground's m4 reproduces exactly. The pre-assembly lint
+warns whenever a program hits one, because the rewrite is almost never
+what the author meant:
 
 - m4 substitutes a macro name **anywhere** it appears as a whole word,
   including inside `"..."` strings and `'.'` character literals.
@@ -67,6 +65,10 @@ the author meant:
 - A defined name immediately followed by `(` is an m4 macro **call**
   on the server, and the parenthesized text is consumed as arguments.
   Put a space before the `(` or rename the macro.
+
+The README's [Known differences from the course server](../README.md#known-differences-from-the-course-server)
+lists where a program still builds or runs differently here and on the
+servers, in m4 and elsewhere.
 
 ## section directives
 
