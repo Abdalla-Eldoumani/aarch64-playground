@@ -68,9 +68,10 @@ comments come out of what it writes. In that order:
 
 Real GNU m4 (the `m4 prog.asm | gcc` pipeline on the university Linux
 machines) knows nothing about assembly syntax, which produces four
-behaviors the playground's m4 reproduces outside comments, which it takes
-out first. The pre-assembly lint warns whenever a program hits one, because
-the rewrite is almost never what the author meant:
+behaviors the playground's m4 reproduces: everywhere in GNU m4's order, and
+outside comments line by line, where it takes the comments out first. The
+pre-assembly lint warns whenever a program hits one, because the rewrite is
+almost never what the author meant:
 
 - m4 substitutes a macro name **anywhere** it appears as a whole word,
   including inside `"..."` strings and `'.'` character literals.
