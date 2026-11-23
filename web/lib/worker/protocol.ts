@@ -169,14 +169,18 @@ export interface RunResultPayload {
 }
 
 /**
- * What step over, step out and run to cursor run until, besides what stops
- * any run. Absolute, so every chunk of one run aims at the same place.
+ * What step over, step out, run to cursor and gdb's n and s run until,
+ * besides what stops any run. Absolute, so every chunk of one run aims at the
+ * same place.
  */
 export interface RunGoal {
   /** Back in the program's own code with the call stack this deep or less. */
   depth?: number;
   /** The pc at this address. */
   pc?: number;
+  /** Off this editor line's instructions, [first, past the last), back in
+   *  the program's code or at main's return: n with `depth`, s without. */
+  range?: [number, number];
 }
 
 /**
