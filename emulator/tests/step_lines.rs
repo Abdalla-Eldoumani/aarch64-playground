@@ -76,6 +76,42 @@ main:   stp     fp, lr, [sp, -16]!
         ret
 "#;
 
+/// qsort calls back into the program: cmp_int is lines 11 to 15, the bl
+/// qsort is main+24, line 25.
+const SORT3: &str = r#"// Sorts three ints with qsort and a comparator, then prints the first.
+define(fp, x29)
+define(lr, x30)
+
+        .data
+arr_m:  .word 3, 1, 2
+fmt:    .string "%d\n"
+
+        .text
+        .balign 4
+cmp_int:
+        ldr     w2, [x0]
+        ldr     w3, [x1]
+        sub     w0, w2, w3
+        ret
+
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        ldr     x0, =arr_m
+        mov     x1, 3
+        mov     x2, 4
+        ldr     x3, =cmp_int
+        bl      qsort
+        ldr     x0, =fmt
+        ldr     x1, =arr_m
+        ldr     w1, [x1]
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+"#;
+
 struct Program {
     cpu: Cpu,
     lines: Vec<(u64, u32)>,
@@ -299,4 +335,34 @@ fn step_over_at_mains_ret_still_runs_to_the_exit() {
     let r = p.cpu.run_until(1_000_000, goal).expect("runs");
     assert!(r.halted && !r.reached, "{r:?}");
     assert_eq!(p.cpu.exit_code(), Some(0));
+}
+
+#[test]
+fn step_runs_a_library_call_whole_when_it_calls_back_into_the_program() {
+    let mut p = Program::load(SORT3);
+    let main = p.label("main");
+    p.step_to(main + 24);
+    let r = p.step();
+    assert!(r.reached, "{r:?}");
+    assert_eq!(r.pc, main + 28, "past qsort, as gdb's step goes");
+    assert_eq!(p.line_of(r.pc), Some(26));
+    assert_eq!(p.depth(), 1);
+    let arr = p.label("arr_m");
+    let sorted: Vec<u32> = (0..3).map(|k| p.cpu.mem.read_u32(arr + 4 * k).expect("reads")).collect();
+    assert_eq!(sorted, [1, 2, 3]);
+}
+
+#[test]
+fn a_breakpoint_in_the_comparator_stops_step_there() {
+    let mut p = Program::load(SORT3);
+    let (main, cmp) = (p.label("main"), p.label("cmp_int"));
+    p.step_to(main + 24);
+    p.cpu.set_breakpoint(cmp);
+    let r = p.step();
+    assert!(r.hit_breakpoint && !r.reached, "{r:?}");
+    assert_eq!(r.pc, cmp);
+    // From there it steps on a line at a time, as gdb's does.
+    let r = p.step();
+    assert!(r.reached, "{r:?}");
+    assert_eq!(r.pc, cmp + 4);
 }
