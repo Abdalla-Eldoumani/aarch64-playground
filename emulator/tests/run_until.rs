@@ -89,12 +89,12 @@ fn step_to(cpu: &mut Cpu, pc: u64, depth_wanted: u64) {
 }
 
 fn over(cpu: &mut Cpu) -> RunResult {
-    let goal = Until { depth: Some(depth(cpu)), pc: None };
+    let goal = Until { depth: Some(depth(cpu)), ..Until::default() };
     cpu.run_until(1_000_000, goal).expect("runs")
 }
 
 fn out(cpu: &mut Cpu) -> RunResult {
-    let goal = Until { depth: Some(depth(cpu) - 1), pc: None };
+    let goal = Until { depth: Some(depth(cpu) - 1), ..Until::default() };
     cpu.run_until(1_000_000, goal).expect("runs")
 }
 
@@ -185,7 +185,7 @@ fn step_over_a_library_call_lands_on_the_next_line() {
 fn run_to_cursor_stops_at_the_address_and_matches_single_steps() {
     let mut cpu = load(FACT);
     let fact = label(&cpu, "fact");
-    let goal = Until { depth: None, pc: Some(fact + FACT_DONE) };
+    let goal = Until { pc: Some(fact + FACT_DONE), ..Until::default() };
     let r = cpu.run_until(1_000_000, goal).expect("runs");
     assert!(r.reached);
     assert_eq!(r.pc, fact + FACT_DONE);
@@ -395,7 +395,7 @@ fn a_chunk_that_ends_inside_the_call_has_not_reached() {
     let mut cpu = load(SPIN);
     let main = label(&cpu, "main");
     step_to(&mut cpu, main + 2 * 4, 1);
-    let goal = Until { depth: Some(1), pc: None };
+    let goal = Until { depth: Some(1), ..Until::default() };
     let r = cpu.run_until(10, goal).expect("runs");
     assert!(!r.reached && !r.halted && !r.hit_breakpoint);
     assert_eq!(r.steps_executed, 10);
@@ -437,7 +437,7 @@ fn step_over_waits_for_input_then_finishes_the_call() {
     let main = label(&cpu, "main");
     let scanf_bl = main + 4 * 4;
     step_to(&mut cpu, scanf_bl, 1);
-    let goal = Until { depth: Some(1), pc: None };
+    let goal = Until { depth: Some(1), ..Until::default() };
     let r = cpu.run_until(1_000_000, goal).expect("runs");
     assert!(!r.reached && !r.halted && cpu.is_blocked());
     cpu.push_stdin(b"7\n");

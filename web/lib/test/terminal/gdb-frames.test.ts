@@ -386,8 +386,8 @@ describe("gdb-lite's run and step commands after the end", () => {
     expect(hub.isHalted).toBe(true);
     for (const command of RESUMES) expect(await gdb(command, ctx)).toEqual({ status: "ok", lines: [] });
     expect(hub.run).toHaveBeenCalledTimes(1);
-    expect(hub.step).toHaveBeenCalledTimes(3);
-    expect(hub.runUntil).toHaveBeenCalledTimes(2);
+    expect(hub.step).toHaveBeenCalledTimes(1);
+    expect(hub.runUntil).toHaveBeenCalledTimes(4);
   });
 });
 
@@ -412,14 +412,14 @@ describe("gdb-lite ni, si, finish", () => {
     }
   });
 
-  it("keeps n and s one instruction, and si with them", async () => {
+  it("steps n and s a line through the hub, and keeps si one instruction", async () => {
     const { ctx } = stoppedAt(fact(4), 39);
     const step = vi.fn(async () => ({ halted: false, line: 16 }));
     const runUntil = vi.fn(async () => null);
     for (const command of ["n", "s", "si"]) {
       expect((await dispatchCommand(`gdb ${command}`, { ...ctx, step, runUntil })).lines).toEqual([]);
     }
-    expect(step).toHaveBeenCalledTimes(3);
-    expect(runUntil).not.toHaveBeenCalled();
+    expect(step).toHaveBeenCalledTimes(1);
+    expect(runUntil.mock.calls).toEqual([["next", 1], ["step", 1]]);
   });
 });

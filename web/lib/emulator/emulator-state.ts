@@ -15,9 +15,10 @@ import type { ExternalCall } from "@/lib/worker/protocol";
  */
 
 /** What a run with a goal runs until: "over" the call on this line (or
- *  just this instruction), "out" of this function, or an editor line (run
- *  to cursor). */
-export type StepTarget = "over" | "out" | number;
+ *  just this instruction), "out" of this function, an editor line (run to
+ *  cursor), or gdb's n ("next": off this editor line, over a call) and s
+ *  ("step": off it, into a call to the program's own code). */
+export type StepTarget = "over" | "out" | "next" | "step" | number;
 
 /** The same three as the controls name them: run to cursor is the caret's
  *  line in main.asm, which only the shell knows. */
@@ -167,10 +168,12 @@ export interface EmulatorState {
   loadState: (name: string) => void;
   deleteState: (name: string) => void;
   run: () => void;
-  /** Step over, step out or run to cursor, at run speed. Resolves to the
-   *  words for why it stopped (also `stopReason`), null when there is
-   *  nothing to say; a stop that is the program's own bug lands in `error`. */
-  runUntil: (target: StepTarget) => Promise<string | null>;
+  /** Step over, step out, run to cursor, or `lines` editor lines of gdb's n
+   *  or s (stopping sooner at a breakpoint, an input wait or the end), at run
+   *  speed. Resolves to the words for why it stopped (also `stopReason`), null
+   *  when there is nothing to say; a stop that is the program's own bug lands
+   *  in `error`. */
+  runUntil: (target: StepTarget, lines?: number) => Promise<string | null>;
   /** Why the last step over, step out or run to cursor stopped, until the
    *  machine moves again. */
   stopReason: string | null;

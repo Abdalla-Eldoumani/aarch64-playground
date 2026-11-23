@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext } from "@/lib/terminal/dispatch";
+import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext, type GdbBuild } from "@/lib/terminal/dispatch";
 
 describe("parseCommandLine", () => {
   it("splits cmd and args on whitespace", () => {
@@ -281,13 +281,13 @@ describe("dispatchCommand", () => {
     expect(text).toContain("pc");
   });
 
-  it("gdb n / s steps once", async () => {
+  it("gdb si steps once", async () => {
     let steps = 0;
     const ctx = makeCtx({
       step: async () => { steps += 1; return { halted: false, line: 42 }; },
     });
-    await dispatchCommand("gdb n", ctx);
-    await dispatchCommand("gdb s", ctx);
+    await dispatchCommand("gdb si", ctx);
+    await dispatchCommand("gdb si", ctx);
     expect(steps).toBe(2);
   });
 
@@ -773,5 +773,83 @@ describe("toolchain edges", () => {
     const missing = await dispatchCommand("m4 ghost.asm", makeCtx());
     expect(missing.status).toBe("err");
     expect(missing.lines[0]).toBe("m4: ghost.asm: no such file in vfs");
+  });
+});
+
+// gdb's next and step on a -g build: one source line, over a call or into it,
+// with gdb's repeat count. The hub runs the lines and says why it stopped.
+describe("gdb n and s", () => {
+  const stepper = (said: string | null = null) => {
+    const runUntil = vi.fn(async () => said);
+    const step = vi.fn(async () => ({ halted: false, line: null }));
+    const ctx = makeCtx({ runUntil, step, lineLabel: (addr) => (addr === 0x400008 ? "line 26" : null), pcAddress: () => 0x400008 });
+    return { ctx, runUntil, step };
+  };
+
+  it("ask the hub for one line, n over a call and s into one, and leave si one instruction", async () => {
+    const { ctx, runUntil, step } = stepper();
+    for (const command of ["gdb n", "gdb s", "gdb si"]) {
+      expect(await dispatchCommand(command, ctx)).toEqual({ status: "ok", lines: [] });
+    }
+    expect(runUntil.mock.calls).toEqual([["next", 1], ["step", 1]]);
+    expect(step).toHaveBeenCalledTimes(1);
+  });
+
+  it("pass a count of lines on to the hub", async () => {
+    const { ctx, runUntil } = stepper();
+    for (const command of ["gdb n 3", "gdb s 6", "gdb n 007"]) await dispatchCommand(command, ctx);
+    expect(runUntil.mock.calls).toEqual([["next", 3], ["step", 6], ["next", 7]]);
+  });
+
+  it("print where the hub stopped, an exit or a breakpoint included", async () => {
+    for (const said of ["reached line 27", "the program exited with code 0", "stopped at the breakpoint on line 18"]) {
+      expect(await dispatchCommand("gdb n 5", stepper(said).ctx)).toEqual({ status: "ok", lines: [said] });
+    }
+    // A card marks its code with backticks, which the pane would show as they are.
+    const card = stepper("show called out with `bl print_n` on line 28 before saving lr").ctx;
+    expect((await dispatchCommand("gdb s", card)).lines).toEqual([
+      "show called out with bl print_n on line 28 before saving lr",
+    ]);
+  });
+
+  it("stay put on a count of 0 or less and say where, as gdb does", async () => {
+    const { ctx, runUntil, step } = stepper();
+    for (const command of ["gdb n 0", "gdb s 0", "gdb n -1"]) {
+      expect(await dispatchCommand(command, ctx)).toEqual({ status: "ok", lines: ["at line 26"] });
+    }
+    expect(runUntil).not.toHaveBeenCalled();
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it("refuse a count that is not a whole number, and do not move", async () => {
+    const { ctx, runUntil, step } = stepper();
+    expect(await dispatchCommand("gdb n abc", ctx)).toEqual({
+      status: "err",
+      lines: ["gdb: n takes a number of lines, such as n 3, not 'abc'"],
+    });
+    expect((await dispatchCommand("gdb n 1+1", ctx)).lines).toEqual([
+      "gdb: n takes a number of lines, such as n 3, not '1+1'",
+    ]);
+    expect((await dispatchCommand("gdb s 1 2", ctx)).lines).toEqual([
+      "gdb: s takes a number of lines, such as s 3, not '1 2'",
+    ]);
+    expect(runUntil).not.toHaveBeenCalled();
+    expect(step).not.toHaveBeenCalled();
+  });
+
+  it("keep the -g note's build line for gcc alone, and drop it for the editor's program", async () => {
+    const build: GdbBuild = { plain: null, noted: false };
+    const ctx = makeCtx({ gdbBuild: () => build, readVfs: () => "ret\n" });
+    await dispatchCommand("as prog.s -o prog", ctx);
+    expect(build.plain).toBeNull();
+    await dispatchCommand("gcc -ggdb prog.s -o prog", ctx);
+    expect(build.plain).toBeNull();
+    // The line to type on the server: their own, with -g in place of any -g flag.
+    await dispatchCommand("gcc -g -g0 prog.s -o prog", ctx);
+    expect(build.plain).toBe("gcc -g prog.s -o prog");
+    await dispatchCommand("./program", ctx);
+    expect(build.plain).toBeNull();
+    expect((await dispatchCommand("gdb n", ctx)).lines).toEqual([]);
+    expect(build.noted).toBe(false);
   });
 });
