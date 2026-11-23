@@ -115,7 +115,10 @@ bug, so please [report it](#reporting-a-problem).
 The m4 entries below are about programs the playground's m4 reads line by
 line, which is most of them. A program that goes through GNU m4's own order
 instead (the m4 line under [What it does not do](#what-it-does-not-do) says
-which) has its m4 read as the server reads it.
+which) has its m4 read as the server reads it, apart from two cases: the GNU
+builtins that order refuses, which the same line names, and a program in
+several files, which the playground reads as one file while the server runs
+m4 on each.
 
 ### Builds here, refused on the server
 
@@ -175,12 +178,12 @@ which) has its m4 read as the server reads it.
 - **A macro name, a backtick, or `dnl` in a `//` or `/* */` comment.** Line by
   line, the playground takes comments out before m4 reads the program, so these
   build here and do nothing special. GNU m4 on the server reads those comments
-  as text. It expands a macro named there, so the later lines of a macro
-  whose body spans lines land in the code; a backtick starts a quote that runs
-  to the next `'`; and `dnl` deletes the rest of its line and the line break,
-  so the next line joins the comment and drops out of the program. The
-  program may then not build there, or build without that line. Keep macro
-  names, backticks, and `dnl` out of comments.
+  as text. It expands a macro named there, so in a `//` comment the later
+  lines of a macro whose body spans lines land in the code; a backtick starts
+  a quote that runs to the next `'`; and `dnl` deletes the rest of its line
+  and the line break, so the next line joins the comment and drops out of the
+  program. The program may then not build there, or build without that line.
+  Keep macro names, backticks, and `dnl` out of comments.
 - **m4 builtin names and nested quotes outside comments.** Line by line, a
   label named `dnl` or `traceon`, a `.string` holding `len(abc)` or `divnum`,
   and a quoted define body with another quote inside it
@@ -233,6 +236,11 @@ which) has its m4 read as the server reads it.
   `eval`. They work on the server. The m4 line under
   [What it does not do](#what-it-does-not-do) says what the playground's m4
   runs.
+- **A macro call whose arguments close on the next line**, such as
+  `jump_to(done` with its `)` on the line below. Line by line, the playground
+  refuses it (`a macro's arguments run past the end of the line`). GNU m4 on
+  the server reads on to the `)` and builds it. Close the arguments on the
+  line that calls the macro: `jump_to(done)`.
 
 ### Builds in both places, runs differently
 
@@ -251,6 +259,13 @@ which) has its m4 read as the server reads it.
   local array on the stack, or a block from `malloc` read before anything is
   stored in it. Store a value before you load it, or take the block from
   `calloc`, whose memory reads 0.
+- **What `main` starts with.** Past the null after the last argument, the
+  server's `argv` runs on into the environment, and `x2` to `x18` hold what
+  the startup code left there. Here the words after the null are the
+  arguments' own text, and those registers hold 0. A program that reads an
+  argument it was not given may crash here and run on the server. Check
+  `argc` (`x0` at `main`) before you read an argument, and set a register
+  before you read it.
 - **`add` or `sub` with `sp` and a `w` register but no extend**, such as
   `add x0, sp, w1`. The server's assembler reads it as
   `add x0, sp, w1, uxtw`, which adds the 32 bits of `w1`; here it adds all 64
@@ -283,9 +298,10 @@ which) has its m4 read as the server reads it.
   creates the file here, because the playground's files have no directories;
   the server returns -2. A program that asks whether its output is a terminal
   is told yes here, even under `> file` in the terminal pane. A file the
-  program writes itself lasts here only until the next Run or `./program`,
-  which starts the machine again with only your uploaded files and the files
-  `>` wrote; on the server it stays.
+  program writes itself lasts here only until the next build or run (Run,
+  `gcc`, `as`, or `./program`), which starts the machine again with only your
+  uploaded files, an example's own files, and the files `>` wrote; on the
+  server it stays.
 - **Limits.** A program that needs more than 10 million instructions without
   sleeping stops here (the limits above list the rest), each section holds at
   most 1 MiB, and `time` returns a fixed value, so a program that seeds `rand`
@@ -304,7 +320,9 @@ which) has its m4 read as the server reads it.
 - **gdb-lite's `n` and `s`** step one source line, even after a `gcc` line
   without `-g` (they say so once a session). In gdb on the server they step
   by line only in a program built with `gcc -g`, and without `-g` they run to
-  the end of the function. gdb's own `next` can also run on past a label it
+  the end of the function. gdb on the server counts the lines m4 writes, so a
+  macro whose body spans two lines is two steps there and one here. gdb's own
+  `next` can also run on past a label it
   reaches after a call, taking the label for a new function, and at the `ret`
   of a comparator `qsort` calls, both `next` and `step` stop inside the
   library; gdb-lite stops on the label's line and on the program's next line.
