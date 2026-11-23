@@ -281,13 +281,13 @@ describe("dispatchCommand", () => {
     expect(text).toContain("pc");
   });
 
-  it("gdb n / s steps once", async () => {
+  it("gdb si steps once", async () => {
     let steps = 0;
     const ctx = makeCtx({
       step: async () => { steps += 1; return { halted: false, line: 42 }; },
     });
-    await dispatchCommand("gdb n", ctx);
-    await dispatchCommand("gdb s", ctx);
+    await dispatchCommand("gdb si", ctx);
+    await dispatchCommand("gdb si", ctx);
     expect(steps).toBe(2);
   });
 

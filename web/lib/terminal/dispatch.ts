@@ -142,9 +142,13 @@ export interface DispatchContext {
   ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
   step(): Promise<{ halted: boolean; line: number | null }>;
   runUntilBreak(): Promise<{ halted: boolean; hit_breakpoint: boolean }>;
-  /** `ni` (over the call on this line) and `finish` (out of this function),
-   *  at run speed: why it stopped, or null after one instruction. */
-  runUntil(target: "over" | "out"): Promise<string | null>;
+  /** `ni` (over the call on this line), `finish` (out of this function), and
+   *  `lines` editor lines of `n` ("next") or `s` ("step"), at run speed: why
+   *  it stopped, or null after one instruction of `ni`. */
+  runUntil(target: "over" | "out" | "next" | "step", lines?: number): Promise<string | null>;
+  /** What the -g note reads, kept for the pane's life; absent where no pane
+   *  keeps one, which then never notes. */
+  gdbBuild?(): GdbBuild;
   /** The call stack as the frames view draws it, with the stack bytes it
    *  read; null with no program loaded. */
   frameStack(): Promise<FrameStack | null>;
@@ -195,6 +199,16 @@ export interface DispatchContext {
   terminalIO?: TerminalProgramIO;
 }
 
+/** What the terminal keeps for the -g note: on the course server, n and s
+ *  step a source line only in a program built with gcc -g. */
+export interface GdbBuild {
+  /** The last gcc line, spelled with -g, when it left -g out; null after a
+   *  build with -g or the editor's assemble, which has no build line. */
+  plain: string | null;
+  /** Whether the note has been said, once a session. */
+  noted: boolean;
+}
+
 /** What `bt` and `info frame` read. */
 export interface FrameStack {
   snapshot: FramesSnapshot;
@@ -224,7 +238,9 @@ const HELP_LINES = [
 
 const GDB_HELP_LINES = [
   "gdb-lite commands:",
-  "  gdb n | gdb s | gdb si            step one instruction",
+  "  gdb n [N]                         step one line, or N; a call on the line runs whole",
+  "  gdb s [N]                         step one line, or N; a call to your own code stops inside it",
+  "  gdb si                            step one instruction",
   "  gdb ni                            step over: run the call on this line in one go",
   "  gdb finish                        step out: run until this function returns to its caller",
   "  gdb c                             continue until the program ends or hits a breakpoint",
@@ -346,18 +362,20 @@ export async function dispatchCommand(
   }
 
   if (cmd === "gcc" || cmd === "as") {
-    // Course shape: gcc prog.s -o prog. Optimization/debug flags are
-    // accepted and ignored; the output name defaults to a.out like the
-    // real driver.
+    // Course shape: gcc prog.s -o prog. Other flags are accepted and
+    // ignored, but -g is kept for gdb-lite's note; the output name defaults
+    // to a.out like the real driver.
     const positional: string[] = [];
     let outName = "a.out";
+    let debug = false;
     for (let i = 0; i < args.length; i++) {
       const a = args[i];
       if (a === "-o" && i + 1 < args.length) {
         outName = args[i + 1];
         i += 1;
       } else if (a.startsWith("-")) {
-        continue; // -g, -O2, -Wall... accepted silently
+        // -g, -g3, -ggdb and the like ask for line numbers; -g0 turns them off.
+        if (a.startsWith("-g")) debug = a !== "-g0";
       } else {
         positional.push(a);
       }
@@ -386,6 +404,8 @@ export async function dispatchCommand(
       return { status: "err", lines };
     }
     ctx.executables.set(outName, body);
+    const build = ctx.gdbBuild?.();
+    if (build) build.plain = debug ? null : [cmd, "-g", ...args].join(" ");
     return { status: "ok", lines: [] };
   }
 
@@ -450,7 +470,22 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
   // gdb's "The program is not being run.": after the exit these would do
   // nothing and say nothing.
   if (RESUMES.has(sub) && ctx.exitCode() != null) return { status: "err", lines: ["gdb: the program has finished"] };
-  if (sub === "n" || sub === "s" || sub === "si") {
+  if (sub === "n" || sub === "s") {
+    // gdb's repeat count, in digits: 0 or less stays put and says where.
+    const count = args.slice(1).join(" ") || "1";
+    if (!/^-?\d+$/.test(count)) {
+      return { status: "err", lines: [`gdb: ${sub} takes a number of lines, such as ${sub} 3, not '${count}'`] };
+    }
+    const lines = debugNote(ctx);
+    if (Number(count) < 1) {
+      const where = ctx.lineLabel(ctx.pcAddress());
+      return { status: "ok", lines: where ? [...lines, `at ${where}`] : lines };
+    }
+    const said = await ctx.runUntil(sub === "n" ? "next" : "step", Number(count));
+    // A card marks its code with backticks, which the pane would show as they are.
+    return { status: "ok", lines: said ? [...lines, said.replaceAll("`", "")] : lines };
+  }
+  if (sub === "si") {
     await ctx.step();
     return { status: "ok", lines: [] };
   }
@@ -532,6 +567,18 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     return { status: "ok", lines: backtrace(view, ctx) };
   }
   return { status: "err", lines: [`gdb: unknown subcommand '${sub}'`] };
+}
+
+/** Once a session, at the first n or s after a gcc line that left out -g:
+ *  what the course server's gdb needs to step by line. */
+function debugNote(ctx: DispatchContext): string[] {
+  const build = ctx.gdbBuild?.();
+  if (!build?.plain || build.noted) return [];
+  build.noted = true;
+  return [
+    `note: on the course server, n and s need a build with -g: ${build.plain}`,
+    "note: without -g, n and s run to the end of the function",
+  ];
 }
 
 /**
