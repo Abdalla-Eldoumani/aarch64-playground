@@ -460,7 +460,9 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(3);
   });
 
-  it("gives up a link file's copy, never the student's, to store typing at a full store", () => {
+  // The copies give way whole, so typing lands wherever it always did and
+  // the backup is what it always was.
+  it("lets the copies go so that typing at a full store lands as before", () => {
     window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 1000)]));
     const h = mount();
     h.save([file("p.s", "link one", 1000)], { load: true });
@@ -470,7 +472,8 @@ describe("useSourceFiles when storage is full", () => {
     expect(stored(STORE).map((f) => f.body), "the typing is stored").toEqual(
       h.files().map((f) => f.body),
     );
-    expect(tags(stored(BACKUP))).toEqual(["// mine"]);
+    expect(tags(stored(BACKUP))).toEqual(["// link one"]);
+    expect(tags(kept())).toEqual(["// link one"]);
     expect(h.count()).toBe(1);
   });
 
