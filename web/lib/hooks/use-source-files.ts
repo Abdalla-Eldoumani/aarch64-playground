@@ -2,30 +2,20 @@
 
 import { useCallback, useRef, useState } from "react";
 import { MAX_FILE_NAME_CHARS, type SourceFile } from "@/lib/playground/file-map";
-import { safeGetItem, safeSetItem } from "@/lib/playground/safe-storage";
+import { safeGetItem, safeRemoveItem, safeSetItem } from "@/lib/playground/safe-storage";
 
 const STORE_KEY = "aarch64-playground:multi-files";
-// Helper files that writes displaced. Loading a program REPLACES the strip on
-// purpose (a new program must not link another workspace's helpers), so the
-// displaced files are kept here, from every load since the last restore.
+// Helper files the last write displaced. Loading a program REPLACES the strip
+// on purpose (a new program must not link another workspace's helpers), so
+// the displaced files are kept here and can be restored.
 const BACKUP_KEY = "aarch64-playground:multi-files-backup";
+// Copies a load keeps beyond that: a helper it replaces under the same name,
+// and what earlier loads displaced. Apart from the backup so that, when
+// storage is full, they all go and the other two keys hold what they would
+// without them.
+const COPIES_KEY = "aarch64-playground:multi-files-copies";
 
-/**
- * A helper file as storage holds it. `link` marks one a program load brought
- * (a share link, a diagnostic link or an example) that has not been changed
- * since. Any other file is the student's, and so is every file stored before
- * the mark existed: a full store may drop copies of link files to make room,
- * never the student's.
- */
-type Stored = SourceFile & { link?: true };
-
-/**
- * What a write did: stored; shown but not stored; (a load only) shown while
- * the student's stored files stay in its place; or (a load only) not done.
- */
-export type FilesWrite = "stored" | "unsaved" | "kept" | "refused";
-
-function readStore(key: string): Stored[] {
+function readStore(key: string): SourceFile[] {
   const raw = safeGetItem(key);
   if (!raw) return [];
   try {
@@ -36,9 +26,7 @@ function readStore(key: string): Stored[] {
         (f) => typeof f === "object" && typeof f.name === "string" && typeof f.body === "string",
       )
     ) {
-      return (parsed as Stored[]).map(({ name, body, link }) =>
-        link === true ? { name, body, link } : { name, body },
-      );
+      return parsed as SourceFile[];
     }
   } catch {
     // malformed or absent localStorage payload; fall through to the empty list.
@@ -46,55 +34,16 @@ function readStore(key: string): Stored[] {
   return [];
 }
 
-function writeStore(key: string, files: Stored[]): boolean {
+function writeStore(key: string, files: SourceFile[]): boolean {
   return safeSetItem(key, JSON.stringify(files));
 }
 
-const size = (files: Stored[]) => JSON.stringify(files).length;
-
-/**
- * `list` without its oldest copies of link files, as many as free `need`
- * characters, or null when they cannot. Storage held the larger value, so a
- * write that grows by `need` fits once these go.
- */
-function dropOldestLinks(list: Stored[], need: number): Stored[] | null {
-  let freed = 0;
-  const left = list.filter((f) => {
-    if (freed >= need || !f.link) return true;
-    // Removing an entry frees at least its own text.
-    freed += JSON.stringify(f).length;
-    return false;
-  });
-  return freed >= need ? left : null;
-}
-
-/**
- * Store `wanted` as the backup, giving up the oldest copies of link files one
- * at a time until it fits. Returns what was stored, or null with the stored
- * backup unchanged.
- */
-function storeBackup(wanted: Stored[]): Stored[] | null {
-  let left = wanted;
-  while (!writeStore(BACKUP_KEY, left)) {
-    const oldest = left.findIndex((f) => f.link);
-    if (oldest < 0) return null;
-    left = left.filter((_, i) => i !== oldest);
-  }
-  return left;
-}
-
-/**
- * Store `strip` in place of `stored`, giving up the oldest copies of link
- * files in `backup` (what the backup key holds) if it does not fit. Returns
- * the backup now stored, or null with both keys as they were.
- */
-function storeStrip(strip: Stored[], stored: Stored[], backup: Stored[]): Stored[] | null {
-  if (writeStore(STORE_KEY, strip)) return backup;
-  const left = dropOldestLinks(backup, size(strip) - size(stored));
-  if (!left || !writeStore(BACKUP_KEY, left)) return null;
-  if (writeStore(STORE_KEY, strip)) return left;
-  writeStore(BACKUP_KEY, backup);
-  return null;
+/** Write `key`; if storage has no room, the copies make way and it is tried again. */
+function writeMakingRoom(key: string, files: SourceFile[]): boolean {
+  if (writeStore(key, files)) return true;
+  if (safeGetItem(COPIES_KEY) === null) return false;
+  safeRemoveItem(COPIES_KEY);
+  return writeStore(key, files);
 }
 
 /**
@@ -113,10 +62,10 @@ function sameFile(a: SourceFile, b: SourceFile): boolean {
   return a.name === b.name && a.body === b.body;
 }
 
-/** `files` as storage holds them, each marked when it is one of `links`. */
-function markLinks(files: SourceFile[], links: SourceFile[]): Stored[] {
-  return files.map(({ name, body }) =>
-    links.some((l) => l.name === name && l.body === body) ? { name, body, link: true } : { name, body },
+/** `files` without repeats and without any `held` already holds. */
+function unheld(files: SourceFile[], held: SourceFile[]): SourceFile[] {
+  return files.filter(
+    (f, i) => files.findIndex((g) => sameFile(g, f)) === i && !held.some((h) => sameFile(h, f)),
   );
 }
 
@@ -130,177 +79,129 @@ function freeName(name: string, files: SourceFile[]): string {
   return candidate;
 }
 
-/** How many displaced helper files the backup holds, and the call that
- * restores them. */
+interface Kept {
+  backup: SourceFile[];
+  copies: SourceFile[];
+}
+
+/**
+ * Store a write of `next` over `prev`. The strip and the backup are written
+ * as they always were; a load also keeps, in the copies, every file it
+ * replaces that the backup does not hold, and what the backup held before.
+ * Returns what is kept and, for a load, the names of saved helpers it
+ * replaces with no copy saved, which happens only when storage is full.
+ */
+function store(
+  prev: SourceFile[],
+  next: SourceFile[],
+  kept: Kept,
+  load: boolean,
+): Kept & { unsaved: string[] } {
+  const saved = readStore(STORE_KEY);
+  const displaced = displacedBy(prev, next);
+  const backup = displaced.length > 0 ? displaced : kept.backup;
+  let copies = kept.copies;
+  if (!load && displaced.length > 0) {
+    // Any other write that displaces files replaces the restore list, as always.
+    safeRemoveItem(COPIES_KEY);
+    copies = [];
+  }
+  if (displaced.length > 0) writeMakingRoom(BACKUP_KEY, displaced);
+  writeMakingRoom(STORE_KEY, next);
+  if (!load) {
+    return { backup, copies: safeGetItem(COPIES_KEY) === null ? [] : copies, unsaved: [] };
+  }
+  // A file whose text the program brings back is not lost, whatever its name,
+  // and a file it puts back unchanged needs no copy.
+  const replaced = prev.filter((f) => !next.some((n) => n.body === f.body));
+  const wanted = unheld(
+    [...kept.copies, ...(displaced.length > 0 ? kept.backup : []), ...replaced],
+    [...backup, ...next],
+  );
+  copies = [];
+  if (wanted.length > 0 && writeStore(COPIES_KEY, wanted)) copies = wanted;
+  else safeRemoveItem(COPIES_KEY);
+  const storedBackup = readStore(BACKUP_KEY);
+  const unsaved = replaced
+    .filter(
+      (f) =>
+        saved.some((s) => s.name === f.name) &&
+        !storedBackup.some((b) => sameFile(b, f)) &&
+        !copies.some((c) => sameFile(c, f)),
+    )
+    .map((f) => f.name);
+  return { backup, copies, unsaved };
+}
+
+/** What a restore brings back, and the call that restores it. */
 export interface SourceFilesBackup {
   count: number;
   restore: () => void;
+  /** The saved helpers a load of `next` would replace with no copy saved; stores nothing. */
+  unsavedBy: (next: SourceFile[]) => string[];
 }
 
 /**
  * The multi-file workspace's persisted state: the extra source files beside
  * main.asm, the write that replaces them (`{ load: true }` for a program
- * load), and the backup of whatever writes discarded. MultiFileTabs renders
- * this state; it does not own it.
+ * load, which returns the saved helpers it replaced with no copy), and the
+ * backup of whatever writes discarded. MultiFileTabs renders this state; it
+ * does not own it.
  */
 export function useSourceFiles(): [
   SourceFile[],
-  (next: SourceFile[], how?: { load: boolean }) => FilesWrite,
+  (next: SourceFile[], how?: { load: boolean }) => string[],
   SourceFilesBackup,
 ] {
-  const [start] = useState(() => ({ strip: readStore(STORE_KEY), backup: readStore(BACKUP_KEY) }));
-  const [files, setFiles] = useState<SourceFile[]>(() =>
-    start.strip.map(({ name, body }) => ({ name, body })),
-  );
-  // What a restore brings back: the stored backup, then the kept and closed files.
-  const [offer, setOffer] = useState<Stored[]>(start.backup);
-  // The strip on screen. Writes compare against it at the moment of the
+  const [files, setFiles] = useState<SourceFile[]>(() => readStore(STORE_KEY));
+  const [kept, setKept] = useState<Kept>(() => ({
+    backup: readStore(BACKUP_KEY),
+    copies: readStore(COPIES_KEY),
+  }));
+  // The strip and the restore list as the last write left them. The backup is
+  // decided by comparing the incoming set against these, at the moment of the
   // write, not in an effect, where the comparison would be a cascading render.
   const filesRef = useRef<SourceFile[]>(files);
-  // What each key holds; a write storage refuses leaves these as they were.
-  const storedRef = useRef<Stored[]>(start.strip);
-  const backupRef = useRef<Stored[]>(start.backup);
-  // The unchanged files of the last load, which mark a file as from a link.
-  const fromLinkRef = useRef<SourceFile[]>(start.strip.filter((f) => f.link));
-  // Stored files a load took off the screen without room for their copies.
-  // The stored strip still holds them, so no write replaces it until they
-  // come back on screen.
-  const keptRef = useRef<Stored[]>([]);
-  // The student's closed tabs whose copy did not fit: the stored strip keeps
-  // them, after the tabs on screen, until a restore or a load takes them.
-  const closedRef = useRef<Stored[]>([]);
-
-  const show = useCallback((next: SourceFile[]) => {
+  const keptRef = useRef<Kept>(kept);
+  const save = useCallback((next: SourceFile[], how?: { load: boolean }) => {
+    const { unsaved, ...after } = store(filesRef.current, next, keptRef.current, how?.load === true);
     filesRef.current = next;
+    keptRef.current = after;
     setFiles(next);
-    setOffer([...backupRef.current, ...keptRef.current, ...closedRef.current]);
+    setKept(after);
+    return unsaved;
   }, []);
-
-  const save = useCallback(
-    (next: SourceFile[], how?: { load: boolean }): FilesWrite => {
-      if (!how?.load) {
-        const displaced = markLinks(displacedBy(filesRef.current, next), fromLinkRef.current);
-        let written = false;
-        if (keptRef.current.length === 0) {
-          if (displaced.length > 0) {
-            if (writeStore(BACKUP_KEY, displaced)) backupRef.current = displaced;
-            else closedRef.current = [...closedRef.current, ...displaced.filter((f) => !f.link)];
-          }
-          const strip = markLinks(next, fromLinkRef.current);
-          // Under a free name, should a tab have taken its own since.
-          for (const c of closedRef.current) strip.push({ ...c, name: freeName(c.name, strip) });
-          const left = storeStrip(strip, storedRef.current, backupRef.current);
-          if (left) {
-            storedRef.current = strip;
-            backupRef.current = left;
-            closedRef.current = strip.slice(next.length);
-            written = true;
-          }
-        }
-        show(next);
-        return written ? "stored" : "unsaved";
-      }
-
-      // Everything the load takes off the screen or out of the stored strip
-      // that it does not bring back and the backup does not already hold.
-      const screen = markLinks(filesRef.current, fromLinkRef.current);
-      const atRisk = [...screen, ...keptRef.current, ...closedRef.current].filter(
-        (f, i, all) =>
-          all.findIndex((g) => sameFile(g, f)) === i &&
-          !next.some((n) => n.body === f.body) &&
-          !backupRef.current.some((k) => sameFile(k, f)),
-      );
-      // A file the load delivers unchanged is from a link, unless the student
-      // already had that very file.
-      const own = [...screen, ...keptRef.current, ...closedRef.current, ...backupRef.current].filter(
-        (f) => !f.link,
-      );
-      const fromLink = next.filter((n) => !own.some((o) => sameFile(o, n)));
-      const strip = markLinks(next, fromLink);
-      const stored = storedRef.current;
-      const before = safeGetItem(BACKUP_KEY);
-      // A copy of a link file the load puts back unchanged is not needed.
-      const copies = backupRef.current.filter((k) => !(k.link && next.some((n) => sameFile(n, k))));
-      const wanted = [...copies, ...atRisk];
-
-      // The copies go first, while the old strip still holds the originals.
-      let backup =
-        atRisk.length > 0 || copies.length !== backupRef.current.length
-          ? storeBackup(wanted)
-          : backupRef.current;
-      let landed = false;
-      let putBackFailed = false;
-      if (!backup && size(strip) < size(stored)) {
-        // A smaller strip makes room for the copies; if they still do not
-        // fit, the old strip goes back.
-        if (writeStore(STORE_KEY, strip)) {
-          backup = storeBackup(wanted);
-          landed = backup !== null;
-          if (!backup && !writeStore(STORE_KEY, stored)) {
-            storedRef.current = strip;
-            putBackFailed = true;
-          }
-        }
-      }
-      if (backup && !landed) {
-        const left = storeStrip(strip, stored, backup);
-        if (left) {
-          backup = left;
-          landed = true;
-        } else {
-          // The copies are not needed while the old strip stays.
-          safeSetItem(BACKUP_KEY, before ?? "[]");
-        }
-      }
-
-      if (landed && backup) {
-        storedRef.current = strip;
-        backupRef.current = backup;
-        keptRef.current = [];
-      } else {
-        // A student's file that only the screen holds would be lost.
-        const screenOnly = atRisk.some(
-          (f) => !f.link && !stored.some((s) => sameFile(s, f)),
-        );
-        if (screenOnly || putBackFailed) return "refused";
-        keptRef.current = atRisk.filter((f) => stored.some((s) => sameFile(s, f)));
-      }
-      closedRef.current = [];
-      fromLinkRef.current = fromLink;
-      show(next);
-      if (landed) return "stored";
-      return keptRef.current.some((f) => !f.link) ? "kept" : "unsaved";
-    },
-    [show],
-  );
+  const unsavedBy = useCallback((next: SourceFile[]) => {
+    const keys = [STORE_KEY, BACKUP_KEY, COPIES_KEY];
+    const before = keys.map((k) => safeGetItem(k));
+    const { unsaved } = store(filesRef.current, next, keptRef.current, true);
+    // Put every key back as it was, the ones that shrink first: storage held
+    // all three before, so each later write has the room it needs.
+    safeRemoveItem(COPIES_KEY);
+    const grows = (i: number) => (before[i] ?? "").length - (safeGetItem(keys[i]) ?? "").length;
+    for (const i of [0, 1, 2].sort((a, b) => grows(a) - grows(b))) {
+      const value = before[i];
+      if (value === null) safeRemoveItem(keys[i]);
+      else safeSetItem(keys[i], value);
+    }
+    return unsaved;
+  }, []);
   // Restoring APPENDS: the program that replaced the strip may need its own
   // helpers, so bringing the old ones back must not take theirs away. One
   // whose name the strip now uses comes back under a free name.
   const restore = useCallback(() => {
     const next = [...filesRef.current];
-    for (const f of [...backupRef.current, ...keptRef.current, ...closedRef.current]) {
-      if (next.some((n) => sameFile(n, f))) continue;
-      const name = freeName(f.name, next);
-      next.push({ name, body: f.body });
-      if (f.link) fromLinkRef.current = [...fromLinkRef.current, { name, body: f.body }];
+    for (const f of [...keptRef.current.copies, ...keptRef.current.backup]) {
+      if (!next.some((n) => sameFile(n, f))) next.push({ name: freeName(f.name, next), body: f.body });
     }
-    keptRef.current = [];
-    closedRef.current = [];
-    // The backup goes only once the strip holds its files. A strip that does
-    // not fit beside the backup takes the backup's room, and the backup goes
-    // back if even that is not enough.
-    const strip = markLinks(next, fromLinkRef.current);
-    const backup = backupRef.current;
-    let landed = writeStore(STORE_KEY, strip);
-    if (!landed && backup.length > 0 && writeStore(BACKUP_KEY, [])) {
-      landed = writeStore(STORE_KEY, strip);
-      if (!landed && !writeStore(BACKUP_KEY, backup)) backupRef.current = [];
-    }
-    if (landed) {
-      storedRef.current = strip;
-      if (writeStore(BACKUP_KEY, [])) backupRef.current = [];
-    }
-    show(next);
-  }, [show]);
-  return [files, save, { count: offer.length, restore }];
+    safeRemoveItem(COPIES_KEY);
+    writeStore(BACKUP_KEY, []);
+    writeStore(STORE_KEY, next);
+    const after = { backup: [], copies: [] };
+    filesRef.current = next;
+    keptRef.current = after;
+    setFiles(next);
+    setKept(after);
+  }, []);
+  return [files, save, { count: kept.backup.length + kept.copies.length, restore, unsavedBy }];
 }

@@ -54,11 +54,11 @@ function nameForRecents(source: string): string {
     : `snippet ${new Date().toLocaleTimeString()}`;
 }
 
-// What a program load says when storage has no room for its helper files.
-const HELPERS_NOT_SAVED =
-  "helper tabs not saved: the browser's storage for this site is full, so your saved helper files stay as they were";
-const LOAD_REFUSED =
-  "program not loaded: the browser's storage for this site is full, so a copy of your helper files could not be saved. your files are unchanged";
+// What a load the page could not ask about says when storage had no room for
+// a copy of a saved helper it replaced.
+function replacedNotice(names: string[]): string {
+  return `replaced ${names.join(", ")} with no copy: the browser's storage for this site is full`;
+}
 
 // ---------------------------------------------------------------------------
 // Inner core: mounted from the first render, so a press or text that engages a
@@ -158,7 +158,8 @@ export function EmbeddableCore({
   useEffect(() => {
     if (startFiles === undefined || startFilesApplied.current) return;
     startFilesApplied.current = true;
-    if (setExtraFiles(startFiles, { load: true }) === "kept") toast.error(HELPERS_NOT_SAVED);
+    const unsaved = setExtraFiles(startFiles, { load: true });
+    if (unsaved.length > 0) toast.error(replacedNotice(unsaved));
   }, [startFiles, setExtraFiles, toast]);
 
   // Jump to the first error in the file that owns it. The nonce re-fires the
@@ -254,18 +255,9 @@ export function EmbeddableCore({
   // What the embed last assembled, for the run and check gates further down.
   // Declared here because loadProgram clears it.
   const lastRunSourceRef = useRef<string | null>(null);
+  // Returns the saved helpers it replaced with no copy, for the caller to say.
   const loadProgram = useCallback(
-    (payload: HandoffPayload): boolean => {
-      // A program handoff replaces the whole workspace: stale helper
-      // files from earlier work must not concatenate into the new
-      // program at its next assemble. The load keeps them restorable, and
-      // goes first so one that cannot changes nothing.
-      const helpers = setExtraFiles(payload.files ?? [], { load: true });
-      if (helpers === "refused") {
-        toast.error(LOAD_REFUSED);
-        return false;
-      }
-      if (helpers === "kept") toast.error(HELPERS_NOT_SAVED);
+    (payload: HandoffPayload): string[] => {
       // The replaced buffer stays recoverable through recents; entries are
       // keyed by content hash there, so repeats do not stack up.
       const prev = sourceRef.current;
@@ -282,6 +274,10 @@ export function EmbeddableCore({
       // a reading program waits for the student at the console).
       seedFromPayload(payload);
       setSource(payload.source);
+      // A program handoff replaces the whole workspace: stale helper
+      // files from earlier work must not concatenate into the new
+      // program at its next assemble. The load keeps them restorable.
+      const unsaved = setExtraFiles(payload.files ?? [], { load: true });
       setActiveFile(-1);
       setChecks(payload.checks ?? []);
       // The launch mode, the console watermark and the shared-program banner
@@ -290,9 +286,9 @@ export function EmbeddableCore({
       setArgsText(fullRef.current?.onProgramLoaded(payload) ?? payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       lastRunSourceRef.current = null;
-      return true;
+      return unsaved;
     },
-    [chrome, recent, seedFromPayload, setExtraFiles, toast],
+    [chrome, recent, seedFromPayload, setExtraFiles],
   );
 
   // Joins the helper files onto main so `bl func` resolves across files, and
@@ -606,7 +602,11 @@ export function EmbeddableCore({
       reset: () => resetMachine(),
       notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
-      loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
+      // A load through the handle comes from a link the page could not ask about.
+      loadProgram: (payload: HandoffPayload) => {
+        const unsaved = loadProgramRef.current(payload);
+        if (unsaved.length > 0) toast.error(replacedNotice(unsaved));
+      },
       getSource: () => sourceRef.current,
       getFiles: () => extraFilesRef.current,
       getArgs: () => argsRef.current,
