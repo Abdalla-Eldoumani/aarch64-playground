@@ -235,6 +235,7 @@ describe("useSourceFiles when storage is full", () => {
         return written;
       },
       restore: () => act(() => result.current[2].restore()),
+      unsavedBy: (next: SourceFile[]) => result.current[2].unsavedBy(next),
     };
   }
 
@@ -525,6 +526,20 @@ describe("useSourceFiles when storage is full", () => {
     leave(50);
     expect(result.current[2].unsavedBy([file("l.s", "link", 2000)])).toEqual([]);
     expect(tags(stored(STORE))).toEqual(["// mine"]);
+  });
+
+  // A load whose tabs did not fit leaves the saved helper stored though the
+  // screen no longer shows it; the next load that is stored replaces it.
+  it("names a saved helper an unstored load left behind when the next load replaces it", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 100)]));
+    const h = mount();
+    leave(50);
+    expect(h.save([file("l.s", "link", 2000)], { load: true })).toEqual([]);
+    const example = [file("e.s", "example", 100)];
+    expect(h.unsavedBy(example)).toEqual(["mine.s"]);
+    expect(h.save(example, { load: true })).toEqual(["mine.s"]);
+    expect(tags(stored(STORE))).toEqual(["// example"]);
+    expect(window.localStorage.getItem(COPIES)).toBeNull();
   });
 
   // Site data blocked outright: nothing is stored, so nothing stored can be
