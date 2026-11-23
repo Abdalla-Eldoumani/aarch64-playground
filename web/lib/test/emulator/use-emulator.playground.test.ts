@@ -731,7 +731,7 @@ describe("gdb n and s, stop for stop with gdb on a -g build", () => {
   });
 });
 
-describe("gdb n and s on the real hub, past what gdb's transcripts show", () => {
+describe("gdb n and s on the real hub: a long count, no line map, a call back into the program", () => {
   // main calls work three times on 150,000 (0x249f0). As in counting above,
   // each bl work line takes 3 * 150,000 + 10 = 450,010 steps; the mov before
   // each takes one. The first bl work is line 34, the mov after the last 39.
