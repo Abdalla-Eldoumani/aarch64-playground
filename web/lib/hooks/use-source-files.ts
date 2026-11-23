@@ -88,9 +88,10 @@ interface Kept {
  * Store a write of `next` over `prev`. The strip and the backup are written
  * as they always were; a load also keeps, in the copies, every file it
  * replaces that the backup does not hold, and what the backup held before.
- * Returns what is kept and, for a load, the names of saved helpers it
- * replaces with no copy saved, which happens only when storage is full; such
- * a load keeps no copies, so it leaves storage as it always would.
+ * Returns what is kept and, for a load whose strip is stored, the names of
+ * saved helpers it replaces with no copy saved, which happens only when
+ * storage is full; such a load, and one whose strip storage cannot take,
+ * keeps no copies, so it leaves storage as it always would.
  */
 function store(
   prev: SourceFile[],
@@ -108,9 +109,15 @@ function store(
     copies = [];
   }
   if (displaced.length > 0) writeMakingRoom(BACKUP_KEY, displaced);
-  writeMakingRoom(STORE_KEY, next);
+  const stripStored = writeMakingRoom(STORE_KEY, next);
   if (!load) {
     return { backup, copies: safeGetItem(COPIES_KEY) === null ? [] : copies, unsaved: [] };
+  }
+  if (!stripStored) {
+    // The stored strip is as it was, so no saved helper is lost: the load
+    // goes exactly as it always did.
+    safeRemoveItem(COPIES_KEY);
+    return { backup, copies: [], unsaved: [] };
   }
   // A file whose text the program brings back is not lost, whatever its name,
   // and a file it puts back unchanged needs no copy.
