@@ -15,7 +15,7 @@ impl Cpu {
     /// caller: a step over or out waiting for that call to return never
     /// would. A host drives it in chunks, so the goal is absolute.
     pub fn run_until(&mut self, max_steps: u32, until: Until) -> Result<RunResult, EmuError> {
-        let goal = until.depth.is_some() || until.pc.is_some();
+        let goal = until.depth.is_some() || until.pc.is_some() || until.range.is_some();
         let astray = self.frames.bad_return().step;
         let work_start = self.mem.host_work();
         let mut steps: u32 = 0;
@@ -46,9 +46,7 @@ impl Cpu {
                 let pc = self.regs.read_pc();
                 // A stray return that lands in the program is still the stop.
                 bad_return = self.frames.bad_return().step != astray;
-                reached = !bad_return
-                    && (until.pc == Some(pc)
-                        || until.depth.is_some_and(|d| self.frames.depth() <= d && self.in_program(pc)));
+                reached = !bad_return && (until.pc == Some(pc) || self.back_off(until, pc));
                 if reached || bad_return {
                     break;
                 }
@@ -71,6 +69,9 @@ impl Cpu {
         }
 
         let pc = self.regs.read_pc();
+        // gdb's next and step stop at a breakpoint on the line they land on,
+        // which ends a count; the loop above only checks before a step.
+        let landed = reached && until.range.is_some() && self.breakpoints.contains(&pc);
         // Both backends drive a run as a series of max_steps chunks, and the
         // first-step resume exemption above would silently skip a breakpoint
         // sitting exactly on a chunk boundary. If the budget (not a halt or
@@ -81,8 +82,8 @@ impl Cpu {
             pc,
             halted: self.halted,
             steps_executed: steps,
-            hit_breakpoint: at_cap && self.breakpoints.contains(&pc),
-            reached,
+            hit_breakpoint: landed || (at_cap && self.breakpoints.contains(&pc)),
+            reached: reached && !landed,
             bad_return,
             // Surface a bounds abort (step ceiling / memory cap) through
             // `error` so the UI shows the calm message. Gated on `halted` so
@@ -94,6 +95,19 @@ impl Cpu {
                 None
             },
         })
+    }
+
+    /// Whether `pc` meets `until`'s depth and line: back in the program's
+    /// code, at that depth or shallower, and off the line. Off a line, main's
+    /// return counts as back too: gdb's next and step stop there before the
+    /// exit, so a count of them comes out the same.
+    fn back_off(&self, until: Until, pc: u64) -> bool {
+        if until.depth.is_none() && until.range.is_none() {
+            return false;
+        }
+        let back = self.in_program(pc) || (until.range.is_some() && pc == MAIN_RETURN_ADDR);
+        back && until.depth.is_none_or(|d| self.frames.depth() <= d)
+            && until.range.is_none_or(|(lo, hi)| !(lo..hi).contains(&pc))
     }
 
     /// Raise (or lower) the runaway-loop wall for this machine. Native
