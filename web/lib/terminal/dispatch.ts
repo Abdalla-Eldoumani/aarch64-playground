@@ -404,8 +404,11 @@ export async function dispatchCommand(
       return { status: "err", lines };
     }
     ctx.executables.set(outName, body);
+    // The note is about gcc's -g; `as` builds no executable on the server.
     const build = ctx.gdbBuild?.();
-    if (build) build.plain = debug ? null : [cmd, "-g", ...args].join(" ");
+    if (build && cmd === "gcc") {
+      build.plain = debug ? null : ["gcc", "-g", ...args.filter((a) => !a.startsWith("-g"))].join(" ");
+    }
     return { status: "ok", lines: [] };
   }
 
@@ -427,6 +430,9 @@ export async function dispatchCommand(
       if (body === undefined) return { status: "err", lines: [`./${name}: ${stdinFrom}: no such file in vfs`] };
       stdin = body;
     }
+    // The editor's program has no gcc line, so no -g to miss.
+    const build = isEditorProgram ? ctx.gdbBuild?.() : undefined;
+    if (build) build.plain = null;
     const argv = [`./${name}`, ...args];
     // A `> file` capture stays a batch run; everything else streams
     // through the pane when it offers interactive I/O.
