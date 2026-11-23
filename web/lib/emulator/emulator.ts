@@ -274,7 +274,7 @@ export class EmulatorInstance {
   runUntilBreak(maxSteps: number, until?: RunGoal): RunResult {
     const raw = (
       until
-        ? this.inner.run_to(maxSteps, until.depth ?? -1, until.pc ?? -1)
+        ? this.inner.run_to(maxSteps, until.depth ?? -1, until.pc ?? -1, until.range?.[0], until.range?.[1])
         : this.inner.run_until_break(maxSteps)
     ) as RawRunResult;
     return {
@@ -436,7 +436,7 @@ interface WasmEmulatorInstance extends FrameExports, CallCardExports {
   delete_state(name: string): boolean;
   list_states(): string[];
   run_until_break(max_steps: number): unknown;
-  run_to(max_steps: number, depth: number, pc: number): unknown;
+  run_to(max_steps: number, depth: number, pc: number, lo?: number, hi?: number): unknown;
   reset(): void;
   get_pc(): bigint;
   get_register(index: number): bigint;
