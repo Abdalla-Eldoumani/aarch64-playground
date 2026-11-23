@@ -54,6 +54,12 @@ function nameForRecents(source: string): string {
     : `snippet ${new Date().toLocaleTimeString()}`;
 }
 
+// What a load the page could not ask about says when storage had no room for
+// a copy of a saved helper it replaced.
+function replacedNotice(names: string[]): string {
+  return `replaced ${names.join(", ")} with no copy: the browser's storage for this site is full`;
+}
+
 // ---------------------------------------------------------------------------
 // Inner core: mounted from the first render, so a press or text that engages a
 // frame lands on the control it was aimed at. The hub's worker and wasm wait
@@ -131,6 +137,7 @@ export function EmbeddableCore({
   const [cursor, setCursor] = useState<{ line: number; column: number }>(
     startCursor ?? { line: 1, column: 1 },
   );
+  const toast = useToast();
   const [extraFiles, setExtraFiles, filesBackup] = useSourceFiles();
   // Latest-value refs for the buffers, synced with the others further down.
   // Declared here because the effects and callbacks below already read them.
@@ -151,8 +158,9 @@ export function EmbeddableCore({
   useEffect(() => {
     if (startFiles === undefined || startFilesApplied.current) return;
     startFilesApplied.current = true;
-    setExtraFiles(startFiles);
-  }, [startFiles, setExtraFiles]);
+    const unsaved = setExtraFiles(startFiles, { load: true });
+    if (unsaved.length > 0) toast.error(replacedNotice(unsaved));
+  }, [startFiles, setExtraFiles, toast]);
 
   // Jump to the first error in the file that owns it. The nonce re-fires the
   // jump when the student re-assembles unchanged code.
@@ -181,7 +189,6 @@ export function EmbeddableCore({
       }
     }
   }, [emu.assemblyErrors]);
-  const toast = useToast();
 
   // A dot set before assembling can sit where nothing runs (below the last
   // instruction). The assemble drops it, and the student is told which one
@@ -248,8 +255,9 @@ export function EmbeddableCore({
   // What the embed last assembled, for the run and check gates further down.
   // Declared here because loadProgram clears it.
   const lastRunSourceRef = useRef<string | null>(null);
+  // Returns the saved helpers it replaced with no copy, for the caller to say.
   const loadProgram = useCallback(
-    (payload: HandoffPayload) => {
+    (payload: HandoffPayload): string[] => {
       // The replaced buffer stays recoverable through recents; entries are
       // keyed by content hash there, so repeats do not stack up.
       const prev = sourceRef.current;
@@ -268,8 +276,8 @@ export function EmbeddableCore({
       setSource(payload.source);
       // A program handoff replaces the whole workspace: stale helper
       // files from earlier work must not concatenate into the new
-      // program at its next assemble.
-      setExtraFiles(payload.files ?? []);
+      // program at its next assemble. The load keeps them restorable.
+      const unsaved = setExtraFiles(payload.files ?? [], { load: true });
       setActiveFile(-1);
       setChecks(payload.checks ?? []);
       // The launch mode, the console watermark and the shared-program banner
@@ -278,6 +286,7 @@ export function EmbeddableCore({
       setArgsText(fullRef.current?.onProgramLoaded(payload) ?? payload.args ?? "");
       setCursor(payload.cursor ?? { line: 1, column: 1 });
       lastRunSourceRef.current = null;
+      return unsaved;
     },
     [chrome, recent, seedFromPayload, setExtraFiles],
   );
@@ -593,7 +602,11 @@ export function EmbeddableCore({
       reset: () => resetMachine(),
       notifyError: (message: string) => toast.error(message),
       loadSource: (next: string) => loadSource(next),
-      loadProgram: (payload: HandoffPayload) => loadProgramRef.current(payload),
+      // A load through the handle comes from a link the page could not ask about.
+      loadProgram: (payload: HandoffPayload) => {
+        const unsaved = loadProgramRef.current(payload);
+        if (unsaved.length > 0) toast.error(replacedNotice(unsaved));
+      },
       getSource: () => sourceRef.current,
       getFiles: () => extraFilesRef.current,
       getArgs: () => argsRef.current,

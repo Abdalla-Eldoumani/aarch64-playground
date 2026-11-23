@@ -486,6 +486,180 @@ describe("importing a program's files", () => {
   });
 });
 
+// A program that brings a helper under a name the student already uses must
+// leave the student's text restorable, whether it arrives after the page
+// opened or as the page opens.
+describe("a program load over the student's helpers", () => {
+  const STUDENT = { name: "stack.s", body: "// student work" };
+  const PROGRAM_FILE = { name: "stack.s", body: "// example" };
+
+  it("offers back a helper a later load replaced under the same name", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+
+    act(() => ref.current!.loadProgram({ source: MAIN, files: [PROGRAM_FILE] }));
+    fireEvent.click(await screen.findByText("restore 1 file"));
+
+    await waitFor(() =>
+      expect(ref.current!.getFiles()).toEqual([
+        PROGRAM_FILE,
+        { name: "2-stack.s", body: "// student work" },
+      ]),
+    );
+  });
+
+  it("offers back a helper the page's opening program replaced under the same name", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} startFiles={[PROGRAM_FILE]} />,
+    );
+    engage(container);
+
+    fireEvent.click(await screen.findByText("restore 1 file"));
+
+    await waitFor(() =>
+      expect(ref.current!.getFiles()).toEqual([
+        PROGRAM_FILE,
+        { name: "2-stack.s", body: "// student work" },
+      ]),
+    );
+  });
+});
+
+// With no room for a copy of a saved helper, a load goes as it always did:
+// one the page opens from a link says which helper it replaced, and one from
+// the page's menus asks first.
+describe("a program load when storage is full", () => {
+  const STUDENT = { name: "util.s", body: UTIL };
+  const LINK_FILE = { name: "stack.s", body: "// from the link" };
+  const NOTICE = "replaced util.s with no copy: the browser's storage for this site is full";
+  let refuse: { mockRestore: () => void } | null = null;
+  // A full store for the helper keys: in all they may hold no more than they
+  // hold now, and a write that needs more is refused, as past a quota.
+  const fillHelperStorage = () => {
+    const real = Storage.prototype.setItem;
+    const helperChars = (storage: Storage, key = "", value = "") => {
+      let used = key.length + value.length;
+      for (let i = 0; i < storage.length; i++) {
+        const other = storage.key(i) ?? "";
+        if (other.startsWith(FILES_KEY) && other !== key) {
+          used += other.length + (storage.getItem(other) ?? "").length;
+        }
+      }
+      return used;
+    };
+    const limit = helperChars(window.localStorage);
+    refuse = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
+      this: Storage,
+      key: string,
+      value: string,
+    ) {
+      if (key.startsWith(FILES_KEY) && helperChars(this, key, value) > limit) {
+        throw new DOMException("storage is full", "QuotaExceededError");
+      }
+      real.call(this, key, value);
+    });
+  };
+  afterEach(() => {
+    refuse?.mockRestore();
+    refuse = null;
+  });
+
+  it("opens a link's helpers as before and names the saved helper they replaced", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} startFiles={[LINK_FILE]} />,
+    );
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(NOTICE));
+    expect(ref.current!.getFiles()).toEqual([LINK_FILE]);
+  });
+
+  // Tabs larger than the store has room for are not stored, so the saved
+  // helper is still stored and a reload brings it back: nothing to say.
+  it("says nothing when a link's helpers do not fit, since the saved helper stays stored", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    fillHelperStorage();
+    const larger = { name: "stack.s", body: `${UTIL}\n${UTIL}` };
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} startFiles={[larger]} />,
+    );
+    await waitFor(() => expect(ref.current!.getFiles()).toEqual([larger]));
+    await act(async () => {});
+    expect(toastError).not.toHaveBeenCalled();
+    expect(JSON.parse(window.localStorage.getItem(FILES_KEY) ?? "[]")).toEqual([STUDENT]);
+  });
+
+  it("loads a link's program after the page opened as before and names the saved helper", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    // A new tab storage cannot take is not saved, so not named.
+    fireEvent.change(screen.getByLabelText("new file name"), { target: { value: "queue.s" } });
+    fireEvent.click(screen.getByLabelText("add file"));
+
+    act(() => ref.current!.loadProgram({ source: "// another program", files: [LINK_FILE] }));
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(NOTICE));
+    expect(toastError).toHaveBeenCalledTimes(1);
+    expect(ref.current!.getSource()).toBe("// another program");
+    expect(ref.current!.getFiles()).toEqual([LINK_FILE]);
+  });
+
+  it("asks before a recent program replaces a saved helper with no copy, and says nothing more on yes", async () => {
+    window.localStorage.setItem(FILES_KEY, JSON.stringify([STUDENT]));
+    window.localStorage.setItem(
+      "aarch64-playground:auto-save:recent",
+      JSON.stringify([{ id: "1", name: "older", body: "// older program", savedAt: 1 }]),
+    );
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    const pickRecent = () => {
+      fireEvent.click(screen.getByRole("combobox", { name: "load recent program" }));
+      fireEvent.pointerDown(screen.getAllByRole("option").find((o) => o.textContent !== "clear history")!);
+    };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    pickRecent();
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("It replaces util.s with no copy"));
+    expect(ref.current!.getSource()).toBe(MAIN);
+    expect(ref.current!.getFiles()).toEqual([STUDENT]);
+
+    confirm.mockReturnValue(true);
+    pickRecent();
+    await waitFor(() => expect(ref.current!.getSource()).toBe("// older program"));
+    expect(ref.current!.getFiles()).toEqual([]);
+    expect(toastError).not.toHaveBeenCalled();
+    confirm.mockRestore();
+  });
+
+  // Nothing saved is replaced, so there is nothing to say, as before.
+  it("says nothing when the load replaces no saved helper", async () => {
+    fillHelperStorage();
+    const ref = createRef<EmbeddablePlaygroundHandle>();
+    const { container } = render(
+      <EmbeddablePlayground ref={ref} chrome="full" startSource={MAIN} />,
+    );
+    engage(container);
+    act(() => ref.current!.loadProgram({ source: "// a recent program" }));
+    await waitFor(() => expect(ref.current!.getSource()).toBe("// a recent program"));
+    expect(toastError).not.toHaveBeenCalled();
+  });
+});
+
 describe("the error line under the run row", () => {
   async function mountWithError(message: string, line: number) {
     useEmulatorMock.mockReturnValue(

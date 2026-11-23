@@ -220,7 +220,7 @@ export function FullChromeSurface({
   } = useLaunchMode({ args: argsText, setArgs: setArgsText });
   const importTarget = getImportTarget(activeFile);
   const { loadedSourceRef, loadedFilesRef, handleImport, handleImportMany, loadProgramWithConfirm } =
-    useWorkspaceImport({ source, setSource, extraFiles, setExtraFiles, checks, toast, resetLaunch, loadProgram });
+    useWorkspaceImport({ source, setSource, extraFiles, setExtraFiles, checks, toast, resetLaunch, loadProgram, filesBackup });
   // The terminal pane's foreground sessions: the shared drive, the console
   // watermark a session leaves behind, and the two rising edges (a blocked
   // read, a raw-mode program) that decide which pane comes forward.
