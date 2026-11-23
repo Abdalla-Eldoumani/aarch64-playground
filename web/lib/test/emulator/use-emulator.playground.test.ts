@@ -526,3 +526,207 @@ describe("gdb-lite once the program has exited, on the real hub", () => {
     expect(view.result.current.exitCode).toBe(3);
   });
 });
+
+// A call to a local function, a call to printf, a loop, and one m4 line that
+// becomes two instructions (line 31). add2 is lines 16 to 20, first in the
+// text at 0x400000; main is lines 24 to 42, from 0x400014. Every stop below is
+// gdb's own for the same program built with gcc -g, run under qemu-aarch64
+// (addresses as add2+N and main+N; GAS lays the program out the same way),
+// with lines as the editor numbers them.
+const STEPS = `// Small program for gdb's next and step: straight-line code, a call to a
+// local function, a call to printf, a loop, and one m4 line that becomes
+// two instructions.
+define(fp, x29)
+define(lr, x30)
+define(sum_r, w19)
+define(i_r, w20)
+define(clear2, \`mov     w21, 0
+        mov     w22, 0')
+
+        .data
+fmt:    .string "sum %d\\n"
+
+        .text
+        .balign 4
+add2:   stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        add     w0, w0, w1
+        ldp     fp, lr, [sp], 16
+        ret
+
+        .balign 4
+        .global main
+main:   stp     fp, lr, [sp, -16]!
+        mov     fp, sp
+        mov     sum_r, 0
+        mov     w0, 3
+        mov     w1, 4
+        bl      add2
+        mov     sum_r, w0
+        clear2
+        mov     i_r, 0
+loop:   add     sum_r, sum_r, i_r
+        add     i_r, i_r, 1
+        cmp     i_r, 3
+        b.lt    loop
+        ldr     x0, =fmt
+        mov     w1, sum_r
+        bl      printf
+        mov     w0, 0
+        ldp     fp, lr, [sp], 16
+        ret
+`;
+const ADD2 = 0x400000;
+const MAIN = 0x400014;
+
+describe("gdb n and s, stop for stop with gdb on a -g build", () => {
+  /** Each command's words, then where it left the pc. */
+  async function stops(view: Hub, commands: string[]) {
+    const out: [string[], number][] = [];
+    for (const command of commands) out.push([await gdb(view, command), view.result.current.pc]);
+    return out;
+  }
+  const reached = (line: number, pc: number): [string[], number] => [[`reached line ${line}`], pc];
+
+  it("steps a line at a time, and a count of lines at once", async () => {
+    expect(await stops(await stoppedAt(STEPS, 26), ["n", "n"])).toEqual([
+      reached(27, MAIN + 12),
+      reached(28, MAIN + 16),
+    ]);
+    expect(await stops(await stoppedAt(STEPS, 26), ["n 3"])).toEqual([reached(29, MAIN + 20)]);
+  });
+
+  it("runs a local call whole with n, and goes into it with s", async () => {
+    const over = await stoppedAt(STEPS, 29);
+    expect(await stops(over, ["n"])).toEqual([reached(30, MAIN + 24)]);
+    expect(BigInt(over.result.current.registers[0])).toBe(7n);
+    expect(await stops(await stoppedAt(STEPS, 29), ["s", "s", "s", "s"])).toEqual([
+      reached(16, ADD2),
+      reached(17, ADD2 + 4),
+      reached(18, ADD2 + 8),
+      reached(19, ADD2 + 12),
+    ]);
+    expect(await stops(await stoppedAt(STEPS, 28), ["s 3"])).toEqual([reached(17, ADD2 + 4)]);
+    expect(await stops(await stoppedAt(STEPS, 28), ["s 6"])).toEqual([reached(20, ADD2 + 16)]);
+  });
+
+  it("goes back to the caller from a callee's ret with n and with s", async () => {
+    expect(await stops(await stoppedAt(STEPS, 20), ["n", "n"])).toEqual([
+      reached(30, MAIN + 24),
+      reached(31, MAIN + 28),
+    ]);
+    expect(await stops(await stoppedAt(STEPS, 20), ["s"])).toEqual([reached(30, MAIN + 24)]);
+  });
+
+  it("takes an m4 line of two instructions as one line", async () => {
+    // gdb follows m4's output there, where they are two lines.
+    expect(await stops(await stoppedAt(STEPS, 30), ["n", "n"])).toEqual([
+      reached(31, MAIN + 28),
+      reached(32, MAIN + 36),
+    ]);
+  });
+
+  it("follows a loop's back edge to its top", async () => {
+    const view = await stoppedAt(STEPS, 36);
+    expect(BigInt(view.result.current.registers[20])).toBe(1n);
+    expect(await stops(view, ["n"])).toEqual([reached(33, MAIN + 40)]);
+    expect(BigInt(view.result.current.registers[20])).toBe(1n);
+    expect(await stops(view, ["n 4"])).toEqual([reached(33, MAIN + 40)]);
+    expect(BigInt(view.result.current.registers[20])).toBe(2n);
+  });
+
+  it("runs printf whole with n and with s", async () => {
+    for (const command of ["n", "s"]) {
+      const view = await stoppedAt(STEPS, 39);
+      expect(await stops(view, [command])).toEqual([reached(40, MAIN + 68)]);
+      expect(view.result.current.stdout).toBe("sum 10\n");
+    }
+  });
+
+  it("stops at main's return before the exit, so counts come out as gdb's", async () => {
+    const view = await stoppedAt(STEPS, 41);
+    const [ret, out, exit] = await stops(view, ["n", "n", "n"]);
+    expect(ret).toEqual(reached(42, MAIN + 76));
+    expect(out[0]).toEqual(["main has returned; the next n or s ends the program"]);
+    expect(exit[0]).toEqual(["the program exited with code 0"]);
+    expect(view.result.current.exitCode).toBe(0);
+    expect(await gdb(view, "n")).toEqual(["gdb: the program has finished"]);
+  });
+
+  it("stops a count at the exit and says only that", async () => {
+    const view = await stoppedAt(STEPS, 40);
+    expect(await gdb(view, "n 5")).toEqual(["the program exited with code 0"]);
+    expect(view.result.current.exitCode).toBe(0);
+  });
+
+  it("stops at a breakpoint inside the call n runs, then steps on from there", async () => {
+    const view = await stoppedAt(STEPS, 29);
+    act(() => view.result.current.toggleBreakpoint(18));
+    expect(await stops(view, ["n", "n", "n"])).toEqual([
+      [["stopped at the breakpoint on line 18"], ADD2 + 8],
+      reached(19, ADD2 + 12),
+      reached(20, ADD2 + 16),
+    ]);
+    // s stops at the callee's first instruction, before the breakpoint.
+    const into = await stoppedAt(STEPS, 29);
+    act(() => into.result.current.toggleBreakpoint(18));
+    expect(await stops(into, ["s"])).toEqual([reached(16, ADD2)]);
+  });
+
+  it("stops a count at a breakpoint on a line it steps to", async () => {
+    const view = await stoppedAt(STEPS, 26);
+    act(() => view.result.current.toggleBreakpoint(28));
+    expect(await stops(view, ["n 3", "n"])).toEqual([
+      [["stopped at the breakpoint on line 28"], MAIN + 16],
+      reached(29, MAIN + 20),
+    ]);
+    const into = await stoppedAt(STEPS, 28);
+    expect(await gdb(into, "b add2")).toEqual(["breakpoint 1 at 0x0000000000400000 (add2)"]);
+    expect(await stops(into, ["s 2", "s"])).toEqual([
+      [["stopped at the breakpoint on line 16"], ADD2],
+      reached(17, ADD2 + 4),
+    ]);
+    const inside = await stoppedAt(STEPS, 28);
+    act(() => inside.result.current.toggleBreakpoint(18));
+    expect(await stops(inside, ["n 3"])).toEqual([[["stopped at the breakpoint on line 18"], ADD2 + 8]]);
+  });
+
+  it("stays put on a count of 0 or less and says where", async () => {
+    const view = await stoppedAt(STEPS, 26);
+    expect(await stops(view, ["n 0", "s 0", "n -1"])).toEqual([
+      [["at line 26"], MAIN + 8],
+      [["at line 26"], MAIN + 8],
+      [["at line 26"], MAIN + 8],
+    ]);
+    expect(view.result.current.stepCount).toBe(2);
+  });
+
+  it("ends a large count at Pause", async () => {
+    // spin's line adds, and the next branches back to it, for as long as it runs.
+    const view = await stoppedAt(SPIN.replace("spin:\n        b       spin", "spin:   add     w9, w9, 1\n        b       spin"), 19);
+    const ctx = createTerminalContext({
+      machine: {
+        get current() {
+          return view.result.current;
+        },
+      },
+      workspace: () => ({ main: "", extras: [] }),
+      applySeeds: vi.fn(),
+      stageVfsFile: vi.fn(),
+      removeVfsFile: vi.fn(async () => true),
+      driveForeground: vi.fn(async () => 0),
+      executables: new Map(),
+    });
+    // Into spin, then its two lines over and over.
+    const done = dispatchCommand("gdb s 100000000", ctx);
+    await waitFor(() => expect(view.result.current.isRunning).toBe(true));
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    act(() => view.result.current.pause());
+    const { lines } = await done;
+    await waitFor(() => expect(view.result.current.isRunning).toBe(false));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toMatch(/^reached line 1[12]$/);
+    expect(view.result.current.stepCount).toBeGreaterThan(10);
+    expect(view.result.current.stepCount).toBeLessThan(1_000_000);
+  });
+});
