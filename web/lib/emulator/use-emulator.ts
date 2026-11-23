@@ -83,11 +83,12 @@ interface Goal {
   lines?: number;
 }
 
-/** gdb's n or s from where `snap` stands: off its editor line, and for n at
- *  this call depth or shallower. */
+/** gdb's n or s from where `snap` stands: off its editor line at this call
+ *  depth or shallower, and for s also into a call the line makes. */
 function lineGoal(target: StepTarget, snap: StateSnapshot, map: LineMap): RunGoal {
   const range = lineRange(Number(BigInt(snap.pc)), map);
-  return target === "next" && snap.frames ? { range, depth: callDepth(snap.frames) } : { range };
+  const depth = snap.frames ? callDepth(snap.frames) : undefined;
+  return target === "step" ? { range, depth, into: true } : { range, depth };
 }
 
 // The same words again would leave a status's text unchanged, so unsaid.
