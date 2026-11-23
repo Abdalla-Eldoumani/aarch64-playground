@@ -130,10 +130,7 @@ ending with `svc`) and left frames on the stack, and `c`, `n`, `s`, `si`,
 `ni` and `finish` say `gdb: the program has finished` instead of doing
 nothing. A program stopped by a fault has not finished: its stack stays.
 
-In real gdb, `n` and `s` step a whole source line. Here they step one
-instruction, as they always have, and keep doing so until after the
-course's final exam (December 16); `ni` and `si` are the
-instruction-level names to use now.
+`si` and `ni` are the instruction-level steps, and neither depends on `-g`.
 
 ## Input handling
 
