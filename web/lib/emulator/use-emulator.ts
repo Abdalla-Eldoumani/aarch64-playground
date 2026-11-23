@@ -755,7 +755,9 @@ export function useEmulator(start = true): EmulatorState {
       for (;;) {
         // Noted before the chunk, so a reset or assemble sent while it ran counts.
         const epoch = backend.epoch;
-        const { runResult, snapshot } = await backend.runUntilBreak(1_000_000 - spent, goal?.until);
+        // A line with sleeps in it can run past the budget; the next one gets none.
+        const budget = Math.max(0, 1_000_000 - spent);
+        const { runResult, snapshot } = await backend.runUntilBreak(budget, goal?.until);
         // A run cancelled by reset/assemble, or one that finished as the
         // machine was replaced, describes a machine that no longer exists;
         // acting on it painted `unknown instruction: 0x00000000` right after
