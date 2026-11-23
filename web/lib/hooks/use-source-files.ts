@@ -89,7 +89,8 @@ interface Kept {
  * as they always were; a load also keeps, in the copies, every file it
  * replaces that the backup does not hold, and what the backup held before.
  * Returns what is kept and, for a load, the names of saved helpers it
- * replaces with no copy saved, which happens only when storage is full.
+ * replaces with no copy saved, which happens only when storage is full; such
+ * a load keeps no copies, so it leaves storage as it always would.
  */
 function store(
   prev: SourceFile[],
@@ -122,15 +123,19 @@ function store(
   if (wanted.length > 0 && writeStore(COPIES_KEY, wanted)) copies = wanted;
   else safeRemoveItem(COPIES_KEY);
   const storedBackup = readStore(BACKUP_KEY);
-  const unsaved = replaced
-    .filter(
-      (f) =>
-        saved.some((s) => s.name === f.name) &&
-        !storedBackup.some((b) => sameFile(b, f)) &&
-        !copies.some((c) => sameFile(c, f)),
-    )
-    .map((f) => f.name);
-  return { backup, copies, unsaved };
+  const uncopied = (held: SourceFile[]) =>
+    replaced
+      .filter(
+        (f) =>
+          saved.some((s) => s.name === f.name) &&
+          !storedBackup.some((b) => sameFile(b, f)) &&
+          !held.some((c) => sameFile(c, f)),
+      )
+      .map((f) => f.name);
+  if (uncopied(copies).length === 0) return { backup, copies, unsaved: [] };
+  // A load that cannot copy every saved helper goes exactly as it always did.
+  safeRemoveItem(COPIES_KEY);
+  return { backup, copies: [], unsaved: uncopied([]) };
 }
 
 /** What a restore brings back, and the call that restores it. */
