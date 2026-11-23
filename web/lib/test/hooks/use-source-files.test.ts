@@ -393,29 +393,9 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(2);
   });
 
-  // A backup write that storage refused leaves the stored backup in charge:
-  // what the restore brings back, and what any undo puts back, is that. The
-  // closed tab whose copy did not fit stays in the stored strip, and the
-  // restore brings it back too.
-  it("restores the stored backup, not one storage refused to hold", () => {
-    window.localStorage.setItem(
-      STORE,
-      JSON.stringify([file("a.s", "a", 500), file("big.s", "big", 3000)]),
-    );
-    window.localStorage.setItem(BACKUP, JSON.stringify([file("k.s", "k", 800)]));
-    const h = mount();
-    leave(200);
-    // Closing big.s asks for a backup of it that does not fit.
-    h.save(h.files().filter((f) => f.name !== "big.s"));
-    expect(tags([...stored(STORE), ...stored(BACKUP)]), "big.s is still stored").toContain("// big");
-    expect(h.count()).toBe(2);
-    h.restore();
-    expect(tags([...stored(STORE), ...stored(BACKUP)]), "k.s is still stored").toContain("// k");
-    expect(tags(h.files())).toEqual(["// a", "// k", "// big"]);
-    expect(tags(stored(STORE)), "the restore is stored").toEqual(["// a", "// k", "// big"]);
-  });
-
-  it("stores a kept closed tab under a free name when a new tab takes its name", () => {
+  // Closing a tab whose copy does not fit goes as it always did: the strip
+  // is stored without it, and only this visit's list offers it back.
+  it("closes a tab at a full store as before", () => {
     window.localStorage.setItem(
       STORE,
       JSON.stringify([file("a.s", "a", 500), file("big.s", "big", 3000)]),
@@ -424,12 +404,9 @@ describe("useSourceFiles when storage is full", () => {
     const h = mount();
     leave(200);
     h.save(h.files().filter((f) => f.name !== "big.s"));
-    h.save([...h.files(), file("big.s", "new big", 10)]);
-    expect(stored(STORE).map((f) => `${f.name} ${f.body.split("\n")[0]}`)).toEqual([
-      "a.s // a",
-      "big.s // new big",
-      "2-big.s // big",
-    ]);
+    expect(tags(stored(STORE))).toEqual(["// a"]);
+    expect(tags(stored(BACKUP)), "the stored list is as it was").toEqual(["// k"]);
+    expect(h.count(), "the list offers the closed tab").toBe(1);
   });
 
   // Copies of a link's files may give way, so a strip the store has room for
