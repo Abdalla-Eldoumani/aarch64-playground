@@ -2,7 +2,9 @@
 
 A small shell in the playground, beside the console. Open the **term** tab
 (on a phone, **terminal**). The console still works as before; use whichever
-fits the task.
+fits the task. Where its `gcc`, `as`, and gdb-lite differ from the course
+server's tools, the README's [Stepping and the terminal pane](../README.md#stepping-and-the-terminal-pane)
+says what to type instead.
 
 ## Commands
 
