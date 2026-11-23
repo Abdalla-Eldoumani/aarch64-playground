@@ -347,7 +347,7 @@ pub struct RunResult {
 }
 
 /// Where `run_until` stops besides a breakpoint, a halt, an input wait and
-/// a sleep. Neither set is a plain run.
+/// a sleep. None set is a plain run.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Until {
     /// Back in the program's own code with the call stack this deep or
@@ -355,6 +355,11 @@ pub struct Until {
     pub depth: Option<u64>,
     /// The pc reaches this address: run to cursor.
     pub pc: Option<u64>,
+    /// The pc off the instructions [lo, hi) of one editor line, back in the
+    /// program's code or at main's return: gdb's next with `depth`, its step
+    /// without. A library call's trampoline and stub are not program code,
+    /// so step runs through them.
+    pub range: Option<(u64, u64)>,
 }
 
 /// Top-level CPU wrapping register file, memory, breakpoints, and the
