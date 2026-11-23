@@ -490,17 +490,40 @@ describe("useSourceFiles when storage is full", () => {
   });
 
   // Storage that takes no write: the load still goes, the list it displaced
-  // is offered for this visit as it always was, and the saved helper is named.
-  it("loads as before when storage takes no write, and names the saved helper", () => {
+  // is offered for this visit as it always was, and the saved helper is
+  // still stored, so nothing is named.
+  it("loads as before when storage takes no write, naming nothing", () => {
     window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 100)]));
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
       throw new DOMException("storage is full", "QuotaExceededError");
     });
     const h = mount();
     h.save([...h.files(), file("new.s", "new", 10)]);
-    expect(h.save([file("l.s", "link", 10)], { load: true })).toEqual(["mine.s"]);
+    expect(h.save([file("l.s", "link", 10)], { load: true })).toEqual([]);
     expect(tags(h.files())).toEqual(["// link"]);
     expect(h.count()).toBe(2);
+    expect(tags(stored(STORE))).toEqual(["// mine"]);
+    expect(window.localStorage.getItem(COPIES)).toBeNull();
+  });
+
+  // A program too large for the room left is not stored, so the stored strip
+  // still holds the saved helper: the load names nothing and asks nothing.
+  it("loads a program too large to store as before, naming nothing", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 100)]));
+    const h = mount();
+    leave(50);
+    expect(h.save([file("l.s", "link", 2000)], { load: true })).toEqual([]);
+    expect(tags(h.files())).toEqual(["// link"]);
+    expect(tags(stored(STORE))).toEqual(["// mine"]);
+    expect(window.localStorage.getItem(COPIES)).toBeNull();
+    expect(h.count(), "the list holds what the load displaced").toBe(1);
+  });
+
+  it("asks nothing before a program too large to store", () => {
+    window.localStorage.setItem(STORE, JSON.stringify([file("mine.s", "mine", 100)]));
+    const { result } = renderHook(() => useSourceFiles());
+    leave(50);
+    expect(result.current[2].unsavedBy([file("l.s", "link", 2000)])).toEqual([]);
     expect(tags(stored(STORE))).toEqual(["// mine"]);
   });
 
