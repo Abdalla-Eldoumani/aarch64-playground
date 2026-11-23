@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext } from "@/lib/terminal/dispatch";
+import { dispatchCommand, fitTable, parseCommandLine, type DispatchContext, type GdbBuild } from "@/lib/terminal/dispatch";
 
 describe("parseCommandLine", () => {
   it("splits cmd and args on whitespace", () => {
@@ -835,5 +835,21 @@ describe("gdb n and s", () => {
     ]);
     expect(runUntil).not.toHaveBeenCalled();
     expect(step).not.toHaveBeenCalled();
+  });
+
+  it("keep the -g note's build line for gcc alone, and drop it for the editor's program", async () => {
+    const build: GdbBuild = { plain: null, noted: false };
+    const ctx = makeCtx({ gdbBuild: () => build, readVfs: () => "ret\n" });
+    await dispatchCommand("as prog.s -o prog", ctx);
+    expect(build.plain).toBeNull();
+    await dispatchCommand("gcc -ggdb prog.s -o prog", ctx);
+    expect(build.plain).toBeNull();
+    // The line to type on the server: their own, with -g in place of any -g flag.
+    await dispatchCommand("gcc -g -g0 prog.s -o prog", ctx);
+    expect(build.plain).toBe("gcc -g prog.s -o prog");
+    await dispatchCommand("./program", ctx);
+    expect(build.plain).toBeNull();
+    expect((await dispatchCommand("gdb n", ctx)).lines).toEqual([]);
+    expect(build.noted).toBe(false);
   });
 });
