@@ -484,8 +484,9 @@ async function runGdb(args: string[], ctx: DispatchContext): Promise<DispatchRes
     }
     const lines = debugNote(ctx);
     if (Number(count) < 1) {
-      const where = ctx.lineLabel(ctx.pcAddress());
-      return { status: "ok", lines: where ? [...lines, `at ${where}`] : lines };
+      // By address where no line holds the pc, as the stop words name it.
+      const pc = ctx.pcAddress();
+      return { status: "ok", lines: [...lines, `at ${ctx.lineLabel(pc) ?? `0x${pc.toString(16)}`}`] };
     }
     const said = await ctx.runUntil(sub === "n" ? "next" : "step", Number(count));
     // A card marks its code with backticks, which the pane would show as they are.
