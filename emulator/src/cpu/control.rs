@@ -43,10 +43,10 @@ impl Cpu {
             // Before the sleep check: a goal met by the step that slept
             // would otherwise be overshot when the runner resumes.
             if goal && !self.halted {
-                let pc = self.regs.read_pc();
+                let (from, pc) = (pc, self.regs.read_pc());
                 // A stray return that lands in the program is still the stop.
                 bad_return = self.frames.bad_return().step != astray;
-                reached = !bad_return && (until.pc == Some(pc) || self.back_off(until, pc));
+                reached = !bad_return && (until.pc == Some(pc) || self.back_off(until, from, pc));
                 if reached || bad_return {
                     break;
                 }
@@ -97,17 +97,19 @@ impl Cpu {
         })
     }
 
-    /// Whether `pc` meets `until`'s depth and line: back in the program's
-    /// code, at that depth or shallower, and off the line. Off a line, main's
-    /// return counts as back too: gdb's next and step stop there before the
-    /// exit, so a count of them comes out the same.
-    fn back_off(&self, until: Until, pc: u64) -> bool {
+    /// Whether the step from `from` to `pc` meets `until`'s depth and line:
+    /// back in the program's code, off the line, and at that depth or
+    /// shallower, or for step deeper by a call made from the line. Off a line,
+    /// main's return counts as back too: gdb's next and step stop there before
+    /// the exit, so a count of them comes out the same.
+    fn back_off(&self, until: Until, from: u64, pc: u64) -> bool {
         if until.depth.is_none() && until.range.is_none() {
             return false;
         }
+        let on_line = |addr: u64| until.range.is_some_and(|(lo, hi)| (lo..hi).contains(&addr));
         let back = self.in_program(pc) || (until.range.is_some() && pc == MAIN_RETURN_ADDR);
-        back && until.depth.is_none_or(|d| self.frames.depth() <= d)
-            && until.range.is_none_or(|(lo, hi)| !(lo..hi).contains(&pc))
+        let depth_ok = until.depth.is_none_or(|d| self.frames.depth() <= d) || (until.into && on_line(from));
+        back && !on_line(pc) && depth_ok
     }
 
     /// Raise (or lower) the runaway-loop wall for this machine. Native
