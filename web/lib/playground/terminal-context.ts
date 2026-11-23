@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import type { GdbLabels } from "@/lib/emulator/use-breakpoints";
 import type { EmulatorState } from "@/lib/emulator/use-emulator";
-import type { DispatchContext, TerminalProgramIO } from "@/lib/terminal/dispatch";
+import type { DispatchContext, GdbBuild, TerminalProgramIO } from "@/lib/terminal/dispatch";
 import { combineSources, type Workspace } from "@/lib/playground/file-map";
 import { validateStdin } from "@/lib/playground/upload-guard";
 
@@ -9,12 +9,15 @@ import { validateStdin } from "@/lib/playground/upload-guard";
  * `gdb b`'s breakpoints by gdb's numbers, which are never given twice: each
  * one's label and the instruction it was last set on. They hang on the hub's
  * gdbLabels, so every per-command context shares them, and they stay out of
- * the hub the landing page loads.
+ * the hub the landing page loads. The -g note's build rides along, for the
+ * same reasons and because the editor's assemble clears it here.
  */
-class GdbBreakpoints implements GdbLabels {
+class GdbBreakpoints implements GdbLabels, GdbBuild {
   next = 1;
   byNumber = new Map<number, { label: string; addr: number | null }>();
   unset: [number, string][] = [];
+  plain: string | null = null;
+  noted = false;
   machine: RefObject<EmulatorState>;
 
   constructor(machine: RefObject<EmulatorState>) {
@@ -23,8 +26,10 @@ class GdbBreakpoints implements GdbLabels {
 
   // Each label is looked up in the program as it reads now; one it no longer
   // has stays unarmed until it comes back, and the next gdb command says so.
+  // The editor's program has no gcc line, so no -g to miss.
   async assembled() {
     const hub = this.machine.current;
+    this.plain = null;
     this.unset = [];
     for (const [n, b] of this.byNumber) {
       b.addr = await hub.resolveLabel(b.label);
@@ -66,7 +71,7 @@ export type TerminalContextDeps = {
  */
 export function createTerminalContext(deps: TerminalContextDeps): DispatchContext {
   const { machine, applySeeds, driveForeground } = deps;
-  // Made on the first gdb b, delete or list; until then the hub has none.
+  // Made on the first gdb b, delete, list, gcc, n or s; until then the hub has none.
   const gdbBreakpoints = () => {
     const ref = machine.current.gdbLabels;
     const set = ref.current instanceof GdbBreakpoints ? ref.current : new GdbBreakpoints(machine);
@@ -194,7 +199,8 @@ export function createTerminalContext(deps: TerminalContextDeps): DispatchContex
       } while (machine.current.isRunning && Date.now() - startedAt < 10_000);
       return { halted: machine.current.isHalted, hit_breakpoint: false };
     },
-    runUntil: (target: "over" | "out") => machine.current.runUntil(target),
+    runUntil: (target, lines) => machine.current.runUntil(target, lines),
+    gdbBuild: () => gdbBreakpoints(),
     frameStack: async () => {
       const e = machine.current;
       // The frames view's drawing, loaded only when bt or info frame asks.
