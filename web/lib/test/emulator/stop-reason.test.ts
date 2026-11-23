@@ -240,6 +240,7 @@ function machine(source: string) {
     over: () => run("over", { depth: depth() }),
     out: () => run("out", { depth: depth() - 1 }),
     to: (line: number) => run(line, { pc: pcOf(line) }),
+    say: (target: StepTarget, result: RunResultPayload) => stopReason(target, result, snapshot(), layout, lines),
   };
 }
 
@@ -350,6 +351,41 @@ describe("step over, step out and run to cursor on the machine", () => {
         "because greet called out with `bl puts` on line 16 before saving lr, so lr still held " +
         "that call's return address.",
     );
+    m.emu.free();
+  });
+});
+
+describe("gdb n and s", () => {
+  const stopped = { pc: 0, halted: false, hit_breakpoint: false, error: null, reached: true, steps_executed: 1 };
+
+  it("say where they stopped, even one instruction on", () => {
+    const m = machine(FACT);
+    // From main's stp on line 36 to its mov.
+    m.emu.step();
+    expect(m.say("next", stopped)).toEqual({ text: "reached line 37", problem: false });
+    expect(m.say("step", stopped)).toEqual({ text: "reached line 37", problem: false });
+    m.emu.free();
+  });
+
+  it("name the command in the words of a pause, as step over does", () => {
+    const m = machine(FACT);
+    const pause = { ...stopped, reached: false, step_limit_reached: true, steps_executed: 1_000_000 };
+    expect(m.say("next", pause)?.text).toBe(
+      "paused after 1,000,000 steps, before the gdb n finished. gdb n again to go on, " +
+        "or check for a loop whose exit condition never becomes true",
+    );
+    expect(m.say("step", pause)?.text).toMatch(/^paused after 1,000,000 steps, before the gdb s finished\. gdb s again/);
+    m.emu.free();
+  });
+
+  it("say that main has returned when they stop at its return, before the exit", () => {
+    const m = machine(FACT);
+    // main's ret on line 45, then the return out of main.
+    m.to(45);
+    m.emu.step();
+    expect(m.depth()).toBe(0);
+    expect(m.emu.is_halted()).toBe(false);
+    expect(m.say("next", stopped)?.text).toBe("main has returned; the next n or s ends the program");
     m.emu.free();
   });
 });

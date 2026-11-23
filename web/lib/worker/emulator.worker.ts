@@ -138,7 +138,7 @@ ctx.addEventListener("message", async (event: MessageEvent<Request>) => {
               const until = msg.until;
               const raw = (
                 until
-                  ? emu.run_to(steps, until.depth ?? -1, until.pc ?? -1)
+                  ? emu.run_to(steps, until.depth ?? -1, until.pc ?? -1, until.range?.[0], until.range?.[1], until.into)
                   : emu.run_until_break(steps)
               ) as Record<string, unknown>;
               return {

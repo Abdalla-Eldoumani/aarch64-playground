@@ -10,6 +10,7 @@ import {
   type TerminalContextDeps,
 } from "@/lib/playground/terminal-context";
 import { MAX_STDIN_BYTES } from "@/lib/playground/upload-guard";
+import { dispatchCommand } from "@/lib/terminal/dispatch";
 
 const SOURCE = "        mov x0, 1\n        ret\n";
 
@@ -393,5 +394,62 @@ describe("the context itself", () => {
     });
     machine.current = makeHub({ pc: 0x400040 });
     expect(ctx.pcAddress()).toBe(0x400040);
+  });
+});
+
+// On the course server, gdb's n and s step a source line only in a program
+// built with gcc -g; without it they run to the end of the function.
+describe("gdb-lite's -g note", () => {
+  const NOTE = [
+    "note: on the course server, n and s need a build with -g: gcc -g prog.s -o prog",
+    "note: without -g, n and s run to the end of the function",
+  ];
+
+  // The pane builds a context for every command, so the note has to outlast each one.
+  function session(hubOverrides: Partial<EmulatorState> = {}) {
+    const { hub, deps } = setup({
+      vfsFiles: ["prog.s"],
+      readVfsFile: vi.fn(async () => new TextEncoder().encode(SOURCE)),
+      ...hubOverrides,
+    });
+    const say = async (line: string) => (await dispatchCommand(line, createTerminalContext(deps))).lines;
+    return { hub, say };
+  }
+
+  it("is said once, at the first n or s after a gcc line without -g", async () => {
+    const { say } = session();
+    expect(await say("gcc prog.s -o prog")).toEqual([]);
+    expect(await say("gdb n")).toEqual(NOTE);
+    expect(await say("gdb s")).toEqual([]);
+    expect(await say("gcc prog.s -o prog")).toEqual([]);
+    expect(await say("gdb s 2")).toEqual([]);
+  });
+
+  it("is not said after a build with -g, the last build being the one that counts", async () => {
+    const { say } = session();
+    expect(await say("gcc -g prog.s -o prog")).toEqual([]);
+    expect(await say("gdb n")).toEqual([]);
+    await say("gcc prog.s -o prog");
+    await say("gcc -g prog.s -o prog");
+    expect(await say("gdb s")).toEqual([]);
+  });
+
+  it("is not said for a program from the editor, which has no build line", async () => {
+    const { hub, say } = session();
+    expect(await say("gdb n")).toEqual([]);
+    await say("gcc prog.s -o prog");
+    // The editor's assemble, which a Run makes too.
+    await hub.gdbLabels.current?.assembled();
+    expect(await say("gdb n")).toEqual([]);
+  });
+
+  it("waits for a build that worked and an n or s that runs", async () => {
+    const { hub, say } = session({ assembleForTool: failedAssemble("expected register", 1) });
+    await say("gcc prog.s -o prog");
+    expect(await say("gdb n")).toEqual([]);
+    hub.assembleForTool = vi.fn(async () => ({ success: true, error: null, errorLine: null }));
+    await say("gcc prog.s -o prog");
+    expect(await say("gdb n abc")).toEqual(["gdb: n takes a number of lines, such as n 3, not 'abc'"]);
+    expect(await say("gdb n")).toEqual(NOTE);
   });
 });
