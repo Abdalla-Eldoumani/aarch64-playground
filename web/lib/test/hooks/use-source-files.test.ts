@@ -521,4 +521,22 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(2);
     expect(tags(stored(STORE))).toEqual(["// mine"]);
   });
+
+  // Site data blocked outright: nothing is stored, so nothing stored can be
+  // lost, and every load goes as it always did with nothing to name.
+  it("loads as before, naming nothing, when the browser stores nothing for the site", () => {
+    const blocked = () => {
+      throw new DOMException("site data is blocked", "SecurityError");
+    };
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(blocked);
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(blocked);
+    const h = mount();
+    h.save([file("new.s", "new", 10)]);
+    expect(h.save([file("l.s", "link", 10)], { load: true })).toEqual([]);
+    expect(tags(h.files())).toEqual(["// link"]);
+    expect(h.save([], { load: true })).toEqual([]);
+    expect(h.count(), "the list holds what the last load displaced").toBe(1);
+    h.restore();
+    expect(tags(h.files())).toEqual(["// link"]);
+  });
 });
