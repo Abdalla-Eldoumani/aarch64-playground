@@ -322,11 +322,12 @@ describe("useSourceFiles when storage is full", () => {
     },
   );
 
-  it("leaves the stored backup in place when a restore cannot write the strip", () => {
+  // A restore goes as it always did: the list is cleared, though a full
+  // store does not take the restored strip.
+  it("clears the stored list on a restore as before, though the strip does not fit", () => {
     window.localStorage.setItem(STORE, JSON.stringify([{ name: "mine.s", body: "// mine" }]));
     const h = mount();
     h.save([{ name: "zz.s", body: "// zz" }], { load: true });
-    const backup = window.localStorage.getItem(BACKUP);
     // Every write of the strip fails from here on.
     vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (
       this: Storage,
@@ -337,10 +338,11 @@ describe("useSourceFiles when storage is full", () => {
       realSetItem.call(this, key, value);
     });
     h.restore();
-    expect(window.localStorage.getItem(BACKUP), "the stored backup is intact").toBe(backup);
+    expect(tags(h.files())).toEqual(["// zz", "// mine"]);
+    expect(stored(BACKUP)).toEqual([]);
     expect(tags(stored(STORE))).toEqual(["// zz"]);
-    expect(h.count(), "the restore count is what is stored").toBe(1);
-    expect(mount().count()).toBe(1);
+    expect(h.count()).toBe(0);
+    expect(mount().count()).toBe(0);
   });
 
   // Blocked site data refuses every write: the tab still restores, and the
