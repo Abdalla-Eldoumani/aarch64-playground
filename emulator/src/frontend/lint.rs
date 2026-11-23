@@ -1114,6 +1114,20 @@ ret
     }
 
     #[test]
+    fn names_undefined_in_the_source_cost_the_macro_check_little_per_use() {
+        // One line undefines `x` 40,000 times, a line pass event each; 40,000
+        // uses follow. Walking every event above each use reads 1.6 billion.
+        let uses = 40_000;
+        let src = format!(
+            "define(x, w19)\nundefine({}x)\n{}\t.text\n\t.global main\nmain:\tmov\tx0, 0\n\tret\n",
+            "x,".repeat(39_999),
+            "\tx x x x x x x x x x\n".repeat(uses / 10),
+        );
+        let read = events_read_linting(&src);
+        assert!(read < 100 * uses, "the macro check read {read} define events for {uses} uses");
+    }
+
+    #[test]
     fn a_broken_m4_pass_produces_no_warnings() {
         // The assemble surfaces the m4 error; lint must stay quiet.
         assert_eq!(lint("ifdef(FOO, x)\n"), Vec::new());
