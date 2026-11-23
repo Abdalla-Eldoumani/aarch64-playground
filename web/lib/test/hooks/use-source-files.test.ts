@@ -2,10 +2,9 @@
 // replaces the strip keeps whatever it discarded recoverable, restore appends
 // beside the new program's own helpers, an edit or a rename is not a
 // discard, a program load keeps every helper text it does not bring back,
-// and the backup survives a reload. When storage is full only copies of
-// files that came with links give way, oldest first; a load with no room
-// for copies of the student's files leaves them stored and opens for the
-// visit, or does not happen when only the screen holds them.
+// and the backup survives a reload. The backup key holds what it always
+// did; a load's other copies sit apart, so that when storage is full they
+// give way and the store holds what it would without them.
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { useSourceFiles } from "@/lib/hooks/use-source-files";
@@ -182,6 +181,7 @@ describe("useSourceFiles", () => {
 describe("useSourceFiles when storage is full", () => {
   const STORE = "aarch64-playground:multi-files";
   const BACKUP = "aarch64-playground:multi-files-backup";
+  const COPIES = "aarch64-playground:multi-files-copies";
   const realSetItem = Storage.prototype.setItem;
 
   // localStorage that holds `limit` characters of keys and values in all,
@@ -238,20 +238,32 @@ describe("useSourceFiles when storage is full", () => {
     };
   }
 
-  // What the page shows against what a reload finds.
-  function expectStored(h: ReturnType<typeof mount>, lastLoadReplaced: SourceFile[]) {
+  // Everything a restore offers that storage holds: the load's own copies,
+  // then the backup.
+  const kept = () => [...stored(COPIES), ...stored(BACKUP)];
+
+  // What the page shows against what a reload finds. The last load's files
+  // are restorable unless the load named them as replaced with no copy.
+  function expectStored(
+    h: ReturnType<typeof mount>,
+    lastLoadReplaced: SourceFile[],
+    unsaved: unknown,
+  ) {
     expect(tags(stored(STORE)), "the student's current files are stored").toEqual(tags(h.files()));
-    expect(tags(stored(BACKUP)), "the backup holds the last load's files").toEqual(
-      expect.arrayContaining(tags(lastLoadReplaced)),
+    const named = unsaved as string[];
+    expect(tags(kept()), "the last load's files are restorable").toEqual(
+      expect.arrayContaining(tags(lastLoadReplaced.filter((f) => !named.includes(f.name)))),
     );
-    expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
+    expect(h.count(), "the restore count is what is stored").toBe(kept().length);
     const reloaded = mount();
     expect(tags(reloaded.files())).toEqual(tags(h.files()));
     expect(reloaded.count()).toBe(h.count());
   }
 
   // Another site's data leaves `room` characters: ten course-sized loads,
-  // then the student adds a helper of their own.
+  // then the student adds a helper of their own. The backup key holds what
+  // it always did: the student's files, which the same-named programs never
+  // displace.
   it.each([10_000, 20_000, 40_000])(
     "keeps the student's files and the last load's with %i characters left",
     (room) => {
@@ -263,22 +275,23 @@ describe("useSourceFiles when storage is full", () => {
       let replaced: SourceFile[] = [];
       for (let i = 1; i <= 10; i++) {
         replaced = h.files();
-        h.save(
+        const unsaved = h.save(
           ["stack.s", "queue.s", "utils.s"].map((n) => file(n, `program ${i} ${n}`, room / 20)),
           { load: true },
         );
-        expectStored(h, replaced);
+        expectStored(h, replaced, unsaved);
+        expect(tags(stored(BACKUP)), `the backup after load ${i}`).toEqual(studentTags);
       }
-      // Copies of the loads' files give way to the student's new helper.
+      // The copies give way to the student's new helper.
       h.save([...h.files(), file("t.s", "student T", room / 10)]);
       expect(tags(stored(STORE)), "the new helper is stored").toEqual(tags(h.files()));
-      expect(tags(stored(BACKUP))).toEqual(expect.arrayContaining(tags(student)));
-      expect(h.count(), "the restore count is what is stored").toBe(stored(BACKUP).length);
+      expect(tags(stored(BACKUP))).toEqual(studentTags);
     },
   );
 
   // Five links of four large helpers each, with a helper the student writes
-  // before the fifth; then the student restores.
+  // before the fifth; then the student restores. Each link displaces every
+  // file before it, so the backup key holds just those, as it always did.
   it.each([20_000, 40_000, 80_000])(
     "keeps the student's files and the last load's through five links in %i characters",
     (quota) => {
@@ -291,14 +304,14 @@ describe("useSourceFiles when storage is full", () => {
       let replaced: SourceFile[] = [];
       for (let k = 1; k <= 4; k++) {
         replaced = h.files();
-        h.save(link(k), { load: true });
-        expectStored(h, replaced);
+        expectStored(h, replaced, h.save(link(k), { load: true }));
+        expect(tags(stored(BACKUP)), `the backup after link ${k}`).toEqual(tags(replaced));
       }
       h.save([...h.files(), file("t.s", "student T", quota / 100)]);
-      expectStored(h, replaced);
+      expectStored(h, replaced, []);
       replaced = h.files();
-      h.save(link(5), { load: true });
-      expectStored(h, replaced);
+      expectStored(h, replaced, h.save(link(5), { load: true }));
+      expect(tags(stored(BACKUP)), "the backup after link 5").toEqual(tags(replaced));
 
       const kept = tags([...h.files(), ...stored(BACKUP)]);
       h.restore();
@@ -373,11 +386,10 @@ describe("useSourceFiles when storage is full", () => {
     );
     const h = mount();
     leave(3000);
-    h.save([file("stack.s", "example stack", 1000)], { load: true });
+    expect(h.save([file("stack.s", "example stack", 1000)], { load: true })).toEqual([]);
     expect(tags(stored(STORE))).toEqual(["// example stack"]);
-    expect(tags(stored(BACKUP)), "the student's files are stored").toEqual(
-      expect.arrayContaining(["// my stack", "// mine"]),
-    );
+    expect(tags(stored(BACKUP)), "the backup holds what the load displaced").toEqual(["// mine"]);
+    expect(tags(kept()), "the student's files are stored").toEqual(["// my stack", "// mine"]);
     expect(h.count()).toBe(2);
   });
 
@@ -462,9 +474,9 @@ describe("useSourceFiles when storage is full", () => {
     expect(h.count()).toBe(1);
   });
 
-  // A link file back on the strip unchanged needs no copy, so alternating
-  // two programs does not fill the backup with copies of what is on screen.
-  it("drops a link file's copy once a load puts that file back", () => {
+  // A file back on the strip unchanged needs no copy, so alternating two
+  // programs does not fill the restore list with copies of what is on screen.
+  it("keeps no copy of a file a load puts back", () => {
     window.localStorage.setItem(STORE, JSON.stringify([file("s.s", "student", 100)]));
     const P = [file("p1.s", "P one", 100), file("p2.s", "P two", 100)];
     const Q = [file("q1.s", "Q one", 100), file("q2.s", "Q two", 100)];
@@ -472,9 +484,11 @@ describe("useSourceFiles when storage is full", () => {
     h.save(P, { load: true });
     h.save(Q, { load: true });
     h.save(P, { load: true });
-    expect(tags(stored(BACKUP))).toEqual(["// student", "// Q one", "// Q two"]);
+    expect(tags(stored(BACKUP))).toEqual(["// Q one", "// Q two"]);
+    expect(tags(kept())).toEqual(["// student", "// Q one", "// Q two"]);
     h.save(Q, { load: true });
-    expect(tags(stored(BACKUP))).toEqual(["// student", "// P one", "// P two"]);
+    expect(tags(stored(BACKUP))).toEqual(["// P one", "// P two"]);
+    expect(tags(kept())).toEqual(["// student", "// P one", "// P two"]);
     expect(h.count()).toBe(3);
   });
 
