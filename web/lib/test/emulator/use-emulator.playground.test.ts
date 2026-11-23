@@ -722,11 +722,12 @@ describe("gdb n and s, stop for stop with gdb on a -g build", () => {
     await waitFor(() => expect(BigInt(view.result.current.registers[9])).toBeGreaterThan(5n));
     act(() => view.result.current.pause());
     const { lines } = await done;
-    await waitFor(() => expect(view.result.current.isRunning).toBe(false));
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/^reached line 1[12]$/);
-    expect(view.result.current.stepCount).toBeGreaterThan(10);
+    // Pause itself lowers isRunning; the count lands when the run's last line does.
+    await waitFor(() => expect(view.result.current.stepCount).toBeGreaterThan(10));
     expect(view.result.current.stepCount).toBeLessThan(1_000_000);
+    expect(view.result.current.isRunning).toBe(false);
   });
 });
 
