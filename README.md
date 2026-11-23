@@ -96,9 +96,11 @@ steps in [Run it locally](#run-it-locally).
 The playground follows one CPSC 355 course server (GNU `as`, gcc, glibc, and
 GNU m4 on AArch64 Linux). These checks compare it with that server:
 
-- **The site's own programs.** The site ships 622: the examples, the lesson
-  and exercise programs, the reference and pitfall programs, and the home
-  page's program. 621 of them were run on the server on 2026-11-06. Here, 616
+- **The site's own programs.** A sweep covers 622 of the programs the site
+  ships: the examples, the lesson programs, the exercise starters, the
+  reference and pitfall programs, and the home page's program. The
+  exercises' hidden solutions and the guide's programs are not in it. 621 of
+  the 622 were run on the server on 2026-11-06. Here, 616
   of those give the same output, exit code, and written files, byte for byte,
   or both sides refuse them the same way. One terminal game builds on both
   sides and is not compared. The other 4 differ for reasons this section
@@ -113,8 +115,7 @@ GNU m4 on AArch64 Linux). These checks compare it with that server:
 - **Error messages.** 15 common mistakes, such as a missing `main` or a stack
   frame that is not a multiple of 16, have the server's own error on record.
   The playground's message starts with the server's line and adds one line on
-  what to change. 45 more tests each hold one behaviour measured on the
-  server.
+  what to change.
 - **Vector instructions.** Each of the 2,208 Advanced SIMD forms the
   assembler takes assembles to the word GNU `as` gives on the server, and the
   results match the server's in all 6,618 recorded cases.
@@ -144,7 +145,8 @@ not list is a bug, so please [report it](#reporting-a-problem).
   unsigned value), use an `x` register for every address (`ldr w19, [x19]`),
   a `w` register for a byte (`ldrb w1, [x0]`), and one width across a `mul`.
 - **`sp` where the server's assembler does not allow it.** `and sp, sp, -16`,
-  `mov sp, xzr`, `mov xzr, sp`, and `sxtw sp, w0` build here. Round `sp`
+  `mov sp, xzr`, `mov xzr, sp`, and `sxtw sp, w0` build here, and
+  `and sp, sp, -16` then stops the program with `stack overflow`. Round `sp`
   through another register: `mov x9, sp`, `and x9, x9, -16`, `mov sp, x9`.
 - **`.balign` with a number that is not a power of 2**, such as `.balign 3`.
   The server stops with `alignment not a power of 2`. Use 2, 4, 8, or 16.
@@ -199,9 +201,14 @@ not list is a bug, so please [report it](#reporting-a-problem).
   `add :lo12:`.
 - **Some directives.** The playground refuses `.long`, `.int`, `.fill`,
   `.lcomm`, `.extern`, `.end`, and `.section ".rodata"` with quotes. Write
-  `.word` for `.long` and `.int`, `.skip` for a `.fill` of zeros, a label and
-  `.skip` in `.bss` for `.lcomm`, and `.section .rodata` without quotes.
-  Leave out `.extern` and `.end`, since library calls need no declaration.
+  `.word` for `.long` and `.int`, `.skip` with the count times the size for
+  a `.fill` of zeros (`.fill 100, 4, 0` is `.skip 400`), a label and `.skip`
+  in `.bss` for `.lcomm`, and `.section .rodata` without quotes. Leave out
+  `.extern` and `.end`, since library calls need no declaration.
+- **A library function the playground does not have**, such as `fgetc`. The
+  link fails here with ``undefined reference to `fgetc'``; gcc on the server
+  links it. The [instruction reference](docs/instruction-reference.md#c-library-functions)
+  lists the functions the playground has.
 - **Some instruction spellings.** The playground refuses `bic` with an
   immediate (write `and` with the inverted mask), `lsrv` (write `lsr`),
   `mov w22, w21, lsl 1` (write `lsl w22, w21, 1`), a shift amount written as
@@ -237,7 +244,12 @@ not list is a bug, so please [report it](#reporting-a-problem).
 - **A store outside the program's memory.** A store to an address that no
   section, the heap, or the stack covers, such as `0x100000000`, lands here
   and the program goes on. The server stops it with `Segmentation fault`. A
-  store to address 0 or into the program's code stops here too.
+  store to address 0 or into the program's code stops here too, but a `read`
+  system call (`svc`) into either one writes there here, where Linux returns
+  -14 and writes nothing.
+- **The last function without a `ret`.** Here the program stops when it runs
+  past its last instruction. On the server it runs on into whatever code the
+  linker put after it. End every function with `ret`.
 - **Some faults have other words here.** A jump into data or onto the stack
   stops with `unknown instruction`, a jump to an address nothing covers stops
   with a memory fault that names a read, and a recursion that runs out of
@@ -266,8 +278,8 @@ not list is a bug, so please [report it](#reporting-a-problem).
   flags such as `-O2` and `-lm`.
 - **gdb-lite's `n` and `s`** step one instruction, as `si` does. In gdb on the
   server they step one source line in a program built with `gcc -g`, and
-  without `-g` they run to the end of the function. Step with `si` and `ni`,
-  which work the same way in both places.
+  without `-g` they run to the end of the function. To step one instruction
+  at a time in either place, use `si` and `ni`.
 - **`ldr xN, label`** is two instructions here, because the playground loads
   the value through the literal pool, and one on the server, so `si` takes two
   steps on that line. The [instruction reference](docs/instruction-reference.md)
