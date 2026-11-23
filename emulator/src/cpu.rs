@@ -356,10 +356,14 @@ pub struct Until {
     /// The pc reaches this address: run to cursor.
     pub pc: Option<u64>,
     /// The pc off the instructions [lo, hi) of one editor line, back in the
-    /// program's code or at main's return: gdb's next with `depth`, its step
-    /// without. A library call's trampoline and stub are not program code,
-    /// so step runs through them.
+    /// program's code or at main's return, at `depth` or shallower: gdb's
+    /// next. A library call's trampoline and stub are not program code, so
+    /// a library call runs whole.
     pub range: Option<(u64, u64)>,
+    /// With `range`, also deeper when the step was made from the line: gdb's
+    /// step, into a call the line makes. A comparator qsort calls is entered
+    /// from the library, so step runs it with the rest of qsort, as gdb does.
+    pub into: bool,
 }
 
 /// Top-level CPU wrapping register file, memory, breakpoints, and the

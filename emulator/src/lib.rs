@@ -685,12 +685,22 @@ impl Emulator {
     /// `run_until_break` with a goal: stop once the call stack is `depth`
     /// deep or shallower back in the program's own code, or once the pc is
     /// `pc`; a negative number leaves that half off. `lo` and `hi`, when
-    /// given, are the editor line gdb's next and step leave (`Until::range`).
-    pub fn run_to(&mut self, max_steps: u32, depth: f64, pc: f64, lo: Option<f64>, hi: Option<f64>) -> JsValue {
+    /// given, are the editor line gdb's next and step leave (`Until::range`),
+    /// and `into` makes it step (`Until::into`).
+    pub fn run_to(
+        &mut self,
+        max_steps: u32,
+        depth: f64,
+        pc: f64,
+        lo: Option<f64>,
+        hi: Option<f64>,
+        into: Option<bool>,
+    ) -> JsValue {
         let until = cpu::Until {
             depth: (depth >= 0.0).then_some(depth as u64),
             pc: (pc >= 0.0).then_some(pc as u64),
             range: lo.zip(hi).map(|(lo, hi)| (lo as u64, hi as u64)),
+            into: into == Some(true),
         };
         let (result, error_line) = match self.cpu.run_until(max_steps, until) {
             Ok(result) => {

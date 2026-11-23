@@ -169,13 +169,13 @@ impl Program {
 
     /// gdb's next: off this line at this depth or shallower.
     fn next(&mut self) -> RunResult {
-        let goal = Until { depth: Some(self.depth()), pc: None, range: Some(self.range()) };
+        let goal = Until { depth: Some(self.depth()), range: Some(self.range()), ..Until::default() };
         self.cpu.run_until(1_000_000, goal).expect("runs")
     }
 
-    /// gdb's step: off this line at any depth.
+    /// gdb's step: the same, or into a call this line makes.
     fn step(&mut self) -> RunResult {
-        let goal = Until { depth: None, pc: None, range: Some(self.range()) };
+        let goal = Until { depth: Some(self.depth()), range: Some(self.range()), into: true, ..Until::default() };
         self.cpu.run_until(1_000_000, goal).expect("runs")
     }
 }
@@ -331,7 +331,7 @@ fn step_over_at_mains_ret_still_runs_to_the_exit() {
     let mut p = Program::load(STEPS);
     let main = p.label("main");
     p.step_to(main + 76);
-    let goal = Until { depth: Some(p.depth()), pc: None, range: None };
+    let goal = Until { depth: Some(p.depth()), ..Until::default() };
     let r = p.cpu.run_until(1_000_000, goal).expect("runs");
     assert!(r.halted && !r.reached, "{r:?}");
     assert_eq!(p.cpu.exit_code(), Some(0));
