@@ -521,4 +521,23 @@ describe("useSourceFiles when storage is full", () => {
     h.restore();
     expect(tags(h.files())).toEqual(["// link"]);
   });
+
+  // What the question before a load asks: the saved helpers the load would
+  // replace with no copy. Asking stores nothing, so a "no" changes nothing.
+  it("names what a load would replace with no copy, storing nothing", () => {
+    const names = ["stack.s", "queue.s", "utils.s"];
+    window.localStorage.setItem(STORE, JSON.stringify(names.map((n) => file(n, `my ${n}`, 2000))));
+    window.localStorage.setItem(BACKUP, JSON.stringify([file("k.s", "k", 100)]));
+    const { result } = renderHook(() => useSourceFiles());
+    const keys = () => [STORE, BACKUP, COPIES].map((k) => window.localStorage.getItem(k));
+    const larger = names.map((n) => file(n, `link ${n}`, 2300));
+    const before = keys();
+    expect(result.current[2].unsavedBy(larger), "with room").toEqual([]);
+    expect(keys(), "with room").toEqual(before);
+    leave(6500);
+    expect(result.current[2].unsavedBy(larger), "at a full store").toEqual(names);
+    expect(keys(), "at a full store").toEqual(before);
+    expect(tags(result.current[0])).toEqual(names.map((n) => `// my ${n}`));
+    expect(result.current[2].count).toBe(1);
+  });
 });
