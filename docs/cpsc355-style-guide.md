@@ -43,9 +43,10 @@ that define's reach at that line, so an alias can be rebound per function.
 When those rules reject a program that uses `dnl`, `divert`, `undivert`,
 `divnum`, `changecom`, or a backtick, or leave `divert`, `undivert`,
 `divnum`, `changecom`, or `changequote` where an instruction goes, the
-program goes through m4 in GNU m4's own order instead, as on the servers:
-m4 reads the whole file with its comments in it, and the comments come out
-of what it writes. In that order:
+program goes through m4 in GNU m4's own order instead, as on the servers,
+unless those rules already spent the whole work budget, which keeps their
+rejection. There m4 reads the whole file with its comments in it, and the
+comments come out of what it writes. In that order:
 
 - `dnl` deletes the rest of its line and the newline, so
   `define(fp, x29)dnl` leaves no blank line.
